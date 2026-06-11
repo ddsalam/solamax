@@ -3,15 +3,21 @@
 .env.*
 !.env.example
 *.local
+config.local.json
 config.local.*
 secrets/
 *.key
 *.pem
 
-# Agent buffer lokal (offline queue)
+# State lokal agent: watermark + buffer offline (DI-GITIGNORE)
+data/
+apps/*/data/
 *.sqlite
 *.sqlite3
 buffer/
+
+# Hasil query verifikasi (data live SPBU — jangan commit)
+verification-queries-results/
 
 # Dependencies / build (untuk app yang dibuat nanti)
 node_modules/

@@ -55,12 +55,23 @@ flowchart LR
 
 Konvensi: semua tabel data punya kolom **`unit_id`** (multi-tenant; pilot = 1 baris). Kolom mirror memakai nama EasyMax di-`snake_case` agar mudah dilacak ke sumber. Watermark/waktu disimpan `timestamptz` (lihat catatan timezone §6).
 
-> 🏷️ **PROVISIONAL** = keputusan bergantung pada hasil query verifikasi (Q-ID tertera);
-> belum dikunci sampai data nyata dilaporkan. **Fallback PK tebakan:** untuk tabel yang
-> PK alaminya belum pasti, dipakai **surrogate key auto-increment (`id bigserial`) +
-> `UNIQUE` index pada natural key**. Desain ini selamat apa pun hasil data: jika natural
-> key ternyata unik, `UNIQUE` menegakkannya; jika ada duplikat, surrogate tetap memberi
-> PK sah. UPSERT tetap memakai `ON CONFLICT (natural key)`.
+> ✅ **CONFIRMED** (verifikasi 2026-06-11, DB Imam Bonjol). Semua keputusan PK/tipe di bawah
+> sudah terkunci by data. Lihat ringkasan temuan di [§0 Temuan terkunci](#0-temuan-terkunci).
+>
+> **Konvensi PK Postgres:** tabel detail EasyMax **tanpa PRIMARY KEY** di MySQL
+> (`tr_djualbbm`, `tr_dkasbank`, `tr_dopnamebbm`) memakai **surrogate `id bigserial` +
+> `UNIQUE` index pada natural key** (natural key sudah dibuktikan unik → UNIQUE aman, dan
+> jadi target `ON CONFLICT` untuk UPSERT). Tabel dengan PK sumber (`tr_terimabbm.CKDTRM`,
+> semua header, master) memakai natural PK langsung (di-scope `unit_id`).
+
+### 0. Temuan terkunci
+
+Empat fakta dari verifikasi yang membentuk desain (bukan asumsi):
+
+1. **`DTGLJAM` NULLABLE — sync data live saja.** `tr_djualbbm` punya 12.737 baris (~7%) `DTGLJAM IS NULL`, semua legacy pra-`2022-08-31`. Agent **hanya** tarik baris `DTGLJAM IS NOT NULL`; baris legacy NULL **diabaikan** dan **tak boleh menggeser watermark**. (opname & terima: 0 NULL.)
+2. **Modul KAS dorman sejak 2019** (`tr_hkasbank` berhenti `2019-04-17`). Domain kas **tetap dibangun penuh**; dashboard menampilkan "terakhir input: `<tgl>`" + **flag merah bila stale** — ini justru fitur pengawasan inti.
+3. **MySQL 5.0.67 (2008).** Driver Node **wajib kompatibel 5.0** (handshake/auth lawas) — **tes koneksi paling awal di Fase 1**. Query agent **tak boleh** pakai fitur SQL modern.
+4. **Timezone server = `SYSTEM` = WIB (UTC+7), tanpa offset tersimpan.** `DTGLJAM` diperlakukan sebagai WIB lalu **dikonversi eksplisit ke UTC** saat simpan ke `timestamptz` Postgres.
 
 ### 3.1 Master & kontrol
 
@@ -90,21 +101,21 @@ CREATE TABLE sync_state (
 ### 3.2 Domain 1 — Penjualan BBM ⭐
 
 ```sql
--- mirror tr_hjualbbm (per shift per hari)
+-- mirror tr_hjualbbm (per shift per hari) — PK sumber: CKDJUALBBM
 CREATE TABLE sales_header (
   unit_id     smallint NOT NULL REFERENCES unit(unit_id),
   ckdjualbbm  char(15) NOT NULL,
   dtgljual    date NOT NULL,                 -- tanggal BISNIS (grouping harian)
-  nshift      smallint,                      -- 1/2/3  🏷️ PROVISIONAL Q-SALES-2 (format/nilai)
+  nshift      smallint,                      -- ✅ {1,2,3}
   vcket       text,
   PRIMARY KEY (unit_id, ckdjualbbm)
 );
 
 -- mirror tr_djualbbm (per nozzle) — tabel emas
--- 🏷️ PROVISIONAL (Q-SALES-1): PK natural (ckdjualbbm,ckdnozzle,nurut) dari wiki recon,
---    BELUM dikonfirmasi unik di data. Jika Q-SALES-1 menunjukkan duplikat → ganti ke
---    fallback surrogate (lihat pola cash_detail/opname/delivery).
+-- ✅ Natural key (CKDJUALBBM,CKDNOZZLE,NURUT) UNIK (181.684 = distinct). MySQL: tanpa PRI
+--    → Postgres pakai surrogate id + UNIQUE. dtgljam NOT NULL (agent filter IS NOT NULL).
 CREATE TABLE sales_detail (
+  id           bigserial PRIMARY KEY,
   unit_id      smallint NOT NULL REFERENCES unit(unit_id),
   ckdjualbbm   char(15) NOT NULL,
   ckdnozzle    char(5)  NOT NULL,
@@ -117,91 +128,78 @@ CREATE TABLE sales_detail (
   ckdbbm       char(5),
   ckdtangki    char(5),
   vcopeator    text,
-  dtgljam      timestamptz NOT NULL,         -- watermark
+  dtgljam      timestamptz NOT NULL,         -- watermark (hanya baris non-NULL disync)
   subah        smallint,                     -- flag koreksi
   sedit        smallint,                     -- flag edit
   ingested_at  timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (unit_id, ckdjualbbm, ckdnozzle, nurut)  -- 🏷️ PROVISIONAL Q-SALES-1
+  UNIQUE (unit_id, ckdjualbbm, ckdnozzle, nurut)   -- target ON CONFLICT
 );
 CREATE INDEX ix_sales_detail_dtgljam ON sales_detail (unit_id, dtgljam);
 CREATE INDEX ix_sales_header_dtgljual ON sales_header (unit_id, dtgljual);
-
--- mirror tm_bbm (master produk; jarang berubah, sync penuh)
-CREATE TABLE product (
-  unit_id   smallint NOT NULL REFERENCES unit(unit_id),
-  ckdbbm    char(5) NOT NULL,
-  vcnmbbm   text,
-  nhrgjual  numeric,
-  PRIMARY KEY (unit_id, ckdbbm)
-);
 ```
 
-### 3.3 Domain 2 — Kas / Pengeluaran
+### 3.3 Domain 2 — Kas / Pengeluaran (dorman sejak 2019, tetap dibangun)
 
 ```sql
--- mirror tr_hkasbank
+-- mirror tr_hkasbank — PK sumber: CKDKB. SBATAL = flag batal (ikut disync).
 CREATE TABLE cash_header (
   unit_id    smallint NOT NULL REFERENCES unit(unit_id),
   ckdkb      char(15) NOT NULL,
-  dtgl       date NOT NULL,                  -- watermark (date only) → re-scan 7 hari
+  dtgl       date NOT NULL,                  -- tanggal bisnis = watermark (date) → re-scan 7 hari
   vcket      text,
-  sjnstrans  smallint,                       -- jenis masuk/keluar 🏷️ PROVISIONAL Q-CASH-3 (arti nilai)
+  sjnstrans  smallint,                       -- jenis masuk/keluar
   ntotal     numeric,
   vcref      text,
   ctmpkas    text,
+  sbatal     smallint,                       -- ✅ flag batal → dashboard tandai/filter
   ingested_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (unit_id, ckdkb)
 );
 CREATE INDEX ix_cash_header_dtgl ON cash_header (unit_id, dtgl);
 
--- mirror tr_dkasbank
--- 🏷️ PROVISIONAL (Q-CASH-1): PK natural BELUM PASTI → pakai FALLBACK surrogate.
---    Q-CASH-1c menentukan apakah (ckdkb,ckdperk) unik. Jika unik → natural key cukup
---    & UNIQUE di bawah jadi PK efektif. Jika duplikat → surrogate `id` wajib (UPSERT
---    butuh natural key + line_no dari sumber bila ada; lihat Q-CASH-1/DESCRIBE).
+-- mirror tr_dkasbank — ✅ natural key (CKDKB,CKDPERK) UNIK (2.942 = distinct, tanpa line-id).
+--    MySQL tanpa PRI → surrogate id + UNIQUE. CKDPERK → join master account (tm_perk).
 CREATE TABLE cash_detail (
-  id        bigserial PRIMARY KEY,           -- surrogate fallback
+  id        bigserial PRIMARY KEY,
   unit_id   smallint NOT NULL REFERENCES unit(unit_id),
   ckdkb     char(15) NOT NULL,
-  ckdperk   char(8),                         -- kode akun → chart-of-accounts (Q-CASH-2)
+  ckdperk   char(8),                         -- kode akun → account.ckdperk
   njumlah   numeric,
-  ingested_at timestamptz NOT NULL DEFAULT now()
-  -- 🏷️ PROVISIONAL Q-CASH-1: natural key UNIQUE ditambah setelah hasil diketahui, mis.
-  -- UNIQUE (unit_id, ckdkb, ckdperk)   -- bila Q-CASH-1c menunjukkan kombinasi unik
+  ingested_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (unit_id, ckdkb, ckdperk)           -- target ON CONFLICT
 );
 ```
 
 ### 3.4 Domain 3 — Stok & Penerimaan
 
 ```sql
--- mirror tr_hopnamebbm + tr_dopnamebbm (digabung; header tipis)
--- 🏷️ PROVISIONAL (Q-OPN-1): PK natural tebakan → FALLBACK surrogate + UNIQUE.
---    Q-OPN-1 mengecek apakah (ckdopnbbm,ckdtangki) unik.
+-- mirror tr_hopnamebbm + tr_dopnamebbm (digabung). Detail tanpa PRI di MySQL.
+-- ✅ Natural key (CKDOPNBBM,CKDTANGKI) UNIK (28.987 = distinct). SBATAL dari header.
 CREATE TABLE opname (
-  id          bigserial PRIMARY KEY,          -- surrogate fallback
+  id          bigserial PRIMARY KEY,
   unit_id     smallint NOT NULL REFERENCES unit(unit_id),
   ckdopnbbm   char(15) NOT NULL,
   ckdtangki   char(5)  NOT NULL,
   ckdbbm      char(5),
+  dtaglopn    date,                           -- tanggal bisnis opname (dari header)
   nstockbk    numeric,                        -- stok buku
   nstockop    numeric,                        -- stok fisik
   nvolselisih numeric,                        -- selisih / losses (flag abnormal)
-  dtgljam     timestamptz NOT NULL,           -- watermark
+  dtgljam     timestamptz NOT NULL,           -- watermark (0 NULL di data)
+  sbatal      smallint,                       -- flag batal (dari header)
   ingested_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (unit_id, ckdopnbbm, ckdtangki)      -- 🏷️ PROVISIONAL Q-OPN-1 (target UPSERT)
+  UNIQUE (unit_id, ckdopnbbm, ckdtangki)      -- target ON CONFLICT
 );
 CREATE INDEX ix_opname_dtgljam ON opname (unit_id, dtgljam);
 
 -- mirror tr_terimabbm (penerimaan dari Pertamina)
--- 🏷️ PROVISIONAL (Q-TRM-1): kolom PK sumber belum diketahui → FALLBACK surrogate.
---    Q-TRM-1 mengecek apakah CNODO unik (kandidat natural key). UNIQUE ditambah
---    setelah kolom natural key dipastikan.
+-- ✅ PK sumber = CKDTRM (PRI) → natural PK langsung. SBATAL = flag batal.
 CREATE TABLE delivery (
-  id          bigserial PRIMARY KEY,          -- surrogate fallback
   unit_id     smallint NOT NULL REFERENCES unit(unit_id),
-  dtgltrm     date,
-  dtgljam     timestamptz NOT NULL,           -- watermark
-  cnodo       text,                           -- no DO (kandidat natural key — Q-TRM-1)
+  ckdtrm      char(15) NOT NULL,              -- PK sumber
+  dtgltrm     date,                           -- tanggal bisnis terima
+  dtgljam     timestamptz NOT NULL,           -- watermark (0 NULL di data)
+  cnodo       text,                           -- no DO
   nvoldo      numeric,
   nvolreal    numeric,
   nvolselisih numeric,                        -- kekurangan kiriman
@@ -209,11 +207,52 @@ CREATE TABLE delivery (
   vcsopir     text,
   ckdtangki   char(5),
   ckdbbm      char(5),
-  ingested_at timestamptz NOT NULL DEFAULT now()
-  -- 🏷️ PROVISIONAL Q-TRM-1: tambah UNIQUE (unit_id, <natural key>) setelah dipastikan,
-  -- mis. UNIQUE (unit_id, cnodo, ckdtangki) bila kombinasi itu unik (target UPSERT)
+  sbatal      smallint,                       -- flag batal
+  ingested_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (unit_id, ckdtrm)
 );
 CREATE INDEX ix_delivery_dtgljam ON delivery (unit_id, dtgljam);
+```
+
+### 3.5 Master (sync penuh berkala — kecil, jarang berubah)
+
+```sql
+-- tm_bbm (produk). Punya kolom CKDPERK* mapping produk→akun → simpan apa adanya (jsonb).
+CREATE TABLE product (
+  unit_id   smallint NOT NULL REFERENCES unit(unit_id),
+  ckdbbm    char(5) NOT NULL,
+  vcnmbbm   text,
+  nhrgjual  numeric,
+  perk_map  jsonb,                            -- kolom CKDPERK* dari tm_bbm, as-is
+  PRIMARY KEY (unit_id, ckdbbm)
+);
+
+-- tm_nozzle (nozzle → pompa, tangki)
+CREATE TABLE nozzle (
+  unit_id    smallint NOT NULL REFERENCES unit(unit_id),
+  ckdnozzle  char(5) NOT NULL,
+  ckdpompa   char(5),
+  ckdtangki  char(5),
+  PRIMARY KEY (unit_id, ckdnozzle)
+);
+
+-- tm_tangki (tangki)
+CREATE TABLE tangki (
+  unit_id    smallint NOT NULL REFERENCES unit(unit_id),
+  ckdtangki  char(5) NOT NULL,
+  ckdbbm     char(5),
+  vcnmtangki text,
+  PRIMARY KEY (unit_id, ckdtangki)
+);
+
+-- tm_perk (chart-of-accounts; + tm_indukperk hierarki induk). Untuk nama kategori pengeluaran.
+CREATE TABLE account (
+  unit_id    smallint NOT NULL REFERENCES unit(unit_id),
+  ckdperk    char(8) NOT NULL,
+  vcnmperk   text,                            -- nama akun
+  ckdinduk   char(8),                         -- → tm_indukperk
+  PRIMARY KEY (unit_id, ckdperk)
+);
 ```
 
 ---
@@ -226,30 +265,37 @@ Authorization: Bearer <API_KEY>      # per-unit; backend map key → unit_id
 Content-Type: application/json
 ```
 
+**Domain = grup watermark** (bukan 1 tabel). Satu domain bisa membawa beberapa tabel target
+sekaligus (sales = header+detail) yang ter-commit **atomik** dengan satu watermark.
+
+`domain` ∈ `sales | cash | opname | delivery | masters`.
+
 **Request body**
 ```jsonc
 {
   "unit_code": "6478111",
-  "domain": "sales",                 // sales | cash | opname | delivery | product
-  "watermark_high": "2026-06-11T14:30:00+07:00", // max(dtgljam) di batch (null utk master)
-  "rows": [ { /* baris mirror, key = snake_case kolom sumber */ } ]
+  "domain": "sales",
+  "watermark_high": "2026-06-11T07:30:00Z", // UTC. max(dtgljam) non-NULL di batch; null utk masters
+  "tables": {                                // peta tabel target → baris (snake_case kolom sumber)
+    "sales_header": [ { "ckdjualbbm": "...", "dtgljual": "2026-06-11", "nshift": 2 } ],
+    "sales_detail": [ { "ckdjualbbm": "...", "ckdnozzle": "...", "nurut": 1, "dtgljam": "2026-06-11T07:30:00Z" } ]
+  }
 }
 ```
 
 **Response 200**
 ```jsonc
 {
-  "accepted": 42,
-  "upserted": 42,                    // INSERT ... ON CONFLICT DO UPDATE
-  "new_watermark": "2026-06-11T14:30:00+07:00"
+  "upserted": { "sales_header": 3, "sales_detail": 42 },
+  "new_watermark": "2026-06-11T07:30:00Z"
 }
 ```
 
 **Aturan:**
 - Auth gagal → `401`. `unit_code` tak match key → `403`. Payload invalid → `422` (tak commit apa pun).
-- UPSERT by composite key (§3) → **idempoten**; kirim ulang batch tak menggandakan.
-- Backend update `sync_state(unit_id, domain).last_watermark` **hanya** setelah seluruh batch ter-commit.
-- Batas ukuran batch (mis. 1–5 menit data ≈ puluhan baris) → tak perlu paginasi rumit; tetapkan limit (mis. 1000 baris/req) + agent pecah bila lebih.
+- Semua tabel dalam satu request ter-commit dalam **satu transaksi**. UPSERT by natural key (§3, `ON CONFLICT`) → **idempoten**; kirim ulang aman (re-scan trailing window mengandalkan ini).
+- Backend update `sync_state(unit_id, domain).last_watermark = watermark_high` **hanya** setelah transaksi commit.
+- Limit ~1000 baris/tabel/request; agent memecah (paginate) bila lebih.
 
 ---
 
@@ -257,40 +303,41 @@ Content-Type: application/json
 
 | Domain    | Tabel sumber                 | Watermark           | Strategi poll |
 |-----------|------------------------------|---------------------|---------------|
-| sales     | `tr_djualbbm` (+header,+bbm) | `DTGLJAM` (datetime)| `WHERE DTGLJAM > :wm − safety_window`; UPSERT (flag `SUBAH`/`SEDIT` → baris lama bisa berubah) |
-| opname    | `tr_dopnamebbm` (+header)    | `DTGLJAM`           | sama; UPSERT |
-| delivery  | `tr_terimabbm`               | `DTGLJAM`           | sama; UPSERT |
-| cash      | `tr_hkasbank` (+detail)      | `DTGL` (date only)  | **re-scan window 7 hari**: `WHERE DTGL >= :wm − 7d`; UPSERT |
-| product   | `tm_bbm`                     | —                   | sync penuh berkala (master kecil) |
+| sales     | `tr_djualbbm` (+header,+bbm) | `DTGLJAM` (datetime)| `WHERE DTGLJAM IS NOT NULL AND DTGLJAM > :wm − safety_window`; UPSERT (flag `SUBAH`/`SEDIT` → baris lama bisa berubah) |
+| opname    | `tr_dopnamebbm` (+header)    | `DTGLJAM`           | sama (0 NULL di data); UPSERT |
+| delivery  | `tr_terimabbm`               | `DTGLJAM`           | sama (0 NULL); UPSERT by `CKDTRM` |
+| cash      | `tr_hkasbank` (+detail)      | `DTGL` (date only)  | **re-scan window 7 hari**: `WHERE DTGL >= :wm − 7d`; UPSERT. **Dorman sejak 2019** — query tetap jalan, hasil 0 baris normal |
+| master    | `tm_bbm`/`tm_nozzle`/`tm_tangki`/`tm_perk` | — | sync penuh berkala (kecil) |
 
-- **Safety window** (penjualan/opname/delivery): re-query trailing N menit untuk menangkap baris yang ditulis terlambat / dikoreksi. Nilai N → ditetapkan setelah lihat sebaran `DTGLJAM` (Q-SALES-3).
+- **🔑 `DTGLJAM IS NOT NULL` wajib di domain sales.** ~7% baris legacy (pra-2022-08) bernilai NULL; baris ini **tak disync** dan **tak boleh menggeser** `last_watermark`. Watermark baru = `MAX(DTGLJAM)` dari baris non-NULL yang ter-commit.
+- **Safety window** (sales/opname/delivery): re-query trailing N menit untuk menangkap baris yang ditulis terlambat / dikoreksi (`SUBAH`/`SEDIT`). Nilai default **N = 60 menit** (dari sebaran lag DTGLJAM↔DTGLJUAL); dibuat config-driven agar mudah disetel.
 - **Grain penjualan:** grouping harian pakai `DTGLJUAL` (tanggal bisnis); poll inkremental pakai `DTGLJAM`. Shift 3 malam bisa `DTGLJAM` beda hari dgn `DTGLJUAL` — ditangani karena keduanya disimpan.
+- **Baris dibatalkan (`SBATAL`)** di kas/opname/delivery tetap disync (bukan difilter di agent) → dashboard yang menandai/menyaring; pengawasan butuh tahu ada pembatalan.
 
 ---
 
 ## 6. Catatan timezone
 
-EasyMax `datetime` MySQL **tanpa offset** (waktu lokal mesin SPBU). Agent menempelkan timezone unit (`Asia/Pontianak` = WIB/UTC+7 untuk Imam Bonjol) saat konversi ke `timestamptz`. ⚠️ Konfirmasi zona waktu mesin tiap SPBU saat replikasi.
+✅ Server EasyMax Imam Bonjol: `time_zone = SYSTEM = WIB (UTC+7)`, `datetime` **tanpa offset tersimpan**. Agent memperlakukan `DTGLJAM` sebagai WIB lalu **mengonversi eksplisit ke UTC** saat menyimpan ke `timestamptz` Postgres (jangan biarkan driver/OS menebak). Timezone per-unit ada di `unit.timezone` (Imam Bonjol = `Asia/Pontianak`, WIB/UTC+7). ⚠️ Konfirmasi ulang `@@time_zone` mesin tiap SPBU saat replikasi (Pontianak juga WIB, tapi verifikasi).
 
 ---
 
-## 7. Pertanyaan terbuka → daftar query verifikasi
+## 7. Status verifikasi — ✅ TERKUNCI (2026-06-11)
 
-Detail query read-only ada di **[VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.sql)**. Ringkas:
+Query read-only ada di **[VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.sql)**. Semua terjawab:
 
-| ID         | Pertanyaan terbuka |
-|------------|--------------------|
-| Q-CASH-1   | `tr_dkasbank` punya kolom line-id unik per baris? (untuk PK `cash_detail`) |
-| Q-CASH-2   | `CKDPERK` perlu join chart-of-accounts? tabel mana? berapa kode dipakai? |
-| Q-CASH-3   | Nilai & arti `SJNSTRANS` (masuk/keluar) |
-| Q-OPN-1    | PK alami `tr_dopnamebbm`? apakah `(CKDOPNBBM, CKDTANGKI)` unik? |
-| Q-TRM-1    | PK alami `tr_terimabbm`? kolom apa? |
-| Q-SALES-1  | Konfirmasi `(CKDJUALBBM, CKDNOZZLE, NURUT)` benar-benar unik (count vs distinct) |
-| Q-SALES-2  | Format & nilai `NSHIFT`; perilaku `SUBAH`/`SEDIT` (berapa baris ter-edit) |
-| Q-SALES-3  | Sebaran lag `DTGLJAM` vs `DTGLJUAL` → tetapkan safety window |
-| Q-VOL      | Volume baris/hari per domain (validasi asumsi "puluhan baris/shift") |
-| Q-TZ       | Zona waktu / jam mesin server SPBU |
-| Q-SCHEMA   | `DESCRIBE` 7 tabel inti → konfirmasi tipe & nama kolom persis |
+| ID         | Hasil terkunci |
+|------------|----------------|
+| Q-CASH-1   | ✅ `(CKDKB,CKDPERK)` unik (2.942=distinct), **tak ada line-id** → surrogate `id` + UNIQUE |
+| Q-CASH-2   | ✅ Chart-of-accounts = `tm_perk` (+`tm_indukperk`, view `vw_masterperk`) → tabel `account` |
+| Q-CASH-3   | ✅ `SJNSTRANS` disimpan apa adanya; modul kas dorman sejak 2019 (low priority dekode) |
+| Q-OPN-1    | ✅ `(CKDOPNBBM,CKDTANGKI)` unik (28.987=distinct) → surrogate `id` + UNIQUE |
+| Q-TRM-1    | ✅ PK sumber = `CKDTRM` (PRI) → natural PK `(unit_id, ckdtrm)` |
+| Q-SALES-1  | ✅ `(CKDJUALBBM,CKDNOZZLE,NURUT)` unik (181.684=distinct) → surrogate `id` + UNIQUE |
+| Q-SALES-2  | ✅ `NSHIFT ∈ {1,2,3}` smallint; `SUBAH`/`SEDIT` disync untuk deteksi koreksi |
+| Q-SALES-3  | ✅ `DTGLJAM` NULLABLE (~7% legacy pra-2022-08) → filter `IS NOT NULL`; safety window 60m |
+| Q-TZ       | ✅ `SYSTEM`=WIB (UTC+7), datetime tanpa offset → konversi eksplisit ke UTC |
+| Q-SCHEMA   | ✅ MySQL **5.0.67** — driver wajib kompatibel 5.0; tipe & nama kolom dikonfirmasi |
 
 ---
 
@@ -303,13 +350,15 @@ Detail query read-only ada di **[VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.
   - `packages/shared` — tipe domain & skema validasi payload (dipakai agent + backend)
 - DB: Postgres (Prisma migrations). Cloud: GCP (Cloud Run + Cloud SQL), project `solamax`.
 - Konfigurasi rahasia: `.env` + config file, **di-`.gitignore`**.
+- **Driver MySQL agent wajib kompatibel MySQL 5.0.67** (handshake/auth lawas). `mysql2`
+  mendukungnya tapi perlu opsi auth lawas — divalidasi di smoke test Fase 1 paling awal.
 
-> **Struktur ini belum dibuat.** Dibangun bertahap setelah approval, per gate Fase 1→2→3.
+> **Fase 1 (`apps/agent`) sedang dibangun.** Backend & dashboard menyusul per gate.
 
 ---
 
-## ⛔ APPROVAL GATE (Fase 0)
+## ✅ Status fase
 
-Sebelum lanjut ke Fase 1 (sync agent), butuh dari Anda:
-1. **Approval rancangan** di dokumen ini (atau revisi).
-2. **Hasil query verifikasi** ([VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.sql)) dijalankan di SQL Manager (read-only) & dilaporkan — untuk mengunci PK/tipe yang masih bertanda ⚠️.
+- **Fase 0** — selesai & terverifikasi (skema di atas TERKUNCI).
+- **Fase 1** — sync agent **sedang dibangun** (lihat `apps/agent/README.md` untuk checklist smoke-test). **STOP untuk approval setelah Fase 1.**
+- **Fase 2** (backend `/ingest`), **Fase 3** (dashboard) — menunggu gate.

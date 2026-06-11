@@ -1,0 +1,25 @@
+{
+  "unitCode": "6478111",
+  "timezone": "Asia/Pontianak",
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "readonly_sync",
+    "password": "ISI_LEWAT_ENV_SOLAMAX_MYSQL_PASSWORD",
+    "database": "easymax",
+    "connectTimeoutMs": 10000
+  },
+  "backend": {
+    "baseUrl": "https://ingest-xxxxx-uc.a.run.app",
+    "apiKey": "ISI_LEWAT_ENV_SOLAMAX_API_KEY",
+    "requestTimeoutMs": 20000
+  },
+  "sync": {
+    "pollIntervalMs": 120000,
+    "masterIntervalMs": 3600000,
+    "safetyWindowMin": 60,
+    "cashRescanDays": 7,
+    "batchSize": 1000
+  },
+  "dataDir": "./data"
+}
