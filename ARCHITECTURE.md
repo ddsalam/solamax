@@ -361,5 +361,5 @@ Query read-only ada di **[VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.sql)**.
 
 - **Fase 0** — selesai & terverifikasi (skema di atas TERKUNCI).
 - **Fase 1** — selesai; smoke-test mesin SPBU **LULUS** (2026-06-11: mysql2 ↔ 5.0.67 OK, TZ WIB, paginasi & filter NULL terbukti, masters cocok recon).
-- **Fase 2** — backend `/ingest` (NestJS+Prisma, `apps/backend`) terbangun: auth API-key per-unit, UPSERT bulk atomik per transaksi (+`sync_state` ikut commit). Gate: **deploy staging + satu sync E2E** oleh user ([`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md)).
-- **Fase 3** (dashboard) — menunggu E2E + approval.
+- **Fase 2** — ✅ selesai & **terbukti E2E di staging** (2026-06-12): agent mesin SPBU → Cloud Run → Cloud SQL, backfill penuh + idempoten, count tervalidasi silang dgn verifikasi Fase 0 ([`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md)).
+- **Fase 3** (dashboard) — **menunggu approval user.**

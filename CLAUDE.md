@@ -14,8 +14,8 @@ Alur: **EasyMax MySQL (read-only) → sync agent → Cloud Run `/ingest` → Clo
   - [`ARCHITECTURE.md`](ARCHITECTURE.md) — diagram alur, skema Postgres, kontrak `/ingest`, strategi watermark, temuan terkunci (§0). **Baca ini sebelum kerja apa pun.**
   - [`VERIFICATION-QUERIES.sql`](VERIFICATION-QUERIES.sql) — query read-only yang sudah dijalankan untuk mengunci skema.
 - **Fase 1** ✅ sync agent di [`apps/agent`](apps/agent) — approved; smoke-test mesin SPBU **LULUS** (MySQL 5.0.67 via mysql2, TZ WIB ✓, semua domain+masters tertarik). Bundle Windows: `pnpm --filter @solamax/agent bundle` + [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md).
-- **Fase 2** 🔨 backend `/ingest` di [`apps/backend`](apps/backend) (NestJS + Prisma) terbangun — **gate aktif: deploy staging + uji end-to-end oleh user** per [`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md). Watermark agent hanya maju setelah ingest sukses; cash windowed+chunked.
-- **Fase 3** (dashboard) — **JANGAN dibangun** sebelum E2E Fase 2 terbukti & user menyetujui.
+- **Fase 2** ✅ backend `/ingest` (NestJS + Prisma) **terbukti E2E di staging** (2026-06-12): Cloud Run `solamax-ingest-staging` + Cloud SQL `solamax-pg` (asia-southeast2); backfill penuh dari mesin SPBU — sales_detail 168.988, opname 28.994, delivery 8.134, cash 2.941/2.942, masters 8/46/7/181; idempoten & watermark benar. Runbook: [`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md). Catatan: API key staging & password DB sempat terekspos di sesi chat — **rotasi sebelum produksi**.
+- **Fase 3** (dashboard) — **gate aktif: menunggu approval user.** JANGAN dibangun sebelum disetujui.
 
 Pekerjaan berfase dengan **approval gate** (Fase 0 → 1 → 2 → 3). Jangan lewati gate.
 
