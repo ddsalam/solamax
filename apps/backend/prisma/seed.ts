@@ -7,7 +7,14 @@
  *     pnpm --filter @solamax/backend seed
  */
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+
+// Prisma CLI memuat .env otomatis, Prisma Client TIDAK — muat manual di sini
+// (Node 21+; jalankan dari apps/backend agar .env ketemu).
+if (!process.env.DATABASE_URL && existsSync(".env")) {
+  process.loadEnvFile(".env");
+}
 
 const prisma = new PrismaClient();
 
