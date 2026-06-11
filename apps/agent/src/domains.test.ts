@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CASH_DOMAIN, DATETIME_DOMAINS } from "./domains.js";
+import { CASH_DOMAIN, DATETIME_DOMAINS, MASTERS_DOMAIN } from "./domains.js";
 import { tzOffsetMinutes } from "./transform.js";
 
 const WIB = tzOffsetMinutes("Asia/Pontianak");
@@ -52,5 +52,23 @@ describe("CASH.map", () => {
     expect(page.tables.cash_header).toHaveLength(2);
     expect(page.tables.cash_detail).toHaveLength(1); // K2 tak punya CKDPERK
     expect(page.watermarkHigh).toBe("2019-04-17");
+  });
+});
+
+describe("MASTERS account.map (defensif — temuan smoke-test: bukan CKDINDUK)", () => {
+  const accountMap = MASTERS_DOMAIN.queries.find((q) => q.table === "account")!.map;
+
+  it("mendeteksi kolom induk apa pun namanya (mengandung INDUK)", () => {
+    const rows = accountMap([
+      { CKDPERK: "5101", VCNMPERK: "ATK", CKDPERKINDUK: "5100" },
+    ]) as Array<{ ckdperk: string; vcnmperk: string | null; ckdinduk: string | null }>;
+    expect(rows[0]).toEqual({ ckdperk: "5101", vcnmperk: "ATK", ckdinduk: "5100" });
+  });
+
+  it("tetap jalan tanpa kolom induk / nama beda (VCNM*)", () => {
+    const rows = accountMap([
+      { CKDPERK: "5101", VCNMPERKIRAAN: "Biaya ATK" },
+    ]) as Array<{ ckdperk: string; vcnmperk: string | null; ckdinduk: string | null }>;
+    expect(rows[0]).toEqual({ ckdperk: "5101", vcnmperk: "Biaya ATK", ckdinduk: null });
   });
 });

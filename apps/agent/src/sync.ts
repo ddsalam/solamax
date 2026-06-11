@@ -133,10 +133,17 @@ async function syncCash(d: SyncDeps): Promise<void> {
 
 async function syncMasters(d: SyncDeps): Promise<void> {
   const tables: Tables = {};
+  // Isolasi per tabel master: satu query gagal (mis. nama kolom beda antar
+  // versi EasyMax) tak boleh memblokir master lain — log & lanjut.
   for (const q of MASTERS_DOMAIN.queries) {
-    const raw = await d.conn.roQuery(q.sql);
-    (tables as Record<string, unknown[]>)[q.table as string] = q.map(raw);
+    try {
+      const raw = await d.conn.roQuery(q.sql);
+      (tables as Record<string, unknown[]>)[q.table as string] = q.map(raw);
+    } catch (err) {
+      log.error("master gagal — dilewati", { table: q.table, err: String(err) });
+    }
   }
+  if (Object.values(tables).every((rows) => !rows || rows.length === 0)) return;
   await dispatch(d, {
     unit_code: d.cfg.unitCode,
     domain: "masters",
@@ -167,9 +174,36 @@ export async function runCycle(
     }
   }
 
-  for (const def of DATETIME_DOMAINS) await syncDatetimeDomain(d, def);
-  await syncCash(d);
-  if (opts.includeMasters) await syncMasters(d);
+  // Isolasi per domain: kegagalan satu domain (skema/SQL) tak menghentikan
+  // domain lain; watermark domain gagal tak bergeser → dicoba lagi siklus depan.
+  for (const def of DATETIME_DOMAINS) {
+    try {
+      await syncDatetimeDomain(d, def);
+    } catch (err) {
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: def.domain,
+        err: String(err),
+      });
+    }
+  }
+  try {
+    await syncCash(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "cash",
+      err: String(err),
+    });
+  }
+  if (opts.includeMasters) {
+    try {
+      await syncMasters(d);
+    } catch (err) {
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: "masters",
+        err: String(err),
+      });
+    }
+  }
 }
 
 /** Loop berkala sampai diberhentikan (SIGINT/SIGTERM). */

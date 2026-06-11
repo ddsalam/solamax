@@ -269,14 +269,23 @@ const MASTERS: MasterDomain = {
         })),
     },
     {
+      // Smoke-test 2026-06-11: kolom induk BUKAN `CKDINDUK` → SELECT * + deteksi
+      // kolom defensif (nama persis tm_perk belum di-DESCRIBE; jangan tebak lagi).
       table: "account",
-      sql: "SELECT CKDPERK, VCNMPERK, CKDINDUK FROM tm_perk",
+      sql: "SELECT * FROM tm_perk",
       map: (raw) =>
-        raw.map((r) => ({
-          ckdperk: String(r.CKDPERK),
-          vcnmperk: str(r.VCNMPERK),
-          ckdinduk: str(r.CKDINDUK),
-        })),
+        raw.map((r) => {
+          const keys = Object.keys(r);
+          const indukKey = keys.find((k) => k.toUpperCase().includes("INDUK"));
+          const nameKey =
+            keys.find((k) => k.toUpperCase() === "VCNMPERK") ??
+            keys.find((k) => k.toUpperCase().startsWith("VCNM"));
+          return {
+            ckdperk: String(r.CKDPERK),
+            vcnmperk: nameKey ? str(r[nameKey]) : null,
+            ckdinduk: indukKey ? str(r[indukKey]) : null,
+          };
+        }),
     },
   ],
 };
