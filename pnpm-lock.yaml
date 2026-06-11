@@ -59,6 +59,9 @@ importers:
       '@solamax/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      express:
+        specifier: ^4.21.0
+        version: 4.22.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
