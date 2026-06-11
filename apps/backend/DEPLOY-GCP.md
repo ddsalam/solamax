@@ -51,6 +51,12 @@ SEED_API_KEY='<API_key_plaintext_dari_atas>' pnpm seed
 ```bash
 printf 'postgresql://ingest:GANTI_PASSWORD_DB@localhost/solamax?host=/cloudsql/solamax:asia-southeast2:solamax-pg&schema=public' | \
   gcloud secrets create solamax-db-url-staging --data-file=-
+
+# Izinkan service account default Cloud Run membaca secret (tanpa ini deploy
+# gagal "Permission denied on secret"). Nomor project: gcloud projects describe solamax.
+gcloud secrets add-iam-policy-binding solamax-db-url-staging \
+  --member="serviceAccount:113869564052-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 ## 4. Deploy Cloud Run (staging)
@@ -69,10 +75,12 @@ gcloud run deploy solamax-ingest-staging \
 # `--allow-unauthenticated` aman: /ingest tetap menolak tanpa API key valid (401).
 ```
 
-Cek sehat (ganti URL dengan output deploy):
+Cek sehat — `xxxxx` adalah placeholder; pakai **URL asli** dari baris `Service URL:` di
+output deploy, atau:
 
 ```bash
-curl https://solamax-ingest-staging-xxxxx.run.app/healthz   # → {"ok":true}
+URL=$(gcloud run services describe solamax-ingest-staging --region=asia-southeast2 --format='value(status.url)')
+curl "$URL/healthz"   # → {"ok":true}
 ```
 
 ## 5. SATU sync nyata end-to-end (agent → backend → Cloud SQL)
