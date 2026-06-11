@@ -1,0 +1,180 @@
+// Skema Cloud SQL Postgres — mirror ARCHITECTURE.md §3 (TERKUNCI by verifikasi
+// 2026-06-11). Detail tanpa PRI di MySQL → surrogate id + UNIQUE natural key.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Unit {
+  unitId     Int      @id @map("unit_id") @db.SmallInt
+  code       String   @unique
+  name       String
+  apiKeyHash String   @unique @map("api_key_hash")
+  timezone   String   @default("Asia/Pontianak")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("unit")
+}
+
+model SyncState {
+  unitId        Int       @map("unit_id") @db.SmallInt
+  domain        String
+  lastWatermark DateTime? @map("last_watermark") @db.Timestamptz()
+  lastRunAt     DateTime? @map("last_run_at") @db.Timestamptz()
+  lastRowCount  Int?      @map("last_row_count")
+
+  @@id([unitId, domain])
+  @@map("sync_state")
+}
+
+model SalesHeader {
+  unitId     Int     @map("unit_id") @db.SmallInt
+  ckdjualbbm String  @db.Char(15)
+  dtgljual   DateTime @db.Date
+  nshift     Int?    @db.SmallInt
+  vcket      String?
+
+  @@id([unitId, ckdjualbbm])
+  @@index([unitId, dtgljual])
+  @@map("sales_header")
+}
+
+model SalesDetail {
+  id          BigInt   @id @default(autoincrement())
+  unitId      Int      @map("unit_id") @db.SmallInt
+  ckdjualbbm  String   @db.Char(15)
+  ckdnozzle   String   @db.Char(5)
+  nurut       Int
+  nstandawal  Decimal? @db.Decimal
+  nstandakhir Decimal? @db.Decimal
+  nvolume     Decimal? @db.Decimal
+  nhargajual  Decimal? @db.Decimal
+  nsubtotal   Decimal? @db.Decimal
+  ckdbbm      String?  @db.Char(5)
+  ckdtangki   String?  @db.Char(5)
+  vcopeator   String?
+  dtgljam     DateTime @db.Timestamptz()
+  subah       Int?     @db.SmallInt
+  sedit       Int?     @db.SmallInt
+  ingestedAt  DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdjualbbm, ckdnozzle, nurut])
+  @@index([unitId, dtgljam])
+  @@map("sales_detail")
+}
+
+model CashHeader {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdkb      String   @db.Char(15)
+  dtgl       DateTime @db.Date
+  vcket      String?
+  sjnstrans  Int?     @db.SmallInt
+  ntotal     Decimal? @db.Decimal
+  vcref      String?
+  ctmpkas    String?
+  sbatal     Int?     @db.SmallInt
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdkb])
+  @@index([unitId, dtgl])
+  @@map("cash_header")
+}
+
+model CashDetail {
+  id         BigInt   @id @default(autoincrement())
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdkb      String   @db.Char(15)
+  ckdperk    String?  @db.Char(8)
+  njumlah    Decimal? @db.Decimal
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdkb, ckdperk])
+  @@map("cash_detail")
+}
+
+model Opname {
+  id          BigInt    @id @default(autoincrement())
+  unitId      Int       @map("unit_id") @db.SmallInt
+  ckdopnbbm   String    @db.Char(15)
+  ckdtangki   String    @db.Char(5)
+  ckdbbm      String?   @db.Char(5)
+  dtaglopn    DateTime? @db.Date
+  nstockbk    Decimal?  @db.Decimal
+  nstockop    Decimal?  @db.Decimal
+  nvolselisih Decimal?  @db.Decimal
+  dtgljam     DateTime  @db.Timestamptz()
+  sbatal      Int?      @db.SmallInt
+  ingestedAt  DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdopnbbm, ckdtangki])
+  @@index([unitId, dtgljam])
+  @@map("opname")
+}
+
+model Delivery {
+  unitId      Int       @map("unit_id") @db.SmallInt
+  ckdtrm      String    @db.Char(15)
+  dtgltrm     DateTime? @db.Date
+  dtgljam     DateTime  @db.Timestamptz()
+  cnodo       String?
+  nvoldo      Decimal?  @db.Decimal
+  nvolreal    Decimal?  @db.Decimal
+  nvolselisih Decimal?  @db.Decimal
+  cnopol      String?
+  vcsopir     String?
+  ckdtangki   String?   @db.Char(5)
+  ckdbbm      String?   @db.Char(5)
+  sbatal      Int?      @db.SmallInt
+  ingestedAt  DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtrm])
+  @@index([unitId, dtgljam])
+  @@map("delivery")
+}
+
+model Product {
+  unitId   Int      @map("unit_id") @db.SmallInt
+  ckdbbm   String   @db.Char(5)
+  vcnmbbm  String?
+  nhrgjual Decimal? @db.Decimal
+  perkMap  Json?    @map("perk_map")
+
+  @@id([unitId, ckdbbm])
+  @@map("product")
+}
+
+model Nozzle {
+  unitId    Int     @map("unit_id") @db.SmallInt
+  ckdnozzle String  @db.Char(5)
+  ckdpompa  String? @db.Char(5)
+  ckdtangki String? @db.Char(5)
+
+  @@id([unitId, ckdnozzle])
+  @@map("nozzle")
+}
+
+model Tangki {
+  unitId     Int     @map("unit_id") @db.SmallInt
+  ckdtangki  String  @db.Char(5)
+  ckdbbm     String? @db.Char(5)
+  vcnmtangki String?
+
+  @@id([unitId, ckdtangki])
+  @@map("tangki")
+}
+
+model Account {
+  unitId   Int     @map("unit_id") @db.SmallInt
+  ckdperk  String  @db.Char(8)
+  vcnmperk String?
+  ckdinduk String? @db.Char(8)
+
+  @@id([unitId, ckdperk])
+  @@map("account")
+}

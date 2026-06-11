@@ -100,15 +100,24 @@ async function syncDatetimeDomain(
       tables: page.tables,
     });
 
-    if (!d.dryRun) d.store.setWatermark(def.domain, page.watermarkHigh);
+    // Watermark HANYA maju setelah batch sukses di-ingest backend. Saat
+    // "buffered" (offline) watermark diam → siklus depan baca ulang dari MySQL;
+    // duplikat aman karena UPSERT idempoten.
+    if (status === "ok") d.store.setWatermark(def.domain, page.watermarkHigh);
     if (status === "buffered") break; // backend offline; lanjut siklus berikut
     if (d.dryRun) break; // dry-run cukup satu page agar ringan
     bind = utcIsoToWibString(page.watermarkHigh, offset); // maju, tanpa safety
     if (raw.length < d.cfg.sync.batchSize) break;
+    // Paginasi terus sampai habis (backfill ~169k baris = ~169 batch dalam
+    // satu run --once; tak perlu mode terpisah).
   }
 }
 
 async function syncCash(d: SyncDeps): Promise<void> {
+  // Re-scan BERJENDELA: dari (watermark DTGL − cashRescanDays). Full-scan 2.942
+  // baris hanya terjadi sekali di run pertama (watermark kosong = backfill);
+  // setelah itu tiap poll hanya membaca jendela 7 hari terakhir — saat kas
+  // dipakai lagi pun tetap ringan.
   const stored = d.store.getWatermark("cash"); // "YYYY-MM-DD" | null
   const startDate = stored
     ? subtractDays(stored, d.cfg.sync.cashRescanDays)
@@ -120,13 +129,30 @@ async function syncCash(d: SyncDeps): Promise<void> {
     return;
   }
   const page = CASH_DOMAIN.map(raw);
-  const status = await dispatch(d, {
-    unit_code: d.cfg.unitCode,
-    domain: "cash",
-    watermark_high: null, // kas berbasis tanggal; backend pakai sync_state sendiri
-    tables: page.tables,
-  });
-  if (!d.dryRun && status !== "buffered" && page.watermarkHigh) {
+  const headers = page.tables.cash_header ?? [];
+  const details = page.tables.cash_detail ?? [];
+
+  // Pecah per batchSize header (detail ikut header-nya) agar payload tak
+  // melampaui limit /ingest. Watermark maju HANYA bila SEMUA chunk ter-ingest.
+  let allOk = true;
+  for (let i = 0; i < headers.length; i += d.cfg.sync.batchSize) {
+    const hChunk = headers.slice(i, i + d.cfg.sync.batchSize);
+    const ids = new Set(hChunk.map((h) => h.ckdkb));
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "cash",
+      watermark_high: null, // kas berbasis tanggal; agent simpan watermark DTGL lokal
+      tables: {
+        cash_header: hChunk,
+        cash_detail: details.filter((x) => ids.has(x.ckdkb)),
+      },
+    });
+    if (status !== "ok") {
+      allOk = false;
+      break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+    }
+  }
+  if (allOk && !d.dryRun && page.watermarkHigh) {
     d.store.setWatermark("cash", page.watermarkHigh);
   }
 }

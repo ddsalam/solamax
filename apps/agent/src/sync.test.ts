@@ -95,9 +95,10 @@ describe("runCycle", () => {
 
     await runCycle(deps, { includeMasters: false });
     expect(store.bufferCount()).toBeGreaterThan(0); // ter-buffer
-    expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z"); // tetap maju
+    // Watermark TIDAK maju sebelum batch sukses di-ingest backend.
+    expect(store.getWatermark("sales")).toBeNull();
 
-    // Backend pulih → siklus berikutnya menguras buffer.
+    // Backend pulih → siklus berikutnya menguras buffer + kirim live + watermark maju.
     const online = fakeClient({});
     const deps2: SyncDeps = {
       conn: fakeConn(), client: online.client, store, cfg: CFG, dryRun: false,
@@ -106,5 +107,6 @@ describe("runCycle", () => {
 
     expect(store.bufferCount()).toBe(0);
     expect(online.sent.some((p) => p.domain === "sales")).toBe(true);
+    expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
   });
 });

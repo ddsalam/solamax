@@ -13,8 +13,9 @@ Alur: **EasyMax MySQL (read-only) → sync agent → Cloud Run `/ingest` → Clo
 - **Fase 0** ✅ selesai & terverifikasi (skema TERKUNCI by data, 2026-06-11):
   - [`ARCHITECTURE.md`](ARCHITECTURE.md) — diagram alur, skema Postgres, kontrak `/ingest`, strategi watermark, temuan terkunci (§0). **Baca ini sebelum kerja apa pun.**
   - [`VERIFICATION-QUERIES.sql`](VERIFICATION-QUERIES.sql) — query read-only yang sudah dijalankan untuk mengunci skema.
-- **Fase 1** ✅ sync agent di [`apps/agent`](apps/agent) — di-approve (commit `291b62f`). **Gate aktif: smoke-test di mesin SPBU** (MySQL 5.0.67 hanya ada di sana). Deploy: bundle Windows (`pnpm --filter @solamax/agent bundle`) + runbook non-developer [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md). Driver fallback MySQL 5.0 (`mysql.driver: "mysql"`) sudah terpasang.
-- **Fase 2** (backend `/ingest`) & **Fase 3** (dashboard) — **JANGAN dibangun** sebelum hasil smoke-test masuk & user menyetujui.
+- **Fase 1** ✅ sync agent di [`apps/agent`](apps/agent) — approved; smoke-test mesin SPBU **LULUS** (MySQL 5.0.67 via mysql2, TZ WIB ✓, semua domain+masters tertarik). Bundle Windows: `pnpm --filter @solamax/agent bundle` + [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md).
+- **Fase 2** 🔨 backend `/ingest` di [`apps/backend`](apps/backend) (NestJS + Prisma) terbangun — **gate aktif: deploy staging + uji end-to-end oleh user** per [`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md). Watermark agent hanya maju setelah ingest sukses; cash windowed+chunked.
+- **Fase 3** (dashboard) — **JANGAN dibangun** sebelum E2E Fase 2 terbukti & user menyetujui.
 
 Pekerjaan berfase dengan **approval gate** (Fase 0 → 1 → 2 → 3). Jangan lewati gate.
 
