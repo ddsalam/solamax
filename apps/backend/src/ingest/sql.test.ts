@@ -20,11 +20,25 @@ describe("buildUpsert", () => {
     expect(params).toEqual([1, "K1", "5101", 50000, 1, "K1", "5102", 7000]);
   });
 
-  it("nilai hilang → null; objek (jsonb) → string JSON", () => {
-    const { params } = buildUpsert(TABLE_CONFIG.product!, 2, [
+  it("nilai hilang → null; objek (jsonb) → string JSON + cast ::jsonb", () => {
+    const { sql, params } = buildUpsert(TABLE_CONFIG.product!, 2, [
       { ckdbbm: "P1", perk_map: { CKDPERK1: "x" } }, // vcnmbbm & nhrgjual absen
     ]);
     expect(params).toEqual([2, "P1", null, null, '{"CKDPERK1":"x"}']);
+    expect(sql).toContain("$5::jsonb");
+  });
+
+  it("kolom date/timestamptz diberi cast eksplisit (Postgres tak coerce text)", () => {
+    const sales = buildUpsert(TABLE_CONFIG.sales_header!, 1, [
+      { ckdjualbbm: "H1", dtgljual: "2026-06-11", nshift: 1, vcket: null },
+    ]);
+    expect(sales.sql).toContain("$3::date"); // dtgljual (setelah unit_id, ckdjualbbm)
+    const det = buildUpsert(TABLE_CONFIG.sales_detail!, 1, [
+      { ckdjualbbm: "H1", ckdnozzle: "N1", nurut: 1, dtgljam: "2026-06-11T07:30:00Z" },
+    ]);
+    expect(det.sql).toContain("::timestamptz");
+    const dlv = buildUpsert(TABLE_CONFIG.delivery!, 1, [{ ckdtrm: "D1", dtgltrm: "2026-06-11", dtgljam: "2026-06-11T07:30:00Z" }]);
+    expect(dlv.sql).toContain("::date");
   });
 
   it("semua kolom = conflict → DO NOTHING (tanpa SET kosong)", () => {

@@ -31,8 +31,7 @@ export class IngestService {
     }
 
     const totalRows = entries.reduce((n, [, rows]) => n + rows.length, 0);
-    const watermark =
-      payload.watermark_high !== null ? new Date(payload.watermark_high) : null;
+    const watermark = payload.watermark_high; // ISO string; cast ::timestamptz di SQL
 
     const statements = entries.map(([table, rows]) =>
       buildUpsert(TABLE_CONFIG[table]!, unitId, rows),
@@ -46,7 +45,7 @@ export class IngestService {
       // mendahuluinya. last_watermark hanya digeser maju (GREATEST).
       await tx.$executeRawUnsafe(
         `INSERT INTO "sync_state" ("unit_id","domain","last_watermark","last_run_at","last_row_count")
-         VALUES ($1,$2,$3,now(),$4)
+         VALUES ($1,$2,$3::timestamptz,now(),$4)
          ON CONFLICT ("unit_id","domain") DO UPDATE SET
            "last_watermark" = GREATEST(COALESCE(EXCLUDED."last_watermark", "sync_state"."last_watermark"), COALESCE("sync_state"."last_watermark", EXCLUDED."last_watermark")),
            "last_run_at" = now(),

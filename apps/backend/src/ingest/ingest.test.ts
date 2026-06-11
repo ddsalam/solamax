@@ -51,7 +51,7 @@ describe("IngestService", () => {
     expect(executed[1]!.sql).toContain('"sales_detail"');
     expect(executed[2]!.sql).toContain('"sync_state"');
     expect(executed[2]!.params).toEqual([
-      1, "sales", new Date("2026-06-11T07:30:00.000Z"), 2,
+      1, "sales", "2026-06-11T07:30:00.000Z", 2,
     ]);
   });
 
