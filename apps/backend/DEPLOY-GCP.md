@@ -17,8 +17,9 @@ gcloud services enable run.googleapis.com sqladmin.googleapis.com \
 ## 1. Cloud SQL Postgres (instance terkecil)
 
 ```bash
+# --edition=enterprise WAJIB: default Enterprise Plus menolak tier shared-core murah.
 gcloud sql instances create solamax-pg \
-  --database-version=POSTGRES_16 --tier=db-f1-micro \
+  --database-version=POSTGRES_16 --edition=enterprise --tier=db-f1-micro \
   --region=asia-southeast2 --storage-size=10GB --storage-auto-increase
 
 gcloud sql databases create solamax --instance=solamax-pg
