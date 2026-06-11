@@ -15,7 +15,7 @@ Alur: **EasyMax MySQL (read-only) → sync agent → Cloud Run `/ingest` → Clo
   - [`VERIFICATION-QUERIES.sql`](VERIFICATION-QUERIES.sql) — query read-only yang sudah dijalankan untuk mengunci skema.
 - **Fase 1** ✅ sync agent di [`apps/agent`](apps/agent) — approved; smoke-test mesin SPBU **LULUS** (MySQL 5.0.67 via mysql2, TZ WIB ✓, semua domain+masters tertarik). Bundle Windows: `pnpm --filter @solamax/agent bundle` + [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md).
 - **Fase 2** ✅ backend `/ingest` (NestJS + Prisma) **terbukti E2E di staging** (2026-06-12): Cloud Run `solamax-ingest-staging` + Cloud SQL `solamax-pg` (asia-southeast2); backfill penuh dari mesin SPBU — sales_detail 168.988, opname 28.994, delivery 8.134, cash 2.941/2.942, masters 8/46/7/181; idempoten & watermark benar. Runbook: [`apps/backend/DEPLOY-GCP.md`](apps/backend/DEPLOY-GCP.md). Catatan: API key staging & password DB sempat terekspos di sesi chat — **rotasi sebelum produksi**.
-- **Fase 3** (dashboard) — **gate aktif: menunggu approval user.** JANGAN dibangun sebelum disetujui.
+- **Fase 3** ✅ dashboard pengawasan Next.js di [`apps/dashboard`](apps/dashboard) — read-only dari Cloud SQL via `pg`; hero = matriks kepatuhan 🟢🟡🔴, last-input + flag STALE (kas IB merah 7,2 tahun), selisih abnormal, omzet/volume by `DTGLJUAL`. **Gate aktif: review tampilan oleh user** (run lokal via proxy — `apps/dashboard/README.md`).
 
 Pekerjaan berfase dengan **approval gate** (Fase 0 → 1 → 2 → 3). Jangan lewati gate.
 
@@ -44,6 +44,7 @@ pnpm --filter @solamax/agent test             # test agent saja
 pnpm --filter @solamax/agent test-connection  # tes koneksi read-only MySQL (mesin SPBU)
 pnpm --filter @solamax/agent dry-run          # tarik & cetak payload TANPA kirim
 pnpm --filter @solamax/agent bundle           # bundle deploy Windows → apps/agent/bundle-out/
+pnpm --filter @solamax/dashboard dev          # dashboard lokal :3000 (butuh cloud-sql-proxy + .env.local)
 ```
 
 Catatan: `packages/shared` harus di-`build` sebelum agent dijalankan dari `dist` (vitest sudah alias ke source). Driver MySQL agent wajib kompatibel **MySQL 5.0.67** (lihat `apps/agent/README.md`).

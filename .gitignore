@@ -33,3 +33,6 @@ solamax-agent-bundle.zip
 # OS / editor
 .DS_Store
 *.log
+
+# TS incremental build cache
+*.tsbuildinfo
