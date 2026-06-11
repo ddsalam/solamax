@@ -14,6 +14,10 @@ RUN pnpm --filter @solamax/shared build \
   && pnpm --filter @solamax/backend build
 
 FROM node:22-slim
+# Prisma query engine butuh libssl; image slim tak menyertakannya.
+RUN apt-get update -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /app
 # Sederhana & deterministik: bawa workspace ter-build apa adanya (node_modules

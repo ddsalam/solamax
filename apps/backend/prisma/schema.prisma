@@ -3,6 +3,8 @@
 
 generator client {
   provider = "prisma-client-js"
+  // native = dev Mac; debian-openssl-3.0.x = node:22-slim (bookworm) di Cloud Run.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
