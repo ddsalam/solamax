@@ -80,7 +80,7 @@ output deploy, atau:
 
 ```bash
 URL=$(gcloud run services describe solamax-ingest-staging --region=asia-southeast2 --format='value(status.url)')
-curl "$URL/healthz"   # → {"ok":true}
+curl "$URL/health"   # → {"ok":true}  (BUKAN /healthz — path itu dicegat Google Frontend di run.app)
 ```
 
 ## 5. SATU sync nyata end-to-end (agent → backend → Cloud SQL)

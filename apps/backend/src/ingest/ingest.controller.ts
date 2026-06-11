@@ -17,9 +17,13 @@ import { IngestService } from "./ingest.service.js";
 export class IngestController {
   constructor(private readonly service: IngestService) {}
 
-  /** Health check (tanpa auth) untuk Cloud Run. */
-  @Get("healthz")
-  healthz(): { ok: true } {
+  /**
+   * Health check (tanpa auth). JANGAN pakai path /healthz: di domain run.app
+   * path itu dicegat Google Frontend (balasan 404 Google) dan tak pernah
+   * sampai ke container — ditemukan saat deploy staging 2026-06-11.
+   */
+  @Get("health")
+  health(): { ok: true } {
     return { ok: true };
   }
 
