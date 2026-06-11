@@ -13,8 +13,8 @@ Alur: **EasyMax MySQL (read-only) → sync agent → Cloud Run `/ingest` → Clo
 - **Fase 0** ✅ selesai & terverifikasi (skema TERKUNCI by data, 2026-06-11):
   - [`ARCHITECTURE.md`](ARCHITECTURE.md) — diagram alur, skema Postgres, kontrak `/ingest`, strategi watermark, temuan terkunci (§0). **Baca ini sebelum kerja apa pun.**
   - [`VERIFICATION-QUERIES.sql`](VERIFICATION-QUERIES.sql) — query read-only yang sudah dijalankan untuk mengunci skema.
-- **Fase 1** 🔨 sync agent terbangun di [`apps/agent`](apps/agent) — **menunggu smoke-test di mesin SPBU + approval** (gate). Checklist: [`apps/agent/README.md`](apps/agent/README.md).
-- **Fase 2** (backend `/ingest`) & **Fase 3** (dashboard) — belum, menunggu gate.
+- **Fase 1** ✅ sync agent di [`apps/agent`](apps/agent) — di-approve (commit `291b62f`). **Gate aktif: smoke-test di mesin SPBU** (MySQL 5.0.67 hanya ada di sana). Deploy: bundle Windows (`pnpm --filter @solamax/agent bundle`) + runbook non-developer [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md). Driver fallback MySQL 5.0 (`mysql.driver: "mysql"`) sudah terpasang.
+- **Fase 2** (backend `/ingest`) & **Fase 3** (dashboard) — **JANGAN dibangun** sebelum hasil smoke-test masuk & user menyetujui.
 
 Pekerjaan berfase dengan **approval gate** (Fase 0 → 1 → 2 → 3). Jangan lewati gate.
 
@@ -42,6 +42,7 @@ pnpm --filter @solamax/agent typecheck        # typecheck agent
 pnpm --filter @solamax/agent test             # test agent saja
 pnpm --filter @solamax/agent test-connection  # tes koneksi read-only MySQL (mesin SPBU)
 pnpm --filter @solamax/agent dry-run          # tarik & cetak payload TANPA kirim
+pnpm --filter @solamax/agent bundle           # bundle deploy Windows → apps/agent/bundle-out/
 ```
 
 Catatan: `packages/shared` harus di-`build` sebelum agent dijalankan dari `dist` (vitest sudah alias ke source). Driver MySQL agent wajib kompatibel **MySQL 5.0.67** (lihat `apps/agent/README.md`).

@@ -18,6 +18,13 @@ const ConfigSchema = z.object({
     password: z.string().default(""),
     database: z.string().default("easymax"),
     connectTimeoutMs: z.number().int().default(10_000),
+    /**
+     * Driver: "mysql2" (default) atau "mysql" (classic, fallback untuk server
+     * 5.0 dengan old_passwords/handshake lawas — lihat RUNBOOK-SPBU.md).
+     */
+    driver: z.enum(["mysql2", "mysql"]).default("mysql2"),
+    /** Charset handshake. Server 5.0 tak kenal utf8mb4; fallback: LATIN1_SWEDISH_CI. */
+    charset: z.string().default("UTF8_GENERAL_CI"),
   }),
 
   backend: z.object({

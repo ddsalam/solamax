@@ -26,6 +26,10 @@ build/
 .next/
 coverage/
 
+# Bundle deploy Windows (artefak build — dibuat ulang via `pnpm bundle`)
+bundle-out/
+solamax-agent-bundle.zip
+
 # OS / editor
 .DS_Store
 *.log

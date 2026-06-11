@@ -360,5 +360,5 @@ Query read-only ada di **[VERIFICATION-QUERIES.sql](VERIFICATION-QUERIES.sql)**.
 ## ✅ Status fase
 
 - **Fase 0** — selesai & terverifikasi (skema di atas TERKUNCI).
-- **Fase 1** — sync agent **sedang dibangun** (lihat `apps/agent/README.md` untuk checklist smoke-test). **STOP untuk approval setelah Fase 1.**
-- **Fase 2** (backend `/ingest`), **Fase 3** (dashboard) — menunggu gate.
+- **Fase 1** — sync agent selesai & **di-approve**. Gate berikutnya: **smoke-test di mesin SPBU** (bundle Windows + runbook: [`apps/agent/RUNBOOK-SPBU.md`](apps/agent/RUNBOOK-SPBU.md)).
+- **Fase 2** (backend `/ingest`), **Fase 3** (dashboard) — menunggu hasil smoke-test + approval.

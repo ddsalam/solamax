@@ -5,13 +5,15 @@
     "host": "127.0.0.1",
     "port": 3306,
     "user": "readonly_sync",
-    "password": "ISI_LEWAT_ENV_SOLAMAX_MYSQL_PASSWORD",
+    "password": "GANTI_DENGAN_PASSWORD_readonly_sync",
     "database": "easymax",
-    "connectTimeoutMs": 10000
+    "connectTimeoutMs": 10000,
+    "driver": "mysql2",
+    "charset": "UTF8_GENERAL_CI"
   },
   "backend": {
-    "baseUrl": "https://ingest-xxxxx-uc.a.run.app",
-    "apiKey": "ISI_LEWAT_ENV_SOLAMAX_API_KEY",
+    "baseUrl": "https://dummy.invalid",
+    "apiKey": "dummy-belum-dipakai-sampai-fase-2",
     "requestTimeoutMs": 20000
   },
   "sync": {

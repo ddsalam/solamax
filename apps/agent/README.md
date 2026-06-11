@@ -44,7 +44,9 @@ pnpm install                      # dari root repo
 cp apps/agent/config.example.json apps/agent/config.local.json   # lalu isi (DI-GITIGNORE)
 ```
 
-Isi `config.local.json` (host/port/user/baseUrl/interval). **Secret via env**, bukan di file:
+Isi `config.local.json` (host/port/user/baseUrl/interval/driver). Password & API key boleh
+ditulis langsung di `config.local.json` (file machine-local, **di-gitignore**) — praktis
+untuk mesin SPBU; atau via env yang **meng-override** isi file:
 
 ```bash
 export SOLAMAX_MYSQL_PASSWORD='...'   # password user readonly_sync
@@ -61,31 +63,31 @@ export SOLAMAX_API_KEY='...'          # API key unit (dari backend, Fase 2)
 | `pnpm --filter @solamax/agent dev` | Loop berkala (default 2 menit). Berhenti dengan Ctrl-C. |
 | `pnpm --filter @solamax/agent build` | Compile ke `dist/`. Produksi: `node dist/index.js`. |
 
-## ✅ Checklist smoke-test di mesin SPBU (lewat remote desktop)
+## 📦 Deploy ke mesin SPBU (Windows lama) — bundle + runbook
 
-Agent ini ditulis & diuji dengan **mock** (worker tak punya akses DB sungguhan). Langkah
-berikut untuk **Anda** jalankan langsung di komputer server SPBU Imam Bonjol:
+Mesin SPBU **tidak** menjalankan pnpm/build. Build di Mac, hasilnya satu folder yang
+tinggal disalin & dijalankan:
 
-- [ ] **0. Prasyarat.** Pasang Node.js ≥18 di mesin SPBU (atau jalankan dari laptop di LAN
-      yang sama). Salin folder repo / hasil `build`.
-- [ ] **1. Buat user `readonly_sync`** dengan SQL di atas; jalankan `SHOW GRANTS` →
-      pastikan **hanya `SELECT`**.
-- [ ] **2. Isi `config.local.json`** + export `SOLAMAX_MYSQL_PASSWORD`. (API key/baseUrl
-      boleh dummy dulu — belum dipakai di tes koneksi & dry-run.)
-- [ ] **3. Tes koneksi**: `pnpm --filter @solamax/agent test-connection`.
-      ✅ Harus mencetak `koneksi MySQL OK` dengan `version: 5.0.67`, `timeZone`, `now`.
-      ⚠️ **Bila handshake/auth gagal** (risiko MySQL 5.0 lawas) — catat error persis &
-      laporkan; mungkin perlu opsi auth lawas / driver alternatif. **Ini gerbang Fase 1.**
-- [ ] **4. Cek timezone**: konfirmasi `timeZone` & `now` = WIB (cocok jam dinding SPBU).
-      Bila bukan, sesuaikan `timezone` di config.
-- [ ] **5. Dry-run**: `pnpm --filter @solamax/agent dry-run`.
-      ✅ Harus mencetak ringkasan jumlah baris per tabel (sales_header/detail, opname,
-      delivery; kas kemungkinan 0 = normal/dorman). **Tidak ada data terkirim.**
-- [ ] **6. Validasi angka** (opsional): bandingkan jumlah & beberapa nilai dengan tampilan
-      EasyMax untuk shift terakhir → pastikan mapping benar.
-- [ ] **7. Laporkan**: output langkah 3 & 5 (tempel apa adanya). Itu sinyal untuk lanjut ke
-      Fase 2 (backend `/ingest`) — agar `--once` end-to-end bisa diuji ke backend nyata.
+```bash
+pnpm --filter @solamax/agent bundle
+# → apps/agent/bundle-out/  (+ apps/agent/solamax-agent-bundle.zip)
+```
 
-> **Catatan MySQL 5.0:** driver `mysql2` dikonfigurasi `insecureAuth: true` + `dateStrings: true`.
-> Bila langkah 3 menolak auth, kemungkinan server pakai `old_passwords=1` (hash pra-4.1) —
-> laporkan agar kita pilih jalur kompatibilitas yang tepat sebelum menulis lebih jauh.
+Isi `bundle-out/`: `solamax-agent.cjs` (agent + semua dependency dalam SATU file CJS,
+target **Node 12+** — Windows 7-era OK), template `config.local.json`, dua launcher
+dobel-klik (`1-tes-koneksi.bat`, `2-dry-run.bat`, output otomatis tersimpan ke
+`output-*.txt`), dan salinan runbook.
+
+**Panduan lengkap untuk yang menjalankan di mesin SPBU (non-developer, via Chrome Remote
+Desktop): [`RUNBOOK-SPBU.md`](RUNBOOK-SPBU.md).** Termasuk pilihan versi Node per versi
+Windows, pembuatan user `readonly_sync`, antisipasi kegagalan auth MySQL 5.0.67
+(cek `panjang_hash` 41 vs 16, fix `old_passwords`, driver fallback `"driver": "mysql"`),
+dan tabel troubleshooting per pesan error.
+
+### Smoke-test = gerbang Fase 1 → 2
+
+Agent ini ditulis & diuji dengan **mock** (worker tak punya akses DB sungguhan).
+Yang dilaporkan balik dari mesin SPBU (detail di runbook Bagian H):
+`output-tes-koneksi.txt` (versi Node + `koneksi MySQL OK` dgn version/timeZone/now),
+`output-dry-run.txt` (jumlah baris per domain, **tanpa kirim**), versi Windows + bitness,
+hasil `SHOW GRANTS` + `panjang_hash`.
