@@ -21,6 +21,12 @@ export interface DateTimeDomain {
   mode: "datetime";
   /** `?1` = cutoff WIB string, `?2` = LIMIT. */
   sql: string;
+  /**
+   * `?1` = DTGLJAM persis (WIB string). Melengkapi "grup boundary": baris satu
+   * shift ditulis ber-DTGLJAM identik; LIMIT bisa memotong grup di batas
+   * halaman → sisa grup wajib diambil query ini (temuan E2E: −466 baris sales).
+   */
+  sqlBoundary: string;
   map(raw: Raw[], offsetMin: number): MappedPage;
 }
 
@@ -55,6 +61,14 @@ const SALES: DateTimeDomain = {
     WHERE d.DTGLJAM IS NOT NULL AND d.DTGLJAM > ?
     ORDER BY d.DTGLJAM ASC
     LIMIT ?`,
+  sqlBoundary: `
+    SELECT d.CKDJUALBBM, d.CKDNOZZLE, d.NURUT, d.NSTANDAWAL, d.NSTANDAKHIR,
+           d.NVOLUME, d.NHARGAJUAL, d.NSUBTOTAL, d.CKDBBM, d.CKDTANGKI,
+           d.VCOPEATOR, d.DTGLJAM, d.SUBAH, d.SEDIT,
+           h.DTGLJUAL, h.NSHIFT, h.VCKET
+    FROM tr_djualbbm d
+    JOIN tr_hjualbbm h ON h.CKDJUALBBM = d.CKDJUALBBM
+    WHERE d.DTGLJAM = ?`,
   map(raw, offsetMin) {
     const headers = new Map<string, NonNullable<Tables["sales_header"]>[number]>();
     const details: NonNullable<Tables["sales_detail"]> = [];
@@ -113,6 +127,12 @@ const OPNAME: DateTimeDomain = {
     WHERE d.DTGLJAM IS NOT NULL AND d.DTGLJAM > ?
     ORDER BY d.DTGLJAM ASC
     LIMIT ?`,
+  sqlBoundary: `
+    SELECT d.CKDOPNBBM, d.CKDTANGKI, d.CKDBBM, d.NSTOCKBK, d.NSTOCKOP,
+           d.NVOLSELISIH, d.DTGLJAM, h.DTAGLOPN, h.SBATAL
+    FROM tr_dopnamebbm d
+    JOIN tr_hopnamebbm h ON h.CKDOPNBBM = d.CKDOPNBBM
+    WHERE d.DTGLJAM = ?`,
   map(raw, offsetMin) {
     const rows: NonNullable<Tables["opname"]> = [];
     let maxUtc: string | null = null;
@@ -149,6 +169,11 @@ const DELIVERY: DateTimeDomain = {
     WHERE DTGLJAM IS NOT NULL AND DTGLJAM > ?
     ORDER BY DTGLJAM ASC
     LIMIT ?`,
+  sqlBoundary: `
+    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, NVOLDO, NVOLREAL, NVOLSELISIH,
+           CNOPOL, VCSOPIR, CKDTANGKI, CKDBBM, SBATAL
+    FROM tr_terimabbm
+    WHERE DTGLJAM = ?`,
   map(raw, offsetMin) {
     const rows: NonNullable<Tables["delivery"]> = [];
     let maxUtc: string | null = null;

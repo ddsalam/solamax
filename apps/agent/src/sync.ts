@@ -87,10 +87,32 @@ async function syncDatetimeDomain(
   let bind = cycleStartIso ? utcIsoToWibString(cycleStartIso, offset) : EPOCH_WIB;
 
   for (;;) {
-    const raw = await d.conn.roQuery(def.sql, [bind, d.cfg.sync.batchSize]);
+    const raw = await d.conn.roQuery<Record<string, unknown>>(def.sql, [
+      bind,
+      d.cfg.sync.batchSize,
+    ]);
     if (raw.length === 0) break;
 
-    const page = def.map(raw, offset);
+    // Halaman PENUH bisa memotong grup baris ber-DTGLJAM identik (satu shift
+    // ditulis serentak) tepat di batas LIMIT → sisa grup hilang selamanya
+    // karena bind berikutnya memakai `>`. Lengkapi grup boundary: buang baris
+    // ber-timestamp tertinggi dari halaman, ambil SELURUH grup itu via query
+    // terpisah, gabung (disjoint, tanpa duplikat).
+    let merged = raw;
+    if (raw.length === d.cfg.sync.batchSize) {
+      const boundary = raw.reduce<string>((max, r) => {
+        const v = String(r.DTGLJAM);
+        return v > max ? v : max;
+      }, "");
+      const below = raw.filter((r) => String(r.DTGLJAM) !== boundary);
+      const group = await d.conn.roQuery<Record<string, unknown>>(
+        def.sqlBoundary,
+        [boundary],
+      );
+      merged = [...below, ...group];
+    }
+
+    const page = def.map(merged, offset);
     if (page.watermarkHigh === null) break; // semua NULL (mustahil, jaga-jaga)
 
     const status = await dispatch(d, {

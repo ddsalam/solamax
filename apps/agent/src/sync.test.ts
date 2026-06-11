@@ -61,6 +61,43 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+describe("paginasi boundary (grup DTGLJAM identik terpotong LIMIT)", () => {
+  it("melengkapi grup boundary via sqlBoundary & tidak menduplikat", async () => {
+    const row = (nozzle: string, ts: string) => ({
+      ...SALES_ROW, CKDNOZZLE: nozzle, DTGLJAM: ts,
+    });
+    const calls: string[] = [];
+    let pageServed = false;
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        calls.push(sql.includes("LIMIT") ? `page(${params[0]})` : `boundary(${params[0]})`);
+        if (sql.includes("tr_djualbbm") && sql.includes("LIMIT")) {
+          if (pageServed) return [];
+          pageServed = true;
+          // halaman PENUH (batchSize=2): N1@14:00, N2@14:30 — grup 14:30 terpotong
+          return [row("N1", "2026-06-11 14:00:00"), row("N2", "2026-06-11 14:30:00")];
+        }
+        if (sql.includes("tr_djualbbm")) {
+          // grup boundary lengkap: 14:30 ternyata berisi 2 baris
+          return [row("N2", "2026-06-11 14:30:00"), row("N3", "2026-06-11 14:30:00")];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 2 } } as AgentConfig;
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false });
+
+    const sales = sent.find((p) => p.domain === "sales")!;
+    const nozzles = sales.tables.sales_detail!.map((r) => r.ckdnozzle).sort();
+    expect(nozzles).toEqual(["N1", "N2", "N3"]); // lengkap & tanpa duplikat
+    expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z"); // 14:30 WIB
+    expect(calls.some((c) => c.startsWith("boundary(2026-06-11 14:30:00"))).toBe(true);
+  });
+});
+
 describe("runCycle", () => {
   it("dry-run: tidak mengirim & tidak memajukan watermark", async () => {
     const { client, sent } = fakeClient({});
