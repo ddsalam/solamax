@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/motion.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/layout.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/base.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/styles.css">
+  <script src="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/_ds_bundle.js"></script>
+  <style>
+    body { background: var(--neutral-50); }
+    html { scroll-behavior: smooth; }
+  </style>
+</helmet>
+
+<!-- ============ HEADER DOKUMEN ============ -->
+<div data-screen-label="Header Spec" style="background: var(--color-bg); border-bottom: 1px solid var(--color-border-hairline);">
+  <div style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) var(--space-12);">
+    <div style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8);">
+      <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 30px; display: block;">
+      <div style="width: 1px; height: 24px; background: var(--color-border);"></div>
+      <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Design Spec · v1 · 12 Juni 2026</div>
+    </div>
+    <h1 class="text-display" style="color: var(--color-text-brand); max-width: 880px;">SolaMax</h1>
+    <p class="text-body-lg" style="color: var(--color-text-secondary); max-width: 760px; margin-top: var(--space-4);">Lapisan pengawasan, monitoring &amp; analisa di atas data POS EasyMax — 7 SPBU SolaGroup, Pontianak. Bukan sistem transaksi: hanya membaca, menyorot yang kosong, dan menjelaskan yang anomali.</p>
+    <div style="display: flex; gap: var(--space-2); margin-top: var(--space-8); flex-wrap: wrap;">
+      <a href="#konteks" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Asumsi &amp; keputusan</a>
+      <a href="#ds" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Design system</a>
+      <a href="#sitemap" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Sitemap &amp; flow</a>
+      <a href="#web" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Mockup BoD Web</a>
+      <a href="#mobile" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Mockup BoD Mobile</a>
+      <a href="#interaksi" style="text-decoration: none; font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 10px 18px; border-radius: var(--radius-full);">Catatan interaksi</a>
+      <a href="Laporan Operasional Harian.dc.html" style="text-decoration: none; font-size: 16px; font-weight: 600; color: #fff; background: var(--brand-navy); padding: 10px 18px; border-radius: var(--radius-full);">Laporan Operasional Harian →</a>
+      <a href="SolaMax App Flow.dc.html" style="text-decoration: none; font-size: 16px; font-weight: 600; color: #fff; background: var(--brand-navy); padding: 10px 18px; border-radius: var(--radius-full);">Prototipe Alur Aplikasi →</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1. ASUMSI & KEPUTUSAN ============ -->
+<div id="konteks" data-screen-label="Asumsi dan Keputusan" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">01 · Konteks</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2); color: var(--color-text-primary);">Asumsi &amp; keputusan desain</h2>
+  <p class="text-body" style="color: var(--color-text-secondary); max-width: 720px; margin-top: var(--space-3);">Berdasarkan codebase <span style="font-family: ui-monospace, monospace; font-size: 15px; background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">solamax</span> (arsitektur terkunci, logika kepatuhan di <span style="font-family: ui-monospace, monospace; font-size: 15px; background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">compliance.ts</span>) dan SolaGroup Design System. Prioritas mockup penuh: persona Board of Directors.</p>
+
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); margin-top: var(--space-8);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Sorot yang kosong, bukan yang ada</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">Mengikuti prinsip codebase: nilai pengawasan terbesar ada di data yang TIDAK diinput. Modul Kas dorman sejak 17 Apr 2019 tampil sebagai flag merah permanen — bukan kolom kosong.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Satu pertanyaan per layar</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">BoD: "sehat / tidak, kenapa" — headline verdict dulu, angka menyusul. Pengawas: "apa yang belum saya input hari ini". Admin area: "siapa yang telat". Ops: "berapa, di mana, shift berapa".</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Tanggal bisnis ≠ tanggal kalender</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">Shift 3 tutup besok pagi. Semua layar memakai &amp; menampilkan label "tanggal bisnis" eksplisit, dengan jam tutup shift terakhir, agar tak ada ambiguitas saat rapat pagi.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Aturan status = compliance.ts</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">3 shift = hijau, 1–2 = kuning, 0 = merah. Selisih abnormal bila &gt;100 L atau &gt;0,5% dari basis. Stale: penjualan/opname &gt;26 jam, kas &gt;7 hari. Tidak ada aturan baru di desain.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Data dummy realistis</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">7 unit riil dengan kode asli; omzet harian Rp 150–315 jt/unit; 4–6 tangki/SPBU 20–40 KL (asumsi). Target bauran NPSO/PSO contoh terisi: gasoline 30%, gasoil 15% — bisa diedit per unit.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-h6" style="color: var(--color-text-brand);">Istilah internal, konsisten</div>
+      <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">Opname, DO, totalisator, setoran, penebusan — dipakai di semua persona termasuk BoD, dengan angka yang sudah diringkas. Format Rp pemisah titik, volume L/KL, zona waktu WIB.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. DESIGN SYSTEM RINGKAS ============ -->
+<div id="ds" data-screen-label="Design System Ringkas" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">02 · Fondasi</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Design system ringkas</h2>
+  <p class="text-body" style="color: var(--color-text-secondary); max-width: 720px; margin-top: var(--space-3);">Semua dari SolaGroup Design System (token terkunci). SolaMax hanya menambah satu lapisan: <strong>bahasa status</strong> untuk pengawasan.</p>
+
+  <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-5); margin-top: var(--space-8);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Warna</div>
+      <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
+        <div style="flex: 1;"><div style="height: 56px; border-radius: var(--radius-md); background: var(--brand-navy);"></div><div class="text-caption" style="margin-top: 6px;">Navy #1A3252</div><div style="font-size: 16px; color: var(--color-text-tertiary);">Anchor, heading</div></div>
+        <div style="flex: 1;"><div style="height: 56px; border-radius: var(--radius-md); background: var(--accent-600);"></div><div class="text-caption" style="margin-top: 6px;">Accent #0A6EBD</div><div style="font-size: 16px; color: var(--color-text-tertiary);">Interaktif, data</div></div>
+        <div style="flex: 1;"><div style="height: 56px; border-radius: var(--radius-md); background: var(--brand-sky);"></div><div class="text-caption" style="margin-top: 6px;">Sky #1CA0E6</div><div style="font-size: 16px; color: var(--color-text-tertiary);">Dekoratif saja</div></div>
+        <div style="flex: 1;"><div style="height: 56px; border-radius: var(--radius-md); background: var(--neutral-50); border: 1px solid var(--color-border);"></div><div class="text-caption" style="margin-top: 6px;">Neutral 50–900</div><div style="font-size: 16px; color: var(--color-text-tertiary);">Kanvas dominan</div></div>
+      </div>
+      <div class="text-eyebrow" style="color: var(--color-text-tertiary); margin-top: var(--space-6);">Tipografi</div>
+      <div style="margin-top: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2);">
+        <div class="text-h4" style="color: var(--color-text-brand);">Angka besar dulu — SF Pro / system</div>
+        <div class="text-body">Body 17px floor, line-height 1,55 — dioptimalkan untuk pembaca senior.</div>
+        <div class="text-caption" style="color: var(--color-text-tertiary);">Caption 16 px — batas bawah mutlak. Angka tabel pakai tabular-nums.</div>
+      </div>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+      <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Bahasa status (semua persona)</div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-4);">
+        <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-success-bg); border: 1px solid var(--color-success-border); border-radius: var(--radius-md);">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-success); flex-shrink: 0;"></span>
+          <span class="text-caption" style="color: var(--color-success);">Taat / sehat / lengkap</span>
+          <span style="margin-left: auto; font-size: 16px; color: var(--color-text-tertiary);">3/3 shift · dalam ambang</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: var(--radius-md);">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-warning); flex-shrink: 0;"></span>
+          <span class="text-caption" style="color: var(--color-warning);">Perhatian / sebagian</span>
+          <span style="margin-left: auto; font-size: 16px; color: var(--color-text-tertiary);">1–2 shift · dekat ambang</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: var(--radius-md);">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-danger); flex-shrink: 0;"></span>
+          <span class="text-caption" style="color: var(--color-danger);">Telat / anomali / kritis</span>
+          <span style="margin-left: auto; font-size: 16px; color: var(--color-text-tertiary);">0 shift · &gt;0,5% · dorman</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-info-bg); border: 1px solid var(--color-info-border); border-radius: var(--radius-md);">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-info); flex-shrink: 0;"></span>
+          <span class="text-caption" style="color: var(--color-info);">Koreksi / info</span>
+          <span style="margin-left: auto; font-size: 16px; color: var(--color-text-tertiary);">revisi totalisator · sync</span>
+        </div>
+      </div>
+      <p style="font-size: 16px; color: var(--color-text-tertiary); margin: var(--space-4) 0 0;">Status selalu berpasangan ikon/label — tidak pernah warna saja. Aksen di atas kanvas netral; tidak mewarnai layar.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3. SITEMAP ============ -->
+<div id="sitemap" data-screen-label="Sitemap" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">03 · Struktur</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Sitemap — empat persona, empat aplikasi tipis</h2>
+  <p class="text-body" style="color: var(--color-text-secondary); max-width: 720px; margin-top: var(--space-3);">Satu backend, empat permukaan. Tiap persona masuk langsung ke layar default yang menjawab pertanyaannya — tanpa memilih-milih menu dulu.</p>
+
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-5); margin-top: var(--space-8);">
+    <sc-for list="{{ sitemaps }}" as="sm" hint-placeholder-count="4">
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3);">
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
+          <div class="text-h6" style="color: var(--color-text-brand);">{{ sm.persona }}</div>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <span style="font-size: 15px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 3px 10px; border-radius: var(--radius-full);">{{ sm.platform }}</span>
+          <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); background: var(--neutral-100); padding: 3px 10px; border-radius: var(--radius-full);">{{ sm.scope }}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-2);">
+          <sc-for list="{{ sm.pages }}" as="pg" hint-placeholder-count="4">
+            <div style="display: flex; align-items: baseline; gap: var(--space-2); padding: 8px 10px; border-radius: var(--radius-sm); background: {{ pg.bg }}; border: 1px solid {{ pg.border }};">
+              <span style="font-size: 15px; color: var(--color-text-tertiary); font-family: ui-monospace, monospace; flex-shrink: 0;">{{ pg.num }}</span>
+              <div>
+                <div class="text-caption" style="color: var(--color-text-primary);">{{ pg.name }}</div>
+                <div style="font-size: 15px; color: var(--color-text-tertiary);">{{ pg.desc }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top: auto; padding-top: var(--space-2); font-size: 15px; color: var(--color-text-tertiary); border-top: 1px solid var(--color-border-hairline);">{{ sm.note }}</div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<!-- ============ 4. USER FLOWS ============ -->
+<div id="flow" data-screen-label="User Flows" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">04 · Alur</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Satu flow utama per persona</h2>
+  <div style="display: flex; flex-direction: column; gap: var(--space-5); margin-top: var(--space-8);">
+    <sc-for list="{{ flows }}" as="fl" hint-placeholder-count="4">
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+        <div style="display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;">
+          <div class="text-h6" style="color: var(--color-text-brand);">{{ fl.persona }}</div>
+          <div class="text-caption" style="color: var(--color-text-tertiary);">{{ fl.goal }}</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-5); flex-wrap: wrap;">
+          <sc-for list="{{ fl.steps }}" as="st" hint-placeholder-count="5">
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <div style="background: {{ st.bg }}; border: 1px solid {{ st.border }}; border-radius: var(--radius-md); padding: 10px 16px; max-width: 220px;">
+                <div class="text-caption" style="color: {{ st.color }};">{{ st.label }}</div>
+                <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 2px;">{{ st.sub }}</div>
+              </div>
+              <sc-if value="{{ st.arrow }}" hint-placeholder-val="{{ true }}">
+                <span style="color: var(--neutral-300); font-size: 20px;">→</span>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<!-- ============ 5. MOCKUP BOD WEB ============ -->
+<div id="web" data-screen-label="Mockup BoD Web" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">05 · Mockup utama</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Board of Directors — Ringkasan Grup (web)</h2>
+  <p class="text-body" style="color: var(--color-text-secondary); max-width: 760px; margin-top: var(--space-3);">Layar interaktif: ganti periode, klik baris ranking untuk drilldown, dan coba state di bawah. Verdict dulu ("sehat / tidak"), lalu empat KPI, bauran NPSO/PSO vs target, ranking 7 unit, dan feed anomali.</p>
+
+  <div style="display: flex; gap: var(--space-2); margin-top: var(--space-6); align-items: center;">
+    <span class="text-caption" style="color: var(--color-text-tertiary); margin-right: var(--space-2);">State demo:</span>
+    <sc-for list="{{ viewChips }}" as="vc" hint-placeholder-count="3">
+      <button onClick="{{ vc.onClick }}" style="{{ vc.style }}">{{ vc.label }}</button>
+    </sc-for>
+  </div>
+
+  <!-- Browser frame -->
+  <div style="margin-top: var(--space-5); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-3); border: 1px solid var(--color-border-hairline); background: var(--color-surface);">
+    <div style="display: flex; align-items: center; gap: var(--space-4); padding: 12px 18px; background: var(--neutral-100); border-bottom: 1px solid var(--color-border-hairline);">
+      <div style="display: flex; gap: 7px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840;"></span>
+      </div>
+      <div style="flex: 1; max-width: 420px; margin: 0 auto; background: var(--color-bg); border-radius: var(--radius-sm); padding: 5px 14px; font-size: 15px; color: var(--color-text-tertiary); text-align: center;">solamax.solagroup.id/board</div>
+      <div style="width: 50px;"></div>
+    </div>
+
+    <!-- App topbar -->
+    <div style="display: flex; align-items: center; gap: var(--space-4); padding: 14px 40px; border-bottom: 1px solid var(--color-border-hairline); background: var(--bg-frosted);">
+      <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 22px; display: block;">
+      <div style="width: 1px; height: 18px; background: var(--color-border);"></div>
+      <span class="text-caption" style="color: var(--color-text-secondary); font-weight: 600;">SolaMax · Board</span>
+      <div style="display: flex; gap: var(--space-5); margin-left: var(--space-8);">
+        <span class="text-caption" style="color: var(--color-text-primary); font-weight: 600; border-bottom: 2px solid var(--brand-navy); padding-bottom: 2px;">Ringkasan</span>
+        <span class="text-caption" style="color: var(--color-text-tertiary);">Tren</span>
+        <span class="text-caption" style="color: var(--color-text-tertiary);">Anomali</span>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-3);">
+        <span style="font-size: 15px; color: var(--color-text-tertiary);">{{ syncNote }}</span>
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--brand-navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">HS</div>
+      </div>
+    </div>
+
+    <!-- ====== STATE: LOADING ====== -->
+    <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 48px 40px 64px;">
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+          <div style="width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--accent-200); border-top-color: var(--accent-600);"></div>
+          <span class="text-caption" style="color: var(--color-text-secondary);">Menyinkronkan dari EasyMax… data terakhir 09.12 WIB tetap ditampilkan di produksi</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); margin-top: var(--space-8);">
+          <div style="height: 120px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 120px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 120px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 120px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+        </div>
+        <div style="height: 260px; border-radius: var(--radius-lg); background: var(--neutral-100); margin-top: var(--space-4);"></div>
+        <div style="height: 180px; border-radius: var(--radius-lg); background: var(--neutral-50); margin-top: var(--space-4); border: 1px solid var(--color-border-hairline);"></div>
+      </div>
+    </sc-if>
+
+    <!-- ====== STATE: EMPTY ====== -->
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 96px 40px 128px; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--neutral-100); margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--neutral-400);">—</div>
+        <div class="text-h5" style="margin-top: var(--space-5); color: var(--color-text-primary);">Belum ada data untuk tanggal bisnis ini</div>
+        <p class="text-body" style="color: var(--color-text-secondary); max-width: 440px; margin: var(--space-3) auto 0;">Shift 1 baru dibuka dan sinkronisasi pertama belum masuk. Data muncul otomatis 1–5 menit setelah pengawas menginput di EasyMax.</p>
+        <div style="display: inline-flex; gap: var(--space-3); margin-top: var(--space-6);">
+          <span style="display: inline-block; padding: 11px 22px; border-radius: var(--radius-full); background: var(--brand-navy); color: #fff; font-size: 16px; font-weight: 600;">Lihat kemarin</span>
+          <span style="display: inline-block; padding: 11px 22px; border-radius: var(--radius-full); border: 1px solid var(--color-border-strong); color: var(--color-text-secondary); font-size: 16px; font-weight: 600;">Muat ulang</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ====== STATE: NORMAL ====== -->
+    <sc-if value="{{ isNormal }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 40px 40px 48px; background: var(--color-bg);">
+
+        <!-- Verdict + periode -->
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); flex-wrap: wrap;">
+          <div>
+            <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Tanggal bisnis · {{ bizDate }}</div>
+            <h3 class="text-h3" style="color: var(--color-text-brand); margin-top: var(--space-2); max-width: 640px;">Grup sehat. Dua hal perlu perhatian.</h3>
+            <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap;">
+              <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 500; color: var(--color-danger); background: var(--color-danger-bg); padding: 5px 12px; border-radius: var(--radius-full);"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-danger);"></span>Losses Batu Layang −0,62%</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 500; color: var(--color-warning); background: var(--color-warning-bg); padding: 5px 12px; border-radius: var(--radius-full);"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning);"></span>Bauran NPSO di bawah target</span>
+            </div>
+          </div>
+          <div style="display: flex; background: var(--neutral-100); border-radius: var(--radius-full); padding: 4px;">
+            <sc-for list="{{ periodChips }}" as="pc" hint-placeholder-count="3">
+              <button onClick="{{ pc.onClick }}" style="{{ pc.style }}">{{ pc.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- KPI row -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); margin-top: var(--space-8);">
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+            <div class="text-caption" style="color: var(--color-text-tertiary);">Omset penjualan</div>
+            <div class="text-h2" style="color: var(--color-text-primary); margin-top: var(--space-2); font-variant-numeric: tabular-nums;">{{ kpi.omzet }}</div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: var(--space-2);">
+              <span style="font-size: 16px; font-weight: 600; color: var(--color-success);">▲ {{ kpi.delta }}</span>
+              <span style="font-size: 16px; color: var(--color-text-tertiary);">{{ kpi.deltaVs }}</span>
+            </div>
+          </div>
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+            <div class="text-caption" style="color: var(--color-text-tertiary);">Volume tersalur</div>
+            <div class="text-h2" style="color: var(--color-text-primary); margin-top: var(--space-2); font-variant-numeric: tabular-nums;">{{ kpi.volG }}</div>
+            <div style="font-size: 16px; color: var(--color-text-tertiary); margin-top: var(--space-2);">gasoline · gasoil {{ kpi.volD }}</div>
+          </div>
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+            <div class="text-caption" style="color: var(--color-text-tertiary);">Gain / Loss</div>
+            <div class="text-h2" style="color: var(--color-text-primary); margin-top: var(--space-2); font-variant-numeric: tabular-nums;">{{ kpi.gl }}</div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: var(--space-2);">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-success);"></span>
+              <span style="font-size: 16px; color: var(--color-text-tertiary);">dalam ambang ±0,5% · 1 unit abnormal</span>
+            </div>
+          </div>
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+            <div class="text-caption" style="color: var(--color-text-tertiary);">Kepatuhan input</div>
+            <div class="text-h2" style="color: var(--color-text-primary); margin-top: var(--space-2); font-variant-numeric: tabular-nums;">{{ kpi.comp }}</div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: var(--space-2);">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning);"></span>
+              <span style="font-size: 16px; color: var(--color-text-tertiary);">{{ kpi.compNote }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tren omzet -->
+        <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); box-shadow: var(--shadow-1); margin-top: var(--space-4); display: flex; align-items: center; gap: var(--space-8);">
+          <div style="flex-shrink: 0;">
+            <div class="text-caption" style="color: var(--color-text-tertiary);">Tren omset grup · 14 hari</div>
+            <div class="text-h5" style="margin-top: var(--space-1); font-variant-numeric: tabular-nums;">{{ trendAvg }}</div>
+            <div style="font-size: 16px; color: var(--color-text-tertiary);">rata-rata / hari</div>
+          </div>
+          <svg viewBox="0 0 560 72" style="flex: 1; height: 72px; display: block;" preserveAspectRatio="none">
+            <polygon points="{{ sparkArea }}" style="fill: var(--accent-50);"></polygon>
+            <polyline points="{{ sparkPoints }}" style="fill: none; stroke: var(--accent-600); stroke-width: 2.5;"></polyline>
+          </svg>
+        </div>
+
+        <!-- NPSO / PSO -->
+        <div style="margin-top: var(--space-10);">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Bauran NPSO / PSO</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">rasio volume non-subsidi terhadap subsidi — makin tinggi, makin sehat margin</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-5);">
+            <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); box-shadow: var(--shadow-1);">
+              <div style="display: flex; align-items: baseline; justify-content: space-between;">
+                <div class="text-caption" style="color: var(--color-text-secondary); font-weight: 600;">Gasoline — (Pertamax + Turbo) / Pertalite</div>
+                <div style="display: flex; align-items: baseline; gap: var(--space-2);"><span class="text-h5" style="font-variant-numeric: tabular-nums;">29,2%</span><span style="font-size: 15px; color: var(--color-warning); font-weight: 600;">target 30%</span></div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px; margin-top: var(--space-4);">
+                <sc-for list="{{ rgList }}" as="r" hint-placeholder-count="7">
+                  <div style="display: grid; grid-template-columns: 110px 1fr 120px; align-items: center; gap: var(--space-3);">
+                    <div style="font-size: 16px; color: {{ r.nameColor }}; font-weight: {{ r.nameWeight }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.name }}</div>
+                    <div style="position: relative; height: 14px; background: var(--neutral-100); border-radius: 7px;">
+                      <div style="position: absolute; inset: 0 auto 0 0; width: {{ r.barW }}%; border-radius: 7px; background: {{ r.barColor }};"></div>
+                      <div style="position: absolute; top: -3px; bottom: -3px; left: {{ r.targetW }}%; width: 2px; background: var(--neutral-400); border-radius: 1px;"></div>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 6px; justify-content: flex-end;">
+                      <span style="font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ r.pct }}</span>
+                      <span style="font-size: 15px; font-weight: 600; color: {{ r.deltaColor }}; font-variant-numeric: tabular-nums;">{{ r.delta }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); box-shadow: var(--shadow-1);">
+              <div style="display: flex; align-items: baseline; justify-content: space-between;">
+                <div class="text-caption" style="color: var(--color-text-secondary); font-weight: 600;">Gasoil — (Dexlite + Dex) / Solar</div>
+                <div style="display: flex; align-items: baseline; gap: var(--space-2);"><span class="text-h5" style="font-variant-numeric: tabular-nums;">14,9%</span><span style="font-size: 15px; color: var(--color-warning); font-weight: 600;">target 15%</span></div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px; margin-top: var(--space-4);">
+                <sc-for list="{{ rdList }}" as="r" hint-placeholder-count="7">
+                  <div style="display: grid; grid-template-columns: 110px 1fr 120px; align-items: center; gap: var(--space-3);">
+                    <div style="font-size: 16px; color: {{ r.nameColor }}; font-weight: {{ r.nameWeight }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.name }}</div>
+                    <div style="position: relative; height: 14px; background: var(--neutral-100); border-radius: 7px;">
+                      <div style="position: absolute; inset: 0 auto 0 0; width: {{ r.barW }}%; border-radius: 7px; background: {{ r.barColor }};"></div>
+                      <div style="position: absolute; top: -3px; bottom: -3px; left: {{ r.targetW }}%; width: 2px; background: var(--neutral-400); border-radius: 1px;"></div>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 6px; justify-content: flex-end;">
+                      <span style="font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ r.pct }}</span>
+                      <span style="font-size: 15px; font-weight: 600; color: {{ r.deltaColor }}; font-variant-numeric: tabular-nums;">{{ r.delta }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ranking -->
+        <div style="margin-top: var(--space-10);">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Ranking 7 unit</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">klik baris untuk drilldown produk &amp; tren unit</span>
+          </div>
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-5); overflow: hidden;">
+            <div style="display: grid; grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 1fr 1.3fr 32px; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">#</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">SPBU</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Omset</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Volume</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Gain/Loss</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">NPSO (G)</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Input</span>
+              <span></span>
+            </div>
+            <sc-for list="{{ units }}" as="u" hint-placeholder-count="7">
+              <div>
+                <div onClick="{{ u.onToggle }}" style="{{ u.rowStyle }}" style-hover="background: var(--neutral-50);">
+                  <span style="font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ u.rank }}</span>
+                  <div style="display: flex; flex-direction: column;">
+                    <span class="text-caption" style="color: var(--color-text-primary); font-weight: 600;">{{ u.name }}</span>
+                    <span style="font-size: 15px; color: var(--color-text-tertiary); font-family: ui-monospace, monospace;">{{ u.code }}</span>
+                  </div>
+                  <span style="text-align: right; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ u.omzetFmt }}</span>
+                  <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ u.volFmt }}</span>
+                  <span style="text-align: right; font-size: 16px; font-weight: 600; color: {{ u.glColor }}; font-variant-numeric: tabular-nums;">{{ u.glFmt }}</span>
+                  <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ u.rgFmt }}</span>
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ u.inputDot }}; flex-shrink: 0;"></span>
+                    <span style="font-size: 15px; color: var(--color-text-secondary);">{{ u.inputLabel }}</span>
+                  </span>
+                  <span style="color: var(--neutral-300); font-size: 15px; text-align: center;">{{ u.chev }}</span>
+                </div>
+                <sc-if value="{{ u.expanded }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding: var(--space-5) 24px var(--space-6) 80px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline); display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: var(--space-8);">
+                    <div>
+                      <div style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em;">Volume per produk</div>
+                      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: var(--space-3);">
+                        <sc-for list="{{ u.products }}" as="p" hint-placeholder-count="6">
+                          <div style="display: grid; grid-template-columns: 110px 1fr 86px; align-items: center; gap: var(--space-3);">
+                            <span style="font-size: 16px; color: var(--color-text-secondary);">{{ p.name }}</span>
+                            <div style="height: 8px; background: var(--neutral-100); border-radius: 4px; position: relative;"><div style="position: absolute; inset: 0 auto 0 0; width: {{ p.w }}%; border-radius: 4px; background: {{ p.color }};"></div></div>
+                            <span style="font-size: 15px; color: var(--color-text-tertiary); text-align: right; font-variant-numeric: tabular-nums;">{{ p.vol }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em;">Omset 14 hari</div>
+                      <div style="display: flex; align-items: flex-end; gap: 4px; height: 72px; margin-top: var(--space-3);">
+                        <sc-for list="{{ u.sparkBars }}" as="s" hint-placeholder-count="14">
+                          <div style="flex: 1; height: {{ s.h }}px; background: var(--accent-200); border-radius: 3px 3px 0 0;"></div>
+                        </sc-for>
+                      </div>
+                      <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 6px;">kanan = tanggal bisnis terkini</div>
+                    </div>
+                    <div>
+                      <div style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em;">Catatan</div>
+                      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: var(--space-3);">
+                        <sc-for list="{{ u.notes }}" as="n" hint-placeholder-count="2">
+                          <div style="display: flex; gap: 8px; align-items: baseline;">
+                            <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ n.dot }}; flex-shrink: 0; transform: translateY(-2px);"></span>
+                            <span style="font-size: 16px; color: var(--color-text-secondary);">{{ n.text }}</span>
+                          </div>
+                        </sc-for>
+                        <a href="Laporan Operasional Harian.dc.html" style="font-size: 16px; font-weight: 600; color: var(--color-accent); margin-top: 4px; text-decoration: none;">Buka laporan operasional harian →</a>
+                      </div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- Anomali -->
+        <div style="margin-top: var(--space-10);">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Anomali &amp; exception</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">diurutkan dari yang paling perlu tindakan</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-5);">
+            <sc-for list="{{ anomalies }}" as="a" hint-placeholder-count="5">
+              <div style="display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: {{ a.bg }}; border: 1px solid {{ a.border }};">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: {{ a.dot }}; flex-shrink: 0; margin-top: 7px;"></span>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;">
+                    <span class="text-caption" style="font-weight: 600; color: {{ a.titleColor }};">{{ a.title }}</span>
+                    <span style="font-size: 15px; color: var(--color-text-tertiary);">{{ a.unit }}</span>
+                  </div>
+                  <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 2px;">{{ a.desc }}</div>
+                </div>
+                <span style="font-size: 15px; color: var(--color-text-tertiary); flex-shrink: 0; margin-top: 4px;">{{ a.time }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="margin-top: var(--space-8); padding-top: var(--space-4); border-top: 1px solid var(--color-border-hairline); display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">
+          <span style="font-size: 15px; color: var(--color-text-tertiary);">Sumber: EasyMax POS · sinkron tiap 1–5 menit · angka dengan ⟳ pernah dikoreksi (revisi totalisator)</span>
+          <span style="font-size: 15px; color: var(--color-text-tertiary);">Zona waktu WIB (Asia/Pontianak)</span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- Keputusan desain layar ini -->
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); margin-top: var(--space-6);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Kenapa verdict kalimat, bukan grid widget?</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">BoD tidak mau detail mentah. Satu kalimat + chip masalah menjawab "sehat / tidak, kenapa" dalam 3 detik; semua di bawahnya adalah bukti.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">NPSO/PSO sebagai bar + tick target</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Tujuh unit langsung komparabel berdampingan; tick abu-abu = target per unit. Unit terbaik dicetak navy tebal, yang di bawah target diberi delta merah/kuning — bukan mewarnai seluruh baris.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Kas 2019 selalu di feed anomali</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Flag dorman tidak bisa di-dismiss dan tampil dengan umur ("7,2 tahun lalu") — sinyal pengawasan paling penting tidak boleh menua menjadi kebiasaan.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 6. MOCKUP BOD MOBILE ============ -->
+<div id="mobile" data-screen-label="Mockup BoD Mobile" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">06 · Mockup pendamping</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Board of Directors — mobile</h2>
+  <p class="text-body" style="color: var(--color-text-secondary); max-width: 720px; margin-top: var(--space-3);">Companion, bukan duplikat: verdict, empat angka, dan perhatian hari ini. Drilldown dalam diarahkan ke web.</p>
+
+  <div style="display: flex; gap: var(--space-10); margin-top: var(--space-8); align-items: flex-start;">
+    <div style="flex-shrink: 0;">
+      <x-import component="IOSDevice" from="./ios-frame.jsx" hint-size="430px,900px">
+        <div style="height: 100%; background: var(--neutral-50); display: flex; flex-direction: column; font-family: var(--font-sans);">
+          <div style="padding: 60px 20px 10px; display: flex; align-items: center; justify-content: space-between;">
+            <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 18px; display: block;">
+            <span style="font-size: 13px; color: var(--color-text-tertiary);">{{ bizDateShort }}</span>
+          </div>
+          <div style="flex: 1; overflow: hidden; padding: 6px 16px 0; display: flex; flex-direction: column; gap: 12px;">
+            <div style="background: var(--brand-navy); border-radius: 18px; padding: 20px; color: #fff;">
+              <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.65;">Omset grup · hari ini</div>
+              <div style="font-size: 34px; font-weight: 700; letter-spacing: -0.015em; margin-top: 6px; font-variant-numeric: tabular-nums;">{{ kpiToday.omzet }}</div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-top: 6px;">
+                <span style="font-size: 14px; font-weight: 600; color: #7BE3A2;">▲ {{ kpiToday.delta }}</span>
+                <span style="font-size: 14px; opacity: 0.65;">{{ kpiToday.deltaVs }}</span>
+              </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.18); font-size: 15px; line-height: 1.4;">Grup sehat. <span style="opacity: 0.75;">Dua hal perlu perhatian ↓</span></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+              <div style="background: #fff; border: 1px solid var(--color-border-hairline); border-radius: 14px; padding: 12px;">
+                <div style="font-size: 12px; color: var(--color-text-tertiary); font-weight: 600;">Volume</div>
+                <div style="font-size: 17px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums;">{{ kpiToday.volG }}</div>
+                <div style="font-size: 12px; color: var(--color-text-tertiary);">gasoline</div>
+              </div>
+              <div style="background: #fff; border: 1px solid var(--color-border-hairline); border-radius: 14px; padding: 12px;">
+                <div style="font-size: 12px; color: var(--color-text-tertiary); font-weight: 600;">Gain/Loss</div>
+                <div style="font-size: 17px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums;">{{ kpiToday.gl }}</div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-success);"></span><span style="font-size: 12px; color: var(--color-text-tertiary);">normal</span></div>
+              </div>
+              <div style="background: #fff; border: 1px solid var(--color-border-hairline); border-radius: 14px; padding: 12px;">
+                <div style="font-size: 12px; color: var(--color-text-tertiary); font-weight: 600;">Input</div>
+                <div style="font-size: 17px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums;">{{ kpiToday.comp }}</div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-warning);"></span><span style="font-size: 12px; color: var(--color-text-tertiary);">1 bolong</span></div>
+              </div>
+            </div>
+            <div style="background: #fff; border: 1px solid var(--color-border-hairline); border-radius: 14px; padding: 14px 14px 8px;">
+              <div style="font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Perhatian hari ini</div>
+              <div style="display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--color-border-hairline); align-items: flex-start;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-danger); flex-shrink: 0; margin-top: 5px;"></span>
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 600;">Losses −0,62% · Batu Layang</div><div style="font-size: 13px; color: var(--color-text-tertiary); margin-top: 1px;">Opname T3 Pertalite, −412 L vs stok buku</div></div>
+                <span style="color: var(--neutral-300); font-size: 14px;">›</span>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--color-border-hairline); align-items: flex-start;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-danger); flex-shrink: 0; margin-top: 5px;"></span>
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 600;">Kas dorman · semua unit</div><div style="font-size: 13px; color: var(--color-text-tertiary); margin-top: 1px;">Terakhir input 17 Apr 2019 — 7,2 tahun lalu</div></div>
+                <span style="color: var(--neutral-300); font-size: 14px;">›</span>
+              </div>
+              <div style="display: flex; gap: 10px; padding: 10px 0; align-items: flex-start;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); flex-shrink: 0; margin-top: 5px;"></span>
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 600;">NPSO gasoline 29,2%</div><div style="font-size: 13px; color: var(--color-text-tertiary); margin-top: 1px;">0,8 pt di bawah target grup 30%</div></div>
+                <span style="color: var(--neutral-300); font-size: 14px;">›</span>
+              </div>
+            </div>
+            <div style="background: #fff; border: 1px solid var(--color-border-hairline); border-radius: 14px; padding: 14px;">
+              <div style="font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Unit terbaik · NPSO</div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 600;">Imam Bonjol</div><div style="height: 6px; background: var(--neutral-100); border-radius: 3px; margin-top: 5px; position: relative;"><div style="position: absolute; inset: 0 auto 0 0; width: 85%; background: var(--brand-navy); border-radius: 3px;"></div></div></div>
+                <span style="font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;">38,2%</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                <div style="flex: 1;"><div style="font-size: 15px; font-weight: 600; color: var(--color-danger);">Batu Layang</div><div style="height: 6px; background: var(--neutral-100); border-radius: 3px; margin-top: 5px; position: relative;"><div style="position: absolute; inset: 0 auto 0 0; width: 50%; background: var(--color-danger); border-radius: 3px;"></div></div></div>
+                <span style="font-size: 16px; font-weight: 700; color: var(--color-danger); font-variant-numeric: tabular-nums;">22,4%</span>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; border-top: 1px solid var(--color-border-hairline); background: rgba(255,255,255,0.92); padding: 8px 10px 6px;">
+            <div style="flex: 1; text-align: center;"><div style="font-size: 20px;">▣</div><div style="font-size: 11px; font-weight: 600; color: var(--brand-navy);">Ringkasan</div></div>
+            <div style="flex: 1; text-align: center; opacity: 0.45;"><div style="font-size: 20px;">◔</div><div style="font-size: 11px; font-weight: 600;">Tren</div></div>
+            <div style="flex: 1; text-align: center; opacity: 0.45;"><div style="font-size: 20px;">▤</div><div style="font-size: 11px; font-weight: 600;">Unit</div></div>
+            <div style="flex: 1; text-align: center; opacity: 0.45;"><div style="font-size: 20px;">◍</div><div style="font-size: 11px; font-weight: 600;">Notifikasi</div></div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-4);">
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+        <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Kartu navy = satu-satunya blok berwarna</div>
+        <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Omset hari ini adalah angka yang paling sering dicek dari saku. Sisanya tetap kanvas netral agar status hijau/kuning/merah tidak bersaing dengan dekorasi.</p>
+      </div>
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+        <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">"Perhatian hari ini" = inbox, bukan dashboard</div>
+        <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Maksimal 3 item, diurutkan dari paling perlu tindakan. Tap → sheet detail dengan konteks + tombol "teruskan ke Ops" (disposisi via WA/telepon).</p>
+      </div>
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+        <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Notifikasi push hanya 3 jenis</div>
+        <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Losses abnormal (&gt;0,5%/100 L), stok kritis (&lt;1,5 hari), dan rekap pagi jam 07.00 setelah shift 3 tutup. Tidak ada notifikasi angka rutin — biar yang merah tetap terasa merah.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 7. CATATAN INTERAKSI ============ -->
+<div id="interaksi" data-screen-label="Catatan Interaksi" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">07 · Perilaku</div>
+  <h2 class="text-h3" style="margin-top: var(--space-2);">Catatan interaksi — komponen kompleks</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-8);">
+    <sc-for list="{{ interactions }}" as="ix" hint-placeholder-count="4">
+      <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-6);">
+        <div class="text-h6" style="color: var(--color-text-brand);">{{ ix.title }}</div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4);">
+          <sc-for list="{{ ix.points }}" as="pt" hint-placeholder-count="4">
+            <div style="display: flex; gap: var(--space-3); align-items: baseline;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent-400); flex-shrink: 0; transform: translateY(-2px);"></span>
+              <span class="text-body" style="color: var(--color-text-secondary);">{{ pt }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<!-- ============ 8. NEXT STEPS ============ -->
+<div data-screen-label="Next Steps" style="max-width: 1280px; margin: 0 auto; padding: var(--space-16) var(--space-8) var(--space-24);">
+  <div style="background: var(--color-surface-inverse); border-radius: var(--radius-xl); padding: var(--space-10); color: var(--color-text-on-inverse);">
+    <div class="text-eyebrow" style="color: var(--accent-300);">Langkah berikutnya</div>
+    <h2 class="text-h4" style="color: #fff; margin-top: var(--space-2); max-width: 720px;">BoD selesai sebagai arah. Tiga persona lain menyusul dengan vocabulary yang sama.</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6); margin-top: var(--space-8);">
+      <div>
+        <div class="text-caption" style="color: #fff; font-weight: 600;">1 · Pengawas (mobile)</div>
+        <p style="font-size: 16px; color: rgba(255,255,255,0.72); margin: var(--space-2) 0 0;">Checklist "hari ini" + status modul + kalender ketaatan 30 hari. Komponen kartu &amp; status dipakai ulang dari spec ini.</p>
+      </div>
+      <div>
+        <div class="text-caption" style="color: #fff; font-weight: 600;">2 · Admin Area (web)</div>
+        <p style="font-size: 16px; color: rgba(255,255,255,0.72); margin: var(--space-2) 0 0;">Heatmap 7 unit × modul × hari (spesifikasi interaksi sudah di §07) + drilldown unit.</p>
+      </div>
+      <div>
+        <div class="text-caption" style="color: #fff; font-weight: 600;">3 · Manajemen Ops (web) + peta stok</div>
+        <p style="font-size: 16px; color: rgba(255,255,255,0.72); margin: var(--space-2) 0 0;">13 modul data operasional sebagai tabel padat ala Apple + denah tangki/nozzle realtime (kandidat dark mode).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { period: "today", expandedUnit: null, viewState: "normal" };
+
+  renderVals() {
+    const { period, expandedUnit, viewState } = this.state;
+    const id = (n, d = 0) => n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+    const fmtOmzet = (jt) => jt >= 1000 ? "Rp " + id(jt / 1000, 2) + " M" : "Rp " + id(jt, 1) + " jt";
+
+    // ===== Data dummy (harian, tanggal bisnis 11 Jun 2026) =====
+    const BASE = [
+      { code: "64.781.11", name: "Imam Bonjol", omzet: 312.4, volG: 24800, volD: 6200, gl: -0.08, rg: 38.2, rd: 21.4, shifts: 3, notes: [{ dot: "var(--color-success)", text: "Semua modul terinput tepat waktu" }] },
+      { code: "64.781.01", name: "Adisucipto", omzet: 289.1, volG: 23100, volD: 5400, gl: -0.11, rg: 33.5, rd: 17.0, shifts: 3, notes: [{ dot: "var(--color-success)", text: "Di atas target NPSO dua jenis" }] },
+      { code: "64.781.06", name: "Kotabaru", omzet: 246.7, volG: 19800, volD: 4100, gl: 0.04, rg: 29.1, rd: 14.2, shifts: 3, notes: [{ dot: "var(--color-info)", text: "⟳ 2 revisi totalisator nozzle P2-N3 shift 1" }] },
+      { code: "63.781.002", name: "28 Oktober", omzet: 232.0, volG: 18900, volD: 3800, gl: -0.18, rg: 27.6, rd: 12.9, shifts: 3, notes: [{ dot: "var(--color-warning)", text: "NPSO gasoline 2,4 pt di bawah target" }] },
+      { code: "64.782.01", name: "Batu Layang", omzet: 198.5, volG: 16400, volD: 3300, gl: -0.62, rg: 22.4, rd: 9.8, shifts: 3, glAbnormal: true, notes: [{ dot: "var(--color-danger)", text: "Losses −412 L (−0,62%) pada opname T3 Pertalite — di atas ambang 0,5%" }, { dot: "var(--color-warning)", text: "NPSO terendah grup, dua jenis di bawah target" }] },
+      { code: "64.783.11", name: "Korek", omzet: 174.3, volG: 14600, volD: 2900, gl: -0.21, rg: 24.9, rd: 11.3, shifts: 3, notes: [{ dot: "var(--color-warning)", text: "Stok Pertamax estimasi sisa 1,1 hari — usulan penebusan belum dibuat" }] },
+      { code: "63.783.01", name: "Bakau", omzet: 153.2, volG: 13200, volD: 2600, gl: -0.09, rg: 23.1, rd: 10.6, shifts: 2, notes: [{ dot: "var(--color-warning)", text: "Penjualan shift 2 belum diinput (terakhir input 13.20 WIB)" }] },
+    ];
+    const TG = 30, TD = 15;
+
+    const PER = {
+      today: { mult: 1, omzet: 1606.2, delta: "4,2%", deltaVs: "vs kemarin", volG: "130,8 KL", volD: "28,3 KL", gl: "−0,16%", comp: "20/21", compNote: "shift terinput · Bakau: shift 2 belum" },
+      week: { mult: 6.9, omzet: 11082.8, delta: "2,8%", deltaVs: "vs 7 hari sebelumnya", volG: "902,5 KL", volD: "195,3 KL", gl: "−0,14%", comp: "145/147", compNote: "shift terinput minggu ini" },
+      month: { mult: 29.7, omzet: 47704.1, delta: "6,1%", deltaVs: "vs 30 hari sebelumnya", volG: "3.884,8 KL", volD: "840,5 KL", gl: "−0,12%", comp: "618/630", compNote: "shift terinput bulan ini" },
+    };
+    const P = PER[period];
+    const kpi = { omzet: fmtOmzet(P.omzet), delta: P.delta, deltaVs: P.deltaVs, volG: P.volG, volD: P.volD, gl: P.gl, comp: P.comp, compNote: P.compNote };
+    const kpiToday = { omzet: fmtOmzet(PER.today.omzet), delta: PER.today.delta, deltaVs: PER.today.deltaVs, volG: PER.today.volG, gl: PER.today.gl, comp: PER.today.comp };
+
+    // ===== Sparkline grup (14 hari, jt) =====
+    const SPARK = [1480, 1532, 1495, 1610, 1575, 1498, 1640, 1588, 1612, 1570, 1525, 1660, 1604, 1606];
+    const mn = Math.min(...SPARK), mx = Math.max(...SPARK);
+    const pts = SPARK.map((v, i) => {
+      const x = (i * (560 / 13)).toFixed(1);
+      const y = (64 - ((v - mn) / (mx - mn)) * 52 + 2).toFixed(1);
+      return x + "," + y;
+    });
+    const sparkPoints = pts.join(" ");
+    const sparkArea = "0,72 " + pts.join(" ") + " 560,72";
+    const trendAvg = fmtOmzet(SPARK.reduce((a, b) => a + b, 0) / SPARK.length);
+
+    // ===== Unit rows (ranking by omzet) =====
+    const PRODCOLORS = { Pertalite: "var(--neutral-300)", Pertamax: "var(--accent-500)", "Pmx Turbo": "var(--accent-700)", "Solar/Bio": "var(--neutral-300)", Dexlite: "var(--accent-500)", "P. Dex": "var(--accent-700)" };
+    const units = BASE.map((u, i) => {
+      const expanded = expandedUnit === u.code;
+      const pl = u.volG / (1 + u.rg / 100), npG = u.volG - pl;
+      const so = u.volD / (1 + u.rd / 100), npD = u.volD - so;
+      const prods = [
+        ["Pertalite", pl], ["Pertamax", npG * 0.85], ["Pmx Turbo", npG * 0.15],
+        ["Solar/Bio", so], ["Dexlite", npD * 0.7], ["P. Dex", npD * 0.3],
+      ];
+      const maxP = Math.max(...prods.map((p) => p[1]));
+      return {
+        rank: i + 1, code: u.code, name: u.name,
+        omzetFmt: fmtOmzet(u.omzet * P.mult),
+        volFmt: id((u.volG + u.volD) * P.mult / 1000, 1) + " KL",
+        glFmt: (u.gl > 0 ? "+" : "−") + id(Math.abs(u.gl), 2) + "%",
+        glColor: u.glAbnormal ? "var(--color-danger)" : "var(--color-text-secondary)",
+        rgFmt: id(u.rg, 1) + "%",
+        inputDot: u.shifts >= 3 ? "var(--color-success)" : "var(--color-warning)",
+        inputLabel: u.shifts >= 3 ? "3/3 shift" : u.shifts + "/3 · shift 2 belum",
+        chev: expanded ? "▾" : "›",
+        expanded,
+        rowStyle: {
+          display: "grid", gridTemplateColumns: "56px 1.7fr 1.1fr 1fr 0.9fr 1fr 1.3fr 32px",
+          gap: "12px", alignItems: "center", padding: "14px 24px", cursor: "pointer",
+          borderBottom: "1px solid var(--color-border-hairline)",
+          background: expanded ? "var(--neutral-50)" : "transparent",
+          transition: "background .15s",
+        },
+        onToggle: () => this.setState({ expandedUnit: expanded ? null : u.code }),
+        products: prods.map(([name, v]) => ({ name, vol: id(v) + " L", w: Math.round((v / maxP) * 100), color: PRODCOLORS[name] })),
+        sparkBars: Array.from({ length: 14 }, (_, k) => ({ h: 18 + ((k * 13 + i * 29 + (u.code.charCodeAt(4) || 0)) % 46) })),
+        notes: u.notes,
+      };
+    });
+
+    // ===== NPSO/PSO lists =====
+    const mkRatio = (key, target, scaleMax) => {
+      const sorted = [...BASE].sort((a, b) => b[key] - a[key]);
+      return sorted.map((u, i) => {
+        const v = u[key], d = v - target;
+        const below = d < 0;
+        const worst = i === sorted.length - 1;
+        return {
+          name: u.name,
+          pct: id(v, 1) + "%",
+          barW: Math.min(100, (v / scaleMax) * 100),
+          targetW: (target / scaleMax) * 100,
+          barColor: i === 0 ? "var(--brand-navy)" : worst ? "var(--color-danger)" : below ? "var(--neutral-300)" : "var(--accent-500)",
+          nameColor: i === 0 ? "var(--color-text-brand)" : worst ? "var(--color-danger)" : "var(--color-text-secondary)",
+          nameWeight: i === 0 || worst ? 700 : 400,
+          delta: (below ? "−" : "+") + id(Math.abs(d), 1) + " pt",
+          deltaColor: below ? (d < -4 ? "var(--color-danger)" : "var(--color-warning)") : "var(--color-success)",
+        };
+      });
+    };
+    const rgList = mkRatio("rg", TG, 45);
+    const rdList = mkRatio("rd", TD, 26);
+
+    // ===== Anomali =====
+    const anomalies = [
+      { dot: "var(--color-danger)", bg: "var(--color-danger-bg)", border: "var(--color-danger-border)", titleColor: "var(--color-danger)", title: "Losses abnormal −412 L (−0,62%)", unit: "Batu Layang · 64.782.01", desc: "Opname tangki T3 Pertalite vs stok buku. Di atas ambang 100 L / 0,5%. Sudah 2 hari berturut-turut minus.", time: "05.40 WIB" },
+      { dot: "var(--color-danger)", bg: "var(--color-danger-bg)", border: "var(--color-danger-border)", titleColor: "var(--color-danger)", title: "Modul Kas/Pengeluaran dorman — terakhir input 17 Apr 2019 (7,2 TAHUN lalu)", unit: "Semua unit", desc: "Flag permanen, tidak bisa di-dismiss. Pengeluaran & setoran tidak terkontrol lewat sistem sejak 2019.", time: "tetap" },
+      { dot: "var(--color-warning)", bg: "var(--color-warning-bg)", border: "var(--color-warning-border)", titleColor: "var(--color-warning)", title: "Penjualan shift 2 belum diinput", unit: "Bakau · 63.783.01", desc: "Terakhir input 13.20 WIB. Status unit kuning sampai 3/3 shift tanggal bisnis ini lengkap.", time: "4 jam lalu" },
+      { dot: "var(--color-warning)", bg: "var(--color-warning-bg)", border: "var(--color-warning-border)", titleColor: "var(--color-warning)", title: "Stok Pertamax sisa estimasi 1,1 hari", unit: "Korek · 64.783.11", desc: "Di bawah ambang 1,5 hari. Sisa DO 8 KL; usulan penebusan belum dibuat.", time: "32 mnt lalu" },
+      { dot: "var(--color-info)", bg: "var(--color-info-bg)", border: "var(--color-info-border)", titleColor: "var(--color-info)", title: "⟳ Koreksi totalisator (2 revisi)", unit: "Kotabaru · 64.781.06", desc: "Nozzle P2-N3 shift 1 direvisi pengawas. Angka di dashboard sudah keadaan terbaru.", time: "1 jam lalu" },
+    ];
+
+    // ===== Chips =====
+    const segStyle = (active) => ({
+      padding: "8px 18px", borderRadius: "999px", cursor: "pointer", border: "none",
+      fontSize: "16px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--neutral-500)",
+      background: active ? "var(--brand-navy)" : "transparent",
+      transition: "all .15s", minHeight: "40px",
+    });
+    const periodChips = [
+      { key: "today", label: "Hari ini" }, { key: "week", label: "7 hari" }, { key: "month", label: "30 hari" },
+    ].map((p) => ({ ...p, style: segStyle(period === p.key), onClick: () => this.setState({ period: p.key }) }));
+
+    const chipStyle = (active) => ({
+      padding: "9px 18px", borderRadius: "999px", cursor: "pointer",
+      border: active ? "1px solid var(--brand-navy)" : "1px solid var(--color-border-strong)",
+      fontSize: "16px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--color-text-secondary)",
+      background: active ? "var(--brand-navy)" : "var(--color-surface)",
+      transition: "all .15s", minHeight: "44px",
+    });
+    const viewChips = [
+      { key: "normal", label: "Normal" }, { key: "loading", label: "Memuat (sync)" }, { key: "empty", label: "Kosong (belum ada data)" },
+    ].map((v) => ({ ...v, style: chipStyle(viewState === v.key), onClick: () => this.setState({ viewState: v.key }) }));
+
+    // ===== Sitemap & flows =====
+    const pgN = { bg: "var(--neutral-50)", border: "var(--color-border-hairline)" };
+    const pgH = { bg: "var(--color-accent-tint)", border: "var(--color-info-border)" };
+    const sitemaps = [
+      { persona: "Pengawas", platform: "Mobile", scope: "1 unit (miliknya)", note: "Default: Hari Ini — \"apa yang belum saya input\".", pages: [
+        { ...pgH, num: "1.0", name: "Hari Ini (default)", desc: "Checklist kewajiban input per modul + status shift" },
+        { ...pgN, num: "1.1", name: "Status Modul", desc: "Terakhir input per modul, umur data, flag stale" },
+        { ...pgN, num: "1.2", name: "Stok Unit", desc: "Tangki saya: level, estimasi sisa hari" },
+        { ...pgN, num: "1.3", name: "Riwayat 30 Hari", desc: "Kalender ketaatan pribadi hijau/kuning/merah" },
+      ]},
+      { persona: "Admin Area", platform: "Web", scope: "7 unit · ketaatan", note: "Default: heatmap — \"siapa telat, di modul apa\".", pages: [
+        { ...pgH, num: "2.0", name: "Ketaatan 7 Unit (default)", desc: "Heatmap unit × modul × hari + daftar telat" },
+        { ...pgN, num: "2.1", name: "Detail Unit", desc: "Modul → riwayat input → kontak pengawas" },
+        { ...pgN, num: "2.2", name: "Stok Grup", desc: "Peta tangki 7 unit, alert stok kritis" },
+        { ...pgN, num: "2.3", name: "Laporan Ketaatan", desc: "Rekap mingguan/bulanan, export" },
+      ]},
+      { persona: "Manajemen Ops", platform: "Web", scope: "7 unit · operasional", note: "Default: tabel harian 13 modul data EasyMax.", pages: [
+        { ...pgH, num: "3.0", name: "Operasional Harian (default)", desc: "Omset, gain/loss, terra, EDC, setoran… per tanggal bisnis" },
+        { ...pgN, num: "3.1", name: "Drilldown Unit", desc: "Per nozzle per shift, stand awal/akhir, koreksi" },
+        { ...pgN, num: "3.2", name: "Stok & Penebusan", desc: "Stock, sisa DO, usulan & penebusan harian" },
+        { ...pgN, num: "3.3", name: "Rekonsiliasi", desc: "Gain/loss, deposit & pembayaran pelanggan" },
+      ]},
+      { persona: "Board of Directors", platform: "Web + Mobile", scope: "Grup · analisa", note: "Default: ringkasan — \"sehat / tidak, kenapa\".", pages: [
+        { ...pgH, num: "4.0", name: "Ringkasan Grup (default)", desc: "Verdict, KPI, NPSO/PSO, ranking, anomali" },
+        { ...pgN, num: "4.1", name: "Tren & Perbandingan", desc: "Mingguan/bulanan, unit vs unit" },
+        { ...pgN, num: "4.2", name: "Anomali & Exception", desc: "Feed lengkap + riwayat disposisi" },
+        { ...pgN, num: "4.3", name: "Mobile Companion", desc: "Verdict + perhatian hari ini + push" },
+      ]},
+    ];
+
+    const stN = { bg: "var(--color-surface)", border: "var(--color-border-strong)", color: "var(--color-text-primary)" };
+    const stG = { bg: "var(--color-success-bg)", border: "var(--color-success-border)", color: "var(--color-success)" };
+    const stR = { bg: "var(--color-danger-bg)", border: "var(--color-danger-border)", color: "var(--color-danger)" };
+    const stB = { bg: "var(--color-accent-tint)", border: "var(--color-info-border)", color: "var(--color-accent)" };
+    const mkSteps = (arr) => arr.map((s, i) => ({ ...s, arrow: i < arr.length - 1 }));
+    const flows = [
+      { persona: "Pengawas", goal: "Tutup hari tanpa bolong input", steps: mkSteps([
+        { ...stN, label: "Buka app pagi", sub: "setelah shift 3 tutup" },
+        { ...stR, label: "\"2 kewajiban belum\"", sub: "opname T2 · setoran" },
+        { ...stN, label: "Input di EasyMax POS", sub: "di komputer SPBU" },
+        { ...stB, label: "Sync 1–5 menit", sub: "otomatis ke cloud" },
+        { ...stG, label: "Checklist hijau", sub: "hari ini taat 100%" },
+      ])},
+      { persona: "Admin Area", goal: "Tangkap yang telat sebelum jadi kebiasaan", steps: mkSteps([
+        { ...stN, label: "Heatmap pagi", sub: "7 unit × modul" },
+        { ...stR, label: "Sel merah: Bakau", sub: "penjualan shift 2" },
+        { ...stN, label: "Drilldown unit", sub: "terakhir input 13.20" },
+        { ...stB, label: "Hubungi pengawas", sub: "WA/telepon dari app" },
+        { ...stG, label: "Tandai follow-up", sub: "tercatat di riwayat" },
+      ])},
+      { persona: "Manajemen Ops", goal: "Validasi angka harian sampai level nozzle", steps: mkSteps([
+        { ...stN, label: "Pilih tanggal bisnis", sub: "default: kemarin" },
+        { ...stN, label: "Tabel omset 7 unit", sub: "13 modul data" },
+        { ...stB, label: "Drilldown nozzle/shift", sub: "stand awal → akhir" },
+        { ...stR, label: "Cek koreksi ⟳", sub: "revisi totalisator" },
+        { ...stG, label: "Export rekap", sub: "XLS/PDF" },
+      ])},
+      { persona: "Board of Directors", goal: "Putuskan dengan konteks, bukan tabel mentah", steps: mkSteps([
+        { ...stN, label: "Buka ringkasan", sub: "verdict 3 detik" },
+        { ...stR, label: "Chip: losses −0,62%", sub: "Batu Layang" },
+        { ...stN, label: "Expand di ranking", sub: "produk + tren unit" },
+        { ...stB, label: "Buka anomali", sub: "konteks 2 hari minus" },
+        { ...stG, label: "Disposisi ke Ops", sub: "tercatat + due date" },
+      ])},
+    ];
+
+    const interactions = [
+      { title: "Filter periode & tanggal bisnis", points: [
+        "Segmented control Hari ini / 7 hari / 30 hari; semua angka, delta, dan ranking dihitung ulang — tanpa reload, transisi angka 250 ms ease-out.",
+        "\"Hari ini\" = tanggal bisnis berjalan; sebelum shift 3 tutup, header menandai \"hari berjalan — belum lengkap\" agar BoD tak salah baca angka kecil di pagi hari.",
+        "Pemilih tanggal kustom (kalender) tersedia untuk Ops/Admin; BoD sengaja hanya 3 preset agar tetap ringkas.",
+        "Periode tersimpan per pengguna (terakhir dipakai) — bukan reset tiap buka.",
+      ]},
+      { title: "Drilldown ranking → unit → nozzle/shift", points: [
+        "Klik baris = expand inline (bukan pindah halaman): volume per produk, spark 14 hari, catatan unit. Satu baris terbuka pada satu waktu.",
+        "\"Buka detail operasional\" lompat ke layar Ops dengan konteks unit + tanggal terbawa (deep-link, izin per peran).",
+        "Di layar Ops, drilldown lanjut: produk → tangki → nozzle → shift, dengan stand awal/akhir totalisator dan penanda ⟳ bila baris pernah direvisi (SUBAH/SEDIT).",
+        "Keyboard: ↑↓ pindah baris, Enter expand, Esc tutup — meeting-friendly.",
+      ]},
+      { title: "Heatmap ketaatan 7 unit × modul × hari (Admin Area)", points: [
+        "Baris = unit, kolom = hari (30 terakhir), sel = agregat modul; klik sel membuka panel modul mana yang bolong, mengikuti aturan compliance.ts.",
+        "Modul dorman (Kas sejak 2019) dirender sebagai strip merah pekat dengan label umur \"7,2 TAHUN\" — bukan deretan sel kosong.",
+        "Hover sel: tooltip \"terakhir input + siapa\"; sel hari berjalan diberi outline putus-putus (belum final sampai shift 3 tutup).",
+        "Threshold stale per modul mengikuti STALE_HOURS (26 jam penjualan/opname, 7 hari kas) — bukan angka tetap di UI.",
+      ]},
+      { title: "Peta stok realtime — tangki + nozzle (Monitoring)", points: [
+        "Denah per SPBU: tiap tangki digambar sebagai silinder dengan fill level, label produk, volume vs kapasitas, dan estimasi sisa hari (dari laju jual 7 hari).",
+        "Warna fill netral; HANYA berubah merah saat < ambang kritis (1,5 hari) dan kuning saat < 3 hari — alert oleh pengecualian, bukan dekorasi.",
+        "Garis tangki → nozzle menunjukkan pemetaan tm_tangki/tm_nozzle; nozzle dengan koreksi totalisator hari ini diberi titik ⟳ biru.",
+        "Data dari opname + delta penjualan sejak opname terakhir; timestamp \"dihitung dari opname 05.40\" selalu tampil. Kandidat dark mode untuk ruang monitoring 24/7.",
+      ]},
+    ];
+
+    return {
+      kpi, kpiToday, units, rgList, rdList, anomalies,
+      periodChips, viewChips, sitemaps, flows, interactions,
+      sparkPoints, sparkArea, trendAvg,
+      isNormal: viewState === "normal", isLoading: viewState === "loading", isEmpty: viewState === "empty",
+      bizDate: "Kamis, 11 Juni 2026 · shift 3 ditutup 06.10 WIB",
+      bizDateShort: "Kamis, 11 Jun 2026",
+      syncNote: "Tersinkron 4 mnt lalu",
+    };
+  }
+}
+
+</script>
+</body>
+</html>

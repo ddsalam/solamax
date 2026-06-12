@@ -1,0 +1,75 @@
+/* SolaGroup — color tokens. Light theme on :root; a future dark theme
+   re-declares the SEMANTIC layer under :root[data-theme="dark"] only. */
+:root {
+  /* ===== Brand constants (from logo) ===== */
+  --brand-navy: #1A3252;   /* wordmark — 10.4:1 on white, AAA */
+  --brand-sky:  #1CA0E6;   /* dot + swoosh — 2.9:1, DECORATIVE ONLY, never text */
+
+  /* ===== Base: neutral ramp (cool, apple.com-derived) ===== */
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #F5F5F7;
+  --neutral-100: #E8E8ED;
+  --neutral-200: #D2D2D7;
+  --neutral-300: #B0B0B8;
+  --neutral-400: #86868B;
+  --neutral-500: #6E6E73;
+  --neutral-600: #515154;
+  --neutral-700: #3A3A3C;
+  --neutral-800: #2C2C2E;
+  --neutral-900: #1D1D1F;
+
+  /* ===== Base: accent ramp (hue of brand sky; 600+ pass AA as text) ===== */
+  --accent-50:  #EAF5FC;
+  --accent-100: #D6EBF9;
+  --accent-200: #ABD7F3;
+  --accent-300: #74BDEA;
+  --accent-400: #3FA9E7;
+  --accent-500: #1CA0E6;  /* = brand sky */
+  --accent-600: #0A6EBD;  /* 5.3:1 AA — interactive default */
+  --accent-700: #085A9C;  /* 7.1:1 AAA — hover */
+  --accent-800: #07477C;
+  --accent-900: #1A3252;  /* = brand navy */
+
+  /* ===== Semantic: backgrounds & surfaces ===== */
+  --color-bg:               var(--neutral-0);
+  --color-bg-secondary:     var(--neutral-50);
+  --color-surface:          var(--neutral-0);
+  --color-surface-inverse:  var(--brand-navy);
+  --color-scrim:            rgba(29, 29, 31, 0.45);
+
+  /* ===== Semantic: text (contrast on --color-bg) ===== */
+  --color-text-primary:    var(--neutral-900); /* 16.1:1 AAA */
+  --color-text-secondary:  var(--neutral-600); /*  7.9:1 AAA */
+  --color-text-tertiary:   var(--neutral-500); /*  5.0:1 AA — captions/meta only */
+  --color-text-brand:      var(--brand-navy);  /* 10.4:1 AAA */
+  --color-text-on-accent:  #FFFFFF;            /*  5.3:1 on accent AA */
+  --color-text-on-inverse: #FFFFFF;            /* 10.4:1 on navy AAA */
+
+  /* ===== Semantic: interactive ===== */
+  --color-accent:        var(--accent-600);
+  --color-accent-hover:  var(--accent-700);
+  --color-accent-active: var(--accent-800);
+  --color-accent-tint:   var(--accent-50);
+  --color-link:          var(--accent-600);
+  --color-link-hover:    var(--accent-700);
+  --color-focus-ring:    var(--accent-600);
+
+  /* ===== Semantic: borders ===== */
+  --color-border:          var(--neutral-200);
+  --color-border-strong:   var(--neutral-300);
+  --color-border-hairline: rgba(0, 0, 0, 0.10);
+
+  /* ===== Semantic: status (text passes AA on white; pair with icon/label, never color alone) ===== */
+  --color-success:        #15803D; /* 5.0:1 AA */
+  --color-success-bg:     #E9F5EE;
+  --color-success-border: #B7DDC5;
+  --color-warning:        #B45309; /* 4.7:1 AA */
+  --color-warning-bg:     #FDF3E5;
+  --color-warning-border: #F0D6AC;
+  --color-danger:         #B91C1C; /* 6.5:1 AAA-large */
+  --color-danger-bg:      #FBEAEA;
+  --color-danger-border:  #EFC4C4;
+  --color-info:           var(--accent-600);
+  --color-info-bg:        var(--accent-50);
+  --color-info-border:    var(--accent-200);
+}

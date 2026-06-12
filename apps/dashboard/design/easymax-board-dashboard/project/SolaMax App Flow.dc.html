@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/motion.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/layout.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/base.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/styles.css">
+  <script src="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/_ds_bundle.js"></script>
+  <style>
+    body { background: var(--neutral-50); }
+    @keyframes sm-spin { to { transform: rotate(360deg); } }
+    @keyframes sm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  </style>
+</helmet>
+
+<!-- ===== Intro ===== -->
+<div data-screen-label="Intro App Flow" style="max-width: 1320px; margin: 0 auto; padding: var(--space-12) var(--space-8) 0;">
+  <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+    <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 24px; display: block;">
+    <div style="width: 1px; height: 20px; background: var(--color-border);"></div>
+    <a href="SolaMax Design Spec.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">Design Spec</a>
+    <a href="Laporan Operasional Harian.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">Laporan Operasional</a>
+    <a href="Rincian Penjualan Harian.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">Rincian Penjualan</a>
+  </div>
+  <div class="text-eyebrow" style="color: var(--color-accent); margin-top: var(--space-8);">Prototipe alur · clickable end-to-end</div>
+  <h1 class="text-h2" style="color: var(--color-text-brand); margin-top: var(--space-2);">SolaMax — Shell Aplikasi &amp; Navigasi</h1>
+  <p class="text-body-lg" style="color: var(--color-text-secondary); max-width: 800px; margin-top: var(--space-3);">Satu prototipe dengan router internal: landing → login (role-based) → shell aplikasi dengan dua sayap — Laporan &amp; Analisa dan Monitoring Realtime. Layar detail yang sudah ada tertaut sebagai deep-link.</p>
+</div>
+
+<!-- ===== SITEMAP ===== -->
+<div data-screen-label="Sitemap Navigasi" style="max-width: 1320px; margin: 0 auto; padding: var(--space-12) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">Sitemap</div>
+  <h2 class="text-h4" style="margin-top: var(--space-2); color: var(--color-text-primary);">Bagaimana keempat aspek tersambung</h2>
+  <div style="display: flex; align-items: stretch; gap: var(--space-3); margin-top: var(--space-6); flex-wrap: wrap;">
+    <div style="background: var(--brand-navy); color: #fff; border-radius: var(--radius-lg); padding: var(--space-5); width: 200px;">
+      <div class="text-caption" style="font-weight: 700; color: #fff;">1 · Landing</div>
+      <div style="font-size: 15px; opacity: 0.75; margin-top: 4px;">Publik · institusional · CTA tunggal "Masuk"</div>
+    </div>
+    <div style="align-self: center; color: var(--neutral-300); font-size: 22px;">→</div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); padding: var(--space-5); width: 210px;">
+      <div class="text-caption" style="font-weight: 700;">2 · Login</div>
+      <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 4px;">Role terdeteksi dari akun → rute per peran. State: error · loading · terkunci</div>
+    </div>
+    <div style="align-self: center; color: var(--neutral-300); font-size: 22px;">→</div>
+    <div style="flex: 1; min-width: 480px; background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+      <div class="text-caption" style="font-weight: 700; color: var(--color-text-brand);">Shell aplikasi (persistent: topbar + sidebar per peran)</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-3);">
+        <div style="background: var(--color-accent-tint); border: 1px solid var(--color-info-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);">
+          <div class="text-caption" style="font-weight: 600; color: var(--color-accent);">3 · Laporan &amp; Analisa</div>
+          <div style="font-size: 15px; color: var(--color-text-secondary); margin-top: 2px;">Hub → Ringkasan BoD · Laporan Operasional (kaya) · Rincian Penjualan (cetak) → Export</div>
+        </div>
+        <div style="background: var(--color-accent-tint); border: 1px solid var(--color-info-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);">
+          <div class="text-caption" style="font-weight: 600; color: var(--color-accent);">4 · Monitoring Realtime</div>
+          <div style="font-size: 15px; color: var(--color-text-secondary); margin-top: 2px;">Jaringan 7 SPBU → Denah tangki/nozzle → Heatmap ketaatan → Feed anomali</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Role matrix -->
+  <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-6); overflow: hidden; background: var(--color-surface);">
+    <div style="display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Menu</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: center;">Pengawas</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: center;">Admin Area</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: center;">Manajemen Ops</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: center;">Direksi</span>
+    </div>
+    <sc-for list="{{ roleMatrix }}" as="rm" hint-placeholder-count="6">
+      <div style="display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: var(--space-3); padding: 11px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+        <div><span style="font-size: 16px; font-weight: 600;">{{ rm.menu }}</span><span style="font-size: 15px; color: var(--color-text-tertiary); margin-left: 8px;">{{ rm.note }}</span></div>
+        <span style="text-align: center; font-size: 16px; color: {{ rm.c1 }};">{{ rm.v1 }}</span>
+        <span style="text-align: center; font-size: 16px; color: {{ rm.c2 }};">{{ rm.v2 }}</span>
+        <span style="text-align: center; font-size: 16px; color: {{ rm.c3 }};">{{ rm.v3 }}</span>
+        <span style="text-align: center; font-size: 16px; color: {{ rm.c4 }};">{{ rm.v4 }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+<!-- ===== PROTOTIPE ===== -->
+<div data-screen-label="Prototipe Clickable" style="max-width: 1320px; margin: 0 auto; padding: var(--space-12) var(--space-8) 0;">
+  <div class="text-eyebrow" style="color: var(--color-accent);">Prototipe clickable</div>
+  <h2 class="text-h4" style="margin-top: var(--space-2);">Jalani alurnya — mulai dari landing</h2>
+  <div style="display: flex; gap: var(--space-2); margin-top: var(--space-5); align-items: center; flex-wrap: wrap;">
+    <span class="text-caption" style="color: var(--color-text-tertiary); margin-right: var(--space-2);">Lompat ke:</span>
+    <sc-for list="{{ jumpChips }}" as="jc" hint-placeholder-count="4">
+      <button onClick="{{ jc.onClick }}" style="{{ jc.style }}">{{ jc.label }}</button>
+    </sc-for>
+    <div style="width: 1px; height: 24px; background: var(--color-border); margin: 0 var(--space-2);"></div>
+    <sc-for list="{{ stateChips }}" as="sc" hint-placeholder-count="3">
+      <button onClick="{{ sc.onClick }}" style="{{ sc.style }}">{{ sc.label }}</button>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: var(--space-5); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-3); border: 1px solid var(--color-border-hairline); background: var(--color-surface);">
+    <div style="display: flex; align-items: center; gap: var(--space-4); padding: 12px 18px; background: var(--neutral-100); border-bottom: 1px solid var(--color-border-hairline);">
+      <div style="display: flex; gap: 7px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840;"></span>
+      </div>
+      <div style="flex: 1; max-width: 440px; margin: 0 auto; background: var(--color-bg); border-radius: var(--radius-sm); padding: 5px 14px; font-size: 15px; color: var(--color-text-tertiary); text-align: center;">{{ urlBar }}</div>
+      <div style="width: 50px;"></div>
+    </div>
+
+    <!-- ============ 1 · LANDING ============ -->
+    <sc-if value="{{ isLanding }}" hint-placeholder-val="{{ true }}">
+      <div style="background: var(--color-bg);">
+        <sc-if value="{{ landingBanner }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: 10px 24px; background: var(--color-warning-bg); border-bottom: 1px solid var(--color-warning-border);">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning);"></span>
+            <span style="font-size: 16px; font-weight: 600; color: var(--color-warning);">Pemeliharaan sinkronisasi 13 Jun 01.00–03.00 WIB — data tetap tersimpan di POS, masuk setelah jendela selesai.</span>
+          </div>
+        </sc-if>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 56px;">
+          <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 24px; display: block;">
+          <button onClick="{{ goLogin }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--brand-navy); background: transparent; border: 1px solid var(--color-border-strong); border-radius: var(--radius-full); padding: 9px 22px; min-height: 44px; cursor: pointer;" style-hover="border-color: var(--brand-navy);">Masuk</button>
+        </div>
+        <div style="background: var(--brand-navy); color: #fff; padding: 88px 56px 96px; text-align: center;">
+          <div class="text-eyebrow" style="color: var(--accent-300);">SolaMax</div>
+          <h2 style="font-size: 52px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12; max-width: 800px; margin: 16px auto 0;">Pengawasan, Monitoring &amp; Analisis Jaringan SPBU SolaGroup</h2>
+          <p style="font-size: 19px; line-height: 1.55; opacity: 0.78; max-width: 620px; margin: 20px auto 0;">Lapisan visual di atas data POS EasyMax — tujuh SPBU di Pontianak dan sekitarnya, tersinkron tiap 1–5 menit. Bukan sistem transaksi: membaca, menyorot, menjelaskan.</p>
+          <button onClick="{{ goLogin }}" style="margin-top: 36px; font-family: var(--font-sans); font-size: 17px; font-weight: 600; color: var(--brand-navy); background: #fff; border: none; border-radius: var(--radius-full); padding: 14px 38px; min-height: 48px; cursor: pointer;" style-hover="background: var(--accent-50);">Masuk ke SolaMax</button>
+          <div style="font-size: 15px; opacity: 0.55; margin-top: 14px;">Akses internal SolaGroup — empat peran, satu sumber data.</div>
+        </div>
+        <div style="max-width: 1080px; margin: 0 auto; padding: 72px 56px 0;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6);">
+            <sc-for list="{{ pillars }}" as="pl" hint-placeholder-count="3">
+              <div style="text-align: center; padding: var(--space-6);">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--color-accent-tint); color: var(--color-accent); display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto;">{{ pl.icon }}</div>
+                <div class="text-h5" style="color: var(--color-text-brand); margin-top: var(--space-4);">{{ pl.title }}</div>
+                <p class="text-body" style="color: var(--color-text-secondary); margin-top: var(--space-3);">{{ pl.desc }}</p>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="max-width: 1080px; margin: 0 auto; padding: 56px 56px 72px;">
+          <div style="text-align: center;">
+            <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Jaringan</div>
+            <div class="text-h4" style="color: var(--color-text-brand); margin-top: var(--space-2);">Tujuh SPBU, Pontianak &amp; sekitarnya</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--space-3); margin-top: var(--space-6);">
+            <sc-for list="{{ landingUnits }}" as="lu" hint-placeholder-count="7">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-md); padding: var(--space-4); text-align: center;">
+                <div style="font-size: 16px; font-weight: 700; color: var(--color-text-brand);">{{ lu.name }}</div>
+                <div style="font-size: 14px; color: var(--color-text-tertiary); font-family: ui-monospace, monospace; margin-top: 2px;">{{ lu.code }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="background: var(--color-surface-inverse); color: rgba(255,255,255,0.72); padding: 40px 56px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-4);">
+          <div>
+            <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 20px; display: block; filter: brightness(0) invert(1); opacity: 0.9;">
+            <div style="font-size: 15px; margin-top: 8px;">PT SolaGroup — Pontianak, Kalimantan Barat</div>
+          </div>
+          <div style="font-size: 15px;">SolaMax v1 · sistem internal · © 2026 SolaGroup</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ 2 · LOGIN ============ -->
+    <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ false }}">
+      <div style="background: var(--neutral-50); min-height: 720px; display: flex; align-items: center; justify-content: center; padding: 64px 24px;">
+        <div style="width: 420px;">
+          <div style="text-align: center;">
+            <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 28px; display: inline-block;">
+            <div class="text-h4" style="color: var(--color-text-brand); margin-top: var(--space-6);">Masuk ke SolaMax</div>
+            <div style="font-size: 16px; color: var(--color-text-tertiary); margin-top: var(--space-2);">Peran ditentukan oleh akun — tidak ada yang perlu dipilih.</div>
+          </div>
+          <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-xl); box-shadow: var(--shadow-2); padding: var(--space-8); margin-top: var(--space-6);">
+            <sc-if value="{{ loginLocked }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align: center; padding: var(--space-4) 0;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--color-danger-bg); color: var(--color-danger); display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto;">✗</div>
+                <div class="text-h6" style="color: var(--color-danger); margin-top: var(--space-4);">Akun terkunci sementara</div>
+                <p style="font-size: 16px; color: var(--color-text-secondary); margin-top: var(--space-2);">3 percobaan gagal. Demi keamanan data operasional, akun dikunci 15 menit. Hubungi Admin Area untuk buka lebih cepat.</p>
+                <button onClick="{{ resetLogin }}" style="margin-top: var(--space-5); font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); border: none; border-radius: var(--radius-full); padding: 11px 24px; min-height: 44px; cursor: pointer;">Coba lagi (reset demo)</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ loginFormVisible }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <sc-if value="{{ loginError }}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; gap: var(--space-2); align-items: baseline; padding: var(--space-3) var(--space-4); background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: var(--radius-md); margin-bottom: var(--space-4);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-danger); flex-shrink: 0;"></span>
+                    <span style="font-size: 16px; color: var(--color-danger); font-weight: 500;">Email atau password salah. {{ attemptsLeft }} percobaan tersisa sebelum akun dikunci.</span>
+                  </div>
+                </sc-if>
+                <label style="display: block;">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-secondary);">Email</span>
+                  <input type="email" value="{{ email }}" onChange="{{ onEmail }}" placeholder="nama@solagroup.id" style="width: 100%; box-sizing: border-box; margin-top: 6px; font-family: var(--font-sans); font-size: 17px; padding: 12px 14px; border: 1px solid {{ inputBorder }}; border-radius: var(--radius-md); background: var(--color-bg); min-height: 48px;">
+                </label>
+                <label style="display: block; margin-top: var(--space-4);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-secondary);">Password</span>
+                  <input type="password" value="{{ password }}" onChange="{{ onPassword }}" placeholder="••••••••" style="width: 100%; box-sizing: border-box; margin-top: 6px; font-family: var(--font-sans); font-size: 17px; padding: 12px 14px; border: 1px solid {{ inputBorder }}; border-radius: var(--radius-md); background: var(--color-bg); min-height: 48px;">
+                </label>
+                <button onClick="{{ doLogin }}" style="width: 100%; margin-top: var(--space-6); font-family: var(--font-sans); font-size: 17px; font-weight: 600; color: #fff; background: var(--brand-navy); border: none; border-radius: var(--radius-full); padding: 13px 0; min-height: 48px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;" style-hover="background: var(--accent-800);">
+                  <sc-if value="{{ loginLoading }}" hint-placeholder-val="{{ false }}">
+                    <span style="width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.35); border-top-color: #fff; display: inline-block; animation: sm-spin 0.7s linear infinite;"></span>
+                  </sc-if>
+                  <span>{{ loginBtnLabel }}</span>
+                </button>
+                <div style="text-align: center; margin-top: var(--space-4);">
+                  <span style="font-size: 16px; font-weight: 500; color: var(--color-accent); cursor: pointer;">Lupa password?</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="margin-top: var(--space-5); text-align: center;">
+            <div style="font-size: 15px; color: var(--color-text-tertiary);">Akun demo prototipe — tidak ada login sungguhan:</div>
+            <div style="display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; margin-top: var(--space-3);">
+              <sc-for list="{{ demoAccounts }}" as="da" hint-placeholder-count="6">
+                <button onClick="{{ da.onClick }}" style="{{ da.style }}">{{ da.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ SHELL (3 & 4) ============ -->
+    <sc-if value="{{ isShell }}" hint-placeholder-val="{{ false }}">
+      <div style="background: var(--color-bg);">
+        <!-- Topbar -->
+        <div style="display: flex; align-items: center; gap: var(--space-4); padding: 13px 28px; border-bottom: 1px solid var(--color-border-hairline); background: var(--bg-frosted);">
+          <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 20px; display: block;">
+          <div style="width: 1px; height: 18px; background: var(--color-border);"></div>
+          <span class="text-caption" style="color: var(--color-text-secondary); font-weight: 600;">SolaMax</span>
+          <span style="font-size: 15px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 4px 12px; border-radius: var(--radius-full);">{{ roleLabel }}</span>
+          <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-4);">
+            <span style="display: inline-flex; align-items: center; gap: 7px;">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); animation: sm-pulse 2s ease-in-out infinite;"></span>
+              <span style="font-size: 15px; color: var(--color-text-tertiary);">data terakhir masuk {{ lastSync }}</span>
+            </span>
+            <button onClick="{{ doLogout }}" style="font-family: var(--font-sans); font-size: 15px; font-weight: 600; color: var(--color-text-secondary); background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 7px 16px; cursor: pointer;" style-hover="border-color: var(--brand-navy); color: var(--brand-navy);">Keluar</button>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 232px 1fr; min-height: 680px;">
+          <!-- Sidebar -->
+          <div style="border-right: 1px solid var(--color-border-hairline); background: var(--neutral-50); padding: var(--space-5) var(--space-3); display: flex; flex-direction: column; gap: 4px;">
+            <sc-for list="{{ sideMenu }}" as="mi" hint-placeholder-count="5">
+              <button onClick="{{ mi.onClick }}" style="{{ mi.style }}">
+                <span>{{ mi.label }}</span>
+                <sc-if value="{{ mi.badge }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 13px; font-weight: 700; color: #fff; background: var(--color-danger); border-radius: var(--radius-full); padding: 2px 8px;">{{ mi.badge }}</span>
+                </sc-if>
+              </button>
+            </sc-for>
+            <div style="margin-top: auto; padding: var(--space-3); font-size: 14px; color: var(--color-text-tertiary); line-height: 1.5;">Menu mengikuti peran. {{ roleScopeNote }}</div>
+          </div>
+
+          <!-- ============ 3 · HUB LAPORAN & ANALISA ============ -->
+          <sc-if value="{{ isHub }}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 32px 36px 44px;">
+              <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Laporan &amp; Analisa</div>
+              <h3 class="text-h4" style="color: var(--color-text-brand); margin-top: var(--space-2);">Pilih unit &amp; tanggal, lalu turun selapis demi selapis</h3>
+
+              <!-- Step strip -->
+              <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-5); flex-wrap: wrap;">
+                <sc-for list="{{ hubSteps }}" as="hs" hint-placeholder-count="4">
+                  <div style="display: flex; align-items: center; gap: var(--space-2);">
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--radius-full); background: {{ hs.bg }}; border: 1px solid {{ hs.border }};">
+                      <span style="width: 20px; height: 20px; border-radius: 50%; background: {{ hs.numBg }}; color: {{ hs.numFg }}; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;">{{ hs.n }}</span>
+                      <span style="font-size: 15px; font-weight: 600; color: {{ hs.fg }};">{{ hs.label }}</span>
+                    </div>
+                    <sc-if value="{{ hs.arrow }}" hint-placeholder-val="{{ true }}"><span style="color: var(--neutral-300);">→</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Pilih unit & tanggal -->
+              <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-6); flex-wrap: wrap;">
+                <select value="{{ unitCode }}" onChange="{{ onUnit }}" disabled="{{ unitLocked }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px; cursor: pointer;">
+                  <sc-for list="{{ unitOptions }}" as="o" hint-placeholder-count="7">
+                    <option value="{{ o.code }}">{{ o.label }}</option>
+                  </sc-for>
+                </select>
+                <sc-if value="{{ unitLocked }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 15px; color: var(--color-text-tertiary);">unit terkunci untuk peran Pengawas</span>
+                </sc-if>
+                <input type="date" value="{{ dateStr }}" onChange="{{ onDate }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px;">
+                <span style="font-size: 15px; color: var(--color-text-tertiary);">tanggal bisnis</span>
+              </div>
+
+              <sc-if value="{{ hubIncomplete }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border);">
+                  <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-warning); flex-shrink: 0; margin-top: 7px;"></span>
+                  <div>
+                    <div class="text-caption" style="font-weight: 600; color: var(--color-warning);">Data tanggal ini belum lengkap — 5 dari 9 modul terisi</div>
+                    <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 2px;">Shift 3 tutup besok pagi. Laporan tetap bisa dibuka dengan angka berjalan; rekonsiliasi final menunggu modul lengkap.</div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <!-- Tiga kartu tujuan -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-top: var(--space-6);">
+                <sc-for list="{{ hubCards }}" as="hc" hint-placeholder-count="3">
+                  <a href="{{ hc.href }}" style="text-decoration: none; display: block; border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: var(--shadow-1); background: var(--color-surface); transition: box-shadow .15s, transform .15s;" style-hover="box-shadow: var(--shadow-3); transform: translateY(-2px);">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      <span style="font-size: 15px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); padding: 4px 12px; border-radius: var(--radius-full);">{{ hc.tag }}</span>
+                      <span style="color: var(--neutral-300); font-size: 18px;">→</span>
+                    </div>
+                    <div class="text-h6" style="color: var(--color-text-brand); margin-top: var(--space-4);">{{ hc.title }}</div>
+                    <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0; line-height: 1.5;">{{ hc.desc }}</p>
+                    <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: var(--space-4);">{{ hc.roles }}</div>
+                  </a>
+                </sc-for>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; margin-top: var(--space-8);">
+                <button onClick="{{ goMonitoring }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: #fff; background: var(--brand-navy); border: none; border-radius: var(--radius-full); padding: 12px 26px; min-height: 44px; cursor: pointer;" style-hover="background: var(--accent-800);">Lanjut ke Monitoring Realtime →</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ============ 4 · MONITORING ============ -->
+          <sc-if value="{{ isMon }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 32px 36px 44px;">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3);">
+                <div>
+                  <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Monitoring Realtime</div>
+                  <h3 class="text-h4" style="color: var(--color-text-brand); margin-top: var(--space-2);">{{ monTitle }}</h3>
+                </div>
+                <div style="display: flex; background: var(--neutral-100); border-radius: var(--radius-full); padding: 4px;">
+                  <sc-for list="{{ monTabs }}" as="mt" hint-placeholder-count="4">
+                    <button onClick="{{ mt.onClick }}" style="{{ mt.style }}">{{ mt.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <!-- 4a · Jaringan -->
+              <sc-if value="{{ monIsJaringan }}" hint-placeholder-val="{{ true }}">
+                <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-6); overflow: hidden;">
+                  <div style="display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                    <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">SPBU</span>
+                    <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Sinkron</span>
+                    <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Omset hari ini</span>
+                    <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Stok</span>
+                    <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Input</span>
+                    <span></span>
+                  </div>
+                  <sc-for list="{{ netRows }}" as="nr" hint-placeholder-count="7">
+                    <div onClick="{{ nr.onClick }}" style="display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; gap: var(--space-3); padding: 14px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: center; cursor: pointer; transition: background .15s;" style-hover="background: var(--neutral-50);">
+                      <div style="display: flex; flex-direction: column;">
+                        <span class="text-caption" style="font-weight: 600;">{{ nr.name }}</span>
+                        <span style="font-size: 14px; color: var(--color-text-tertiary); font-family: ui-monospace, monospace;">{{ nr.code }}</span>
+                      </div>
+                      <span style="display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ nr.syncDot }};"></span>
+                        <span style="font-size: 15px; color: var(--color-text-secondary);">{{ nr.sync }}</span>
+                      </span>
+                      <span style="text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ nr.omzet }}</span>
+                      <span style="display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ nr.stokDot }};"></span>
+                        <span style="font-size: 15px; color: {{ nr.stokColor }}; font-weight: {{ nr.stokWeight }};">{{ nr.stok }}</span>
+                      </span>
+                      <span style="display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ nr.inDot }};"></span>
+                        <span style="font-size: 15px; color: var(--color-text-secondary);">{{ nr.input }}</span>
+                      </span>
+                      <span style="color: var(--neutral-300); font-size: 15px;">›</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: var(--space-3);">Klik unit untuk membuka denah tangki &amp; nozzle.</div>
+              </sc-if>
+
+              <!-- 4b · Denah tangki -->
+              <sc-if value="{{ monIsDenah }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top: var(--space-6);">
+                  <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                    <button onClick="{{ backToJaringan }}" style="font-family: var(--font-sans); font-size: 15px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); border: none; border-radius: var(--radius-full); padding: 8px 16px; min-height: 40px; cursor: pointer;">← Jaringan</button>
+                    <span class="text-h6" style="color: var(--color-text-brand);">{{ monUnitName }} · {{ monUnitCode }}</span>
+                    <span style="margin-left: auto; font-size: 15px; color: var(--color-text-tertiary);">level dihitung dari opname 05.40 + penjualan tersinkron sejak itu</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-4); margin-top: var(--space-5);">
+                    <sc-for list="{{ tanks }}" as="tk" hint-placeholder-count="5">
+                      <div style="border: 1px solid {{ tk.cardBorder }}; border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-1); background: {{ tk.cardBg }};">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                          <span style="font-size: 15px; font-weight: 700; color: var(--color-text-tertiary);">{{ tk.id }}</span>
+                          <span style="font-size: 15px; font-weight: 600; color: {{ tk.daysColor }};">{{ tk.days }}</span>
+                        </div>
+                        <div class="text-caption" style="font-weight: 700; color: var(--color-text-brand); margin-top: 4px;">{{ tk.prod }}</div>
+                        <div style="position: relative; height: 110px; border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-top: var(--space-3); overflow: hidden; background: var(--neutral-50);">
+                          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: {{ tk.fillPct }}%; background: {{ tk.fillColor }}; transition: height .4s;"></div>
+                          <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 18px; font-weight: 700; color: var(--color-text-primary); font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 rgba(255,255,255,0.6);">{{ tk.pctLabel }}</span>
+                          </div>
+                        </div>
+                        <div style="font-size: 15px; color: var(--color-text-secondary); margin-top: var(--space-2); font-variant-numeric: tabular-nums;">{{ tk.volLabel }}</div>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: var(--space-2);">
+                          <sc-for list="{{ tk.nozzles }}" as="nz" hint-placeholder-count="3">
+                            <span style="font-size: 13px; font-weight: 600; color: {{ nz.fg }}; background: {{ nz.bg }}; padding: 2px 8px; border-radius: var(--radius-full); border: 1px solid {{ nz.border }};">{{ nz.label }}</span>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ tankAlert }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--color-danger-bg); border: 1px solid var(--color-danger-border);">
+                      <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-danger); flex-shrink: 0; margin-top: 7px;"></span>
+                      <div style="flex: 1;">
+                        <div class="text-caption" style="font-weight: 600; color: var(--color-danger);">Stok kritis: {{ tankAlertText }}</div>
+                        <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 2px;">Sisa DO 8 KL — usulan penebusan belum dibuat. Teruskan ke Manajemen Ops sekarang.</div>
+                      </div>
+                      <a href="Laporan Operasional Harian.dc.html" style="font-size: 15px; font-weight: 600; color: var(--color-accent); text-decoration: none; flex-shrink: 0; margin-top: 4px;">Buka laporan unit →</a>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <!-- 4c · Heatmap ketaatan -->
+              <sc-if value="{{ monIsHeatmap }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top: var(--space-6);">
+                  <div style="display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap;">
+                    <span style="font-size: 16px; color: var(--color-text-secondary);">7 unit × 14 hari · agregat semua modul input · klik sel untuk detail</span>
+                    <div style="margin-left: auto; display: flex; gap: var(--space-3); align-items: center;">
+                      <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 12px; height: 12px; border-radius: 4px; background: var(--color-success);"></span><span style="font-size: 14px; color: var(--color-text-tertiary);">lengkap</span></span>
+                      <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 12px; height: 12px; border-radius: 4px; background: var(--color-warning);"></span><span style="font-size: 14px; color: var(--color-text-tertiary);">sebagian</span></span>
+                      <span style="display: inline-flex; align-items: center; gap: 5px;"><span style="width: 12px; height: 12px; border-radius: 4px; background: var(--color-danger);"></span><span style="font-size: 14px; color: var(--color-text-tertiary);">kosong</span></span>
+                    </div>
+                  </div>
+                  <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-4); padding: var(--space-5) var(--space-6); overflow-x: auto;">
+                    <div style="display: grid; grid-template-columns: 130px repeat(14, 30px); gap: 5px; align-items: center;">
+                      <span></span>
+                      <sc-for list="{{ hmDays }}" as="hd" hint-placeholder-count="14">
+                        <span style="font-size: 12px; color: var(--color-text-tertiary); text-align: center; font-variant-numeric: tabular-nums;">{{ hd }}</span>
+                      </sc-for>
+                    </div>
+                    <sc-for list="{{ hmRows }}" as="hr" hint-placeholder-count="7">
+                      <div style="display: grid; grid-template-columns: 130px repeat(14, 30px); gap: 5px; align-items: center; margin-top: 5px;">
+                        <span style="font-size: 14px; font-weight: 600; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ hr.name }}</span>
+                        <sc-for list="{{ hr.cells }}" as="cl" hint-placeholder-count="14">
+                          <div onClick="{{ cl.onClick }}" style="{{ cl.style }}"></div>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                    <div style="display: grid; grid-template-columns: 130px 1fr; gap: 5px; align-items: center; margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-border-hairline);">
+                      <span style="font-size: 14px; font-weight: 700; color: var(--color-danger);">Kas / Pengeluaran</span>
+                      <div style="height: 30px; border-radius: 6px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); display: flex; align-items: center; justify-content: center;">
+                        <span style="font-size: 13px; font-weight: 700; color: var(--color-danger); letter-spacing: 0.04em;">DORMAN — TERAKHIR INPUT 17 APR 2019 (7,2 TAHUN) · SEMUA UNIT</span>
+                      </div>
+                    </div>
+                  </div>
+                  <sc-if value="{{ hmPanel }}" hint-placeholder-val="{{ false }}">
+                    <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-4); padding: var(--space-5) var(--space-6);">
+                      <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+                        <span class="text-h6" style="color: var(--color-text-brand);">{{ hmPanelTitle }}</span>
+                        <span style="font-size: 15px; color: var(--color-text-tertiary);">status per modul</span>
+                        <button onClick="{{ hmPanelClose }}" style="margin-left: auto; font-family: var(--font-sans); font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); background: var(--neutral-100); border: none; border-radius: var(--radius-full); padding: 6px 14px; cursor: pointer;">Tutup</button>
+                      </div>
+                      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); margin-top: var(--space-4);">
+                        <sc-for list="{{ hmPanelMods }}" as="pm" hint-placeholder-count="6">
+                          <div style="display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-radius: var(--radius-md); background: {{ pm.bg }}; border: 1px solid {{ pm.border }};">
+                            <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ pm.dot }}; flex-shrink: 0;"></span>
+                            <span style="font-size: 15px; font-weight: 600; color: {{ pm.fg }};">{{ pm.name }}</span>
+                            <span style="margin-left: auto; font-size: 14px; color: var(--color-text-tertiary);">{{ pm.note }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <!-- 4d · Anomali -->
+              <sc-if value="{{ monIsAnomali }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-6);">
+                  <sc-for list="{{ monAnomalies }}" as="a" hint-placeholder-count="5">
+                    <div style="display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: {{ a.bg }}; border: 1px solid {{ a.border }};">
+                      <span style="width: 10px; height: 10px; border-radius: 50%; background: {{ a.dot }}; flex-shrink: 0; margin-top: 7px;"></span>
+                      <div style="flex: 1;">
+                        <div style="display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;">
+                          <span class="text-caption" style="font-weight: 600; color: {{ a.titleColor }};">{{ a.title }}</span>
+                          <span style="font-size: 15px; color: var(--color-text-tertiary);">{{ a.unit }}</span>
+                        </div>
+                        <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 2px;">{{ a.desc }}</div>
+                      </div>
+                      <a href="Laporan Operasional Harian.dc.html" style="font-size: 15px; font-weight: 600; color: var(--color-accent); text-decoration: none; flex-shrink: 0; margin-top: 4px;">Buka laporan →</a>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+<!-- ===== Catatan keputusan navigasi ===== -->
+<div data-screen-label="Catatan Navigasi" style="max-width: 1320px; margin: 0 auto; padding: var(--space-10) var(--space-8) var(--space-24);">
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Role membatasi menu, bukan layar yang menolak</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Peran ditentukan saat login (dari akun, tanpa pemilih manual) dan sidebar hanya menampilkan menu yang relevan — Pengawas tidak pernah melihat menu grup, pemilih unitnya terkunci. Tidak ada layar "akses ditolak" dalam alur normal.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Shell persisten, konteks terbawa</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Topbar (logo, peran, indikator "data terakhir masuk") dan sidebar tidak pernah berubah antar layar. Unit + tanggal bisnis adalah konteks global: dipilih sekali di hub, terbawa ke laporan, rincian, dan monitoring via deep-link.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Entry point ke layar lama</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Hub menautkan tiga layar yang sudah didesain: Ringkasan BoD (Design Spec §05), Laporan Operasional Harian (kaya), dan Rincian Penjualan (cetak). Feed anomali dan alert stok juga menaut langsung ke laporan unit — dari sinyal ke bukti dalam satu klik.</p>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: "landing", role: "bod",
+    email: "", password: "", loginState: "idle", attempts: 0,
+    unitCode: "63.783.01", dateStr: "2026-06-11",
+    monView: "jaringan", monUnit: "64.783.11",
+    landingBanner: false, alertSim: false, hubIncomplete: false,
+    hmSel: null,
+  };
+
+  renderVals() {
+    const s = this.state;
+    const id = (n, d = 0) => n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    const UNITS = [
+      { code: "64.781.11", name: "Imam Bonjol", omzet: 312.4 },
+      { code: "64.781.06", name: "Kotabaru", omzet: 246.7 },
+      { code: "64.781.01", name: "Adisucipto", omzet: 289.1 },
+      { code: "64.782.01", name: "Batu Layang", omzet: 198.5 },
+      { code: "64.783.11", name: "Korek", omzet: 174.3 },
+      { code: "63.781.002", name: "28 Oktober", omzet: 232.0 },
+      { code: "63.783.01", name: "Bakau", omzet: 153.2 },
+    ];
+    const ROLES = {
+      pengawas: { label: "Pengawas · Bakau", scope: "Peran ini hanya melihat unit 63.783.01." },
+      admin: { label: "Admin Area", scope: "Peran ini memantau ketaatan 7 unit." },
+      ops: { label: "Manajemen Ops", scope: "Peran ini melihat operasional semua unit." },
+      bod: { label: "Direksi", scope: "Peran ini melihat analisa level grup." },
+    };
+    const R = ROLES[s.role] || ROLES.bod;
+
+    // ===== Role matrix =====
+    const Y = "var(--color-success)", N = "var(--neutral-300)";
+    const mrow = (menu, note, a, b, c, d) => ({
+      menu, note,
+      v1: a ? "✓" : "—", c1: a ? Y : N,
+      v2: b ? "✓" : "—", c2: b ? Y : N,
+      v3: c ? "✓" : "—", c3: c ? Y : N,
+      v4: d ? "✓" : "—", c4: d ? Y : N,
+    });
+    const roleMatrix = [
+      mrow("Unit Saya (hari ini)", "checklist input harian", true, false, false, false),
+      mrow("Ringkasan Grup", "verdict + KPI + NPSO/PSO", false, false, false, true),
+      mrow("Laporan & Analisa", "hub → laporan & rincian per unit", true, true, true, true),
+      mrow("Monitoring Realtime", "jaringan, tangki, anomali", true, true, true, true),
+      mrow("Ketaatan Administrasi", "heatmap 7 unit × modul × hari", false, true, false, true),
+      mrow("Pengaturan & Akun", "kelola pengguna, kunci akun", false, true, false, false),
+    ];
+
+    // ===== Chips =====
+    const chipStyle = (active) => ({
+      padding: "9px 18px", borderRadius: "999px", cursor: "pointer",
+      border: active ? "1px solid var(--brand-navy)" : "1px solid var(--color-border-strong)",
+      fontSize: "16px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--color-text-secondary)",
+      background: active ? "var(--brand-navy)" : "var(--color-surface)",
+      transition: "all .15s", minHeight: "44px",
+    });
+    const jumpChips = [
+      { key: "landing", label: "1 · Landing", go: () => this.setState({ screen: "landing" }) },
+      { key: "login", label: "2 · Login", go: () => this.setState({ screen: "login", loginState: "idle", attempts: 0 }) },
+      { key: "hub", label: "3 · Laporan & Analisa", go: () => this.setState({ screen: "hub" }) },
+      { key: "mon", label: "4 · Monitoring", go: () => this.setState({ screen: "mon", monView: "jaringan" }) },
+    ].map((c) => ({ label: c.label, onClick: c.go, style: chipStyle(s.screen === c.key) }));
+
+    const stateChips = [
+      { key: "banner", label: "Banner gangguan (landing)", active: s.landingBanner, go: () => this.setState({ landingBanner: !s.landingBanner, screen: "landing" }) },
+      { key: "incomplete", label: "Data belum lengkap (hub)", active: s.hubIncomplete, go: () => this.setState({ hubIncomplete: !s.hubIncomplete, screen: "hub" }) },
+      { key: "alert", label: "Simulasi alert (monitoring)", active: s.alertSim, go: () => this.setState({ alertSim: !s.alertSim, screen: "mon" }) },
+    ].map((c) => ({ label: c.label, onClick: c.go, style: chipStyle(c.active) }));
+
+    // ===== Landing =====
+    const pillars = [
+      { icon: "✓", title: "Pengawasan ketaatan", desc: "Siapa yang belum input, modul apa, sejak kapan — disorot, bukan disembunyikan. Termasuk flag dorman bertahun-tahun." },
+      { icon: "◔", title: "Monitoring stok realtime", desc: "Level tangki tiap SPBU dari opname + penjualan tersinkron, dengan estimasi sisa hari dan alert stok kritis." },
+      { icon: "▤", title: "Analisa untuk Direksi", desc: "Sehat atau tidak, dan kenapa — KPI grup, bauran NPSO/PSO vs target, ranking unit, dan anomali yang perlu tindakan." },
+    ];
+    const landingUnits = UNITS.map((u) => ({ name: u.name, code: u.code }));
+
+    // ===== Login =====
+    const loginLoading = s.loginState === "loading";
+    const loginError = s.loginState === "error";
+    const loginLocked = s.loginState === "locked";
+    const accStyle = {
+      padding: "7px 14px", borderRadius: "999px", cursor: "pointer",
+      border: "1px solid var(--color-border)", fontSize: "15px", fontWeight: 600,
+      fontFamily: "var(--font-sans)", color: "var(--color-text-secondary)",
+      background: "var(--color-surface)", minHeight: "36px",
+    };
+    const demoAccounts = [
+      { label: "Direksi", email: "direksi@solagroup.id", role: "bod" },
+      { label: "Admin Area", email: "admin.area@solagroup.id", role: "admin" },
+      { label: "Manajemen Ops", email: "ops@solagroup.id", role: "ops" },
+      { label: "Pengawas Bakau", email: "pengawas.bakau@solagroup.id", role: "pengawas" },
+      { label: "Kredensial salah", email: "salah@solagroup.id", role: null },
+    ].map((a) => ({
+      label: a.label, style: accStyle,
+      onClick: () => this.setState({ email: a.email, password: "demo1234", loginState: "idle" }),
+    }));
+
+    const doLogin = () => {
+      if (loginLoading) return;
+      const email = s.email || "direksi@solagroup.id";
+      if (email.includes("salah")) {
+        const attempts = s.attempts + 1;
+        this.setState({ attempts, loginState: attempts >= 3 ? "locked" : "error" });
+        return;
+      }
+      this.setState({ loginState: "loading" });
+      const role = email.includes("pengawas") ? "pengawas" : email.includes("admin") ? "admin" : email.includes("ops") ? "ops" : "bod";
+      setTimeout(() => {
+        this.setState({
+          loginState: "idle", screen: "hub", role, attempts: 0,
+          unitCode: role === "pengawas" ? "63.783.01" : s.unitCode,
+        });
+      }, 900);
+    };
+
+    // ===== Shell / sidebar =====
+    const menuDefs = [
+      { key: "unitku", label: "Unit Saya — Bakau", roles: ["pengawas"], act: () => { window.location.href = "Laporan Operasional Harian.dc.html"; } },
+      { key: "ringkasan", label: "Ringkasan Grup", roles: ["bod"], act: () => { window.location.href = "SolaMax Design Spec.dc.html"; } },
+      { key: "hub", label: "Laporan & Analisa", roles: ["pengawas", "admin", "ops", "bod"], act: () => this.setState({ screen: "hub" }) },
+      { key: "mon", label: "Monitoring Realtime", roles: ["pengawas", "admin", "ops", "bod"], act: () => this.setState({ screen: "mon", monView: "jaringan" }), badge: s.alertSim ? "3" : false },
+      { key: "ketaatan", label: "Ketaatan Administrasi", roles: ["admin", "bod"], act: () => this.setState({ screen: "mon", monView: "heatmap" }) },
+      { key: "akun", label: "Pengaturan & Akun", roles: ["admin"], act: () => {} },
+    ];
+    const activeKey = s.screen === "hub" ? "hub" : s.monView === "heatmap" ? "ketaatan" : "mon";
+    const sideMenu = menuDefs.filter((m) => m.roles.includes(s.role)).map((m) => {
+      const active = (s.screen === "hub" && m.key === "hub") || (s.screen === "mon" && (m.key === "mon" || (m.key === "ketaatan" && s.monView === "heatmap")) && m.key === activeKey);
+      return {
+        label: m.label, badge: m.badge || false, onClick: m.act,
+        style: {
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+          width: "100%", textAlign: "left", padding: "11px 14px", borderRadius: "10px",
+          border: "none", cursor: "pointer", fontFamily: "var(--font-sans)",
+          fontSize: "16px", fontWeight: 600, minHeight: "44px",
+          color: active ? "#fff" : "var(--color-text-secondary)",
+          background: active ? "var(--brand-navy)" : "transparent",
+          transition: "all .15s",
+        },
+      };
+    });
+
+    // ===== Hub =====
+    const unitOptions = UNITS.map((u) => ({ code: u.code, label: u.name + " · " + u.code }));
+    const hubStep = (n, label, state) => ({
+      n: String(n), label, arrow: n < 4,
+      bg: state === "done" ? "var(--color-success-bg)" : state === "active" ? "var(--color-accent-tint)" : "var(--neutral-50)",
+      border: state === "done" ? "var(--color-success-border)" : state === "active" ? "var(--color-info-border)" : "var(--color-border-hairline)",
+      numBg: state === "done" ? "var(--color-success)" : state === "active" ? "var(--color-accent)" : "var(--neutral-200)",
+      numFg: state === "idle" ? "var(--neutral-500)" : "#fff",
+      fg: state === "done" ? "var(--color-success)" : state === "active" ? "var(--color-accent)" : "var(--color-text-tertiary)",
+    });
+    const hubSteps = [
+      hubStep(1, "Pilih unit & tanggal", "done"),
+      hubStep(2, "Lihat ringkas", "active"),
+      hubStep(3, "Drilldown detail", "idle"),
+      hubStep(4, "Export / cetak", "idle"),
+    ];
+    const hubCards = [
+      { tag: "Analisa grup", title: "Ringkasan Direksi", desc: "Verdict kesehatan grup, KPI, bauran NPSO/PSO vs target, ranking 7 unit, feed anomali.", roles: "Direksi · Admin Area", href: "SolaMax Design Spec.dc.html" },
+      { tag: "Detail unit · kaya", title: "Laporan Operasional Harian", desc: "16 seksi: alarm indikator, omset & losses per produk, kas, DO, stok, EDC, rekonsiliasi A–I.", roles: "Semua peran (unit sesuai akses)", href: "Laporan Operasional Harian.dc.html" },
+      { tag: "Dokumen · cetak", title: "Rincian Penjualan", desc: "Ledger resmi siap cetak & arsip: omset, pelanggan, EDC, pengeluaran, summary, tanda tangan.", roles: "Semua peran · export PDF", href: "Rincian Penjualan Harian.dc.html" },
+    ];
+
+    // ===== Monitoring =====
+    const segStyle = (active) => ({
+      padding: "8px 16px", borderRadius: "999px", cursor: "pointer", border: "none",
+      fontSize: "15px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--neutral-500)",
+      background: active ? "var(--brand-navy)" : "transparent",
+      transition: "all .15s", minHeight: "38px",
+    });
+    const monTabs = [
+      { key: "jaringan", label: "Jaringan" }, { key: "denah", label: "Denah Tangki" },
+      { key: "heatmap", label: "Ketaatan" }, { key: "anomali", label: "Anomali" },
+    ].map((t) => ({ ...t, style: segStyle(s.monView === t.key), onClick: () => this.setState({ monView: t.key }) }));
+
+    const monTitles = { jaringan: "Jaringan — 7 SPBU live", denah: "Denah tangki & nozzle", heatmap: "Heatmap ketaatan administrasi", anomali: "Feed anomali & exception" };
+
+    const G2 = "var(--color-success)", Y2 = "var(--color-warning)", R2 = "var(--color-danger)";
+    const netRows = UNITS.map((u, i) => {
+      const isKorek = u.code === "64.783.11";
+      const isBakau = u.code === "63.783.01";
+      const isBL = u.code === "64.782.01";
+      const stokCrit = s.alertSim && isKorek;
+      const stokWarn = isKorek && !s.alertSim;
+      const syncSlow = s.alertSim && isBL;
+      return {
+        name: u.name, code: u.code,
+        sync: syncSlow ? "14 mnt lalu" : (2 + (i % 4)) + " mnt lalu",
+        syncDot: syncSlow ? Y2 : G2,
+        omzet: "Rp " + id(u.omzet, 1) + " jt",
+        stok: stokCrit ? "Pertamax 0,8 hari" : stokWarn ? "Pertamax 1,1 hari" : "aman",
+        stokDot: stokCrit ? R2 : stokWarn ? Y2 : G2,
+        stokColor: stokCrit ? R2 : stokWarn ? Y2 : "var(--color-text-secondary)",
+        stokWeight: stokCrit || stokWarn ? 700 : 400,
+        input: isBakau ? "2/3 shift" : "3/3 shift",
+        inDot: isBakau ? Y2 : G2,
+        onClick: () => this.setState({ monView: "denah", monUnit: u.code }),
+      };
+    });
+
+    const MU = UNITS.find((u) => u.code === s.monUnit) || UNITS[4];
+    const tankDef = (idT, prod, cap, vol, nozzles, critOverride) => {
+      const pct = Math.round((vol / cap) * 100);
+      const days = critOverride !== undefined ? critOverride : Math.round((vol / (cap * 0.22)) * 10) / 10;
+      const crit = days < 1.5, warn = !crit && days < 3;
+      return {
+        id: idT, prod,
+        fillPct: pct, pctLabel: pct + "%",
+        volLabel: id(vol / 1000, 1) + " / " + id(cap / 1000) + " KL",
+        days: id(days, 1) + " hari",
+        daysColor: crit ? R2 : warn ? Y2 : "var(--color-text-tertiary)",
+        fillColor: crit ? "var(--color-danger-bg)" : warn ? "var(--color-warning-bg)" : "var(--accent-100)",
+        cardBorder: crit ? "var(--color-danger-border)" : "var(--color-border-hairline)",
+        cardBg: crit ? "var(--color-danger-bg)" : "var(--color-surface)",
+        nozzles: nozzles.map((n, i2) => ({
+          label: n,
+          fg: i2 === 0 && crit ? R2 : "var(--color-text-secondary)",
+          bg: "var(--neutral-50)", border: "var(--color-border)",
+        })),
+      };
+    };
+    const korekCrit = s.alertSim ? 0.8 : 1.1;
+    const tanks = s.monUnit === "64.783.11" ? [
+      tankDef("T1", "Pertalite", 40000, 18400, ["P1-N1", "P1-N2", "P2-N1"]),
+      tankDef("T2", "Pertamax", 24000, 2100, ["P2-N2", "P3-N1"], korekCrit),
+      tankDef("T3", "Pertamax Turbo", 16000, 5600, ["P3-N2"]),
+      tankDef("T4", "Bio Solar", 24000, 9200, ["P4-N1", "P4-N2"]),
+      tankDef("T5", "Dexlite", 16000, 6100, ["P5-N1"]),
+    ] : [
+      tankDef("T1", "Pertalite", 40000, 26200, ["P1-N1", "P1-N2", "P2-N1"]),
+      tankDef("T2", "Pertamax", 24000, 15800, ["P2-N2", "P3-N1"]),
+      tankDef("T3", "Pertamax Turbo", 16000, 7400, ["P3-N2"]),
+      tankDef("T4", "Bio Solar", 24000, 11600, ["P4-N1", "P4-N2"]),
+      tankDef("T5", "Dexlite", 16000, 8900, ["P5-N1"]),
+    ];
+    const tankAlert = s.monUnit === "64.783.11";
+    const tankAlertText = "Pertamax T2 sisa " + id(korekCrit, 1) + " hari (di bawah ambang 1,5 hari)";
+
+    // ===== Heatmap =====
+    const hmDays = ["29/5", "30/5", "31/5", "1/6", "2/6", "3/6", "4/6", "5/6", "6/6", "7/6", "8/6", "9/6", "10/6", "11/6"];
+    const cellColor = (ui, di) => {
+      if (ui === 6 && di === 13) return Y2;
+      if (s.alertSim && ui === 3 && di >= 11) return R2;
+      if ((ui * 7 + di * 3) % 19 === 0) return Y2;
+      if ((ui * 11 + di * 5) % 37 === 0) return R2;
+      return G2;
+    };
+    const hmRows = UNITS.map((u, ui) => ({
+      name: u.name,
+      cells: hmDays.map((_, di) => {
+        const col = cellColor(ui, di);
+        const sel = s.hmSel && s.hmSel.ui === ui && s.hmSel.di === di;
+        const isToday = di === 13;
+        return {
+          onClick: () => this.setState({ hmSel: { ui, di } }),
+          style: {
+            height: "30px", borderRadius: "6px", cursor: "pointer",
+            background: col,
+            opacity: col === G2 ? 0.55 : 1,
+            border: sel ? "2px solid var(--brand-navy)" : isToday ? "1.5px dashed var(--neutral-600)" : "1px solid rgba(0,0,0,0.06)",
+            boxSizing: "border-box",
+            transition: "transform .1s",
+          },
+        };
+      }),
+    }));
+    const hmPanel = !!s.hmSel;
+    let hmPanelTitle = "", hmPanelMods = [];
+    if (hmPanel) {
+      const u = UNITS[s.hmSel.ui];
+      const col = cellColor(s.hmSel.ui, s.hmSel.di);
+      hmPanelTitle = u.name + " · " + hmDays[s.hmSel.di].replace("/", " Jun").replace("5 Jun", "/5");
+      hmPanelTitle = u.name + " · " + hmDays[s.hmSel.di];
+      const mod = (name, ok, note) => ({
+        name, note,
+        dot: ok ? G2 : R2, fg: ok ? "var(--color-text-primary)" : R2,
+        bg: ok ? "var(--color-success-bg)" : "var(--color-danger-bg)",
+        border: ok ? "var(--color-success-border)" : "var(--color-danger-border)",
+      });
+      const bad = col !== G2;
+      hmPanelMods = [
+        mod("Penjualan shift 1", true, "07.12"),
+        mod("Penjualan shift 2", !bad, bad ? "belum" : "15.05"),
+        mod("Penjualan shift 3", !(col === R2), col === R2 ? "belum" : "06.10 +1"),
+        mod("Opname tangki", true, "05.40"),
+        mod("Setoran bank", !bad, bad ? "belum" : "09.30"),
+        mod("Kas / pengeluaran", false, "dorman 2019"),
+      ];
+    }
+
+    // ===== Anomali =====
+    const an = (lvl, title, unit, desc) => ({
+      title, unit, desc,
+      dot: lvl === "r" ? R2 : lvl === "y" ? Y2 : "var(--color-info)",
+      bg: lvl === "r" ? "var(--color-danger-bg)" : lvl === "y" ? "var(--color-warning-bg)" : "var(--color-info-bg)",
+      border: lvl === "r" ? "var(--color-danger-border)" : lvl === "y" ? "var(--color-warning-border)" : "var(--color-info-border)",
+      titleColor: lvl === "r" ? R2 : lvl === "y" ? Y2 : "var(--color-info)",
+    });
+    let monAnomalies = [
+      an("r", "Modul Kas dorman — terakhir input 17 Apr 2019 (7,2 tahun)", "Semua unit", "Flag permanen, tidak bisa di-dismiss. Sinyal pengawasan paling penting."),
+      an("r", "Losses abnormal −412 L (−0,62%)", "Batu Layang · 64.782.01", "Opname T3 Pertalite vs stok buku — 2 hari berturut-turut minus."),
+      an("y", "Penjualan shift 2 belum diinput", "Bakau · 63.783.01", "Terakhir input 13.20 WIB — status unit kuning sampai lengkap."),
+    ];
+    if (s.alertSim) {
+      monAnomalies = [
+        an("r", "Stok kritis: Pertamax sisa 0,8 hari", "Korek · 64.783.11", "Di bawah ambang 1,5 hari. Sisa DO 8 KL, usulan penebusan belum dibuat."),
+        an("r", "Sinkronisasi terhenti 14 menit", "Batu Layang · 64.782.01", "Agen POS tidak mengirim data — cek koneksi atau komputer POS unit."),
+        ...monAnomalies,
+      ];
+    }
+
+    return {
+      // routing
+      isLanding: s.screen === "landing", isLogin: s.screen === "login",
+      isShell: s.screen === "hub" || s.screen === "mon",
+      isHub: s.screen === "hub", isMon: s.screen === "mon",
+      urlBar: s.screen === "landing" ? "solamax.solagroup.id" : s.screen === "login" ? "solamax.solagroup.id/masuk" : s.screen === "hub" ? "solamax.solagroup.id/laporan" : "solamax.solagroup.id/monitoring/" + s.monView,
+      jumpChips, stateChips, roleMatrix,
+      // landing
+      landingBanner: s.landingBanner, pillars, landingUnits,
+      goLogin: () => this.setState({ screen: "login", loginState: "idle", attempts: 0 }),
+      // login
+      email: s.email, password: s.password,
+      onEmail: (e) => this.setState({ email: e.target.value, loginState: s.loginState === "error" ? "idle" : s.loginState }),
+      onPassword: (e) => this.setState({ password: e.target.value }),
+      doLogin, demoAccounts,
+      loginLoading, loginError, loginLocked,
+      loginFormVisible: !loginLocked,
+      loginBtnLabel: loginLoading ? "Memeriksa…" : "Masuk",
+      attemptsLeft: String(Math.max(0, 3 - s.attempts)),
+      inputBorder: loginError ? "var(--color-danger-border)" : "var(--color-border)",
+      resetLogin: () => this.setState({ loginState: "idle", attempts: 0, email: "", password: "" }),
+      // shell
+      roleLabel: R.label, roleScopeNote: R.scope, sideMenu,
+      lastSync: s.alertSim ? "6 mnt lalu" : "2 mnt lalu",
+      doLogout: () => this.setState({ screen: "landing" }),
+      // hub
+      unitOptions, unitCode: s.unitCode, dateStr: s.dateStr,
+      unitLocked: s.role === "pengawas",
+      onUnit: (e) => this.setState({ unitCode: e.target.value }),
+      onDate: (e) => this.setState({ dateStr: e.target.value }),
+      hubSteps, hubCards, hubIncomplete: s.hubIncomplete,
+      goMonitoring: () => this.setState({ screen: "mon", monView: "jaringan" }),
+      // monitoring
+      monTabs, monTitle: monTitles[s.monView] || "",
+      monIsJaringan: s.monView === "jaringan", monIsDenah: s.monView === "denah",
+      monIsHeatmap: s.monView === "heatmap", monIsAnomali: s.monView === "anomali",
+      netRows,
+      monUnitName: MU.name, monUnitCode: MU.code,
+      backToJaringan: () => this.setState({ monView: "jaringan" }),
+      tanks, tankAlert, tankAlertText,
+      hmDays, hmRows, hmPanel, hmPanelTitle, hmPanelMods,
+      hmPanelClose: () => this.setState({ hmSel: null }),
+      monAnomalies,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

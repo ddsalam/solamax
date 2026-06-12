@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/motion.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/layout.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/base.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/styles.css">
+  <script src="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/_ds_bundle.js"></script>
+  <style>
+    body { background: var(--neutral-50); }
+    html { scroll-behavior: smooth; }
+  </style>
+</helmet>
+
+<!-- ===== Intro halaman spec ===== -->
+<div data-screen-label="Intro Laporan Harian" style="max-width: 1280px; margin: 0 auto; padding: var(--space-12) var(--space-8) 0;">
+  <div style="display: flex; align-items: center; gap: var(--space-4);">
+    <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 24px; display: block;">
+    <div style="width: 1px; height: 20px; background: var(--color-border);"></div>
+    <a href="SolaMax Design Spec.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">← SolaMax Design Spec</a>
+  </div>
+  <div class="text-eyebrow" style="color: var(--color-accent); margin-top: var(--space-8);">Layar baru · semua persona</div>
+  <h1 class="text-h2" style="color: var(--color-text-brand); margin-top: var(--space-2);">Laporan Operasional Harian</h1>
+  <p class="text-body-lg" style="color: var(--color-text-secondary); max-width: 780px; margin-top: var(--space-3);">Reproduksi digital laporan harian Google Sheets pengawas — satu unit, satu tanggal bisnis. Alarm indikator di atas (yang dilihat pertama), detail sebagai bukti, rekonsiliasi A–I sebagai penutup.</p>
+  <div style="display: flex; gap: var(--space-2); margin-top: var(--space-6); align-items: center; flex-wrap: wrap;">
+    <span class="text-caption" style="color: var(--color-text-tertiary); margin-right: var(--space-2);">State demo:</span>
+    <sc-for list="{{ viewChips }}" as="vc" hint-placeholder-count="4">
+      <button onClick="{{ vc.onClick }}" style="{{ vc.style }}">{{ vc.label }}</button>
+    </sc-for>
+  </div>
+</div>
+
+<!-- ===== Browser frame ===== -->
+<div data-screen-label="Laporan Operasional Harian" style="max-width: 1280px; margin: var(--space-5) auto 0; padding: 0 var(--space-8);">
+  <div style="border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-3); border: 1px solid var(--color-border-hairline); background: var(--color-surface);">
+    <div style="display: flex; align-items: center; gap: var(--space-4); padding: 12px 18px; background: var(--neutral-100); border-bottom: 1px solid var(--color-border-hairline);">
+      <div style="display: flex; gap: 7px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840;"></span>
+      </div>
+      <div style="flex: 1; max-width: 480px; margin: 0 auto; background: var(--color-bg); border-radius: var(--radius-sm); padding: 5px 14px; font-size: 15px; color: var(--color-text-tertiary); text-align: center;">solamax.solagroup.id/unit/{{ unitCode }}/laporan/{{ dateStr }}</div>
+      <div style="width: 50px;"></div>
+    </div>
+
+    <!-- App topbar -->
+    <div style="display: flex; align-items: center; gap: var(--space-4); padding: 14px 40px; border-bottom: 1px solid var(--color-border-hairline); background: var(--bg-frosted);">
+      <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 22px; display: block;">
+      <div style="width: 1px; height: 18px; background: var(--color-border);"></div>
+      <span class="text-caption" style="color: var(--color-text-secondary); font-weight: 600;">SolaMax · Operasional</span>
+      <div style="display: flex; gap: var(--space-5); margin-left: var(--space-8);">
+        <span class="text-caption" style="color: var(--color-text-primary); font-weight: 600; border-bottom: 2px solid var(--brand-navy); padding-bottom: 2px;">Laporan Harian</span>
+        <span class="text-caption" style="color: var(--color-text-tertiary);">Stok &amp; Penebusan</span>
+        <span class="text-caption" style="color: var(--color-text-tertiary);">Rekonsiliasi</span>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-3);">
+        <span style="font-size: 15px; color: var(--color-text-tertiary);">{{ syncNote }}</span>
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--brand-navy); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">SM</div>
+      </div>
+    </div>
+
+    <!-- Toolbar: pemilih unit + tanggal + toggle + export -->
+    <div style="display: flex; align-items: center; gap: var(--space-3); padding: 14px 40px; border-bottom: 1px solid var(--color-border-hairline); background: var(--color-bg); flex-wrap: wrap;">
+      <select value="{{ unitCode }}" onChange="{{ onUnit }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px; cursor: pointer;">
+        <sc-for list="{{ unitOptions }}" as="o" hint-placeholder-count="7">
+          <option value="{{ o.code }}">{{ o.label }}</option>
+        </sc-for>
+      </select>
+      <input type="date" value="{{ dateStr }}" onChange="{{ onDate }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px;">
+      <span style="font-size: 15px; color: var(--color-text-tertiary);">tanggal bisnis</span>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-3);">
+        <div style="display: flex; background: var(--neutral-100); border-radius: var(--radius-full); padding: 4px;">
+          <button onClick="{{ onRingkas }}" style="{{ ringkasStyle }}">Ringkas</button>
+          <button onClick="{{ onLengkap }}" style="{{ lengkapStyle }}">Lengkap</button>
+        </div>
+        <a href="Rincian Penjualan Harian.dc.html" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-accent); background: var(--color-accent-tint); border-radius: var(--radius-full); padding: 12px 20px; text-decoration: none; display: inline-flex; align-items: center;">Versi ringkas / Cetak</a>
+        <button onClick="{{ onPrint }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: #fff; background: var(--brand-navy); border: none; border-radius: var(--radius-full); padding: 10px 22px; min-height: 44px; cursor: pointer;" style-hover="background: var(--accent-800);">Export PDF</button>
+      </div>
+    </div>
+
+    <!-- ===== STATE: LOADING ===== -->
+    <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 48px 40px 64px;">
+        <div style="display: flex; align-items: center; gap: var(--space-3);">
+          <div style="width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--accent-200); border-top-color: var(--accent-600);"></div>
+          <span class="text-caption" style="color: var(--color-text-secondary);">Mengambil laporan {{ unitName }} · {{ bizDateLong }}…</span>
+        </div>
+        <div style="height: 130px; border-radius: var(--radius-lg); background: var(--neutral-100); margin-top: var(--space-8);"></div>
+        <div style="height: 240px; border-radius: var(--radius-lg); background: var(--neutral-100); margin-top: var(--space-4);"></div>
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-4); margin-top: var(--space-4);">
+          <div style="height: 100px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 100px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 100px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 100px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+          <div style="height: 100px; border-radius: var(--radius-lg); background: var(--neutral-100);"></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ===== STATE: KONTEN ===== -->
+    <sc-if value="{{ showContent }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 40px 40px 48px; background: var(--color-bg);">
+
+        <!-- 1 · Header laporan -->
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); flex-wrap: wrap;">
+          <div>
+            <div class="text-eyebrow" style="color: var(--color-text-tertiary);">Laporan Operasional Harian · SPBU {{ unitCode }}</div>
+            <h3 class="text-h3" style="color: var(--color-text-brand); margin-top: var(--space-2);">{{ unitName }}</h3>
+            <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: var(--space-2);">Tanggal bisnis {{ bizDateLong }} · {{ shiftNote }}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div style="text-align: right;">
+              <div style="font-size: 15px; color: var(--color-text-tertiary);">Alarm indikator</div>
+              <div class="text-h4" style="font-variant-numeric: tabular-nums; color: {{ alarmScoreColor }};">{{ alarmScore }}</div>
+            </div>
+            <div style="width: 1px; height: 44px; background: var(--color-border);"></div>
+            <div style="text-align: right;">
+              <div style="font-size: 15px; color: var(--color-text-tertiary);">Omset hari ini</div>
+              <div class="text-h4" style="font-variant-numeric: tabular-nums;">{{ omzetTotalShort }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Banner: belum lengkap -->
+        <sc-if value="{{ isPartial }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-6); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border);">
+            <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-warning); flex-shrink: 0; margin-top: 7px;"></span>
+            <div>
+              <div class="text-caption" style="font-weight: 600; color: var(--color-warning);">Data tanggal bisnis ini belum lengkap — 5 dari 9 modul terisi</div>
+              <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 2px;">Penjualan shift 3, opname tangki, setoran &amp; EDC belum diinput (shift 3 tutup besok ±06.00 WIB). Angka di bawah adalah angka berjalan; alarm indikator dihitung setelah modul lengkap.</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- 4 · ALARM INDIKATOR -->
+        <div style="margin-top: var(--space-8); border: 1px solid {{ alarmCardBorder }}; border-radius: var(--radius-xl); box-shadow: var(--shadow-1); overflow: hidden;">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Alarm Indikator</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">11 cek harian — yang dilihat pertama oleh pengawas &amp; atasan</span>
+            <span style="margin-left: auto; font-size: 16px; font-weight: 700; color: {{ alarmScoreColor }}; font-variant-numeric: tabular-nums;">{{ alarmScore }} sesuai</span>
+          </div>
+          <sc-if value="{{ isPartial }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: var(--space-8) var(--space-6); text-align: center;">
+              <div class="text-caption" style="color: var(--color-text-tertiary);">Menunggu 4 modul terisi — alarm dihitung otomatis saat laporan lengkap.</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ notPartial }}" hint-placeholder-val="{{ true }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-8); padding: var(--space-3) var(--space-6) var(--space-5);">
+              <sc-for list="{{ alarms }}" as="al" hint-placeholder-count="11">
+                <div style="display: flex; align-items: baseline; gap: var(--space-3); padding: 11px 0; border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="width: 24px; height: 24px; border-radius: 50%; background: {{ al.bg }}; color: {{ al.fg }}; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; transform: translateY(5px);">{{ al.mark }}</span>
+                  <span class="text-body" style="color: {{ al.labelColor }}; font-weight: {{ al.weight }};">{{ al.label }}</span>
+                  <span style="margin-left: auto; font-size: 15px; color: {{ al.noteColor }}; text-align: right; font-variant-numeric: tabular-nums;">{{ al.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- 2 · OMSET, GAIN(LOSSES), TERA -->
+        <div style="margin-top: var(--space-10);">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Omset Penjualan, Gain (Losses) &amp; Tera Harian</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">per produk · dari totalisator nozzle per shift</span>
+          </div>
+          <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-4); overflow: hidden;">
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1.1fr 0.8fr 1.3fr 0.9fr; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Sales (L)</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Gain/Losses (L)</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Tera (L)</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Omzet (Rp)</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">% Mix</span>
+            </div>
+            <sc-for list="{{ salesRows }}" as="r" hint-placeholder-count="6">
+              <div style="display: grid; grid-template-columns: 1.5fr 1fr 1.1fr 0.8fr 1.3fr 0.9fr; gap: var(--space-3); padding: 13px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                <span class="text-caption" style="font-weight: 600;">{{ r.name }}</span>
+                <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums;">{{ r.sales }}</span>
+                <span style="text-align: right; font-size: 16px; font-weight: {{ r.glWeight }}; color: {{ r.glColor }}; font-variant-numeric: tabular-nums;">{{ r.gl }}</span>
+                <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ r.tera }}</span>
+                <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ r.omzet }}</span>
+                <span style="text-align: right; font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ r.mix }}</span>
+              </div>
+            </sc-for>
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1.1fr 0.8fr 1.3fr 0.9fr; gap: var(--space-3); padding: 14px 24px; background: var(--neutral-50); align-items: baseline;">
+              <span class="text-caption" style="font-weight: 700;">TOTAL</span>
+              <span style="text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;">{{ salesTotal.sales }}</span>
+              <span style="text-align: right; font-size: 17px; font-weight: 700; color: var(--color-danger); font-variant-numeric: tabular-nums;">{{ salesTotal.gl }}</span>
+              <span style="text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;">{{ salesTotal.tera }}</span>
+              <span style="text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ salesTotal.omzet }}</span>
+              <span style="text-align: right; font-size: 16px; color: var(--color-text-tertiary);">100%</span>
+            </div>
+          </div>
+          <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: var(--space-2);">Losses harian −52 L = 0,34% dari sales — dalam ambang 100 L / 0,5%. Bauran NPSO: gasoline 23,1% · gasoil 10,6%.</div>
+        </div>
+
+        <!-- 3 · RINGKASAN KAS -->
+        <div style="margin-top: var(--space-10);">
+          <div class="text-h5" style="color: var(--color-text-brand);">Ringkasan Kas</div>
+          <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-4); margin-top: var(--space-4);">
+            <sc-for list="{{ kasCards }}" as="k" hint-placeholder-count="5">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1);">
+                <div style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">{{ k.label }}</div>
+                <div class="text-h6" style="margin-top: var(--space-2); font-variant-numeric: tabular-nums; white-space: nowrap; color: {{ k.valColor }};">{{ k.val }}</div>
+                <div style="font-size: 15px; color: {{ k.noteColor }}; margin-top: 4px;">{{ k.note }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- ===== DETAIL (mode Lengkap) ===== -->
+        <sc-if value="{{ showDetail }}" hint-placeholder-val="{{ true }}">
+          <div>
+
+            <!-- 5 + 7 · Saldo hutang piutang & GL kumulatif -->
+            <div style="display: grid; grid-template-columns: 1fr 1.4fr; gap: var(--space-4); margin-top: var(--space-10);">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: var(--shadow-1);">
+                <div class="text-h6" style="color: var(--color-text-brand);">Saldo Hutang Piutang Pelanggan</div>
+                <div style="display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-5);">
+                  <div style="display: flex; justify-content: space-between; align-items: baseline;"><span class="text-body" style="color: var(--color-text-secondary);">Total Piutang</span><span class="text-h6" style="font-variant-numeric: tabular-nums;">Rp 86.420.000</span></div>
+                  <div style="display: flex; justify-content: space-between; align-items: baseline;"><span class="text-body" style="color: var(--color-text-secondary);">Total Hutang (deposit)</span><span class="text-h6" style="font-variant-numeric: tabular-nums;">Rp 14.350.000</span></div>
+                  <div style="display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--space-3); border-top: 1px solid var(--color-border-hairline);"><span class="text-caption" style="font-weight: 700;">Total Piutang Pelanggan</span><span class="text-h5" style="font-variant-numeric: tabular-nums;">Rp 72.070.000</span></div>
+                </div>
+                <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: var(--space-4);">Sesuai saldo modul Deposit &amp; Pembayaran Pelanggan — alarm ✓</div>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-5) var(--space-6) var(--space-3);">
+                  <div class="text-h6" style="color: var(--color-text-brand);">Gain (Losses) Kumulatif</div>
+                  <span style="font-size: 15px; color: var(--color-text-tertiary);">bulan berjalan · 1–11 Jun</span>
+                  <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-success);"></span><span style="font-size: 15px; color: var(--color-text-secondary);">−319 L · 0,19% — aman</span></span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: var(--space-3); padding: 10px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">G/L bulan (L)</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">% vs vol</span>
+                </div>
+                <sc-for list="{{ glKumRows }}" as="g" hint-placeholder-count="6">
+                  <div style="display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: var(--space-3); padding: 10px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span style="font-size: 16px;">{{ g.name }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: {{ g.weight }}; color: {{ g.color }}; font-variant-numeric: tabular-nums;">{{ g.val }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ g.pct }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- 6 · REALISASI & TARGET BULANAN -->
+            <div style="margin-top: var(--space-10);">
+              <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+                <div class="text-h5" style="color: var(--color-text-brand);">Realisasi &amp; Target Bulanan</div>
+                <span style="font-size: 16px; color: var(--color-text-tertiary);">vs prorata alokasi 11 dari 30 hari</span>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-4); overflow: hidden;">
+                <div style="display: grid; grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Penjualan Kumulatif</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Rata-rata/hari</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Penerimaan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Alokasi/bln</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">(Kekurangan)/Kelebihan</span>
+                </div>
+                <sc-for list="{{ targetRows }}" as="t" hint-placeholder-count="6">
+                  <div style="display: grid; grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; gap: var(--space-3); padding: 13px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span class="text-caption" style="font-weight: 600;">{{ t.name }}</span>
+                    <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums;">{{ t.kum }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ t.avg }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ t.terima }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ t.alok }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: {{ t.weight }}; color: {{ t.color }}; font-variant-numeric: tabular-nums;">{{ t.selisih }}</span>
+                  </div>
+                </sc-for>
+                <div style="display: grid; grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; gap: var(--space-3); padding: 14px 24px; background: var(--neutral-50); align-items: baseline;">
+                  <span class="text-caption" style="font-weight: 700;">TOTAL</span>
+                  <span style="text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;">168.883 L</span>
+                  <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">15.353 L</span>
+                  <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">166.800 L</span>
+                  <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">479.650 L</span>
+                  <span style="text-align: right; font-size: 17px; font-weight: 700; color: var(--color-danger); font-variant-numeric: tabular-nums;">(6.989 L)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 8 + 15 · DO harian & alokasi tidak sesuai -->
+            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-4); margin-top: var(--space-10);">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="padding: var(--space-5) var(--space-6) var(--space-3);"><div class="text-h6" style="color: var(--color-text-brand);">Laporan DO Harian</div></div>
+                <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; gap: var(--space-3); padding: 10px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">DO Awal</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Penerimaan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Penebusan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Sisa DO Akhir</span>
+                </div>
+                <sc-for list="{{ doRows }}" as="d" hint-placeholder-count="6">
+                  <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; gap: var(--space-3); padding: 11px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span style="font-size: 16px; font-weight: 600;">{{ d.name }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ d.awal }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ d.terima }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ d.tebus }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ d.sisa }}</span>
+                  </div>
+                </sc-for>
+                <div style="padding: var(--space-3) var(--space-6); font-size: 15px; color: var(--color-text-tertiary);">Pencatatan DO sesuai sistem MyPertamina — alarm ✓</div>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="padding: var(--space-5) var(--space-6) var(--space-3);">
+                  <div class="text-h6" style="color: var(--color-text-brand);">Alokasi Penerimaan Tidak Sesuai</div>
+                  <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 2px;">hanya produk dengan ketidaksesuaian · 5 hari terakhir</div>
+                </div>
+                <sc-for list="{{ alokasiBlocks }}" as="ab" hint-placeholder-count="2">
+                  <div>
+                    <div style="padding: 8px 24px; background: var(--color-danger-bg); border-top: 1px solid var(--color-danger-border); border-bottom: 1px solid var(--color-danger-border); display: flex; justify-content: space-between; align-items: baseline;">
+                      <span class="text-caption" style="font-weight: 700; color: var(--color-danger);">{{ ab.name }}</span>
+                      <span style="font-size: 15px; font-weight: 600; color: var(--color-danger); font-variant-numeric: tabular-nums;">kumulasi {{ ab.kum }}</span>
+                    </div>
+                    <sc-for list="{{ ab.rows }}" as="ar" hint-placeholder-count="3">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1.1fr; gap: var(--space-3); padding: 9px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                        <span style="font-size: 15px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ ar.tgl }}</span>
+                        <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ ar.alok }}</span>
+                        <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ ar.terima }}</span>
+                        <span style="text-align: right; font-size: 16px; font-weight: {{ ar.weight }}; color: {{ ar.color }}; font-variant-numeric: tabular-nums;">{{ ar.kum }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+                <div style="padding: var(--space-3) var(--space-6); font-size: 15px; color: var(--color-text-tertiary);">Kolom: Alokasi · Penerimaan · Kumulasi (Kekurangan)/Kelebihan</div>
+              </div>
+            </div>
+
+            <!-- 9 · SISA & KETAHANAN STOCK & DO -->
+            <div style="margin-top: var(--space-10);">
+              <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+                <div class="text-h5" style="color: var(--color-text-brand);">Sisa &amp; Ketahanan Stock &amp; DO</div>
+                <span style="font-size: 16px; color: var(--color-text-tertiary);">ketahanan = sisa stock ÷ rata-rata jual 7 hari</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--color-info-bg); border: 1px solid var(--color-info-border);">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--color-info); flex-shrink: 0;"></span>
+                <span class="text-caption" style="color: var(--color-accent); font-weight: 600;">TERDAPAT USULAN PENEBUSAN DO HARI INI — Pertalite 16.000 L</span>
+                <span style="margin-left: auto; font-size: 15px; color: var(--color-text-tertiary);">menunggu persetujuan manajemen</span>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-3); overflow: hidden;">
+                <div style="display: grid; grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Sisa Stock</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Ketahanan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Sisa DO</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Plan Terima Hari Ini</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Plan Minta Besok</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Usulan Beli DO</span>
+                </div>
+                <sc-for list="{{ stockRows }}" as="s" hint-placeholder-count="6">
+                  <div style="display: grid; grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; gap: var(--space-3); padding: 13px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span class="text-caption" style="font-weight: 600;">{{ s.name }}</span>
+                    <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums;">{{ s.stock }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: {{ s.tahanWeight }}; color: {{ s.tahanColor }}; font-variant-numeric: tabular-nums;">{{ s.tahan }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ s.sisaDo }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ s.planTerima }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ s.planMinta }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: {{ s.usulWeight }}; color: {{ s.usulColor }}; font-variant-numeric: tabular-nums;">{{ s.usul }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- 10 + 11 · Harga margin & pelanggan -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-10);">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="padding: var(--space-5) var(--space-6) var(--space-3);"><div class="text-h6" style="color: var(--color-text-brand);">Harga Beli, Jual &amp; Margin</div></div>
+                <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 0.7fr; gap: var(--space-3); padding: 10px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Produk</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Beli</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Jual</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Margin</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">%</span>
+                </div>
+                <sc-for list="{{ hargaRows }}" as="h" hint-placeholder-count="6">
+                  <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr 0.7fr; gap: var(--space-3); padding: 11px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span style="font-size: 16px; font-weight: 600;">{{ h.name }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ h.beli }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ h.jual }}</span>
+                    <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums;">{{ h.margin }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ h.pct }}</span>
+                  </div>
+                </sc-for>
+                <div style="padding: var(--space-3) var(--space-6); font-size: 15px; color: var(--color-text-tertiary);">Sesuai SK harga 1 Jun 2026 — alarm ✓</div>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="padding: var(--space-5) var(--space-6) var(--space-3);"><div class="text-h6" style="color: var(--color-text-brand);">Pelanggan (Transaksi Piutang Hari Ini)</div></div>
+                <div style="display: grid; grid-template-columns: 40px 1.6fr 0.9fr 1.1fr; gap: var(--space-3); padding: 10px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">No</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Nama Pelanggan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Volume (L)</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Nominal (Rp)</span>
+                </div>
+                <sc-for list="{{ pelangganRows }}" as="p" hint-placeholder-count="3">
+                  <div style="display: grid; grid-template-columns: 40px 1.6fr 0.9fr 1.1fr; gap: var(--space-3); padding: 12px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span style="font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ p.no }}</span>
+                    <span style="font-size: 16px; font-weight: 600;">{{ p.nama }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ p.vol }}</span>
+                    <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ p.nominal }}</span>
+                  </div>
+                </sc-for>
+                <div style="display: grid; grid-template-columns: 40px 1.6fr 0.9fr 1.1fr; gap: var(--space-3); padding: 13px 24px; background: var(--neutral-50); align-items: baseline;">
+                  <span></span>
+                  <span class="text-caption" style="font-weight: 700;">TOTAL</span>
+                  <span style="text-align: right; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;">1.726</span>
+                  <span style="text-align: right; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">Rp 12.460.000</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 12 · PENGELUARAN HARIAN -->
+            <div style="margin-top: var(--space-10);">
+              <div style="display: flex; align-items: baseline; gap: var(--space-3);">
+                <div class="text-h5" style="color: var(--color-text-brand);">Pengeluaran Harian</div>
+                <span style="font-size: 16px; color: var(--color-text-tertiary);">modul kas — kembali aktif lewat SolaMax setelah dorman sejak 2019</span>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); margin-top: var(--space-4); overflow: hidden;">
+                <div style="display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; gap: var(--space-3); padding: 12px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Keterangan</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Dibayar Oleh</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Diterima Oleh</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Disahkan Oleh</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Nominal</span>
+                </div>
+                <sc-for list="{{ keluarRows }}" as="k" hint-placeholder-count="4">
+                  <div style="display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; gap: var(--space-3); padding: 12px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+                    <span style="font-size: 16px; font-weight: 600;">{{ k.ket }}</span>
+                    <span style="font-size: 16px; color: var(--color-text-secondary);">{{ k.bayar }}</span>
+                    <span style="font-size: 16px; color: var(--color-text-secondary);">{{ k.terima }}</span>
+                    <span style="font-size: 16px; color: var(--color-text-secondary);">{{ k.sah }}</span>
+                    <span style="text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ k.nominal }}</span>
+                  </div>
+                </sc-for>
+                <div style="display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; gap: var(--space-3); padding: 13px 24px; background: var(--neutral-50); align-items: baseline;">
+                  <span class="text-caption" style="font-weight: 700;">Total hari ini</span>
+                  <span style="font-size: 15px; color: var(--color-text-tertiary);" data-comment-anchor="keluar-kum">Kumulatif bulanan: Rp 28.640.000</span>
+                  <span></span><span></span>
+                  <span style="text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">Rp 2.845.000</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 13 + 14 · Pendapatan lain & EDC -->
+            <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-4); margin-top: var(--space-10);">
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden; align-self: start;">
+                <div style="padding: var(--space-5) var(--space-6) var(--space-3);"><div class="text-h6" style="color: var(--color-text-brand);">Pendapatan Lain-Lain</div></div>
+                <sc-for list="{{ lainRows }}" as="l" hint-placeholder-count="2">
+                  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 24px; border-bottom: 1px solid var(--color-border-hairline);">
+                    <span style="font-size: 16px;">{{ l.ket }}</span>
+                    <span style="font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ l.nominal }}</span>
+                  </div>
+                </sc-for>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 13px 24px; background: var(--neutral-50);">
+                  <div><div class="text-caption" style="font-weight: 700;">Total hari ini</div><div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 2px;">Kumulatif bulanan: Rp 8.250.000</div></div>
+                  <span style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;">Rp 750.000</span>
+                </div>
+              </div>
+              <div style="border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden;">
+                <div style="display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-5) var(--space-6) var(--space-3);">
+                  <div class="text-h6" style="color: var(--color-text-brand);">EDC</div>
+                  <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-danger);"></span><span style="font-size: 15px; font-weight: 600; color: var(--color-danger);">1 channel selisih</span></span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: var(--space-3); padding: 10px 24px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline);">
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Channel</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Nominal</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Settlement</span>
+                  <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Selisih</span>
+                </div>
+                <sc-for list="{{ edcRows }}" as="e" hint-placeholder-count="8">
+                  <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: var(--space-3); padding: 10px 24px; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline; background: {{ e.bg }};">
+                    <span style="font-size: 16px; font-weight: {{ e.weight }}; color: {{ e.nameColor }};">{{ e.name }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ e.nominal }}</span>
+                    <span style="text-align: right; font-size: 16px; color: var(--color-text-secondary); font-variant-numeric: tabular-nums;">{{ e.settle }}</span>
+                    <span style="text-align: right; font-size: 16px; font-weight: {{ e.weight }}; color: {{ e.selColor }}; font-variant-numeric: tabular-nums;">{{ e.selisih }}</span>
+                  </div>
+                </sc-for>
+                <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: var(--space-3); padding: 13px 24px; background: var(--neutral-50); align-items: baseline;">
+                  <div><div class="text-caption" style="font-weight: 700;">Total</div><div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 2px;">Kumulatif bulanan: Rp 196.420.000</div></div>
+                  <span style="text-align: right; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;">Rp 18.730.000</span>
+                  <span style="text-align: right; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;">Rp 18.280.000</span>
+                  <span style="text-align: right; font-size: 16px; font-weight: 700; color: var(--color-danger); font-variant-numeric: tabular-nums;">−Rp 450.000</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </sc-if>
+
+        <!-- 16 · SUMMARY REKONSILIASI -->
+        <div style="margin-top: var(--space-10); border: 1px solid {{ rekonBorder }}; border-radius: var(--radius-xl); box-shadow: var(--shadow-2); overflow: hidden;">
+          <div style="display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50);">
+            <div class="text-h5" style="color: var(--color-text-brand);">Summary Rekonsiliasi</div>
+            <span style="font-size: 16px; color: var(--color-text-tertiary);">jantung laporan harian — uang tunai (H) harus sama dengan setoran bank (I)</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-10); padding: var(--space-6);">
+            <div style="display: flex; flex-direction: column;">
+              <sc-for list="{{ rekonRows }}" as="rr" hint-placeholder-count="9">
+                <div style="display: flex; align-items: baseline; gap: var(--space-4); padding: 10px 0; border-bottom: 1px solid {{ rr.lineBorder }}; background: {{ rr.bg }};">
+                  <span style="width: 28px; height: 28px; border-radius: 50%; background: {{ rr.badgeBg }}; color: {{ rr.badgeFg }}; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; transform: translateY(6px);">{{ rr.l }}</span>
+                  <div style="flex: 1;">
+                    <span class="text-body" style="font-weight: {{ rr.weight }};">{{ rr.label }}</span>
+                    <sc-if value="{{ rr.formula }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size: 15px; color: var(--color-text-tertiary); margin-left: 10px; font-family: ui-monospace, monospace;">{{ rr.formula }}</span>
+                    </sc-if>
+                  </div>
+                  <span style="font-size: 15px; color: var(--color-text-tertiary); width: 18px; text-align: center;">{{ rr.op }}</span>
+                  <span style="font-size: 17px; font-weight: {{ rr.weight }}; font-variant-numeric: tabular-nums; white-space: nowrap; color: {{ rr.valColor }};">{{ rr.val }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; justify-content: center; gap: var(--space-4); padding: var(--space-6); border-radius: var(--radius-lg); background: {{ verdictBg }}; border: 1px solid {{ verdictBorder }};">
+              <div style="display: flex; align-items: center; gap: var(--space-3);">
+                <span style="width: 36px; height: 36px; border-radius: 50%; background: {{ verdictDot }}; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">{{ verdictMark }}</span>
+                <div class="text-h6" style="color: {{ verdictColor }};">{{ verdictTitle }}</div>
+              </div>
+              <div style="font-family: ui-monospace, monospace; font-size: 16px; color: var(--color-text-secondary);">H = E + F − G &nbsp;·&nbsp; cocok bila H = I</div>
+              <div style="display: flex; flex-direction: column; gap: var(--space-2);">
+                <div style="display: flex; justify-content: space-between;"><span class="text-body" style="color: var(--color-text-secondary);">H · Uang Tunai</span><span style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;">{{ hVal }}</span></div>
+                <div style="display: flex; justify-content: space-between;"><span class="text-body" style="color: var(--color-text-secondary);">I · Setoran Bank</span><span style="font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;">{{ iVal }}</span></div>
+                <div style="display: flex; justify-content: space-between; padding-top: var(--space-2); border-top: 1px solid {{ verdictBorder }};"><span class="text-caption" style="font-weight: 700; color: {{ verdictColor }};">Selisih H − I</span><span style="font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: {{ verdictColor }};">{{ verdictDiff }}</span></div>
+              </div>
+              <div style="font-size: 15px; color: var(--color-text-tertiary);">{{ verdictNote }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: var(--space-8); padding-top: var(--space-4); border-top: 1px solid var(--color-border-hairline); display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">
+          <span style="font-size: 15px; color: var(--color-text-tertiary);">Sumber: EasyMax POS · sinkron tiap 1–5 menit · ⟳ = angka pernah dikoreksi (revisi totalisator)</span>
+          <span style="font-size: 15px; color: var(--color-text-tertiary);">Disusun otomatis oleh SolaMax · menggantikan rekap manual Google Sheets</span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+<!-- ===== Catatan navigasi & keputusan desain ===== -->
+<div data-screen-label="Catatan Navigasi" style="max-width: 1280px; margin: 0 auto; padding: var(--space-10) var(--space-8) var(--space-24);">
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Entry point per persona</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Pengawas: layar utama untuk unitnya sendiri (pemilih SPBU terkunci). Admin Area &amp; Ops: dari drilldown unit di tabel/heatmap. BoD: dari "Buka detail operasional →" di ranking — semua deep-link membawa unit + tanggal bisnis.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Alarm dulu, bukti kemudian</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Urutan sheet asli dipertahankan sebagai isi, tapi alarm indikator dipindah ke atas — itu yang dicek atasan lewat WA tiap pagi. Item ✗ selalu membawa angka pendukung, dan tiap seksi detail menyebut alarm yang ia buktikan.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Ringkas / Lengkap &amp; Export PDF</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Mode Ringkas (alarm + penjualan + kas + rekonsiliasi) untuk cek harian cepat; Lengkap untuk arsip &amp; audit. Export PDF memakai urutan lengkap — laporan ini dicetak dan diarsip per tanggal bisnis.</p>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { view: "normal", detail: true, unitCode: "63.783.01", dateStr: "2026-06-11" };
+
+  renderVals() {
+    const { view, detail, unitCode, dateStr } = this.state;
+    const id = (n, d = 0) => n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+    const rp = (n) => "Rp " + id(Math.abs(n));
+    const L = (n) => id(n) + " L";
+
+    const UNITS = [
+      ["64.781.11", "Imam Bonjol"], ["64.781.06", "Kotabaru"], ["64.781.01", "Adisucipto"],
+      ["64.782.01", "Batu Layang"], ["64.783.11", "Korek"], ["63.781.002", "28 Oktober"], ["63.783.01", "Bakau"],
+    ];
+    const unitName = (UNITS.find((u) => u[0] === unitCode) || UNITS[6])[1];
+    const unitOptions = UNITS.map(([code, name]) => ({ code, label: name + " · " + code }));
+
+    const setoranAnom = view === "setoran";
+    const isLoading = view === "loading";
+    const isPartial = view === "partial";
+
+    // ===== 2 · Penjualan per produk =====
+    const PROD = [
+      { name: "Pertalite", sales: 10400, gl: -42, tera: 40, jual: 10000, beli: 9480 },
+      { name: "Pertamax", sales: 2050, gl: 6, tera: 20, jual: 12500, beli: 11745 },
+      { name: "Pertamax Turbo", sales: 360, gl: 0, tera: 0, jual: 13700, beli: 12880 },
+      { name: "Bio Solar", sales: 2300, gl: -18, tera: 20, jual: 6800, beli: 6443 },
+      { name: "Dexlite", sales: 170, gl: 2, tera: 0, jual: 13400, beli: 12594 },
+      { name: "Pertamina Dex", sales: 73, gl: 0, tera: 0, jual: 13800, beli: 12971 },
+    ];
+    const totSales = PROD.reduce((a, p) => a + p.sales, 0);
+    const totOmzet = PROD.reduce((a, p) => a + p.sales * p.jual, 0);
+    const salesRows = PROD.map((p) => ({
+      name: p.name,
+      sales: id(p.sales),
+      gl: (p.gl > 0 ? "+" : p.gl < 0 ? "−" : "") + id(Math.abs(p.gl)),
+      glColor: p.gl < 0 ? "var(--color-danger)" : p.gl > 0 ? "var(--color-success)" : "var(--color-text-tertiary)",
+      glWeight: p.gl < 0 ? 700 : 400,
+      tera: p.tera ? id(p.tera) : "—",
+      omzet: rp(p.sales * p.jual),
+      mix: id((p.sales / totSales) * 100, 1) + "%",
+    }));
+    const salesTotal = { sales: id(totSales), gl: "−52", tera: "80", omzet: rp(totOmzet) };
+
+    // ===== Rekonsiliasi =====
+    const A = totOmzet;                 // 153.482.400
+    const B = 40 * 10000 + 20 * 12500 + 20 * 6800; // 786.000
+    const C = 12460000;
+    const D = 18730000;
+    const E = A - (B + C + D);          // 121.506.400
+    const F = 750000;
+    const G = 2845000;
+    const H = E + F - G;                // 119.411.400
+    const I = setoranAnom ? H - 1250000 : H;
+    const cocok = H === I;
+
+    // ===== 3 · Kas cards =====
+    const kasCards = [
+      { label: "Transaksi Pelanggan", val: rp(C), note: "3 pelanggan piutang", valColor: "var(--color-text-primary)", noteColor: "var(--color-text-tertiary)" },
+      { label: "EDC", val: rp(D), note: "8 channel · 1 selisih", valColor: "var(--color-text-primary)", noteColor: "var(--color-danger)" },
+      { label: "Pengeluaran", val: rp(G), note: "4 nota · semua disahkan", valColor: "var(--color-text-primary)", noteColor: "var(--color-text-tertiary)" },
+      { label: "Pendapatan Lain-Lain", val: rp(F), note: "sewa ATM & kantin", valColor: "var(--color-text-primary)", noteColor: "var(--color-text-tertiary)" },
+      { label: "Setoran Bank", val: rp(I), note: cocok ? "cocok dengan uang tunai (H)" : "SELISIH −Rp 1.250.000", valColor: cocok ? "var(--color-text-primary)" : "var(--color-danger)", noteColor: cocok ? "var(--color-success)" : "var(--color-danger)" },
+    ];
+
+    // ===== 4 · Alarm =====
+    const mk = (label, ok, note) => ({
+      label, mark: ok ? "✓" : "✗",
+      bg: ok ? "var(--color-success-bg)" : "var(--color-danger-bg)",
+      fg: ok ? "var(--color-success)" : "var(--color-danger)",
+      labelColor: ok ? "var(--color-text-primary)" : "var(--color-danger)",
+      weight: ok ? 400 : 700,
+      note: note || "",
+      noteColor: ok ? "var(--color-text-tertiary)" : "var(--color-danger)",
+    });
+    const alarms = [
+      mk("Losses Harian Aman", true, "−52 L · 0,34%"),
+      mk("Losses Bulanan Aman", true, "−319 L · 0,19%"),
+      mk("Setoran Bank Sesuai", cocok, cocok ? "H = I" : "selisih −Rp 1.250.000"),
+      mk("Target/Alokasi Sudah Tercapai", false, "Pertalite −7.627 L vs prorata"),
+      mk("Pencatatan DO Sesuai", true, ""),
+      mk("Pengeluaran Sudah Disahkan", true, "4/4 nota"),
+      mk("Harga Beli/Jual Benar", true, "SK 1 Jun 2026"),
+      mk("Saldo Hutang/Piutang Pelanggan Sesuai", true, ""),
+      mk("DO Untuk Penerimaan Besok Cukup", true, "sisa DO ≥ plan"),
+      mk("Permintaan Besok Sudah Cukup", true, ""),
+      mk("Settlement EDC Sudah Sesuai", false, "BRI Debet −Rp 450.000"),
+    ];
+    const okCount = alarms.filter((a) => a.mark === "✓").length;
+    const alarmScore = okCount + "/11";
+    const alarmScoreColor = okCount === 11 ? "var(--color-success)" : okCount >= 9 ? "var(--color-warning)" : "var(--color-danger)";
+    const alarmCardBorder = okCount >= 9 ? "var(--color-border-hairline)" : "var(--color-danger-border)";
+
+    // ===== 6 · Realisasi & target =====
+    const tgt = (name, kum, terima, alok, sel) => ({
+      name, kum: L(kum), avg: L(Math.round(kum / 11)), terima: L(terima), alok: L(alok),
+      selisih: sel < 0 ? "(" + id(Math.abs(sel)) + " L)" : "+" + id(sel) + " L",
+      color: sel < -2000 ? "var(--color-danger)" : sel < 0 ? "var(--color-warning)" : "var(--color-success)",
+      weight: sel < -2000 ? 700 : 400,
+    });
+    const targetRows = [
+      tgt("Pertalite", 114400, 112000, 332800, -7627),
+      tgt("Pertamax", 22550, 24000, 57000, 1650),
+      tgt("Pertamax Turbo", 3960, 4000, 10500, 110),
+      tgt("Bio Solar", 25300, 24000, 72000, -1100),
+      tgt("Dexlite", 1870, 2000, 5100, 0),
+      tgt("Pertamina Dex", 803, 800, 2250, -22),
+    ];
+
+    // ===== 7 · GL kumulatif =====
+    const glKumRows = [
+      ["Pertalite", -238, "0,21%"], ["Pertamax", 14, "0,06%"], ["Pertamax Turbo", -3, "0,08%"],
+      ["Bio Solar", -96, "0,38%"], ["Dexlite", 5, "0,27%"], ["Pertamina Dex", -1, "0,12%"],
+    ].map(([name, v, pct]) => ({
+      name, val: (v > 0 ? "+" : v < 0 ? "−" : "") + id(Math.abs(v)) + " L", pct,
+      color: v < 0 ? "var(--color-danger)" : v > 0 ? "var(--color-success)" : "var(--color-text-tertiary)",
+      weight: v < -100 ? 700 : 400,
+    }));
+
+    // ===== 8 · DO harian =====
+    const doRows = [
+      ["Pertalite", 24000, 8000, 16000, 32000], ["Pertamax", 16000, 8000, 0, 8000],
+      ["Pertamax Turbo", 4000, 0, 0, 4000], ["Bio Solar", 16000, 8000, 8000, 16000],
+      ["Dexlite", 4000, 0, 0, 4000], ["Pertamina Dex", 2000, 0, 0, 2000],
+    ].map(([name, a, t, p, s]) => ({ name, awal: L(a), terima: t ? L(t) : "—", tebus: p ? L(p) : "—", sisa: L(s) }));
+
+    // ===== 9 · Stok & ketahanan =====
+    const stk = (name, stock, hari, sisaDo, planT, planM, usul) => ({
+      name, stock: L(stock),
+      tahan: id(hari, 1) + " hari",
+      tahanColor: hari < 1.5 ? "var(--color-danger)" : hari < 3 ? "var(--color-warning)" : "var(--color-text-primary)",
+      tahanWeight: hari < 3 ? 700 : 400,
+      sisaDo: L(sisaDo), planTerima: planT ? L(planT) : "—", planMinta: planM ? L(planM) : "—",
+      usul: usul ? L(usul) : "—",
+      usulColor: usul ? "var(--color-accent)" : "var(--color-text-tertiary)",
+      usulWeight: usul ? 700 : 400,
+    });
+    const stockRows = [
+      stk("Pertalite", 18400, 1.8, 32000, 8000, 8000, 16000),
+      stk("Pertamax", 21300, 10.4, 8000, 0, 0, 0),
+      stk("Pertamax Turbo", 5600, 15.6, 4000, 0, 0, 0),
+      stk("Bio Solar", 9200, 4.0, 16000, 8000, 0, 0),
+      stk("Dexlite", 6100, 35.9, 4000, 0, 0, 0),
+      stk("Pertamina Dex", 3300, 45.2, 2000, 0, 0, 0),
+    ];
+
+    // ===== 10 · Harga & margin =====
+    const hargaRows = PROD.map((p) => ({
+      name: p.name, beli: rp(p.beli), jual: rp(p.jual),
+      margin: rp(p.jual - p.beli), pct: id(((p.jual - p.beli) / p.beli) * 100, 1) + "%",
+    }));
+
+    // ===== 11 · Pelanggan =====
+    const pelangganRows = [
+      { no: "1", nama: "PT Kapuas Sejahtera Logistik", vol: "980", nominal: rp(6664000) },
+      { no: "2", nama: "CV Borneo Tirta", vol: "520", nominal: rp(3536000) },
+      { no: "3", nama: "PT Khatulistiwa Niaga", vol: "226", nominal: rp(2260000) },
+    ];
+
+    // ===== 12 · Pengeluaran =====
+    const keluarRows = [
+      { ket: "Servis dispenser pompa 3", bayar: "Kasir shift 1", terima: "CV Teknik Jaya", sah: "Pengawas", nominal: rp(1150000) },
+      { ket: "Honor kebersihan mingguan", bayar: "Kasir shift 1", terima: "Tim kebersihan", sah: "Pengawas", nominal: rp(600000) },
+      { ket: "ATK & materai", bayar: "Admin", terima: "Toko Sumber Tulis", sah: "Pengawas", nominal: rp(592500) },
+      { ket: "Token listrik kantor", bayar: "Admin", terima: "PLN", sah: "Pengawas", nominal: rp(502500) },
+    ];
+
+    // ===== 13 · Pendapatan lain =====
+    const lainRows = [
+      { ket: "Sewa space ATM BRI", nominal: rp(500000) },
+      { ket: "Sewa kantin", nominal: rp(250000) },
+    ];
+
+    // ===== 14 · EDC =====
+    const edc = (name, nom, set) => {
+      const sel = set - nom;
+      return {
+        name, nominal: rp(nom), settle: rp(set),
+        selisih: sel === 0 ? "0" : (sel < 0 ? "−" : "+") + rp(sel).slice(3),
+        selColor: sel === 0 ? "var(--color-text-tertiary)" : "var(--color-danger)",
+        nameColor: sel === 0 ? "var(--color-text-primary)" : "var(--color-danger)",
+        weight: sel === 0 ? 400 : 700,
+        bg: sel === 0 ? "transparent" : "var(--color-danger-bg)",
+      };
+    };
+    const edcRows = [
+      edc("BCA Debet", 4220000, 4220000), edc("BNI Debet", 2180000, 2180000),
+      edc("BRI Debet", 5640000, 5190000), edc("Mandiri Debet", 3910000, 3910000),
+      edc("eMoney Mandiri", 1260000, 1260000), edc("Brizzi BRI", 740000, 740000),
+      edc("Flazz BCA", 530000, 530000), edc("Tapcash BNI", 250000, 250000),
+    ];
+
+    // ===== 15 · Alokasi tidak sesuai =====
+    const alokasiBlocks = [
+      { name: "Pertalite", kum: "(8.000 L)", rows: [
+        { tgl: "07/06", alok: "8.000", terima: "8.000", kum: "0", color: "var(--color-text-tertiary)", weight: 400 },
+        { tgl: "09/06", alok: "16.000", terima: "8.000", kum: "(8.000)", color: "var(--color-danger)", weight: 700 },
+        { tgl: "10/06", alok: "8.000", terima: "8.000", kum: "(8.000)", color: "var(--color-danger)", weight: 400 },
+        { tgl: "11/06", alok: "8.000", terima: "8.000", kum: "(8.000)", color: "var(--color-danger)", weight: 400 },
+      ]},
+      { name: "Bio Solar", kum: "(8.000 L)", rows: [
+        { tgl: "09/06", alok: "8.000", terima: "8.000", kum: "0", color: "var(--color-text-tertiary)", weight: 400 },
+        { tgl: "10/06", alok: "8.000", terima: "0", kum: "(8.000)", color: "var(--color-danger)", weight: 700 },
+        { tgl: "11/06", alok: "8.000", terima: "8.000", kum: "(8.000)", color: "var(--color-danger)", weight: 400 },
+      ]},
+    ];
+
+    // ===== 16 · Rekonsiliasi rows =====
+    const rrow = (l, label, val, opts = {}) => ({
+      l, label, val: rp(val), op: opts.op || "",
+      formula: opts.formula || false,
+      weight: opts.em ? 700 : 400,
+      badgeBg: opts.em ? "var(--brand-navy)" : "var(--neutral-100)",
+      badgeFg: opts.em ? "#fff" : "var(--neutral-500)",
+      bg: "transparent",
+      lineBorder: opts.em ? "var(--color-border)" : "var(--color-border-hairline)",
+      valColor: opts.red ? "var(--color-danger)" : "var(--color-text-primary)",
+    });
+    const rekonRows = [
+      rrow("A", "Omset Penjualan", A),
+      rrow("B", "Tera / Nozzle Test", B, { op: "−" }),
+      rrow("C", "Pelanggan (piutang)", C, { op: "−" }),
+      rrow("D", "EDC", D, { op: "−" }),
+      rrow("E", "Penjualan Tunai", E, { em: true, formula: "E = A − (B + C + D)" }),
+      rrow("F", "Pendapatan Lain", F, { op: "+" }),
+      rrow("G", "Pengeluaran", G, { op: "−" }),
+      rrow("H", "Uang Tunai", H, { em: true, formula: "H = E + F − G" }),
+      rrow("I", "Setoran Bank", I, { em: true, red: !cocok }),
+    ];
+
+    // ===== Chips & controls =====
+    const chipStyle = (active) => ({
+      padding: "9px 18px", borderRadius: "999px", cursor: "pointer",
+      border: active ? "1px solid var(--brand-navy)" : "1px solid var(--color-border-strong)",
+      fontSize: "16px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--color-text-secondary)",
+      background: active ? "var(--brand-navy)" : "var(--color-surface)",
+      transition: "all .15s", minHeight: "44px",
+    });
+    const viewChips = [
+      { key: "normal", label: "Normal (2 alarm ✗)" },
+      { key: "loading", label: "Memuat" },
+      { key: "partial", label: "Belum lengkap" },
+      { key: "setoran", label: "Anomali setoran (H ≠ I)" },
+    ].map((v) => ({ ...v, style: chipStyle(view === v.key), onClick: () => this.setState({ view: v.key }) }));
+
+    const segStyle = (active) => ({
+      padding: "8px 18px", borderRadius: "999px", cursor: "pointer", border: "none",
+      fontSize: "16px", fontWeight: 600, fontFamily: "var(--font-sans)",
+      color: active ? "#fff" : "var(--neutral-500)",
+      background: active ? "var(--brand-navy)" : "transparent",
+      transition: "all .15s", minHeight: "36px",
+    });
+
+    const dateLong = (() => {
+      try {
+        const d = new Date(dateStr + "T12:00:00");
+        return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      } catch (e) { return dateStr; }
+    })();
+
+    return {
+      unitCode, dateStr, unitName, unitOptions,
+      onUnit: (e) => this.setState({ unitCode: e.target.value }),
+      onDate: (e) => this.setState({ dateStr: e.target.value }),
+      onPrint: () => window.print(),
+      onRingkas: () => this.setState({ detail: false }),
+      onLengkap: () => this.setState({ detail: true }),
+      ringkasStyle: segStyle(!detail), lengkapStyle: segStyle(detail),
+      viewChips,
+      isLoading, isPartial, notPartial: !isPartial,
+      showContent: !isLoading,
+      showDetail: detail && !isPartial,
+      bizDateLong: dateLong,
+      shiftNote: isPartial ? "shift 1–2 terinput · shift 3 berjalan" : "3/3 shift terinput · shift 3 ditutup 12 Jun 05.55 WIB",
+      syncNote: "Tersinkron 2 mnt lalu",
+      omzetTotalShort: "Rp " + id(totOmzet / 1000000, 1) + " jt",
+      alarms, alarmScore, alarmScoreColor, alarmCardBorder,
+      salesRows, salesTotal, kasCards,
+      glKumRows, targetRows, doRows, stockRows, hargaRows,
+      pelangganRows, keluarRows, lainRows, edcRows, alokasiBlocks,
+      rekonRows,
+      rekonBorder: cocok ? "var(--color-border-hairline)" : "var(--color-danger-border)",
+      hVal: rp(H), iVal: rp(I),
+      verdictBg: cocok ? "var(--color-success-bg)" : "var(--color-danger-bg)",
+      verdictBorder: cocok ? "var(--color-success-border)" : "var(--color-danger-border)",
+      verdictDot: cocok ? "var(--color-success)" : "var(--color-danger)",
+      verdictMark: cocok ? "✓" : "✗",
+      verdictColor: cocok ? "var(--color-success)" : "var(--color-danger)",
+      verdictTitle: cocok ? "Setoran cocok" : "Setoran TIDAK cocok",
+      verdictDiff: cocok ? "Rp 0" : "−Rp 1.250.000",
+      verdictNote: cocok
+        ? "Uang tunai hasil rekonsiliasi sama persis dengan setoran bank — hari ditutup bersih."
+        : "Uang tunai seharusnya Rp 119.411.400, tersetor Rp 118.161.400. Selisih wajib dijelaskan pengawas hari ini — alarm \"Setoran Bank Sesuai\" menyala merah.",
+    };
+  }
+}
+
+</script>
+</body>
+</html>
