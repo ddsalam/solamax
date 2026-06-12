@@ -1,0 +1,13 @@
+/* SolaGroup — breakpoints & containers (informational tokens; media queries
+   can't read custom properties, so keep these values in sync manually). */
+:root {
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+  --bp-xl: 1280px;
+
+  --container-text: 720px;   /* long-form reading measure */
+  --container-content: 980px; /* default page content */
+  --container-wide: 1200px;  /* heroes, full layouts */
+  --gutter: var(--space-6);
+}

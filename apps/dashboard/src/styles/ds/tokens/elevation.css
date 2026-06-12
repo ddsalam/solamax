@@ -1,0 +1,10 @@
+/* SolaGroup — elevation. Soft, low-spread shadows; most depth comes from
+   hairline borders + background contrast, shadows are reserved for true overlays. */
+:root {
+  --shadow-1: 0 1px 3px rgba(29, 29, 31, 0.06);                                  /* resting cards */
+  --shadow-2: 0 2px 8px rgba(29, 29, 31, 0.08);                                  /* raised cards, dropdowns */
+  --shadow-3: 0 8px 24px rgba(29, 29, 31, 0.12);                                 /* popovers, tooltips */
+  --shadow-4: 0 16px 48px rgba(29, 29, 31, 0.18);                                /* modals */
+  --blur-frosted: saturate(180%) blur(20px); /* @kind other */                   /* sticky nav on scroll */
+  --bg-frosted: rgba(255, 255, 255, 0.78);
+}

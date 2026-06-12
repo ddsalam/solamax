@@ -1,43 +1,63 @@
-# @solamax/dashboard — Dashboard Pengawasan (Next.js)
+# @solamax/dashboard — SolaMax Web (Next.js)
 
-Read-only murni: membaca Cloud SQL hasil sync, **tidak ada form input**, tidak pernah
-menulis. Fitur hero = **matriks kepatuhan input** (per SPBU × per hari × per modul,
-🟢/🟡/🔴) — menyorot YANG KOSONG. Pilot 1 unit; layout multi-unit siap 7 SPBU.
+Implementasi pixel-faithful dari **SolaMax Design Spec** (bundle handoff di
+[`design/easymax-board-dashboard/`](design/easymax-board-dashboard/)) di atas
+SolaGroup Design System. **Read-only mutlak**: server components membaca Cloud SQL via
+`pg` (SELECT murni) — nol form, nol mutasi. Logika status dari
+[`src/lib/compliance.ts`](src/lib/compliance.ts) (tidak ada aturan baru di UI).
 
-## Halaman
+## Halaman (semua data nyata kecuali ditandai)
 
-- `/` — ringkasan grup: kartu per SPBU + mini-matriks 14 hari + badge merah kas stale.
-- `/unit/<kode>` — detail: matriks 30 hari, input terakhir per modul (flag STALE),
-  selisih NVOLSELISIH abnormal (losses), omzet & volume harian (tanggal bisnis
-  `DTGLJUAL`), kas per kategori (join `tm_perk`). Baris `SBATAL` dicoret.
-- Auto-refresh 60 detik (poll).
+| Route | Layar spec |
+|---|---|
+| `/` | Hub Laporan & Analisa (shell + sidebar peran "Direksi") |
+| `/board` | Ringkasan Grup BoD — verdict, 4 KPI, sparkline 14 hari, bauran NPSO/PSO vs target workbook, ranking unit (expand inline), feed anomali; state loading/empty |
+| `/unit/[code]/laporan/[date]` | Laporan Operasional Harian — alarm 11 cek, omset/G-L per produk, kas, G/L kumulatif, target bulanan, DO, ketahanan stok, harga, pengeluaran, rekonsiliasi A–I; mode Ringkas/Lengkap |
+| `/unit/[code]/rincian/[date]` | Rincian Penjualan — ledger arsip siap cetak (`@media print`), kop + tanda tangan |
+| `/monitoring` · `/denah/[code]` · `/ketaatan` · `/anomali` | Jaringan live, denah tangki+nozzle, heatmap ketaatan 14 hari + strip kas dorman, feed anomali |
 
-## Menjalankan untuk review (lokal, via Cloud SQL proxy)
+Token DS: [`src/styles/ds/`](src/styles/ds/) (salinan verbatim). Adherence lint:
+`pnpm --filter @solamax/dashboard lint:ds` (oxlint, config DS) — **0 warning**.
+
+## Panel → status data
+
+✅ **Nyata (Cloud SQL)**: omset/volume/mix per produk & harian; sparkline & delta periode;
+gain/loss harian+kumulatif & losses abnormal; bauran NPSO/PSO aktual; kepatuhan shift /
+heatmap / banner kelengkapan / jam tutup shift; sinkron per unit; penerimaan BBM;
+**sisa stok & ketahanan** (opname terakhir − penjualan + penerimaan sejak itu ÷ rata-rata
+7 hari); koreksi ⟳ (SUBAH/SEDIT); pengeluaran kas (dorman → empty state bermakna + umur).
+
+⚙️ **Config** ([`src/lib/config.ts`](src/lib/config.ts) — siap 7 unit): target bauran
+per-unit×bulan & target volume L/hari per-produk×bulan (angka workbook 2026, pilot IB);
+mapping kode unit → "64.781.11 — Imam Bonjol"; PT & alamat kop; kapasitas tangki
+(kosong = denah tanpa fill%, ketahanan tetap tampil); klasifikasi PSO/NPSO.
+
+🔲 **Empty state eksplisit** (menunggu Domain 4–7, gaya "belum tersedia" netral):
+EDC; pelanggan/piutang & deposit; DO awal/sisa/penebusan/alokasi; Tera/nozzle-test;
+harga beli & margin; setoran bank; pendapatan lain; rekonsiliasi B–I (verdict H=I netral);
+6 dari 11 cek alarm (skor = "n/aktif · k menunggu data").
+
+## Deviasi dari spec (disengaja, sesuai keputusan)
+
+1. Landing + Login **ditunda** (butuh auth) — shell langsung terbuka, peran "Direksi".
+2. BoD Mobile companion **ditunda** (konsep app native); web responsive seadanya.
+3. Topbar "Tren" non-aktif ("menyusul") — halaman 4.1 belum didesain; "Anomali" → feed.
+4. Data dummy spec (7 unit, EDC, dst) **tidak direplikasi** — panel memakai data nyata
+   atau empty state; baris ranking/jaringan bertambah otomatis saat unit baru tersambung.
+5. Heatmap ketaatan: 14 hari (spec) dengan agregat penjualan+opname; kas = strip dorman.
+
+## Menjalankan untuk review
 
 ```bash
-# Terminal 1 — proxy ke Cloud SQL staging:
-cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432
-
-# Terminal 2 — dari root repo:
-cp apps/dashboard/.env.example apps/dashboard/.env.local   # isi DATABASE_URL
-#   (boleh samakan dengan apps/backend/.env)
-pnpm --filter @solamax/dashboard dev
-# → buka http://localhost:3000
+# Terminal 1: cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432
+# (.env.local sudah berisi DATABASE_URL via proxy; gitignored)
+pnpm --filter @solamax/dashboard dev   # → http://localhost:3000
 ```
 
-Logika status: penjualan 🟢=3 shift, 🟡=1–2, 🔴=0; opname 🟢=semua tangki, 🟡=sebagian,
-🔴=nol; kas 🟢=ada nota, 🔴=kosong. Ambang stale & selisih abnormal di
-[`src/lib/compliance.ts`](src/lib/compliance.ts) (teruji unit test).
+Verifikasi cepat: `pnpm --filter @solamax/dashboard test` (22 unit test: compliance,
+bauran/target workbook, stok/ketahanan, alarm, format unit) · `typecheck` · `lint:ds`.
 
-## Produksi nanti (catatan)
+## Produksi nanti
 
-- Buat user Postgres **read-only** khusus dashboard (jangan pakai user `ingest`):
-  ```sql
-  CREATE USER dashboard_ro WITH PASSWORD '...';
-  GRANT CONNECT ON DATABASE solamax TO dashboard_ro;
-  GRANT USAGE ON SCHEMA public TO dashboard_ro;
-  GRANT SELECT ON ALL TABLES IN SCHEMA public TO dashboard_ro;
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO dashboard_ro;
-  ```
-- Deploy Cloud Run: `output: "standalone"` sudah di-set; perlu Dockerfile dashboard +
-  auth akses (dashboard berisi data operasional — jangan publik tanpa login/IAP).
+User Postgres read-only khusus dashboard + auth di depan (IAP/login) — dashboard berisi
+data operasional, jangan publik. `output: "standalone"` siap container Cloud Run.

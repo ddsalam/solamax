@@ -8,7 +8,8 @@
     "start": "next start -p 3000",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint:ds": "oxlint -c .oxlintrc.ds.json src/"
   },
   "dependencies": {
     "next": "^14.2.15",
@@ -22,6 +23,7 @@
     "@types/react": "^18.3.10",
     "@types/react-dom": "^18.3.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^2.1.1",
+    "oxlint": "1.0.0"
   }
 }
