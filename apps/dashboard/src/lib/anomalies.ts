@@ -8,6 +8,7 @@ import {
   getAvgDailySales,
   getClosingOpname,
   getCorrections,
+  getDeliveryByTankDate,
   getDeliveryShortfalls,
   getLastInputs,
   getShiftInfo,
@@ -46,9 +47,10 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
     const href = `/unit/${u.code}/laporan/${today}`;
 
-    const [closing, deliv, shift, corrections, last, tanks, avg] = await Promise.all([
+    const [closing, deliv, doByTank, shift, corrections, last, tanks, avg] = await Promise.all([
       getClosingOpname(u.unit_id, addDays(today, -6), today),
       getDeliveryShortfalls(u.unit_id, addDays(today, -6), today, 10),
+      getDeliveryByTankDate(u.unit_id, addDays(today, -6), today),
       getShiftInfo(u.unit_id, today),
       getCorrections(u.unit_id, today),
       getLastInputs(u.unit_id),
@@ -57,15 +59,19 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     ]);
 
     const gl = aggregateClosingGl(closing);
+    // Konteks DO hari-sama per (tanggal × tangki) — informatif, tak menghakimi.
+    const doMap = new Map(doByTank.map((d) => [`${d.d}:${d.ckdtangki}`, d.vol]));
 
     // Losses opname abnormal (signed, lolos garbage guard).
     for (const r of gl.abnormal) {
       const pctTxt = r.bk && r.bk > 0 ? ` (${pct(Math.abs(r.signed) / r.bk, 2)})` : "";
+      const sameDayDo = doMap.get(`${r.d}:${r.ckdtangki}`) ?? 0;
+      const doCtx = sameDayDo > 0 ? ` · terima DO ${fmtL(sameDayDo)} hari ini (konteks — nilai sendiri tak dihakimi)` : "";
       items.push({
         tone: "danger",
         title: `Losses abnormal ${signedFmt(r.signed)} L${pctTxt}`,
         unit: unitTag,
-        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%.`,
+        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%${doCtx}.`,
         time: r.d,
         href,
       });

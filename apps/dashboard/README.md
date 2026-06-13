@@ -37,6 +37,39 @@ EDC; pelanggan/piutang & deposit; DO awal/sisa/penebusan/alokasi; Tera/nozzle-te
 harga beli & margin; setoran bank; pendapatan lain; rekonsiliasi B–I (verdict H=I netral);
 6 dari 11 cek alarm (skor = "n/aktif · k menunggu data").
 
+## Gain/Loss (G/L) — perhitungan & guard data
+
+Perbaikan 2026-06-13 (akar masalah losses "ngawur" 1.744%):
+
+- **Signed, bukan absolut.** `NVOLSELISIH` di EasyMax tersimpan ABSOLUT (0 dari
+  28.994 baris negatif) → G/L dihitung ulang `NSTOCKOP − NSTOCKBK` (− = losses).
+- **Opname PENUTUP, bukan semua sesi.** Opname terjadi ~3×/hari; G/L harian = baris
+  terakhir per (tanggal-bisnis × tangki) — sesi pagi D+1 yang ditandai EasyMax
+  `DTAGLOPN=D`. Sesi siang/malam intra-hari (terdistorsi timing pengisian) diabaikan.
+  `getClosingOpname` ([queries.ts](src/lib/queries.ts)) + `aggregateClosingGl`
+  ([derive.ts](src/lib/derive.ts)).
+- **Garbage guard** (data quality, BUKAN losses) — dikecualikan dari KPI/alarm,
+  dimunculkan sebagai anomali "kualitas data":
+  - stok buku/fisik `> 100.000 L`, atau `< 0`;
+  - `|selisih| > 50.000 L`;
+  - volume DO `> 100.000 L` (mis. entri 452.729 L).
+  Ambang ini **fisik** (tangki SPBU 20–40 KL), bukan ambang losses operasional —
+  losses besar-tapi-mungkin (mis. −6.109 L) TIDAK disembunyikan, justru menyala merah.
+- **Provisional** (edge-case hari berjalan): bila opname penutup D+1 belum terekam,
+  G/L dihitung dari sesi terakhir tersedia + ditandai "provisional · opname penutup
+  belum ada" — tidak menyesatkan diam-diam.
+- **Konteks DO hari-sama** (informatif): anomali losses opname menampilkan volume DO
+  yang diterima tangki itu di hari sama (mis. "terima DO 7.814 L hari ini") sebagai
+  bantuan penyelidik menilai timing-vs-nyata. Tool TIDAK mengklasifikasi/mengecualikan
+  berdasarkan ini — keputusan tetap di manusia.
+
+> **Enhancement masa depan: rekonsiliasi delivery-vs-opname.** Selisih opname pada
+> hari pengiriman bisa berupa selisih kiriman (DO declared vs real) atau losses nyata;
+> korelasi delivery TIDAK konsisten (terbukti: T-02 terima 16k DO tetap +26; T-04
+> −6.109 terima 7,8k) sehingga auto-klasifikasi sengaja TIDAK dibuat (berisiko mengubur
+> shortfall/theft). Bila Domain DO/MyPertamina masuk pipeline, rekonsiliasi eksplisit
+> (DO vs penerimaan vs opname) bisa memisahkan keduanya tanpa menebak.
+
 ## Deviasi dari spec (disengaja, sesuai keputusan)
 
 1. Landing + Login **ditunda** (butuh auth) — shell langsung terbuka, peran "Direksi".
