@@ -223,11 +223,14 @@ maju ✔ · B1 dashboard ter-deploy + auth aktif ✔ · review akhir Anda.
 
 ---
 
-## Ringkas keputusan yang saya tunggu dari Anda
+## Keputusan TERKUNCI (2026-06-13)
 
-1. **Auth dashboard (B2): pilih A / B / C** (rekomendasi: A Cloud IAP).
-2. **Model produksi (B5): (i) harden-in-place** atau **(ii) environment terpisah**.
-3. **Urutan eksekusi**: mulai B3+B4 dulu (amankan + alirkan data), atau paralel dengan B2→B1?
+1. **Auth dashboard (B2) = OPSI A — Cloud IAP.** Allowlist per-akun Google **@solagroup.co**
+   (board + owner + admin pusat); bisa dicabut & diaudit; nol kode auth; biaya LB diterima.
+2. **Model produksi (B5) = (i) HARDEN-IN-PLACE** untuk pilot 1 unit sekarang.
+   **(ii) environment produksi terpisah = rencana saat komit rollout 7 SPBU** (jangan
+   over-build infra untuk 1 unit).
+3. **Urutan eksekusi = B3 → B4 → B1 → B5.** B1/B2 boleh disiapkan paralel, tapi **deploy B1
+   hanya setelah B3+B4 hijau di staging.**
 
-Setelah Anda putuskan, saya kerjakan **per butir atas aba-aba eksplisit** — tidak ada
-deploy/rotasi/scheduling yang saya mulai tanpa itu.
+Dikerjakan **per sub-langkah atas aba-aba eksplisit**; tiap perintah ditunjukkan sebelum jalan.
