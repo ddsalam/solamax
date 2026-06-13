@@ -4,6 +4,7 @@ import { RankingTable, type RankRow } from "@/components/board/RankingTable";
 import { buildAnomalies } from "@/lib/anomalies";
 import { classifyProduct, unitDotted } from "@/lib/config";
 import {
+  aggregateClosingGl,
   bauranVsTarget,
   glPercent,
   verdictHeadline,
@@ -13,11 +14,10 @@ import {
 import { dateLong, fmtKL, idn, pct, rpShort, signed, timeWib } from "@/lib/format";
 import { addDays, monthInfo, resolvePeriod, todayWib, type PeriodKey } from "@/lib/periods";
 import {
+  getClosingOpname,
   getDailyOmzet,
-  getGlByProduct,
   getSalesByProduct,
   getSalesTotals,
-  getSelisih,
   getShiftInfo,
   getUnits,
 } from "@/lib/queries";
@@ -46,20 +46,17 @@ export default async function BoardPage({
   // ===== Per-unit data =====
   const perUnit = await Promise.all(
     units.map(async (u) => {
-      const [products, totals, prevTotals, gl, shift, daily, selisih] = await Promise.all([
+      const [products, totals, prevTotals, closing, shift, daily] = await Promise.all([
         getSalesByProduct(u.unit_id, period.from, period.to),
         getSalesTotals(u.unit_id, period.from, period.to),
         getSalesTotals(u.unit_id, period.prevFrom, period.prevTo),
-        getGlByProduct(u.unit_id, period.from, period.to),
+        getClosingOpname(u.unit_id, period.from, period.to),
         getShiftInfo(u.unit_id, today),
         getDailyOmzet(u.unit_id, addDays(today, -13), today),
-        getSelisih(u.unit_id, period.from, period.to, 5),
       ]);
-      const glTotal = gl.reduce((s, g) => s + g.selisih, 0);
-      const glPct = glPercent(glTotal, totals.vol);
-      const glAbnormal = selisih.some(
-        (s) => !s.sbatal && (Math.abs(s.selisih) > 100 || (s.basis ?? 0) > 0 && Math.abs(s.selisih) / (s.basis ?? 1) > 0.005),
-      );
+      const gl = aggregateClosingGl(closing);
+      const glPct = glPercent(gl.totalSigned, totals.vol);
+      const glAbnormal = gl.abnormal.length > 0;
       const gas = bauranVsTarget(products, u.code, month, "gasoline");
       const oil = bauranVsTarget(products, u.code, month, "gasoil");
       return { u, products, totals, prevTotals, glPct, glAbnormal, gas, oil, shift, daily };
@@ -281,8 +278,9 @@ export default async function BoardPage({
           <div className="kpi-note">
             <span className={`dot ${abnormalUnits > 0 ? "danger" : "success"}`} />
             <span>
-              dalam ambang ±0,5%
-              {abnormalUnits > 0 ? ` · ${abnormalUnits} unit abnormal` : ""}
+              {abnormalUnits > 0
+                ? `${abnormalUnits} unit di atas ambang ±0,5%`
+                : "dalam ambang ±0,5%"}
             </span>
           </div>
         </div>

@@ -60,6 +60,77 @@ export function glPercent(totalSelisih: number, totalVol: number): number | null
 /** Ambang spec: abnormal bila |selisih| > 100 L atau > 0,5% basis. */
 export { isSelisihAbnormal };
 
+// ---------------------------------------------------------------------------
+// Gain/Loss dari opname PENUTUP + guard data-garbage (tambahan A)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ambang kewajaran fisik (bukan ambang losses operasional). Satu tangki SPBU
+ * 20–40 KL; pembacaan/selisih di luar batas ini = error entri EasyMax (mis.
+ * stok buku ±2 juta L 5 Jun; DO 452.729 L), BUKAN losses → dikecualikan dari
+ * KPI/alarm G/L dan dimunculkan sebagai anomali KUALITAS DATA.
+ */
+export const GARBAGE_STOCK_L = 100_000; // tak ada tangki SPBU sebesar ini
+export const GARBAGE_SELISIH_L = 50_000; // selisih sebesar ini = salah entri
+
+export function isOpnameGarbage(bk: number | null, op: number | null): boolean {
+  if (bk === null || op === null) return false; // null ditangani terpisah
+  if (bk < 0 || op < 0) return true;
+  if (bk > GARBAGE_STOCK_L || op > GARBAGE_STOCK_L) return true;
+  if (Math.abs(op - bk) > GARBAGE_SELISIH_L) return true;
+  return false;
+}
+
+/** Satu baris opname penutup per tangki (signed = fisik − buku). */
+export interface ClosingRow {
+  d: string; // tanggal bisnis
+  ckdtangki: string;
+  ckdbbm: string | null;
+  nama: string | null;
+  bk: number | null; // stok buku
+  op: number | null; // stok fisik
+  signed: number; // op − bk (bertanda; − = losses)
+  dtgljam: string | null;
+  provisional: boolean; // penutup D+1 belum terekam
+}
+
+export interface ClosingAgg {
+  byProduct: Map<string, { nama: string | null; signed: number }>;
+  totalSigned: number;
+  provisional: boolean;
+  /** Baris losses abnormal (lolos garbage, |signed|>100 L atau >0,5% buku). */
+  abnormal: ClosingRow[];
+  /** Baris kualitas-data (di luar ambang fisik). */
+  garbage: ClosingRow[];
+}
+
+/**
+ * Agregasi G/L dari baris opname penutup: jumlahkan SIGNED dari baris yang
+ * lolos garbage guard; pisahkan baris garbage & abnormal untuk anomali.
+ */
+export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
+  const byProduct = new Map<string, { nama: string | null; signed: number }>();
+  const abnormal: ClosingRow[] = [];
+  const garbage: ClosingRow[] = [];
+  let totalSigned = 0;
+  let provisional = false;
+
+  for (const r of rows) {
+    if (isOpnameGarbage(r.bk, r.op)) {
+      garbage.push(r);
+      continue;
+    }
+    if (r.provisional) provisional = true;
+    totalSigned += r.signed;
+    const key = r.ckdbbm ?? r.ckdtangki;
+    const cur = byProduct.get(key);
+    if (cur) cur.signed += r.signed;
+    else byProduct.set(key, { nama: r.nama, signed: r.signed });
+    if (isSelisihAbnormal(r.signed, r.bk)) abnormal.push(r);
+  }
+  return { byProduct, totalSigned, provisional, abnormal, garbage };
+}
+
 /** Stok kini = stok opname − terjual sejak opname + diterima sejak opname. */
 export function stockNow(
   stockOp: number | null,

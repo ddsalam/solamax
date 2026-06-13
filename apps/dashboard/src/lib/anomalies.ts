@@ -6,19 +6,21 @@
  */
 import {
   getAvgDailySales,
+  getClosingOpname,
   getCorrections,
+  getDeliveryShortfalls,
   getLastInputs,
-  getSelisih,
   getShiftInfo,
   getTankStocks,
   type UnitRow,
 } from "./queries";
 import { addDays, todayWib } from "./periods";
-import { ago, fmtL, idn, pct, timeWib } from "./format";
+import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
 import {
+  aggregateClosingGl,
   enduranceDays,
   enduranceLevel,
-  isSelisihAbnormal,
+  GARBAGE_STOCK_L,
   stockNow,
 } from "./derive";
 import { unitDotted } from "./config";
@@ -44,8 +46,9 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
     const href = `/unit/${u.code}/laporan/${today}`;
 
-    const [selisih, shift, corrections, last, tanks, avg] = await Promise.all([
-      getSelisih(u.unit_id, addDays(today, -6), today, 10),
+    const [closing, deliv, shift, corrections, last, tanks, avg] = await Promise.all([
+      getClosingOpname(u.unit_id, addDays(today, -6), today),
+      getDeliveryShortfalls(u.unit_id, addDays(today, -6), today, 10),
       getShiftInfo(u.unit_id, today),
       getCorrections(u.unit_id, today),
       getLastInputs(u.unit_id),
@@ -53,21 +56,59 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
       getAvgDailySales(u.unit_id, addDays(today, -7), addDays(today, -1)),
     ]);
 
-    for (const s of selisih) {
-      if (s.sbatal || !isSelisihAbnormal(s.selisih, s.basis)) continue;
-      const pctTxt =
-        s.basis && s.basis > 0 ? ` (${pct(Math.abs(s.selisih) / s.basis, 2)})` : "";
+    const gl = aggregateClosingGl(closing);
+
+    // Losses opname abnormal (signed, lolos garbage guard).
+    for (const r of gl.abnormal) {
+      const pctTxt = r.bk && r.bk > 0 ? ` (${pct(Math.abs(r.signed) / r.bk, 2)})` : "";
       items.push({
         tone: "danger",
-        title: `Losses abnormal ${fmtL(s.selisih)}${pctTxt}`,
+        title: `Losses abnormal ${signedFmt(r.signed)} L${pctTxt}`,
         unit: unitTag,
-        desc:
-          s.src === "opname"
-            ? `Opname tangki ${s.ref} ${s.nama ?? s.ckdbbm ?? ""} vs stok buku — di atas ambang 100 L / 0,5%.`
-            : `Penerimaan DO ${s.ref} ${s.nama ?? ""} vs volume DO — di atas ambang.`,
-        time: s.d,
+        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%.`,
+        time: r.d,
         href,
       });
+    }
+
+    // Kualitas data: baris opname di luar batas fisik (tambahan A).
+    for (const g of gl.garbage) {
+      items.push({
+        tone: "warning",
+        title: `Kualitas data opname — angka di luar batas wajar`,
+        unit: unitTag,
+        desc: `Tangki ${g.ckdtangki} ${g.nama ?? g.ckdbbm ?? ""}: buku ${fmtL(g.bk ?? 0)} / fisik ${fmtL(g.op ?? 0)} (selisih ${signedFmt(g.signed)} L). Di luar batas tangki — dikecualikan dari KPI losses, perlu koreksi entri EasyMax.`,
+        time: g.d,
+        href,
+      });
+    }
+
+    // Kekurangan kiriman (delivery) — garbage volume dipisah jadi kualitas data.
+    for (const s of deliv) {
+      if (s.sbatal) continue;
+      const garbage = (s.voldo ?? 0) > GARBAGE_STOCK_L || (s.volreal ?? 0) > GARBAGE_STOCK_L;
+      if (garbage) {
+        items.push({
+          tone: "warning",
+          title: `Kualitas data penerimaan — volume di luar batas wajar`,
+          unit: unitTag,
+          desc: `DO ${s.cnodo} ${s.nama ?? s.ckdbbm ?? ""}: DO ${fmtL(s.voldo ?? 0)} / real ${fmtL(s.volreal ?? 0)}. Melebihi kapasitas tanker wajar — perlu koreksi entri.`,
+          time: s.d,
+          href,
+        });
+        continue;
+      }
+      if (Math.abs(s.selisih) > 100 || ((s.voldo ?? 0) > 0 && Math.abs(s.selisih) / (s.voldo ?? 1) > 0.005)) {
+        const pctTxt = s.voldo && s.voldo > 0 ? ` (${pct(Math.abs(s.selisih) / s.voldo, 2)})` : "";
+        items.push({
+          tone: "danger",
+          title: `Kekurangan kiriman ${fmtL(s.selisih)}${pctTxt}`,
+          unit: unitTag,
+          desc: `Penerimaan DO ${s.cnodo} ${s.nama ?? ""} vs volume DO — di atas ambang.`,
+          time: s.d,
+          href,
+        });
+      }
     }
 
     if (shift.shifts < 3) {

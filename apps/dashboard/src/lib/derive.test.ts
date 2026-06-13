@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateClosingGl,
   alarmScore,
   bauran,
   bauranVsTarget,
   enduranceDays,
   enduranceLevel,
   glPercent,
+  isOpnameGarbage,
   stockNow,
   verdictHeadline,
+  type ClosingRow,
 } from "./derive";
 import { canonicalProductKey, classifyProduct, targetBauran, unitLabel } from "./config";
 
@@ -90,6 +93,65 @@ describe("gl% / verdict / alarm", () => {
     ]);
     expect(s.text).toBe("2/3");
     expect(s.na).toBe(1);
+  });
+});
+
+describe("garbage guard opname (tambahan A)", () => {
+  it("menandai stok/selisih non-fisik sebagai garbage", () => {
+    expect(isOpnameGarbage(471436, 26606)).toBe(true); // selisih 444k (11 Jun T-04)
+    expect(isOpnameGarbage(2_000_000, 1000)).toBe(true); // stok buku 2 juta (5 Jun)
+    expect(isOpnameGarbage(-5, 10)).toBe(true); // negatif
+    expect(isOpnameGarbage(18520, 18507)).toBe(false); // wajar (−13 L)
+    expect(isOpnameGarbage(null, null)).toBe(false); // null ditangani terpisah
+  });
+});
+
+describe("aggregateClosingGl (G/L signed dari opname penutup)", () => {
+  const row = (over: Partial<ClosingRow>): ClosingRow => ({
+    d: "2026-06-10",
+    ckdtangki: "T-01",
+    ckdbbm: "BB-01",
+    nama: "Pertalite",
+    bk: 1000,
+    op: 1000,
+    signed: 0,
+    dtgljam: "2026-06-11T06:00:00Z",
+    provisional: false,
+    ...over,
+  });
+
+  it("menjumlahkan SIGNED (bisa negatif), bukan absolut", () => {
+    const agg = aggregateClosingGl([
+      row({ ckdbbm: "P1", bk: 1000, op: 980, signed: -20 }),
+      row({ ckdbbm: "P1", ckdtangki: "T-02", bk: 1000, op: 1010, signed: 10 }),
+    ]);
+    expect(agg.totalSigned).toBe(-10); // −20 + 10, bukan 30
+    expect(agg.byProduct.get("P1")?.signed).toBe(-10);
+  });
+
+  it("mengecualikan baris garbage dari total & memunculkannya terpisah", () => {
+    const agg = aggregateClosingGl([
+      row({ ckdbbm: "P1", bk: 10000, op: 9950, signed: -50 }),
+      row({ ckdtangki: "T-04", bk: 471436, op: 26606, signed: -444830 }), // garbage
+    ]);
+    expect(agg.totalSigned).toBe(-50); // outlier 444k TIDAK ikut
+    expect(agg.garbage).toHaveLength(1);
+    expect(agg.byProduct.get("P1")?.signed).toBe(-50);
+  });
+
+  it("menandai abnormal (>100 L atau >0,5% buku) di antara yang lolos guard", () => {
+    const agg = aggregateClosingGl([
+      row({ ckdtangki: "T-01", bk: 10000, op: 9994, signed: -6 }), // normal
+      row({ ckdtangki: "T-02", bk: 10000, op: 9850, signed: -150 }), // abnormal abs
+      row({ ckdtangki: "T-03", bk: 5000, op: 4970, signed: -30 }), // abnormal 0,6%
+    ]);
+    expect(agg.abnormal).toHaveLength(2);
+    expect(agg.totalSigned).toBe(-186);
+  });
+
+  it("provisional bila ada baris provisional yang lolos guard", () => {
+    const agg = aggregateClosingGl([row({ provisional: true, signed: -5, op: 995 })]);
+    expect(agg.provisional).toBe(true);
   });
 });
 

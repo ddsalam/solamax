@@ -8,14 +8,14 @@ import {
   unitDotted,
   unitLabel,
 } from "@/lib/config";
-import { alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { aggregateClosingGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { dateLong, fmtL, idn, parenNeg, pct, rp, rpShort, signed, timeWib } from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
   getCashForDate,
+  getClosingOpname,
   getCorrections,
   getDeliveryByProduct,
-  getGlByProduct,
   getSalesByProduct,
   getShiftInfo,
   getTankStocks,
@@ -50,8 +50,8 @@ export default async function LaporanPage({
   const [
     units,
     prodDay,
-    glDay,
-    glMonth,
+    closingDay,
+    closingMonth,
     prodMonth,
     delivMonth,
     delivDay,
@@ -63,8 +63,8 @@ export default async function LaporanPage({
   ] = await Promise.all([
     getUnits(),
     getSalesByProduct(unit.unit_id, date, date),
-    getGlByProduct(unit.unit_id, date, date),
-    getGlByProduct(unit.unit_id, mStart, date),
+    getClosingOpname(unit.unit_id, date, date),
+    getClosingOpname(unit.unit_id, mStart, date),
     getSalesByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, date, date),
@@ -82,13 +82,20 @@ export default async function LaporanPage({
 
   const totSales = prodDay.reduce((s, p) => s + p.vol, 0);
   const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
-  const glByCode = new Map(glDay.map((g) => [g.ckdbbm, g.selisih]));
-  const glTotal = glDay.reduce((s, g) => s + g.selisih, 0);
-  const glPctDay = glPercent(glTotal, totSales);
+  // G/L SIGNED dari opname penutup (fisik − buku), garbage dikecualikan.
+  const aggDay = aggregateClosingGl(closingDay);
+  const aggMonth = aggregateClosingGl(closingMonth);
+  const glByCode = new Map(
+    [...aggDay.byProduct].map(([k, v]) => [k, v.signed] as const),
+  );
+  const glTotal = aggDay.totalSigned;
+  const glPctDay = closingDay.length > 0 ? glPercent(glTotal, totSales) : null;
+  const glProvisional = aggDay.provisional;
+  const glGarbageCount = aggDay.garbage.length;
 
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
-  const glMonthTotal = glMonth.reduce((s, g) => s + g.selisih, 0);
-  const glPctMonth = glPercent(glMonthTotal, volMonth);
+  const glMonthTotal = aggMonth.totalSigned;
+  const glPctMonth = closingMonth.length > 0 ? glPercent(glMonthTotal, volMonth) : null;
 
   const isPartial = isToday && shift.shifts < 3;
   const gasMix = bauran(prodDay, "gasoline");
@@ -113,11 +120,13 @@ export default async function LaporanPage({
     note: `belum tersedia · ${domain}`,
   });
   const checks: AlarmCheck[] = [
-    ok(
-      "Losses Harian Aman",
-      glPctDay === null || (Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005),
-      glPctDay !== null ? `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}` : "belum ada opname",
-    ),
+    glPctDay === null
+      ? na("Losses Harian Aman", "opname penutup belum ada")
+      : ok(
+          "Losses Harian Aman",
+          Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005,
+          `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glProvisional ? " · provisional" : ""}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
+        ),
     ok(
       "Losses Bulanan Aman",
       glPctMonth === null || Math.abs(glPctMonth) <= 0.005,
@@ -305,8 +314,8 @@ export default async function LaporanPage({
         </div>
         <div className="fs15 t-tertiary mt2">
           {glPctDay !== null
-            ? `Losses harian ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%. `
-            : ""}
+            ? `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glProvisional ? "; angka provisional, opname penutup besok belum ada" : ""}${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `
+            : "Opname penutup tanggal bisnis ini belum ada. "}
           Bauran NPSO: gasoline {gasMix !== null ? pct(gasMix) : "—"} · gasoil{" "}
           {oilMix !== null ? pct(oilMix) : "—"}. Kolom Tera menunggu domain nozzle-test.
         </div>
@@ -370,7 +379,13 @@ export default async function LaporanPage({
                 <span className="right">G/L bulan (L)</span>
                 <span className="right">% vs vol</span>
               </div>
-              {ordered(glMonth.map((g) => ({ ...g, nama: g.nama }))).map((g) => {
+              {ordered(
+                [...aggMonth.byProduct].map(([ckdbbm, v]) => ({
+                  ckdbbm,
+                  nama: v.nama ?? ckdbbm,
+                  selisih: v.signed,
+                })),
+              ).map((g) => {
                 const vol = prodMonth.find((p) => p.ckdbbm === g.ckdbbm)?.vol ?? 0;
                 return (
                   <div key={g.ckdbbm} className="grid-row cols-glkum">
@@ -386,8 +401,8 @@ export default async function LaporanPage({
                   </div>
                 );
               })}
-              {glMonth.length === 0 && (
-                <div className="empty-inline">Belum ada opname bulan ini.</div>
+              {aggMonth.byProduct.size === 0 && (
+                <div className="empty-inline">Belum ada opname penutup bulan ini.</div>
               )}
             </div>
           </div>

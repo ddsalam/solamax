@@ -168,72 +168,88 @@ export async function getCorrectedNozzles(unitId: number, date: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// Opname (gain/loss)
+// Opname penutup (gain/loss SIGNED) — fix G/L
 // ---------------------------------------------------------------------------
 
-export interface GlByProduct {
-  ckdbbm: string;
-  nama: string;
-  selisih: number;
+export interface ClosingOpnameRow {
+  d: string; // tanggal bisnis (dtaglopn, atau fallback tanggal rekam WIB)
+  ckdtangki: string;
+  ckdbbm: string | null;
+  nama: string | null;
+  bk: number | null; // stok buku (NSTOCKBK)
+  op: number | null; // stok fisik (NSTOCKOP)
+  signed: number; // op − bk (− = losses); NVOLSELISIH sumber ABSOLUT → dihitung ulang
+  dtgljam: string | null; // ISO UTC waktu rekam baris terpilih
+  provisional: boolean; // penutup D+1 belum terekam (hari berjalan) — tambahan C
 }
 
-/** Total NVOLSELISIH opname per produk pada rentang tanggal bisnis. */
-export async function getGlByProduct(
+/**
+ * Opname PENUTUP per (tanggal bisnis × tangki): baris terakhir per partisi
+ * (sesi pagi D+1 yang oleh EasyMax ditandai dtaglopn=D). Sesi siang/malam intra-
+ * hari diabaikan (distorsi timing penerimaan). G/L = NSTOCKOP − NSTOCKBK (signed),
+ * BUKAN SUM(NVOLSELISIH) yang absolut. Garbage guard diterapkan di derive.ts.
+ */
+export async function getClosingOpname(
   unitId: number,
   from: string,
   to: string,
-): Promise<GlByProduct[]> {
-  return q<GlByProduct>(
-    `SELECT trim(o.ckdbbm) AS ckdbbm,
-            COALESCE(max(p.vcnmbbm), trim(o.ckdbbm)) AS nama,
-            COALESCE(sum(o.nvolselisih),0)::float8 AS selisih
-     FROM opname o
-     LEFT JOIN product p ON p.unit_id = o.unit_id AND p.ckdbbm = o.ckdbbm
-     WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0
-       AND COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
-     GROUP BY trim(o.ckdbbm)`,
+): Promise<ClosingOpnameRow[]> {
+  return q<ClosingOpnameRow>(
+    `WITH biz AS (
+       SELECT o.*, COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
+              row_number() OVER (
+                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), o.ckdtangki
+                ORDER BY o.dtgljam DESC
+              ) AS rn
+       FROM opname o
+       WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0
+     )
+     SELECT to_char(b.bizdate,'YYYY-MM-DD') AS d,
+            trim(b.ckdtangki) AS ckdtangki, trim(b.ckdbbm) AS ckdbbm,
+            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND p.ckdbbm=b.ckdbbm) AS nama,
+            b.nstockbk::float8 AS bk, b.nstockop::float8 AS op,
+            (b.nstockop - b.nstockbk)::float8 AS signed,
+            to_char(b.dtgljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS dtgljam,
+            ((b.dtgljam AT TIME ZONE '${TZ}')::date <= b.bizdate) AS provisional
+     FROM biz b
+     WHERE b.rn = 1 AND b.bizdate BETWEEN $2::date AND $3::date
+     ORDER BY b.bizdate, trim(b.ckdtangki)`,
     [unitId, from, to],
   );
 }
 
-export interface SelisihRow {
-  src: "opname" | "terima";
+// ---------------------------------------------------------------------------
+// Penerimaan (delivery)
+// ---------------------------------------------------------------------------
+
+export interface DeliveryShortfall {
   d: string;
-  ref: string;
+  cnodo: string;
   ckdbbm: string | null;
   nama: string | null;
-  selisih: number;
-  basis: number | null;
+  selisih: number; // NVOLSELISIH (kekurangan kiriman; absolut apa adanya)
+  voldo: number | null;
+  volreal: number | null;
   sbatal: number;
 }
 
-export async function getSelisih(
+/** Kekurangan kiriman (NVOLSELISIH delivery) pada rentang — untuk anomali. */
+export async function getDeliveryShortfalls(
   unitId: number,
   from: string,
   to: string,
   limit = 20,
-): Promise<SelisihRow[]> {
-  return q<SelisihRow>(
-    `SELECT * FROM (
-       SELECT 'opname'::text AS src,
-              to_char(COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date),'YYYY-MM-DD') AS d,
-              trim(o.ckdtangki) AS ref, trim(o.ckdbbm) AS ckdbbm,
-              (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=o.unit_id AND p.ckdbbm=o.ckdbbm) AS nama,
-              o.nvolselisih::float8 AS selisih, o.nstockbk::float8 AS basis,
-              COALESCE(o.sbatal,0)::int AS sbatal
-       FROM opname o
-       WHERE o.unit_id = $1 AND COALESCE(o.nvolselisih,0) <> 0
-         AND COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
-       UNION ALL
-       SELECT 'terima',
-              to_char(COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date),'YYYY-MM-DD'),
-              trim(COALESCE(t.cnodo,'-')), trim(t.ckdbbm),
-              (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=t.unit_id AND p.ckdbbm=t.ckdbbm),
-              t.nvolselisih::float8, t.nvoldo::float8, COALESCE(t.sbatal,0)::int
-       FROM delivery t
-       WHERE t.unit_id = $1 AND COALESCE(t.nvolselisih,0) <> 0
-         AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
-     ) x ORDER BY abs(selisih) DESC LIMIT $4`,
+): Promise<DeliveryShortfall[]> {
+  return q<DeliveryShortfall>(
+    `SELECT to_char(COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date),'YYYY-MM-DD') AS d,
+            trim(COALESCE(t.cnodo,'-')) AS cnodo, trim(t.ckdbbm) AS ckdbbm,
+            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=t.unit_id AND p.ckdbbm=t.ckdbbm) AS nama,
+            t.nvolselisih::float8 AS selisih, t.nvoldo::float8 AS voldo, t.nvolreal::float8 AS volreal,
+            COALESCE(t.sbatal,0)::int AS sbatal
+     FROM delivery t
+     WHERE t.unit_id = $1 AND COALESCE(t.nvolselisih,0) <> 0
+       AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
+     ORDER BY abs(t.nvolselisih) DESC LIMIT $4`,
     [unitId, from, to, limit],
   );
 }
