@@ -269,6 +269,11 @@ export default async function LaporanPage({
         <div className="section-h">
           <div className="text-h5 t-brand">Omset Penjualan, Gain (Losses) &amp; Tera Harian</div>
           <span className="fs16 t-tertiary">per produk · dari totalisator nozzle per shift</span>
+          {glProvisional && (
+            <span className="anom-tag" title="opname penutup D+1 belum ada">
+              Gain/Losses belum final
+            </span>
+          )}
         </div>
         <div className="card tbl-card mt4">
           <div className="grid-head cols-sales">

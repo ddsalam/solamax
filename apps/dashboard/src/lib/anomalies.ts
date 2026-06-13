@@ -28,6 +28,12 @@ import { unitDotted } from "./config";
 
 export interface AnomalyItem {
   tone: "danger" | "warning" | "info";
+  /** "major" = anomali perlu tindakan; "minor" = variance kecil (de-emphasis). */
+  tier: "major" | "minor";
+  /** Skala keparahan untuk pengurutan dalam satu tone (besar = atas). */
+  sev: number;
+  /** Tanggal bisnis (ISO) — selalu ditampilkan agar bisa ditindaklanjuti. */
+  dateIso: string | null;
   title: string;
   unit: string;
   desc: string;
@@ -37,6 +43,12 @@ export interface AnomalyItem {
 }
 
 const toneRank = { danger: 0, warning: 1, info: 2 } as const;
+
+/** Ambang tier: variance kecil vs anomali besar (TIDAK mengubah ambang deteksi). */
+const MAJOR_L = 1000; // |selisih| ≥ 1000 L
+const MAJOR_PCT = 0.05; // atau ≥ 5% dari basis
+const lossTier = (absL: number, ratio: number | null): "major" | "minor" =>
+  absL >= MAJOR_L || (ratio !== null && ratio >= MAJOR_PCT) ? "major" : "minor";
 
 export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
   const today = todayWib();
@@ -64,12 +76,16 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
 
     // Losses opname abnormal (signed, lolos garbage guard).
     for (const r of gl.abnormal) {
-      const pctTxt = r.bk && r.bk > 0 ? ` (${pct(Math.abs(r.signed) / r.bk, 2)})` : "";
+      const ratio = r.bk && r.bk > 0 ? Math.abs(r.signed) / r.bk : null;
+      const pctTxt = ratio !== null ? ` (${pct(ratio, 2)})` : "";
       const sameDayDo = doMap.get(`${r.d}:${r.ckdtangki}`) ?? 0;
       const doCtx = sameDayDo > 0 ? ` · terima DO ${fmtL(sameDayDo)} hari ini (konteks — nilai sendiri tak dihakimi)` : "";
       items.push({
         tone: "danger",
-        title: `Losses abnormal ${signedFmt(r.signed)} L${pctTxt}`,
+        tier: lossTier(Math.abs(r.signed), ratio),
+        sev: Math.abs(r.signed),
+        dateIso: r.d,
+        title: `Losses ${signedFmt(r.signed)} L${pctTxt}`,
         unit: unitTag,
         desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%${doCtx}.`,
         time: r.d,
@@ -81,6 +97,9 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     for (const g of gl.garbage) {
       items.push({
         tone: "warning",
+        tier: "major",
+        sev: Math.abs(g.signed),
+        dateIso: g.d,
         title: `Kualitas data opname — angka di luar batas wajar`,
         unit: unitTag,
         desc: `Tangki ${g.ckdtangki} ${g.nama ?? g.ckdbbm ?? ""}: buku ${fmtL(g.bk ?? 0)} / fisik ${fmtL(g.op ?? 0)} (selisih ${signedFmt(g.signed)} L). Di luar batas tangki — dikecualikan dari KPI losses, perlu koreksi entri EasyMax.`,
@@ -96,6 +115,9 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
       if (garbage) {
         items.push({
           tone: "warning",
+          tier: "major",
+          sev: Math.max(s.voldo ?? 0, s.volreal ?? 0),
+          dateIso: s.d,
           title: `Kualitas data penerimaan — volume di luar batas wajar`,
           unit: unitTag,
           desc: `DO ${s.cnodo} ${s.nama ?? s.ckdbbm ?? ""}: DO ${fmtL(s.voldo ?? 0)} / real ${fmtL(s.volreal ?? 0)}. Melebihi kapasitas tanker wajar — perlu koreksi entri.`,
@@ -104,10 +126,14 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
         });
         continue;
       }
-      if (Math.abs(s.selisih) > 100 || ((s.voldo ?? 0) > 0 && Math.abs(s.selisih) / (s.voldo ?? 1) > 0.005)) {
-        const pctTxt = s.voldo && s.voldo > 0 ? ` (${pct(Math.abs(s.selisih) / s.voldo, 2)})` : "";
+      const ratio = (s.voldo ?? 0) > 0 ? Math.abs(s.selisih) / (s.voldo ?? 1) : null;
+      if (Math.abs(s.selisih) > 100 || (ratio !== null && ratio > 0.005)) {
+        const pctTxt = ratio !== null ? ` (${pct(ratio, 2)})` : "";
         items.push({
           tone: "danger",
+          tier: lossTier(Math.abs(s.selisih), ratio),
+          sev: Math.abs(s.selisih),
+          dateIso: s.d,
           title: `Kekurangan kiriman ${fmtL(s.selisih)}${pctTxt}`,
           unit: unitTag,
           desc: `Penerimaan DO ${s.cnodo} ${s.nama ?? ""} vs volume DO — di atas ambang.`,
@@ -120,6 +146,9 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     if (shift.shifts < 3) {
       items.push({
         tone: "warning",
+        tier: "major",
+        sev: 600,
+        dateIso: today,
         title:
           shift.shifts === 0
             ? "Penjualan hari ini belum diinput"
@@ -142,6 +171,10 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
       if ((lvl === "danger" || lvl === "warning") && days !== null) {
         items.push({
           tone: lvl,
+          tier: lvl === "danger" ? "major" : "minor",
+          // makin sedikit hari, makin tinggi sev (kritis di atas).
+          sev: 5000 / (days + 0.1),
+          dateIso: today,
           title: `Stok ${t.nama ?? t.ckdbbm ?? "?"} sisa estimasi ${idn(days, 1)} hari`,
           unit: unitTag,
           desc: `Tangki ${t.ckdtangki} — dihitung dari opname ${t.opname_at ? timeWib(t.opname_at) : "—"} + penjualan tersinkron sejak itu. Ambang kritis 1,5 hari.`,
@@ -154,6 +187,9 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     if (corrections > 0) {
       items.push({
         tone: "info",
+        tier: "minor",
+        sev: corrections,
+        dateIso: today,
         title: `⟳ Koreksi totalisator (${corrections} revisi)`,
         unit: unitTag,
         desc: "Baris penjualan direvisi pengawas (SUBAH/SEDIT). Angka di dashboard sudah keadaan terbaru.",
@@ -167,12 +203,15 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     }
   }
 
-  // Kas dorman — flag permanen, tidak bisa di-dismiss (spec).
+  // Kas dorman — flag permanen, tidak bisa di-dismiss (spec): selalu puncak danger.
   if (kasOldest) {
     const age = ago(kasOldest.date);
     if (age.includes("TAHUN") || age.includes("hari")) {
       items.push({
         tone: "danger",
+        tier: "major",
+        sev: Number.MAX_SAFE_INTEGER, // selalu di atas — sinyal pengawasan paling penting
+        dateIso: kasOldest.date,
         title: `Modul Kas/Pengeluaran dorman — terakhir input ${kasOldest.date} (${age})`,
         unit: "Semua unit",
         desc: "Flag permanen, tidak bisa di-dismiss. Pengeluaran & setoran tidak terkontrol lewat sistem sejak input terakhir.",
@@ -181,5 +220,12 @@ export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
     }
   }
 
-  return items.sort((a, b) => toneRank[a.tone] - toneRank[b.tone]);
+  // Urut: tone (danger→warning→info) → major sebelum minor → sev terbesar dulu.
+  const tierRank = { major: 0, minor: 1 } as const;
+  return items.sort(
+    (a, b) =>
+      toneRank[a.tone] - toneRank[b.tone] ||
+      tierRank[a.tier] - tierRank[b.tier] ||
+      b.sev - a.sev,
+  );
 }
