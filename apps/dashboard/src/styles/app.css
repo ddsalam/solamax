@@ -413,3 +413,10 @@ body { background: var(--neutral-50); }
 .anom.minor { background: var(--neutral-50); border: 1px solid var(--color-border-hairline); }
 .anom-date { font-size: 14px; font-weight: 700; color: var(--color-text-tertiary); background: var(--neutral-100); border-radius: var(--radius-sm); padding: 1px 8px; white-space: nowrap; }
 .anom-tag { font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); background: var(--neutral-100); border-radius: var(--radius-full); padding: 1px 8px; }
+
+/* Auth screens */
+.auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-6); }
+.auth-card { max-width: 420px; width: 100%; text-align: center; }
+.auth-logo { height: 28px; width: auto; }
+.auth-btn { width: 100%; justify-content: center; }
+.auth-email { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

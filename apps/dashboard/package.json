@@ -12,7 +12,9 @@
     "lint:ds": "oxlint -c .oxlintrc.ds.json src/"
   },
   "dependencies": {
+    "@auth/pg-adapter": "^1.11.2",
     "next": "^14.2.15",
+    "next-auth": "5.0.0-beta.31",
     "pg": "^8.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -22,8 +24,8 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^18.3.10",
     "@types/react-dom": "^18.3.0",
+    "oxlint": "1.0.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1",
-    "oxlint": "1.0.0"
+    "vitest": "^2.1.1"
   }
 }
