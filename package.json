@@ -11,7 +11,8 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "agent": "pnpm --filter @solamax/agent",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm -r typecheck && pnpm -r test"
   },
   "packageManager": "pnpm@9.12.0"
 }

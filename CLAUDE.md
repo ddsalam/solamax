@@ -20,6 +20,16 @@ Alur: **EasyMax MySQL (read-only) → sync agent → Cloud Run `/ingest` → Clo
 
 Pekerjaan berfase dengan **approval gate** (Fase 0 → 1 → 2 → 3). Jangan lewati gate.
 
+## Pre-production / pre-scale hardening (roadmap — JANGAN kerjakan tanpa instruksi eksplisit)
+
+Auth+RBAC sudah deployable-candidate (scoping terpusat + CHECK role/status + CI-gate uji negatif). Sebelum produksi / onboarding tenant nyata, item berikut menunggu aba-aba:
+
+1. **Postgres RLS backstop (lapis-DB)** — **HARD GATE sebelum tenant nyata ke-2.** Row-Level Security pada tabel data sebagai jaring kedua di bawah scoping aplikasi (defense-in-depth, bukan pengganti).
+2. **Audit log** — catat grant/revoke `/admin` + (opsional) akses data.
+3. **Bersihkan fixture** — hapus tenant/unit placeholder (`9990001` / "PT Placeholder") & finalkan role `ddsalam@solagas.com` (saat ini pengawas-placeholder untuk uji isolasi).
+4. **Rotasi secret** — API key staging & password DB sempat terekspos di chat (lihat catatan Fase 2/B1).
+5. **Deploy** — dashboard → Cloud Run staging (app-auth) + tambah redirect URI domain produksi ke OAuth client. **Gate terpisah, tunggu instruksi.**
+
 ## 🔒 Aturan tak bisa dinegosiasi
 
 1. **Koneksi MySQL EasyMax HARUS read-only.** DB `easymax` dipakai pompa beroperasi. Gunakan user MySQL ber-privilege `SELECT` saja. Kode agent **tidak boleh** pernah eksekusi `INSERT`/`UPDATE`/`DELETE`/DDL ke `easymax`. Tegakkan di level kode (whitelist: hanya `SELECT`) + dokumentasikan cara buat user `SELECT`-only.
