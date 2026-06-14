@@ -1,46 +1,36 @@
 import { q } from "./db";
+import type { ScopedUnitId } from "./scope";
 
 /**
  * Semua query dashboard — SELECT murni (read-only, nol mutasi). Konvensi:
  * tanggal BISNIS = kolom date sumber (DTGLJUAL / DTAGLOPN / DTGL) — shift 3
  * lewat tengah malam tetap di hari bisnisnya. "Hari ini" dihitung WIB.
+ *
+ * FASE 3: setiap query per-unit menerima `ScopedUnitId` (number ber-brand dari
+ * DataScope) — bukan `number` mentah. Jadi tak mungkin memanggil query untuk unit
+ * yang belum lolos otorisasi (error type-check). Resolusi unit (getUnits/byCode)
+ * pindah ke lib/scope.ts; halaman TIDAK lagi mengakses unit tanpa scope.
  */
 
 const TZ = "Asia/Pontianak";
 
 // ---------------------------------------------------------------------------
-// Unit & sinkronisasi
+// Sinkronisasi
 // ---------------------------------------------------------------------------
-
-export interface UnitRow {
-  unit_id: number;
-  code: string;
-  name: string;
-}
-
-export async function getUnits(): Promise<UnitRow[]> {
-  return q<UnitRow>(`SELECT unit_id, code, name FROM unit WHERE active ORDER BY unit_id`);
-}
-
-export async function getUnitByCode(code: string): Promise<UnitRow | null> {
-  const rows = await q<UnitRow>(
-    `SELECT unit_id, code, name FROM unit WHERE code = $1 AND active`,
-    [code],
-  );
-  return rows[0] ?? null;
-}
 
 export interface SyncRow {
   unit_id: number;
   last_run: string | null; // ISO UTC
 }
 
-/** Sinkron terakhir per unit (max last_run_at lintas domain). */
-export async function getSyncByUnit(): Promise<SyncRow[]> {
+/** Sinkron terakhir per unit, DIBATASI ke unit dalam scope caller. */
+export async function getSyncByUnit(unitIds: ScopedUnitId[]): Promise<SyncRow[]> {
+  if (unitIds.length === 0) return [];
   return q<SyncRow>(
     `SELECT unit_id,
             to_char(max(last_run_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_run
-     FROM sync_state GROUP BY unit_id`,
+     FROM sync_state WHERE unit_id = ANY($1::int[]) GROUP BY unit_id`,
+    [unitIds],
   );
 }
 
@@ -59,7 +49,7 @@ export interface ProductAgg {
 
 /** Agregat per produk pada rentang tanggal bisnis [from..to]. */
 export async function getSalesByProduct(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<ProductAgg[]> {
@@ -75,7 +65,7 @@ export async function getSalesByProduct(
      WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN $2::date AND $3::date
      GROUP BY trim(sd.ckdbbm)
      ORDER BY omzet DESC`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
@@ -86,7 +76,7 @@ export interface DailyOmzet {
 }
 
 export async function getDailyOmzet(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<DailyOmzet[]> {
@@ -98,7 +88,7 @@ export async function getDailyOmzet(
      JOIN sales_detail sd ON sd.unit_id = h.unit_id AND sd.ckdjualbbm = h.ckdjualbbm
      WHERE h.unit_id = $1 AND h.dtgljual BETWEEN $2::date AND $3::date
      GROUP BY h.dtgljual ORDER BY h.dtgljual`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
@@ -108,7 +98,7 @@ export interface SalesTotals {
 }
 
 export async function getSalesTotals(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<SalesTotals> {
@@ -118,7 +108,7 @@ export async function getSalesTotals(
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
      WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN $2::date AND $3::date`,
-    [unitId, from, to],
+    [unit, from, to],
   );
   return rows[0] ?? { vol: 0, omzet: 0 };
 }
@@ -129,40 +119,40 @@ export interface ShiftInfo {
   last_dtgljam: string | null;
 }
 
-export async function getShiftInfo(unitId: number, date: string): Promise<ShiftInfo> {
+export async function getShiftInfo(unit: ScopedUnitId, date: string): Promise<ShiftInfo> {
   const rows = await q<ShiftInfo>(
     `SELECT count(DISTINCT h.nshift)::int AS shifts,
             to_char(max(sd.dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_dtgljam
      FROM sales_header h
      LEFT JOIN sales_detail sd ON sd.unit_id = h.unit_id AND sd.ckdjualbbm = h.ckdjualbbm
      WHERE h.unit_id = $1 AND h.dtgljual = $2::date`,
-    [unitId, date],
+    [unit, date],
   );
   return rows[0] ?? { shifts: 0, last_dtgljam: null };
 }
 
 /** Jumlah baris penjualan terkoreksi (SUBAH/SEDIT) pada satu tanggal bisnis. */
-export async function getCorrections(unitId: number, date: string): Promise<number> {
+export async function getCorrections(unit: ScopedUnitId, date: string): Promise<number> {
   const rows = await q<{ n: number }>(
     `SELECT count(*)::int AS n
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
      WHERE sd.unit_id = $1 AND h.dtgljual = $2::date
        AND (COALESCE(sd.subah,0) <> 0 OR COALESCE(sd.sedit,0) <> 0)`,
-    [unitId, date],
+    [unit, date],
   );
   return rows[0]?.n ?? 0;
 }
 
 /** Nozzle yang punya koreksi hari ini (untuk titik ⟳ di denah). */
-export async function getCorrectedNozzles(unitId: number, date: string): Promise<string[]> {
+export async function getCorrectedNozzles(unit: ScopedUnitId, date: string): Promise<string[]> {
   const rows = await q<{ ckdnozzle: string }>(
     `SELECT DISTINCT trim(sd.ckdnozzle) AS ckdnozzle
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
      WHERE sd.unit_id = $1 AND h.dtgljual = $2::date
        AND (COALESCE(sd.subah,0) <> 0 OR COALESCE(sd.sedit,0) <> 0)`,
-    [unitId, date],
+    [unit, date],
   );
   return rows.map((r) => r.ckdnozzle);
 }
@@ -190,7 +180,7 @@ export interface ClosingOpnameRow {
  * BUKAN SUM(NVOLSELISIH) yang absolut. Garbage guard diterapkan di derive.ts.
  */
 export async function getClosingOpname(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<ClosingOpnameRow[]> {
@@ -214,7 +204,7 @@ export async function getClosingOpname(
      FROM biz b
      WHERE b.rn = 1 AND b.bizdate BETWEEN $2::date AND $3::date
      ORDER BY b.bizdate, trim(b.ckdtangki)`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
@@ -245,7 +235,7 @@ export interface DeliveryByTankDate {
  * informatif; tidak mengklasifikasi/mengecualikan apa pun.
  */
 export async function getDeliveryByTankDate(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<DeliveryByTankDate[]> {
@@ -257,13 +247,13 @@ export async function getDeliveryByTankDate(
      WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
      GROUP BY 1, 2`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
 /** Kekurangan kiriman (NVOLSELISIH delivery) pada rentang — untuk anomali. */
 export async function getDeliveryShortfalls(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
   limit = 20,
@@ -278,7 +268,7 @@ export async function getDeliveryShortfalls(
      WHERE t.unit_id = $1 AND COALESCE(t.nvolselisih,0) <> 0
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
      ORDER BY abs(t.nvolselisih) DESC LIMIT $4`,
-    [unitId, from, to, limit],
+    [unit, from, to, limit],
   );
 }
 
@@ -293,7 +283,7 @@ export interface DeliveryAgg {
 }
 
 export async function getDeliveryByProduct(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<DeliveryAgg[]> {
@@ -306,7 +296,7 @@ export async function getDeliveryByProduct(
      WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
      GROUP BY trim(t.ckdbbm)`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
@@ -328,7 +318,7 @@ export interface TankStock {
   received_since: number;
 }
 
-export async function getTankStocks(unitId: number): Promise<TankStock[]> {
+export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
   return q<TankStock>(
     `WITH last_op AS (
        SELECT DISTINCT ON (o.ckdtangki) o.ckdtangki, o.ckdbbm, o.nstockop, o.dtgljam
@@ -352,7 +342,7 @@ export async function getTankStocks(unitId: number): Promise<TankStock[]> {
      LEFT JOIN last_op lo ON lo.ckdtangki = t.ckdtangki
      WHERE t.unit_id = $1
      ORDER BY trim(t.ckdtangki)`,
-    [unitId],
+    [unit],
   );
 }
 
@@ -361,11 +351,11 @@ export interface NozzleRow {
   ckdtangki: string | null;
 }
 
-export async function getNozzles(unitId: number): Promise<NozzleRow[]> {
+export async function getNozzles(unit: ScopedUnitId): Promise<NozzleRow[]> {
   return q<NozzleRow>(
     `SELECT trim(ckdnozzle) AS ckdnozzle, trim(ckdtangki) AS ckdtangki
      FROM nozzle WHERE unit_id = $1 ORDER BY trim(ckdnozzle)`,
-    [unitId],
+    [unit],
   );
 }
 
@@ -376,7 +366,7 @@ export interface AvgDaily {
 }
 
 export async function getAvgDailySales(
-  unitId: number,
+  unit: ScopedUnitId,
   from: string,
   to: string,
 ): Promise<AvgDaily[]> {
@@ -387,7 +377,7 @@ export async function getAvgDailySales(
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
      WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN $2::date AND $3::date
      GROUP BY trim(sd.ckdbbm)`,
-    [unitId, from, to],
+    [unit, from, to],
   );
 }
 
@@ -403,7 +393,7 @@ export interface ComplianceDay {
 }
 
 export async function getComplianceMatrix(
-  unitId: number,
+  unit: ScopedUnitId,
   days: number,
 ): Promise<ComplianceDay[]> {
   return q<ComplianceDay>(
@@ -421,14 +411,14 @@ export async function getComplianceMatrix(
        (SELECT count(*)::int FROM cash_header c
          WHERE c.unit_id = $1 AND COALESCE(c.sbatal,0)=0 AND c.dtgl = hari.d) AS cash_rows
      FROM hari ORDER BY d DESC`,
-    [unitId, days],
+    [unit, days],
   );
 }
 
-export async function getTankCount(unitId: number): Promise<number> {
+export async function getTankCount(unit: ScopedUnitId): Promise<number> {
   const rows = await q<{ n: number }>(
     `SELECT count(*)::int AS n FROM tangki WHERE unit_id = $1`,
-    [unitId],
+    [unit],
   );
   return rows[0]?.n ?? 0;
 }
@@ -440,14 +430,14 @@ export interface LastInputs {
   cash: string | null;
 }
 
-export async function getLastInputs(unitId: number): Promise<LastInputs> {
+export async function getLastInputs(unit: ScopedUnitId): Promise<LastInputs> {
   const rows = await q<LastInputs>(
     `SELECT
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM sales_detail WHERE unit_id=$1) AS sales,
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM opname WHERE unit_id=$1) AS opname,
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM delivery WHERE unit_id=$1) AS delivery,
        (SELECT to_char(max(dtgl),'YYYY-MM-DD') FROM cash_header WHERE unit_id=$1) AS cash`,
-    [unitId],
+    [unit],
   );
   return rows[0] ?? { sales: null, opname: null, delivery: null, cash: null };
 }
@@ -461,7 +451,7 @@ export interface CashRow {
 }
 
 /** Nota kas pada satu tanggal bisnis (dorman → kosong, itu sinyalnya). */
-export async function getCashForDate(unitId: number, date: string): Promise<CashRow[]> {
+export async function getCashForDate(unit: ScopedUnitId, date: string): Promise<CashRow[]> {
   return q<CashRow>(
     `SELECT trim(ch.ckdkb) AS ckdkb, ch.vcket, ch.ntotal::float8 AS ntotal,
             COALESCE(ch.sbatal,0)::int AS sbatal,
@@ -471,6 +461,6 @@ export async function getCashForDate(unitId: number, date: string): Promise<Cash
      FROM cash_header ch
      WHERE ch.unit_id = $1 AND ch.dtgl = $2::date
      ORDER BY ch.ckdkb`,
-    [unitId, date],
+    [unit, date],
   );
 }

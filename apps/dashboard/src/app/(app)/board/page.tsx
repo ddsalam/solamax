@@ -19,8 +19,8 @@ import {
   getSalesByProduct,
   getSalesTotals,
   getShiftInfo,
-  getUnits,
 } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,8 @@ export default async function BoardPage({
   const period = resolvePeriod(pkey);
   const today = todayWib();
   const { month } = monthInfo(today);
-  const units = await getUnits();
+  const scope = await getDataScope();
+  const units = scope.units;
 
   if (units.length === 0) {
     return <BoardEmpty />;

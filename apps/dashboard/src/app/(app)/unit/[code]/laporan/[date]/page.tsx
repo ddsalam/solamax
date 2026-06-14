@@ -20,9 +20,8 @@ import {
   getShiftInfo,
   getTankStocks,
   getAvgDailySales,
-  getUnitByCode,
-  getUnits,
 } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
 import { addDays } from "@/lib/periods";
 
@@ -38,8 +37,8 @@ export default async function LaporanPage({
   searchParams: { view?: string };
 }) {
   if (!DATE_RE.test(params.date)) notFound();
-  const unit = await getUnitByCode(params.code);
-  if (!unit) notFound();
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(params.code); // notFound bila di luar scope/tak ada
   const date = params.date;
   const detail = searchParams.view !== "ringkas";
   const today = todayWib();
@@ -47,8 +46,8 @@ export default async function LaporanPage({
   const mi = monthInfo(date);
   const mStart = monthStart(date);
 
+  const units = scope.units;
   const [
-    units,
     prodDay,
     closingDay,
     closingMonth,
@@ -61,7 +60,6 @@ export default async function LaporanPage({
     avg7,
     cash,
   ] = await Promise.all([
-    getUnits(),
     getSalesByProduct(unit.unit_id, date, date),
     getClosingOpname(unit.unit_id, date, date),
     getClosingOpname(unit.unit_id, mStart, date),

@@ -2,7 +2,8 @@ import { Heatmap, type HmRow } from "@/components/mon/Heatmap";
 import { cashStatus, opnameStatus, salesStatus, type Status } from "@/lib/compliance";
 import { ago } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
-import { getComplianceMatrix, getLastInputs, getTankCount, getUnits } from "@/lib/queries";
+import { getComplianceMatrix, getLastInputs, getTankCount } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,8 @@ function aggregate(sales: Status, opname: Status): "success" | "warning" | "dang
 }
 
 export default async function KetaatanPage() {
-  const units = await getUnits();
+  const scope = await getDataScope();
+  const units = scope.units;
   const today = todayWib();
 
   let kasStrip = "MODUL KAS — BELUM ADA DATA";

@@ -5,7 +5,8 @@ import { RincianToolbar } from "@/components/rincian/Toolbar";
 import { classifyProduct, UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
 import { dateLong, dateShort, idn, rp, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
-import { getCashForDate, getSalesByProduct, getUnitByCode, getUnits } from "@/lib/queries";
+import { getCashForDate, getSalesByProduct } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -37,13 +38,13 @@ export default async function RincianPage({
   searchParams: { kosong?: string };
 }) {
   if (!DATE_RE.test(params.date)) notFound();
-  const unit = await getUnitByCode(params.code);
-  if (!unit) notFound();
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(params.code); // notFound bila di luar scope/tak ada
   const date = params.date;
   const hideEmpty = searchParams.kosong === "sembunyi";
 
-  const [units, prod, cash] = await Promise.all([
-    getUnits(),
+  const units = scope.units;
+  const [prod, cash] = await Promise.all([
     getSalesByProduct(unit.unit_id, date, date),
     getCashForDate(unit.unit_id, date),
   ]);

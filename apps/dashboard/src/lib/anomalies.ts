@@ -13,8 +13,8 @@ import {
   getLastInputs,
   getShiftInfo,
   getTankStocks,
-  type UnitRow,
 } from "./queries";
+import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
 import {
@@ -50,7 +50,7 @@ const MAJOR_PCT = 0.05; // atau ≥ 5% dari basis
 const lossTier = (absL: number, ratio: number | null): "major" | "minor" =>
   absL >= MAJOR_L || (ratio !== null && ratio >= MAJOR_PCT) ? "major" : "minor";
 
-export async function buildAnomalies(units: UnitRow[]): Promise<AnomalyItem[]> {
+export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]> {
   const today = todayWib();
   const items: AnomalyItem[] = [];
   let kasOldest: { date: string } | null = null;

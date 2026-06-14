@@ -2,7 +2,8 @@ import Link from "next/link";
 import { HubPicker } from "@/components/HubPicker";
 import { unitLabel } from "@/lib/config";
 import { todayWib } from "@/lib/periods";
-import { getComplianceMatrix, getUnits } from "@/lib/queries";
+import { getComplianceMatrix } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export default async function HubPage({
 }: {
   searchParams: { unit?: string; date?: string };
 }) {
-  const units = await getUnits();
+  const scope = await getDataScope();
+  const units = scope.units;
   const today = todayWib();
   const unit = units.find((u) => u.code === searchParams.unit) ?? units[0];
   const date = searchParams.date ?? today;

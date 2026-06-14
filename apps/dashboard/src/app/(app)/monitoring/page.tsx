@@ -9,15 +9,17 @@ import {
   getShiftInfo,
   getSyncByUnit,
   getTankStocks,
-  getUnits,
 } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
 /** 4a · Jaringan — tabel SPBU live. Klik unit → denah tangki. */
 export default async function JaringanPage() {
   const today = todayWib();
-  const [units, sync] = await Promise.all([getUnits(), getSyncByUnit()]);
+  const scope = await getDataScope();
+  const units = scope.units;
+  const sync = await getSyncByUnit(scope.unitIds);
   const syncBy = new Map(sync.map((s) => [s.unit_id, s.last_run]));
 
   const rows = await Promise.all(

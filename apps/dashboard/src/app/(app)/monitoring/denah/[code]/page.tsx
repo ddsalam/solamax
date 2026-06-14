@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { tankCapacity, unitDotted } from "@/lib/config";
 import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
 import { fmtL, idn, timeWib } from "@/lib/format";
@@ -9,15 +8,15 @@ import {
   getCorrectedNozzles,
   getNozzles,
   getTankStocks,
-  getUnitByCode,
 } from "@/lib/queries";
+import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
 /** 4b · Denah tangki + nozzle. Fill% hanya bila kapasitas diisi di config (№5). */
 export default async function DenahPage({ params }: { params: { code: string } }) {
-  const unit = await getUnitByCode(params.code);
-  if (!unit) notFound();
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(params.code); // notFound bila di luar scope/tak ada
   const today = todayWib();
 
   const [tanks, nozzles, avg, corrected] = await Promise.all([
