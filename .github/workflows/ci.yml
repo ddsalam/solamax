@@ -25,5 +25,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # packages/shared harus ter-build sebelum typecheck paket hilir.
       - run: pnpm --filter @solamax/shared build
+      # Prisma client harus ter-generate; tipe tx transaksi (backend) berasal darinya.
+      - run: pnpm --filter @solamax/backend prisma:generate
       # typecheck semua paket + SELURUH test suite (incl. uji akses-negatif).
       - run: pnpm check
