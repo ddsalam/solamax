@@ -1,0 +1,12 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/bundle-out
+*.zip
+**/.env*
+**/config.local.json
+**/data
+verification-queries-results
+secrets

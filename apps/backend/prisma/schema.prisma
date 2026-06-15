@@ -1,0 +1,311 @@
+// Skema Cloud SQL Postgres — mirror ARCHITECTURE.md §3 (TERKUNCI by verifikasi
+// 2026-06-11). Detail tanpa PRI di MySQL → surrogate id + UNIQUE natural key.
+
+generator client {
+  provider        = "prisma-client-js"
+  // native = dev Mac; debian-openssl-3.0.x = node:22-slim (bookworm) di Cloud Run.
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // public = mirror data EasyMax (read-only utk app); app = auth/kontrol RBAC.
+  schemas  = ["app", "public"]
+}
+
+model Unit {
+  unitId     Int      @id @map("unit_id") @db.SmallInt
+  code       String   @unique
+  name       String
+  apiKeyHash String   @unique @map("api_key_hash")
+  timezone   String   @default("Asia/Pontianak")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  tenantId   String?  @map("tenant_id") @db.Uuid // pemilik SPBU (multi-tenant)
+
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
+  userUnits UserUnit[]
+
+  @@map("unit")
+  @@schema("public")
+}
+
+model SyncState {
+  unitId        Int       @map("unit_id") @db.SmallInt
+  domain        String
+  lastWatermark DateTime? @map("last_watermark") @db.Timestamptz()
+  lastRunAt     DateTime? @map("last_run_at") @db.Timestamptz()
+  lastRowCount  Int?      @map("last_row_count")
+
+  @@id([unitId, domain])
+  @@map("sync_state")
+  @@schema("public")
+}
+
+model SalesHeader {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdjualbbm String   @db.Char(15)
+  dtgljual   DateTime @db.Date
+  nshift     Int?     @db.SmallInt
+  vcket      String?
+
+  @@id([unitId, ckdjualbbm])
+  @@index([unitId, dtgljual])
+  @@map("sales_header")
+  @@schema("public")
+}
+
+model SalesDetail {
+  id          BigInt   @id @default(autoincrement())
+  unitId      Int      @map("unit_id") @db.SmallInt
+  ckdjualbbm  String   @db.Char(15)
+  ckdnozzle   String   @db.Char(5)
+  nurut       Int
+  nstandawal  Decimal? @db.Decimal
+  nstandakhir Decimal? @db.Decimal
+  nvolume     Decimal? @db.Decimal
+  nhargajual  Decimal? @db.Decimal
+  nsubtotal   Decimal? @db.Decimal
+  ckdbbm      String?  @db.Char(5)
+  ckdtangki   String?  @db.Char(5)
+  vcopeator   String?
+  dtgljam     DateTime @db.Timestamptz()
+  subah       Int?     @db.SmallInt
+  sedit       Int?     @db.SmallInt
+  ingestedAt  DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdjualbbm, ckdnozzle, nurut])
+  @@index([unitId, dtgljam])
+  @@map("sales_detail")
+  @@schema("public")
+}
+
+model CashHeader {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdkb      String   @db.Char(15)
+  dtgl       DateTime @db.Date
+  vcket      String?
+  sjnstrans  Int?     @db.SmallInt
+  ntotal     Decimal? @db.Decimal
+  vcref      String?
+  ctmpkas    String?
+  sbatal     Int?     @db.SmallInt
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdkb])
+  @@index([unitId, dtgl])
+  @@map("cash_header")
+  @@schema("public")
+}
+
+model CashDetail {
+  id         BigInt   @id @default(autoincrement())
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdkb      String   @db.Char(15)
+  ckdperk    String?  @db.Char(8)
+  njumlah    Decimal? @db.Decimal
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdkb, ckdperk])
+  @@map("cash_detail")
+  @@schema("public")
+}
+
+model Opname {
+  id          BigInt    @id @default(autoincrement())
+  unitId      Int       @map("unit_id") @db.SmallInt
+  ckdopnbbm   String    @db.Char(15)
+  ckdtangki   String    @db.Char(5)
+  ckdbbm      String?   @db.Char(5)
+  dtaglopn    DateTime? @db.Date
+  nstockbk    Decimal?  @db.Decimal
+  nstockop    Decimal?  @db.Decimal
+  nvolselisih Decimal?  @db.Decimal
+  dtgljam     DateTime  @db.Timestamptz()
+  sbatal      Int?      @db.SmallInt
+  ingestedAt  DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdopnbbm, ckdtangki])
+  @@index([unitId, dtgljam])
+  @@map("opname")
+  @@schema("public")
+}
+
+model Delivery {
+  unitId      Int       @map("unit_id") @db.SmallInt
+  ckdtrm      String    @db.Char(15)
+  dtgltrm     DateTime? @db.Date
+  dtgljam     DateTime  @db.Timestamptz()
+  cnodo       String?
+  nvoldo      Decimal?  @db.Decimal
+  nvolreal    Decimal?  @db.Decimal
+  nvolselisih Decimal?  @db.Decimal
+  cnopol      String?
+  vcsopir     String?
+  ckdtangki   String?   @db.Char(5)
+  ckdbbm      String?   @db.Char(5)
+  sbatal      Int?      @db.SmallInt
+  ingestedAt  DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtrm])
+  @@index([unitId, dtgljam])
+  @@map("delivery")
+  @@schema("public")
+}
+
+model Product {
+  unitId   Int      @map("unit_id") @db.SmallInt
+  ckdbbm   String   @db.Char(5)
+  vcnmbbm  String?
+  nhrgjual Decimal? @db.Decimal
+  perkMap  Json?    @map("perk_map")
+
+  @@id([unitId, ckdbbm])
+  @@map("product")
+  @@schema("public")
+}
+
+model Nozzle {
+  unitId    Int     @map("unit_id") @db.SmallInt
+  ckdnozzle String  @db.Char(5)
+  ckdpompa  String? @db.Char(5)
+  ckdtangki String? @db.Char(5)
+
+  @@id([unitId, ckdnozzle])
+  @@map("nozzle")
+  @@schema("public")
+}
+
+model Tangki {
+  unitId     Int     @map("unit_id") @db.SmallInt
+  ckdtangki  String  @db.Char(5)
+  ckdbbm     String? @db.Char(5)
+  vcnmtangki String?
+
+  @@id([unitId, ckdtangki])
+  @@map("tangki")
+  @@schema("public")
+}
+
+model Account {
+  unitId   Int     @map("unit_id") @db.SmallInt
+  ckdperk  String  @db.Char(8)
+  vcnmperk String?
+  ckdinduk String? @db.Char(8)
+
+  @@id([unitId, ckdperk])
+  @@map("account")
+  @@schema("public")
+}
+
+// ===========================================================================
+// Schema `app` — auth (Auth.js v5 / @auth/pg-adapter) + RBAC multi-tenant.
+// Tabel Auth.js dipetakan VERBATIM sesuai DDL adapter (id serial int, kolom
+// camelCase ber-quote, TANPA FK/unique tambahan) demi NOL DRIFT. FK & integritas
+// hanya di tabel milik kita (tenant/membership/user_unit). Lihat AUTH-RBAC-DESIGN.md.
+// ===========================================================================
+
+/// Auth.js: identitas user (dikelola adapter). JANGAN ubah nama kolom/tipe.
+model User {
+  id            Int       @id @default(autoincrement())
+  name          String?   @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  emailVerified DateTime? @map("emailVerified") @db.Timestamptz()
+  image         String?
+
+  memberships Membership[] // relasi milik kita (FK di sisi membership)
+
+  @@map("users")
+  @@schema("app")
+}
+
+/// Auth.js: akun OAuth tertaut (Google). Verbatim adapter.
+model AuthAccount {
+  id                Int     @id @default(autoincrement())
+  userId            Int     @map("userId")
+  type              String  @db.VarChar(255)
+  provider          String  @db.VarChar(255)
+  providerAccountId String  @map("providerAccountId") @db.VarChar(255)
+  refresh_token     String?
+  access_token      String?
+  expires_at        BigInt?
+  id_token          String?
+  scope             String?
+  session_state     String?
+  token_type        String?
+
+  @@map("accounts")
+  @@schema("app")
+}
+
+/// Auth.js: sesi DB (revocation seketika). Verbatim adapter.
+model AuthSession {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("userId")
+  expires      DateTime @db.Timestamptz()
+  sessionToken String   @map("sessionToken") @db.VarChar(255)
+
+  @@map("sessions")
+  @@schema("app")
+}
+
+/// Auth.js: token verifikasi. Verbatim adapter (PK gabungan, tanpa id).
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime @db.Timestamptz()
+
+  @@id([identifier, token])
+  @@map("verification_token")
+  @@schema("app")
+}
+
+/// Perusahaan (multi-tenant). Pilot: 1 baris (SolaGroup).
+model Tenant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  slug      String   @unique
+  status    String   @default("active") // active | suspended
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  memberships Membership[]
+  units       Unit[]
+
+  @@map("tenant")
+  @@schema("app")
+}
+
+/// OTORISASI: user ⇒ tenant + role. tenant_id NULL = super_admin (lintas-tenant).
+model Membership {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         Int      @map("user_id")
+  tenantId       String?  @map("tenant_id") @db.Uuid
+  role           String // super_admin | admin_perusahaan | direksi | pengawas
+  status         String   @default("active") // active | invited | disabled
+  invitedByEmail String?  @map("invited_by_email")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  units  UserUnit[]
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("membership")
+  @@schema("app")
+}
+
+/// Scope unit utk pengawas (direksi/admin = semua unit tenant → tanpa baris).
+model UserUnit {
+  membershipId String @map("membership_id") @db.Uuid
+  unitId       Int    @map("unit_id") @db.SmallInt
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  unit       Unit       @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
+
+  @@id([membershipId, unitId])
+  @@map("user_unit")
+  @@schema("app")
+}

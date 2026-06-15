@@ -1,0 +1,9 @@
+# Build image dashboard via Cloud Build dgn konteks ROOT repo + Dockerfile dashboard
+# (root Dockerfile = backend, jangan terpilih). Pakai:
+#   gcloud builds submit --config apps/dashboard/cloudbuild.yaml --substitutions=_IMAGE=<img> .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "apps/dashboard/Dockerfile", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+options:
+  logging: CLOUD_LOGGING_ONLY

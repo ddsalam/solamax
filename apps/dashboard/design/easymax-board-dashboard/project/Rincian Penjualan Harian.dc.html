@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/elevation.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/motion.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/tokens/layout.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/base.css">
+  <link rel="stylesheet" href="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/styles.css">
+  <script src="_ds/solagroup-design-system-1c9c5408-bcc6-47e1-914f-20b22b6a294d/_ds_bundle.js"></script>
+  <style>
+    body { background: var(--neutral-50); }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff; }
+      .doc-sheet { box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; margin: 0 !important; }
+      .doc-section { break-inside: avoid; }
+    }
+  </style>
+</helmet>
+
+<!-- ===== Intro (tidak ikut tercetak) ===== -->
+<div class="no-print" data-screen-label="Intro Rincian Penjualan" style="max-width: 920px; margin: 0 auto; padding: var(--space-12) var(--space-8) 0;">
+  <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+    <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 24px; display: block;">
+    <div style="width: 1px; height: 20px; background: var(--color-border);"></div>
+    <a href="SolaMax Design Spec.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">← Design Spec</a>
+    <a href="Laporan Operasional Harian.dc.html" style="font-size: 16px; font-weight: 600; text-decoration: none; color: var(--color-accent);">Laporan Operasional (versi kaya) →</a>
+  </div>
+  <div class="text-eyebrow" style="color: var(--color-accent); margin-top: var(--space-8);">Layar baru · dokumen arsip</div>
+  <h1 class="text-h2" style="color: var(--color-text-brand); margin-top: var(--space-2);">Rincian Penjualan Harian</h1>
+  <p class="text-body-lg" style="color: var(--color-text-secondary); max-width: 760px; margin-top: var(--space-3);">Versi ledger resmi ala dokumen Pertamina — bersih, satu kolom, siap cetak &amp; arsip. Tanpa alarm dashboard: itu domain Laporan Operasional yang kaya.</p>
+</div>
+
+<!-- ===== Toolbar (tidak ikut tercetak) ===== -->
+<div class="no-print" style="max-width: 920px; margin: var(--space-6) auto 0; padding: 0 var(--space-8);">
+  <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-4) var(--space-5);">
+    <select value="{{ unitCode }}" onChange="{{ onUnit }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px; cursor: pointer;">
+      <sc-for list="{{ unitOptions }}" as="o" hint-placeholder-count="7">
+        <option value="{{ o.code }}">{{ o.label }}</option>
+      </sc-for>
+    </select>
+    <input type="date" value="{{ dateStr }}" onChange="{{ onDate }}" style="font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px 14px; min-height: 44px;">
+    <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; min-height: 44px; padding: 0 var(--space-2);">
+      <input type="checkbox" checked="{{ hideEmpty }}" onChange="{{ onHideEmpty }}" style="width: 18px; height: 18px; accent-color: var(--accent-600); cursor: pointer;">
+      <span style="font-size: 16px; color: var(--color-text-secondary); font-weight: 500;">Sembunyikan section kosong</span>
+    </label>
+    <button onClick="{{ onPrint }}" style="margin-left: auto; font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: #fff; background: var(--brand-navy); border: none; border-radius: var(--radius-full); padding: 10px 22px; min-height: 44px; cursor: pointer;" style-hover="background: var(--accent-800);">Export PDF / Cetak</button>
+  </div>
+</div>
+
+<!-- ===== DOKUMEN ===== -->
+<div class="doc-sheet" data-screen-label="Rincian Penjualan" style="max-width: 920px; margin: var(--space-6) auto 0; background: #fff; border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-2); padding: 56px 64px 64px;">
+
+  <!-- Kop -->
+  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-6); padding-bottom: var(--space-5); border-bottom: 2px solid var(--brand-navy);">
+    <div>
+      <div class="text-h6" style="color: var(--color-text-brand);">SPBU {{ unitCode }} · {{ unitName }}</div>
+      <div style="font-size: 16px; color: var(--color-text-secondary); margin-top: 4px; max-width: 420px;">{{ unitAddress }}</div>
+      <div style="font-size: 15px; color: var(--color-text-tertiary); margin-top: 2px;">{{ unitPT }}</div>
+    </div>
+    <img src="assets/solagroup-logo.png" alt="SolaGroup" style="height: 32px; display: block; flex-shrink: 0;">
+  </div>
+
+  <!-- Judul -->
+  <div style="text-align: center; margin-top: var(--space-8);">
+    <div class="text-h4" style="color: var(--color-text-brand); letter-spacing: 0.08em;">RINCIAN PENJUALAN</div>
+    <div style="font-size: 17px; color: var(--color-text-secondary); margin-top: var(--space-2);">Tanggal bisnis {{ bizDateLong }}</div>
+  </div>
+
+  <!-- Sections ledger -->
+  <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="6">
+    <div class="doc-section" style="margin-top: var(--space-10);">
+      <div style="display: flex; align-items: baseline; gap: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);">
+        <span style="font-size: 15px; font-weight: 700; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ sec.num }}</span>
+        <span class="text-caption" style="font-weight: 700; color: var(--color-text-brand); letter-spacing: 0.06em;">{{ sec.title }}</span>
+        <span style="margin-left: auto; font-size: 15px; color: var(--color-text-tertiary);">{{ sec.meta }}</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 44px 1fr 120px 150px; gap: var(--space-3); padding: 9px 0 7px; border-bottom: 1px solid var(--color-border-hairline);">
+        <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">No</span>
+        <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Keterangan</span>
+        <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Volume (L)</span>
+        <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Rupiah</span>
+      </div>
+      <sc-if value="{{ sec.isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 14px 0; border-bottom: 1px solid var(--color-border-hairline); font-size: 16px; color: var(--color-text-tertiary); font-style: italic;">Tidak ada transaksi pada tanggal ini.</div>
+      </sc-if>
+      <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="6">
+        <div style="display: grid; grid-template-columns: 44px 1fr 120px 150px; gap: var(--space-3); padding: 8px 0; border-bottom: 1px solid var(--color-border-hairline); align-items: baseline;">
+          <span style="font-size: 16px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums;">{{ r.no }}</span>
+          <span style="font-size: 16px; color: var(--color-text-primary);">{{ r.ket }}</span>
+          <span style="font-size: 16px; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-text-secondary);">{{ r.vol }}</span>
+          <span style="font-size: 16px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ r.rp }}</span>
+        </div>
+      </sc-for>
+      <sc-if value="{{ sec.toggleLabel }}" hint-placeholder-val="{{ false }}">
+        <button class="no-print" onClick="{{ sec.onToggle }}" style="width: 100%; text-align: center; padding: 10px 0; border: none; border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50); font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-accent); cursor: pointer; min-height: 44px;">{{ sec.toggleLabel }}</button>
+      </sc-if>
+      <sc-if value="{{ sec.notEmpty }}" hint-placeholder-val="{{ true }}">
+        <div style="display: grid; grid-template-columns: 44px 1fr 120px 150px; gap: var(--space-3); padding: 10px 0; border-bottom: 2px solid var(--brand-navy); align-items: baseline;">
+          <span></span>
+          <span class="text-caption" style="font-weight: 700; color: var(--color-text-brand);">{{ sec.totalLabel }}</span>
+          <span style="font-size: 16px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums;">{{ sec.totalVol }}</span>
+          <span style="font-size: 16px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ sec.totalRp }}</span>
+        </div>
+      </sc-if>
+    </div>
+  </sc-for>
+
+  <!-- SUMMARY -->
+  <div class="doc-section" style="margin-top: var(--space-12);">
+    <div style="display: flex; align-items: baseline; gap: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);">
+      <span class="text-caption" style="font-weight: 700; color: var(--color-text-brand); letter-spacing: 0.06em;">SUMMARY</span>
+      <span style="margin-left: auto; font-size: 15px; color: var(--color-text-tertiary);">rekonsiliasi kas harian</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 44px 1fr 150px; gap: var(--space-3); padding: 9px 0 7px; border-bottom: 1px solid var(--color-border-hairline);">
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">No</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary);">Keterangan</span>
+      <span style="font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); text-align: right;">Jumlah</span>
+    </div>
+    <sc-for list="{{ summaryRows }}" as="s" hint-placeholder-count="9">
+      <div style="display: grid; grid-template-columns: 44px 1fr 150px; gap: var(--space-3); padding: 9px 0; border-bottom: 1px solid {{ s.border }}; align-items: baseline; background: {{ s.bg }};">
+        <span style="font-size: 16px; font-weight: 700; color: var(--color-text-brand); font-variant-numeric: tabular-nums;">{{ s.l }}</span>
+        <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;">
+          <span style="font-size: 16px; font-weight: {{ s.weight }}; color: var(--color-text-primary);">{{ s.label }}</span>
+          <sc-if value="{{ s.formula }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size: 15px; color: var(--color-text-tertiary); font-family: ui-monospace, monospace;">{{ s.formula }}</span>
+          </sc-if>
+        </div>
+        <span style="font-size: 16px; font-weight: {{ s.weight }}; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ s.val }}</span>
+      </div>
+    </sc-for>
+    <div style="display: flex; justify-content: flex-end; align-items: baseline; gap: var(--space-2); padding: 10px 0;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ matchDot }}; transform: translateY(-1px);"></span>
+      <span style="font-size: 15px; font-weight: 600; color: {{ matchColor }};">{{ matchNote }}</span>
+    </div>
+  </div>
+
+  <!-- Tanda tangan -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-10); margin-top: var(--space-12); text-align: center;">
+    <div>
+      <div style="font-size: 16px; color: var(--color-text-secondary);">Disusun oleh,</div>
+      <div style="height: 72px;"></div>
+      <div style="font-size: 16px; font-weight: 600; border-top: 1px solid var(--color-border); padding-top: 8px; max-width: 240px; margin: 0 auto;">Pengawas SPBU</div>
+    </div>
+    <div>
+      <div style="font-size: 16px; color: var(--color-text-secondary);">Mengetahui,</div>
+      <div style="height: 72px;"></div>
+      <div style="font-size: 16px; font-weight: 600; border-top: 1px solid var(--color-border); padding-top: 8px; max-width: 240px; margin: 0 auto;">Pengawas Wilayah</div>
+    </div>
+  </div>
+  <div style="margin-top: var(--space-10); padding-top: var(--space-3); border-top: 1px solid var(--color-border-hairline); display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">
+    <span style="font-size: 14px; color: var(--color-text-tertiary);">Dihasilkan otomatis oleh SolaMax dari data EasyMax POS</span>
+    <span style="font-size: 14px; color: var(--color-text-tertiary);">Dicetak {{ printedAt }} WIB</span>
+  </div>
+</div>
+
+<!-- ===== Catatan penggunaan (tidak ikut tercetak) ===== -->
+<div class="no-print" data-screen-label="Catatan Penggunaan" style="max-width: 920px; margin: 0 auto; padding: var(--space-10) var(--space-8) var(--space-24);">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5);">
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Kapan pakai versi ini vs Laporan Operasional?</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Rincian Penjualan = dokumen resmi harian: dicetak, ditandatangani, diarsip, dikirim ke pihak luar (auditor, Pertamina). Laporan Operasional = alat kerja di layar: alarm, target, ketahanan stok, drilldown. Angka keduanya dari sumber yang sama — rekonsiliasi A–I identik.</p>
+    </div>
+    <div style="background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5);">
+      <div class="text-caption" style="font-weight: 600; color: var(--color-text-brand);">Entry point</div>
+      <p style="font-size: 16px; color: var(--color-text-secondary); margin: var(--space-2) 0 0;">Tombol "Versi ringkas / Cetak" di toolbar Laporan Operasional Harian membuka dokumen ini dengan unit + tanggal terbawa. Pengawas juga bisa langsung dari menu unitnya. Section kosong (mis. deposit di Bakau) hilang otomatis saat toggle "Sembunyikan section kosong" aktif; saat cetak, daftar pelanggan selalu tampil penuh.</p>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { unitCode: "64.781.11", dateStr: "2026-06-11", hideEmpty: false, showAllCust: false };
+
+  renderVals() {
+    const { unitCode, dateStr, hideEmpty, showAllCust } = this.state;
+    const id = (n, d = 0) => n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
+    const rp = (n) => "Rp " + id(Math.round(n));
+    const vol2 = (n) => id(n, 2);
+
+    const UNITS = [
+      { code: "64.781.11", name: "Imam Bonjol", pt: "PT Sola Bonjol Energi", addr: "Jl. Imam Bonjol No. 24, Pontianak Selatan, Kalimantan Barat", f: 1, deposit: true },
+      { code: "64.781.06", name: "Kotabaru", pt: "PT Sola Kotabaru Niaga", addr: "Jl. Prof. M. Yamin, Kotabaru, Pontianak Selatan", f: 0.79, deposit: false },
+      { code: "64.781.01", name: "Adisucipto", pt: "PT Sola Adisucipto Persada", addr: "Jl. Adisucipto Km 6, Sungai Raya, Kubu Raya", f: 0.92, deposit: false },
+      { code: "64.782.01", name: "Batu Layang", pt: "PT Sola Batu Layang Mandiri", addr: "Jl. Khatulistiwa, Batu Layang, Pontianak Utara", f: 0.64, deposit: false },
+      { code: "64.783.11", name: "Korek", pt: "PT Sola Korek Sejahtera", addr: "Jl. Trans Kalimantan, Korek, Ambawang, Kubu Raya", f: 0.56, deposit: false },
+      { code: "63.781.002", name: "28 Oktober", pt: "PT Sola Oktober Jaya", addr: "Jl. 28 Oktober, Siantan Hulu, Pontianak Utara", f: 0.74, deposit: false },
+      { code: "63.783.01", name: "Bakau", pt: "PT Sola Bakau Lestari", addr: "Jl. Raya Bakau, Sungai Kakap, Kubu Raya", f: 0.49, deposit: false },
+    ];
+    const U = UNITS.find((u) => u.code === unitCode) || UNITS[0];
+    const f = U.f;
+    const unitOptions = UNITS.map((u) => ({ code: u.code, label: u.name + " · " + u.code }));
+
+    // ===== 1 · Omset penjualan (urutan PDF) =====
+    const PROD = [
+      ["Pertamax", 4812.34, 12500], ["Solar", 5120.5, 6800], ["Pertamax Turbo", 760.12, 13700],
+      ["Dexlite", 820.45, 13400], ["Pertalite", 19240.88, 10000], ["Pertamina Dex", 310.2, 13800],
+    ].map(([name, v, price]) => {
+      const vol = Math.round(v * f * 100) / 100;
+      return { name, vol, nominal: Math.round(vol * price) };
+    });
+    const totVol = PROD.reduce((a, p) => a + p.vol, 0);
+    const A = PROD.reduce((a, p) => a + p.nominal, 0);
+
+    // ===== 2 · Pelanggan (~40) =====
+    const NAMES = [
+      "PT Kapuas Sejahtera Logistik", "CV Borneo Tirta", "PT Khatulistiwa Niaga", "CV Mitra Tani Kalbar",
+      "PT Pelayaran Kapuas Indah", "Koperasi Nelayan Sungai Kakap", "PT Adau Perkasa", "CV Sumber Rejeki Motor",
+      "PT Wahana Borneo Trans", "CV Karya Bersama", "PT Lintas Khatulistiwa", "UD Maju Jaya",
+      "PT Sawit Kapuas Makmur", "CV Bintang Timur", "PT Graha Kalbar Sentosa", "Koperasi Angkutan Kota",
+      "PT Nusantara Plywood", "CV Delta Mas", "PT Tirta Khatulistiwa", "UD Berkat Usaha",
+      "PT Mega Karya Kalimantan", "CV Putra Pontianak", "PT Sinar Borneo Abadi", "CV Anugerah Transindo",
+      "PT Bumi Raya Khatulistiwa", "Koperasi Pegawai Pemkot", "PT Cahaya Kapuas", "CV Harapan Baru",
+      "PT Equator Energi Persada", "UD Sumber Makmur", "PT Trans Kalbar Mandiri", "CV Mutiara Borneo",
+      "PT Agro Kapuas Lestari", "CV Surya Khatulistiwa", "PT Bina Marga Kalbar", "UD Tani Subur",
+      "PT Samudra Kapuas Line", "CV Rezeki Bersama",
+    ];
+    const custAll = NAMES.map((nama, i) => {
+      const base = 120 + ((i * 173) % 880) + ((i * 37) % 97) / 100;
+      const vol = Math.round(base * f * 100) / 100;
+      const price = i % 3 === 0 ? 6800 : 10000;
+      return { nama, vol, nominal: Math.round(vol * price) };
+    });
+    const C = custAll.reduce((a, c) => a + c.nominal, 0);
+    const custVol = custAll.reduce((a, c) => a + c.vol, 0);
+
+    // ===== 3 · EDC =====
+    const k = (n) => Math.round((n * f) / 1000) * 1000;
+    const EDC = [
+      ["BCA Debet", k(6240000)], ["BRI Debet", k(7830000)], ["Mandiri Debet", k(4910000)],
+      ["QRIS BRI", k(3360000)], ["QRIS BCA", k(2140000)], ["QRIS Mandiri", k(1480000)],
+      ["Flazz BCA", k(820000)], ["Brizzi BRI", k(640000)],
+    ];
+    const D = EDC.reduce((a, e) => a + e[1], 0);
+
+    // ===== 4 · Pendapatan lain =====
+    const LAIN = [["Setoran Bright Store", k(1150000)]];
+    const F = LAIN.reduce((a, l) => a + l[1], 0);
+
+    // ===== 5 · Deposit (opsional) =====
+    const DEPOSIT = U.deposit ? [
+      ["Deposit PT Kapuas Sejahtera Logistik — transfer BCA", 15000000],
+      ["Deposit CV Borneo Tirta — transfer Mandiri", 10000000],
+    ] : [];
+    const depTotal = DEPOSIT.reduce((a, d) => a + d[1], 0);
+
+    // ===== 6 · Pengeluaran =====
+    const KELUAR = [
+      ["Servis dispenser pompa 2", k(1150000)], ["Honor kebersihan mingguan", k(600000)],
+      ["ATK & materai", k(590000)], ["Token listrik kantor", k(500000)], ["Konsumsi rapat shift", k(280000)],
+    ];
+    const G = KELUAR.reduce((a, kk) => a + kk[1], 0);
+
+    // ===== Tera & summary =====
+    const teraVol = Math.round(120 * f * 100) / 100;
+    const B = Math.round((80 * 10000 + 40 * 12500) * f);
+    const E = A - (B + C + D);
+    const H = E + F - G;
+    const I = H; // cocok
+    const cocok = H === I;
+
+    // ===== Sections (ledger seragam) =====
+    const mkRows = (arr, withVol) => arr.map((r, i) => ({
+      no: String(i + 1),
+      ket: r.nama || r.name || r[0],
+      vol: withVol ? vol2(r.vol !== undefined ? r.vol : 0) : "",
+      rp: rp(r.nominal !== undefined ? r.nominal : r[1]),
+    }));
+
+    const custShown = showAllCust ? custAll : custAll.slice(0, 8);
+    const hidden = custAll.length - 8;
+
+    let sections = [
+      { num: "1", title: "OMSET PENJUALAN", meta: "per produk · totalisator nozzle", rows: mkRows(PROD, true), totalLabel: "TOTAL OMSET PENJUALAN", totalVol: vol2(totVol), totalRp: rp(A) },
+      { num: "2", title: "PELANGGAN", meta: custAll.length + " pelanggan · penjualan tempo", rows: mkRows(custShown, true),
+        toggleLabel: showAllCust ? "Sembunyikan — tampilkan 8 teratas" : "Tampilkan " + hidden + " pelanggan lainnya",
+        onToggle: () => this.setState({ showAllCust: !showAllCust }),
+        totalLabel: "TOTAL PELANGGAN", totalVol: vol2(custVol), totalRp: rp(C) },
+      { num: "3", title: "EDC", meta: EDC.length + " channel non-tunai", rows: mkRows(EDC, false), totalLabel: "TOTAL EDC", totalVol: "", totalRp: rp(D) },
+      { num: "4", title: "PENDAPATAN LAIN", meta: "", rows: mkRows(LAIN, false), totalLabel: "TOTAL PENDAPATAN LAIN", totalVol: "", totalRp: rp(F) },
+      { num: "5", title: "PENDAPATAN NON TUNAI", meta: "deposit pelanggan · tidak masuk rekonsiliasi tunai", rows: mkRows(DEPOSIT, false), totalLabel: "TOTAL PENDAPATAN NON TUNAI", totalVol: "", totalRp: rp(depTotal) },
+      { num: "6", title: "PENGELUARAN", meta: KELUAR.length + " nota", rows: mkRows(KELUAR, false), totalLabel: "TOTAL PENGELUARAN", totalVol: "", totalRp: rp(G) },
+    ];
+    sections = sections
+      .map((s) => ({ ...s, isEmpty: s.rows.length === 0, notEmpty: s.rows.length > 0, toggleLabel: s.toggleLabel || false }))
+      .filter((s) => !(hideEmpty && s.isEmpty));
+
+    // ===== Summary rows =====
+    const srow = (l, label, val, opts = {}) => ({
+      l, label, val: rp(val),
+      formula: opts.formula || false,
+      weight: opts.em ? 700 : 400,
+      bg: opts.em ? "var(--neutral-50)" : "transparent",
+      border: opts.em ? "var(--color-border)" : "var(--color-border-hairline)",
+    });
+    const summaryRows = [
+      srow("A", "Omset Penjualan", A),
+      srow("B", "Terra / Nozzle Test", B),
+      srow("C", "Pelanggan", C),
+      srow("D", "EDC", D),
+      srow("E", "Penjualan Tunai", E, { em: true, formula: "E = A − (B + C + D)" }),
+      srow("F", "Pendapatan Lain", F),
+      srow("G", "Pengeluaran", G),
+      srow("H", "Uang Tunai", H, { em: true, formula: "H = E + F − G" }),
+      srow("I", "Setoran (Bank)", I, { em: true }),
+    ];
+
+    const dateLong = (() => {
+      try {
+        return new Date(dateStr + "T12:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      } catch (e) { return dateStr; }
+    })();
+
+    return {
+      unitCode, dateStr, hideEmpty,
+      unitName: U.name, unitPT: U.pt, unitAddress: U.addr,
+      unitOptions,
+      onUnit: (e) => this.setState({ unitCode: e.target.value, showAllCust: false }),
+      onDate: (e) => this.setState({ dateStr: e.target.value }),
+      onHideEmpty: (e) => this.setState({ hideEmpty: e.target.checked }),
+      onPrint: () => {
+        this.setState({ showAllCust: true });
+        setTimeout(() => window.print(), 150);
+      },
+      sections, summaryRows,
+      bizDateLong: dateLong,
+      printedAt: "12 Jun 2026 · 09.30",
+      matchDot: cocok ? "var(--color-success)" : "var(--color-danger)",
+      matchColor: cocok ? "var(--color-success)" : "var(--color-danger)",
+      matchNote: cocok ? "Setoran (I) cocok dengan Uang Tunai (H)" : "Selisih H − I = " + rp(H - I) + " — periksa di Laporan Operasional",
+    };
+  }
+}
+
+</script>
+</body>
+</html>

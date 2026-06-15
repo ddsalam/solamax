@@ -1,0 +1,26 @@
+/* SolaGroup — spacing (4px base) and radius tokens. */
+:root {
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* Radius — Apple-soft, 8–12px working range */
+  --radius-sm:   6px;   /* badges, tags, small controls */
+  --radius-md:   10px;  /* buttons, inputs */
+  --radius-lg:   14px;  /* cards, modals */
+  --radius-xl:   20px;  /* feature panels */
+  --radius-full: 999px; /* pills */
+
+  /* Minimum interactive target */
+  --target-min: 44px;
+}

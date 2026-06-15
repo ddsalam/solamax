@@ -1,0 +1,9 @@
+/* SolaGroup — motion. Minimal and smooth; opacity/transform fades only,
+   no bounces. Respect prefers-reduced-motion in components. */
+:root {
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1); /* @kind other */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --duration-fast: 150ms;   /* @kind other */ /* hovers, presses */
+  --duration-base: 250ms;   /* @kind other */ /* reveals, accordions */
+  --duration-slow: 400ms;   /* @kind other */ /* modals, page-level */
+}

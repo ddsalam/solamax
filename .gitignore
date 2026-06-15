@@ -1,0 +1,38 @@
+# Secrets — JANGAN pernah commit kredensial (lihat CLAUDE.md aturan #3)
+.env
+.env.*
+!.env.example
+*.local
+config.local.json
+config.local.*
+secrets/
+*.key
+*.pem
+
+# State lokal agent: watermark + buffer offline (DI-GITIGNORE)
+data/
+apps/*/data/
+*.sqlite
+*.sqlite3
+buffer/
+
+# Hasil query verifikasi (data live SPBU — jangan commit)
+verification-queries-results/
+
+# Dependencies / build (untuk app yang dibuat nanti)
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# Bundle deploy Windows (artefak build — dibuat ulang via `pnpm bundle`)
+bundle-out/
+solamax-agent-bundle.zip
+
+# OS / editor
+.DS_Store
+*.log
+
+# TS incremental build cache
+*.tsbuildinfo

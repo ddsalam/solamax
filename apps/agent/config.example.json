@@ -1,0 +1,27 @@
+{
+  "unitCode": "6478111",
+  "timezone": "Asia/Pontianak",
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "readonly_sync",
+    "password": "GANTI_DENGAN_PASSWORD_readonly_sync",
+    "database": "easymax",
+    "connectTimeoutMs": 10000,
+    "driver": "mysql2",
+    "charset": "UTF8_GENERAL_CI"
+  },
+  "backend": {
+    "baseUrl": "https://dummy.invalid",
+    "apiKey": "dummy-belum-dipakai-sampai-fase-2",
+    "requestTimeoutMs": 20000
+  },
+  "sync": {
+    "pollIntervalMs": 120000,
+    "masterIntervalMs": 3600000,
+    "safetyWindowMin": 60,
+    "cashRescanDays": 7,
+    "batchSize": 1000
+  },
+  "dataDir": "./data"
+}
