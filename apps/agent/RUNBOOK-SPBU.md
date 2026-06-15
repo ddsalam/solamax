@@ -21,11 +21,11 @@ ikuti urut dari atas. Perkiraan waktu: 20–30 menit.
 
 Pilih versi Node.js dari tabel ini:
 
-| Windows di mesin SPBU | Node.js yang dipasang | File installer |
-|---|---|---|
-| Windows 10 / 11 / Server 2016+ | **Node 18.20.4 (LTS)** | 64-bit: [`node-v18.20.4-x64.msi`](https://nodejs.org/dist/v18.20.4/node-v18.20.4-x64.msi) · 32-bit: [`node-v18.20.4-x86.msi`](https://nodejs.org/dist/v18.20.4/node-v18.20.4-x86.msi) |
-| Windows 7 / 8 / 8.1 / Server 2008 R2 / 2012 | **Node 12.22.12** | 64-bit: [`node-v12.22.12-x64.msi`](https://nodejs.org/dist/v12.22.12/node-v12.22.12-x64.msi) · 32-bit: [`node-v12.22.12-x86.msi`](https://nodejs.org/dist/v12.22.12/node-v12.22.12-x86.msi) |
-| Windows XP / Server 2003 | ✋ **BERHENTI — jangan install.** Laporkan dulu. (Rencana B: agent jalan di PC lain dalam LAN yang sama.) |
+| Windows di mesin SPBU                       | Node.js yang dipasang                                                                                     | File installer                                                                                                                                                                              |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 10 / 11 / Server 2016+              | **Node 18.20.4 (LTS)**                                                                                    | 64-bit: [`node-v18.20.4-x64.msi`](https://nodejs.org/dist/v18.20.4/node-v18.20.4-x64.msi) · 32-bit: [`node-v18.20.4-x86.msi`](https://nodejs.org/dist/v18.20.4/node-v18.20.4-x86.msi)       |
+| Windows 7 / 8 / 8.1 / Server 2008 R2 / 2012 | **Node 12.22.12**                                                                                         | 64-bit: [`node-v12.22.12-x64.msi`](https://nodejs.org/dist/v12.22.12/node-v12.22.12-x64.msi) · 32-bit: [`node-v12.22.12-x86.msi`](https://nodejs.org/dist/v12.22.12/node-v12.22.12-x86.msi) |
+| Windows XP / Server 2003                    | ✋ **BERHENTI — jangan install.** Laporkan dulu. (Rencana B: agent jalan di PC lain dalam LAN yang sama.) |
 
 > Bundle agent sengaja di-build agar jalan di Node 12 ke atas. Untuk tes ini
 > (test-connection + dry-run) Node 12 sudah cukup; kebutuhan versi untuk mode kirim
@@ -46,7 +46,7 @@ Pilih versi Node.js dari tabel ini:
 
 Buka **SQL Manager** (tool yang sama dengan yang dipakai menjalankan query verifikasi),
 login sebagai **admin/root**, lalu jalankan blok ini **satu per satu**
-(ganti `PASSWORD_KUAT_DISINI` — catat passwordnya, dipakai di Bagian D):
+(ganti `PASSWORD_KUAT_DISINI` — catat passwordnya, dipakai di Bagian D - Untuk SPBU 6478111 passwordnya adalah `SPBU6478111`):
 
 ```sql
 -- 1. Pastikan hash password format BARU (4.1+) supaya driver modern bisa login.
@@ -73,11 +73,13 @@ FROM mysql.user WHERE user = 'readonly_sync';
 
 > ⚠️ **Kalau `panjang_hash` = 16** (server menyimpan hash format lama): jalankan ini
 > sebagai admin, lalu cek ulang sampai 41:
+>
 > ```sql
 > SET SESSION old_passwords = 0;
 > SET PASSWORD FOR 'readonly_sync'@'localhost' = PASSWORD('PASSWORD_KUAT_DISINI');
 > FLUSH PRIVILEGES;
 > ```
+>
 > Ini mencegah error auth paling umum di MySQL 5.0 **sebelum** terjadi.
 
 > Catatan MySQL 5.0.67: jika `CREATE USER` ditolak, pakai bentuk lama:
@@ -98,15 +100,15 @@ FROM mysql.user WHERE user = 'readonly_sync';
    ```
 2. Klik kanan **`config.local.json`** → **Open with** → **Notepad**. Sesuaikan:
 
-   | Field | Isi |
-   |---|---|
-   | `mysql.host` | `127.0.0.1` (MySQL di mesin yang sama — biarkan) |
-   | `mysql.port` | `3306` (kalau koneksi ditolak, lihat Troubleshooting №4) |
-   | `mysql.user` | `readonly_sync` (biarkan) |
-   | `mysql.password` | **password dari Bagian C** (ganti tulisan `GANTI_DENGAN_...`) |
-   | `mysql.database` | `easymax` (biarkan) |
-   | `mysql.driver` | `mysql2` (biarkan; hanya diubah kalau Troubleshooting menyuruh) |
-   | `backend.*` | **biarkan dummy** — belum dipakai di tes ini |
+   | Field            | Isi                                                             |
+   | ---------------- | --------------------------------------------------------------- |
+   | `mysql.host`     | `127.0.0.1` (MySQL di mesin yang sama — biarkan)                |
+   | `mysql.port`     | `3306` (kalau koneksi ditolak, lihat Troubleshooting №4)        |
+   | `mysql.user`     | `readonly_sync` (biarkan)                                       |
+   | `mysql.password` | **password dari Bagian C** (ganti tulisan `GANTI_DENGAN_...`)   |
+   | `mysql.database` | `easymax` (biarkan)                                             |
+   | `mysql.driver`   | `mysql2` (biarkan; hanya diubah kalau Troubleshooting menyuruh) |
+   | `backend.*`      | **biarkan dummy** — belum dipakai di tes ini                    |
 
 3. **Save** (Ctrl+S), tutup Notepad.
 
@@ -117,9 +119,11 @@ FROM mysql.user WHERE user = 'readonly_sync';
 Dobel-klik **`1-tes-koneksi.bat`**. Jendela hitam muncul, lalu berhenti dengan `Press any key…`.
 
 ✅ **Berhasil** bila ada baris seperti:
+
 ```
 {"...","level":"info","msg":"koneksi MySQL OK","version":"5.0.67-community-nt","timeZone":"SYSTEM","now":"2026-06-12 09:15:00"}
 ```
+
 - Cek `now` ≈ jam dinding SPBU (WIB).
 - Hasil otomatis tersimpan di **`output-tes-koneksi.txt`** — **kirim isi file ini** apa pun hasilnya.
 
@@ -134,6 +138,7 @@ coba lagi. Tetap gagal → kirim `output-tes-koneksi.txt` + hasil verifikasi Bag
 Dobel-klik **`2-dry-run.bat`**.
 
 ✅ **Berhasil** bila ada baris-baris seperti:
+
 ```
 {"...","msg":"[dry-run] payload","domain":"sales","watermark_high":"...","counts":{"sales_header":…,"sales_detail":…}}
 {"...","msg":"[dry-run] payload","domain":"opname",…}
@@ -141,6 +146,7 @@ Dobel-klik **`2-dry-run.bat`**.
 {"...","msg":"kas: 0 baris (dorman sejak 2019 — normal)",…}   ← 0 untuk kas itu NORMAL
 {"...","msg":"[dry-run] payload","domain":"masters",…}
 ```
+
 Hasil tersimpan di **`output-dry-run.txt`** — **kirim isi file ini**.
 
 > Catatan: dry-run pertama membaca seluruh riwayat live (~180 ribu baris penjualan) untuk
@@ -148,17 +154,17 @@ Hasil tersimpan di **`output-dry-run.txt`** — **kirim isi file ini**.
 
 ## Bagian G — Troubleshooting (cocokkan potongan pesan error)
 
-| № | Potongan pesan di output | Artinya | Tindakan |
-|---|---|---|---|
-| 1 | `Client does not support authentication protocol requested by server` atau `ER_NOT_SUPPORTED_AUTH_MODE` | Hash password user masih format lama (pra-4.1) | Jalankan SQL "kalau panjang_hash = 16" di Bagian C, coba lagi. Masih gagal → tindakan №2 |
-| 2 | `MySQL server is requesting the old (insecure) authentication` — atau №1 belum teratasi | Server memaksa protokol auth lama | Edit `config.local.json`: ubah `"driver": "mysql2"` → `"driver": "mysql"` → Save → ulangi tes. (Driver cadangan sudah terpasang di dalam bundle.) |
-| 3 | `Access denied for user 'readonly_sync'@'localhost'` | Password salah / user belum dibuat di host itu | Cocokkan password di config dengan Bagian C; jalankan ulang `SHOW GRANTS` |
-| 4 | `ECONNREFUSED 127.0.0.1:3306` | MySQL tidak di port 3306 | Cari port: buka cmd → `netstat -ano \| findstr LISTENING \| findstr 33` — atau lihat `my.ini` EasyMax. Ubah `mysql.port` di config |
-| 5 | `Unknown character set` | Server 5.0 menolak charset handshake | Edit config: `"charset": "LATIN1_SWEDISH_CI"` → ulangi tes |
-| 6 | `'node' is not recognized` | Node belum terpasang / PATH belum aktif | Bagian B; tutup-buka cmd; restart mesin |
-| 7 | `Gagal baca config` | `config.local.json` tidak ada di folder yang sama | Pastikan file ada di samping `solamax-agent.cjs`, namanya persis (bukan `.json.txt` — matikan "Hide extensions" di Folder Options bila perlu) |
-| 8 | `ETIMEDOUT` / hang lama | MySQL hanya menerima koneksi dari tempat lain / firewall | Pastikan dijalankan **di mesin server SPBU** (bukan PC lain); laporkan |
-| 9 | Error lain | — | Kirim `output-*.txt` apa adanya — pesan error persisnya yang dibutuhkan |
+| №   | Potongan pesan di output                                                                                | Artinya                                                  | Tindakan                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `Client does not support authentication protocol requested by server` atau `ER_NOT_SUPPORTED_AUTH_MODE` | Hash password user masih format lama (pra-4.1)           | Jalankan SQL "kalau panjang_hash = 16" di Bagian C, coba lagi. Masih gagal → tindakan №2                                                          |
+| 2   | `MySQL server is requesting the old (insecure) authentication` — atau №1 belum teratasi                 | Server memaksa protokol auth lama                        | Edit `config.local.json`: ubah `"driver": "mysql2"` → `"driver": "mysql"` → Save → ulangi tes. (Driver cadangan sudah terpasang di dalam bundle.) |
+| 3   | `Access denied for user 'readonly_sync'@'localhost'`                                                    | Password salah / user belum dibuat di host itu           | Cocokkan password di config dengan Bagian C; jalankan ulang `SHOW GRANTS`                                                                         |
+| 4   | `ECONNREFUSED 127.0.0.1:3306`                                                                           | MySQL tidak di port 3306                                 | Cari port: buka cmd → `netstat -ano \| findstr LISTENING \| findstr 33` — atau lihat `my.ini` EasyMax. Ubah `mysql.port` di config                |
+| 5   | `Unknown character set`                                                                                 | Server 5.0 menolak charset handshake                     | Edit config: `"charset": "LATIN1_SWEDISH_CI"` → ulangi tes                                                                                        |
+| 6   | `'node' is not recognized`                                                                              | Node belum terpasang / PATH belum aktif                  | Bagian B; tutup-buka cmd; restart mesin                                                                                                           |
+| 7   | `Gagal baca config`                                                                                     | `config.local.json` tidak ada di folder yang sama        | Pastikan file ada di samping `solamax-agent.cjs`, namanya persis (bukan `.json.txt` — matikan "Hide extensions" di Folder Options bila perlu)     |
+| 8   | `ETIMEDOUT` / hang lama                                                                                 | MySQL hanya menerima koneksi dari tempat lain / firewall | Pastikan dijalankan **di mesin server SPBU** (bukan PC lain); laporkan                                                                            |
+| 9   | Error lain                                                                                              | —                                                        | Kirim `output-*.txt` apa adanya — pesan error persisnya yang dibutuhkan                                                                           |
 
 ## Bagian H — Yang dilaporkan balik
 
