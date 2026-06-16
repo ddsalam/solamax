@@ -342,20 +342,26 @@ const REALTANK: RealtankDomain = {
     FROM vw_realtm`,
   map(raw, offsetMin) {
     const rows: NonNullable<Tables["real_tank"]> = [];
-    for (const r of raw) {
-      const ckdtangki = str(r.CKDTANGKI);
+    for (const r0 of raw) {
+      // vw_realtm mengembalikan nama kolom CASE CAMPURAN: `CKDTANGKI` huruf besar
+      // tapi `nkapasitas`/`ntinggi`/… huruf kecil (case definisi VIEW, bukan case
+      // query). Normalkan semua key ke lowercase agar akses deterministik.
+      const r: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(r0)) r[k.toLowerCase()] = v;
+
+      const ckdtangki = str(r.ckdtangki);
       if (ckdtangki === null || ckdtangki.trim() === "") continue; // butuh kode tangki
       const dt = wibDateTimeToUtcIso(str(r.dtanggaljam), offsetMin);
       if (dt === null) continue; // butuh waktu pembacaan valid
       rows.push({
         ckdtangki: ckdtangki.trim(),
-        nkapasitas: num(r.NKAPASITAS),
-        ntinggi: num(r.NTINGGI),
-        nvolume: num(r.NVOLUME),
-        nsuhu: num(r.NSUHU),
-        ntinggiair: num(r.NTINGGIAIR),
-        nvolumeair: num(r.NVOLUMEAIR),
-        nstatus: int(r.NSTATUS),
+        nkapasitas: num(r.nkapasitas),
+        ntinggi: num(r.ntinggi),
+        nvolume: num(r.nvolume),
+        nsuhu: num(r.nsuhu),
+        ntinggiair: num(r.ntinggiair),
+        nvolumeair: num(r.nvolumeair),
+        nstatus: int(r.nstatus),
         dtanggaljam: dt,
       });
     }
