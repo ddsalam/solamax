@@ -288,9 +288,15 @@ body { background: var(--neutral-50); }
 .tank-fill.warning { background: var(--color-warning-bg); }
 .tank-fill.danger { background: var(--color-danger-bg); }
 .tank-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; mix-blend-mode: luminosity; }
+/* Anomali ATG: pembacaan mustahil (vol>kapasitas / tinggi>strap) — tandai, jangan sembunyikan sbg "100%". */
+.tank-cyl.anom { border-color: var(--color-danger-border); }
+.tank-fill.anom { background: repeating-linear-gradient(45deg, var(--color-danger-bg), var(--color-danger-bg) 7px, var(--color-danger-border) 7px, var(--color-danger-border) 14px); }
+.tg-anom-badge { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--color-danger); background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: var(--radius-full); padding: 2px 9px; mix-blend-mode: normal; }
 /* Detail terukur */
 .tg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px var(--space-4); }
 .tg-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+/* Kapasitas = spesifikasi statik tangki, dipisah dari pembacaan ATG live. */
+.tg-row-wide { grid-column: 1 / -1; margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--color-border-hairline); }
 .tg-k { font-size: 13px; }
 .tg-v { font-size: 14px; font-weight: 600; color: var(--color-text-secondary); }
 .tg-sub { border-top: 1px solid var(--color-border-hairline); padding-top: var(--space-2); }

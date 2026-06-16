@@ -162,6 +162,32 @@ export function tankCapacity(code: string, ckdtangki: string): number | null {
 }
 
 /**
+ * Tinggi strapping maksimum tangki, cm (geometri fisik). Dari tabel kalibrasi
+ * EasyMax `MAX(Tinggi)` per Tangki (pemetaan sama dgn TANK_CAPACITY: `id` N ↔
+ * `kalibrasi.Tangki` N−1 ↔ CKDTANGKI "T-0N"). Dipakai untuk mendeteksi pembacaan
+ * ATG mustahil (tinggi minyak melebihi tinggi fisik tangki = sensor faulting).
+ * Statik & read-only seperti kapasitas. Tangki tanpa entri = cek tinggi dilewati
+ * anggun (deteksi anomali jatuh ke ambang volume>kapasitas saja). Key:
+ * `${unitCode}:${ckdtangki}`. T-05 terverifikasi 2026-06-16 (strap 150 cm; ATG
+ * lapor 271,9 cm = mustahil). Lengkapi sisanya dari `MAX(Tinggi)` kalibrasi.
+ */
+export const TANK_STRAP_MAX_CM: Record<string, number> = {
+  // MAX(Tinggi) per kalibrasi.Tangki (terverifikasi 2026-06-16). Pembacaan ATG live
+  // 16/6 semuanya < strap (kecuali T-05 = sensor faulting 271,9 cm > 150).
+  "6478111:T-01": 200, // Dexlite
+  "6478111:T-02": 225, // Solar
+  "6478111:T-03": 225, // Pertamax
+  "6478111:T-04": 225, // Pertalite
+  "6478111:T-05": 150, // Pertamina Dex
+  "6478111:T-06": 207, // Pertalite
+  "6478111:T-07": 207, // Pertamax Turbo
+};
+
+export function tankStrapMaxCm(code: string, ckdtangki: string): number | null {
+  return TANK_STRAP_MAX_CM[`${code}:${ckdtangki.trim()}`] ?? null;
+}
+
+/**
  * Warna kolom cairan gauge per produk (pilihan tampilan, bukan data EasyMax).
  * Dicocokkan via classifyProduct + nama; fallback abu-abu netral bila tak cocok.
  * Token mengacu CSS var SolaGroup DS (lihat app.css :root).

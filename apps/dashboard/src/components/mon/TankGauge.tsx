@@ -17,6 +17,13 @@ export interface TankGaugeProps {
   waterL: number | null; // nvolumeair (L)
   tempC: number | null; // nsuhu (°C); ≤0 dianggap tak terbaca → null di page
   ullageL: number | null; // kapasitas − volume (L)
+  capacityL: number | null; // kapasitas maksimum tangki (L, dari config/kalibrasi)
+  /**
+   * true bila pembacaan ATG mustahil secara fisik (volume > kapasitas, atau
+   * tinggi minyak > tinggi strapping tangki) → sensor faulting. Ditandai
+   * eksplisit alih-alih disembunyikan sbg "100% penuh".
+   */
+  anomaly: boolean;
   lastFill: { vol: number | null; selisih: number | null } | null;
   /** true bila angka volume/tinggi/suhu berasal dari ATG live (real_tank). */
   live: boolean;
@@ -24,9 +31,17 @@ export interface TankGaugeProps {
 
 const NA = <span className="t-tertiary">n/a</span>;
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({
+  label,
+  children,
+  wide,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div className="tg-row">
+    <div className={`tg-row${wide ? " tg-row-wide" : ""}`}>
       <span className="tg-k t-tertiary">{label}</span>
       <span className="tg-v num">{children}</span>
     </div>
@@ -34,20 +49,26 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 export function TankGauge(props: TankGaugeProps) {
-  const { fillPct, fillVar, level, fuelMm, waterMm, waterL, tempC, ullageL, lastFill, live } = props;
-  const fillStyle = fillVar ? { background: `var(${fillVar})` } : undefined;
+  const { fillPct, fillVar, level, fuelMm, waterMm, waterL, tempC, ullageL, capacityL, anomaly, lastFill, live } = props;
+  const fillStyle = anomaly || !fillVar ? undefined : { background: `var(${fillVar})` };
 
   return (
     <div>
-      <div className="tank-cyl">
+      <div className={`tank-cyl${anomaly ? " anom" : ""}`}>
         {fillPct !== null && (
           <div
-            className={`tank-fill${fillVar ? " product" : level === "danger" ? " danger" : level === "warning" ? " warning" : ""}`}
+            className={`tank-fill${anomaly ? " anom" : fillVar ? " product" : level === "danger" ? " danger" : level === "warning" ? " warning" : ""}`}
             style={{ height: `${Math.max(2, Math.round(fillPct))}%`, ...fillStyle }}
           />
         )}
         <div className="tank-pct num">
-          {fillPct !== null ? `${idn(fillPct)}%` : <span className="fs15 t-tertiary">level via ketahanan</span>}
+          {anomaly ? (
+            <span className="tg-anom-badge">⚠ ATG tak wajar</span>
+          ) : fillPct !== null ? (
+            `${idn(fillPct)}%`
+          ) : (
+            <span className="fs15 t-tertiary">level via ketahanan</span>
+          )}
         </div>
       </div>
 
@@ -55,7 +76,15 @@ export function TankGauge(props: TankGaugeProps) {
         <Row label="Minyak">{fuelMm !== null ? fmtCm(fuelMm) : NA}</Row>
         <Row label="Air">{waterMm !== null ? `${fmtCm(waterMm)}${waterL ? ` · ${fmtL(waterL)}` : ""}` : NA}</Row>
         <Row label="Suhu">{tempC !== null ? fmtTemp(tempC) : NA}</Row>
-        <Row label="Ruang kosong">{ullageL !== null ? fmtL(Math.max(0, ullageL)) : NA}</Row>
+        <Row label="Ruang kosong">
+          {/* Anomali → tampilkan ullage nyata (bisa negatif) dlm nada danger, bukan dibulatkan ke 0. */}
+          {ullageL !== null ? (
+            anomaly ? <span className="t-danger">{fmtL(ullageL)}</span> : fmtL(Math.max(0, ullageL))
+          ) : (
+            NA
+          )}
+        </Row>
+        <Row label="Kapasitas" wide>{capacityL !== null ? fmtL(capacityL) : NA}</Row>
       </div>
 
       <div className="tg-sub mt2">

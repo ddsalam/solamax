@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TankGauge } from "@/components/mon/TankGauge";
-import { tankCapacity, tankFillVar, unitDotted } from "@/lib/config";
+import { tankCapacity, tankFillVar, tankStrapMaxCm, unitDotted } from "@/lib/config";
 import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
 import { fmtL, idn, timeWib } from "@/lib/format";
 import { addDays, todayWib } from "@/lib/periods";
@@ -58,6 +58,13 @@ export default async function DenahPage({ params }: { params: { code: string } }
     const fillPct =
       cap !== null && liveVol !== null ? Math.max(0, Math.min(100, (liveVol / cap) * 100)) : null;
     const ullageL = cap !== null && liveVol !== null ? cap - liveVol : null;
+    // Anomali sensor ATG: pembacaan mustahil secara fisik. Dasarkan pada angka ATG
+    // MENTAH (rt.nvolume / rt.ntinggi), bukan liveVol yg bisa fallback ke estimasi
+    // opname — supaya hanya menandai sensor faulting, bukan kekosongan data.
+    const strapMaxCm = tankStrapMaxCm(unit.code, t.ckdtangki);
+    const atgAnomaly =
+      (cap !== null && rt?.nvolume != null && rt.nvolume > cap) ||
+      (strapMaxCm !== null && rt?.ntinggi != null && rt.ntinggi / 10 > strapMaxCm);
     // Suhu ≤0 = sensor tak terbaca (tangki nyaris kosong) → n/a anggun.
     const tempC = rt?.nsuhu != null && rt.nsuhu > 0 ? rt.nsuhu : null;
     const lf = fillBy.get(t.ckdtangki);
@@ -71,6 +78,8 @@ export default async function DenahPage({ params }: { params: { code: string } }
       level,
       fillPct,
       ullageL,
+      cap,
+      atgAnomaly,
       tempC,
       rt,
       lf,
@@ -97,7 +106,7 @@ export default async function DenahPage({ params }: { params: { code: string } }
       </div>
 
       <div className="tank-grid mt5">
-        {cards.map(({ t, liveVol, days, level, fillPct, ullageL, tempC, rt, lf, fillVar, nz }) => (
+        {cards.map(({ t, liveVol, days, level, fillPct, ullageL, cap, atgAnomaly, tempC, rt, lf, fillVar, nz }) => (
           <div key={t.ckdtangki} className={`tank-card${level === "danger" ? " danger" : ""}`}>
             <div className="hub-card-top">
               <span className="fs15 w700 t-tertiary">{t.ckdtangki}</span>
@@ -122,6 +131,8 @@ export default async function DenahPage({ params }: { params: { code: string } }
               waterL={rt?.nvolumeair ?? null}
               tempC={tempC}
               ullageL={ullageL}
+              capacityL={cap ?? null}
+              anomaly={atgAnomaly}
               lastFill={lf ? { vol: lf.nvolreal, selisih: lf.nvolselisih } : null}
               live={rt != null}
             />
