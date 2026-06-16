@@ -138,11 +138,47 @@ export function targetVolumePerDay(
 }
 
 /**
- * Kapasitas tangki, liter (№5) — tidak ada di EasyMax. Kosong = kartu denah
- * tampil tanpa fill%; ketahanan tetap dihitung. Key: `${unitCode}:${ckdtangki}`.
+ * Kapasitas tangki, liter (№5). Bukan di tabel master EasyMax (`tm_tangki` tak
+ * punya kolom kapasitas), TAPI tersedia di tabel kalibrasi/strapping
+ * (`kalibrasi`: tinggi→volume) sebagai `MAX(Volume)` per tangki. Diambil
+ * sekali (read-only) & disalin di sini karena statik (geometri tangki tak
+ * berubah) dan `kalibrasi` tak ikut di-sync. Pemetaan terverifikasi 2026-06-16:
+ * `tb_realtank.id` N ↔ `kalibrasi.Tangki` (N−1) ↔ CKDTANGKI "T-0N" (silang-uji:
+ * tiap volume kini ≤ kapasitas). Key: `${unitCode}:${ckdtangki}`.
+ * Kosong utk suatu tangki = kartu denah jatuh ke tampilan ketahanan (bukan fill%).
  */
-export const TANK_CAPACITY: Record<string, number> = {};
+export const TANK_CAPACITY: Record<string, number> = {
+  "6478111:T-01": 20737, // Dexlite
+  "6478111:T-02": 29950, // Solar
+  "6478111:T-03": 30307, // Pertamax
+  "6478111:T-04": 29790, // Pertalite
+  "6478111:T-05": 5379, // Pertamina Dex
+  "6478111:T-06": 9628, // Pertalite
+  "6478111:T-07": 9628, // Pertamax Turbo
+};
 
 export function tankCapacity(code: string, ckdtangki: string): number | null {
   return TANK_CAPACITY[`${code}:${ckdtangki.trim()}`] ?? null;
+}
+
+/**
+ * Warna kolom cairan gauge per produk (pilihan tampilan, bukan data EasyMax).
+ * Dicocokkan via classifyProduct + nama; fallback abu-abu netral bila tak cocok.
+ * Token mengacu CSS var SolaGroup DS (lihat app.css :root).
+ */
+const PRODUCT_FILL_RULES: Array<{ match: RegExp; varName: string }> = [
+  { match: /PERTAMAX\s*TURBO/, varName: "--tank-turbo" },
+  { match: /PERTAMINA\s*DEX/, varName: "--tank-dex" },
+  { match: /PERTAMAX/, varName: "--tank-pertamax" },
+  { match: /PERTALITE/, varName: "--tank-pertalite" },
+  { match: /DEXLITE/, varName: "--tank-dexlite" },
+  { match: /SOLAR/, varName: "--tank-solar" },
+];
+
+/** Nama CSS var warna isi tangki utk produk; null → default netral. */
+export function tankFillVar(name: string | null): string | null {
+  if (!name) return null;
+  const up = name.toUpperCase();
+  for (const r of PRODUCT_FILL_RULES) if (r.match.test(up)) return r.varName;
+  return null;
 }

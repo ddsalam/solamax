@@ -45,6 +45,18 @@ export interface MasterDomain {
   queries: Array<{ table: keyof Tables; sql: string; map(raw: Raw[]): unknown[] }>;
 }
 
+/**
+ * Domain realtank — snapshot ATG keadaan-kini (full sync tiap siklus, tanpa
+ * watermark). `map` butuh offset TZ untuk konversi `dtanggaljam` WIB→UTC.
+ */
+export interface RealtankDomain {
+  domain: Extract<Domain, "realtank">;
+  mode: "full";
+  table: "real_tank";
+  sql: string;
+  map(raw: Raw[], offsetMin: number): NonNullable<Tables["real_tank"]>;
+}
+
 // ---------------------------------------------------------------------------
 // SALES (tr_djualbbm ⋈ tr_hjualbbm)
 // ---------------------------------------------------------------------------
@@ -315,6 +327,40 @@ const MASTERS: MasterDomain = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// REALTANK (tb_realtank) — snapshot ATG keadaan-kini, 1 baris per tangki
+// ---------------------------------------------------------------------------
+const REALTANK: RealtankDomain = {
+  domain: "realtank",
+  mode: "full",
+  table: "real_tank",
+  // Hanya kolom yang dipakai dashboard; `id` = nomor tangki (1..7 → "T-0N").
+  sql: `
+    SELECT id, NTINGGI, NVOLUME, NSUHU, NTINGGIAIR, NVOLUMEAIR, NSTATUS, dtanggaljam
+    FROM tb_realtank`,
+  map(raw, offsetMin) {
+    const rows: NonNullable<Tables["real_tank"]> = [];
+    for (const r of raw) {
+      const tankNo = int(r.id);
+      if (tankNo === null) continue; // baris tanpa nomor tangki → lewati
+      const dt = wibDateTimeToUtcIso(str(r.dtanggaljam), offsetMin);
+      if (dt === null) continue; // butuh waktu pembacaan valid
+      rows.push({
+        tank_no: tankNo,
+        ntinggi: num(r.NTINGGI),
+        nvolume: num(r.NVOLUME),
+        nsuhu: num(r.NSUHU),
+        ntinggiair: num(r.NTINGGIAIR),
+        nvolumeair: num(r.NVOLUMEAIR),
+        nstatus: int(r.NSTATUS),
+        dtanggaljam: dt,
+      });
+    }
+    return rows;
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const MASTERS_DOMAIN = MASTERS;
+export const REALTANK_DOMAIN = REALTANK;

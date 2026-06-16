@@ -11,6 +11,7 @@ const COLUMN_CAST: Record<string, string> = {
   dtaglopn: "date",
   dtgltrm: "date",
   dtgljam: "timestamptz",
+  dtanggaljam: "timestamptz",
   perk_map: "jsonb",
 };
 

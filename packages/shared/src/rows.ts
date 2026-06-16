@@ -82,6 +82,22 @@ export const DeliveryRow = z.object({
   sbatal: z.number().int().nullable(),
 });
 
+/**
+ * Snapshot ATG per tangki (sumber `tb_realtank`). Satu baris per tangki =
+ * pembacaan terkini (volume/tinggi/suhu/air). `tank_no` = kolom `id` EasyMax
+ * (1..7) — dipetakan ke CKDTANGKI "T-0N" di dashboard. Tinggi dalam mm di sumber.
+ */
+export const RealTankRow = z.object({
+  tank_no: z.number().int(),
+  ntinggi: num, // tinggi cairan BBM (mm)
+  nvolume: num, // volume BBM kini (L)
+  nsuhu: num, // suhu (°C)
+  ntinggiair: num, // tinggi air dasar (mm)
+  nvolumeair: num, // volume air (L)
+  nstatus: z.number().int().nullable(),
+  dtanggaljam: isoUtc, // waktu pembacaan (agent konversi WIB→UTC)
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -119,6 +135,7 @@ export const ROW_SCHEMA = {
   nozzle: NozzleRow,
   tangki: TangkiRow,
   account: AccountRow,
+  real_tank: RealTankRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -132,3 +149,4 @@ export type ProductRow = z.infer<typeof ProductRow>;
 export type NozzleRow = z.infer<typeof NozzleRow>;
 export type TangkiRow = z.infer<typeof TangkiRow>;
 export type AccountRow = z.infer<typeof AccountRow>;
+export type RealTankRow = z.infer<typeof RealTankRow>;

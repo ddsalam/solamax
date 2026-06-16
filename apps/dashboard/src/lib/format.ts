@@ -14,6 +14,12 @@ export function rpShort(n: number): string {
 export const fmtL = (n: number, d = 0): string => `${idn(n, d)} L`;
 export const fmtKL = (n: number, d = 1): string => `${idn(n / 1000, d)} KL`;
 
+/** Tinggi cairan: sumber EasyMax dalam mm → tampil cm. */
+export const fmtCm = (mm: number, d = 1): string => `${idn(mm / 10, d)} cm`;
+
+/** Suhu °C. */
+export const fmtTemp = (c: number, d = 1): string => `${idn(c, d)} °C`;
+
 /** Persen dari rasio 0–1: 0.1217 → "12,2%". */
 export const pct = (ratio: number, d = 1): string => `${idn(ratio * 100, d)}%`;
 

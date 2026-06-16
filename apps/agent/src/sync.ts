@@ -5,6 +5,7 @@ import {
   CASH_DOMAIN,
   DATETIME_DOMAINS,
   MASTERS_DOMAIN,
+  REALTANK_DOMAIN,
   type DateTimeDomain,
 } from "./domains.js";
 import { IngestClient, IngestError } from "./ingest-client.js";
@@ -200,6 +201,24 @@ async function syncMasters(d: SyncDeps): Promise<void> {
   });
 }
 
+async function syncRealTank(d: SyncDeps): Promise<void> {
+  // Snapshot keadaan-kini: 7 baris (1 per tangki), full sync tiap siklus agar
+  // monitoring realtime tetap segar. Tanpa watermark (keadaan ditimpa, bukan log).
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  const raw = await d.conn.roQuery<Record<string, unknown>>(REALTANK_DOMAIN.sql);
+  const rows = REALTANK_DOMAIN.map(raw, offset);
+  if (rows.length === 0) {
+    log.info("realtank: 0 baris (tb_realtank kosong)");
+    return;
+  }
+  await dispatch(d, {
+    unit_code: d.cfg.unitCode,
+    domain: "realtank",
+    watermark_high: null, // keadaan-kini; tak ada watermark
+    tables: { real_tank: rows },
+  });
+}
+
 /** Satu siklus penuh. Master di-sync hanya bila `includeMasters`. */
 export async function runCycle(
   d: SyncDeps,
@@ -239,6 +258,14 @@ export async function runCycle(
   } catch (err) {
     log.error("domain gagal — dilewati siklus ini", {
       domain: "cash",
+      err: String(err),
+    });
+  }
+  try {
+    await syncRealTank(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "realtank",
       err: String(err),
     });
   }
