@@ -347,12 +347,13 @@ export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
 }
 
 /**
- * Snapshot ATG keadaan-kini per tangki (tabel `real_tank`, di-sync dari
- * `tb_realtank`). `tank_no` = kolom EasyMax `id` (1..7) → CKDTANGKI "T-0N".
- * `ntinggi`/`ntinggiair` dalam mm di sumber (dashboard konversi ke cm).
+ * Snapshot ATG keadaan-kini per tangki (tabel `real_tank`, di-sync dari view
+ * EasyMax `vw_realtm`). `ckdtangki` = kunci natural ("T-0N"); `nkapasitas` =
+ * kapasitas OTORITATIF dari EasyMax (bukan kalibrasi). Tinggi mm di sumber.
  */
 export interface RealTankRow {
-  tank_no: number;
+  ckdtangki: string;
+  nkapasitas: number | null;
   ntinggi: number | null;
   nvolume: number | null;
   nsuhu: number | null;
@@ -363,14 +364,15 @@ export interface RealTankRow {
 
 export async function getRealTank(unit: ScopedUnitId): Promise<RealTankRow[]> {
   return q<RealTankRow>(
-    `SELECT tank_no,
+    `SELECT trim(ckdtangki)    AS ckdtangki,
+            nkapasitas::float8 AS nkapasitas,
             ntinggi::float8    AS ntinggi,
             nvolume::float8    AS nvolume,
             nsuhu::float8      AS nsuhu,
             ntinggiair::float8 AS ntinggiair,
             nvolumeair::float8 AS nvolumeair,
             to_char(dtanggaljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS reading_at
-     FROM real_tank WHERE unit_id = $1 ORDER BY tank_no`,
+     FROM real_tank WHERE unit_id = $1 ORDER BY trim(ckdtangki)`,
     [unit],
   );
 }

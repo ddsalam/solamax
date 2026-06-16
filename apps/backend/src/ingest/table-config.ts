@@ -91,10 +91,10 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
   real_tank: {
     table: "real_tank",
     columns: [
-      "tank_no", "ntinggi", "nvolume", "nsuhu", "ntinggiair",
-      "nvolumeair", "nstatus", "dtanggaljam",
+      "ckdtangki", "nkapasitas", "ntinggi", "nvolume", "nsuhu",
+      "ntinggiair", "nvolumeair", "nstatus", "dtanggaljam",
     ],
-    conflict: ["tank_no"],
+    conflict: ["ckdtangki"],
     hasIngestedAt: true,
   },
 };

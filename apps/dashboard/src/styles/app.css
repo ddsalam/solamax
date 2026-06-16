@@ -302,6 +302,7 @@ body { background: var(--neutral-50); }
 .tg-sub { border-top: 1px solid var(--color-border-hairline); padding-top: var(--space-2); }
 .tg-sub-h { font-weight: 600; margin-bottom: 2px; }
 .tg-live { display: flex; align-items: center; gap: 5px; color: var(--color-success); }
+.tg-live.stale { color: var(--color-warning); }
 .nz-chip { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); background: var(--neutral-100); border: 1px solid var(--color-border-hairline); padding: 2px 8px; border-radius: var(--radius-full); }
 .nz-chip.corr { color: var(--color-accent); background: var(--color-accent-tint); border-color: var(--color-info-border); }
 

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { TankGauge } from "@/components/mon/TankGauge";
-import { tankCapacity, tankFillVar, tankStrapMaxCm, unitDotted } from "@/lib/config";
+import { tankFillVar, unitDotted } from "@/lib/config";
 import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
-import { fmtL, idn, timeWib } from "@/lib/format";
+import { ago, fmtL, idn, timeWib } from "@/lib/format";
 import { addDays, todayWib } from "@/lib/periods";
 import {
   getAvgDailySales,
@@ -14,11 +14,8 @@ import {
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
-/** "T-01" → 1 (cocokkan ke real_tank.tank_no = EasyMax tb_realtank.id). */
-function tankNoOf(ckdtangki: string): number | null {
-  const n = Number.parseInt(ckdtangki.replace(/\D/g, ""), 10);
-  return Number.isFinite(n) ? n : null;
-}
+/** Pembacaan ATG dianggap basi (warna peringatan) bila > ambang ini. */
+const ATG_STALE_MS = 15 * 60 * 1000;
 
 export const dynamic = "force-dynamic";
 
@@ -38,35 +35,37 @@ export default async function DenahPage({ params }: { params: { code: string } }
   ]);
   const avgBy = new Map(avg.map((a) => [a.ckdbbm, a.avg_vol]));
   const correctedSet = new Set(corrected);
-  const rtBy = new Map(realtank.map((r) => [r.tank_no, r]));
+  const rtBy = new Map(realtank.map((r) => [r.ckdtangki, r]));
   const fillBy = new Map(lastFills.map((f) => [f.ckdtangki, f]));
   const oldestOpname = tanks
     .map((t) => t.opname_at)
     .filter((x): x is string => x !== null)
     .sort()[0];
+  const now = Date.now();
 
   const cards = tanks.map((t) => {
     const stock = stockNow(t.stock_op, t.sold_since, t.received_since);
     // Ketahanan tetap dari stok opname+mutasi (tervalidasi); avg harian.
     const days = enduranceDays(stock, avgBy.get(t.ckdbbm ?? "") ?? 0);
     const level = enduranceLevel(days);
-    const cap = tankCapacity(unit.code, t.ckdtangki);
 
-    // Volume "kini": utamakan ATG live (real_tank.nvolume); fallback estimasi opname.
-    const rt = rtBy.get(tankNoOf(t.ckdtangki) ?? -1);
-    const liveVol = rt?.nvolume ?? stock;
+    // ATG live dari vw_realtm: kapasitas OTORITATIF (nkapasitas) + volume kini.
+    const rt = rtBy.get(t.ckdtangki);
+    const cap = rt?.nkapasitas ?? null;
+    const liveVol = rt?.nvolume ?? stock; // fallback estimasi opname bila tanpa ATG
     const fillPct =
       cap !== null && liveVol !== null ? Math.max(0, Math.min(100, (liveVol / cap) * 100)) : null;
     const ullageL = cap !== null && liveVol !== null ? cap - liveVol : null;
-    // Anomali sensor ATG: pembacaan mustahil secara fisik. Dasarkan pada angka ATG
-    // MENTAH (rt.nvolume / rt.ntinggi), bukan liveVol yg bisa fallback ke estimasi
-    // opname — supaya hanya menandai sensor faulting, bukan kekosongan data.
-    const strapMaxCm = tankStrapMaxCm(unit.code, t.ckdtangki);
-    const atgAnomaly =
-      (cap !== null && rt?.nvolume != null && rt.nvolume > cap) ||
-      (strapMaxCm !== null && rt?.ntinggi != null && rt.ntinggi / 10 > strapMaxCm);
+    // Anomali sensor ATG: volume melebihi kapasitas otoritatif = pembacaan mustahil
+    // (mis. probe DEX yang macet). Dasarkan pada nvolume MENTAH, bukan fallback opname.
+    const atgAnomaly = cap !== null && rt?.nvolume != null && rt.nvolume > cap;
     // Suhu ≤0 = sensor tak terbaca (tangki nyaris kosong) → n/a anggun.
     const tempC = rt?.nsuhu != null && rt.nsuhu > 0 ? rt.nsuhu : null;
+    // Umur pembacaan ATG (kejujuran kesegaran data realtime).
+    const reading =
+      rt?.reading_at != null
+        ? { ageText: ago(rt.reading_at, new Date(now)), stale: now - Date.parse(rt.reading_at) > ATG_STALE_MS }
+        : null;
     const lf = fillBy.get(t.ckdtangki);
 
     const nz = nozzles.filter((n) => n.ckdtangki === t.ckdtangki);
@@ -81,6 +80,7 @@ export default async function DenahPage({ params }: { params: { code: string } }
       cap,
       atgAnomaly,
       tempC,
+      reading,
       rt,
       lf,
       fillVar: tankFillVar(t.nama),
@@ -100,13 +100,13 @@ export default async function DenahPage({ params }: { params: { code: string } }
         </span>
         <span className="denah-note fs15 t-tertiary">
           {oldestOpname
-            ? `level dihitung dari opname ${timeWib(oldestOpname)} + penjualan tersinkron sejak itu`
+            ? `volume & ukuran fisik dari ATG live; ketahanan hari dari opname ${timeWib(oldestOpname)}`
             : "belum ada opname"}
         </span>
       </div>
 
       <div className="tank-grid mt5">
-        {cards.map(({ t, liveVol, days, level, fillPct, ullageL, cap, atgAnomaly, tempC, rt, lf, fillVar, nz }) => (
+        {cards.map(({ t, liveVol, days, level, fillPct, ullageL, cap, atgAnomaly, tempC, reading, rt, lf, fillVar, nz }) => (
           <div key={t.ckdtangki} className={`tank-card${level === "danger" ? " danger" : ""}`}>
             <div className="hub-card-top">
               <span className="fs15 w700 t-tertiary">{t.ckdtangki}</span>
@@ -131,10 +131,10 @@ export default async function DenahPage({ params }: { params: { code: string } }
               waterL={rt?.nvolumeair ?? null}
               tempC={tempC}
               ullageL={ullageL}
-              capacityL={cap ?? null}
+              capacityL={cap}
               anomaly={atgAnomaly}
               lastFill={lf ? { vol: lf.nvolreal, selisih: lf.nvolselisih } : null}
-              live={rt != null}
+              reading={reading}
             />
             <div className="nz-row mt2">
               {nz.length === 0 && <span className="fs15 t-tertiary">tanpa nozzle terpetakan</span>}
@@ -174,10 +174,11 @@ export default async function DenahPage({ params }: { params: { code: string } }
         </div>
       )}
       <div className="fs15 t-tertiary mt3">
-        Volume · tinggi · suhu · air ditarik live dari ATG EasyMax (tabel
-        `tb_realtank`); fill% = volume ÷ kapasitas (kapasitas dari tabel kalibrasi,
-        di `src/lib/config.ts` TANK_CAPACITY). Kartu tanpa pembacaan ATG menampilkan
-        estimasi stok opname & "n/a" untuk ukuran fisik. Ketahanan hari dari data nyata.
+        Volume · tinggi · suhu · air · kapasitas ditarik live dari ATG EasyMax (view
+        `vw_realtm`); fill% = volume ÷ kapasitas otoritatif. Umur tiap pembacaan
+        ditampilkan di kartu; pembacaan basi (&gt;15 mnt) ditandai. Kartu tanpa
+        pembacaan ATG menampilkan estimasi stok opname &amp; &quot;n/a&quot; untuk ukuran fisik.
+        Ketahanan hari dari opname.
       </div>
     </div>
   );

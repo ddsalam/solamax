@@ -328,25 +328,28 @@ const MASTERS: MasterDomain = {
 };
 
 // ---------------------------------------------------------------------------
-// REALTANK (tb_realtank) — snapshot ATG keadaan-kini, 1 baris per tangki
+// REALTANK (vw_realtm) — snapshot ATG keadaan-kini, 1 baris per tangki.
+// vw_realtm = view EasyMax yg dibaca layar ATG: gabung tb_realtank + tm_tangki,
+// membawa CKDTANGKI (kunci natural, tanpa tebak id) + NKAPASITAS otoritatif.
 // ---------------------------------------------------------------------------
 const REALTANK: RealtankDomain = {
   domain: "realtank",
   mode: "full",
   table: "real_tank",
-  // Hanya kolom yang dipakai dashboard; `id` = nomor tangki (1..7 → "T-0N").
   sql: `
-    SELECT id, NTINGGI, NVOLUME, NSUHU, NTINGGIAIR, NVOLUMEAIR, NSTATUS, dtanggaljam
-    FROM tb_realtank`,
+    SELECT CKDTANGKI, NKAPASITAS, NTINGGI, NVOLUME, NSUHU,
+           NTINGGIAIR, NVOLUMEAIR, NSTATUS, dtanggaljam
+    FROM vw_realtm`,
   map(raw, offsetMin) {
     const rows: NonNullable<Tables["real_tank"]> = [];
     for (const r of raw) {
-      const tankNo = int(r.id);
-      if (tankNo === null) continue; // baris tanpa nomor tangki → lewati
+      const ckdtangki = str(r.CKDTANGKI);
+      if (ckdtangki === null || ckdtangki.trim() === "") continue; // butuh kode tangki
       const dt = wibDateTimeToUtcIso(str(r.dtanggaljam), offsetMin);
       if (dt === null) continue; // butuh waktu pembacaan valid
       rows.push({
-        tank_no: tankNo,
+        ckdtangki: ckdtangki.trim(),
+        nkapasitas: num(r.NKAPASITAS),
         ntinggi: num(r.NTINGGI),
         nvolume: num(r.NVOLUME),
         nsuhu: num(r.NSUHU),

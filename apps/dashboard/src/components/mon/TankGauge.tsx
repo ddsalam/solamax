@@ -25,8 +25,8 @@ export interface TankGaugeProps {
    */
   anomaly: boolean;
   lastFill: { vol: number | null; selisih: number | null } | null;
-  /** true bila angka volume/tinggi/suhu berasal dari ATG live (real_tank). */
-  live: boolean;
+  /** Umur pembacaan ATG; null bila tak ada pembacaan (kartu pakai estimasi opname). */
+  reading: { ageText: string; stale: boolean } | null;
 }
 
 const NA = <span className="t-tertiary">n/a</span>;
@@ -49,7 +49,7 @@ function Row({
 }
 
 export function TankGauge(props: TankGaugeProps) {
-  const { fillPct, fillVar, level, fuelMm, waterMm, waterL, tempC, ullageL, capacityL, anomaly, lastFill, live } = props;
+  const { fillPct, fillVar, level, fuelMm, waterMm, waterL, tempC, ullageL, capacityL, anomaly, lastFill, reading } = props;
   const fillStyle = anomaly || !fillVar ? undefined : { background: `var(${fillVar})` };
 
   return (
@@ -97,7 +97,11 @@ export function TankGauge(props: TankGaugeProps) {
         </div>
       </div>
 
-      {live && <div className="tg-live fs15 mt1">● ATG live</div>}
+      {reading && (
+        <div className={`tg-live fs15 mt1${reading.stale ? " stale" : ""}`}>
+          ● ATG · {reading.ageText}
+        </div>
+      )}
     </div>
   );
 }

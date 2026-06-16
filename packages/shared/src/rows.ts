@@ -83,12 +83,15 @@ export const DeliveryRow = z.object({
 });
 
 /**
- * Snapshot ATG per tangki (sumber `tb_realtank`). Satu baris per tangki =
- * pembacaan terkini (volume/tinggi/suhu/air). `tank_no` = kolom `id` EasyMax
- * (1..7) — dipetakan ke CKDTANGKI "T-0N" di dashboard. Tinggi dalam mm di sumber.
+ * Snapshot ATG per tangki (sumber view `vw_realtm` — gabungan tb_realtank +
+ * tm_tangki). Satu baris per tangki = pembacaan terkini. `ckdtangki` = kode
+ * tangki kanonik ("T-0N", kunci natural, dipakai langsung — tanpa tebak id).
+ * `nkapasitas` = kapasitas OTORITATIF yang ditampilkan EasyMax (mis. DEX 9.000),
+ * BUKAN kalibrasi. Tinggi dalam mm di sumber.
  */
 export const RealTankRow = z.object({
-  tank_no: z.number().int(),
+  ckdtangki: z.string(), // "T-0N" — kunci natural
+  nkapasitas: num, // kapasitas otoritatif (L), dari vw_realtm
   ntinggi: num, // tinggi cairan BBM (mm)
   nvolume: num, // volume BBM kini (L)
   nsuhu: num, // suhu (°C)

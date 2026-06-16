@@ -138,54 +138,12 @@ export function targetVolumePerDay(
 }
 
 /**
- * Kapasitas tangki, liter (№5). Bukan di tabel master EasyMax (`tm_tangki` tak
- * punya kolom kapasitas), TAPI tersedia di tabel kalibrasi/strapping
- * (`kalibrasi`: tinggi→volume) sebagai `MAX(Volume)` per tangki. Diambil
- * sekali (read-only) & disalin di sini karena statik (geometri tangki tak
- * berubah) dan `kalibrasi` tak ikut di-sync. Pemetaan terverifikasi 2026-06-16:
- * `tb_realtank.id` N ↔ `kalibrasi.Tangki` (N−1) ↔ CKDTANGKI "T-0N" (silang-uji:
- * tiap volume kini ≤ kapasitas). Key: `${unitCode}:${ckdtangki}`.
- * Kosong utk suatu tangki = kartu denah jatuh ke tampilan ketahanan (bukan fill%).
+ * Kapasitas tangki & deteksi anomali kini DARI DATA, bukan config: di-sync dari
+ * view EasyMax `vw_realtm.NKAPASITAS` (kapasitas otoritatif yang ditampilkan
+ * layar ATG, mis. DEX 9.000 L) ke `real_tank.nkapasitas`. Anomali = volume >
+ * kapasitas. `kalibrasi MAX(Volume)`/strapping DITINGGALKAN (salah utk T-05:
+ * 5.379 vs 9.000; tak ada entri 9.000) — lihat ARCHITECTURE/wiki.
  */
-export const TANK_CAPACITY: Record<string, number> = {
-  "6478111:T-01": 20737, // Dexlite
-  "6478111:T-02": 29950, // Solar
-  "6478111:T-03": 30307, // Pertamax
-  "6478111:T-04": 29790, // Pertalite
-  "6478111:T-05": 5379, // Pertamina Dex
-  "6478111:T-06": 9628, // Pertalite
-  "6478111:T-07": 9628, // Pertamax Turbo
-};
-
-export function tankCapacity(code: string, ckdtangki: string): number | null {
-  return TANK_CAPACITY[`${code}:${ckdtangki.trim()}`] ?? null;
-}
-
-/**
- * Tinggi strapping maksimum tangki, cm (geometri fisik). Dari tabel kalibrasi
- * EasyMax `MAX(Tinggi)` per Tangki (pemetaan sama dgn TANK_CAPACITY: `id` N ↔
- * `kalibrasi.Tangki` N−1 ↔ CKDTANGKI "T-0N"). Dipakai untuk mendeteksi pembacaan
- * ATG mustahil (tinggi minyak melebihi tinggi fisik tangki = sensor faulting).
- * Statik & read-only seperti kapasitas. Tangki tanpa entri = cek tinggi dilewati
- * anggun (deteksi anomali jatuh ke ambang volume>kapasitas saja). Key:
- * `${unitCode}:${ckdtangki}`. T-05 terverifikasi 2026-06-16 (strap 150 cm; ATG
- * lapor 271,9 cm = mustahil). Lengkapi sisanya dari `MAX(Tinggi)` kalibrasi.
- */
-export const TANK_STRAP_MAX_CM: Record<string, number> = {
-  // MAX(Tinggi) per kalibrasi.Tangki (terverifikasi 2026-06-16). Pembacaan ATG live
-  // 16/6 semuanya < strap (kecuali T-05 = sensor faulting 271,9 cm > 150).
-  "6478111:T-01": 200, // Dexlite
-  "6478111:T-02": 225, // Solar
-  "6478111:T-03": 225, // Pertamax
-  "6478111:T-04": 225, // Pertalite
-  "6478111:T-05": 150, // Pertamina Dex
-  "6478111:T-06": 207, // Pertalite
-  "6478111:T-07": 207, // Pertamax Turbo
-};
-
-export function tankStrapMaxCm(code: string, ckdtangki: string): number | null {
-  return TANK_STRAP_MAX_CM[`${code}:${ckdtangki.trim()}`] ?? null;
-}
 
 /**
  * Warna kolom cairan gauge per produk (pilihan tampilan, bukan data EasyMax).
