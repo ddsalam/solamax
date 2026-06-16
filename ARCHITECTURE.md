@@ -255,6 +255,46 @@ CREATE TABLE account (
 );
 ```
 
+### 3.6 Domain ATG — pembacaan tangki real-time (`realtank`)
+
+Snapshot keadaan-kini Automatic Tank Gauge per tangki untuk layar **Monitoring
+Realtime → Denah**. Bukan log historis: 1 baris per tangki, ** di-UPSERT tiap
+siklus** (di-timpa). Tanpa watermark (full sync ~7 baris, ringan).
+
+> **Sumber = VIEW `vw_realtm`, BUKAN `tb_realtank` mentah** (keputusan
+> 2026-06-16). `vw_realtm` = view yang dibaca layar ATG EasyMax sendiri; gabung
+> `tb_realtank` + `tm_tangki` dan membawa **`NKAPASITAS`** (kapasitas OTORITATIF
+> yang ditampilkan EasyMax, mis. DEX 9.000 L) + **`CKDTANGKI`** (kunci natural).
+> Ini menggantikan dua pendekatan lama yang SALAH & sudah **dipensiunkan**:
+> kapasitas dari `kalibrasi MAX(Volume)` (tak punya entri 9.000 utk DEX → keliru
+> 5.379) dan pemetaan tebak `tb_realtank.id` N ↔ `T-0N`.
+>
+> **⚠️ Catatan kualitas data (EasyMax-side):** `tb_realtank` kadang membeku /
+> melapor nilai mustahil per tangki (teramati T-05/DEX: `9.628 L / 271,8 cm`,
+> melebihi kapasitas). Akarnya di **konfigurasi/probe ATG EasyMax — di luar
+> kendali pipeline kita**. Perilaku jujur: dashboard menandai anomali bila
+> `nvolume > nkapasitas` (badge "⚠ ATG tak wajar") alih-alih menyembunyikannya
+> sebagai 100%. Umur tiap pembacaan (`dtanggaljam`) ditampilkan; basi (>15 mnt)
+> ditandai — sebab `tb_realtank` tak selalu mutakhir kontinu.
+
+```sql
+-- mirror vw_realtm (snapshot ATG keadaan-kini). Kunci natural CKDTANGKI.
+CREATE TABLE real_tank (
+  unit_id     smallint NOT NULL REFERENCES unit(unit_id),
+  ckdtangki   char(5)  NOT NULL,               -- dari vw_realtm.CKDTANGKI
+  nkapasitas  numeric,                          -- kapasitas OTORITATIF (vw_realtm.NKAPASITAS)
+  ntinggi     numeric,                          -- tinggi minyak (mm di sumber)
+  nvolume     numeric,                          -- volume kini (L)
+  nsuhu       numeric,                          -- suhu (°C)
+  ntinggiair  numeric,                          -- tinggi air (mm)
+  nvolumeair  numeric,                          -- volume air (L)
+  nstatus     smallint,
+  dtanggaljam timestamptz NOT NULL,             -- waktu pembacaan ATG (umur kesegaran)
+  ingested_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (unit_id, ckdtangki)              -- target ON CONFLICT (ditimpa tiap siklus)
+);
+```
+
 ---
 
 ## 4. Kontrak API `/ingest`
@@ -268,7 +308,7 @@ Content-Type: application/json
 **Domain = grup watermark** (bukan 1 tabel). Satu domain bisa membawa beberapa tabel target
 sekaligus (sales = header+detail) yang ter-commit **atomik** dengan satu watermark.
 
-`domain` ∈ `sales | cash | opname | delivery | masters`.
+`domain` ∈ `sales | cash | opname | delivery | masters | realtank`.
 
 **Request body**
 ```jsonc
@@ -308,6 +348,7 @@ sekaligus (sales = header+detail) yang ter-commit **atomik** dengan satu waterma
 | delivery  | `tr_terimabbm`               | `DTGLJAM`           | sama (0 NULL); UPSERT by `CKDTRM` |
 | cash      | `tr_hkasbank` (+detail)      | `DTGL` (date only)  | **re-scan window 7 hari**: `WHERE DTGL >= :wm − 7d`; UPSERT. **Dorman sejak 2019** — query tetap jalan, hasil 0 baris normal |
 | master    | `tm_bbm`/`tm_nozzle`/`tm_tangki`/`tm_perk` | — | sync penuh berkala (kecil) |
+| realtank  | **`vw_realtm`** (view; gabung `tb_realtank`+`tm_tangki`) | — | full sync tiap siklus (~7 baris); UPSERT by `CKDTANGKI`; bawa `NKAPASITAS` otoritatif. **Bukan** `tb_realtank` langsung (kapasitas/strap kalibrasi & tebak id→T-0N DIPENSIUNKAN) |
 
 - **🔑 `DTGLJAM IS NOT NULL` wajib di domain sales.** ~7% baris legacy (pra-2022-08) bernilai NULL; baris ini **tak disync** dan **tak boleh menggeser** `last_watermark`. Watermark baru = `MAX(DTGLJAM)` dari baris non-NULL yang ter-commit.
 - **Safety window** (sales/opname/delivery): re-query trailing N menit untuk menangkap baris yang ditulis terlambat / dikoreksi (`SUBAH`/`SEDIT`). Nilai default **N = 60 menit** (dari sebaran lag DTGLJAM↔DTGLJUAL); dibuat config-driven agar mudah disetel.
