@@ -45,6 +45,18 @@ export interface MasterDomain {
   queries: Array<{ table: keyof Tables; sql: string; map(raw: Raw[]): unknown[] }>;
 }
 
+/**
+ * Domain realtank — snapshot ATG keadaan-kini (full sync tiap siklus, tanpa
+ * watermark). `map` butuh offset TZ untuk konversi `dtanggaljam` WIB→UTC.
+ */
+export interface RealtankDomain {
+  domain: Extract<Domain, "realtank">;
+  mode: "full";
+  table: "real_tank";
+  sql: string;
+  map(raw: Raw[], offsetMin: number): NonNullable<Tables["real_tank"]>;
+}
+
 // ---------------------------------------------------------------------------
 // SALES (tr_djualbbm ⋈ tr_hjualbbm)
 // ---------------------------------------------------------------------------
@@ -315,6 +327,49 @@ const MASTERS: MasterDomain = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// REALTANK (vw_realtm) — snapshot ATG keadaan-kini, 1 baris per tangki.
+// vw_realtm = view EasyMax yg dibaca layar ATG: gabung tb_realtank + tm_tangki,
+// membawa CKDTANGKI (kunci natural, tanpa tebak id) + NKAPASITAS otoritatif.
+// ---------------------------------------------------------------------------
+const REALTANK: RealtankDomain = {
+  domain: "realtank",
+  mode: "full",
+  table: "real_tank",
+  sql: `
+    SELECT CKDTANGKI, NKAPASITAS, NTINGGI, NVOLUME, NSUHU,
+           NTINGGIAIR, NVOLUMEAIR, NSTATUS, dtanggaljam
+    FROM vw_realtm`,
+  map(raw, offsetMin) {
+    const rows: NonNullable<Tables["real_tank"]> = [];
+    for (const r0 of raw) {
+      // vw_realtm mengembalikan nama kolom CASE CAMPURAN: `CKDTANGKI` huruf besar
+      // tapi `nkapasitas`/`ntinggi`/… huruf kecil (case definisi VIEW, bukan case
+      // query). Normalkan semua key ke lowercase agar akses deterministik.
+      const r: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(r0)) r[k.toLowerCase()] = v;
+
+      const ckdtangki = str(r.ckdtangki);
+      if (ckdtangki === null || ckdtangki.trim() === "") continue; // butuh kode tangki
+      const dt = wibDateTimeToUtcIso(str(r.dtanggaljam), offsetMin);
+      if (dt === null) continue; // butuh waktu pembacaan valid
+      rows.push({
+        ckdtangki: ckdtangki.trim(),
+        nkapasitas: num(r.nkapasitas),
+        ntinggi: num(r.ntinggi),
+        nvolume: num(r.nvolume),
+        nsuhu: num(r.nsuhu),
+        ntinggiair: num(r.ntinggiair),
+        nvolumeair: num(r.nvolumeair),
+        nstatus: int(r.nstatus),
+        dtanggaljam: dt,
+      });
+    }
+    return rows;
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const MASTERS_DOMAIN = MASTERS;
+export const REALTANK_DOMAIN = REALTANK;

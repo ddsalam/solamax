@@ -24,6 +24,7 @@ export const IngestPayload = z.object({
       nozzle: z.array(ROW_SCHEMA.nozzle).optional(),
       tangki: z.array(ROW_SCHEMA.tangki).optional(),
       account: z.array(ROW_SCHEMA.account).optional(),
+      real_tank: z.array(ROW_SCHEMA.real_tank).optional(),
     })
     .refine((t) => Object.values(t).some((rows) => rows && rows.length > 0), {
       message: "payload tidak boleh kosong — minimal satu tabel berisi baris",

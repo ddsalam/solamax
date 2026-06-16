@@ -155,6 +155,24 @@ model Delivery {
   @@schema("public")
 }
 
+model RealTank {
+  unitId      Int      @map("unit_id") @db.SmallInt
+  ckdtangki   String   @db.Char(5)
+  nkapasitas  Decimal? @db.Decimal
+  ntinggi     Decimal? @db.Decimal
+  nvolume     Decimal? @db.Decimal
+  nsuhu       Decimal? @db.Decimal
+  ntinggiair  Decimal? @db.Decimal
+  nvolumeair  Decimal? @db.Decimal
+  nstatus     Int?     @db.SmallInt
+  dtanggaljam DateTime @db.Timestamptz()
+  ingestedAt  DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtangki])
+  @@map("real_tank")
+  @@schema("public")
+}
+
 model Product {
   unitId   Int      @map("unit_id") @db.SmallInt
   ckdbbm   String   @db.Char(5)

@@ -138,11 +138,31 @@ export function targetVolumePerDay(
 }
 
 /**
- * Kapasitas tangki, liter (№5) — tidak ada di EasyMax. Kosong = kartu denah
- * tampil tanpa fill%; ketahanan tetap dihitung. Key: `${unitCode}:${ckdtangki}`.
+ * Kapasitas tangki & deteksi anomali kini DARI DATA, bukan config: di-sync dari
+ * view EasyMax `vw_realtm.NKAPASITAS` (kapasitas otoritatif yang ditampilkan
+ * layar ATG, mis. DEX 9.000 L) ke `real_tank.nkapasitas`. Anomali = volume >
+ * kapasitas. `kalibrasi MAX(Volume)`/strapping DITINGGALKAN (salah utk T-05:
+ * 5.379 vs 9.000; tak ada entri 9.000) — lihat ARCHITECTURE/wiki.
  */
-export const TANK_CAPACITY: Record<string, number> = {};
 
-export function tankCapacity(code: string, ckdtangki: string): number | null {
-  return TANK_CAPACITY[`${code}:${ckdtangki.trim()}`] ?? null;
+/**
+ * Warna kolom cairan gauge per produk (pilihan tampilan, bukan data EasyMax).
+ * Dicocokkan via classifyProduct + nama; fallback abu-abu netral bila tak cocok.
+ * Token mengacu CSS var SolaGroup DS (lihat app.css :root).
+ */
+const PRODUCT_FILL_RULES: Array<{ match: RegExp; varName: string }> = [
+  { match: /PERTAMAX\s*TURBO/, varName: "--tank-turbo" },
+  { match: /PERTAMINA\s*DEX/, varName: "--tank-dex" },
+  { match: /PERTAMAX/, varName: "--tank-pertamax" },
+  { match: /PERTALITE/, varName: "--tank-pertalite" },
+  { match: /DEXLITE/, varName: "--tank-dexlite" },
+  { match: /SOLAR/, varName: "--tank-solar" },
+];
+
+/** Nama CSS var warna isi tangki utk produk; null → default netral. */
+export function tankFillVar(name: string | null): string | null {
+  if (!name) return null;
+  const up = name.toUpperCase();
+  for (const r of PRODUCT_FILL_RULES) if (r.match.test(up)) return r.varName;
+  return null;
 }

@@ -88,6 +88,15 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     conflict: ["ckdperk"],
     hasIngestedAt: false,
   },
+  real_tank: {
+    table: "real_tank",
+    columns: [
+      "ckdtangki", "nkapasitas", "ntinggi", "nvolume", "nsuhu",
+      "ntinggiair", "nvolumeair", "nstatus", "dtanggaljam",
+    ],
+    conflict: ["ckdtangki"],
+    hasIngestedAt: true,
+  },
 };
 
 /** Batas keras baris per tabel per request (kontrak ~1000; toleransi 5x). */

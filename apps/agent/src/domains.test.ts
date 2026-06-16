@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CASH_DOMAIN, DATETIME_DOMAINS, MASTERS_DOMAIN } from "./domains.js";
+import {
+  CASH_DOMAIN,
+  DATETIME_DOMAINS,
+  MASTERS_DOMAIN,
+  REALTANK_DOMAIN,
+} from "./domains.js";
 import { tzOffsetMinutes } from "./transform.js";
 
 const WIB = tzOffsetMinutes("Asia/Pontianak");
@@ -70,5 +75,34 @@ describe("MASTERS account.map (defensif — temuan smoke-test: bukan CKDINDUK)",
       { CKDPERK: "5101", VCNMPERKIRAAN: "Biaya ATK" },
     ]) as Array<{ ckdperk: string; vcnmperk: string | null; ckdinduk: string | null }>;
     expect(rows[0]).toEqual({ ckdperk: "5101", vcnmperk: "Biaya ATK", ckdinduk: null });
+  });
+});
+
+describe("REALTANK.map (vw_realtm — case-insensitive kolom)", () => {
+  it("baca kolom view huruf-kecil (nkapasitas/ntinggi/…) di samping CKDTANGKI besar", () => {
+    // vw_realtm: CKDTANGKI huruf besar, sisanya huruf kecil (case definisi view).
+    const out = REALTANK_DOMAIN.map(
+      [
+        {
+          CKDTANGKI: "T-05", nkapasitas: 9000, ntinggi: 595, nvolume: 2250,
+          nsuhu: 28, ntinggiair: 0, nvolumeair: 0, nstatus: 1,
+          dtanggaljam: "2026-06-17 00:31:00",
+        },
+      ],
+      WIB,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      ckdtangki: "T-05", nkapasitas: 9000, nvolume: 2250, ntinggi: 595, nsuhu: 28,
+    });
+    expect(out[0]!.dtanggaljam).toBe("2026-06-16T17:31:00.000Z"); // WIB→UTC
+  });
+
+  it("lewati baris tanpa CKDTANGKI", () => {
+    const out = REALTANK_DOMAIN.map(
+      [{ nkapasitas: 9000, dtanggaljam: "2026-06-17 00:31:00" }],
+      WIB,
+    );
+    expect(out).toHaveLength(0);
   });
 });

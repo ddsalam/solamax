@@ -82,6 +82,25 @@ export const DeliveryRow = z.object({
   sbatal: z.number().int().nullable(),
 });
 
+/**
+ * Snapshot ATG per tangki (sumber view `vw_realtm` — gabungan tb_realtank +
+ * tm_tangki). Satu baris per tangki = pembacaan terkini. `ckdtangki` = kode
+ * tangki kanonik ("T-0N", kunci natural, dipakai langsung — tanpa tebak id).
+ * `nkapasitas` = kapasitas OTORITATIF yang ditampilkan EasyMax (mis. DEX 9.000),
+ * BUKAN kalibrasi. Tinggi dalam mm di sumber.
+ */
+export const RealTankRow = z.object({
+  ckdtangki: z.string(), // "T-0N" — kunci natural
+  nkapasitas: num, // kapasitas otoritatif (L), dari vw_realtm
+  ntinggi: num, // tinggi cairan BBM (mm)
+  nvolume: num, // volume BBM kini (L)
+  nsuhu: num, // suhu (°C)
+  ntinggiair: num, // tinggi air dasar (mm)
+  nvolumeair: num, // volume air (L)
+  nstatus: z.number().int().nullable(),
+  dtanggaljam: isoUtc, // waktu pembacaan (agent konversi WIB→UTC)
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -119,6 +138,7 @@ export const ROW_SCHEMA = {
   nozzle: NozzleRow,
   tangki: TangkiRow,
   account: AccountRow,
+  real_tank: RealTankRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -132,3 +152,4 @@ export type ProductRow = z.infer<typeof ProductRow>;
 export type NozzleRow = z.infer<typeof NozzleRow>;
 export type TangkiRow = z.infer<typeof TangkiRow>;
 export type AccountRow = z.infer<typeof AccountRow>;
+export type RealTankRow = z.infer<typeof RealTankRow>;

@@ -346,6 +346,63 @@ export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
   );
 }
 
+/**
+ * Snapshot ATG keadaan-kini per tangki (tabel `real_tank`, di-sync dari view
+ * EasyMax `vw_realtm`). `ckdtangki` = kunci natural ("T-0N"); `nkapasitas` =
+ * kapasitas OTORITATIF dari EasyMax (bukan kalibrasi). Tinggi mm di sumber.
+ */
+export interface RealTankRow {
+  ckdtangki: string;
+  nkapasitas: number | null;
+  ntinggi: number | null;
+  nvolume: number | null;
+  nsuhu: number | null;
+  ntinggiair: number | null;
+  nvolumeair: number | null;
+  reading_at: string | null; // ISO UTC waktu pembacaan
+}
+
+export async function getRealTank(unit: ScopedUnitId): Promise<RealTankRow[]> {
+  return q<RealTankRow>(
+    `SELECT trim(ckdtangki)    AS ckdtangki,
+            nkapasitas::float8 AS nkapasitas,
+            ntinggi::float8    AS ntinggi,
+            nvolume::float8    AS nvolume,
+            nsuhu::float8      AS nsuhu,
+            ntinggiair::float8 AS ntinggiair,
+            nvolumeair::float8 AS nvolumeair,
+            to_char(dtanggaljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS reading_at
+     FROM real_tank WHERE unit_id = $1 ORDER BY trim(ckdtangki)`,
+    [unit],
+  );
+}
+
+/**
+ * Pengisian (penerimaan) TERAKHIR per tangki — utk blok "Pengisian" kartu denah.
+ * EasyMax `tr_terimabbm` punya NVOLAWAL/NVOLAKHIR tapi BELUM di-sync (delivery
+ * hanya nvolreal/nvolselisih) → kartu tampilkan volume real + selisih + waktu;
+ * Awal/Akhir = n/a sampai kolom itu ikut pipeline.
+ */
+export interface LastFillRow {
+  ckdtangki: string;
+  nvolreal: number | null;
+  nvolselisih: number | null;
+  filled_at: string | null; // ISO UTC
+}
+
+export async function getLastFills(unit: ScopedUnitId): Promise<LastFillRow[]> {
+  return q<LastFillRow>(
+    `SELECT DISTINCT ON (trim(ckdtangki)) trim(ckdtangki) AS ckdtangki,
+            nvolreal::float8 AS nvolreal,
+            nvolselisih::float8 AS nvolselisih,
+            to_char(dtgljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS filled_at
+     FROM delivery
+     WHERE unit_id = $1 AND COALESCE(sbatal,0) = 0 AND ckdtangki IS NOT NULL
+     ORDER BY trim(ckdtangki), dtgljam DESC`,
+    [unit],
+  );
+}
+
 export interface NozzleRow {
   ckdnozzle: string;
   ckdtangki: string | null;

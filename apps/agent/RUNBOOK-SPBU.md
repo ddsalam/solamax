@@ -177,3 +177,34 @@ Kirim 4 hal (copy-paste teks atau kirim filenya):
 
 Selesai — agent **tidak perlu dibiarkan jalan**; kedua tes berhenti sendiri. Setelah hasil
 ini masuk dan disetujui, baru lanjut Fase 2 (backend penerima data).
+
+---
+
+## Bagian I — Memperbarui agent (swap bundle baru) — ⚠️ WAJIB RESTART
+
+Agent berjalan **terus-menerus (loop)** lewat Windows Task Scheduler →
+`C:\solamax-agent\jalankan-agent.bat` → `node solamax-agent.cjs` (tanpa `--once`).
+
+> 🛑 **Node memuat `solamax-agent.cjs` ke memori SEKALI saat start.** Menimpa file
+> `.cjs` di disk **TIDAK** memuat ulang proses yang sedang jalan — ia tetap
+> menjalankan versi LAMA sampai di-restart. **Inilah penyebab gejala "data tangki
+> basi / domain baru tak muncul" yang pernah terjadi (16 Jun 2026):** bundle baru
+> sudah disalin, tapi loop lama belum di-restart.
+
+**Langkah baku tiap kali ganti `solamax-agent.cjs`:**
+
+1. **Cadangkan** biner lama (untuk rollback):
+   ```bat
+   copy /Y C:\solamax-agent\solamax-agent.cjs C:\solamax-agent\solamax-agent.PREV.cjs
+   ```
+2. **Timpa HANYA** `solamax-agent.cjs` dengan file baru. **Jangan** sentuh
+   `config.local.json` (berisi password readonly_sync + API key asli) atau
+   `jalankan-agent.bat`.
+3. **RESTART loop:**
+   - **Task Scheduler** → task SolaMax agent → klik kanan → **End**.
+   - **Task Manager → Details** → akhiri sisa **`node.exe`** yang menjalankan `solamax-agent.cjs`.
+   - Task Scheduler → task → **Run**.
+4. **Verifikasi:** buka `C:\solamax-agent\logs\agent-<tgl>.log`, cari baris
+   `ingest ok … "domain":"realtank"` (dan **tak ada** `422`).
+
+**Rollback:** kembalikan `solamax-agent.PREV.cjs` → `solamax-agent.cjs`, lalu ulangi langkah 3.
