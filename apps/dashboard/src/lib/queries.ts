@@ -1,4 +1,5 @@
 import { q } from "./db";
+import { GARBAGE_STOCK_L } from "./derive";
 import type { ScopedUnitId } from "./scope";
 
 /**
@@ -245,6 +246,7 @@ export async function getDeliveryByTankDate(
             COALESCE(sum(t.nvolreal),0)::float8 AS vol
      FROM delivery t
      WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
+       AND abs(COALESCE(t.nvolreal,0)) <= ${GARBAGE_STOCK_L}
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
      GROUP BY 1, 2`,
     [unit, from, to],
@@ -294,6 +296,7 @@ export async function getDeliveryByProduct(
      FROM delivery t
      LEFT JOIN product p ON p.unit_id = t.unit_id AND p.ckdbbm = t.ckdbbm
      WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
+       AND abs(COALESCE(t.nvolreal,0)) <= ${GARBAGE_STOCK_L}
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
      GROUP BY trim(t.ckdbbm)`,
     [unit, from, to],
@@ -334,9 +337,11 @@ export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
             to_char(lo.dtgljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS opname_at,
             COALESCE((SELECT sum(sd.nvolume) FROM sales_detail sd
               WHERE sd.unit_id = $1 AND sd.ckdtangki = t.ckdtangki
+                AND abs(COALESCE(sd.nvolume,0)) <= ${GARBAGE_STOCK_L}
                 AND lo.dtgljam IS NOT NULL AND sd.dtgljam > lo.dtgljam),0)::float8 AS sold_since,
             COALESCE((SELECT sum(d.nvolreal) FROM delivery d
               WHERE d.unit_id = $1 AND d.ckdtangki = t.ckdtangki AND COALESCE(d.sbatal,0)=0
+                AND abs(COALESCE(d.nvolreal,0)) <= ${GARBAGE_STOCK_L}
                 AND lo.dtgljam IS NOT NULL AND d.dtgljam > lo.dtgljam),0)::float8 AS received_since
      FROM tangki t
      LEFT JOIN last_op lo ON lo.ckdtangki = t.ckdtangki

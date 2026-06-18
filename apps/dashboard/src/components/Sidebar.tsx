@@ -127,7 +127,9 @@ export function Sidebar({
       >
         <NavIcon name={it.icon} />
         <span className="side-label">{it.label}</span>
-        {it.badge && alertCount > 0 && <span className="side-badge">{alertCount}</span>}
+        {it.badge && alertCount > 0 && (
+          <span className="side-badge">{alertCount > 9 ? "9+" : alertCount}</span>
+        )}
       </Link>
     );
   };

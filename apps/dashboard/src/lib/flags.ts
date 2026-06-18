@@ -15,6 +15,7 @@ export const DOMAIN = {
   pendapatanLain: false, // pendapatan lain-lain (F)
   setoran: false, // setoran bank (I)
   do: false, // DO / alokasi (MyPertamina)
+  hargaBeli: false, // harga beli & margin (master harga beli)
 } as const;
 
 /**

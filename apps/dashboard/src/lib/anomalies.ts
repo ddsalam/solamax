@@ -40,6 +40,8 @@ export interface AnomalyItem {
   time: string;
   /** link "Buka laporan →" */
   href?: string;
+  /** Flag permanen/berdiri (mis. kas dorman) — tetap di feed, tak dihitung badge. */
+  standing?: boolean;
 }
 
 const toneRank = { danger: 0, warning: 1, info: 2 } as const;
@@ -111,7 +113,10 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
     // Kekurangan kiriman (delivery) — garbage volume dipisah jadi kualitas data.
     for (const s of deliv) {
       if (s.sbatal) continue;
-      const garbage = (s.voldo ?? 0) > GARBAGE_STOCK_L || (s.volreal ?? 0) > GARBAGE_STOCK_L;
+      // abs() agar baris korup BERNILAI NEGATIF (mis. real −14 juta L) ikut
+      // tertangkap sebagai kualitas-data, bukan lolos jadi "kekurangan kiriman".
+      const garbage =
+        Math.abs(s.voldo ?? 0) > GARBAGE_STOCK_L || Math.abs(s.volreal ?? 0) > GARBAGE_STOCK_L;
       if (garbage) {
         items.push({
           tone: "warning",
@@ -216,6 +221,7 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         unit: "Semua unit",
         desc: "Flag permanen, tidak bisa di-dismiss. Pengeluaran & setoran tidak terkontrol lewat sistem sejak input terakhir.",
         time: "tetap",
+        standing: true,
       });
     }
   }

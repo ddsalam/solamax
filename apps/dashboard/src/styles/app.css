@@ -240,11 +240,15 @@ body { background: var(--neutral-50); }
 /* kolom per tabel (persis spec) */
 .cols-rank { grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 1fr 1.3fr 32px; }
 .cols-sales { grid-template-columns: 1.5fr 1fr 1.1fr 0.8fr 1.3fr 0.9fr; }
+.cols-sales.no-tera { grid-template-columns: 1.5fr 1fr 1.1fr 1.3fr 0.9fr; }
 .cols-glkum { grid-template-columns: 1.4fr 1fr 0.8fr; padding-top: 10px; padding-bottom: 10px; }
 .cols-target { grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; }
 .cols-do { grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
+.cols-do.lite { grid-template-columns: 1.3fr 1fr; }
 .cols-stock { grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; }
+.cols-stock.lite { grid-template-columns: 1.3fr 1fr 0.9fr; }
 .cols-harga { grid-template-columns: 1.3fr 1fr 1fr 1fr 0.7fr; padding-top: 11px; padding-bottom: 11px; }
+.cols-harga.lite { grid-template-columns: 1.3fr 1fr; }
 .cols-keluar { grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; }
 .cols-net { grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
 

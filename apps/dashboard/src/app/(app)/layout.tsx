@@ -38,7 +38,10 @@ export default async function AppShellLayout({
         .filter((x): x is string => x !== null)
         .sort()
         .pop() ?? null;
-    alertCount = (await buildAnomalies(scope.units)).filter((a) => a.tone === "danger").length;
+    // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
+    alertCount = (await buildAnomalies(scope.units)).filter(
+      (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
+    ).length;
   } catch {
     // DB tak terjangkau — shell tetap render.
   }

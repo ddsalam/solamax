@@ -24,6 +24,7 @@ export interface RankRow {
   vol: string;
   gl: string;
   glAbnormal: boolean;
+  glProvisional: boolean;
   rg: string;
   inputTone: "success" | "warning" | "danger";
   inputLabel: string;
@@ -70,7 +71,9 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
               </span>
               <span className="right w600 num nowrap rank-omzet">{u.omzet}</span>
               <span className="right fs16 t-secondary num">{u.vol}</span>
-              <span className={`right fs16 w600 num ${u.glAbnormal ? "t-danger" : "t-secondary"}`}>
+              <span
+                className={`right fs16 w600 num ${u.glProvisional ? "t-warning" : u.glAbnormal ? "t-danger" : "t-secondary"}`}
+              >
                 {u.gl}
               </span>
               <span className="right fs16 t-secondary num">{u.rg}</span>

@@ -204,6 +204,7 @@ export default async function BoardPage({
       vol: fmtKL(x.totals.vol),
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
+      glProvisional: x.glProvisional,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       inputTone: x.shift.shifts >= 3 ? "success" : x.shift.shifts > 0 ? "warning" : "danger",
       inputLabel:

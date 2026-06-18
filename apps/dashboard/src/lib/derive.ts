@@ -131,6 +131,16 @@ export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
   return { byProduct, totalSigned, provisional, abnormal, garbage };
 }
 
+/**
+ * Stok hasil hitung yang MUSTAHIL secara fisik (negatif) → jangan tampilkan
+ * sebagai angka; render "data tak wajar". Backstop: idealnya tak terjadi setelah
+ * mutasi garbage dibatasi di query (abs ≤ GARBAGE_STOCK_L), tapi menutup kelas
+ * "nilai mustahil ditampilkan sebagai fakta" untuk data korup tak terduga.
+ */
+export function isStockImplausible(stock: number | null): boolean {
+  return stock !== null && stock < 0;
+}
+
 /** Stok kini = stok opname − terjual sejak opname + diterima sejak opname. */
 export function stockNow(
   stockOp: number | null,

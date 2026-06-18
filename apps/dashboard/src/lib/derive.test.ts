@@ -8,6 +8,7 @@ import {
   enduranceLevel,
   glPercent,
   isOpnameGarbage,
+  isStockImplausible,
   stockNow,
   verdictHeadline,
   type ClosingRow,
@@ -60,6 +61,11 @@ describe("stok & ketahanan", () => {
   it("stok kini = opname − terjual + diterima", () => {
     expect(stockNow(18400, 2400, 8000)).toBe(24000);
     expect(stockNow(null, 5, 5)).toBeNull();
+  });
+  it("stok mustahil (negatif) ditandai tak wajar; null/positif tidak", () => {
+    expect(isStockImplausible(-14_000_000)).toBe(true);
+    expect(isStockImplausible(500)).toBe(false);
+    expect(isStockImplausible(null)).toBe(false);
   });
   it("ketahanan & level ambang spec (1,5 / 3 hari)", () => {
     expect(enduranceDays(18400, 10000)).toBeCloseTo(1.84);
