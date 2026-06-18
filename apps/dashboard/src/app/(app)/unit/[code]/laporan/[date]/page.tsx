@@ -9,6 +9,7 @@ import {
   unitLabel,
 } from "@/lib/config";
 import { aggregateClosingGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { dateLong, fmtL, idn, parenNeg, pct, rp, rpShort, signed, timeWib } from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
@@ -148,6 +149,10 @@ export default async function LaporanPage({
   ];
   const score = alarmScore(checks);
   const scoreTone = score.ok === score.active ? "t-success" : score.active - score.ok === 1 ? "t-warning" : "t-danger";
+  // v1: tampilkan hanya cek yang datanya tersedia (state !== "na"). Cek "na"
+  // muncul kembali otomatis begitu datanya masuk. alarmScore sudah
+  // mengecualikan "na" dari pembilang/penyebut → tak ada perubahan matematika.
+  const visibleChecks = checks.filter((c) => c.state !== "na");
 
   // ===== Stok =====
   const avgBy = new Map(avg7.map((a) => [a.ckdbbm, a.avg_vol]));
@@ -178,6 +183,20 @@ export default async function LaporanPage({
 
   const cashTotal = cash.filter((c) => !c.sbatal).reduce((s, c) => s + (c.ntotal ?? 0), 0);
 
+  // Ringkasan Kas: hanya kartu dengan nilai nyata yang dirender (v1). Kartu
+  // domain dorman (val null) muncul kembali otomatis saat datanya masuk.
+  const kasCards: Array<{ label: string; val: string | null; note: string }> = [
+    { label: "Transaksi Pelanggan", val: null, note: "Domain deposit/piutang" },
+    { label: "EDC", val: null, note: "Domain EDC" },
+    {
+      label: "Pengeluaran",
+      val: cash.length > 0 ? rp(cashTotal) : null,
+      note: cash.length > 0 ? `${cash.length} nota` : "modul kas dorman",
+    },
+    { label: "Pendapatan Lain-Lain", val: null, note: "Domain kas aktif" },
+    { label: "Setoran Bank", val: null, note: "Domain setoran" },
+  ].filter((k) => k.val !== null);
+
   return (
     <div className="lap-page">
       <LaporanToolbar
@@ -205,7 +224,7 @@ export default async function LaporanPage({
           <div className="right">
             <div className="fs15 t-tertiary">Alarm indikator</div>
             <div className={`text-h4 num ${scoreTone}`}>{score.text}</div>
-            <div className="fs15 t-tertiary">{score.na} menunggu data</div>
+            <div className="fs15 t-tertiary">cek sesuai</div>
           </div>
           <div className="lap-headdiv" />
           <div className="right">
@@ -235,14 +254,12 @@ export default async function LaporanPage({
         <div className="alarm-head">
           <div className="text-h5 t-brand">Alarm Indikator</div>
           <span className="fs16 t-tertiary">
-            11 cek harian — yang dilihat pertama oleh pengawas &amp; atasan
+            cek harian — yang dilihat pertama oleh pengawas &amp; atasan
           </span>
-          <span className={`alarm-note w700 num ${scoreTone}`}>
-            {score.text} sesuai · {score.na} menunggu data
-          </span>
+          <span className={`alarm-note w700 num ${scoreTone}`}>{score.text} sesuai</span>
         </div>
         <div className="alarm-grid">
-          {checks.map((c) => (
+          {visibleChecks.map((c) => (
             <div key={c.label} className="alarm-row">
               <span className={`alarm-mark ${c.state}`}>
                 {c.state === "ok" ? "✓" : c.state === "fail" ? "✗" : "—"}
@@ -324,41 +341,33 @@ export default async function LaporanPage({
         </div>
       </div>
 
-      {/* 3 · RINGKASAN KAS */}
-      <div className="mt10">
-        <div className="text-h5 t-brand">Ringkasan Kas</div>
-        <div className="kas-grid mt4">
-          {[
-            { label: "Transaksi Pelanggan", val: null, note: "Domain deposit/piutang" },
-            { label: "EDC", val: null, note: "Domain EDC" },
-            {
-              label: "Pengeluaran",
-              val: cash.length > 0 ? rp(cashTotal) : null,
-              note: cash.length > 0 ? `${cash.length} nota` : "modul kas dorman",
-            },
-            { label: "Pendapatan Lain-Lain", val: null, note: "Domain kas aktif" },
-            { label: "Setoran Bank", val: null, note: "Domain setoran" },
-          ].map((k) => (
-            <div key={k.label} className="card card-pad">
-              <div className="fs15 w600 t-tertiary">{k.label}</div>
-              <div className={`text-h6 num nowrap mt2 ${k.val ? "t-primary" : "t-tertiary"}`}>
-                {k.val ?? "—"}
+      {/* 3 · RINGKASAN KAS — hanya kartu dengan nilai nyata (v1) */}
+      {kasCards.length > 0 && (
+        <div className="mt10">
+          <div className="text-h5 t-brand">Ringkasan Kas</div>
+          <div className="kas-grid mt4">
+            {kasCards.map((k) => (
+              <div key={k.label} className="card card-pad">
+                <div className="fs15 w600 t-tertiary">{k.label}</div>
+                <div className="text-h6 num nowrap mt2 t-primary">{k.val}</div>
+                <div className="fs15 t-tertiary mt1">{k.note}</div>
               </div>
-              <div className="fs15 t-tertiary mt1">{k.note}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {detail && (
         <>
-          {/* 5 + 7 */}
-          <div className="lap-two mt10">
-            <EmptyPanel
-              title="Saldo Hutang Piutang Pelanggan"
-              domain="Domain deposit &amp; pembayaran pelanggan (pj*)"
-              note="Saat tersambung: total piutang, hutang (deposit), dan netto tampil di sini."
-            />
+          {/* 5 + 7 — panel piutang (Domain deposit) di-gate; G/L kumulatif live */}
+          <div className={DOMAIN.pelanggan ? "lap-two mt10" : "mt10"}>
+            {DOMAIN.pelanggan && (
+              <EmptyPanel
+                title="Saldo Hutang Piutang Pelanggan"
+                domain="Domain deposit &amp; pembayaran pelanggan (pj*)"
+                note="Saat tersambung: total piutang, hutang (deposit), dan netto tampil di sini."
+              />
+            )}
             <div className="card tbl-card">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Gain (Losses) Kumulatif</div>
@@ -466,8 +475,8 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 8 + 15 · DO */}
-          <div className="lap-two mt10">
+          {/* 8 + 15 · DO — kartu DO live (penerimaan nyata); panel alokasi di-gate */}
+          <div className={DOMAIN.do ? "lap-two mt10" : "mt10"}>
             <div className="card tbl-card">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Laporan DO Harian</div>
@@ -496,11 +505,13 @@ export default async function LaporanPage({
                 nyata tr_terimabbm.
               </div>
             </div>
-            <EmptyPanel
-              title="Alokasi Penerimaan Tidak Sesuai"
-              domain="Domain DO/alokasi"
-              note="Saat tersambung: hanya produk dengan ketidaksesuaian 5 hari terakhir yang tampil."
-            />
+            {DOMAIN.do && (
+              <EmptyPanel
+                title="Alokasi Penerimaan Tidak Sesuai"
+                domain="Domain DO/alokasi"
+                note="Saat tersambung: hanya produk dengan ketidaksesuaian 5 hari terakhir yang tampil."
+              />
+            )}
           </div>
 
           {/* 9 · STOK & KETAHANAN */}
@@ -552,8 +563,8 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 10 + 11 */}
-          <div className="lap-two mt10">
+          {/* 10 + 11 — harga jual live; panel piutang pelanggan di-gate */}
+          <div className={DOMAIN.pelanggan ? "lap-two mt10" : "mt10"}>
             <div className="card tbl-card">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Harga Beli, Jual &amp; Margin</div>
@@ -580,10 +591,12 @@ export default async function LaporanPage({
                 Harga jual = data EasyMax. Harga beli &amp; margin menunggu master harga beli.
               </div>
             </div>
-            <EmptyPanel
-              title="Pelanggan (Transaksi Piutang Hari Ini)"
-              domain="Domain deposit &amp; pembayaran pelanggan"
-            />
+            {DOMAIN.pelanggan && (
+              <EmptyPanel
+                title="Pelanggan (Transaksi Piutang Hari Ini)"
+                domain="Domain deposit &amp; pembayaran pelanggan"
+              />
+            )}
           </div>
 
           {/* 12 · PENGELUARAN */}
@@ -631,19 +644,26 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 13 + 14 */}
-          <div className="lap-two mt10">
-            <EmptyPanel title="Pendapatan Lain-Lain" domain="modul kas aktif" />
-            <EmptyPanel
-              title="EDC"
-              domain="Domain EDC"
-              note="Saat tersambung: nominal vs settlement per channel + selisih disorot."
-            />
-          </div>
+          {/* 13 + 14 — keduanya domain dorman; seluruh blok di-gate */}
+          {(DOMAIN.pendapatanLain || DOMAIN.edc) && (
+            <div className="lap-two mt10">
+              {DOMAIN.pendapatanLain && (
+                <EmptyPanel title="Pendapatan Lain-Lain" domain="modul kas aktif" />
+              )}
+              {DOMAIN.edc && (
+                <EmptyPanel
+                  title="EDC"
+                  domain="Domain EDC"
+                  note="Saat tersambung: nominal vs settlement per channel + selisih disorot."
+                />
+              )}
+            </div>
+          )}
         </>
       )}
 
-      {/* 16 · REKONSILIASI */}
+      {/* 16 · REKONSILIASI — A–I butuh Domain 4–7; di-gate sampai semua siap */}
+      {REKON_READY && (
       <div className="rekon-card mt10">
         <div className="alarm-head">
           <div className="text-h5 t-brand">Summary Rekonsiliasi</div>
@@ -693,6 +713,7 @@ export default async function LaporanPage({
           </div>
         </div>
       </div>
+      )}
 
       <div className="page-foot mt8">
         <span>

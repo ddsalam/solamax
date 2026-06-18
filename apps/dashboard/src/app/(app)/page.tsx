@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { HubPicker } from "@/components/HubPicker";
 import { unitLabel } from "@/lib/config";
+import { ago } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
-import { getComplianceMatrix } from "@/lib/queries";
+import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +14,6 @@ const STEPS = [
   { n: "3", label: "Drilldown sampai nozzle" },
   { n: "4", label: "Export / arsip" },
 ];
-
-const MODULE_TOTAL = 9;
 
 export default async function HubPage({
   searchParams,
@@ -27,11 +26,20 @@ export default async function HubPage({
   const unit = units.find((u) => u.code === searchParams.unit) ?? units[0];
   const date = searchParams.date ?? today;
 
-  // Banner kelengkapan: modul terisi dari 9 (3 shift + opname + kas + 4 domain belum)
-  let filled = 0;
-  if (unit && date === today) {
-    const m = (await getComplianceMatrix(unit.unit_id, 1))[0];
-    if (m) filled = Math.min(m.shifts, 3) + (m.tanks > 0 ? 1 : 0) + (m.cash_rows > 0 ? 1 : 0);
+  // Garis kesegaran: kapan data unit terpilih terakhir tersinkron (pengganti
+  // banner "X dari 9 modul" — kelengkapan modul disembunyikan untuk v1).
+  let lastSync: string | null = null;
+  if (unit) {
+    try {
+      lastSync =
+        (await getSyncByUnit([unit.unit_id]))
+          .map((s) => s.last_run)
+          .filter((x): x is string => x !== null)
+          .sort()
+          .pop() ?? null;
+    } catch {
+      // DB tak terjangkau — halaman tetap render tanpa garis kesegaran.
+    }
   }
 
   const cards = [
@@ -82,20 +90,10 @@ export default async function HubPage({
         />
       </div>
 
-      {unit && date === today && filled < MODULE_TOTAL && (
-        <div className="banner warning mt5">
-          <span className="dot lg warning" />
-          <div>
-            <div className="text-caption w600 t-warning">
-              Data tanggal ini belum lengkap — {filled} dari {MODULE_TOTAL} modul terisi
-            </div>
-            <div className="fs16 t-secondary mt1">
-              Shift 3 tutup besok pagi; modul EDC/setoran/piutang menunggu pipeline Domain 4–7.
-              Laporan tetap bisa dibuka dengan angka berjalan.
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="fs16 t-secondary mt5">
+        <span className={`dot ${lastSync ? "success" : "muted"}`} />{" "}
+        {lastSync ? `Data terakhir masuk ${ago(lastSync)}.` : "Menunggu data tersinkron."}
+      </div>
 
       <div className="hub-grid mt6">
         {cards.map((c) => (

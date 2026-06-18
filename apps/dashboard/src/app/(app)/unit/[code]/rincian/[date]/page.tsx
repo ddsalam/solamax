@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RincianToolbar } from "@/components/rincian/Toolbar";
 import { classifyProduct, UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
+import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, idn, rp, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
 import { getCashForDate, getSalesByProduct } from "@/lib/queries";
@@ -41,7 +42,10 @@ export default async function RincianPage({
   const scope = await getDataScope();
   const unit = scope.requireUnit(params.code); // notFound bila di luar scope/tak ada
   const date = params.date;
-  const hideEmpty = searchParams.kosong === "sembunyi";
+  // v1: section kosong (Domain 4–7) disembunyikan secara default; tampilkan
+  // hanya bila diminta eksplisit (?kosong=tampil). Begitu sebuah section dapat
+  // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
+  const hideEmpty = searchParams.kosong !== "tampil";
 
   const units = scope.units;
   const [prod, cash] = await Promise.all([
@@ -234,24 +238,29 @@ export default async function RincianPage({
             <span className="fs15 w600 t-tertiary">Keterangan</span>
             <span className="fs15 w600 t-tertiary right">Jumlah</span>
           </div>
-          {summary.map((s) => (
-            <div key={s.l} className={`sum-row${s.em ? " em" : ""}`}>
-              <span className="fs16 w700 t-brand num">{s.l}</span>
-              <span className="sum-label">
-                <span className={`fs16 t-primary${s.em ? " w700" : ""}`}>{s.label}</span>
-                {s.formula && <span className="fs15 t-tertiary mono">{s.formula}</span>}
-              </span>
-              <span className={`fs16 right num nowrap${s.em ? " w700" : ""} ${s.val ? "" : "t-tertiary"}`}>
-                {s.val ?? "belum tersedia"}
+          {/* v1: tampilkan hanya baris dengan nilai nyata; baris A–I "belum
+              tersedia" (Domain 4–7) disembunyikan dan kembali otomatis saat
+              nilainya terisi. */}
+          {summary
+            .filter((s) => s.val !== null)
+            .map((s) => (
+              <div key={s.l} className={`sum-row${s.em ? " em" : ""}`}>
+                <span className="fs16 w700 t-brand num">{s.l}</span>
+                <span className="sum-label">
+                  <span className={`fs16 t-primary${s.em ? " w700" : ""}`}>{s.label}</span>
+                  {s.formula && <span className="fs15 t-tertiary mono">{s.formula}</span>}
+                </span>
+                <span className={`fs16 right num nowrap${s.em ? " w700" : ""}`}>{s.val}</span>
+              </div>
+            ))}
+          {REKON_READY && (
+            <div className="sum-note">
+              <span className="dot muted" />
+              <span className="fs15 w600 t-tertiary">
+                Verifikasi H = I dari komponen tera, piutang, EDC, pendapatan lain &amp; setoran
               </span>
             </div>
-          ))}
-          <div className="sum-note">
-            <span className="dot muted" />
-            <span className="fs15 w600 t-tertiary">
-              Verifikasi H = I menunggu Domain 4–7 (tera, piutang, EDC, pendapatan lain, setoran)
-            </span>
-          </div>
+          )}
         </div>
 
         {/* Tanda tangan */}

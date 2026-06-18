@@ -19,10 +19,11 @@ export function RincianToolbar({
 }) {
   const router = useRouter();
   const params = useSearchParams();
-  const hideEmpty = params.get("kosong") === "sembunyi";
+  // Default: section kosong DISEMBUNYIKAN; param ?kosong=tampil membukanya.
+  const hideEmpty = params.get("kosong") !== "tampil";
 
   const go = (c: string, d: string, hide: boolean) =>
-    router.push(`/unit/${c}/rincian/${d}${hide ? "?kosong=sembunyi" : ""}`);
+    router.push(`/unit/${c}/rincian/${d}${hide ? "" : "?kosong=tampil"}`);
 
   return (
     <div className="no-print card card-pad rincian-toolbar">
