@@ -315,7 +315,9 @@ export default async function LaporanPage({
       {/* 2 · OMSET, GAIN(LOSSES), TERA */}
       <div className="mt10">
         <div className="section-h">
-          <div className="text-h5 t-brand">Omset Penjualan, Gain (Losses) &amp; Tera Harian</div>
+          <div className="text-h5 t-brand">
+            Omset Penjualan &amp; Gain (Losses){DOMAIN.tera ? " & Tera" : ""} Harian
+          </div>
           <span className="fs16 t-tertiary">per produk · dari totalisator nozzle per shift</span>
           {glProvisional && (
             <span className="anom-tag" title="opname penutup D+1 belum ada">
@@ -553,7 +555,7 @@ export default async function LaporanPage({
           {/* 9 · STOK & KETAHANAN */}
           <div className="mt10">
             <div className="section-h">
-              <div className="text-h5 t-brand">Sisa &amp; Ketahanan Stock &amp; DO</div>
+              <div className="text-h5 t-brand">Sisa &amp; Ketahanan Stock{DOMAIN.do ? " & DO" : ""}</div>
               <span className="fs16 t-tertiary">
                 ketahanan = sisa stock ÷ rata-rata jual 7 hari
                 {oldestOpname ? ` · dihitung dari opname ${timeWib(oldestOpname)} + penjualan tersinkron` : ""}
