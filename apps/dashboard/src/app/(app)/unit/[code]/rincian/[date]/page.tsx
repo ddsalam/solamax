@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RincianToolbar } from "@/components/rincian/Toolbar";
-import { classifyProduct, UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
+import { classifyProduct, UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, idn, rp, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
@@ -47,7 +47,6 @@ export default async function RincianPage({
   // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
   const hideEmpty = searchParams.kosong !== "tampil";
 
-  const units = scope.units;
   const [prod, cash] = await Promise.all([
     getSalesByProduct(unit.unit_id, date, date),
     getCashForDate(unit.unit_id, date),
@@ -156,11 +155,7 @@ export default async function RincianPage({
         </Link>
       </div>
 
-      <RincianToolbar
-        units={units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
-        code={unit.code}
-        date={date}
-      />
+      <RincianToolbar code={unit.code} date={date} />
 
       <div className="doc-sheet mt6">
         {/* Kop */}

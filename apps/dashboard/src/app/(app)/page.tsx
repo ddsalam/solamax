@@ -1,26 +1,17 @@
 import Link from "next/link";
-import { HubPicker } from "@/components/HubPicker";
-import { unitLabel } from "@/lib/config";
 import { ago } from "@/lib/format";
-import { todayWib } from "@/lib/periods";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
+import { getSelection } from "@/lib/selection";
 
 export const dynamic = "force-dynamic";
 
-export default async function HubPage({
-  searchParams,
-}: {
-  searchParams: { unit?: string; date?: string };
-}) {
+export default async function HubPage() {
   const scope = await getDataScope();
-  const units = scope.units;
-  const today = todayWib();
-  const unit = units.find((u) => u.code === searchParams.unit) ?? units[0];
-  const date = searchParams.date ?? today;
+  const { unitCode, date } = getSelection(scope.units);
+  const unit = scope.units.find((u) => u.code === unitCode) ?? scope.units[0];
 
-  // Garis kesegaran: kapan data unit terpilih terakhir tersinkron (pengganti
-  // banner "X dari 9 modul" — kelengkapan modul disembunyikan untuk v1).
+  // Garis kesegaran: kapan data unit terpilih terakhir tersinkron.
   let lastSync: string | null = null;
   if (unit) {
     try {
@@ -35,9 +26,8 @@ export default async function HubPage({
     }
   }
 
-  // 6 kartu pintasan, dikelompokkan sama persis dengan grup sidebar. Kartu
-  // per-unit memakai unit & tanggal terpilih dari HubPicker; Fase 3 mengangkat
-  // pilihan ini ke topbar yang terbawa antar layar.
+  // 6 kartu pintasan, dikelompokkan sama dengan grup sidebar. Unit & tanggal
+  // datang dari pilihan terbawa (cookie) yang diatur oleh picker topbar.
   const u = unit?.code;
   const groups = [
     {
@@ -96,14 +86,7 @@ export default async function HubPage({
   return (
     <div>
       <div className="text-eyebrow t-tertiary">Beranda</div>
-      <h1 className="text-h4 t-brand mt2">Pilih unit &amp; tanggal, lalu buka modul</h1>
-
-      <div className="picker-row mt6">
-        <HubPicker
-          units={units.map((u2) => ({ code: u2.code, label: unitLabel(u2.code, u2.name) }))}
-          date={date}
-        />
-      </div>
+      <h1 className="text-h4 t-brand mt2">Pilih unit &amp; tanggal di atas, lalu buka modul</h1>
 
       <div className="fs16 t-secondary mt5">
         <span className={`dot ${lastSync ? "success" : "muted"}`} />{" "}

@@ -6,7 +6,6 @@ import {
   classifyProduct,
   targetVolumePerDay,
   unitDotted,
-  unitLabel,
 } from "@/lib/config";
 import { aggregateClosingGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
@@ -47,7 +46,6 @@ export default async function LaporanPage({
   const mi = monthInfo(date);
   const mStart = monthStart(date);
 
-  const units = scope.units;
   const [
     prodDay,
     closingDay,
@@ -199,12 +197,7 @@ export default async function LaporanPage({
 
   return (
     <div className="lap-page">
-      <LaporanToolbar
-        units={units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
-        code={unit.code}
-        date={date}
-        detail={detail}
-      />
+      <LaporanToolbar code={unit.code} date={date} detail={detail} />
 
       {/* Header */}
       <div className="board-head mt6">
