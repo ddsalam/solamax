@@ -106,37 +106,55 @@ export default async function LaporanPage({
   const worstGap = targetGap.filter((x): x is number => x !== null).sort((a, b) => a - b)[0];
   const hasTarget = targetGap.some((x) => x !== null);
 
-  const ok = (label: string, pass: boolean, note: string): AlarmCheck => ({
-    label,
-    state: pass ? "ok" : "fail",
-    note,
-  });
   const na = (label: string, domain: string): AlarmCheck => ({
     label,
     state: "na",
     note: `belum tersedia · ${domain}`,
   });
+
+  // Cek 1 — Losses harian. Partial-day = PROVISIONAL: %-nya artefak denominator
+  // kecil (mis. 136,90%), jadi tampilkan L berjalan TANPA % dan jangan klaim
+  // aman/gagal. Label mengikuti status (aman / di atas ambang / sementara).
+  const dailyLoss = (): AlarmCheck => {
+    if (glPctDay === null)
+      return { label: "Losses harian — menunggu opname", state: "na", note: "opname penutup belum ada" };
+    if (glProvisional)
+      return {
+        label: "Losses harian — sementara",
+        state: "provisional",
+        note: `${signed(glTotal)} L berjalan · belum final, menunggu opname penutup${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
+      };
+    const within = Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005;
+    return {
+      label: within ? "Losses harian aman" : "Losses harian di atas ambang",
+      state: within ? "ok" : "fail",
+      note: `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
+    };
+  };
+
+  const monthlyWithin = glPctMonth === null || Math.abs(glPctMonth) <= 0.005;
+  const monthlyLoss: AlarmCheck = {
+    label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
+    state: monthlyWithin ? "ok" : "fail",
+    note: glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
+  };
+
+  const targetCheck = (): AlarmCheck => {
+    if (!hasTarget)
+      return { label: "Target bulan ini — belum diisi", state: "na", note: "target bulan ini belum diisi" };
+    const met = (worstGap ?? 0) >= 0;
+    return {
+      label: met ? "Target bulan ini tercapai" : "Target bulan ini di bawah prorata",
+      state: met ? "ok" : "fail",
+      note: worstGap !== undefined && worstGap < 0 ? `${parenNeg(worstGap)} vs prorata` : "sesuai prorata",
+    };
+  };
+
   const checks: AlarmCheck[] = [
-    glPctDay === null
-      ? na("Losses Harian Aman", "opname penutup belum ada")
-      : ok(
-          "Losses Harian Aman",
-          Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005,
-          `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glProvisional ? " · provisional" : ""}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
-        ),
-    ok(
-      "Losses Bulanan Aman",
-      glPctMonth === null || Math.abs(glPctMonth) <= 0.005,
-      glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
-    ),
+    dailyLoss(),
+    monthlyLoss,
     na("Setoran Bank Sesuai", "Domain setoran"),
-    hasTarget
-      ? ok(
-          "Target/Alokasi Sudah Tercapai",
-          (worstGap ?? 0) >= 0,
-          worstGap !== undefined && worstGap < 0 ? `${parenNeg(worstGap)} vs prorata` : "sesuai prorata",
-        )
-      : na("Target/Alokasi Sudah Tercapai", "target bulan ini belum diisi"),
+    targetCheck(),
     na("Pencatatan DO Sesuai", "Domain DO"),
     na("Pengeluaran Sudah Disahkan", "modul kas dorman"),
     na("Harga Beli/Jual Benar", "master harga beli"),
@@ -146,7 +164,15 @@ export default async function LaporanPage({
     na("Settlement EDC Sudah Sesuai", "Domain EDC"),
   ];
   const score = alarmScore(checks);
-  const scoreTone = score.ok === score.active ? "t-success" : score.active - score.ok === 1 ? "t-warning" : "t-danger";
+  // fail≥2 → danger; tepat 1 fail → warning; tanpa fail tapi ada provisional → warning.
+  const scoreTone =
+    score.fail >= 2
+      ? "t-danger"
+      : score.fail === 1
+        ? "t-warning"
+        : score.provisional > 0
+          ? "t-warning"
+          : "t-success";
   // v1: tampilkan hanya cek yang datanya tersedia (state !== "na"). Cek "na"
   // muncul kembali otomatis begitu datanya masuk. alarmScore sudah
   // mengecualikan "na" dari pembilang/penyebut → tak ada perubahan matematika.
@@ -217,7 +243,9 @@ export default async function LaporanPage({
           <div className="right">
             <div className="fs15 t-tertiary">Alarm indikator</div>
             <div className={`text-h4 num ${scoreTone}`}>{score.text}</div>
-            <div className="fs15 t-tertiary">cek sesuai</div>
+            <div className="fs15 t-tertiary">
+              {score.provisional > 0 ? `cek sesuai · ${score.provisional} sementara` : "cek sesuai"}
+            </div>
           </div>
           <div className="lap-headdiv" />
           <div className="right">
@@ -243,28 +271,40 @@ export default async function LaporanPage({
       )}
 
       {/* 4 · ALARM INDIKATOR */}
-      <div className={`alarm-card mt8${score.active - score.ok > 1 ? " bad" : ""}`}>
+      <div className={`alarm-card mt8${score.fail > 1 ? " bad" : ""}`}>
         <div className="alarm-head">
           <div className="text-h5 t-brand">Alarm Indikator</div>
           <span className="fs16 t-tertiary">
             cek harian — yang dilihat pertama oleh pengawas &amp; atasan
           </span>
-          <span className={`alarm-note w700 num ${scoreTone}`}>{score.text} sesuai</span>
+          <span className={`alarm-note w700 num ${scoreTone}`}>
+            {score.text} sesuai{score.provisional > 0 ? ` · ${score.provisional} sementara` : ""}
+          </span>
         </div>
         <div className="alarm-grid">
           {visibleChecks.map((c) => (
             <div key={c.label} className="alarm-row">
               <span className={`alarm-mark ${c.state}`}>
-                {c.state === "ok" ? "✓" : c.state === "fail" ? "✗" : "—"}
+                {c.state === "ok" ? "✓" : c.state === "fail" ? "✗" : c.state === "provisional" ? "~" : "—"}
               </span>
               <span
                 className={`text-body ${
-                  c.state === "fail" ? "t-danger w700" : c.state === "na" ? "t-tertiary" : "t-primary"
+                  c.state === "fail"
+                    ? "t-danger w700"
+                    : c.state === "provisional"
+                      ? "t-warning w700"
+                      : c.state === "na"
+                        ? "t-tertiary"
+                        : "t-primary"
                 }`}
               >
                 {c.label}
               </span>
-              <span className={`alarm-note num ${c.state === "fail" ? "t-danger" : "t-tertiary"}`}>
+              <span
+                className={`alarm-note num ${
+                  c.state === "fail" ? "t-danger" : c.state === "provisional" ? "t-warning" : "t-tertiary"
+                }`}
+              >
                 {c.note}
               </span>
             </div>

@@ -282,6 +282,7 @@ body { background: var(--neutral-50); }
 }
 .alarm-mark.ok { background: var(--color-success-bg); color: var(--color-success); }
 .alarm-mark.fail { background: var(--color-danger-bg); color: var(--color-danger); }
+.alarm-mark.provisional { background: var(--color-warning-bg); color: var(--color-warning); }
 .alarm-mark.na { background: var(--neutral-100); color: var(--neutral-400); }
 .alarm-note { margin-left: auto; font-size: 15px; text-align: right; }
 

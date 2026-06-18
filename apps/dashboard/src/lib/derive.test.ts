@@ -75,14 +75,19 @@ describe("gl% / verdict / alarm", () => {
     expect(glPercent(-52, 15353)).toBeCloseTo(-0.0034, 4);
     expect(glPercent(-52, 0)).toBeNull();
   });
-  it("verdict headline by jumlah chip", () => {
+  it("verdict headline by jumlah chip & tone", () => {
     expect(verdictHeadline([])).toBe("Grup sehat.");
+    // warning saja → "perlu perhatian" (tak ada "tindakan")
+    expect(verdictHeadline([{ tone: "warning", text: "y" }])).toBe(
+      "Grup perlu perhatian. Satu hal perlu ditinjau.",
+    );
+    // ada danger → "perlu tindakan", JANGAN "sehat"
     expect(
       verdictHeadline([
         { tone: "danger", text: "x" },
         { tone: "warning", text: "y" },
       ]),
-    ).toBe("Grup sehat. Dua hal perlu perhatian.");
+    ).toBe("Grup perlu tindakan. Dua hal perlu perhatian.");
   });
   it("skor alarm: hanya cek aktif (№6)", () => {
     const s = alarmScore([
@@ -93,6 +98,13 @@ describe("gl% / verdict / alarm", () => {
     ]);
     expect(s.text).toBe("2/3");
     expect(s.na).toBe(1);
+    // provisional di luar penyebut, dilaporkan terpisah
+    const p = alarmScore([
+      { label: "x", state: "provisional", note: "" },
+      { label: "y", state: "ok", note: "" },
+    ]);
+    expect(p.text).toBe("1/1");
+    expect(p.provisional).toBe(1);
   });
 });
 

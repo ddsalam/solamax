@@ -170,14 +170,18 @@ export interface VerdictChip {
 export function verdictHeadline(chips: VerdictChip[]): string {
   if (chips.length === 0) return "Grup sehat.";
   const n = ["Satu", "Dua", "Tiga", "Empat", "Lima"][chips.length - 1] ?? String(chips.length);
-  return `Grup sehat. ${n} hal perlu perhatian.`;
+  // Headline harus mencerminkan status: JANGAN bilang "sehat" bila ada chip danger.
+  const hasDanger = chips.some((c) => c.tone === "danger");
+  return hasDanger
+    ? `Grup perlu tindakan. ${n} hal perlu perhatian.`
+    : `Grup perlu perhatian. ${n} hal perlu ditinjau.`;
 }
 
 // ---------------------------------------------------------------------------
 // Alarm indikator (Laporan Operasional) — 11 cek spec
 // ---------------------------------------------------------------------------
 
-export type AlarmState = "ok" | "fail" | "na";
+export type AlarmState = "ok" | "fail" | "provisional" | "na";
 
 export interface AlarmCheck {
   label: string;
@@ -185,15 +189,24 @@ export interface AlarmCheck {
   note: string;
 }
 
-/** Skor "n/m sesuai · k menunggu data" dari daftar cek (№6). */
+/**
+ * Skor cek alarm. `active` = cek yang sudah TERPUTUS final (ok + fail); skor =
+ * ok/active. `provisional` (mis. losses harian partial-day) dilaporkan TERPISAH
+ * — bukan pass, bukan fail — agar tak mengaburkan denominator. `na` (belum ada
+ * data) juga di luar penyebut.
+ */
 export function alarmScore(checks: AlarmCheck[]): {
   ok: number;
+  fail: number;
   active: number;
+  provisional: number;
   na: number;
   text: string;
 } {
-  const active = checks.filter((c) => c.state !== "na").length;
   const ok = checks.filter((c) => c.state === "ok").length;
-  const na = checks.length - active;
-  return { ok, active, na, text: `${ok}/${active}` };
+  const fail = checks.filter((c) => c.state === "fail").length;
+  const provisional = checks.filter((c) => c.state === "provisional").length;
+  const na = checks.filter((c) => c.state === "na").length;
+  const active = ok + fail;
+  return { ok, fail, active, provisional, na, text: `${ok}/${active}` };
 }
