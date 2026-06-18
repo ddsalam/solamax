@@ -1,14 +1,11 @@
-import { MonTabs } from "@/components/mon/MonTabs";
+import { MonHeading } from "@/components/mon/MonHeading";
 
 export default function MonitoringLayout({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      <div className="board-head">
-        <div>
-          <div className="text-eyebrow t-tertiary">Monitoring Realtime</div>
-          <MonTabs titleOnly />
-        </div>
-        <MonTabs />
+      <div>
+        <div className="text-eyebrow t-tertiary">Monitoring realtime</div>
+        <MonHeading />
       </div>
       {children}
     </div>

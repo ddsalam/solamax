@@ -1,5 +1,5 @@
 /**
- * Pembangun feed "Anomali & exception" (Board + /monitoring/anomali) dari
+ * Pembangun feed "Anomali & exception" (Board + badge sidebar Ketaatan) dari
  * data nyata. Lima jenis spec: losses abnormal, kas dorman (permanen),
  * shift belum input, stok kritis, koreksi totalisator. Urut: paling perlu
  * tindakan dulu (danger → warning → info).

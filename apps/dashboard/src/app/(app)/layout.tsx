@@ -1,14 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
+import { AppShell } from "@/components/AppShell";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { Sidebar } from "@/components/Sidebar";
-import { TopbarNav } from "@/components/TopbarNav";
 import { SignOutButton } from "@/components/SignOutButton";
 import { buildAnomalies } from "@/lib/anomalies";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { type Role } from "@/lib/auth-context";
 import { ago } from "@/lib/format";
+import { todayWib } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,6 @@ export default async function AppShellLayout({
         <div className="topbar-div" />
         <span className="text-caption w600 t-secondary">SolaMax</span>
         <span className="role-chip">{ROLE_LABEL[scope.role]}</span>
-        <TopbarNav />
         <div className="topbar-right">
           <span className="fs15 t-tertiary sync-note">
             <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />
@@ -64,10 +63,9 @@ export default async function AppShellLayout({
           <SignOutButton />
         </div>
       </header>
-      <div className="shell">
-        <Sidebar alertCount={alertCount} />
-        <main className="main">{children}</main>
-      </div>
+      <AppShell unitCode={scope.units[0]?.code} date={todayWib()} alertCount={alertCount}>
+        {children}
+      </AppShell>
       <AutoRefresh seconds={60} />
     </>
   );

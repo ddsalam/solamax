@@ -8,13 +8,6 @@ import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
-const STEPS = [
-  { n: "1", label: "Pilih unit & tanggal", hi: true },
-  { n: "2", label: "Buka ringkasan / laporan" },
-  { n: "3", label: "Drilldown sampai nozzle" },
-  { n: "4", label: "Export / arsip" },
-];
-
 export default async function HubPage({
   searchParams,
 }: {
@@ -42,50 +35,72 @@ export default async function HubPage({
     }
   }
 
-  const cards = [
+  // 6 kartu pintasan, dikelompokkan sama persis dengan grup sidebar. Kartu
+  // per-unit memakai unit & tanggal terpilih dari HubPicker; Fase 3 mengangkat
+  // pilihan ini ke topbar yang terbawa antar layar.
+  const u = unit?.code;
+  const groups = [
     {
-      tag: "Analisa grup",
-      title: "Ringkasan Direksi",
-      desc: "Verdict kesehatan grup, KPI, bauran NPSO/PSO vs target, ranking unit, feed anomali.",
-      roles: "Direksi · Admin Area",
-      href: `/board`,
+      title: "Monitoring realtime",
+      cards: [
+        {
+          tag: "Realtime",
+          title: "Denah tangki & nozzle",
+          desc: "Volume ATG live, fill bar, ketahanan hari & nozzle per tangki.",
+          href: u ? `/monitoring/denah/${u}` : "#",
+        },
+        {
+          tag: "Realtime",
+          title: "Ketaatan administrasi",
+          desc: "Heatmap kepatuhan input penjualan, opname & kas per hari.",
+          href: "/monitoring/ketaatan",
+        },
+      ],
     },
     {
-      tag: "Alat kerja harian",
-      title: "Laporan Operasional Harian",
-      desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok, rekonsiliasi A–I.",
-      roles: "Semua persona",
-      href: unit ? `/unit/${unit.code}/laporan/${date}` : "#",
+      title: "Laporan",
+      cards: [
+        {
+          tag: "Harian",
+          title: "Operasional harian",
+          desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok.",
+          href: u ? `/unit/${u}/laporan/${date}` : "#",
+        },
+        {
+          tag: "Arsip",
+          title: "Rincian penjualan",
+          desc: "Ledger resmi siap cetak & tanda tangan.",
+          href: u ? `/unit/${u}/rincian/${date}` : "#",
+        },
+      ],
     },
     {
-      tag: "Dokumen arsip",
-      title: "Rincian Penjualan Harian",
-      desc: "Ledger resmi siap cetak & tanda tangan — omset, pelanggan, EDC, pengeluaran, summary A–I.",
-      roles: "Pengawas · Ops · arsip",
-      href: unit ? `/unit/${unit.code}/rincian/${date}` : "#",
+      title: "Direksi & admin",
+      cards: [
+        {
+          tag: "Analisa",
+          title: "Ringkasan direksi",
+          desc: "Verdict kesehatan grup, KPI, bauran vs target, ranking unit, anomali.",
+          href: "/board",
+        },
+        {
+          tag: "Admin",
+          title: "Kelola akses",
+          desc: "Undang & atur peran pengguna dashboard.",
+          href: "/admin",
+        },
+      ],
     },
   ];
 
   return (
     <div>
-      <div className="text-eyebrow t-tertiary">Laporan &amp; Analisa</div>
-      <h1 className="text-h4 t-brand mt2">Pilih unit &amp; tanggal, lalu turun selapis demi selapis</h1>
-
-      <div className="step-strip mt5">
-        {STEPS.map((s, i) => (
-          <div key={s.n} className="step-strip">
-            <div className={`step-pill${s.hi ? " hi" : ""}`}>
-              <span className="step-num">{s.n}</span>
-              <span className={`fs15 w600 ${s.hi ? "t-accent" : "t-primary"}`}>{s.label}</span>
-            </div>
-            {i < STEPS.length - 1 && <span className="t-tertiary">→</span>}
-          </div>
-        ))}
-      </div>
+      <div className="text-eyebrow t-tertiary">Beranda</div>
+      <h1 className="text-h4 t-brand mt2">Pilih unit &amp; tanggal, lalu buka modul</h1>
 
       <div className="picker-row mt6">
         <HubPicker
-          units={units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
+          units={units.map((u2) => ({ code: u2.code, label: unitLabel(u2.code, u2.name) }))}
           date={date}
         />
       </div>
@@ -95,25 +110,23 @@ export default async function HubPage({
         {lastSync ? `Data terakhir masuk ${ago(lastSync)}.` : "Menunggu data tersinkron."}
       </div>
 
-      <div className="hub-grid mt6">
-        {cards.map((c) => (
-          <Link key={c.title} href={c.href} className="hub-card">
-            <div className="hub-card-top">
-              <span className="tag-pill">{c.tag}</span>
-              <span className="t-tertiary">→</span>
-            </div>
-            <div className="text-h6 t-brand mt4">{c.title}</div>
-            <p className="fs16 t-secondary mt2">{c.desc}</p>
-            <div className="fs15 t-tertiary mt4">{c.roles}</div>
-          </Link>
-        ))}
-      </div>
-
-      <div className="mt8">
-        <Link href="/monitoring" className="btn-navy">
-          Lanjut ke Monitoring Realtime →
-        </Link>
-      </div>
+      {groups.map((g) => (
+        <div key={g.title} className="mt8">
+          <div className="text-eyebrow t-tertiary">{g.title}</div>
+          <div className="launch-card-grid mt4">
+            {g.cards.map((c) => (
+              <Link key={c.title} href={c.href} className="hub-card">
+                <div className="hub-card-top">
+                  <span className="tag-pill">{c.tag}</span>
+                  <span className="t-tertiary">→</span>
+                </div>
+                <div className="text-h6 t-brand mt4">{c.title}</div>
+                <p className="fs16 t-secondary mt2">{c.desc}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
