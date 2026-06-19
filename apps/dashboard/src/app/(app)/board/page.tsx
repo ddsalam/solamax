@@ -58,9 +58,10 @@ export default async function BoardPage({
       const gl = aggregateClosingGl(closing);
       const glPct = glPercent(gl.totalSigned, totals.vol);
       const glAbnormal = gl.abnormal.length > 0;
+      const glProvisional = gl.provisional;
       const gas = bauranVsTarget(products, u.code, month, "gasoline");
       const oil = bauranVsTarget(products, u.code, month, "gasoil");
-      return { u, products, totals, prevTotals, glPct, glAbnormal, gas, oil, shift, daily };
+      return { u, products, totals, prevTotals, glPct, glAbnormal, glProvisional, gas, oil, shift, daily };
     }),
   );
 
@@ -87,7 +88,9 @@ export default async function BoardPage({
     0,
   );
   const glGroupPct = totalVol > 0 ? glAll / totalVol : null;
-  const abnormalUnits = perUnit.filter((x) => x.glAbnormal).length;
+  // Losses TERKONFIRMASI (di atas ambang & final) vs sementara (opname belum final).
+  const confirmedAbnormal = perUnit.filter((x) => x.glAbnormal && !x.glProvisional).length;
+  const provisionalUnits = perUnit.filter((x) => x.glProvisional).length;
 
   const shiftsDone = perUnit.reduce((s, x) => s + Math.min(x.shift.shifts, 3), 0);
   const shiftsTarget = units.length * 3;
@@ -97,7 +100,13 @@ export default async function BoardPage({
   const chips: VerdictChip[] = [];
   for (const x of perUnit) {
     if (x.glAbnormal && x.glPct !== null) {
-      chips.push({ tone: "danger", text: `Losses ${x.u.name} ${pct(x.glPct, 2)}` });
+      // Losses provisional (opname penutup belum final) = peringatan, BUKAN danger,
+      // dan %-nya artefak partial-day → tak ditampilkan.
+      chips.push(
+        x.glProvisional
+          ? { tone: "warning", text: `Losses ${x.u.name} · sementara (opname belum final)` }
+          : { tone: "danger", text: `Losses ${x.u.name} ${pct(x.glPct, 2)}` },
+      );
     }
   }
   const gasBelow = perUnit.filter((x) => x.gas.below).length;
@@ -169,7 +178,11 @@ export default async function BoardPage({
     const sMax = Math.max(...sparkVals14, 1);
     const notes: RankRow["notes"] = [];
     if (x.glAbnormal && x.glPct !== null)
-      notes.push({ tone: "danger", text: `Losses ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` });
+      notes.push(
+        x.glProvisional
+          ? { tone: "warning", text: "Losses sementara — menunggu opname penutup" }
+          : { tone: "danger", text: `Losses ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` },
+      );
     if (x.gas.below && x.gas.deltaPt !== null)
       notes.push({ tone: "warning", text: `Bauran gasoline ${idn(Math.abs(x.gas.deltaPt), 1)} pt di bawah target` });
     if (x.oil.below && x.oil.deltaPt !== null)
@@ -191,6 +204,7 @@ export default async function BoardPage({
       vol: fmtKL(x.totals.vol),
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
+      glProvisional: x.glProvisional,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       inputTone: x.shift.shifts >= 3 ? "success" : x.shift.shifts > 0 ? "warning" : "danger",
       inputLabel:
@@ -277,11 +291,15 @@ export default async function BoardPage({
             {glGroupPct !== null ? `${signed(glGroupPct * 100, 2)}%` : "—"}
           </div>
           <div className="kpi-note">
-            <span className={`dot ${abnormalUnits > 0 ? "danger" : "success"}`} />
+            <span
+              className={`dot ${confirmedAbnormal > 0 ? "danger" : provisionalUnits > 0 ? "warning" : "success"}`}
+            />
             <span>
-              {abnormalUnits > 0
-                ? `${abnormalUnits} unit di atas ambang ±0,5%`
-                : "dalam ambang ±0,5%"}
+              {confirmedAbnormal > 0
+                ? `${confirmedAbnormal} unit di atas ambang ±0,5%`
+                : provisionalUnits > 0
+                  ? "sebagian sementara — menunggu opname"
+                  : "dalam ambang ±0,5%"}
             </span>
           </div>
         </div>

@@ -69,8 +69,7 @@ export default async function KetaatanPage() {
     <div>
       <div className="section-h mt6">
         <span className="fs16 t-secondary">
-          {units.length} unit × {DAYS} hari · agregat modul input · klik sel untuk detail ·
-          aturan compliance.ts
+          {units.length} unit × {DAYS} hari · agregat modul input · klik sel untuk detail
         </span>
         <span className="hm-legendrow">
           <span className="hm-legenditem">

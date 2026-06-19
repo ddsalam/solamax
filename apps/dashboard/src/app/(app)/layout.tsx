@@ -1,14 +1,12 @@
-import Image from "next/image";
-import Link from "next/link";
+import { AppShell } from "@/components/AppShell";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { Sidebar } from "@/components/Sidebar";
-import { TopbarNav } from "@/components/TopbarNav";
 import { SignOutButton } from "@/components/SignOutButton";
 import { buildAnomalies } from "@/lib/anomalies";
+import { unitLabel } from "@/lib/config";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
+import { getSelection } from "@/lib/selection";
 import { type Role } from "@/lib/auth-context";
-import { ago } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +17,15 @@ const ROLE_LABEL: Record<Role, string> = {
   pengawas: "Pengawas",
 };
 
-/** Shell ter-auth + ter-scope: getDataScope = gerbang otoritatif & sumber unit. */
+/** Shell ter-auth + ter-scope: getDataScope = gerbang otoritatif & sumber unit.
+ *  Chrome (topbar + drawer) dirender oleh AppShell (client); semua bit server
+ *  diteruskan sebagai props → router.refresh me-render ulang dengan nilai segar. */
 export default async function AppShellLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // getDataScope: default-deny (redirect /login | /no-access) + unit ter-scope.
   const scope = await getDataScope();
+  const { unitCode, date } = getSelection(scope.units);
 
   // Sync & anomali HANYA untuk unit dalam scope caller (lewat scope.unitIds / scope.units).
   let lastSync: string | null = null;
@@ -37,37 +38,29 @@ export default async function AppShellLayout({
         .filter((x): x is string => x !== null)
         .sort()
         .pop() ?? null;
-    alertCount = (await buildAnomalies(scope.units)).filter((a) => a.tone === "danger").length;
+    // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
+    alertCount = (await buildAnomalies(scope.units)).filter(
+      (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
+    ).length;
   } catch {
     // DB tak terjangkau — shell tetap render.
   }
 
   return (
     <>
-      <header className="topbar no-print">
-        <Image src="/solagroup-logo.png" alt="SolaGroup" width={120} height={20} className="topbar-logo" />
-        <div className="topbar-div" />
-        <span className="text-caption w600 t-secondary">SolaMax</span>
-        <span className="role-chip">{ROLE_LABEL[scope.role]}</span>
-        <TopbarNav />
-        <div className="topbar-right">
-          <span className="fs15 t-tertiary sync-note">
-            <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />
-            {lastSync ? `data terakhir masuk ${ago(lastSync)}` : "menunggu koneksi data"}
-          </span>
-          {scope.isSuperAdmin && (
-            <Link href="/admin" className="fs15 w600 t-accent">
-              Akses
-            </Link>
-          )}
-          <span className="fs15 t-tertiary auth-email">{scope.email}</span>
-          <SignOutButton />
-        </div>
-      </header>
-      <div className="shell">
-        <Sidebar alertCount={alertCount} />
-        <main className="main">{children}</main>
-      </div>
+      <AppShell
+        roleLabel={ROLE_LABEL[scope.role]}
+        email={scope.email}
+        isSuperAdmin={scope.isSuperAdmin}
+        lastSync={lastSync}
+        alertCount={alertCount}
+        units={scope.units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
+        unitCode={unitCode}
+        date={date}
+        signOutSlot={<SignOutButton />}
+      >
+        {children}
+      </AppShell>
       <AutoRefresh seconds={60} />
     </>
   );

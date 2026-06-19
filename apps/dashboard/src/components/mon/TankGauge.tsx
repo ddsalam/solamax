@@ -24,7 +24,7 @@ export interface TankGaugeProps {
    * eksplisit alih-alih disembunyikan sbg "100% penuh".
    */
   anomaly: boolean;
-  lastFill: { vol: number | null; selisih: number | null } | null;
+  lastFill: { vol: number | null; selisih: number | null; bad?: boolean } | null;
   /** Umur pembacaan ATG; null bila tak ada pembacaan (kartu pakai estimasi opname). */
   reading: { ageText: string; stale: boolean } | null;
 }
@@ -89,12 +89,16 @@ export function TankGauge(props: TankGaugeProps) {
 
       <div className="tg-sub mt2">
         <div className="tg-sub-h t-tertiary fs15">Pengisian terakhir</div>
-        <div className="tg-grid">
-          <Row label="Volume">{lastFill?.vol != null ? fmtL(lastFill.vol) : NA}</Row>
-          <Row label="Selisih">
-            {lastFill?.selisih != null ? fmtL(lastFill.selisih) : NA}
-          </Row>
-        </div>
+        {lastFill?.bad ? (
+          <div className="fs15 t-warning">data tak wajar — perlu koreksi entri</div>
+        ) : (
+          <div className="tg-grid">
+            <Row label="Volume">{lastFill?.vol != null ? fmtL(lastFill.vol) : NA}</Row>
+            <Row label="Selisih">
+              {lastFill?.selisih != null ? fmtL(lastFill.selisih) : NA}
+            </Row>
+          </div>
+        )}
       </div>
 
       {reading && (

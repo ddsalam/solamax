@@ -1,0 +1,99 @@
+name: Deploy dashboard → staging
+
+# Branch-triggered CD for the dashboard (Option A: staging = the live pilot).
+# Push to `staging` (or manual dispatch) → CI gate → build via the repo's own
+# cloudbuild.yaml → IMAGE-ONLY Cloud Run deploy (env/secrets/cloudsql/scaling
+# carry forward unchanged). The deploy job is gated by the protected `staging`
+# GitHub Environment (required reviewer), so nothing reaches the pilot without a
+# one-click approve. Auth via Workload Identity Federation — no SA key.
+
+on:
+  push:
+    branches: [staging]
+    paths:
+      - "apps/dashboard/**"
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - "apps/dashboard/cloudbuild.yaml"
+      - ".github/workflows/deploy-staging.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # WIF token exchange
+
+env:
+  REGION: asia-southeast2
+  SERVICE: solamax-dashboard-staging
+  IMAGE: asia-southeast2-docker.pkg.dev/solamax/solamax/solamax-dashboard-staging
+
+jobs:
+  # ── Gate: same checks as CI + the DS adherence lint. Deploy only on green. ──
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: pnpm check
+      - run: pnpm --filter @solamax/dashboard lint:ds
+
+  # ── Deploy: gated by the protected `staging` environment (required reviewer). ──
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+          # Mint a real OAuth access token (SA impersonation via workloadIdentityUser)
+          # for Docker → Artifact Registry login below.
+          token_format: access_token
+      - uses: google-github-actions/setup-gcloud@v2
+      # Build in-runner with Docker and push straight to Artifact Registry.
+      # Avoids `gcloud builds submit` (Cloud Build + GCS source staging), whose
+      # external_account/x-goog-user-project serviceusage check 403s under WIF
+      # regardless of SA/principalSet roles. Same recipe (apps/dashboard/Dockerfile;
+      # cloudbuild.yaml was only a thin `docker build` wrapper) → identical image.
+      - name: Build & push image (Docker → Artifact Registry)
+        run: |
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin https://asia-southeast2-docker.pkg.dev
+          docker build -f apps/dashboard/Dockerfile -t "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling preserved)
+        run: |
+          gcloud run deploy ${SERVICE} --region=${REGION} \
+            --image ${IMAGE}:${GITHUB_SHA}
+      - name: Report serving revision
+        run: |
+          gcloud run services describe ${SERVICE} --region=${REGION} \
+            --format="value(status.latestReadyRevisionName, status.url)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# main → PRODUCTION — INACTIVE STUB (Option A: prod deferred until tenant #2).
+#
+# TODO(prod): activate when a production Cloud Run service (e.g.
+# solamax-dashboard-prod) + its own DB exist — gated on tenant #2 / the
+# Postgres-RLS hard-requirement (see CLAUDE.md). To activate, add a sibling
+# workflow (or a `deploy-prod` job) mirroring `deploy` with:
+#   on: push: { branches: [main], paths: [same filter] }
+#   environment: production            # a SEPARATE protected gate
+#   env.SERVICE / env.IMAGE → solamax-dashboard-prod
+# and either widen the WIF provider attribute-condition to also allow
+# `assertion.ref == 'refs/heads/main'`, or add a second provider scoped to main.
+# Keep the deploy IMAGE-ONLY so prod env/secrets carry forward unchanged.
+# ─────────────────────────────────────────────────────────────────────────────

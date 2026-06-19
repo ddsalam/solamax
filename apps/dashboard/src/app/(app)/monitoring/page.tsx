@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { unitDotted } from "@/lib/config";
-import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
+import { enduranceDays, enduranceLevel, isStockImplausible, stockNow } from "@/lib/derive";
 import { ago, idn, rpShort } from "@/lib/format";
 import { addDays, todayWib } from "@/lib/periods";
 import {
@@ -34,6 +34,7 @@ export default async function JaringanPage() {
       let minDays: { nama: string; days: number } | null = null;
       for (const t of tanks) {
         const stock = stockNow(t.stock_op, t.sold_since, t.received_since);
+        if (isStockImplausible(stock)) continue; // jangan jadikan stok mustahil "terkritis"
         const days = enduranceDays(stock, avgBy.get(t.ckdbbm ?? "") ?? 0);
         if (days !== null && (minDays === null || days < minDays.days)) {
           minDays = { nama: t.nama ?? t.ckdbbm ?? "?", days };

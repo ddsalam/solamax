@@ -6,9 +6,9 @@ import {
   classifyProduct,
   targetVolumePerDay,
   unitDotted,
-  unitLabel,
 } from "@/lib/config";
 import { aggregateClosingGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { dateLong, fmtL, idn, parenNeg, pct, rp, rpShort, signed, timeWib } from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
@@ -22,7 +22,7 @@ import {
   getAvgDailySales,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
-import { enduranceDays, enduranceLevel, stockNow } from "@/lib/derive";
+import { enduranceDays, enduranceLevel, isStockImplausible, stockNow } from "@/lib/derive";
 import { addDays } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +46,6 @@ export default async function LaporanPage({
   const mi = monthInfo(date);
   const mStart = monthStart(date);
 
-  const units = scope.units;
   const [
     prodDay,
     closingDay,
@@ -107,37 +106,55 @@ export default async function LaporanPage({
   const worstGap = targetGap.filter((x): x is number => x !== null).sort((a, b) => a - b)[0];
   const hasTarget = targetGap.some((x) => x !== null);
 
-  const ok = (label: string, pass: boolean, note: string): AlarmCheck => ({
-    label,
-    state: pass ? "ok" : "fail",
-    note,
-  });
   const na = (label: string, domain: string): AlarmCheck => ({
     label,
     state: "na",
     note: `belum tersedia · ${domain}`,
   });
+
+  // Cek 1 — Losses harian. Partial-day = PROVISIONAL: %-nya artefak denominator
+  // kecil (mis. 136,90%), jadi tampilkan L berjalan TANPA % dan jangan klaim
+  // aman/gagal. Label mengikuti status (aman / di atas ambang / sementara).
+  const dailyLoss = (): AlarmCheck => {
+    if (glPctDay === null)
+      return { label: "Losses harian — menunggu opname", state: "na", note: "opname penutup belum ada" };
+    if (glProvisional)
+      return {
+        label: "Losses harian — sementara",
+        state: "provisional",
+        note: `${signed(glTotal)} L berjalan · belum final, menunggu opname penutup${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
+      };
+    const within = Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005;
+    return {
+      label: within ? "Losses harian aman" : "Losses harian di atas ambang",
+      state: within ? "ok" : "fail",
+      note: `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
+    };
+  };
+
+  const monthlyWithin = glPctMonth === null || Math.abs(glPctMonth) <= 0.005;
+  const monthlyLoss: AlarmCheck = {
+    label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
+    state: monthlyWithin ? "ok" : "fail",
+    note: glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
+  };
+
+  const targetCheck = (): AlarmCheck => {
+    if (!hasTarget)
+      return { label: "Target bulan ini — belum diisi", state: "na", note: "target bulan ini belum diisi" };
+    const met = (worstGap ?? 0) >= 0;
+    return {
+      label: met ? "Target bulan ini tercapai" : "Target bulan ini di bawah prorata",
+      state: met ? "ok" : "fail",
+      note: worstGap !== undefined && worstGap < 0 ? `${parenNeg(worstGap)} vs prorata` : "sesuai prorata",
+    };
+  };
+
   const checks: AlarmCheck[] = [
-    glPctDay === null
-      ? na("Losses Harian Aman", "opname penutup belum ada")
-      : ok(
-          "Losses Harian Aman",
-          Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005,
-          `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glProvisional ? " · provisional" : ""}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
-        ),
-    ok(
-      "Losses Bulanan Aman",
-      glPctMonth === null || Math.abs(glPctMonth) <= 0.005,
-      glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
-    ),
+    dailyLoss(),
+    monthlyLoss,
     na("Setoran Bank Sesuai", "Domain setoran"),
-    hasTarget
-      ? ok(
-          "Target/Alokasi Sudah Tercapai",
-          (worstGap ?? 0) >= 0,
-          worstGap !== undefined && worstGap < 0 ? `${parenNeg(worstGap)} vs prorata` : "sesuai prorata",
-        )
-      : na("Target/Alokasi Sudah Tercapai", "target bulan ini belum diisi"),
+    targetCheck(),
     na("Pencatatan DO Sesuai", "Domain DO"),
     na("Pengeluaran Sudah Disahkan", "modul kas dorman"),
     na("Harga Beli/Jual Benar", "master harga beli"),
@@ -147,7 +164,19 @@ export default async function LaporanPage({
     na("Settlement EDC Sudah Sesuai", "Domain EDC"),
   ];
   const score = alarmScore(checks);
-  const scoreTone = score.ok === score.active ? "t-success" : score.active - score.ok === 1 ? "t-warning" : "t-danger";
+  // fail≥2 → danger; tepat 1 fail → warning; tanpa fail tapi ada provisional → warning.
+  const scoreTone =
+    score.fail >= 2
+      ? "t-danger"
+      : score.fail === 1
+        ? "t-warning"
+        : score.provisional > 0
+          ? "t-warning"
+          : "t-success";
+  // v1: tampilkan hanya cek yang datanya tersedia (state !== "na"). Cek "na"
+  // muncul kembali otomatis begitu datanya masuk. alarmScore sudah
+  // mengecualikan "na" dari pembilang/penyebut → tak ada perubahan matematika.
+  const visibleChecks = checks.filter((c) => c.state !== "na");
 
   // ===== Stok =====
   const avgBy = new Map(avg7.map((a) => [a.ckdbbm, a.avg_vol]));
@@ -178,14 +207,23 @@ export default async function LaporanPage({
 
   const cashTotal = cash.filter((c) => !c.sbatal).reduce((s, c) => s + (c.ntotal ?? 0), 0);
 
+  // Ringkasan Kas: hanya kartu dengan nilai nyata yang dirender (v1). Kartu
+  // domain dorman (val null) muncul kembali otomatis saat datanya masuk.
+  const kasCards: Array<{ label: string; val: string | null; note: string }> = [
+    { label: "Transaksi Pelanggan", val: null, note: "Domain deposit/piutang" },
+    { label: "EDC", val: null, note: "Domain EDC" },
+    {
+      label: "Pengeluaran",
+      val: cash.length > 0 ? rp(cashTotal) : null,
+      note: cash.length > 0 ? `${cash.length} nota` : "modul kas dorman",
+    },
+    { label: "Pendapatan Lain-Lain", val: null, note: "Domain kas aktif" },
+    { label: "Setoran Bank", val: null, note: "Domain setoran" },
+  ].filter((k) => k.val !== null);
+
   return (
     <div className="lap-page">
-      <LaporanToolbar
-        units={units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
-        code={unit.code}
-        date={date}
-        detail={detail}
-      />
+      <LaporanToolbar code={unit.code} date={date} detail={detail} />
 
       {/* Header */}
       <div className="board-head mt6">
@@ -205,7 +243,9 @@ export default async function LaporanPage({
           <div className="right">
             <div className="fs15 t-tertiary">Alarm indikator</div>
             <div className={`text-h4 num ${scoreTone}`}>{score.text}</div>
-            <div className="fs15 t-tertiary">{score.na} menunggu data</div>
+            <div className="fs15 t-tertiary">
+              {score.provisional > 0 ? `cek sesuai · ${score.provisional} sementara` : "cek sesuai"}
+            </div>
           </div>
           <div className="lap-headdiv" />
           <div className="right">
@@ -231,30 +271,40 @@ export default async function LaporanPage({
       )}
 
       {/* 4 · ALARM INDIKATOR */}
-      <div className={`alarm-card mt8${score.active - score.ok > 1 ? " bad" : ""}`}>
+      <div className={`alarm-card mt8${score.fail > 1 ? " bad" : ""}`}>
         <div className="alarm-head">
           <div className="text-h5 t-brand">Alarm Indikator</div>
           <span className="fs16 t-tertiary">
-            11 cek harian — yang dilihat pertama oleh pengawas &amp; atasan
+            cek harian — yang dilihat pertama oleh pengawas &amp; atasan
           </span>
           <span className={`alarm-note w700 num ${scoreTone}`}>
-            {score.text} sesuai · {score.na} menunggu data
+            {score.text} sesuai{score.provisional > 0 ? ` · ${score.provisional} sementara` : ""}
           </span>
         </div>
         <div className="alarm-grid">
-          {checks.map((c) => (
+          {visibleChecks.map((c) => (
             <div key={c.label} className="alarm-row">
               <span className={`alarm-mark ${c.state}`}>
-                {c.state === "ok" ? "✓" : c.state === "fail" ? "✗" : "—"}
+                {c.state === "ok" ? "✓" : c.state === "fail" ? "✗" : c.state === "provisional" ? "~" : "—"}
               </span>
               <span
                 className={`text-body ${
-                  c.state === "fail" ? "t-danger w700" : c.state === "na" ? "t-tertiary" : "t-primary"
+                  c.state === "fail"
+                    ? "t-danger w700"
+                    : c.state === "provisional"
+                      ? "t-warning w700"
+                      : c.state === "na"
+                        ? "t-tertiary"
+                        : "t-primary"
                 }`}
               >
                 {c.label}
               </span>
-              <span className={`alarm-note num ${c.state === "fail" ? "t-danger" : "t-tertiary"}`}>
+              <span
+                className={`alarm-note num ${
+                  c.state === "fail" ? "t-danger" : c.state === "provisional" ? "t-warning" : "t-tertiary"
+                }`}
+              >
                 {c.note}
               </span>
             </div>
@@ -265,7 +315,9 @@ export default async function LaporanPage({
       {/* 2 · OMSET, GAIN(LOSSES), TERA */}
       <div className="mt10">
         <div className="section-h">
-          <div className="text-h5 t-brand">Omset Penjualan, Gain (Losses) &amp; Tera Harian</div>
+          <div className="text-h5 t-brand">
+            Omset Penjualan &amp; Gain (Losses){DOMAIN.tera ? " & Tera" : ""} Harian
+          </div>
           <span className="fs16 t-tertiary">per produk · dari totalisator nozzle per shift</span>
           {glProvisional && (
             <span className="anom-tag" title="opname penutup D+1 belum ada">
@@ -274,11 +326,11 @@ export default async function LaporanPage({
           )}
         </div>
         <div className="card tbl-card mt4">
-          <div className="grid-head cols-sales">
+          <div className={`grid-head cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
             <span>Produk</span>
             <span className="right">Sales (L)</span>
             <span className="right">Gain/Losses (L)</span>
-            <span className="right">Tera (L)</span>
+            {DOMAIN.tera && <span className="right">Tera (L)</span>}
             <span className="right">Omzet (Rp)</span>
             <span className="right">% Mix</span>
           </div>
@@ -288,7 +340,7 @@ export default async function LaporanPage({
           {ordered(prodDay).map((p) => {
             const gl = glByCode.get(p.ckdbbm) ?? null;
             return (
-              <div key={p.ckdbbm} className="grid-row cols-sales">
+              <div key={p.ckdbbm} className={`grid-row cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
                 <span className="text-caption w600">{p.nama}</span>
                 <span className="right fs16 num">{idn(p.vol)}</span>
                 <span
@@ -296,7 +348,7 @@ export default async function LaporanPage({
                 >
                   {gl !== null ? signed(gl) : "—"}
                 </span>
-                <span className="right fs16 t-tertiary num">—</span>
+                {DOMAIN.tera && <span className="right fs16 t-tertiary num">—</span>}
                 <span className="right fs16 num nowrap">{rp(p.omzet)}</span>
                 <span className="right fs16 t-tertiary num">
                   {totSales > 0 ? pct(p.vol / totSales) : "—"}
@@ -304,61 +356,55 @@ export default async function LaporanPage({
               </div>
             );
           })}
-          <div className="grid-total cols-sales">
+          <div className={`grid-total cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
             <span className="text-caption w700">TOTAL</span>
             <span className="right w700 num lap-totnum">{idn(totSales)}</span>
             <span className={`right w700 num lap-totnum ${glTotal < 0 ? "t-danger" : "t-success"}`}>
               {signed(glTotal)}
             </span>
-            <span className="right t-tertiary num">—</span>
+            {DOMAIN.tera && <span className="right t-tertiary num">—</span>}
             <span className="right w700 num nowrap lap-totnum">{rp(totOmzet)}</span>
             <span className="right fs16 t-tertiary">100%</span>
           </div>
         </div>
         <div className="fs15 t-tertiary mt2">
-          {glPctDay !== null
-            ? `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glProvisional ? "; angka provisional, opname penutup besok belum ada" : ""}${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `
-            : "Opname penutup tanggal bisnis ini belum ada. "}
+          {glPctDay === null
+            ? "Opname penutup tanggal bisnis ini belum ada. "
+            : glProvisional
+              ? `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
+              : `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
           Bauran NPSO: gasoline {gasMix !== null ? pct(gasMix) : "—"} · gasoil{" "}
-          {oilMix !== null ? pct(oilMix) : "—"}. Kolom Tera menunggu domain nozzle-test.
+          {oilMix !== null ? pct(oilMix) : "—"}.
         </div>
       </div>
 
-      {/* 3 · RINGKASAN KAS */}
-      <div className="mt10">
-        <div className="text-h5 t-brand">Ringkasan Kas</div>
-        <div className="kas-grid mt4">
-          {[
-            { label: "Transaksi Pelanggan", val: null, note: "Domain deposit/piutang" },
-            { label: "EDC", val: null, note: "Domain EDC" },
-            {
-              label: "Pengeluaran",
-              val: cash.length > 0 ? rp(cashTotal) : null,
-              note: cash.length > 0 ? `${cash.length} nota` : "modul kas dorman",
-            },
-            { label: "Pendapatan Lain-Lain", val: null, note: "Domain kas aktif" },
-            { label: "Setoran Bank", val: null, note: "Domain setoran" },
-          ].map((k) => (
-            <div key={k.label} className="card card-pad">
-              <div className="fs15 w600 t-tertiary">{k.label}</div>
-              <div className={`text-h6 num nowrap mt2 ${k.val ? "t-primary" : "t-tertiary"}`}>
-                {k.val ?? "—"}
+      {/* 3 · RINGKASAN KAS — hanya kartu dengan nilai nyata (v1) */}
+      {kasCards.length > 0 && (
+        <div className="mt10">
+          <div className="text-h5 t-brand">Ringkasan Kas</div>
+          <div className="kas-grid mt4">
+            {kasCards.map((k) => (
+              <div key={k.label} className="card card-pad">
+                <div className="fs15 w600 t-tertiary">{k.label}</div>
+                <div className="text-h6 num nowrap mt2 t-primary">{k.val}</div>
+                <div className="fs15 t-tertiary mt1">{k.note}</div>
               </div>
-              <div className="fs15 t-tertiary mt1">{k.note}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {detail && (
         <>
-          {/* 5 + 7 */}
-          <div className="lap-two mt10">
-            <EmptyPanel
-              title="Saldo Hutang Piutang Pelanggan"
-              domain="Domain deposit &amp; pembayaran pelanggan (pj*)"
-              note="Saat tersambung: total piutang, hutang (deposit), dan netto tampil di sini."
-            />
+          {/* 5 + 7 — panel piutang (Domain deposit) di-gate; G/L kumulatif live */}
+          <div className={DOMAIN.pelanggan ? "lap-two mt10" : "mt10"}>
+            {DOMAIN.pelanggan && (
+              <EmptyPanel
+                title="Saldo Hutang Piutang Pelanggan"
+                domain="Domain deposit &amp; pembayaran pelanggan (pj*)"
+                note="Saat tersambung: total piutang, hutang (deposit), dan netto tampil di sini."
+              />
+            )}
             <div className="card tbl-card">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Gain (Losses) Kumulatif</div>
@@ -466,124 +512,140 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 8 + 15 · DO */}
-          <div className="lap-two mt10">
+          {/* 8 + 15 · DO — kartu DO live (penerimaan nyata); panel alokasi di-gate */}
+          <div className={DOMAIN.do ? "lap-two mt10" : "mt10"}>
             <div className="card tbl-card">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Laporan DO Harian</div>
               </div>
-              <div className="grid-head cols-do">
+              <div className={`grid-head cols-do${DOMAIN.do ? "" : " lite"}`}>
                 <span>Produk</span>
-                <span className="right">DO Awal</span>
+                {DOMAIN.do && <span className="right">DO Awal</span>}
                 <span className="right">Penerimaan</span>
-                <span className="right">Penebusan</span>
-                <span className="right">Sisa DO Akhir</span>
+                {DOMAIN.do && <span className="right">Penebusan</span>}
+                {DOMAIN.do && <span className="right">Sisa DO Akhir</span>}
               </div>
               {ordered(delivDay).map((d) => (
-                <div key={d.ckdbbm} className="grid-row cols-do">
+                <div key={d.ckdbbm} className={`grid-row cols-do${DOMAIN.do ? "" : " lite"}`}>
                   <span className="fs16 w600">{d.nama}</span>
-                  <span className="right fs16 t-tertiary num">—</span>
+                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
                   <span className="right fs16 t-secondary num">{fmtL(d.vol)}</span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                  <span className="right fs16 t-tertiary num">—</span>
+                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
                 </div>
               ))}
               {delivDay.length === 0 && (
                 <div className="empty-inline">Tidak ada penerimaan BBM pada tanggal ini.</div>
               )}
               <div className="lap-cardfoot">
-                Kolom DO awal/penebusan/sisa menunggu Domain DO (MyPertamina). Penerimaan = data
-                nyata tr_terimabbm.
+                {DOMAIN.do
+                  ? "Kolom DO awal/penebusan/sisa dari Domain DO. Penerimaan = data nyata EasyMax."
+                  : "Penerimaan BBM dari data EasyMax."}
               </div>
             </div>
-            <EmptyPanel
-              title="Alokasi Penerimaan Tidak Sesuai"
-              domain="Domain DO/alokasi"
-              note="Saat tersambung: hanya produk dengan ketidaksesuaian 5 hari terakhir yang tampil."
-            />
+            {DOMAIN.do && (
+              <EmptyPanel
+                title="Alokasi Penerimaan Tidak Sesuai"
+                domain="Domain DO/alokasi"
+                note="Saat tersambung: hanya produk dengan ketidaksesuaian 5 hari terakhir yang tampil."
+              />
+            )}
           </div>
 
           {/* 9 · STOK & KETAHANAN */}
           <div className="mt10">
             <div className="section-h">
-              <div className="text-h5 t-brand">Sisa &amp; Ketahanan Stock &amp; DO</div>
+              <div className="text-h5 t-brand">Sisa &amp; Ketahanan Stock{DOMAIN.do ? " & DO" : ""}</div>
               <span className="fs16 t-tertiary">
                 ketahanan = sisa stock ÷ rata-rata jual 7 hari
                 {oldestOpname ? ` · dihitung dari opname ${timeWib(oldestOpname)} + penjualan tersinkron` : ""}
               </span>
             </div>
             <div className="card tbl-card mt4">
-              <div className="grid-head cols-stock">
+              <div className={`grid-head cols-stock${DOMAIN.do ? "" : " lite"}`}>
                 <span>Produk</span>
                 <span className="right">Sisa Stock</span>
                 <span className="right">Ketahanan</span>
-                <span className="right">Sisa DO</span>
-                <span className="right">Plan Terima Hari Ini</span>
-                <span className="right">Plan Minta Besok</span>
-                <span className="right">Usulan Beli DO</span>
+                {DOMAIN.do && <span className="right">Sisa DO</span>}
+                {DOMAIN.do && <span className="right">Plan Terima Hari Ini</span>}
+                {DOMAIN.do && <span className="right">Plan Minta Besok</span>}
+                {DOMAIN.do && <span className="right">Usulan Beli DO</span>}
               </div>
-              {stockRows.map((s) => (
-                <div key={s.ckdbbm} className="grid-row cols-stock">
-                  <span className="text-caption w600">{s.nama}</span>
-                  <span className="right fs16 num">{s.stock !== null ? fmtL(s.stock) : "—"}</span>
-                  <span
-                    className={`right fs16 num ${
-                      s.level === "danger"
-                        ? "t-danger w700"
-                        : s.level === "warning"
-                          ? "t-warning w700"
-                          : "t-primary"
-                    }`}
-                  >
-                    {s.days !== null ? `${idn(s.days, 1)} hari` : "—"}
-                  </span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                </div>
-              ))}
+              {stockRows.map((s) => {
+                const bad = isStockImplausible(s.stock);
+                return (
+                  <div key={s.ckdbbm} className={`grid-row cols-stock${DOMAIN.do ? "" : " lite"}`}>
+                    <span className="text-caption w600">{s.nama}</span>
+                    <span className={`right fs16 num ${bad ? "t-warning" : ""}`}>
+                      {bad ? "data tak wajar" : s.stock !== null ? fmtL(s.stock) : "—"}
+                    </span>
+                    <span
+                      className={`right fs16 num ${
+                        bad
+                          ? "t-warning"
+                          : s.level === "danger"
+                            ? "t-danger w700"
+                            : s.level === "warning"
+                              ? "t-warning w700"
+                              : "t-primary"
+                      }`}
+                    >
+                      {bad ? "—" : s.days !== null ? `${idn(s.days, 1)} hari` : "—"}
+                    </span>
+                    {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+                    {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+                    {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+                    {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+                  </div>
+                );
+              })}
               {stockRows.length === 0 && (
                 <div className="empty-inline">Belum ada data tangki/opname.</div>
               )}
             </div>
-            <div className="fs15 t-tertiary mt2">
-              Kolom DO &amp; plan menunggu Domain DO/penebusan.
-            </div>
+            {DOMAIN.do && (
+              <div className="fs15 t-tertiary mt2">
+                Kolom DO &amp; plan dari Domain DO/penebusan.
+              </div>
+            )}
           </div>
 
-          {/* 10 + 11 */}
-          <div className="lap-two mt10">
+          {/* 10 + 11 — harga jual live; panel piutang pelanggan di-gate */}
+          <div className={DOMAIN.pelanggan ? "lap-two mt10" : "mt10"}>
             <div className="card tbl-card">
               <div className="lap-cardhead">
-                <div className="text-h6 t-brand">Harga Beli, Jual &amp; Margin</div>
+                <div className="text-h6 t-brand">{DOMAIN.hargaBeli ? "Harga Beli, Jual & Margin" : "Harga Jual"}</div>
               </div>
-              <div className="grid-head cols-harga">
+              <div className={`grid-head cols-harga${DOMAIN.hargaBeli ? "" : " lite"}`}>
                 <span>Produk</span>
-                <span className="right">Beli</span>
+                {DOMAIN.hargaBeli && <span className="right">Beli</span>}
                 <span className="right">Jual</span>
-                <span className="right">Margin</span>
-                <span className="right">%</span>
+                {DOMAIN.hargaBeli && <span className="right">Margin</span>}
+                {DOMAIN.hargaBeli && <span className="right">%</span>}
               </div>
               {ordered(prodDay).map((p) => (
-                <div key={p.ckdbbm} className="grid-row cols-harga">
+                <div key={p.ckdbbm} className={`grid-row cols-harga${DOMAIN.hargaBeli ? "" : " lite"}`}>
                   <span className="fs16 w600">{p.nama}</span>
-                  <span className="right fs16 t-tertiary num">—</span>
+                  {DOMAIN.hargaBeli && <span className="right fs16 t-tertiary num">—</span>}
                   <span className="right fs16 t-secondary num">
                     {p.harga !== null ? rp(p.harga) : "—"}
                   </span>
-                  <span className="right fs16 t-tertiary num">—</span>
-                  <span className="right fs16 t-tertiary num">—</span>
+                  {DOMAIN.hargaBeli && <span className="right fs16 t-tertiary num">—</span>}
+                  {DOMAIN.hargaBeli && <span className="right fs16 t-tertiary num">—</span>}
                 </div>
               ))}
               <div className="lap-cardfoot">
-                Harga jual = data EasyMax. Harga beli &amp; margin menunggu master harga beli.
+                {DOMAIN.hargaBeli
+                  ? "Harga jual & beli dari data EasyMax."
+                  : "Harga jual dari data EasyMax."}
               </div>
             </div>
-            <EmptyPanel
-              title="Pelanggan (Transaksi Piutang Hari Ini)"
-              domain="Domain deposit &amp; pembayaran pelanggan"
-            />
+            {DOMAIN.pelanggan && (
+              <EmptyPanel
+                title="Pelanggan (Transaksi Piutang Hari Ini)"
+                domain="Domain deposit &amp; pembayaran pelanggan"
+              />
+            )}
           </div>
 
           {/* 12 · PENGELUARAN */}
@@ -631,19 +693,26 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 13 + 14 */}
-          <div className="lap-two mt10">
-            <EmptyPanel title="Pendapatan Lain-Lain" domain="modul kas aktif" />
-            <EmptyPanel
-              title="EDC"
-              domain="Domain EDC"
-              note="Saat tersambung: nominal vs settlement per channel + selisih disorot."
-            />
-          </div>
+          {/* 13 + 14 — keduanya domain dorman; seluruh blok di-gate */}
+          {(DOMAIN.pendapatanLain || DOMAIN.edc) && (
+            <div className="lap-two mt10">
+              {DOMAIN.pendapatanLain && (
+                <EmptyPanel title="Pendapatan Lain-Lain" domain="modul kas aktif" />
+              )}
+              {DOMAIN.edc && (
+                <EmptyPanel
+                  title="EDC"
+                  domain="Domain EDC"
+                  note="Saat tersambung: nominal vs settlement per channel + selisih disorot."
+                />
+              )}
+            </div>
+          )}
         </>
       )}
 
-      {/* 16 · REKONSILIASI */}
+      {/* 16 · REKONSILIASI — A–I butuh Domain 4–7; di-gate sampai semua siap */}
+      {REKON_READY && (
       <div className="rekon-card mt10">
         <div className="alarm-head">
           <div className="text-h5 t-brand">Summary Rekonsiliasi</div>
@@ -693,6 +762,7 @@ export default async function LaporanPage({
           </div>
         </div>
       </div>
+      )}
 
       <div className="page-foot mt8">
         <span>

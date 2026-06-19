@@ -8,6 +8,7 @@ import {
   enduranceLevel,
   glPercent,
   isOpnameGarbage,
+  isStockImplausible,
   stockNow,
   verdictHeadline,
   type ClosingRow,
@@ -61,6 +62,11 @@ describe("stok & ketahanan", () => {
     expect(stockNow(18400, 2400, 8000)).toBe(24000);
     expect(stockNow(null, 5, 5)).toBeNull();
   });
+  it("stok mustahil (negatif) ditandai tak wajar; null/positif tidak", () => {
+    expect(isStockImplausible(-14_000_000)).toBe(true);
+    expect(isStockImplausible(500)).toBe(false);
+    expect(isStockImplausible(null)).toBe(false);
+  });
   it("ketahanan & level ambang spec (1,5 / 3 hari)", () => {
     expect(enduranceDays(18400, 10000)).toBeCloseTo(1.84);
     expect(enduranceLevel(1.1)).toBe("danger");
@@ -75,14 +81,19 @@ describe("gl% / verdict / alarm", () => {
     expect(glPercent(-52, 15353)).toBeCloseTo(-0.0034, 4);
     expect(glPercent(-52, 0)).toBeNull();
   });
-  it("verdict headline by jumlah chip", () => {
+  it("verdict headline by jumlah chip & tone", () => {
     expect(verdictHeadline([])).toBe("Grup sehat.");
+    // warning saja → "perlu perhatian" (tak ada "tindakan")
+    expect(verdictHeadline([{ tone: "warning", text: "y" }])).toBe(
+      "Grup perlu perhatian. Satu hal perlu ditinjau.",
+    );
+    // ada danger → "perlu tindakan", JANGAN "sehat"
     expect(
       verdictHeadline([
         { tone: "danger", text: "x" },
         { tone: "warning", text: "y" },
       ]),
-    ).toBe("Grup sehat. Dua hal perlu perhatian.");
+    ).toBe("Grup perlu tindakan. Dua hal perlu perhatian.");
   });
   it("skor alarm: hanya cek aktif (№6)", () => {
     const s = alarmScore([
@@ -93,6 +104,13 @@ describe("gl% / verdict / alarm", () => {
     ]);
     expect(s.text).toBe("2/3");
     expect(s.na).toBe(1);
+    // provisional di luar penyebut, dilaporkan terpisah
+    const p = alarmScore([
+      { label: "x", state: "provisional", note: "" },
+      { label: "y", state: "ok", note: "" },
+    ]);
+    expect(p.text).toBe("1/1");
+    expect(p.provisional).toBe(1);
   });
 });
 
