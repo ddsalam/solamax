@@ -59,6 +59,11 @@ jobs:
           project_id: solamax
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
+          # Mint a real OAuth access token (SA impersonation via workloadIdentityUser)
+          # instead of leaving a bare external_account WIF cred — gcloud's GCS source
+          # staging in `builds submit` rejects the latter with a misleading
+          # "forbidden from accessing the bucket … serviceusage.services.use" 403.
+          token_format: access_token
       - uses: google-github-actions/setup-gcloud@v2
       - name: Build image (repo's cloudbuild.yaml)
         run: |
