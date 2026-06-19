@@ -60,15 +60,20 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
           # Mint a real OAuth access token (SA impersonation via workloadIdentityUser)
-          # instead of leaving a bare external_account WIF cred — gcloud's GCS source
-          # staging in `builds submit` rejects the latter with a misleading
-          # "forbidden from accessing the bucket … serviceusage.services.use" 403.
+          # for Docker → Artifact Registry login below.
           token_format: access_token
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build image (repo's cloudbuild.yaml)
+      # Build in-runner with Docker and push straight to Artifact Registry.
+      # Avoids `gcloud builds submit` (Cloud Build + GCS source staging), whose
+      # external_account/x-goog-user-project serviceusage check 403s under WIF
+      # regardless of SA/principalSet roles. Same recipe (apps/dashboard/Dockerfile;
+      # cloudbuild.yaml was only a thin `docker build` wrapper) → identical image.
+      - name: Build & push image (Docker → Artifact Registry)
         run: |
-          gcloud builds submit --config apps/dashboard/cloudbuild.yaml \
-            --substitutions=_IMAGE=${IMAGE}:${GITHUB_SHA} .
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin https://asia-southeast2-docker.pkg.dev
+          docker build -f apps/dashboard/Dockerfile -t "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
       - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling preserved)
         run: |
           gcloud run deploy ${SERVICE} --region=${REGION} \
