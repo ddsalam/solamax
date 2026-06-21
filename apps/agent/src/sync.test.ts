@@ -7,7 +7,7 @@ import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import { IngestError, type IngestClient } from "./ingest-client.js";
 import { StateStore } from "./state/store.js";
-import { batchByBusinessDate, runCycle, type SyncDeps } from "./sync.js";
+import { batchByBusinessDate, resyncSales, runCycle, type SyncDeps } from "./sync.js";
 
 const SALES_ROW = {
   CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: 1, NVOLUME: "50", NHARGAJUAL: "10000",
@@ -50,6 +50,7 @@ const CFG = {
   sync: {
     pollIntervalMs: 1, masterIntervalMs: 1, safetyWindowMin: 60,
     cashRescanDays: 7, batchSize: 1000,
+    salesRescanDays: 7, salesResyncChunkDays: 3,
   },
 } as unknown as AgentConfig;
 
@@ -228,6 +229,50 @@ describe("runCycle", () => {
 
     // Batch pertama ter-buffer (offline) → backfill berhenti TANPA memajukan watermark.
     expect(store.getWatermark("pelanggan")).toBeNull();
+  });
+
+  it("resyncSales: tangkap baris DTGLJAM NULL, windowing tiling, watermark tak tersentuh", async () => {
+    const NULL_ROW = {
+      CKDJUALBBM: "H9", CKDNOZZLE: "N3", NURUT: "1", NVOLUME: "7000", NHARGAJUAL: "18600",
+      NSUBTOTAL: "130247852", CKDBBM: "P1", CKDTANGKI: "T1", NSTANDAWAL: "0",
+      NSTANDAKHIR: "7000", VCOPEATOR: "-", DTGLJAM: null, SUBAH: "0", SEDIT: "0",
+      DTGLJUAL: "2026-06-15", NSHIFT: "3", VCKET: null,
+    };
+    const windows: Array<{ lo: string; hiExcl: string }> = [];
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("tr_hjualbbm") && sql.includes("DTGLJUAL >=")) {
+          windows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+          return String(params[0]) === "2026-06-14" ? [NULL_ROW] : [];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = {
+      ...CFG,
+      sync: { ...CFG.sync, salesResyncChunkDays: 3, batchSize: 1000 },
+    } as unknown as AgentConfig;
+
+    // [14..18] inklusif → toExcl=19; chunk 3 → window [14,17),[17,19).
+    await resyncSales({ conn, client, store, cfg, dryRun: false }, "2026-06-14", "2026-06-18");
+
+    // Baris NULL-DTGLJAM TERKIRIM (tidak dibuang seperti incremental).
+    const sales = sent.find((p) => p.domain === "sales" && (p.tables.sales_detail?.length ?? 0) > 0);
+    expect(sales).toBeDefined();
+    expect(sales!.tables.sales_detail![0]!.nsubtotal).toBe(130247852);
+    expect(sales!.watermark_high).toBeNull(); // re-sync tak kirim watermark
+
+    // Windowing: setengah-terbuka kontigu menutup [14,19).
+    expect(windows).toEqual([
+      { lo: "2026-06-14", hiExcl: "2026-06-17" },
+      { lo: "2026-06-17", hiExcl: "2026-06-19" },
+    ]);
+
+    // Watermark DTGLJAM SALES tak digeser oleh re-sync.
+    expect(store.getWatermark("sales")).toBeNull();
   });
 
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {

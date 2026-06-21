@@ -708,6 +708,111 @@ export async function runProbe7(conn: EasyMaxConnection): Promise<void> {
  * tak ada "lubang" (Data_free=0). EasyMax flag-cancel (bukan hard-delete) → mungkin
  * tanpa lubang → lock MOOT. SELECT/SHOW only (read-only mutlak).
  */
+/**
+ * FASE 1 (Omset gap) — rekon EasyMax SALES per business-date (DTGLJUAL) vs PDF.
+ * Tujuan: konfirmasi EasyMax LENGKAP (= PDF) sementara staging kurang → buktikan
+ * masalah = sync stale, bukan sumber. Read-only (base-table InnoDB, ter-bound 5 hari).
+ * Default 14–18 Jun 2026. Bandingkan SUM(NSUBTOTAL) ke PDF Omset + lokalisasi per shift
+ * + hitung baris ter-edit (SUBAH/SEDIT) yang TAK tertangkap incremental DTGLJAM>watermark.
+ */
+const PDF_OMSET: Record<string, number> = {
+  "2026-06-14": 446_624_181,
+  "2026-06-15": 687_620_353,
+  "2026-06-16": 432_932_094,
+  "2026-06-17": 633_583_515,
+  "2026-06-18": 415_858_747,
+};
+
+export async function runProbe9(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length ? datesArg : Object.keys(PDF_OMSET);
+  const lo = dates[0]!;
+  const hiNext = nextDay(dates[dates.length - 1]!);
+  out("==========================================================");
+  out("FASE 1 PROBE — rekon SALES EasyMax per DTGLJUAL vs PDF (Omset gap)");
+  out("rentang: " + lo + " .. " + dates[dates.length - 1] + "  (PDF di kanan)");
+  out("==========================================================");
+
+  // P1 — grand total per business-date: COUNT detail + SUM(NSUBTOTAL).
+  await step(
+    conn,
+    "P1. per DTGLJUAL: n_header, n_detail, SUM(NSUBTOTAL)",
+    `SELECT h.DTGLJUAL,
+            COUNT(DISTINCT h.CKDJUALBBM) AS n_header,
+            COUNT(*)                     AS n_detail,
+            ROUND(SUM(d.NSUBTOTAL),0)    AS omset
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  // P2 — per shift: lokalisasi DI MANA staging kurang (mis. 15 Jun shift 2/3).
+  await step(
+    conn,
+    "P2. per DTGLJUAL × NSHIFT: n_detail, SUM, MAX(DTGLJAM)",
+    `SELECT h.DTGLJUAL, h.NSHIFT,
+            COUNT(*) AS n_detail,
+            ROUND(SUM(d.NSUBTOTAL),0) AS omset,
+            MAX(d.DTGLJAM) AS last_ts
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL, h.NSHIFT ORDER BY h.DTGLJUAL, h.NSHIFT`,
+    [lo, hiNext],
+  );
+
+  // P3 — baris ter-EDIT (SUBAH/SEDIT) per hari: koreksi pasca-tulis yang TIDAK
+  // tertangkap incremental (DTGLJAM lama < watermark) → akar selisih hari "penuh".
+  await step(
+    conn,
+    "P3. per DTGLJUAL: jumlah baris SUBAH=1 / SEDIT=1 (koreksi)",
+    `SELECT h.DTGLJUAL,
+            SUM(CASE WHEN d.SUBAH = 1 THEN 1 ELSE 0 END) AS n_subah,
+            SUM(CASE WHEN d.SEDIT = 1 THEN 1 ELSE 0 END) AS n_sedit
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  // ---- Interpretasi terprogram: EasyMax vs PDF ----
+  out("\n##### INTERPRETASI (EasyMax vs PDF) #####");
+  const grand = await conn.roQuery<Record<string, unknown>>(
+    `SELECT h.DTGLJUAL AS d, ROUND(SUM(d.NSUBTOTAL),0) AS omset
+     FROM tr_hjualbbm h JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+  out("  tgl        | easymax        | pdf            | selisih (easymax−pdf)");
+  for (const r of grand) {
+    const d = String(r.d).slice(0, 10);
+    const em = Number(r.omset);
+    const pdf = PDF_OMSET[d];
+    const diff = pdf === undefined ? NaN : em - pdf;
+    const verdict =
+      pdf === undefined
+        ? "(tanpa PDF)"
+        : diff === 0
+          ? "✅ EKSAK = PDF"
+          : `Δ ${diff.toLocaleString("id-ID")}`;
+    out(
+      `  ${d} | ${em.toLocaleString("id-ID").padStart(14)} | ${(pdf ?? 0).toLocaleString("id-ID").padStart(14)} | ${verdict}`,
+    );
+  }
+  out("\n  Jika EasyMax = PDF (semua hari) → sumber LENGKAP; gap murni di staging");
+  out("  (sync sales stale). Rencana: re-backfill bounded per DTGLJUAL (UPSERT idempoten).");
+
+  out("\n==========================================================");
+  out("PROBE FASE 1 SELESAI — read-only, tak ada data dikirim/ditulis.");
+  out("==========================================================");
+}
+
 export async function runProbe8(conn: EasyMaxConnection): Promise<void> {
   out("==========================================================");
   out("FASE 0.5g PROBE — lock go-live (MyISAM concurrent_insert + Data_free)");
