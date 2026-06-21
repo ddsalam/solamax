@@ -13,6 +13,7 @@ import {
   runProbe7,
   runProbe8,
   runProbe9,
+  runProbe10,
 } from "./probe.js";
 import { StateStore } from "./state/store.js";
 import { resyncSales, runCycle, runForever, type SyncDeps } from "./sync.js";
@@ -32,6 +33,7 @@ interface Args {
   probe7: boolean;
   probe8: boolean;
   probe9: boolean;
+  probe10: boolean;
   resyncSales: boolean;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
@@ -52,6 +54,7 @@ function parseArgs(argv: string[]): Args {
     probe7: false,
     probe8: false,
     probe9: false,
+    probe10: false,
     resyncSales: false,
     probeDiscoveryOnly: false,
     probeDates: [],
@@ -70,6 +73,7 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--probe7") a.probe7 = true;
     else if (arg === "--probe8") a.probe8 = true;
     else if (arg === "--probe9") a.probe9 = true;
+    else if (arg === "--probe10") a.probe10 = true;
     else if (arg === "--resync-sales") a.resyncSales = true;
     else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
@@ -102,6 +106,7 @@ function printHelp(): void {
       "  --probe7            FASE 0.5f: probe ronde 3e (latensi vw_jualplg vs base-table + delta 15 Jun). Tak mengirim.",
       "  --probe8            FASE 0.5g: diagnosa lock go-live (MyISAM concurrent_insert + Data_free). Read-only.",
       "  --probe9 [tgl...]   FASE 1: rekon SALES EasyMax per DTGLJUAL vs PDF Omset (default 14–18 Jun). Read-only.",
+      "  --probe10 [tgl...]  GOLD CHECK: total EasyMax-kini SEMUA seksi (Omset/Pelanggan/EDC/Deposit) per tgl. Read-only.",
       "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
@@ -123,6 +128,8 @@ async function main(): Promise<void> {
     dryRun: args.dryRun,
     mode: args.testConnection
       ? "test-connection"
+      : args.probe10
+      ? "probe10"
       : args.probe9
       ? "probe9"
       : args.probe8
@@ -157,6 +164,14 @@ async function main(): Promise<void> {
     }
     if (args.testConnection) {
       await conn.close();
+      return;
+    }
+    if (args.probe10) {
+      try {
+        await runProbe10(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
       return;
     }
     if (args.probe9) {
