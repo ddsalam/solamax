@@ -743,7 +743,11 @@ async function syncRealTank(d: SyncDeps): Promise<void> {
  */
 export async function runCycle(
   d: SyncDeps,
-  opts: { includeMasters: boolean; includePelanggan: boolean },
+  opts: {
+    includeMasters: boolean;
+    includePelanggan: boolean;
+    includeSalesRescan: boolean;
+  },
 ): Promise<void> {
   // Flush buffer dulu (FIFO). Bila backend masih offline → lewati live agar
   // urutan terjaga & buffer tak membengkak tak terkendali.
@@ -775,13 +779,16 @@ export async function runCycle(
     }
   }
   // Hardening: rescan SALES per business-date (sembuhkan NULL-DTGLJAM/back-dated).
-  try {
-    await syncSalesRescan(d);
-  } catch (err) {
-    log.error("domain gagal — dilewati siklus ini", {
-      domain: "sales-rescan",
-      err: String(err),
-    });
+  // Ber-interval (bukan tiap poll) agar tak membanjiri Cloud SQL dgn re-UPSERT.
+  if (opts.includeSalesRescan) {
+    try {
+      await syncSalesRescan(d);
+    } catch (err) {
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: "sales-rescan",
+        err: String(err),
+      });
+    }
   }
   try {
     await syncCash(d);
@@ -850,14 +857,18 @@ export async function runForever(d: SyncDeps): Promise<void> {
 
   let lastMasters = 0;
   let lastPelanggan = 0;
+  let lastSalesRescan = 0;
   while (!stopped) {
     const now = Date.now();
     const includeMasters = now - lastMasters >= d.cfg.sync.masterIntervalMs;
     const includePelanggan = now - lastPelanggan >= d.cfg.sync.pelangganIntervalMs;
+    const includeSalesRescan =
+      now - lastSalesRescan >= d.cfg.sync.salesRescanIntervalMs;
     try {
-      await runCycle(d, { includeMasters, includePelanggan });
+      await runCycle(d, { includeMasters, includePelanggan, includeSalesRescan });
       if (includeMasters) lastMasters = Date.now();
       if (includePelanggan) lastPelanggan = Date.now();
+      if (includeSalesRescan) lastSalesRescan = Date.now();
     } catch (err) {
       log.error("siklus gagal (fatal)", { err: String(err) });
     }
