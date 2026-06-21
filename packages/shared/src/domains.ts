@@ -12,6 +12,9 @@ export const DOMAINS = [
   "delivery",
   "masters",
   "realtank",
+  "deposit",
+  "edc",
+  "pelanggan",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 
@@ -21,10 +24,16 @@ export const TABLES_BY_DOMAIN = {
   cash: ["cash_header", "cash_detail"],
   opname: ["opname"],
   delivery: ["delivery"],
-  masters: ["product", "nozzle", "tangki", "account"],
+  masters: ["product", "nozzle", "tangki", "account", "card"],
   // Snapshot ATG (Automatic Tank Gauge) keadaan-kini per tangki — full sync tiap
   // siklus (7 baris), bukan master. Sumber: tb_realtank.
   realtank: ["real_tank"],
+  // Deposit prabayar pelanggan (tr_deposit) — full sync (tabel kecil).
+  deposit: ["deposit"],
+  // EDC/non-tunai (vw_edc3) — incremental per `ctgl`, REPLACE per business_date.
+  edc: ["edc"],
+  // Pelanggan tempo (vw_jualplg ⊎ vw_usevouc) — windowed DTGL, REPLACE per business_date.
+  pelanggan: ["pelanggan_sale", "voucher_sale"],
 } as const satisfies Record<Domain, readonly string[]>;
 
 export type TargetTable =

@@ -3,23 +3,69 @@ import { loadConfig } from "./config.js";
 import { EasyMaxConnection } from "./db/mysql.js";
 import { IngestClient } from "./ingest-client.js";
 import { log } from "./logger.js";
+import {
+  runProbe,
+  runProbe2,
+  runProbe3,
+  runProbe4,
+  runProbe5,
+  runProbe6,
+  runProbe7,
+  runProbe8,
+} from "./probe.js";
 import { StateStore } from "./state/store.js";
 import { runCycle, runForever, type SyncDeps } from "./sync.js";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Args {
   dryRun: boolean;
   once: boolean;
   testConnection: boolean;
+  probe: boolean;
+  probe2: boolean;
+  probe3: boolean;
+  probe4: boolean;
+  probe5: boolean;
+  probe6: boolean;
+  probe7: boolean;
+  probe8: boolean;
+  probeDiscoveryOnly: boolean;
+  probeDates: string[];
   configPath?: string;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { dryRun: false, once: false, testConnection: false };
+  const a: Args = {
+    dryRun: false,
+    once: false,
+    testConnection: false,
+    probe: false,
+    probe2: false,
+    probe3: false,
+    probe4: false,
+    probe5: false,
+    probe6: false,
+    probe7: false,
+    probe8: false,
+    probeDiscoveryOnly: false,
+    probeDates: [],
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--dry-run") a.dryRun = true;
     else if (arg === "--once") a.once = true;
     else if (arg === "--test-connection") a.testConnection = true;
+    else if (arg === "--probe") a.probe = true;
+    else if (arg === "--probe2") a.probe2 = true;
+    else if (arg === "--probe3") a.probe3 = true;
+    else if (arg === "--probe4") a.probe4 = true;
+    else if (arg === "--probe5") a.probe5 = true;
+    else if (arg === "--probe6") a.probe6 = true;
+    else if (arg === "--probe7") a.probe7 = true;
+    else if (arg === "--probe8") a.probe8 = true;
+    else if (arg === "--discovery") a.probeDiscoveryOnly = true;
+    else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
     else if (arg === "--config") a.configPath = argv[++i];
     else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -40,6 +86,15 @@ function printHelp(): void {
       "",
       "Penggunaan: solamax-agent [opsi]",
       "  --test-connection   Hanya tes koneksi read-only ke MySQL (versi, tz). Tak mengirim.",
+      "  --probe [tgl...]    FASE 0.5: probe SELECT-only utk rekonsiliasi (default 2026-06-14 2026-06-17). Tak mengirim.",
+      "  --probe2 [tgl...]   FASE 0.5b: probe ronde 2 (tindak lanjut EDC/Pelanggan/Pengeluaran/PK). Tak mengirim.",
+      "  --probe3 [tgl...]   FASE 0.5c: probe ronde 3 (rekon tr_hjualplg + vw_edc + tr_bpbank). Tak mengirim.",
+      "  --probe4 [tgl...]   FASE 0.5d: probe ronde 3b (rekon final vw_jualplg by DTGL + vw_edc3 by ctgl). Tak mengirim.",
+      "  --probe5 [tgl...]   FASE 0.5d2: probe ronde 3c (kunci query Pelanggan lengkap: union + linkage). Tak mengirim.",
+      "  --probe6 [tgl...]   FASE 0.5e: probe ronde 3d (sumber volume penjualan voucher). Tak mengirim.",
+      "  --probe7            FASE 0.5f: probe ronde 3e (latensi vw_jualplg vs base-table + delta 15 Jun). Tak mengirim.",
+      "  --probe8            FASE 0.5g: diagnosa lock go-live (MyISAM concurrent_insert + Data_free). Read-only.",
+      "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
       "  --once              Jalankan satu siklus lalu keluar (default: loop berkala).",
       "  --config <path>     Path file config (default: env SOLAMAX_AGENT_CONFIG / config.local.json).",
@@ -57,7 +112,27 @@ async function main(): Promise<void> {
   log.info("agent start", {
     unit: cfg.unitCode,
     dryRun: args.dryRun,
-    mode: args.testConnection ? "test-connection" : args.once ? "once" : "loop",
+    mode: args.testConnection
+      ? "test-connection"
+      : args.probe8
+        ? "probe8"
+        : args.probe7
+          ? "probe7"
+          : args.probe6
+          ? "probe6"
+          : args.probe5
+          ? "probe5"
+          : args.probe4
+            ? "probe4"
+            : args.probe3
+              ? "probe3"
+              : args.probe2
+                ? "probe2"
+                : args.probe
+                  ? "probe"
+                  : args.once
+                    ? "once"
+                    : "loop",
   });
 
   const conn = await EasyMaxConnection.open(cfg);
@@ -71,6 +146,72 @@ async function main(): Promise<void> {
     }
     if (args.testConnection) {
       await conn.close();
+      return;
+    }
+    if (args.probe8) {
+      try {
+        await runProbe8(conn);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe7) {
+      try {
+        await runProbe7(conn);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe6) {
+      try {
+        await runProbe6(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe5) {
+      try {
+        await runProbe5(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe4) {
+      try {
+        await runProbe4(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe3) {
+      try {
+        await runProbe3(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe2) {
+      try {
+        await runProbe2(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe) {
+      try {
+        await runProbe(conn, args.probeDates, {
+          discoveryOnly: args.probeDiscoveryOnly,
+        });
+      } finally {
+        await conn.close();
+      }
       return;
     }
   } catch (err) {
@@ -92,7 +233,7 @@ async function main(): Promise<void> {
 
   try {
     if (args.once || args.dryRun) {
-      await runCycle(deps, { includeMasters: true });
+      await runCycle(deps, { includeMasters: true, includePelanggan: true });
     } else {
       await runForever(deps);
     }

@@ -15,6 +15,15 @@
     "dev": "tsx src/index.ts",
     "dry-run": "tsx src/index.ts --dry-run --once",
     "test-connection": "tsx src/index.ts --test-connection",
+    "probe": "tsx src/index.ts --probe",
+    "probe:schema": "tsx src/index.ts --probe --discovery",
+    "probe2": "tsx src/index.ts --probe2",
+    "probe3": "tsx src/index.ts --probe3",
+    "probe4": "tsx src/index.ts --probe4",
+    "probe5": "tsx src/index.ts --probe5",
+    "probe6": "tsx src/index.ts --probe6",
+    "probe7": "tsx src/index.ts --probe7",
+    "probe8": "tsx src/index.ts --probe8",
     "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {

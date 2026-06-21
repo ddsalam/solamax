@@ -1,10 +1,13 @@
-import { IngestPayload } from "@solamax/shared";
+import { IngestPayload, MAX_ROWS_PER_TABLE } from "@solamax/shared";
 import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import {
   CASH_DOMAIN,
   DATETIME_DOMAINS,
+  DEPOSIT_DOMAIN,
+  EDC_DOMAIN,
   MASTERS_DOMAIN,
+  PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
   type DateTimeDomain,
 } from "./domains.js";
@@ -12,6 +15,9 @@ import { IngestClient, IngestError } from "./ingest-client.js";
 import { log } from "./logger.js";
 import type { StateStore } from "./state/store.js";
 import {
+  businessDateToCtgl,
+  ctglToBusinessDate,
+  str,
   subtractDays,
   subtractMinutesIso,
   tzOffsetMinutes,
@@ -180,6 +186,376 @@ async function syncCash(d: SyncDeps): Promise<void> {
   }
 }
 
+async function syncDeposit(d: SyncDeps): Promise<void> {
+  // FULL SYNC: tr_deposit kecil (~6k baris) → tarik SELURUH baris tiap siklus.
+  // Menghilangkan gap SBATAL-flip telat sepenuhnya (pembatalan kapan pun selalu
+  // ikut pull; EasyMax flag-batal, bukan hard-delete). UPSERT idempoten by
+  // (unit_id, ckddepo). Tanpa watermark.
+  const raw = await d.conn.roQuery(DEPOSIT_DOMAIN.sql);
+  const rows = DEPOSIT_DOMAIN.map(raw);
+  if (rows.length === 0) {
+    log.info("deposit: 0 baris");
+    return;
+  }
+
+  if (d.dryRun) {
+    // Rekonsiliasi per tanggal bisnis (non-batal) untuk gate F1a — bandingkan
+    // langsung ke PDF "Pendapatan Non Tunai" (mis. 17 Jun = 47.000.000 / 6).
+    const byDate = new Map<string, { n: number; sum: number }>();
+    for (const r of rows) {
+      if (r.sbatal) continue;
+      const e = byDate.get(r.dtgl) ?? { n: 0, sum: 0 };
+      e.n += 1;
+      e.sum += r.ntotal ?? 0;
+      byDate.set(r.dtgl, e);
+    }
+    const recent = [...byDate.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .slice(-15)
+      .map(([dtgl, e]) => ({ dtgl, n: e.n, sum: e.sum }));
+    const batal = rows.filter((r) => r.sbatal).length;
+    log.info("[dry-run] deposit rekon per-tanggal (non-batal)", {
+      total: rows.length,
+      batal,
+      recent,
+    });
+  }
+
+  // Pecah per batchSize agar payload tak melampaui limit /ingest. Tanpa
+  // watermark — siklus depan full-sync ulang (idempoten via UPSERT).
+  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "deposit",
+      watermark_high: null, // full-sync; tanpa watermark
+      tables: { deposit: chunk },
+    });
+    if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+  }
+}
+
+type EdcRow = NonNullable<Tables["edc"]>[number];
+
+/**
+ * Rekonsiliasi EDC dry-run (gate F1a): per-channel per-business_date (nama via
+ * tm_card), blank-card DITAMPILKAN TERPISAH (flag kepatuhan, keputusan #3), +
+ * diagnostik keunikan komposit (step-1: tentukan UNIQUE vs surrogate+replace).
+ */
+async function logEdcRecon(d: SyncDeps, rows: EdcRow[]): Promise<void> {
+  const cards = await d.conn.roQuery<Record<string, unknown>>(
+    "SELECT CKDCARD, VCNMCARD FROM tm_card",
+  );
+  const name = new Map<string, string>();
+  for (const c of cards) {
+    const code = String(c.CKDCARD).trim();
+    name.set(code, str(c.VCNMCARD) ?? code);
+  }
+
+  // Step-1 keunikan: komposit vs +rich(jrnkey,jenis). Bebas-tabrakan → boleh UNIQUE.
+  const comp = new Set<string>();
+  const rich = new Set<string>();
+  for (const r of rows) {
+    const k = `${r.tanggaljam}|${r.nonozle ?? ""}|${r.cnotrace ?? ""}|${r.total ?? ""}|${r.ckdkartu ?? ""}`;
+    comp.add(k);
+    rich.add(`${k}|${r.jrnkey ?? ""}|${r.jenis ?? ""}`);
+  }
+  log.info("[dry-run] EDC keunikan komposit (step-1)", {
+    total: rows.length,
+    distinct_komposit: comp.size,
+    tabrakan_komposit: rows.length - comp.size,
+    distinct_rich: rich.size,
+    tabrakan_rich: rows.length - rich.size,
+    keputusan:
+      rows.length - comp.size === 0
+        ? "komposit bebas-tabrakan → UNIQUE boleh"
+        : "ADA tabrakan → surrogate id + REPLACE per business_date (jangan collapse)",
+  });
+
+  interface Agg {
+    channelSum: number;
+    blankSum: number;
+    blankN: number;
+    perChannel: Map<string, { sum: number; n: number }>;
+  }
+  const byDate = new Map<string, Agg>();
+  for (const r of rows) {
+    let a = byDate.get(r.business_date);
+    if (!a) {
+      a = { channelSum: 0, blankSum: 0, blankN: 0, perChannel: new Map() };
+      byDate.set(r.business_date, a);
+    }
+    if (r.ckdkartu === null) {
+      a.blankSum += r.total ?? 0;
+      a.blankN += 1;
+    } else {
+      a.channelSum += r.total ?? 0;
+      const c = a.perChannel.get(r.ckdkartu) ?? { sum: 0, n: 0 };
+      c.sum += r.total ?? 0;
+      c.n += 1;
+      a.perChannel.set(r.ckdkartu, c);
+    }
+  }
+
+  for (const dt of [...byDate.keys()].sort().slice(-7)) {
+    const a = byDate.get(dt)!;
+    const breakdown = [...a.perChannel.entries()]
+      .map(([code, v]) => ({ kartu: name.get(code) ?? code, n: v.n, sum: v.sum }))
+      .sort((x, y) => y.sum - x.sum);
+    log.info("[dry-run] EDC rekon per-tanggal", {
+      business_date: dt,
+      channels: breakdown.length, // bandingkan jumlah channel ke PDF (11/9/…)
+      channel_sum: a.channelSum, // = D EDC di PDF
+      blank_card_sum: a.blankSum, // TERPISAH — dikecualikan channel-sum (flag)
+      blank_card_n: a.blankN,
+      breakdown,
+    });
+  }
+}
+
+/**
+ * Pecah baris jadi batch yang menjaga SATU business_date utuh per batch (≤ batchSize)
+ * — wajib utk tabel REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale):
+ * bila satu tanggal terpisah ke dua payload, DELETE payload-2 menghapus insert
+ * payload-1. Baris masuk sudah ORDER BY business_date (tanggal kontigu).
+ */
+export function batchByBusinessDate<T extends { business_date: string }>(
+  rows: readonly T[],
+  batchSize: number,
+): T[][] {
+  const byDate = new Map<string, T[]>();
+  for (const r of rows) {
+    const arr = byDate.get(r.business_date);
+    if (arr) arr.push(r);
+    else byDate.set(r.business_date, [r]);
+  }
+  const batches: T[][] = [];
+  let cur: T[] = [];
+  for (const [date, dateRows] of byDate) {
+    // GUARD: satu business_date > cap payload → tak muat satu payload → REPLACE
+    // per-date akan pecah antar payload & DELETE-2 menghapus INSERT-1. Error keras
+    // (kasus praktis mustahil di SPBU: ~370 baris/hari/unit). Bila suatu saat nyata
+    // → butuh strategi DELETE-once-then-append di backend.
+    if (dateRows.length > MAX_ROWS_PER_TABLE) {
+      throw new Error(
+        `business_date ${date}: ${dateRows.length} baris > cap ${MAX_ROWS_PER_TABLE} — REPLACE per business_date butuh satu payload utuh; perlu strategi DELETE-once-append.`,
+      );
+    }
+    if (cur.length > 0 && cur.length + dateRows.length > batchSize) {
+      batches.push(cur);
+      cur = [];
+    }
+    cur.push(...dateRows); // satu tanggal tak pernah dipecah (walau > batchSize)
+  }
+  if (cur.length > 0) batches.push(cur);
+  return batches;
+}
+
+async function syncEdc(d: SyncDeps): Promise<void> {
+  // Incremental per ctgl (business-date EasyMax) + rescan window. Backfill penuh
+  // hanya di run pertama live; dry-run dibatasi ~14 hari terakhir agar ringan.
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  const stored = d.store.getWatermark("edc"); // "YYYY-MM-DD" | null
+  let startCtgl: string;
+  if (stored) {
+    startCtgl = businessDateToCtgl(subtractDays(stored, d.cfg.sync.edcRescanDays));
+  } else if (d.dryRun) {
+    const mx = await d.conn.roQuery<{ m: unknown }>("SELECT MAX(ctgl) AS m FROM vw_edc3");
+    const maxBd = ctglToBusinessDate(str(mx[0]?.m));
+    startCtgl = maxBd ? businessDateToCtgl(subtractDays(maxBd, 14)) : "10000101";
+  } else {
+    startCtgl = "10000101"; // backfill penuh (production, sekali)
+  }
+
+  const raw = await d.conn.roQuery(EDC_DOMAIN.sql, [startCtgl]);
+  if (raw.length === 0) {
+    log.info("edc: 0 baris", { sinceCtgl: startCtgl });
+    return;
+  }
+  const { rows, businessDateHigh } = EDC_DOMAIN.map(raw, offset);
+
+  if (d.dryRun) await logEdcRecon(d, rows);
+
+  // Kirim per-batch UTUH-PER-TANGGAL. Backend REPLACE per (unit_id, business_date)
+  // — EDC tanpa SBATAL; replace menangkap koreksi & buang baris usang.
+  for (const chunk of batchByBusinessDate(rows, d.cfg.sync.batchSize)) {
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "edc",
+      watermark_high: null, // business-date; watermark disimpan lokal
+      tables: { edc: chunk },
+    });
+    if (status !== "ok") return; // buffered/dry — siklus depan ulang window
+  }
+  if (!d.dryRun && businessDateHigh) d.store.setWatermark("edc", businessDateHigh);
+}
+
+type PelangganSaleRow = NonNullable<Tables["pelanggan_sale"]>[number];
+type VoucherSaleRow = NonNullable<Tables["voucher_sale"]>[number];
+
+const r2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Rekonsiliasi pelanggan dry-run (gate F1a): union `vw_jualplg` ⊎ `vw_usevouc`
+ * SUM per CKDPLG by business_date (non-batal) → Rp + Liter + jumlah plg vs PDF.
+ * Cetak: kontribusi sale vs voucher (voucher liter = HARD-GATE), `overlap_ckdplg`
+ * (hard-check anti-double-count), + breakdown per pelanggan (nama denormal).
+ */
+function logPelangganRecon(
+  saleRows: PelangganSaleRow[],
+  voucherRows: VoucherSaleRow[],
+): void {
+  const sale = saleRows.filter((r) => !r.sbatal);
+  const vou = voucherRows.filter((r) => !r.sbatal);
+
+  interface Cust {
+    name: string;
+    liter: number;
+    rp: number;
+    inSale: boolean;
+    inVou: boolean;
+  }
+  const byDate = new Map<string, Map<string, Cust>>();
+  const add = (
+    date: string,
+    ckdplg: string | null,
+    name: string | null,
+    liter: number | null,
+    rp: number | null,
+    src: "sale" | "vou",
+  ): void => {
+    let m = byDate.get(date);
+    if (!m) {
+      m = new Map();
+      byDate.set(date, m);
+    }
+    const key = ckdplg ?? "(null)";
+    let c = m.get(key);
+    if (!c) {
+      c = { name: name ?? key, liter: 0, rp: 0, inSale: false, inVou: false };
+      m.set(key, c);
+    }
+    c.liter += liter ?? 0;
+    c.rp += rp ?? 0;
+    if (src === "sale") c.inSale = true;
+    else c.inVou = true;
+    if ((!c.name || c.name === key) && name) c.name = name;
+  };
+  for (const r of sale) add(r.business_date, r.ckdplg, r.vcnmplg, r.liter, r.total, "sale");
+  for (const r of vou) add(r.business_date, r.ckdplg, r.vcnmplg, r.liter, r.total, "vou");
+
+  const subAgg = (rows: Array<{ business_date: string; ckdplg: string | null; liter: number | null; total: number | null }>) => {
+    const m = new Map<string, { liter: number; rp: number; plg: Set<string> }>();
+    for (const r of rows) {
+      let e = m.get(r.business_date);
+      if (!e) {
+        e = { liter: 0, rp: 0, plg: new Set() };
+        m.set(r.business_date, e);
+      }
+      e.liter += r.liter ?? 0;
+      e.rp += r.total ?? 0;
+      if (r.ckdplg) e.plg.add(r.ckdplg);
+    }
+    return m;
+  };
+  const saleByDate = subAgg(sale);
+  const vouByDate = subAgg(vou);
+
+  for (const dt of [...byDate.keys()].sort().slice(-7)) {
+    const m = byDate.get(dt)!;
+    let liter = 0;
+    let rp = 0;
+    let overlap = 0;
+    const breakdown: Array<{ plg: string; liter: number; rp: number }> = [];
+    for (const c of m.values()) {
+      liter += c.liter;
+      rp += c.rp;
+      if (c.inSale && c.inVou) overlap += 1;
+      breakdown.push({ plg: c.name, liter: r2(c.liter), rp: Math.round(c.rp) });
+    }
+    breakdown.sort((a, b) => b.rp - a.rp);
+    const sv = saleByDate.get(dt) ?? { liter: 0, rp: 0, plg: new Set<string>() };
+    const vv = vouByDate.get(dt) ?? { liter: 0, rp: 0, plg: new Set<string>() };
+    log.info("[dry-run] pelanggan rekon per-tanggal", {
+      business_date: dt,
+      plg: m.size, // distinct CKDPLG → bandingkan jumlah pelanggan PDF (18/48/…)
+      liter: r2(liter), // → bandingkan Volume PDF
+      rp: Math.round(rp), // → bandingkan Rp PDF
+      from_sale: { plg: sv.plg.size, liter: r2(sv.liter), rp: Math.round(sv.rp) },
+      from_voucher: { plg: vv.plg.size, liter: r2(vv.liter), rp: Math.round(vv.rp) }, // voucher HARD-GATE
+      overlap_ckdplg: overlap, // hard-check anti-double-count (CKDPLG di KEDUA view)
+      breakdown,
+    });
+  }
+}
+
+async function syncPelanggan(d: SyncDeps): Promise<void> {
+  // Union dua view, incremental per DTGL (header bersih) + rescan window. Dry-run
+  // dibatasi ~14 hari terakhir agar ringan (vw_jualplg 288k / vw_usevouc 103k).
+  const stored = d.store.getWatermark("pelanggan"); // "YYYY-MM-DD" | null
+  let startDate: string;
+  if (stored) {
+    startDate = subtractDays(stored, d.cfg.sync.pelangganRescanDays);
+  } else if (d.dryRun) {
+    // JANGAN MAX(DTGL) atas view (agregat = materialisasi penuh 288k = berat/hang
+    // di MySQL 5.0). Bound dari tanggal sistem WIB − 14 hari (cukup gate 14–18 Jun);
+    // WHERE DTGL>=? pada view MERGE = filter ter-pushdown, ringan.
+    const todayWib = new Date(Date.now() + tzOffsetMinutes(d.cfg.timezone) * 60_000)
+      .toISOString()
+      .slice(0, 10);
+    // 8 hari: cukup tampilkan 14–18 Jun di gate, tapi jauh lebih ringan dari 14
+    // hari (view ~4 dtk/hari → ~30 dtk, bukan 64 dtk). Steady-state pakai window 3 hari.
+    startDate = subtractDays(todayWib, 8);
+  } else {
+    startDate = EPOCH_DATE; // backfill penuh (production, sekali)
+  }
+
+  // Observability: lokalisasi bila satu query view berat/hang (bukan abort senyap).
+  log.info("pelanggan: tarik vw_jualplg", { since: startDate });
+  const saleRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.saleSql, [startDate]);
+  log.info("pelanggan: vw_jualplg ok", { baris: saleRaw.length });
+  log.info("pelanggan: tarik vw_usevouc", { since: startDate });
+  const vouRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.voucherSql, [startDate]);
+  log.info("pelanggan: vw_usevouc ok", { baris: vouRaw.length });
+  const sale = PELANGGAN_DOMAIN.mapSale(saleRaw);
+  const vou = PELANGGAN_DOMAIN.mapVoucher(vouRaw);
+  if (sale.rows.length === 0 && vou.rows.length === 0) {
+    log.info("pelanggan: 0 baris", { since: startDate });
+    return;
+  }
+
+  if (d.dryRun) logPelangganRecon(sale.rows, vou.rows);
+
+  // Kirim per-batch UTUH-PER-TANGGAL per tabel. Backend REPLACE per
+  // (unit_id, business_date) → satu business_date tak boleh terpisah antar payload.
+  for (const chunk of batchByBusinessDate(sale.rows, d.cfg.sync.batchSize)) {
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "pelanggan",
+      watermark_high: null,
+      tables: { pelanggan_sale: chunk },
+    });
+    if (status !== "ok") return; // buffered/dry — siklus depan ulang window
+  }
+  for (const chunk of batchByBusinessDate(vou.rows, d.cfg.sync.batchSize)) {
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "pelanggan",
+      watermark_high: null,
+      tables: { voucher_sale: chunk },
+    });
+    if (status !== "ok") return; // buffered/dry — siklus depan ulang window
+  }
+
+  const high =
+    sale.dtglHigh && vou.dtglHigh
+      ? sale.dtglHigh > vou.dtglHigh
+        ? sale.dtglHigh
+        : vou.dtglHigh
+      : (sale.dtglHigh ?? vou.dtglHigh);
+  if (!d.dryRun && high) d.store.setWatermark("pelanggan", high);
+}
+
 async function syncMasters(d: SyncDeps): Promise<void> {
   const tables: Tables = {};
   // Isolasi per tabel master: satu query gagal (mis. nama kolom beda antar
@@ -219,10 +595,13 @@ async function syncRealTank(d: SyncDeps): Promise<void> {
   });
 }
 
-/** Satu siklus penuh. Master di-sync hanya bila `includeMasters`. */
+/**
+ * Satu siklus penuh. Master di-sync hanya bila `includeMasters`; pelanggan (BERAT
+ * — union view) hanya bila `includePelanggan` (poll jarang, lihat runForever).
+ */
 export async function runCycle(
   d: SyncDeps,
-  opts: { includeMasters: boolean },
+  opts: { includeMasters: boolean; includePelanggan: boolean },
 ): Promise<void> {
   // Flush buffer dulu (FIFO). Bila backend masih offline → lewati live agar
   // urutan terjaga & buffer tak membengkak tak terkendali.
@@ -262,6 +641,34 @@ export async function runCycle(
     });
   }
   try {
+    await syncDeposit(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "deposit",
+      err: String(err),
+    });
+  }
+  try {
+    await syncEdc(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "edc",
+      err: String(err),
+    });
+  }
+  if (opts.includePelanggan) {
+    try {
+      await syncPelanggan(d);
+    } catch (err) {
+      // Eksplisit (stack) — union dua view besar; jangan abort senyap.
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: "pelanggan",
+        err: String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+    }
+  }
+  try {
     await syncRealTank(d);
   } catch (err) {
     log.error("domain gagal — dilewati siklus ini", {
@@ -291,11 +698,15 @@ export async function runForever(d: SyncDeps): Promise<void> {
   process.once("SIGTERM", stop);
 
   let lastMasters = 0;
+  let lastPelanggan = 0;
   while (!stopped) {
-    const includeMasters = Date.now() - lastMasters >= d.cfg.sync.masterIntervalMs;
+    const now = Date.now();
+    const includeMasters = now - lastMasters >= d.cfg.sync.masterIntervalMs;
+    const includePelanggan = now - lastPelanggan >= d.cfg.sync.pelangganIntervalMs;
     try {
-      await runCycle(d, { includeMasters });
+      await runCycle(d, { includeMasters, includePelanggan });
       if (includeMasters) lastMasters = Date.now();
+      if (includePelanggan) lastPelanggan = Date.now();
     } catch (err) {
       log.error("siklus gagal (fatal)", { err: String(err) });
     }
