@@ -117,6 +117,21 @@ tersync**, sehingga tanggal yang kini "provisional" di dashboard menjadi final o
 > 3 window kosong beruntun, mana lebih dulu. Pada go-live 21 Jun ia mencapai floor → ~7k baris
 > pelanggan **pra-2023 tidak ditarik** (sengaja; gate-date 14–18 Jun 2026 jauh di dalam window).
 > Bila perlu histori penuh, naikkan pengali floor di `syncPelanggan` (`subtractDays(todayWib, 366*3)`).
+>
+> **SALES anti-stale (≥ 2026-06-22).** Sync sales incremental (`DTGLJAM > watermark`) MELEWATKAN
+> baris shift-3 yang di-key esok pagi dgn `DTGLJAM = NULL` (probe9: 15-Jun shift-3 = 130.247.852)
+> + koreksi back-dated. Mitigasi: rescan per `DTGLJUAL` (`salesRescanDays=7`) **ber-interval
+> `salesRescanIntervalMs` (default 30 mnt — BUKAN tiap poll**, hindari banjir re-UPSERT Cloud SQL).
+> Re-backfill manual satu rentang: `--resync-sales <from> <to>` (UPSERT idempoten, tanpa geser
+> watermark). Baris eks-NULL diberi `dtgljam` = **DTGLJUAL tengah-malam WIB** (Omset grup per
+> `header.dtgljual` → angka tak berubah). **Caveat:** diagnostik tangki "terjual sejak opname"
+> (`getLiveTankReconciliation`) pakai `sd.dtgljam` sebagai timestamp; baris eks-NULL kini midnight
+> sintetis → bisa sedikit under-count bila opname diambil tengah hari. Dampak kecil; bukan Omset.
+>
+> **Cross-check Omset .5-rounding.** SUM(nsubtotal) bisa berakhir `.5` (mis. 18-Jun =
+> 415.858.747,5; 13 baris pecahan). Postgres `::bigint`/`round` = half-up → **748**; PDF/POS = **747**.
+> Selisih **1 IDR pada ratusan juta = immaterial & data LENGKAP** (bukan baris hilang). Jangan
+> salah-flag di cross-check; bila butuh paritas PDF persis, samakan konvensi rounding ke POS (.5→bawah).
 
 **Langkah (🖥️, di mesin SPBU)**
 1. Tentukan mode loop. Dua pilihan:

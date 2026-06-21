@@ -262,7 +262,11 @@ async function main(): Promise<void> {
       }
       await resyncSales(deps, from, to);
     } else if (args.once || args.dryRun) {
-      await runCycle(deps, { includeMasters: true, includePelanggan: true });
+      await runCycle(deps, {
+        includeMasters: true,
+        includePelanggan: true,
+        includeSalesRescan: true,
+      });
     } else {
       await runForever(deps);
     }

@@ -194,7 +194,11 @@ const SALES: DateTimeDomain = {
  * berbasis `h.DTGLJUAL` menangkapnya. Kolom Postgres `sales_detail.dtgljam` NOT NULL
  * → untuk baris NULL kita **sintesis = DTGLJUAL tengah-malam WIB** (Omset di-group per
  * `header.dtgljual`, bukan detail `dtgljam`, jadi sintesis tak mengubah angka & tetap
- * jatuh di tanggal-bisnis yang sama). Idempoten via UPSERT
+ * jatuh di tanggal-bisnis yang sama). CAVEAT konsumen `dtgljam`: query "terjual sejak
+ * opname" (dashboard `getLiveTankReconciliation`, `sd.dtgljam > opname.dtgljam`) bisa
+ * sedikit under-count baris eks-NULL bila opname diambil TENGAH hari (midnight sintetis
+ * < jam opname). Dampak kecil (opname umumnya awal hari); didokumentasikan di GO-LIVE.
+ * Idempoten via UPSERT
  * (unit_id, ckdjualbbm, ckdnozzle, nurut) + header (unit_id, ckdjualbbm); TAK memajukan
  * watermark DTGLJAM. `?1`=DTGLJUAL ≥ (inklusif), `?2`=DTGLJUAL < (eksklusif).
  */
