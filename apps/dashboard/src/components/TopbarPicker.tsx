@@ -1,7 +1,12 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { DATE_COOKIE, SELECTION_MAX_AGE, UNIT_COOKIE } from "@/lib/selection-keys";
+import {
+  DATE_COOKIE,
+  deriveTopbarSelection,
+  SELECTION_MAX_AGE,
+  UNIT_COOKIE,
+} from "@/lib/selection-keys";
 
 export interface UnitOpt {
   code: string;
@@ -28,6 +33,10 @@ export function TopbarPicker({
   const sp = useSearchParams();
   const isDenah = path.startsWith("/monitoring/denah");
 
+  // Di rute laporan, nilai TAMPIL cermin URL (otoritatif), bukan prop cookie basi.
+  const { unit: curUnit, date: curDate } = deriveTopbarSelection(path, unit, date);
+  const baseUnit = curUnit ?? units[0]?.code ?? "";
+
   const writeCookie = (key: string, value: string) => {
     document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${SELECTION_MAX_AGE}; samesite=lax`;
   };
@@ -53,8 +62,8 @@ export function TopbarPicker({
     <div className="topbar-picker">
       <select
         className="select sm"
-        value={unit ?? units[0]?.code ?? ""}
-        onChange={(e) => apply(e.target.value, date)}
+        value={baseUnit}
+        onChange={(e) => apply(e.target.value, curDate)}
         aria-label="Pilih unit"
       >
         {units.map((u) => (
@@ -66,8 +75,8 @@ export function TopbarPicker({
       <input
         className="date-input sm"
         type="date"
-        value={date}
-        onChange={(e) => apply(unit ?? units[0]?.code ?? "", e.target.value)}
+        value={curDate}
+        onChange={(e) => apply(baseUnit, e.target.value)}
         disabled={isDenah}
         aria-label="Tanggal bisnis"
       />

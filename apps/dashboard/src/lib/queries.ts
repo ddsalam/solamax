@@ -526,3 +526,141 @@ export async function getCashForDate(unit: ScopedUnitId, date: string): Promise<
     [unit, date],
   );
 }
+
+// ===========================================================================
+// Rincian Penjualan — seksi auto-sync (FASE 1c). Sumber TERKUNCI by probe
+// (ADR-001). Query schema-qualified; tiap fungsi per-unit lewat ScopedUnitId.
+// ===========================================================================
+
+export interface PelangganRow {
+  ckdplg: string | null;
+  nama: string | null;
+  liter: number;
+  rp: number;
+}
+
+/**
+ * Seksi 2 Pelanggan (penjualan tempo) = UNION pelanggan_sale ∪ voucher_sale,
+ * SUM per CKDPLG, non-batal. C = Σ rp; volume = Σ liter (lihat ADR-001).
+ */
+export async function getPelangganForDate(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<PelangganRow[]> {
+  return q<PelangganRow>(
+    `SELECT u.ckdplg,
+            max(u.nama) AS nama,
+            COALESCE(sum(u.liter),0)::float8 AS liter,
+            COALESCE(sum(u.rp),0)::float8 AS rp
+     FROM (
+       SELECT trim(ps.ckdplg) AS ckdplg, ps.vcnmplg AS nama,
+              COALESCE(ps.liter,0) AS liter, COALESCE(ps.total,0) AS rp
+       FROM public.pelanggan_sale ps
+       WHERE ps.unit_id = $1 AND ps.business_date = $2::date AND COALESCE(ps.sbatal,0) = 0
+       UNION ALL
+       SELECT trim(vs.ckdplg), vs.vcnmplg,
+              COALESCE(vs.liter,0), COALESCE(vs.total,0)
+       FROM public.voucher_sale vs
+       WHERE vs.unit_id = $1 AND vs.business_date = $2::date AND COALESCE(vs.sbatal,0) = 0
+     ) u
+     GROUP BY u.ckdplg
+     ORDER BY rp DESC`,
+    [unit, date],
+  );
+}
+
+export interface EdcChannelRow {
+  ckdkartu: string;
+  nama: string;
+  rp: number;
+}
+
+/**
+ * Seksi 3 EDC = SUM per channel (CKDKARTU) by business_date, KECUALI blank-card
+ * (ckdkartu NULL — agent memetakan '' → null). D = Σ rp. Nama dari master card.
+ */
+export async function getEdcForDate(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<EdcChannelRow[]> {
+  return q<EdcChannelRow>(
+    `SELECT trim(e.ckdkartu) AS ckdkartu,
+            COALESCE(max(c.vcnmcard), trim(e.ckdkartu)) AS nama,
+            COALESCE(sum(e.total),0)::float8 AS rp
+     FROM public.edc e
+     LEFT JOIN public.card c ON c.unit_id = e.unit_id AND c.ckdcard = e.ckdkartu
+     WHERE e.unit_id = $1 AND e.business_date = $2::date
+       AND e.ckdkartu IS NOT NULL AND trim(e.ckdkartu) <> ''
+     GROUP BY trim(e.ckdkartu)
+     ORDER BY rp DESC`,
+    [unit, date],
+  );
+}
+
+export interface EdcBlankCard {
+  rp: number;
+  n: number;
+}
+
+/**
+ * Total EDC blank-card (ckdkartu NULL) — DIKECUALIKAN dari channel-sum laporan
+ * tapi WAJIB ditampilkan sebagai flag kepatuhan (keputusan #3, ADR-001).
+ */
+export async function getEdcBlankCard(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<EdcBlankCard> {
+  const rows = await q<EdcBlankCard>(
+    `SELECT COALESCE(sum(e.total),0)::float8 AS rp, count(*)::int AS n
+     FROM public.edc e
+     WHERE e.unit_id = $1 AND e.business_date = $2::date
+       AND (e.ckdkartu IS NULL OR trim(e.ckdkartu) = '')`,
+    [unit, date],
+  );
+  return rows[0] ?? { rp: 0, n: 0 };
+}
+
+export interface DepositRow {
+  ckdplg: string | null;
+  vcket: string | null;
+  rp: number;
+}
+
+/** Seksi 5 Pendapatan Non Tunai = deposit prabayar by DTGL, non-batal. */
+export async function getDepositForDate(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<DepositRow[]> {
+  return q<DepositRow>(
+    `SELECT trim(d.ckdplg) AS ckdplg, d.vcket, COALESCE(d.ntotal,0)::float8 AS rp
+     FROM public.deposit d
+     WHERE d.unit_id = $1 AND d.dtgl = $2::date AND COALESCE(d.sbatal,0) = 0
+     ORDER BY rp DESC`,
+    [unit, date],
+  );
+}
+
+export type ManualSection = "pendapatan_lain" | "pengeluaran";
+
+export interface ManualEntryRow {
+  id: string;
+  keterangan: string;
+  amount: number;
+  urut: number;
+}
+
+/** Seksi 4 (pendapatan_lain) & 6 (pengeluaran) — input pengawas, non-void. */
+export async function getManualEntries(
+  unit: ScopedUnitId,
+  date: string,
+  section: ManualSection,
+): Promise<ManualEntryRow[]> {
+  return q<ManualEntryRow>(
+    `SELECT id::text AS id, keterangan, amount::float8 AS amount, urut
+     FROM app.manual_entry
+     WHERE unit_id = $1 AND business_date = $2::date
+       AND section = $3::app.manual_entry_section AND NOT void
+     ORDER BY urut, created_at`,
+    [unit, date, section],
+  );
+}

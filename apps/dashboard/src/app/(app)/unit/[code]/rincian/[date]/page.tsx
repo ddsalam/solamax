@@ -1,12 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ManualEntryForm } from "@/components/rincian/ManualEntryForm";
 import { RincianToolbar } from "@/components/rincian/Toolbar";
 import { classifyProduct, UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, idn, rp, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
-import { getCashForDate, getSalesByProduct } from "@/lib/queries";
+import {
+  getDepositForDate,
+  getEdcBlankCard,
+  getEdcForDate,
+  getManualEntries,
+  getPelangganForDate,
+  getSalesByProduct,
+} from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +36,6 @@ interface Section {
   totalLabel: string;
   totalVol: string;
   totalRp: string | null;
-  naDomain?: string;
 }
 
 export default async function RincianPage({
@@ -47,18 +54,32 @@ export default async function RincianPage({
   // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
   const hideEmpty = searchParams.kosong !== "tampil";
 
-  const [prod, cash] = await Promise.all([
-    getSalesByProduct(unit.unit_id, date, date),
-    getCashForDate(unit.unit_id, date),
-  ]);
+  const [prod, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran] =
+    await Promise.all([
+      getSalesByProduct(unit.unit_id, date, date),
+      getPelangganForDate(unit.unit_id, date),
+      getEdcForDate(unit.unit_id, date),
+      getEdcBlankCard(unit.unit_id, date),
+      getDepositForDate(unit.unit_id, date),
+      getManualEntries(unit.unit_id, date, "pendapatan_lain"),
+      getManualEntries(unit.unit_id, date, "pengeluaran"),
+    ]);
 
   const ordered = [...prod].sort(
     (a, b) => (classifyProduct(a.nama)?.order ?? 9) - (classifyProduct(b.nama)?.order ?? 9),
   );
   const totVol = prod.reduce((s, p) => s + p.vol, 0);
+  // Summary A–I (rekon kas; B Terra & I Setoran di luar lingkup v1 → null).
   const A = prod.reduce((s, p) => s + p.omzet, 0);
-  const validCash = cash.filter((c) => !c.sbatal);
-  const G = validCash.reduce((s, c) => s + (c.ntotal ?? 0), 0);
+  const B = 0; // Terra/Nozzle test (sumber `tera`, fase lain)
+  const pelLiter = pelanggan.reduce((s, r) => s + r.liter, 0);
+  const C = pelanggan.reduce((s, r) => s + r.rp, 0);
+  const D = edc.reduce((s, r) => s + r.rp, 0);
+  const depTotal = deposit.reduce((s, r) => s + r.rp, 0);
+  const F = pendapatanLain.reduce((s, r) => s + r.amount, 0);
+  const G = pengeluaran.reduce((s, r) => s + r.amount, 0);
+  const E = A - (B + C + D); // Penjualan Tunai
+  const H = E + F - G; // Uang Tunai
 
   let sections: Section[] = [
     {
@@ -78,56 +99,75 @@ export default async function RincianPage({
     {
       num: "2",
       title: "PELANGGAN",
-      meta: "penjualan tempo",
-      rows: [],
+      meta: "penjualan tempo (RFID/deposit ⊎ voucher)",
+      rows: pelanggan.map((r, i) => ({
+        no: String(i + 1),
+        ket: r.nama ?? r.ckdplg ?? "—",
+        vol: idn(r.liter, 2),
+        rpv: rp(r.rp),
+      })),
       totalLabel: "TOTAL PELANGGAN",
-      totalVol: "",
-      totalRp: null,
-      naDomain: "Domain deposit & pembayaran pelanggan",
+      totalVol: idn(pelLiter, 2),
+      totalRp: rp(C),
     },
     {
       num: "3",
       title: "EDC",
-      meta: "channel non-tunai",
-      rows: [],
+      meta:
+        edcBlank.rp > 0
+          ? `channel non-tunai · ⚠ blank-card ${rp(edcBlank.rp)} (${edcBlank.n} txn, di luar total)`
+          : "channel non-tunai",
+      rows: edc.map((r, i) => ({
+        no: String(i + 1),
+        ket: r.nama,
+        vol: "",
+        rpv: rp(r.rp),
+      })),
       totalLabel: "TOTAL EDC",
       totalVol: "",
-      totalRp: null,
-      naDomain: "Domain EDC",
+      totalRp: rp(D),
     },
     {
       num: "4",
       title: "PENDAPATAN LAIN",
-      meta: "",
-      rows: [],
+      meta: "input pengawas",
+      rows: pendapatanLain.map((r, i) => ({
+        no: String(i + 1),
+        ket: r.keterangan,
+        vol: "",
+        rpv: rp(r.amount),
+      })),
       totalLabel: "TOTAL PENDAPATAN LAIN",
       totalVol: "",
-      totalRp: null,
-      naDomain: "modul kas aktif",
+      totalRp: rp(F),
     },
     {
       num: "5",
       title: "PENDAPATAN NON TUNAI",
       meta: "deposit pelanggan · tidak masuk rekonsiliasi tunai",
-      rows: [],
+      rows: deposit.map((r, i) => ({
+        no: String(i + 1),
+        ket: r.vcket ?? r.ckdplg ?? "—",
+        vol: "",
+        rpv: rp(r.rp),
+      })),
       totalLabel: "TOTAL PENDAPATAN NON TUNAI",
       totalVol: "",
-      totalRp: null,
-      naDomain: "Domain deposit",
+      totalRp: rp(depTotal),
     },
     {
       num: "6",
       title: "PENGELUARAN",
-      meta: validCash.length > 0 ? `${validCash.length} nota` : "modul kas dorman",
-      rows: validCash.map((c, i) => ({
+      meta: "input pengawas",
+      rows: pengeluaran.map((r, i) => ({
         no: String(i + 1),
-        ket: c.vcket ?? c.ckdkb,
+        ket: r.keterangan,
         vol: "",
-        rpv: c.ntotal !== null ? rp(c.ntotal) : "—",
+        rpv: rp(r.amount),
       })),
       totalLabel: "TOTAL PENGELUARAN",
       totalVol: "",
-      totalRp: validCash.length > 0 ? rp(G) : null,
+      totalRp: rp(G),
     },
   ];
   if (hideEmpty) sections = sections.filter((s) => s.rows.length > 0);
@@ -135,12 +175,12 @@ export default async function RincianPage({
   const summary: Array<{ l: string; label: string; formula?: string; val: string | null; em?: boolean }> = [
     { l: "A", label: "Omset Penjualan", val: rp(A) },
     { l: "B", label: "Terra / Nozzle Test", val: null },
-    { l: "C", label: "Pelanggan", val: null },
-    { l: "D", label: "EDC", val: null },
-    { l: "E", label: "Penjualan Tunai", formula: "E = A − (B + C + D)", val: null, em: true },
-    { l: "F", label: "Pendapatan Lain", val: null },
-    { l: "G", label: "Pengeluaran", val: validCash.length > 0 ? rp(G) : null },
-    { l: "H", label: "Uang Tunai", formula: "H = E + F − G", val: null, em: true },
+    { l: "C", label: "Pelanggan", val: rp(C) },
+    { l: "D", label: "EDC", val: rp(D) },
+    { l: "E", label: "Penjualan Tunai", formula: "E = A − (B + C + D)", val: rp(E), em: true },
+    { l: "F", label: "Pendapatan Lain", val: rp(F) },
+    { l: "G", label: "Pengeluaran", val: rp(G) },
+    { l: "H", label: "Uang Tunai", formula: "H = E + F − G", val: rp(H), em: true },
     { l: "I", label: "Setoran (Bank)", val: null, em: true },
   ];
 
@@ -194,9 +234,7 @@ export default async function RincianPage({
               <div className="led-row">
                 <span />
                 <span className="fs16 t-tertiary led-empty">
-                  {sec.naDomain
-                    ? `Belum tersedia di pipeline — menunggu ${sec.naDomain}.`
-                    : "Tidak ada transaksi pada tanggal ini."}
+                  Tidak ada transaksi pada tanggal ini.
                 </span>
                 <span />
                 <span />
@@ -256,6 +294,26 @@ export default async function RincianPage({
               </span>
             </div>
           )}
+        </div>
+
+        {/* Input manual (no-print) — Pendapatan Lain & Pengeluaran diisi pengawas.
+            Tulis via server action ber-scope; edit = batalkan + tambah. */}
+        <div className="no-print manual-panel mt12">
+          <div className="fs15 w700 t-tertiary">Input manual (pengawas) · tidak ikut cetak</div>
+          <ManualEntryForm
+            code={unit.code}
+            date={date}
+            section="pendapatan_lain"
+            title="4 · Pendapatan Lain"
+            entries={pendapatanLain}
+          />
+          <ManualEntryForm
+            code={unit.code}
+            date={date}
+            section="pengeluaran"
+            title="6 · Pengeluaran"
+            entries={pengeluaran}
+          />
         </div>
 
         {/* Tanda tangan */}
