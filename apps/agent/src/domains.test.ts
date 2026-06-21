@@ -7,8 +7,9 @@ import {
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
+  SALES_RESYNC,
 } from "./domains.js";
-import { tzOffsetMinutes } from "./transform.js";
+import { tzOffsetMinutes, wibDateTimeToUtcIso } from "./transform.js";
 
 const WIB = tzOffsetMinutes("Asia/Pontianak");
 const SALES = DATETIME_DOMAINS.find((d) => d.domain === "sales")!;
@@ -148,6 +149,49 @@ describe("PELANGGAN map (vw_jualplg & vw_usevouc — DTGL header, vcnmplg denorm
     expect(rows[0]).toMatchObject({
       ckdplg: "PLG2959", vcnmplg: "REHOBOT", liter: 670.95, total: 4818688,
     });
+  });
+});
+
+describe("SALES_RESYNC map (anti-stale; by DTGLJUAL; NULL-DTGLJAM disintesis)", () => {
+  const base = {
+    CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: "1", NVOLUME: "50", NHARGAJUAL: "10000",
+    NSUBTOTAL: "500000", CKDBBM: "P1", CKDTANGKI: "T1", NSTANDAWAL: "100",
+    NSTANDAKHIR: "150", VCOPEATOR: "-", SUBAH: "0", SEDIT: "0", VCKET: null,
+  };
+
+  it("DTGLJAM asli dipakai apa adanya; header dtgljual dari DTGLJUAL", () => {
+    const { tables } = SALES_RESYNC.map(
+      [{ ...base, DTGLJAM: "2026-06-15 20:30:00", DTGLJUAL: "2026-06-15", NSHIFT: "3" }],
+      WIB,
+    );
+    expect(tables.sales_detail).toHaveLength(1);
+    expect(tables.sales_detail![0]!.dtgljam).toBe(
+      wibDateTimeToUtcIso("2026-06-15 20:30:00", WIB),
+    );
+    expect(tables.sales_header![0]!.dtgljual).toBe("2026-06-15");
+  });
+
+  it("DTGLJAM NULL (shift-3 di-key esok) → TETAP ikut; dtgljam disintesis tengah-malam WIB", () => {
+    const { tables } = SALES_RESYNC.map(
+      [{
+        ...base, CKDJUALBBM: "H9", CKDNOZZLE: "N3", NSUBTOTAL: "130247852",
+        DTGLJAM: null, DTGLJUAL: "2026-06-15", NSHIFT: "3",
+      }],
+      WIB,
+    );
+    expect(tables.sales_detail).toHaveLength(1); // BUKAN dibuang (kontras sync incremental)
+    expect(tables.sales_detail![0]!.nsubtotal).toBe(130247852);
+    // dtgljam non-null (kolom NOT NULL) = DTGLJUAL 00:00 WIB → tanggal-bisnis tetap 15 Jun
+    expect(tables.sales_detail![0]!.dtgljam).toBe(
+      wibDateTimeToUtcIso("2026-06-15 00:00:00", WIB),
+    );
+    expect(tables.sales_header![0]!.dtgljual).toBe("2026-06-15");
+  });
+
+  it("sql filter h.DTGLJUAL [lo,hi); TANPA predikat DTGLJAM IS NOT NULL", () => {
+    const sql = SALES_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?");
+    expect(sql).not.toMatch(/DTGLJAM\s+IS\s+NOT\s+NULL/i); // kritis: jangan buang NULL
   });
 });
 

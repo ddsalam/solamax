@@ -41,6 +41,12 @@ const ConfigSchema = z.object({
     pelangganIntervalMs: z.number().int().default(900_000), // 15 menit
     safetyWindowMin: z.number().int().default(60), // re-scan trailing (temuan Q-SALES-3)
     cashRescanDays: z.number().int().default(7),
+    // Rescan SALES per business-date (DTGLJUAL) tiap siklus — menyembuhkan baris
+    // shift-3 ber-DTGLJAM NULL & koreksi back-dated yang lolos sync incremental
+    // (DTGLJAM>watermark). 7 hari menutup pengisian susulan H+beberapa hari.
+    salesRescanDays: z.number().int().default(7),
+    // Lebar window query rescan/re-sync SALES (anti-stall; base-table InnoDB).
+    salesResyncChunkDays: z.number().int().default(3),
     // Window rescan EDC (business-date ctgl). EDC final per hari, koreksi jarang
     // → 5 hari cukup; backend REPLACE per business_date (jangan re-delete 266k/cycle).
     edcRescanDays: z.number().int().default(5),
