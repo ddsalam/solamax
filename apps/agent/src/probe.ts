@@ -813,6 +813,83 @@ export async function runProbe9(
   out("==========================================================");
 }
 
+/**
+ * FASE FINAL — GOLD CHECK: total EasyMax-KINI per seksi auto-sync per tanggal,
+ * memakai SUMBER & predikat IDENTIK dgn yang disinkronkan agent (Omset tanpa filter
+ * DTGLJAM; Pelanggan union non-batal; EDC excl blank-card + blank terpisah; Deposit
+ * non-batal). Dion jalankan → bandingkan EKSAK ke recon staging. Sama = sync setia
+ * (UPSERT idempoten); beda = gap nyata. Read-only mutlak.
+ */
+export async function runProbe10(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length
+    ? datesArg
+    : ["2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+  const lo = dates[0]!;
+  const hi = dates[dates.length - 1]!;
+  const hiNext = nextDay(hi); // batas atas eksklusif utk kolom DATE
+  const ctglLo = lo.replace(/-/g, "");
+  const ctglHi = hi.replace(/-/g, "");
+  out("==========================================================");
+  out("FASE FINAL GOLD CHECK — total EasyMax-kini per seksi per tanggal");
+  out("rentang: " + lo + " .. " + hi + "  → bandingkan EKSAK ke recon staging");
+  out("==========================================================");
+
+  await step(
+    conn,
+    "OMSET — SUM(NSUBTOTAL) per DTGLJUAL (tanpa filter DTGLJAM, = staging)",
+    `SELECT h.DTGLJUAL, ROUND(SUM(d.NSUBTOTAL),1) AS omset, COUNT(*) AS n
+     FROM tr_hjualbbm h JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  await step(
+    conn,
+    "PELANGGAN — union vw_jualplg ⊎ vw_usevouc, SUM per DTGL (non-batal)",
+    `SELECT DTGL, ROUND(SUM(t),0) AS pelanggan FROM (
+        SELECT DTGL, TotalHarga AS t, SBATAL FROM vw_jualplg WHERE DTGL >= ? AND DTGL < ?
+        UNION ALL
+        SELECT DTGL, NJUMLAHUSE AS t, SBATAL FROM vw_usevouc WHERE DTGL >= ? AND DTGL < ?
+     ) u WHERE COALESCE(SBATAL,0) = 0 GROUP BY DTGL ORDER BY DTGL`,
+    [lo, hiNext, lo, hiNext],
+  );
+
+  await step(
+    conn,
+    "EDC non-blank — SUM(TotalHarga) per ctgl (CKDKARTU<>'')",
+    `SELECT ctgl, ROUND(SUM(TotalHarga),0) AS edc, COUNT(*) AS n
+     FROM vw_edc3 WHERE ctgl >= ? AND ctgl <= ? AND CKDKARTU IS NOT NULL AND CKDKARTU <> ''
+     GROUP BY ctgl ORDER BY ctgl`,
+    [ctglLo, ctglHi],
+  );
+  await step(
+    conn,
+    "EDC BLANK-CARD — SUM per ctgl (kepatuhan; harus terpisah)",
+    `SELECT ctgl, ROUND(SUM(TotalHarga),0) AS blank, COUNT(*) AS n
+     FROM vw_edc3 WHERE ctgl >= ? AND ctgl <= ? AND (CKDKARTU IS NULL OR CKDKARTU = '')
+     GROUP BY ctgl ORDER BY ctgl`,
+    [ctglLo, ctglHi],
+  );
+
+  await step(
+    conn,
+    "DEPOSIT — SUM(NTOTAL) per DTGL (non-batal)",
+    `SELECT DTGL, ROUND(SUM(NTOTAL),0) AS deposit, COUNT(*) AS n
+     FROM tr_deposit WHERE DTGL >= ? AND DTGL < ? AND COALESCE(SBATAL,0) = 0
+     GROUP BY DTGL ORDER BY DTGL`,
+    [lo, hiNext],
+  );
+
+  out("\n==========================================================");
+  out("GOLD CHECK SELESAI — read-only. Bandingkan tiap sel ke recon staging:");
+  out("  sama EKSAK → sync setia (UPSERT idempoten); beda → gap nyata, diagnosa.");
+  out("==========================================================");
+}
+
 export async function runProbe8(conn: EasyMaxConnection): Promise<void> {
   out("==========================================================");
   out("FASE 0.5g PROBE — lock go-live (MyISAM concurrent_insert + Data_free)");
