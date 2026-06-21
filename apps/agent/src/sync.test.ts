@@ -50,7 +50,7 @@ const CFG = {
   sync: {
     pollIntervalMs: 1, masterIntervalMs: 1, safetyWindowMin: 60,
     cashRescanDays: 7, batchSize: 1000,
-    salesRescanDays: 7, salesResyncChunkDays: 3,
+    salesRescanDays: 7, salesResyncChunkDays: 3, salesRescanIntervalMs: 0,
   },
 } as unknown as AgentConfig;
 
@@ -89,7 +89,7 @@ describe("paginasi boundary (grup DTGLJAM identik terpotong LIMIT)", () => {
     const { client, sent } = fakeClient({});
     const store = new StateStore(dir);
     const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 2 } } as AgentConfig;
-    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: false });
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: false, includeSalesRescan: false });
 
     const sales = sent.find((p) => p.domain === "sales")!;
     const nozzles = sales.tables.sales_detail!.map((r) => r.ckdnozzle).sort();
@@ -141,7 +141,7 @@ describe("runCycle", () => {
     const store = new StateStore(dir);
     const deps: SyncDeps = { conn: fakeConn(), client, store, cfg: CFG, dryRun: true };
 
-    await runCycle(deps, { includeMasters: false, includePelanggan: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false, includeSalesRescan: false });
 
     expect(sent).toHaveLength(0);
     expect(store.getWatermark("sales")).toBeNull();
@@ -152,7 +152,7 @@ describe("runCycle", () => {
     const store = new StateStore(dir);
     const deps: SyncDeps = { conn: fakeConn(), client, store, cfg: CFG, dryRun: false };
 
-    await runCycle(deps, { includeMasters: false, includePelanggan: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false, includeSalesRescan: false });
 
     const salesPayload = sent.find((p) => p.domain === "sales");
     expect(salesPayload).toBeDefined();
@@ -190,7 +190,7 @@ describe("runCycle", () => {
       sync: { ...CFG.sync, pelangganChunkDays: 7, pelangganRescanDays: 3 },
     } as unknown as AgentConfig;
 
-    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true, includeSalesRescan: false });
 
     // 1 dispatch pelanggan_sale (1 baris), 0 voucher.
     const plg = sent.filter((p) => p.domain === "pelanggan" && p.tables.pelanggan_sale);
@@ -225,7 +225,7 @@ describe("runCycle", () => {
     const store = new StateStore(dir);
     const cfg = { ...CFG, sync: { ...CFG.sync, pelangganChunkDays: 7 } } as unknown as AgentConfig;
 
-    await runCycle({ conn, client: offline.client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+    await runCycle({ conn, client: offline.client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true, includeSalesRescan: false });
 
     // Batch pertama ter-buffer (offline) → backfill berhenti TANPA memajukan watermark.
     expect(store.getWatermark("pelanggan")).toBeNull();
@@ -275,6 +275,43 @@ describe("runCycle", () => {
     expect(store.getWatermark("sales")).toBeNull();
   });
 
+  it("runCycle: rescan SALES hanya jalan bila includeSalesRescan (ter-gate interval)", async () => {
+    // Conn yang melayani SALES_RESYNC (vw-by-DTGLJUAL) 1 baris; sales incremental kosong.
+    const mkConn = () =>
+      ({
+        async roQuery(sql: string) {
+          if (sql.includes("tr_hjualbbm") && sql.includes("DTGLJUAL >=")) {
+            return [{
+              CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: "1", NVOLUME: "50", NHARGAJUAL: "10000",
+              NSUBTOTAL: "500000", CKDBBM: "P1", CKDTANGKI: "T1", NSTANDAWAL: "0",
+              NSTANDAKHIR: "50", VCOPEATOR: "-", DTGLJAM: null, SUBAH: "0", SEDIT: "0",
+              DTGLJUAL: "2026-06-15", NSHIFT: "3", VCKET: null,
+            }];
+          }
+          return [];
+        },
+      }) as unknown as EasyMaxConnection;
+    const cfg = {
+      ...CFG, sync: { ...CFG.sync, salesRescanDays: 7, salesResyncChunkDays: 30 },
+    } as unknown as AgentConfig;
+
+    // OFF → tak ada payload sales dari rescan.
+    const off = fakeClient({});
+    await runCycle(
+      { conn: mkConn(), client: off.client, store: new StateStore(dir), cfg, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+    expect(off.sent.some((p) => p.domain === "sales")).toBe(false);
+
+    // ON → rescan men-dispatch baris (termasuk eks-NULL-DTGLJAM).
+    const on = fakeClient({});
+    await runCycle(
+      { conn: mkConn(), client: on.client, store: new StateStore(dir), cfg, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: true },
+    );
+    expect(on.sent.some((p) => p.domain === "sales" && (p.tables.sales_detail?.length ?? 0) > 0)).toBe(true);
+  });
+
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {
     const offline = fakeClient({ fail: true });
     const store = new StateStore(dir);
@@ -282,7 +319,7 @@ describe("runCycle", () => {
       conn: fakeConn(), client: offline.client, store, cfg: CFG, dryRun: false,
     };
 
-    await runCycle(deps, { includeMasters: false, includePelanggan: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false, includeSalesRescan: false });
     expect(store.bufferCount()).toBeGreaterThan(0); // ter-buffer
     // Watermark TIDAK maju sebelum batch sukses di-ingest backend.
     expect(store.getWatermark("sales")).toBeNull();
@@ -292,7 +329,7 @@ describe("runCycle", () => {
     const deps2: SyncDeps = {
       conn: fakeConn(), client: online.client, store, cfg: CFG, dryRun: false,
     };
-    await runCycle(deps2, { includeMasters: false, includePelanggan: false });
+    await runCycle(deps2, { includeMasters: false, includePelanggan: false, includeSalesRescan: false });
 
     expect(store.bufferCount()).toBe(0);
     expect(online.sent.some((p) => p.domain === "sales")).toBe(true);
