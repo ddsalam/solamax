@@ -48,6 +48,10 @@ const ConfigSchema = z.object({
     // view berat di MySQL 5.0 (~4 dtk/hari); 3 hari menutup shift-3 lewat-malam +
     // margin (≈12 dtk). Koreksi >3 hari lampau = limitasi pilot (lihat FASE1-PLAN).
     pelangganRescanDays: z.number().int().default(3),
+    // Lebar window backfill pelanggan (sekali, produksi). Jalan-mundur per window
+    // agar tiap query vw_jualplg ter-bound (DTGL pushdown) — hindari materialisasi
+    // 288k sekaligus yang STALL di mesin SPBU (21 Jun). 7 hari ≈ ringan & deterministik.
+    pelangganChunkDays: z.number().int().default(7),
     batchSize: z.number().int().default(1000),
   }),
 

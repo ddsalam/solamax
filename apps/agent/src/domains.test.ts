@@ -131,10 +131,10 @@ describe("PELANGGAN map (vw_jualplg & vw_usevouc — DTGL header, vcnmplg denorm
     });
   });
 
-  it("saleSql = view vw_jualplg (path tervalidasi; base-table di-revert)", () => {
+  it("saleSql = view vw_jualplg, ter-bound DTGL [lo,hi) utk window backfill", () => {
     const sql = PELANGGAN_DOMAIN.saleSql.replace(/\s+/g, " ");
     expect(sql).toContain("FROM vw_jualplg");
-    expect(sql).toContain("WHERE DTGL >= ?");
+    expect(sql).toContain("WHERE DTGL >= ? AND DTGL < ?"); // batas atas eksklusif (chunk)
   });
 
   it("mapVoucher: total=NJUMLAHUSE, liter dari kolom liter (huruf kecil)", () => {

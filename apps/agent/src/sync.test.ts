@@ -159,6 +159,77 @@ describe("runCycle", () => {
     expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
   });
 
+  it("pelanggan backfill: jalan-mundur per window, berhenti 3 window kosong, watermark di akhir", async () => {
+    const PLG_ROW = {
+      DTGL: "2026-06-14", CKDPLG: "PLG2952", VCNMPLG: "PT INDOMARCO P.",
+      Liter: "3960.34", TotalHarga: "73890378", CKDJUALPLG: "JP1",
+      NSHIFT: "2", SBATAL: "0", CKDBBM: "BB-07",
+    };
+    // vw_jualplg: layani 1 baris pada window PERTAMA (paling baru) saja, sisanya [].
+    // → window 2/3/4 kosong = emptyStreak 3 → berhenti. Voucher selalu [].
+    const saleWindows: Array<{ lo: string; hiExcl: string }> = [];
+    let saleServed = false;
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("vw_jualplg")) {
+          saleWindows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+          if (!saleServed) {
+            saleServed = true;
+            return [PLG_ROW];
+          }
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = {
+      ...CFG,
+      sync: { ...CFG.sync, pelangganChunkDays: 7, pelangganRescanDays: 3 },
+    } as unknown as AgentConfig;
+
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+
+    // 1 dispatch pelanggan_sale (1 baris), 0 voucher.
+    const plg = sent.filter((p) => p.domain === "pelanggan" && p.tables.pelanggan_sale);
+    expect(plg).toHaveLength(1);
+    const saleRows = plg[0]!.tables.pelanggan_sale!;
+    expect(saleRows).toHaveLength(1);
+    expect(saleRows[0]!.business_date).toBe("2026-06-14");
+
+    // Berhenti setelah tepat 4 window (1 berisi + 3 kosong beruntun).
+    expect(saleWindows).toHaveLength(4);
+    // Jalan-MUNDUR & setengah-terbuka kontigu: hiExcl turun, window berikut hiExcl == lo sebelumnya.
+    for (let i = 1; i < saleWindows.length; i++) {
+      expect(saleWindows[i]!.hiExcl).toBe(saleWindows[i - 1]!.lo);
+      expect(saleWindows[i]!.hiExcl < saleWindows[i - 1]!.hiExcl).toBe(true);
+    }
+    // Watermark di-set ke business_date tertinggi yang mendarat — hanya di AKHIR backfill.
+    expect(store.getWatermark("pelanggan")).toBe("2026-06-14");
+  });
+
+  it("pelanggan backfill: backend offline → tak ada watermark (Ctrl-C aman, re-run ulang)", async () => {
+    const PLG_ROW = {
+      DTGL: "2026-06-14", CKDPLG: "PLG2952", VCNMPLG: "PT INDOMARCO P.",
+      Liter: "3960.34", TotalHarga: "73890378", CKDJUALPLG: "JP1",
+      NSHIFT: "2", SBATAL: "0", CKDBBM: "BB-07",
+    };
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("vw_jualplg") ? [PLG_ROW] : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const offline = fakeClient({ fail: true });
+    const store = new StateStore(dir);
+    const cfg = { ...CFG, sync: { ...CFG.sync, pelangganChunkDays: 7 } } as unknown as AgentConfig;
+
+    await runCycle({ conn, client: offline.client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+
+    // Batch pertama ter-buffer (offline) → backfill berhenti TANPA memajukan watermark.
+    expect(store.getWatermark("pelanggan")).toBeNull();
+  });
+
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {
     const offline = fakeClient({ fail: true });
     const store = new StateStore(dir);
