@@ -19,8 +19,11 @@
   "sync": {
     "pollIntervalMs": 120000,
     "masterIntervalMs": 3600000,
+    "pelangganIntervalMs": 900000,
     "safetyWindowMin": 60,
     "cashRescanDays": 7,
+    "edcRescanDays": 5,
+    "pelangganRescanDays": 3,
     "batchSize": 1000
   },
   "dataDir": "./data"

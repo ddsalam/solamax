@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon, type IconName } from "@/components/NavIcon";
 import { ago } from "@/lib/format";
+import { deriveTopbarSelection } from "@/lib/selection-keys";
 
 /**
  * Navigasi tunggal: rail kiri ber-grup yang bisa diringkas (desktop) dan
@@ -106,7 +107,10 @@ export function Sidebar({
   lastSync: string | null;
 }) {
   const path = usePathname();
-  const groups = buildGroups(unitCode, date);
+  // Di rute laporan, link laporan/rincian ikut unit+tanggal URL (otoritatif) →
+  // pindah Laporan↔Rincian pertahankan tanggal kini, bukan cookie basi.
+  const { unit: navUnit, date: navDate } = deriveTopbarSelection(path, unitCode, date);
+  const groups = buildGroups(navUnit, navDate);
 
   const renderItem = (it: NavItem) => {
     if (it.href === null) {

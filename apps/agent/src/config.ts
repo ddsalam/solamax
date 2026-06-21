@@ -36,8 +36,22 @@ const ConfigSchema = z.object({
   sync: z.object({
     pollIntervalMs: z.number().int().default(120_000), // 2 menit
     masterIntervalMs: z.number().int().default(3_600_000), // 1 jam (master jarang berubah)
+    // Pelanggan = domain BERAT (union view ~12 dtk). Poll jarang (15 mnt) agar
+    // ringan ke DB POS; laporan harian tak butuh real-time per-menit.
+    pelangganIntervalMs: z.number().int().default(900_000), // 15 menit
     safetyWindowMin: z.number().int().default(60), // re-scan trailing (temuan Q-SALES-3)
     cashRescanDays: z.number().int().default(7),
+    // Window rescan EDC (business-date ctgl). EDC final per hari, koreksi jarang
+    // → 5 hari cukup; backend REPLACE per business_date (jangan re-delete 266k/cycle).
+    edcRescanDays: z.number().int().default(5),
+    // Window rescan pelanggan (DTGL header). SEMPIT (3 hari) karena query union
+    // view berat di MySQL 5.0 (~4 dtk/hari); 3 hari menutup shift-3 lewat-malam +
+    // margin (≈12 dtk). Koreksi >3 hari lampau = limitasi pilot (lihat FASE1-PLAN).
+    pelangganRescanDays: z.number().int().default(3),
+    // Lebar window backfill pelanggan (sekali, produksi). Jalan-mundur per window
+    // agar tiap query vw_jualplg ter-bound (DTGL pushdown) — hindari materialisasi
+    // 288k sekaligus yang STALL di mesin SPBU (21 Jun). 7 hari ≈ ringan & deterministik.
+    pelangganChunkDays: z.number().int().default(7),
     batchSize: z.number().int().default(1000),
   }),
 

@@ -7,7 +7,7 @@ import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import { IngestError, type IngestClient } from "./ingest-client.js";
 import { StateStore } from "./state/store.js";
-import { runCycle, type SyncDeps } from "./sync.js";
+import { batchByBusinessDate, runCycle, type SyncDeps } from "./sync.js";
 
 const SALES_ROW = {
   CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: 1, NVOLUME: "50", NHARGAJUAL: "10000",
@@ -88,7 +88,7 @@ describe("paginasi boundary (grup DTGLJAM identik terpotong LIMIT)", () => {
     const { client, sent } = fakeClient({});
     const store = new StateStore(dir);
     const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 2 } } as AgentConfig;
-    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false });
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: false });
 
     const sales = sent.find((p) => p.domain === "sales")!;
     const nozzles = sales.tables.sales_detail!.map((r) => r.ckdnozzle).sort();
@@ -98,13 +98,49 @@ describe("paginasi boundary (grup DTGLJAM identik terpotong LIMIT)", () => {
   });
 });
 
+describe("batchByBusinessDate (REPLACE: satu tanggal tak boleh terpisah)", () => {
+  const mk = (date: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ business_date: date, i }));
+
+  it("tak memecah satu business_date walau melewati batas batch", () => {
+    // 3 tanggal × 4 baris, batchSize 5 → batas 5 jatuh di tengah tanggal ke-2.
+    const rows = [...mk("D1", 4), ...mk("D2", 4), ...mk("D3", 4)];
+    const batches = batchByBusinessDate(rows, 5);
+    // Tiap batch hanya berisi tanggal-tanggal UTUH (tak ada tanggal yang muncul di 2 batch).
+    const dateToBatch = new Map<string, number>();
+    batches.forEach((b, bi) => {
+      for (const r of b) {
+        const prev = dateToBatch.get(r.business_date);
+        expect(prev === undefined || prev === bi).toBe(true);
+        dateToBatch.set(r.business_date, bi);
+      }
+    });
+    expect(batches.flat()).toHaveLength(12); // 0 drop
+    expect(new Set([...dateToBatch.values()]).size).toBe(batches.length);
+  });
+
+  it("satu tanggal > batchSize tetap satu batch utuh", () => {
+    const batches = batchByBusinessDate(mk("D1", 7), 5);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(7);
+  });
+
+  it("GUARD: satu business_date > cap 5000 → error keras (jangan pecah REPLACE)", () => {
+    expect(() => batchByBusinessDate(mk("D1", 5001), 1000)).toThrow(
+      /business_date D1: 5001 baris > cap 5000/,
+    );
+    // tepat di cap (5000) → aman (satu batch utuh).
+    expect(() => batchByBusinessDate(mk("D1", 5000), 1000)).not.toThrow();
+  });
+});
+
 describe("runCycle", () => {
   it("dry-run: tidak mengirim & tidak memajukan watermark", async () => {
     const { client, sent } = fakeClient({});
     const store = new StateStore(dir);
     const deps: SyncDeps = { conn: fakeConn(), client, store, cfg: CFG, dryRun: true };
 
-    await runCycle(deps, { includeMasters: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false });
 
     expect(sent).toHaveLength(0);
     expect(store.getWatermark("sales")).toBeNull();
@@ -115,12 +151,83 @@ describe("runCycle", () => {
     const store = new StateStore(dir);
     const deps: SyncDeps = { conn: fakeConn(), client, store, cfg: CFG, dryRun: false };
 
-    await runCycle(deps, { includeMasters: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false });
 
     const salesPayload = sent.find((p) => p.domain === "sales");
     expect(salesPayload).toBeDefined();
     expect(salesPayload!.tables.sales_detail).toHaveLength(1);
     expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
+  });
+
+  it("pelanggan backfill: jalan-mundur per window, berhenti 3 window kosong, watermark di akhir", async () => {
+    const PLG_ROW = {
+      DTGL: "2026-06-14", CKDPLG: "PLG2952", VCNMPLG: "PT INDOMARCO P.",
+      Liter: "3960.34", TotalHarga: "73890378", CKDJUALPLG: "JP1",
+      NSHIFT: "2", SBATAL: "0", CKDBBM: "BB-07",
+    };
+    // vw_jualplg: layani 1 baris pada window PERTAMA (paling baru) saja, sisanya [].
+    // → window 2/3/4 kosong = emptyStreak 3 → berhenti. Voucher selalu [].
+    const saleWindows: Array<{ lo: string; hiExcl: string }> = [];
+    let saleServed = false;
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("vw_jualplg")) {
+          saleWindows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+          if (!saleServed) {
+            saleServed = true;
+            return [PLG_ROW];
+          }
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = {
+      ...CFG,
+      sync: { ...CFG.sync, pelangganChunkDays: 7, pelangganRescanDays: 3 },
+    } as unknown as AgentConfig;
+
+    await runCycle({ conn, client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+
+    // 1 dispatch pelanggan_sale (1 baris), 0 voucher.
+    const plg = sent.filter((p) => p.domain === "pelanggan" && p.tables.pelanggan_sale);
+    expect(plg).toHaveLength(1);
+    const saleRows = plg[0]!.tables.pelanggan_sale!;
+    expect(saleRows).toHaveLength(1);
+    expect(saleRows[0]!.business_date).toBe("2026-06-14");
+
+    // Berhenti setelah tepat 4 window (1 berisi + 3 kosong beruntun).
+    expect(saleWindows).toHaveLength(4);
+    // Jalan-MUNDUR & setengah-terbuka kontigu: hiExcl turun, window berikut hiExcl == lo sebelumnya.
+    for (let i = 1; i < saleWindows.length; i++) {
+      expect(saleWindows[i]!.hiExcl).toBe(saleWindows[i - 1]!.lo);
+      expect(saleWindows[i]!.hiExcl < saleWindows[i - 1]!.hiExcl).toBe(true);
+    }
+    // Watermark di-set ke business_date tertinggi yang mendarat — hanya di AKHIR backfill.
+    expect(store.getWatermark("pelanggan")).toBe("2026-06-14");
+  });
+
+  it("pelanggan backfill: backend offline → tak ada watermark (Ctrl-C aman, re-run ulang)", async () => {
+    const PLG_ROW = {
+      DTGL: "2026-06-14", CKDPLG: "PLG2952", VCNMPLG: "PT INDOMARCO P.",
+      Liter: "3960.34", TotalHarga: "73890378", CKDJUALPLG: "JP1",
+      NSHIFT: "2", SBATAL: "0", CKDBBM: "BB-07",
+    };
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("vw_jualplg") ? [PLG_ROW] : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const offline = fakeClient({ fail: true });
+    const store = new StateStore(dir);
+    const cfg = { ...CFG, sync: { ...CFG.sync, pelangganChunkDays: 7 } } as unknown as AgentConfig;
+
+    await runCycle({ conn, client: offline.client, store, cfg, dryRun: false }, { includeMasters: false, includePelanggan: true });
+
+    // Batch pertama ter-buffer (offline) → backfill berhenti TANPA memajukan watermark.
+    expect(store.getWatermark("pelanggan")).toBeNull();
   });
 
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {
@@ -130,7 +237,7 @@ describe("runCycle", () => {
       conn: fakeConn(), client: offline.client, store, cfg: CFG, dryRun: false,
     };
 
-    await runCycle(deps, { includeMasters: false });
+    await runCycle(deps, { includeMasters: false, includePelanggan: false });
     expect(store.bufferCount()).toBeGreaterThan(0); // ter-buffer
     // Watermark TIDAK maju sebelum batch sukses di-ingest backend.
     expect(store.getWatermark("sales")).toBeNull();
@@ -140,7 +247,7 @@ describe("runCycle", () => {
     const deps2: SyncDeps = {
       conn: fakeConn(), client: online.client, store, cfg: CFG, dryRun: false,
     };
-    await runCycle(deps2, { includeMasters: false });
+    await runCycle(deps2, { includeMasters: false, includePelanggan: false });
 
     expect(store.bufferCount()).toBe(0);
     expect(online.sent.some((p) => p.domain === "sales")).toBe(true);

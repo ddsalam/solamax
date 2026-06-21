@@ -20,12 +20,14 @@ export type { ScopedUnit, ScopedUnitId, ScopeCtx } from "./scope-rule";
 
 /** Pegangan scope ter-otorisasi. Hanya dibuat oleh getDataScope(). */
 export class DataScope {
+  readonly userId: number;
   readonly role: Role;
   readonly email: string | null;
   readonly tenantId: string | null;
   readonly units: ScopedUnit[];
 
   constructor(ctx: AuthContext, units: ScopedUnit[]) {
+    this.userId = ctx.userId;
     this.role = ctx.role;
     this.email = ctx.email;
     this.tenantId = ctx.tenantId;

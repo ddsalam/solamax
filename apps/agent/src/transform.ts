@@ -70,6 +70,18 @@ export function businessDate(value: string | null | undefined): string | null {
   return m[1]!;
 }
 
+/** `ctgl` EasyMax "YYYYMMDD" → tanggal bisnis "YYYY-MM-DD" (null bila tak valid). */
+export function ctglToBusinessDate(ctgl: string | null | undefined): string | null {
+  if (ctgl === null || ctgl === undefined) return null;
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(ctgl).trim());
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/** Tanggal bisnis "YYYY-MM-DD" → `ctgl` "YYYYMMDD" (untuk bind ke vw_edc3.ctgl). */
+export function businessDateToCtgl(date: string): string {
+  return date.replace(/-/g, "");
+}
+
 /** Konversi numeric MySQL (string/number/null) → number|null. */
 export function num(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;

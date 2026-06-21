@@ -104,6 +104,20 @@ tersync**, sehingga tanggal yang kini "provisional" di dashboard menjadi final o
 - Node.js terpasang di mesin SPBU (sudah, dari smoke-test).
 - Folder bundle agent permanen, mis. `C:\solamax-agent\`.
 
+> **⚠️ Bundle terjadwal HARUS = tree ter-patch (≥ 2026-06-21, backfill pelanggan berjendela).**
+> Backfill pelanggan penuh memakai **window mundur 7-hari** (`pelangganChunkDays`) — kode lama
+> menarik `vw_jualplg` (≈288k baris) dalam SATU query dan **STALL** di mesin SPBU di bawah beban
+> pompa (kejadian 21 Jun: hang >5 mnt, di-Ctrl-C). Steady-state (rescan 3-hari) aman dgn kode lama,
+> TAPI rebuild bundle / backfill ulang dari source lama akan regresi. Pastikan `solamax-agent.cjs`
+> yang dijadwalkan 24/7 dibangun dari source yang memuat fix ini (PR `fix/pelanggan-backfill-window`
+> → staging). Verifikasi cepat: log saat full backfill menampilkan baris `pelanggan backfill: window …`
+> berturut (bukan satu `tarik vw_jualplg` yang diam lama).
+>
+> **Floor backfill 3-tahun (knob).** Backfill berhenti di `today − 3 thn` (mis. 2023-06-19) ATAU
+> 3 window kosong beruntun, mana lebih dulu. Pada go-live 21 Jun ia mencapai floor → ~7k baris
+> pelanggan **pra-2023 tidak ditarik** (sengaja; gate-date 14–18 Jun 2026 jauh di dalam window).
+> Bila perlu histori penuh, naikkan pengali floor di `syncPelanggan` (`subtractDays(todayWib, 366*3)`).
+
 **Langkah (🖥️, di mesin SPBU)**
 1. Tentukan mode loop. Dua pilihan:
    - **(a) Mode loop bawaan agent** (disarankan): jalankan tanpa `--once` → agent loop sendiri
@@ -127,7 +141,9 @@ tersync**, sehingga tanggal yang kini "provisional" di dashboard menjadi final o
 **Verifikasi**
 - 🖥️ Task Scheduler → History/Last Run Result = `0x0`; proses `node` terlihat di Task Manager.
 - ☁️ Query `sync_state` (psql RO via proxy): `last_run_at` semua domain bergerak maju tiap
-  beberapa menit; `SELECT max(last_run_at) FROM sync_state` ≈ now.
+  beberapa menit; `SELECT max(last_run_at) FROM sync_state` ≈ now. **Catatan:** `last_watermark`
+  NULL utk `deposit`/`edc`/`pelanggan` = **wajar** (full-sync / REPLACE-per-business_date kirim
+  `watermark_high: null`; agent simpan watermark sendiri secara lokal). Cek `last_row_count` terisi.
 - ☁️ Setelah ≥1 siklus pagi berikutnya: buka dashboard `/unit/6478111/laporan/<kemarin>` →
   badge "Gain/Losses belum final" **hilang** (opname penutup sudah masuk).
 - 🖥️ Uji tahan-mati: reboot mesin → task auto-start → `sync_state` lanjut.

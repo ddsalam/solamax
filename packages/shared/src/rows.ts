@@ -101,6 +101,74 @@ export const RealTankRow = z.object({
   dtanggaljam: isoUtc, // waktu pembacaan (agent konversi WIB→UTC)
 });
 
+/**
+ * Deposit prabayar pelanggan (sumber `tr_deposit`, PK `CKDDEPO`). Watermark =
+ * `DTGL` (tanggal bisnis). `ckdplg` → master pelanggan (`tm_plg.CKDPLG`).
+ * `sbatal` ditarik apa adanya; rescan window menangkap pembatalan menyusul.
+ */
+export const DepositRow = z.object({
+  ckddepo: z.string(),
+  dtgl: isoDate,
+  ckdplg: str,
+  ntotal: num,
+  nsaldo: num,
+  sbatal: z.number().int().nullable(),
+  vcket: str,
+});
+
+/**
+ * Penjualan tempo pelanggan (sub-A: sumber view `vw_jualplg` = pjualplg/RFID/
+ * deposit). `business_date` = `DTGL` header (bersih). `vcnmplg` DI-DENORMALISASI
+ * dari view (tak perlu master tm_plg). Idempotensi: REPLACE per (unit_id, business_date).
+ */
+export const PelangganSaleRow = z.object({
+  business_date: isoDate,
+  ckdplg: str,
+  vcnmplg: str,
+  ckdjualplg: str,
+  ckdbbm: str,
+  nshift: z.number().int().nullable(),
+  liter: num,
+  total: num,
+  sbatal: z.number().int().nullable(),
+});
+
+/**
+ * Penjualan voucher pelanggan (sub-B: sumber view `vw_usevouc`). Rupiah =
+ * `NJUMLAHUSE`. Union dgn pelanggan_sale per `CKDPLG` (transaksi disjoint UV vs JP).
+ */
+export const VoucherSaleRow = z.object({
+  business_date: isoDate,
+  ckdplg: str,
+  vcnmplg: str,
+  ckdusevouc: str,
+  ckdbbm: str,
+  nshift: z.number().int().nullable(),
+  liter: num,
+  total: num,
+  sbatal: z.number().int().nullable(),
+});
+
+/**
+ * Transaksi EDC/non-tunai (sumber view `vw_edc3`). `business_date` = `ctgl`
+ * (tanggal bisnis EasyMax 'YYYYMMDD' → 'YYYY-MM-DD'); `tanggaljam` = waktu rekam
+ * (agent konversi WIB→UTC). `ckdkartu` null = kartu tak tercatat ("blank-card",
+ * dikecualikan dari breakdown channel laporan tapi tetap disinkron + di-flag).
+ * `tr_edc` TAK punya SBATAL → idempotensi via REPLACE per (unit_id, business_date).
+ */
+export const EdcRow = z.object({
+  business_date: isoDate,
+  cshift: str,
+  tanggaljam: isoUtc,
+  ckdkartu: str, // null = blank-card
+  total: num,
+  liter: num,
+  jenis: z.number().int().nullable(),
+  cnotrace: str,
+  nonozle: str,
+  jrnkey: z.number().int().nullable(),
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -126,6 +194,14 @@ export const AccountRow = z.object({
   ckdinduk: str,
 });
 
+/** Master kartu/channel EDC (sumber `tm_card`, PK `CKDCARD`). Nama channel di laporan. */
+export const CardRow = z.object({
+  ckdcard: z.string(),
+  vcnmcard: str,
+  ckdbank: str,
+  cgl: str,
+});
+
 /** Map nama tabel → skema baris. */
 export const ROW_SCHEMA = {
   sales_header: SalesHeaderRow,
@@ -139,6 +215,11 @@ export const ROW_SCHEMA = {
   tangki: TangkiRow,
   account: AccountRow,
   real_tank: RealTankRow,
+  deposit: DepositRow,
+  edc: EdcRow,
+  card: CardRow,
+  pelanggan_sale: PelangganSaleRow,
+  voucher_sale: VoucherSaleRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -153,3 +234,8 @@ export type NozzleRow = z.infer<typeof NozzleRow>;
 export type TangkiRow = z.infer<typeof TangkiRow>;
 export type AccountRow = z.infer<typeof AccountRow>;
 export type RealTankRow = z.infer<typeof RealTankRow>;
+export type DepositRow = z.infer<typeof DepositRow>;
+export type EdcRow = z.infer<typeof EdcRow>;
+export type CardRow = z.infer<typeof CardRow>;
+export type PelangganSaleRow = z.infer<typeof PelangganSaleRow>;
+export type VoucherSaleRow = z.infer<typeof VoucherSaleRow>;
