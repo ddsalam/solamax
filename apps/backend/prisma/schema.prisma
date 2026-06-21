@@ -218,6 +218,101 @@ model Account {
   @@schema("public")
 }
 
+// --- Rincian Penjualan (FASE 1b) — sumber TERKUNCI by probe (ADR-001) ---
+
+// Deposit prabayar pelanggan (tr_deposit). UPSERT by (unit_id, ckddepo); full-sync agent.
+model Deposit {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckddepo    String   @db.Char(15)
+  dtgl       DateTime @db.Date
+  ckdplg     String?  @db.VarChar(12)
+  ntotal     Decimal? @db.Decimal
+  nsaldo     Decimal? @db.Decimal
+  sbatal     Int?     @db.SmallInt
+  vcket      String?
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckddepo])
+  @@index([unitId, dtgl])
+  @@map("deposit")
+  @@schema("public")
+}
+
+// EDC/non-tunai (vw_edc3). Surrogate id; REPLACE per (unit_id, business_date).
+// ckdkartu null = blank-card (tak terklasifikasi; di-flag di dashboard).
+model Edc {
+  id           BigInt   @id @default(autoincrement())
+  unitId       Int      @map("unit_id") @db.SmallInt
+  businessDate DateTime @map("business_date") @db.Date
+  cshift       String?  @db.VarChar(1)
+  tanggaljam   DateTime @db.Timestamptz()
+  ckdkartu     String?  @db.Char(5)
+  total        Decimal? @db.Decimal
+  liter        Decimal? @db.Decimal
+  jenis        Int?     @db.SmallInt
+  cnotrace     String?  @db.VarChar(20)
+  nonozle      String?  @db.VarChar(4)
+  jrnkey       Int?
+  ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate])
+  @@map("edc")
+  @@schema("public")
+}
+
+// Penjualan tempo pelanggan (vw_jualplg). Surrogate id; REPLACE per business_date.
+model PelangganSale {
+  id           BigInt   @id @default(autoincrement())
+  unitId       Int      @map("unit_id") @db.SmallInt
+  businessDate DateTime @map("business_date") @db.Date
+  ckdplg       String?  @db.VarChar(12)
+  vcnmplg      String?
+  ckdjualplg   String?  @db.Char(15)
+  ckdbbm       String?  @db.VarChar(5)
+  nshift       Int?     @db.SmallInt
+  liter        Decimal? @db.Decimal
+  total        Decimal? @db.Decimal
+  sbatal       Int?     @db.SmallInt
+  ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate])
+  @@map("pelanggan_sale")
+  @@schema("public")
+}
+
+// Penjualan voucher pelanggan (vw_usevouc). Surrogate id; REPLACE per business_date.
+model VoucherSale {
+  id           BigInt   @id @default(autoincrement())
+  unitId       Int      @map("unit_id") @db.SmallInt
+  businessDate DateTime @map("business_date") @db.Date
+  ckdplg       String?  @db.VarChar(12)
+  vcnmplg      String?
+  ckdusevouc   String?  @db.Char(15)
+  ckdbbm       String?  @db.VarChar(5)
+  nshift       Int?     @db.SmallInt
+  liter        Decimal? @db.Decimal
+  total        Decimal? @db.Decimal
+  sbatal       Int?     @db.SmallInt
+  ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate])
+  @@map("voucher_sale")
+  @@schema("public")
+}
+
+// Master kartu/channel EDC (tm_card). PK (unit_id, ckdcard); full-sync.
+model Card {
+  unitId   Int     @map("unit_id") @db.SmallInt
+  ckdcard  String  @db.Char(5)
+  vcnmcard String?
+  ckdbank  String? @db.Char(5)
+  cgl      String? @db.VarChar(8)
+
+  @@id([unitId, ckdcard])
+  @@map("card")
+  @@schema("public")
+}
+
 // ===========================================================================
 // Schema `app` — auth (Auth.js v5 / @auth/pg-adapter) + RBAC multi-tenant.
 // Tabel Auth.js dipetakan VERBATIM sesuai DDL adapter (id serial int, kolom
@@ -316,6 +411,36 @@ model Membership {
 }
 
 /// Scope unit utk pengawas (direksi/admin = semua unit tenant → tanpa baris).
+// Manual-entry pengawas (Pendapatan Lain / Pengeluaran). Identitas = id uuid;
+// `urut` ordering biasa (BUKAN bagian unique). Audit void: voided_by + voided_at.
+enum ManualEntrySection {
+  pendapatan_lain
+  pengeluaran
+
+  @@map("manual_entry_section")
+  @@schema("app")
+}
+
+model ManualEntry {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int                @map("unit_id") @db.SmallInt
+  businessDate    DateTime           @map("business_date") @db.Date
+  section         ManualEntrySection
+  urut            Int                @default(0)
+  keterangan      String
+  amount          Decimal            @db.Decimal(17, 2)
+  void            Boolean            @default(false)
+  createdByUserId Int                @map("created_by_user_id")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime           @default(now()) @map("updated_at") @db.Timestamptz()
+  voidedByUserId  Int?               @map("voided_by_user_id")
+  voidedAt        DateTime?          @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate, section])
+  @@map("manual_entry")
+  @@schema("app")
+}
+
 model UserUnit {
   membershipId String @map("membership_id") @db.Uuid
   unitId       Int    @map("unit_id") @db.SmallInt

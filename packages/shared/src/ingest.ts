@@ -25,12 +25,24 @@ export const IngestPayload = z.object({
       tangki: z.array(ROW_SCHEMA.tangki).optional(),
       account: z.array(ROW_SCHEMA.account).optional(),
       real_tank: z.array(ROW_SCHEMA.real_tank).optional(),
+      deposit: z.array(ROW_SCHEMA.deposit).optional(),
+      edc: z.array(ROW_SCHEMA.edc).optional(),
+      card: z.array(ROW_SCHEMA.card).optional(),
+      pelanggan_sale: z.array(ROW_SCHEMA.pelanggan_sale).optional(),
+      voucher_sale: z.array(ROW_SCHEMA.voucher_sale).optional(),
     })
     .refine((t) => Object.values(t).some((rows) => rows && rows.length > 0), {
       message: "payload tidak boleh kosong — minimal satu tabel berisi baris",
     }),
 });
 export type IngestPayload = z.infer<typeof IngestPayload>;
+
+/**
+ * Batas keras baris per tabel per request /ingest. Sumber kebenaran tunggal
+ * (backend menolak >ini; agent mem-batch ≤ini). Satu business_date REPLACE wajib
+ * muat dalam SATU payload → date >cap = error keras (lihat agent batchByBusinessDate).
+ */
+export const MAX_ROWS_PER_TABLE = 5000;
 
 export const IngestResponse = z.object({
   upserted: z.record(z.string(), z.number()),

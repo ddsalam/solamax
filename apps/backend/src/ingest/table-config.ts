@@ -9,10 +9,16 @@ export interface TableConfig {
   table: string;
   /** Kolom payload, urutan tetap. */
   columns: readonly string[];
-  /** Target ON CONFLICT (selain unit_id yang selalu ikut). */
+  /** Target ON CONFLICT (selain unit_id yang selalu ikut). Kosong utk mode replace. */
   conflict: readonly string[];
   /** Punya kolom ingested_at yang di-refresh saat update. */
   hasIngestedAt: boolean;
+  /**
+   * REPLACE per (unit_id, business_date): DELETE baris business_date di payload
+   * lalu INSERT — utk tabel tanpa PK baris bersih (edc/pelanggan_sale/voucher_sale).
+   * Agent WAJIB mengirim satu business_date utuh per payload (jangan terpisah).
+   */
+  replaceByBusinessDate?: boolean;
 }
 
 export const TABLE_CONFIG: Record<string, TableConfig> = {
@@ -97,7 +103,54 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     conflict: ["ckdtangki"],
     hasIngestedAt: true,
   },
+
+  // --- Rincian Penjualan (FASE 1b) ---
+  // deposit: UPSERT by (unit_id, ckddepo); full-sync agent.
+  deposit: {
+    table: "deposit",
+    columns: ["ckddepo", "dtgl", "ckdplg", "ntotal", "nsaldo", "sbatal", "vcket"],
+    conflict: ["ckddepo"],
+    hasIngestedAt: true,
+  },
+  // card: master EDC, UPSERT by (unit_id, ckdcard).
+  card: {
+    table: "card",
+    columns: ["ckdcard", "vcnmcard", "ckdbank", "cgl"],
+    conflict: ["ckdcard"],
+    hasIngestedAt: false,
+  },
+  // edc/pelanggan_sale/voucher_sale: REPLACE per (unit_id, business_date).
+  edc: {
+    table: "edc",
+    columns: [
+      "business_date", "cshift", "tanggaljam", "ckdkartu", "total", "liter",
+      "jenis", "cnotrace", "nonozle", "jrnkey",
+    ],
+    conflict: [],
+    hasIngestedAt: true,
+    replaceByBusinessDate: true,
+  },
+  pelanggan_sale: {
+    table: "pelanggan_sale",
+    columns: [
+      "business_date", "ckdplg", "vcnmplg", "ckdjualplg", "ckdbbm", "nshift",
+      "liter", "total", "sbatal",
+    ],
+    conflict: [],
+    hasIngestedAt: true,
+    replaceByBusinessDate: true,
+  },
+  voucher_sale: {
+    table: "voucher_sale",
+    columns: [
+      "business_date", "ckdplg", "vcnmplg", "ckdusevouc", "ckdbbm", "nshift",
+      "liter", "total", "sbatal",
+    ],
+    conflict: [],
+    hasIngestedAt: true,
+    replaceByBusinessDate: true,
+  },
 };
 
-/** Batas keras baris per tabel per request (kontrak ~1000; toleransi 5x). */
-export const MAX_ROWS_PER_TABLE = 5000;
+/** Batas keras baris per tabel per request — sumber tunggal di @solamax/shared. */
+export { MAX_ROWS_PER_TABLE } from "@solamax/shared";

@@ -1,5 +1,12 @@
 import type { Domain, IngestPayload } from "@solamax/shared";
-import { businessDate, int, num, str, wibDateTimeToUtcIso } from "./transform.js";
+import {
+  businessDate,
+  ctglToBusinessDate,
+  int,
+  num,
+  str,
+  wibDateTimeToUtcIso,
+} from "./transform.js";
 
 type Raw = Record<string, unknown>;
 type Tables = IngestPayload["tables"];
@@ -36,6 +43,57 @@ export interface DateDomain {
   mode: "date";
   sql: string; // `?1` = cutoff date "YYYY-MM-DD"
   map(raw: Raw[]): MappedPage;
+}
+
+/**
+ * Domain deposit — FULL SYNC tiap siklus (tr_deposit kecil, ~6k baris). Tanpa
+ * watermark: tarik SELURUH baris → nol gap pembatalan (SBATAL flip kapan pun
+ * tertangkap; EasyMax flag-batal, bukan hard-delete). UPSERT by (unit_id,ckddepo).
+ */
+export interface DepositDomain {
+  domain: Extract<Domain, "deposit">;
+  mode: "full";
+  table: "deposit";
+  sql: string;
+  map(raw: Raw[]): NonNullable<Tables["deposit"]>;
+}
+
+/**
+ * Domain EDC (vw_edc3) — incremental per `ctgl` (tanggal bisnis EasyMax) +
+ * rescan window. Backend REPLACE per (unit_id, business_date) tiap rescan
+ * (EDC final per hari; tr_edc tanpa SBATAL → replace yang menangkap koreksi).
+ * `?1` = startCtgl "YYYYMMDD".
+ */
+export interface EdcDomain {
+  domain: Extract<Domain, "edc">;
+  mode: "ctgl-window";
+  table: "edc";
+  sql: string;
+  map(raw: Raw[], offsetMin: number): {
+    rows: NonNullable<Tables["edc"]>;
+    businessDateHigh: string | null;
+  };
+}
+
+/**
+ * Domain pelanggan (union dua view) — incremental per `DTGL` (header bersih) +
+ * rescan window. `vw_jualplg` (JP) ⊎ `vw_usevouc` (UV); SUM per CKDPLG di
+ * dashboard. Nama `VCNMPLG` denormal dari view. Backend REPLACE per business_date.
+ * `?1` = startDate "YYYY-MM-DD".
+ */
+export interface PelangganDomain {
+  domain: Extract<Domain, "pelanggan">;
+  mode: "dtgl-window";
+  saleSql: string;
+  voucherSql: string;
+  mapSale(raw: Raw[]): {
+    rows: NonNullable<Tables["pelanggan_sale"]>;
+    dtglHigh: string | null;
+  };
+  mapVoucher(raw: Raw[]): {
+    rows: NonNullable<Tables["voucher_sale"]>;
+    dtglHigh: string | null;
+  };
 }
 
 /** Domain master — full sync, tanpa watermark. */
@@ -262,6 +320,145 @@ const CASH: DateDomain = {
 };
 
 // ---------------------------------------------------------------------------
+// DEPOSIT (tr_deposit) — prabayar pelanggan; FULL SYNC (tabel kecil ~6k).
+// PK CKDDEPO. Rekon terbukti eksak 5 hari (FASE 0.5d): 15/6 131.084.492·7,
+// 16/6 4.000.000·2, 17/6 47.000.000·6, 18/6 76.601.236·3 (non-batal).
+// ---------------------------------------------------------------------------
+const DEPOSIT: DepositDomain = {
+  domain: "deposit",
+  mode: "full",
+  table: "deposit",
+  sql: `
+    SELECT CKDDEPO, DTGL, CKDPLG, NTOTAL, NSALDO, SBATAL, VCKET
+    FROM tr_deposit
+    ORDER BY DTGL ASC, CKDDEPO ASC`,
+  map(raw) {
+    const rows: NonNullable<Tables["deposit"]> = [];
+    for (const r of raw) {
+      rows.push({
+        ckddepo: String(r.CKDDEPO),
+        dtgl: businessDate(str(r.DTGL)) ?? "1970-01-01",
+        ckdplg: str(r.CKDPLG),
+        ntotal: num(r.NTOTAL),
+        nsaldo: num(r.NSALDO),
+        sbatal: int(r.SBATAL),
+        vcket: str(r.VCKET),
+      });
+    }
+    return rows;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// EDC (vw_edc3) — incremental per ctgl; channel via tm_card (CKDKARTU→CKDCARD).
+// Rekon terbukti (FASE 0.5d): ctgl 20260614 channel-sum 90.974.097 (blank 3.132.398),
+// 20260617 116.565.499 (blank 3.695.046). business_date dari ctgl.
+// ---------------------------------------------------------------------------
+const EDC: EdcDomain = {
+  domain: "edc",
+  mode: "ctgl-window",
+  table: "edc",
+  sql: `
+    SELECT TanggalJam, ctgl, cshift, CKDKARTU, TotalHarga, Liter, Jenis,
+           CNOTRACE, NoNozle, JrnKey
+    FROM vw_edc3
+    WHERE ctgl >= ?
+    ORDER BY ctgl ASC, TanggalJam ASC`,
+  map(raw, offsetMin) {
+    const rows: NonNullable<Tables["edc"]> = [];
+    let bdHigh: string | null = null;
+    for (const r of raw) {
+      const bd = ctglToBusinessDate(str(r.ctgl));
+      if (bd === null) continue; // ctgl wajib (tanggal bisnis)
+      if (bdHigh === null || bd > bdHigh) bdHigh = bd;
+      const tj = wibDateTimeToUtcIso(str(r.TanggalJam), offsetMin);
+      if (tj === null) continue; // butuh waktu rekam valid
+      rows.push({
+        business_date: bd,
+        cshift: str(r.cshift),
+        tanggaljam: tj,
+        ckdkartu: str(r.CKDKARTU), // null = blank-card
+        total: num(r.TotalHarga),
+        liter: num(r.Liter),
+        jenis: int(r.Jenis),
+        cnotrace: str(r.CNOTRACE),
+        nonozle: str(r.NoNozle),
+        jrnkey: int(r.JrnKey),
+      });
+    }
+    return { rows, businessDateHigh: bdHigh };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// PELANGGAN (vw_jualplg ⊎ vw_usevouc) — penjualan tempo per pelanggan.
+// business_date = DTGL (header bersih). vcnmplg denormal dari view.
+// Rekon terbukti (FASE 0.5): 14/6 111.502.580/7.583,30L/18; 17/6 155.113.552/48.
+// ---------------------------------------------------------------------------
+const PELANGGAN: PelangganDomain = {
+  domain: "pelanggan",
+  mode: "dtgl-window",
+  // Sumber view `vw_jualplg` — path TERVALIDASI PENUH (dry-run rekon eksak 14–18 Jun).
+  // Base-table sempat dicoba (probe FASE05f) tapi DI-REVERT: hanya ~15% lebih cepat,
+  // TAK menyelesaikan lock (bottleneck = join `tr_djualplg` tanpa index `CKDJUALPLG`,
+  // tak bisa diubah di EasyMax read-only) & divergen dari path tervalidasi. Mitigasi
+  // latensi/lock = window 3-hari + poll 15 mnt; lock-gate dijawab oleh probe FASE05g
+  // (concurrent_insert + Data_free) yang dijalankan Dion di mesin SPBU.
+  saleSql: `
+    SELECT DTGL, CKDPLG, VCNMPLG, Liter, TotalHarga, CKDJUALPLG, NSHIFT, SBATAL, CKDBBM
+    FROM vw_jualplg
+    WHERE DTGL >= ?
+    ORDER BY DTGL ASC`,
+  voucherSql: `
+    SELECT DTGL, CKDPLG, VCNMPLG, liter, NJUMLAHUSE, CKDUSEVOUC, NSHIFT, SBATAL, CKDBBM
+    FROM vw_usevouc
+    WHERE DTGL >= ?
+    ORDER BY DTGL ASC`,
+  mapSale(raw) {
+    const rows: NonNullable<Tables["pelanggan_sale"]> = [];
+    let dtglHigh: string | null = null;
+    for (const r of raw) {
+      const bd = businessDate(str(r.DTGL));
+      if (bd === null) continue; // DTGL header wajib
+      if (dtglHigh === null || bd > dtglHigh) dtglHigh = bd;
+      rows.push({
+        business_date: bd,
+        ckdplg: str(r.CKDPLG),
+        vcnmplg: str(r.VCNMPLG),
+        ckdjualplg: str(r.CKDJUALPLG),
+        ckdbbm: str(r.CKDBBM),
+        nshift: int(r.NSHIFT),
+        liter: num(r.Liter),
+        total: num(r.TotalHarga),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return { rows, dtglHigh };
+  },
+  mapVoucher(raw) {
+    const rows: NonNullable<Tables["voucher_sale"]> = [];
+    let dtglHigh: string | null = null;
+    for (const r of raw) {
+      const bd = businessDate(str(r.DTGL));
+      if (bd === null) continue;
+      if (dtglHigh === null || bd > dtglHigh) dtglHigh = bd;
+      rows.push({
+        business_date: bd,
+        ckdplg: str(r.CKDPLG),
+        vcnmplg: str(r.VCNMPLG),
+        ckdusevouc: str(r.CKDUSEVOUC),
+        ckdbbm: str(r.CKDBBM),
+        nshift: int(r.NSHIFT),
+        liter: num(r.liter),
+        total: num(r.NJUMLAHUSE),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return { rows, dtglHigh };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // MASTERS — full sync
 // ---------------------------------------------------------------------------
 const MASTERS: MasterDomain = {
@@ -324,6 +521,18 @@ const MASTERS: MasterDomain = {
           };
         }),
     },
+    {
+      // Master kartu/channel EDC (nama channel di laporan). PK CKDCARD.
+      table: "card",
+      sql: "SELECT CKDCARD, VCNMCARD, CKDBANK, CGL FROM tm_card",
+      map: (raw) =>
+        raw.map((r) => ({
+          ckdcard: String(r.CKDCARD),
+          vcnmcard: str(r.VCNMCARD),
+          ckdbank: str(r.CKDBANK),
+          cgl: str(r.CGL),
+        })),
+    },
   ],
 };
 
@@ -371,5 +580,8 @@ const REALTANK: RealtankDomain = {
 
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
+export const DEPOSIT_DOMAIN = DEPOSIT;
+export const EDC_DOMAIN = EDC;
+export const PELANGGAN_DOMAIN = PELANGGAN;
 export const MASTERS_DOMAIN = MASTERS;
 export const REALTANK_DOMAIN = REALTANK;

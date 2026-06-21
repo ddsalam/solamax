@@ -1,7 +1,7 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { IngestPayload, IngestResponse } from "@solamax/shared";
 import { PrismaService } from "../prisma.service.js";
-import { buildUpsert } from "./sql.js";
+import { buildReplace, buildUpsert } from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
 
 @Injectable()
@@ -33,9 +33,14 @@ export class IngestService {
     const totalRows = entries.reduce((n, [, rows]) => n + rows.length, 0);
     const watermark = payload.watermark_high; // ISO string; cast ::timestamptz di SQL
 
-    const statements = entries.map(([table, rows]) =>
-      buildUpsert(TABLE_CONFIG[table]!, unitId, rows),
-    );
+    // REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale) → [DELETE, INSERT];
+    // selain itu UPSERT by natural key. Semua di SATU transaksi (atomik + idempoten).
+    const statements = entries.flatMap(([table, rows]) => {
+      const cfg = TABLE_CONFIG[table]!;
+      return cfg.replaceByBusinessDate
+        ? buildReplace(cfg, unitId, rows)
+        : [buildUpsert(cfg, unitId, rows)];
+    });
 
     await this.prisma.$transaction(async (tx) => {
       for (const { sql, params } of statements) {

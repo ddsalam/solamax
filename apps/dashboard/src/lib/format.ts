@@ -3,7 +3,12 @@
 export const idn = (n: number, d = 0): string =>
   n.toLocaleString("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-export const rp = (n: number): string => `Rp ${idn(Math.round(Math.abs(n)))}`;
+/** Rupiah. Nilai negatif (mis. Summary H = E+F−G yang sah negatif) ditampilkan
+ *  dgn tanda minus "−Rp …" — JANGAN jatuhkan tanda (positif menyesatkan). */
+export const rp = (n: number): string => {
+  const v = Math.round(n) || 0; // `|| 0` menormalkan -0 → 0 (toLocaleString(-0) = "-0")
+  return v < 0 ? `−Rp ${idn(Math.abs(v))}` : `Rp ${idn(v)}`;
+};
 
 /** Omzet ringkas ala spec: ≥1 M → "Rp 1,61 M", else "Rp 312,4 jt". */
 export function rpShort(n: number): string {
