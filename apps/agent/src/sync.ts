@@ -489,71 +489,133 @@ function logPelangganRecon(
   }
 }
 
-async function syncPelanggan(d: SyncDeps): Promise<void> {
-  // Union dua view, incremental per DTGL (header bersih) + rescan window. Dry-run
-  // dibatasi ~14 hari terakhir agar ringan (vw_jualplg 288k / vw_usevouc 103k).
-  const stored = d.store.getWatermark("pelanggan"); // "YYYY-MM-DD" | null
-  let startDate: string;
-  if (stored) {
-    startDate = subtractDays(stored, d.cfg.sync.pelangganRescanDays);
-  } else if (d.dryRun) {
-    // JANGAN MAX(DTGL) atas view (agregat = materialisasi penuh 288k = berat/hang
-    // di MySQL 5.0). Bound dari tanggal sistem WIB − 14 hari (cukup gate 14–18 Jun);
-    // WHERE DTGL>=? pada view MERGE = filter ter-pushdown, ringan.
-    const todayWib = new Date(Date.now() + tzOffsetMinutes(d.cfg.timezone) * 60_000)
-      .toISOString()
-      .slice(0, 10);
-    // 8 hari: cukup tampilkan 14–18 Jun di gate, tapi jauh lebih ringan dari 14
-    // hari (view ~4 dtk/hari → ~30 dtk, bukan 64 dtk). Steady-state pakai window 3 hari.
-    startDate = subtractDays(todayWib, 8);
-  } else {
-    startDate = EPOCH_DATE; // backfill penuh (production, sekali)
-  }
+/** Batas atas sentinel utk window tunggal (inkremental/dry-run): praktis tak terbatas. */
+const PELANGGAN_FAR_FUTURE = "9999-12-31";
 
-  // Observability: lokalisasi bila satu query view berat/hang (bukan abort senyap).
-  log.info("pelanggan: tarik vw_jualplg", { since: startDate });
-  const saleRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.saleSql, [startDate]);
-  log.info("pelanggan: vw_jualplg ok", { baris: saleRaw.length });
-  log.info("pelanggan: tarik vw_usevouc", { since: startDate });
-  const vouRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.voucherSql, [startDate]);
-  log.info("pelanggan: vw_usevouc ok", { baris: vouRaw.length });
-  const sale = PELANGGAN_DOMAIN.mapSale(saleRaw);
-  const vou = PELANGGAN_DOMAIN.mapVoucher(vouRaw);
-  if (sale.rows.length === 0 && vou.rows.length === 0) {
-    log.info("pelanggan: 0 baris", { since: startDate });
-    return;
-  }
+/** dtglHigh tertinggi dari dua kandidat (mana pun boleh null). */
+function higherDate(a: string | null, b: string | null): string | null {
+  if (a && b) return a > b ? a : b;
+  return a ?? b;
+}
 
-  if (d.dryRun) logPelangganRecon(sale.rows, vou.rows);
+/** Tarik satu window [lo, hiExcl) dari kedua view, kembalikan hasil ter-map. */
+async function pullPelangganWindow(
+  d: SyncDeps,
+  lo: string,
+  hiExcl: string,
+): Promise<{
+  sale: ReturnType<typeof PELANGGAN_DOMAIN.mapSale>;
+  vou: ReturnType<typeof PELANGGAN_DOMAIN.mapVoucher>;
+}> {
+  const saleRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.saleSql, [lo, hiExcl]);
+  const vouRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.voucherSql, [lo, hiExcl]);
+  return {
+    sale: PELANGGAN_DOMAIN.mapSale(saleRaw),
+    vou: PELANGGAN_DOMAIN.mapVoucher(vouRaw),
+  };
+}
 
-  // Kirim per-batch UTUH-PER-TANGGAL per tabel. Backend REPLACE per
-  // (unit_id, business_date) → satu business_date tak boleh terpisah antar payload.
-  for (const chunk of batchByBusinessDate(sale.rows, d.cfg.sync.batchSize)) {
+/**
+ * Kirim baris pelanggan UTUH-PER-TANGGAL per tabel. Backend REPLACE per
+ * (unit_id, business_date) → satu business_date tak boleh terpisah antar payload.
+ * Kembalikan `false` bila ada batch tak "ok" (buffered/dry) → pemanggil berhenti
+ * TANPA memajukan watermark (siklus depan ulang).
+ */
+async function dispatchPelanggan(
+  d: SyncDeps,
+  saleRows: PelangganSaleRow[],
+  vouRows: VoucherSaleRow[],
+): Promise<boolean> {
+  for (const chunk of batchByBusinessDate(saleRows, d.cfg.sync.batchSize)) {
     const status = await dispatch(d, {
       unit_code: d.cfg.unitCode,
       domain: "pelanggan",
       watermark_high: null,
       tables: { pelanggan_sale: chunk },
     });
-    if (status !== "ok") return; // buffered/dry — siklus depan ulang window
+    if (status !== "ok") return false;
   }
-  for (const chunk of batchByBusinessDate(vou.rows, d.cfg.sync.batchSize)) {
+  for (const chunk of batchByBusinessDate(vouRows, d.cfg.sync.batchSize)) {
     const status = await dispatch(d, {
       unit_code: d.cfg.unitCode,
       domain: "pelanggan",
       watermark_high: null,
       tables: { voucher_sale: chunk },
     });
-    if (status !== "ok") return; // buffered/dry — siklus depan ulang window
+    if (status !== "ok") return false;
+  }
+  return true;
+}
+
+async function syncPelanggan(d: SyncDeps): Promise<void> {
+  const stored = d.store.getWatermark("pelanggan"); // "YYYY-MM-DD" | null
+  const todayWib = new Date(Date.now() + tzOffsetMinutes(d.cfg.timezone) * 60_000)
+    .toISOString()
+    .slice(0, 10);
+
+  // ── Jalur steady-state (watermark ada) & dry-run: window tunggal terbatas-baru.
+  // vw_jualplg/vw_usevouc difilter DTGL>=startDate (pushdown MERGE = ringan); batas
+  // atas = sentinel jauh. JANGAN MAX(DTGL) atas view (agregat = materialisasi 288k).
+  if (stored || d.dryRun) {
+    const startDate = stored
+      ? subtractDays(stored, d.cfg.sync.pelangganRescanDays)
+      : subtractDays(todayWib, 8); // dry-run gate: cukup tampil 14–18 Jun, ringan
+    log.info("pelanggan: tarik window", { since: startDate });
+    const { sale, vou } = await pullPelangganWindow(d, startDate, PELANGGAN_FAR_FUTURE);
+    log.info("pelanggan: window ok", { sale: sale.rows.length, vou: vou.rows.length });
+    if (sale.rows.length === 0 && vou.rows.length === 0) {
+      log.info("pelanggan: 0 baris", { since: startDate });
+      return;
+    }
+    if (d.dryRun) logPelangganRecon(sale.rows, vou.rows);
+    if (!(await dispatchPelanggan(d, sale.rows, vou.rows))) return;
+    const high = higherDate(sale.dtglHigh, vou.dtglHigh);
+    if (!d.dryRun && high) d.store.setWatermark("pelanggan", high);
+    return;
   }
 
-  const high =
-    sale.dtglHigh && vou.dtglHigh
-      ? sale.dtglHigh > vou.dtglHigh
-        ? sale.dtglHigh
-        : vou.dtglHigh
-      : (sale.dtglHigh ?? vou.dtglHigh);
-  if (!d.dryRun && high) d.store.setWatermark("pelanggan", high);
+  // ── Backfill penuh (produksi, sekali): JALAN-MUNDUR per window agar tiap query
+  // vw_jualplg ter-bound (filter DTGL) — hindari materialisasi 288k sekaligus yang
+  // STALL di mesin SPBU. Berhenti setelah 3 window kosong beruntun (lewat awal data)
+  // atau capai floor ~3 thn (guard anti-loop). Watermark di-set hanya di AKHIR →
+  // Ctrl-C di tengah aman (re-run mengulang backfill; REPLACE per-tanggal idempoten).
+  const chunkDays = d.cfg.sync.pelangganChunkDays;
+  const floor = subtractDays(todayWib, 366 * 3);
+  let hiExcl = subtractDays(todayWib, -1); // besok (inklusif hari ini)
+  let emptyStreak = 0;
+  let high: string | null = null;
+  let windows = 0;
+  let landed = 0;
+  while (true) {
+    const lo = subtractDays(hiExcl, chunkDays);
+    const { sale, vou } = await pullPelangganWindow(d, lo, hiExcl);
+    const n = sale.rows.length + vou.rows.length;
+    log.info("pelanggan backfill: window", {
+      lo,
+      hiExcl,
+      sale: sale.rows.length,
+      vou: vou.rows.length,
+    });
+    if (n === 0) {
+      emptyStreak += 1;
+    } else {
+      emptyStreak = 0;
+      if (!(await dispatchPelanggan(d, sale.rows, vou.rows))) return; // buffered → re-run
+      high = higherDate(high, higherDate(sale.dtglHigh, vou.dtglHigh));
+      landed += n;
+    }
+    windows += 1;
+    if (emptyStreak >= 3) {
+      log.info("pelanggan backfill: selesai (3 window kosong beruntun)", { windows, landed });
+      break;
+    }
+    if (lo <= floor) {
+      log.info("pelanggan backfill: capai floor", { floor, windows, landed });
+      break;
+    }
+    hiExcl = lo;
+  }
+  if (high) d.store.setWatermark("pelanggan", high);
 }
 
 async function syncMasters(d: SyncDeps): Promise<void> {

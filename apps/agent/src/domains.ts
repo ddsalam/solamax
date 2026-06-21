@@ -404,15 +404,19 @@ const PELANGGAN: PelangganDomain = {
   // tak bisa diubah di EasyMax read-only) & divergen dari path tervalidasi. Mitigasi
   // latensi/lock = window 3-hari + poll 15 mnt; lock-gate dijawab oleh probe FASE05g
   // (concurrent_insert + Data_free) yang dijalankan Dion di mesin SPBU.
+  // `?1`=batas bawah inklusif, `?2`=batas atas EKSKLUSIF. Backfill memecah rentang
+  // jadi window (mis. 7 hari) → tiap query vw_jualplg ter-bound (filter DTGL pushdown,
+  // ringan) alih-alih materialisasi 288k sekaligus (stall di mesin SPBU 21 Jun).
+  // Window inkremental/dry-run pakai `?2`=sentinel jauh ('9999-12-31') = tanpa batas atas.
   saleSql: `
     SELECT DTGL, CKDPLG, VCNMPLG, Liter, TotalHarga, CKDJUALPLG, NSHIFT, SBATAL, CKDBBM
     FROM vw_jualplg
-    WHERE DTGL >= ?
+    WHERE DTGL >= ? AND DTGL < ?
     ORDER BY DTGL ASC`,
   voucherSql: `
     SELECT DTGL, CKDPLG, VCNMPLG, liter, NJUMLAHUSE, CKDUSEVOUC, NSHIFT, SBATAL, CKDBBM
     FROM vw_usevouc
-    WHERE DTGL >= ?
+    WHERE DTGL >= ? AND DTGL < ?
     ORDER BY DTGL ASC`,
   mapSale(raw) {
     const rows: NonNullable<Tables["pelanggan_sale"]> = [];
