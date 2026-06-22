@@ -416,6 +416,7 @@ model Membership {
 enum ManualEntrySection {
   pendapatan_lain
   pengeluaran
+  setoran_tunai
 
   @@map("manual_entry_section")
   @@schema("app")
