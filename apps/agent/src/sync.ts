@@ -9,6 +9,7 @@ import {
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
+  SALES_RESYNC,
   type DateTimeDomain,
 } from "./domains.js";
 import { IngestClient, IngestError } from "./ingest-client.js";
@@ -140,6 +141,85 @@ async function syncDatetimeDomain(
     // Paginasi terus sampai habis (backfill ~169k baris = ~169 batch dalam
     // satu run --once; tak perlu mode terpisah).
   }
+}
+
+/**
+ * Re-sync SALES untuk rentang business-date [fromDate, toExcl) — dipecah per
+ * window `salesResyncChunkDays` (anti-stall; base-table InnoDB, filter DTGLJUAL
+ * ter-pushdown). UPSERT idempoten; **tak memajukan watermark DTGLJAM** (orthogonal
+ * dgn sync incremental). Menangkap baris ber-DTGLJAM NULL (shift-3 di-key esok) yang
+ * incremental buang selamanya. Kembalikan `false` bila ada batch tak "ok".
+ */
+async function syncSalesWindow(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+): Promise<boolean> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  const chunk = Math.max(1, d.cfg.sync.salesResyncChunkDays);
+  let lo = fromDate;
+  while (lo < toExcl) {
+    let hiExcl = subtractDays(lo, -chunk); // lo + chunk hari
+    if (hiExcl > toExcl) hiExcl = toExcl;
+
+    const raw = await d.conn.roQuery<Record<string, unknown>>(SALES_RESYNC.sql, [
+      lo,
+      hiExcl,
+    ]);
+    const { sales_header, sales_detail } = SALES_RESYNC.map(raw, offset).tables;
+    log.info("sales resync: window", {
+      lo,
+      hiExcl,
+      header: sales_header.length,
+      detail: sales_detail.length,
+    });
+
+    // Pecah per batchSize HEADER (detail ikut header-nya). Tanpa FK, urutan bebas;
+    // kelompokkan agar payload < limit /ingest. Watermark TIDAK disentuh.
+    for (let i = 0; i < sales_header.length; i += d.cfg.sync.batchSize) {
+      const hChunk = sales_header.slice(i, i + d.cfg.sync.batchSize);
+      const ids = new Set(hChunk.map((h) => h.ckdjualbbm));
+      const dChunk = sales_detail.filter((x) => ids.has(x.ckdjualbbm));
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "sales",
+        watermark_high: null, // re-sync by business-date; jangan geser watermark DTGLJAM
+        tables: { sales_header: hChunk, sales_detail: dChunk },
+      });
+      if (status !== "ok") return false; // buffered/dry — siklus depan ulang window
+    }
+    lo = hiExcl;
+  }
+  return true;
+}
+
+/**
+ * Re-backfill SALES satu rentang tanggal-bisnis (inklusif kedua ujung), dipanggil
+ * sekali dari CLI `--resync-sales <from> <to>`. Idempoten; aman diulang.
+ */
+export async function resyncSales(
+  d: SyncDeps,
+  fromDate: string,
+  toDate: string,
+): Promise<void> {
+  const toExcl = subtractDays(toDate, -1); // inklusif `toDate`
+  log.info("sales resync: mulai", { from: fromDate, to: toDate });
+  const ok = await syncSalesWindow(d, fromDate, toExcl);
+  log.info("sales resync: selesai", { from: fromDate, to: toDate, ok });
+}
+
+/**
+ * Hardening steady-state: tiap siklus, re-UPSERT SALES jendela `salesRescanDays`
+ * terakhir berbasis DTGLJUAL (pola cash). Menyembuhkan baris NULL-DTGLJAM &
+ * back-dated tanpa menunggu intervensi. Murni UPSERT — aman & idempoten.
+ */
+async function syncSalesRescan(d: SyncDeps): Promise<void> {
+  const todayWib = new Date(Date.now() + tzOffsetMinutes(d.cfg.timezone) * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  const from = subtractDays(todayWib, d.cfg.sync.salesRescanDays);
+  const toExcl = subtractDays(todayWib, -1); // mencakup hari ini
+  await syncSalesWindow(d, from, toExcl);
 }
 
 async function syncCash(d: SyncDeps): Promise<void> {
@@ -663,7 +743,11 @@ async function syncRealTank(d: SyncDeps): Promise<void> {
  */
 export async function runCycle(
   d: SyncDeps,
-  opts: { includeMasters: boolean; includePelanggan: boolean },
+  opts: {
+    includeMasters: boolean;
+    includePelanggan: boolean;
+    includeSalesRescan: boolean;
+  },
 ): Promise<void> {
   // Flush buffer dulu (FIFO). Bila backend masih offline → lewati live agar
   // urutan terjaga & buffer tak membengkak tak terkendali.
@@ -690,6 +774,18 @@ export async function runCycle(
     } catch (err) {
       log.error("domain gagal — dilewati siklus ini", {
         domain: def.domain,
+        err: String(err),
+      });
+    }
+  }
+  // Hardening: rescan SALES per business-date (sembuhkan NULL-DTGLJAM/back-dated).
+  // Ber-interval (bukan tiap poll) agar tak membanjiri Cloud SQL dgn re-UPSERT.
+  if (opts.includeSalesRescan) {
+    try {
+      await syncSalesRescan(d);
+    } catch (err) {
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: "sales-rescan",
         err: String(err),
       });
     }
@@ -761,14 +857,18 @@ export async function runForever(d: SyncDeps): Promise<void> {
 
   let lastMasters = 0;
   let lastPelanggan = 0;
+  let lastSalesRescan = 0;
   while (!stopped) {
     const now = Date.now();
     const includeMasters = now - lastMasters >= d.cfg.sync.masterIntervalMs;
     const includePelanggan = now - lastPelanggan >= d.cfg.sync.pelangganIntervalMs;
+    const includeSalesRescan =
+      now - lastSalesRescan >= d.cfg.sync.salesRescanIntervalMs;
     try {
-      await runCycle(d, { includeMasters, includePelanggan });
+      await runCycle(d, { includeMasters, includePelanggan, includeSalesRescan });
       if (includeMasters) lastMasters = Date.now();
       if (includePelanggan) lastPelanggan = Date.now();
+      if (includeSalesRescan) lastSalesRescan = Date.now();
     } catch (err) {
       log.error("siklus gagal (fatal)", { err: String(err) });
     }

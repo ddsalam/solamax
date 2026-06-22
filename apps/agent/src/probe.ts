@@ -708,6 +708,188 @@ export async function runProbe7(conn: EasyMaxConnection): Promise<void> {
  * tak ada "lubang" (Data_free=0). EasyMax flag-cancel (bukan hard-delete) → mungkin
  * tanpa lubang → lock MOOT. SELECT/SHOW only (read-only mutlak).
  */
+/**
+ * FASE 1 (Omset gap) — rekon EasyMax SALES per business-date (DTGLJUAL) vs PDF.
+ * Tujuan: konfirmasi EasyMax LENGKAP (= PDF) sementara staging kurang → buktikan
+ * masalah = sync stale, bukan sumber. Read-only (base-table InnoDB, ter-bound 5 hari).
+ * Default 14–18 Jun 2026. Bandingkan SUM(NSUBTOTAL) ke PDF Omset + lokalisasi per shift
+ * + hitung baris ter-edit (SUBAH/SEDIT) yang TAK tertangkap incremental DTGLJAM>watermark.
+ */
+const PDF_OMSET: Record<string, number> = {
+  "2026-06-14": 446_624_181,
+  "2026-06-15": 687_620_353,
+  "2026-06-16": 432_932_094,
+  "2026-06-17": 633_583_515,
+  "2026-06-18": 415_858_747,
+};
+
+export async function runProbe9(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length ? datesArg : Object.keys(PDF_OMSET);
+  const lo = dates[0]!;
+  const hiNext = nextDay(dates[dates.length - 1]!);
+  out("==========================================================");
+  out("FASE 1 PROBE — rekon SALES EasyMax per DTGLJUAL vs PDF (Omset gap)");
+  out("rentang: " + lo + " .. " + dates[dates.length - 1] + "  (PDF di kanan)");
+  out("==========================================================");
+
+  // P1 — grand total per business-date: COUNT detail + SUM(NSUBTOTAL).
+  await step(
+    conn,
+    "P1. per DTGLJUAL: n_header, n_detail, SUM(NSUBTOTAL)",
+    `SELECT h.DTGLJUAL,
+            COUNT(DISTINCT h.CKDJUALBBM) AS n_header,
+            COUNT(*)                     AS n_detail,
+            ROUND(SUM(d.NSUBTOTAL),0)    AS omset
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  // P2 — per shift: lokalisasi DI MANA staging kurang (mis. 15 Jun shift 2/3).
+  await step(
+    conn,
+    "P2. per DTGLJUAL × NSHIFT: n_detail, SUM, MAX(DTGLJAM)",
+    `SELECT h.DTGLJUAL, h.NSHIFT,
+            COUNT(*) AS n_detail,
+            ROUND(SUM(d.NSUBTOTAL),0) AS omset,
+            MAX(d.DTGLJAM) AS last_ts
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL, h.NSHIFT ORDER BY h.DTGLJUAL, h.NSHIFT`,
+    [lo, hiNext],
+  );
+
+  // P3 — baris ter-EDIT (SUBAH/SEDIT) per hari: koreksi pasca-tulis yang TIDAK
+  // tertangkap incremental (DTGLJAM lama < watermark) → akar selisih hari "penuh".
+  await step(
+    conn,
+    "P3. per DTGLJUAL: jumlah baris SUBAH=1 / SEDIT=1 (koreksi)",
+    `SELECT h.DTGLJUAL,
+            SUM(CASE WHEN d.SUBAH = 1 THEN 1 ELSE 0 END) AS n_subah,
+            SUM(CASE WHEN d.SEDIT = 1 THEN 1 ELSE 0 END) AS n_sedit
+     FROM tr_hjualbbm h
+     JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  // ---- Interpretasi terprogram: EasyMax vs PDF ----
+  out("\n##### INTERPRETASI (EasyMax vs PDF) #####");
+  const grand = await conn.roQuery<Record<string, unknown>>(
+    `SELECT h.DTGLJUAL AS d, ROUND(SUM(d.NSUBTOTAL),0) AS omset
+     FROM tr_hjualbbm h JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+  out("  tgl        | easymax        | pdf            | selisih (easymax−pdf)");
+  for (const r of grand) {
+    const d = String(r.d).slice(0, 10);
+    const em = Number(r.omset);
+    const pdf = PDF_OMSET[d];
+    const diff = pdf === undefined ? NaN : em - pdf;
+    const verdict =
+      pdf === undefined
+        ? "(tanpa PDF)"
+        : diff === 0
+          ? "✅ EKSAK = PDF"
+          : `Δ ${diff.toLocaleString("id-ID")}`;
+    out(
+      `  ${d} | ${em.toLocaleString("id-ID").padStart(14)} | ${(pdf ?? 0).toLocaleString("id-ID").padStart(14)} | ${verdict}`,
+    );
+  }
+  out("\n  Jika EasyMax = PDF (semua hari) → sumber LENGKAP; gap murni di staging");
+  out("  (sync sales stale). Rencana: re-backfill bounded per DTGLJUAL (UPSERT idempoten).");
+
+  out("\n==========================================================");
+  out("PROBE FASE 1 SELESAI — read-only, tak ada data dikirim/ditulis.");
+  out("==========================================================");
+}
+
+/**
+ * FASE FINAL — GOLD CHECK: total EasyMax-KINI per seksi auto-sync per tanggal,
+ * memakai SUMBER & predikat IDENTIK dgn yang disinkronkan agent (Omset tanpa filter
+ * DTGLJAM; Pelanggan union non-batal; EDC excl blank-card + blank terpisah; Deposit
+ * non-batal). Dion jalankan → bandingkan EKSAK ke recon staging. Sama = sync setia
+ * (UPSERT idempoten); beda = gap nyata. Read-only mutlak.
+ */
+export async function runProbe10(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length
+    ? datesArg
+    : ["2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+  const lo = dates[0]!;
+  const hi = dates[dates.length - 1]!;
+  const hiNext = nextDay(hi); // batas atas eksklusif utk kolom DATE
+  const ctglLo = lo.replace(/-/g, "");
+  const ctglHi = hi.replace(/-/g, "");
+  out("==========================================================");
+  out("FASE FINAL GOLD CHECK — total EasyMax-kini per seksi per tanggal");
+  out("rentang: " + lo + " .. " + hi + "  → bandingkan EKSAK ke recon staging");
+  out("==========================================================");
+
+  await step(
+    conn,
+    "OMSET — SUM(NSUBTOTAL) per DTGLJUAL (tanpa filter DTGLJAM, = staging)",
+    `SELECT h.DTGLJUAL, ROUND(SUM(d.NSUBTOTAL),1) AS omset, COUNT(*) AS n
+     FROM tr_hjualbbm h JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+     WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+     GROUP BY h.DTGLJUAL ORDER BY h.DTGLJUAL`,
+    [lo, hiNext],
+  );
+
+  await step(
+    conn,
+    "PELANGGAN — union vw_jualplg ⊎ vw_usevouc, SUM per DTGL (non-batal)",
+    `SELECT DTGL, ROUND(SUM(t),0) AS pelanggan FROM (
+        SELECT DTGL, TotalHarga AS t, SBATAL FROM vw_jualplg WHERE DTGL >= ? AND DTGL < ?
+        UNION ALL
+        SELECT DTGL, NJUMLAHUSE AS t, SBATAL FROM vw_usevouc WHERE DTGL >= ? AND DTGL < ?
+     ) u WHERE COALESCE(SBATAL,0) = 0 GROUP BY DTGL ORDER BY DTGL`,
+    [lo, hiNext, lo, hiNext],
+  );
+
+  await step(
+    conn,
+    "EDC non-blank — SUM(TotalHarga) per ctgl (CKDKARTU<>'')",
+    `SELECT ctgl, ROUND(SUM(TotalHarga),0) AS edc, COUNT(*) AS n
+     FROM vw_edc3 WHERE ctgl >= ? AND ctgl <= ? AND CKDKARTU IS NOT NULL AND CKDKARTU <> ''
+     GROUP BY ctgl ORDER BY ctgl`,
+    [ctglLo, ctglHi],
+  );
+  await step(
+    conn,
+    "EDC BLANK-CARD — SUM per ctgl (kepatuhan; harus terpisah)",
+    `SELECT ctgl, ROUND(SUM(TotalHarga),0) AS blank, COUNT(*) AS n
+     FROM vw_edc3 WHERE ctgl >= ? AND ctgl <= ? AND (CKDKARTU IS NULL OR CKDKARTU = '')
+     GROUP BY ctgl ORDER BY ctgl`,
+    [ctglLo, ctglHi],
+  );
+
+  await step(
+    conn,
+    "DEPOSIT — SUM(NTOTAL) per DTGL (non-batal)",
+    `SELECT DTGL, ROUND(SUM(NTOTAL),0) AS deposit, COUNT(*) AS n
+     FROM tr_deposit WHERE DTGL >= ? AND DTGL < ? AND COALESCE(SBATAL,0) = 0
+     GROUP BY DTGL ORDER BY DTGL`,
+    [lo, hiNext],
+  );
+
+  out("\n==========================================================");
+  out("GOLD CHECK SELESAI — read-only. Bandingkan tiap sel ke recon staging:");
+  out("  sama EKSAK → sync setia (UPSERT idempoten); beda → gap nyata, diagnosa.");
+  out("==========================================================");
+}
+
 export async function runProbe8(conn: EasyMaxConnection): Promise<void> {
   out("==========================================================");
   out("FASE 0.5g PROBE — lock go-live (MyISAM concurrent_insert + Data_free)");

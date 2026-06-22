@@ -184,6 +184,83 @@ const SALES: DateTimeDomain = {
 };
 
 // ---------------------------------------------------------------------------
+// SALES RE-SYNC (anti-stale) — berbasis BUSINESS-DATE h.DTGLJUAL, BUKAN DTGLJAM
+// ---------------------------------------------------------------------------
+/**
+ * Re-sync & rescan SALES per business-date. **KRITIS: TANPA predikat
+ * `DTGLJAM IS NOT NULL`.** Temuan probe9 (FASE 1): baris shift-3 yang di-key esok
+ * pagi punya `DTGLJAM = NULL` (mis. 15-Jun shift-3 = 130.247.852) — sync incremental
+ * `DTGLJAM > ?` membuangnya SELAMANYA (filter NULL + di bawah watermark). Filter
+ * berbasis `h.DTGLJUAL` menangkapnya. Kolom Postgres `sales_detail.dtgljam` NOT NULL
+ * → untuk baris NULL kita **sintesis = DTGLJUAL tengah-malam WIB** (Omset di-group per
+ * `header.dtgljual`, bukan detail `dtgljam`, jadi sintesis tak mengubah angka & tetap
+ * jatuh di tanggal-bisnis yang sama). CAVEAT konsumen `dtgljam`: query "terjual sejak
+ * opname" (dashboard `getLiveTankReconciliation`, `sd.dtgljam > opname.dtgljam`) bisa
+ * sedikit under-count baris eks-NULL bila opname diambil TENGAH hari (midnight sintetis
+ * < jam opname). Dampak kecil (opname umumnya awal hari); didokumentasikan di GO-LIVE.
+ * Idempoten via UPSERT
+ * (unit_id, ckdjualbbm, ckdnozzle, nurut) + header (unit_id, ckdjualbbm); TAK memajukan
+ * watermark DTGLJAM. `?1`=DTGLJUAL ≥ (inklusif), `?2`=DTGLJUAL < (eksklusif).
+ */
+export const SALES_RESYNC = {
+  sql: `
+    SELECT d.CKDJUALBBM, d.CKDNOZZLE, d.NURUT, d.NSTANDAWAL, d.NSTANDAKHIR,
+           d.NVOLUME, d.NHARGAJUAL, d.NSUBTOTAL, d.CKDBBM, d.CKDTANGKI,
+           d.VCOPEATOR, d.DTGLJAM, d.SUBAH, d.SEDIT,
+           h.DTGLJUAL, h.NSHIFT, h.VCKET
+    FROM tr_hjualbbm h
+    JOIN tr_djualbbm d ON d.CKDJUALBBM = h.CKDJUALBBM
+    WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?
+    ORDER BY h.DTGLJUAL ASC`,
+  map(raw: Raw[], offsetMin: number): {
+    tables: {
+      sales_header: NonNullable<Tables["sales_header"]>;
+      sales_detail: NonNullable<Tables["sales_detail"]>;
+    };
+  } {
+    const headers = new Map<string, NonNullable<Tables["sales_header"]>[number]>();
+    const details: NonNullable<Tables["sales_detail"]> = [];
+    for (const r of raw) {
+      const bd = businessDate(str(r.DTGLJUAL));
+      if (bd === null) continue; // tanpa business-date tak bisa ditempatkan
+      // DTGLJAM asli bila ada & valid; jika NULL/kosong → SINTESIS tengah-malam WIB
+      // dari DTGLJUAL (jaga dtgljam NOT NULL tanpa mengubah tanggal-bisnis).
+      const rawTs = str(r.DTGLJAM);
+      const dtgljam =
+        (rawTs ? wibDateTimeToUtcIso(rawTs, offsetMin) : null) ??
+        wibDateTimeToUtcIso(`${bd} 00:00:00`, offsetMin)!;
+
+      const ckdjualbbm = String(r.CKDJUALBBM);
+      if (!headers.has(ckdjualbbm)) {
+        headers.set(ckdjualbbm, {
+          ckdjualbbm,
+          dtgljual: bd,
+          nshift: int(r.NSHIFT),
+          vcket: str(r.VCKET),
+        });
+      }
+      details.push({
+        ckdjualbbm,
+        ckdnozzle: String(r.CKDNOZZLE),
+        nurut: int(r.NURUT) ?? 0,
+        nstandawal: num(r.NSTANDAWAL),
+        nstandakhir: num(r.NSTANDAKHIR),
+        nvolume: num(r.NVOLUME),
+        nhargajual: num(r.NHARGAJUAL),
+        nsubtotal: num(r.NSUBTOTAL),
+        ckdbbm: str(r.CKDBBM),
+        ckdtangki: str(r.CKDTANGKI),
+        vcopeator: str(r.VCOPEATOR),
+        dtgljam,
+        subah: int(r.SUBAH),
+        sedit: int(r.SEDIT),
+      });
+    }
+    return { tables: { sales_header: [...headers.values()], sales_detail: details } };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // OPNAME (tr_dopnamebbm ⋈ tr_hopnamebbm)
 // ---------------------------------------------------------------------------
 const OPNAME: DateTimeDomain = {

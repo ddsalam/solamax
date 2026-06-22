@@ -30,7 +30,10 @@ d("idempotensi /ingest (DB lokal)", () => {
   beforeAll(async () => {
     prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
     svc = new IngestService(prisma as unknown as PrismaService);
-    for (const t of ["deposit", "edc", "pelanggan_sale", "voucher_sale", "card"]) {
+    for (const t of [
+      "deposit", "edc", "pelanggan_sale", "voucher_sale", "card",
+      "sales_detail", "sales_header",
+    ]) {
       await prisma.$executeRawUnsafe(`DELETE FROM public."${t}" WHERE unit_id = ${U}`);
     }
     await prisma.$executeRawUnsafe(`DELETE FROM public.sync_state WHERE unit_id = ${U}`);
@@ -87,6 +90,41 @@ d("idempotensi /ingest (DB lokal)", () => {
     await svc.ingest(U, edcPayload("2026-06-15", 1)); // tanggal lain
     expect(await count("edc", "AND business_date = '2026-06-15'")).toBe(1);
     expect(await count("edc", "AND business_date = '2026-06-14'")).toBe(2); // 14 tak terhapus
+  });
+
+  // Re-sync SALES (FASE 2): UPSERT by (ckdjualbbm,ckdnozzle,nurut). Baris shift-3
+  // ber-DTGLJAM NULL di sumber → agent sintesis dtgljam tengah-malam WIB; di sini
+  // direpresentasikan sebagai timestamp valid (kolom NOT NULL). Resend → 0 dup.
+  const salesPayload = (n3subtotal: number): IngestPayload => ({
+    unit_code: "x", domain: "sales", watermark_high: null,
+    tables: {
+      sales_header: [
+        { ckdjualbbm: "HS1", dtgljual: "2026-06-15", nshift: 3, vcket: null },
+      ],
+      sales_detail: [
+        { ckdjualbbm: "HS1", ckdnozzle: "N1", nurut: 1, nstandawal: 0, nstandakhir: 50,
+          nvolume: 50, nhargajual: 10000, nsubtotal: 500000, ckdbbm: "P1", ckdtangki: "T1",
+          vcopeator: "-", dtgljam: "2026-06-15T07:30:00.000Z", subah: 0, sedit: 0 },
+        // ex-NULL-DTGLJAM (shift-3): dtgljam = DTGLJUAL 00:00 WIB → 2026-06-14T17:00Z
+        { ckdjualbbm: "HS1", ckdnozzle: "N3", nurut: 1, nstandawal: 0, nstandakhir: 7000,
+          nvolume: 7000, nhargajual: 18606, nsubtotal: n3subtotal, ckdbbm: "P1", ckdtangki: "T1",
+          vcopeator: "-", dtgljam: "2026-06-14T17:00:00.000Z", subah: 0, sedit: 0 },
+      ],
+    },
+  });
+
+  it("sales re-sync UPSERT: resend 0 dup; baris ex-NULL-DTGLJAM mendarat & ter-update", async () => {
+    await svc.ingest(U, salesPayload(130247852));
+    expect(await count("sales_header")).toBe(1);
+    expect(await count("sales_detail")).toBe(2); // termasuk baris shift-3 (ex-NULL)
+    await svc.ingest(U, salesPayload(130247852)); // resend identik
+    expect(await count("sales_detail")).toBe(2); // 0 dup / 0 drop
+    await svc.ingest(U, salesPayload(999)); // koreksi nsubtotal shift-3
+    expect(await count("sales_detail")).toBe(2);
+    const r = await prisma.$queryRawUnsafe<Array<{ nsubtotal: string }>>(
+      `SELECT nsubtotal FROM public.sales_detail WHERE unit_id = ${U} AND trim(ckdnozzle) = 'N3'`,
+    );
+    expect(Number(r[0]!.nsubtotal)).toBe(999); // ter-update (UPSERT, bukan dup)
   });
 
   it("REPLACE multi-tanggal dalam satu payload: kedua tanggal masuk", async () => {

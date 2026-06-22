@@ -12,9 +12,11 @@ import {
   runProbe6,
   runProbe7,
   runProbe8,
+  runProbe9,
+  runProbe10,
 } from "./probe.js";
 import { StateStore } from "./state/store.js";
-import { runCycle, runForever, type SyncDeps } from "./sync.js";
+import { resyncSales, runCycle, runForever, type SyncDeps } from "./sync.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -30,6 +32,9 @@ interface Args {
   probe6: boolean;
   probe7: boolean;
   probe8: boolean;
+  probe9: boolean;
+  probe10: boolean;
+  resyncSales: boolean;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
   configPath?: string;
@@ -48,6 +53,9 @@ function parseArgs(argv: string[]): Args {
     probe6: false,
     probe7: false,
     probe8: false,
+    probe9: false,
+    probe10: false,
+    resyncSales: false,
     probeDiscoveryOnly: false,
     probeDates: [],
   };
@@ -64,6 +72,9 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--probe6") a.probe6 = true;
     else if (arg === "--probe7") a.probe7 = true;
     else if (arg === "--probe8") a.probe8 = true;
+    else if (arg === "--probe9") a.probe9 = true;
+    else if (arg === "--probe10") a.probe10 = true;
+    else if (arg === "--resync-sales") a.resyncSales = true;
     else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
     else if (arg === "--config") a.configPath = argv[++i];
@@ -94,6 +105,9 @@ function printHelp(): void {
       "  --probe6 [tgl...]   FASE 0.5e: probe ronde 3d (sumber volume penjualan voucher). Tak mengirim.",
       "  --probe7            FASE 0.5f: probe ronde 3e (latensi vw_jualplg vs base-table + delta 15 Jun). Tak mengirim.",
       "  --probe8            FASE 0.5g: diagnosa lock go-live (MyISAM concurrent_insert + Data_free). Read-only.",
+      "  --probe9 [tgl...]   FASE 1: rekon SALES EasyMax per DTGLJUAL vs PDF Omset (default 14–18 Jun). Read-only.",
+      "  --probe10 [tgl...]  GOLD CHECK: total EasyMax-kini SEMUA seksi (Omset/Pelanggan/EDC/Deposit) per tgl. Read-only.",
+      "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
       "  --once              Jalankan satu siklus lalu keluar (default: loop berkala).",
@@ -114,6 +128,10 @@ async function main(): Promise<void> {
     dryRun: args.dryRun,
     mode: args.testConnection
       ? "test-connection"
+      : args.probe10
+      ? "probe10"
+      : args.probe9
+      ? "probe9"
       : args.probe8
         ? "probe8"
         : args.probe7
@@ -146,6 +164,22 @@ async function main(): Promise<void> {
     }
     if (args.testConnection) {
       await conn.close();
+      return;
+    }
+    if (args.probe10) {
+      try {
+        await runProbe10(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe9) {
+      try {
+        await runProbe9(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
       return;
     }
     if (args.probe8) {
@@ -232,8 +266,22 @@ async function main(): Promise<void> {
   };
 
   try {
-    if (args.once || args.dryRun) {
-      await runCycle(deps, { includeMasters: true, includePelanggan: true });
+    if (args.resyncSales) {
+      const [from, to] = args.probeDates;
+      if (!from || !to || args.probeDates.length !== 2) {
+        log.error("--resync-sales butuh TEPAT 2 tanggal: --resync-sales <from> <to>", {
+          diberikan: args.probeDates,
+        });
+        process.exitCode = 1;
+        return;
+      }
+      await resyncSales(deps, from, to);
+    } else if (args.once || args.dryRun) {
+      await runCycle(deps, {
+        includeMasters: true,
+        includePelanggan: true,
+        includeSalesRescan: true,
+      });
     } else {
       await runForever(deps);
     }

@@ -32,7 +32,11 @@ export async function addManualEntry(input: {
   if (!Number.isFinite(input.amount) || input.amount <= 0) {
     return { ok: false, error: "Jumlah harus angka > 0." };
   }
-  if (input.section !== "pendapatan_lain" && input.section !== "pengeluaran") {
+  if (
+    input.section !== "pendapatan_lain" &&
+    input.section !== "pengeluaran" &&
+    input.section !== "setoran_tunai"
+  ) {
     return { ok: false, error: "Seksi tak dikenal." };
   }
   if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };

@@ -640,7 +640,7 @@ export async function getDepositForDate(
   );
 }
 
-export type ManualSection = "pendapatan_lain" | "pengeluaran";
+export type ManualSection = "pendapatan_lain" | "pengeluaran" | "setoran_tunai";
 
 export interface ManualEntryRow {
   id: string;

@@ -63,6 +63,28 @@ describe("manual_entry server action — tulis ter-scope", () => {
     expect(params![2]).toBe(6478); // ter-scope
   });
 
+  it("setoran_tunai: seksi diterima, INSERT unit_id ter-scope", async () => {
+    const res = await addManualEntry({
+      code: "6478111", date: "2026-06-14", section: "setoran_tunai",
+      keterangan: "Setoran BCA 14:00", amount: 5_000_000,
+    });
+    expect(res).toEqual({ ok: true });
+    const [sql, params] = q.mock.calls[0]!;
+    expect(sql).toContain("INSERT INTO app.manual_entry");
+    expect(params![0]).toBe(6478); // unit_id TER-SCOPE (bukan input mentah)
+    expect(params![2]).toBe("setoran_tunai");
+  });
+
+  it("setoran_tunai: out-of-scope tetap ditolak (requireUnit notFound), TAK ADA tulis", async () => {
+    await expect(
+      addManualEntry({
+        code: "9999999", date: "2026-06-14", section: "setoran_tunai",
+        keterangan: "x", amount: 1,
+      }),
+    ).rejects.toThrow(/NEXT_NOT_FOUND/);
+    expect(q).not.toHaveBeenCalled();
+  });
+
   it("validasi: amount ≤ 0 ditolak tanpa tulis", async () => {
     const res = await addManualEntry({
       code: "6478111", date: "2026-06-14", section: "pengeluaran",
