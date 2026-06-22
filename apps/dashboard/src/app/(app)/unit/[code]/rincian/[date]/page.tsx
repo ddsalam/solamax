@@ -54,7 +54,7 @@ export default async function RincianPage({
   // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
   const hideEmpty = searchParams.kosong !== "tampil";
 
-  const [prod, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran] =
+  const [prod, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran, setoranTunai] =
     await Promise.all([
       getSalesByProduct(unit.unit_id, date, date),
       getPelangganForDate(unit.unit_id, date),
@@ -63,6 +63,7 @@ export default async function RincianPage({
       getDepositForDate(unit.unit_id, date),
       getManualEntries(unit.unit_id, date, "pendapatan_lain"),
       getManualEntries(unit.unit_id, date, "pengeluaran"),
+      getManualEntries(unit.unit_id, date, "setoran_tunai"),
     ]);
 
   const ordered = [...prod].sort(
@@ -80,6 +81,11 @@ export default async function RincianPage({
   const G = pengeluaran.reduce((s, r) => s + r.amount, 0);
   const E = A - (B + C + D); // Penjualan Tunai
   const H = E + F - G; // Uang Tunai
+  // I = Setoran Tunai (input pengawas; total slip non-void). null bila belum ada
+  // entri → baris I & indikator disembunyikan (pola hide-null summary). Indikator:
+  // I < H → warning merah (setoran kurang dari kas); I >= H → check hijau (lunas).
+  const I = setoranTunai.length > 0 ? setoranTunai.reduce((s, r) => s + r.amount, 0) : null;
+  const setoranOk = I !== null && I >= H;
 
   let sections: Section[] = [
     {
@@ -172,7 +178,14 @@ export default async function RincianPage({
   ];
   if (hideEmpty) sections = sections.filter((s) => s.rows.length > 0);
 
-  const summary: Array<{ l: string; label: string; formula?: string; val: string | null; em?: boolean }> = [
+  const summary: Array<{
+    l: string;
+    label: string;
+    formula?: string;
+    val: string | null;
+    em?: boolean;
+    note?: { tone: "ok" | "warn"; text: string };
+  }> = [
     { l: "A", label: "Omset Penjualan", val: rp(A) },
     { l: "B", label: "Terra / Nozzle Test", val: null },
     { l: "C", label: "Pelanggan", val: rp(C) },
@@ -181,7 +194,18 @@ export default async function RincianPage({
     { l: "F", label: "Pendapatan Lain", val: rp(F) },
     { l: "G", label: "Pengeluaran", val: rp(G) },
     { l: "H", label: "Uang Tunai", formula: "H = E + F − G", val: rp(H), em: true },
-    { l: "I", label: "Setoran (Bank)", val: null, em: true },
+    {
+      l: "I",
+      label: "Setoran Tunai",
+      val: I !== null ? rp(I) : null,
+      em: true,
+      note:
+        I === null
+          ? undefined
+          : setoranOk
+            ? { tone: "ok", text: "Setoran menutup uang tunai (I ≥ H)" }
+            : { tone: "warn", text: `Setoran kurang dari uang tunai (I < H, selisih ${rp(H - I)})` },
+    },
   ];
 
   const disp = UNIT_DISPLAY[unit.code];
@@ -282,6 +306,13 @@ export default async function RincianPage({
                 <span className="sum-label">
                   <span className={`fs16 t-primary${s.em ? " w700" : ""}`}>{s.label}</span>
                   {s.formula && <span className="fs15 t-tertiary mono">{s.formula}</span>}
+                  {s.note && (
+                    <span className={`fs15 w600 ${s.note.tone === "ok" ? "t-success" : "t-danger"}`}>
+                      <span className={`dot ${s.note.tone === "ok" ? "success" : "danger"}`} />{" "}
+                      {s.note.tone === "ok" ? "✓ " : "⚠ "}
+                      {s.note.text}
+                    </span>
+                  )}
                 </span>
                 <span className={`fs16 right num nowrap${s.em ? " w700" : ""}`}>{s.val}</span>
               </div>
@@ -313,6 +344,13 @@ export default async function RincianPage({
             section="pengeluaran"
             title="6 · Pengeluaran"
             entries={pengeluaran}
+          />
+          <ManualEntryForm
+            code={unit.code}
+            date={date}
+            section="setoran_tunai"
+            title="I · Setoran Tunai (disetor ke bank)"
+            entries={setoranTunai}
           />
         </div>
 
