@@ -4,7 +4,7 @@ import { RankingTable, type RankRow } from "@/components/board/RankingTable";
 import { buildAnomalies } from "@/lib/anomalies";
 import { classifyProduct, unitDotted } from "@/lib/config";
 import {
-  aggregateClosingGl,
+  aggregateDailyGl,
   bauranVsTarget,
   glPercent,
   verdictHeadline,
@@ -14,7 +14,7 @@ import {
 import { dateLong, fmtKL, idn, pct, rpShort, signed, timeWib } from "@/lib/format";
 import { addDays, monthInfo, resolvePeriod, todayWib, type PeriodKey } from "@/lib/periods";
 import {
-  getClosingOpname,
+  getDailyGlByProduct,
   getDailyOmzet,
   getSalesByProduct,
   getSalesTotals,
@@ -47,17 +47,21 @@ export default async function BoardPage({
   // ===== Per-unit data =====
   const perUnit = await Promise.all(
     units.map(async (u) => {
-      const [products, totals, prevTotals, closing, shift, daily] = await Promise.all([
+      const [products, totals, prevTotals, glRows, shift, daily] = await Promise.all([
         getSalesByProduct(u.unit_id, period.from, period.to),
         getSalesTotals(u.unit_id, period.from, period.to),
         getSalesTotals(u.unit_id, period.prevFrom, period.prevTo),
-        getClosingOpname(u.unit_id, period.from, period.to),
+        // G/L metode RESUME (reuse laporan harian): Σ baris harian per produk pada
+        // rentang periode. Anchor Fisik(D−1) ditangani di query (lag lewat `from`).
+        getDailyGlByProduct(u.unit_id, period.from, period.to),
         getShiftInfo(u.unit_id, today),
         getDailyOmzet(u.unit_id, addDays(today, -13), today),
       ]);
-      const gl = aggregateClosingGl(closing);
-      const glPct = glPercent(gl.totalSigned, totals.vol);
-      const glAbnormal = gl.abnormal.length > 0;
+      const gl = aggregateDailyGl(glRows);
+      const glPct = gl.hasGl ? glPercent(gl.totalSigned, totals.vol) : null;
+      // Abnormal grup/unit = di atas ambang ±0,5% (selaras cek bulanan laporan &
+      // teks KPI card). RESUME per-produk-hari di-rollup → satu angka per unit.
+      const glAbnormal = glPct !== null && Math.abs(glPct) > 0.005;
       const glProvisional = gl.provisional;
       const gas = bauranVsTarget(products, u.code, month, "gasoline");
       const oil = bauranVsTarget(products, u.code, month, "gasoil");
@@ -301,9 +305,6 @@ export default async function BoardPage({
                   ? "sebagian sementara — menunggu opname"
                   : "dalam ambang ±0,5%"}
             </span>
-          </div>
-          <div className="fs15 t-tertiary mt1">
-            metode lama (op−bk) — akan disejajarkan ke metode RESUME (Laporan Harian)
           </div>
         </div>
         <div className="kpi-card">

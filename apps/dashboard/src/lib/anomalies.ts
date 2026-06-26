@@ -8,7 +8,7 @@ import {
   getAvgDailySales,
   getClosingOpname,
   getCorrections,
-  getDeliveryByTankDate,
+  getDailyGlByProduct,
   getDeliveryShortfalls,
   getLastInputs,
   getShiftInfo,
@@ -22,6 +22,7 @@ import {
   enduranceDays,
   enduranceLevel,
   GARBAGE_STOCK_L,
+  isSelisihAbnormal,
   stockNow,
 } from "./derive";
 import { unitDotted } from "./config";
@@ -61,10 +62,11 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
     const href = `/unit/${u.code}/laporan/${today}`;
 
-    const [closing, deliv, doByTank, shift, corrections, last, tanks, avg] = await Promise.all([
+    const [closing, glRows, deliv, shift, corrections, last, tanks, avg] = await Promise.all([
       getClosingOpname(u.unit_id, addDays(today, -6), today),
+      // G/L metode RESUME per produk × hari (reuse laporan harian) — sumber item Losses.
+      getDailyGlByProduct(u.unit_id, addDays(today, -6), today),
       getDeliveryShortfalls(u.unit_id, addDays(today, -6), today, 10),
-      getDeliveryByTankDate(u.unit_id, addDays(today, -6), today),
       getShiftInfo(u.unit_id, today),
       getCorrections(u.unit_id, today),
       getLastInputs(u.unit_id),
@@ -72,24 +74,29 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       getAvgDailySales(u.unit_id, addDays(today, -7), addDays(today, -1)),
     ]);
 
+    // aggregateClosingGl HANYA untuk backstop kualitas-data (garbage per-tangki);
+    // losses operasional kini dari metode RESUME (glRows), bukan op−bk.
     const gl = aggregateClosingGl(closing);
-    // Konteks DO hari-sama per (tanggal × tangki) — informatif, tak menghakimi.
-    const doMap = new Map(doByTank.map((d) => [`${d.d}:${d.ckdtangki}`, d.vol]));
 
-    // Losses opname abnormal (signed, lolos garbage guard).
-    for (const r of gl.abnormal) {
-      const ratio = r.bk && r.bk > 0 ? Math.abs(r.signed) / r.bk : null;
+    // Losses operasional metode RESUME, per produk × hari (selaras Laporan Harian).
+    // Ambang sama (isSelisihAbnormal: |L|>100 atau >0,5% vs jual kotor hari itu).
+    // Shortfall kiriman DO TERGABUNG di sini (keputusan owner — satu angka; item
+    // "Kekurangan kiriman" di bawah tetap ada sebagai diagnostik terpisah). Baris
+    // provisional / gl tak terhitung dilewati — hanya losses FINAL yang menyala.
+    for (const r of glRows) {
+      if (r.gl === null || r.provisional) continue;
+      if (!isSelisihAbnormal(r.gl, r.sales_gross)) continue;
+      const ratio = r.sales_gross > 0 ? Math.abs(r.gl) / r.sales_gross : null;
       const pctTxt = ratio !== null ? ` (${pct(ratio, 2)})` : "";
-      const sameDayDo = doMap.get(`${r.d}:${r.ckdtangki}`) ?? 0;
-      const doCtx = sameDayDo > 0 ? ` · terima DO ${fmtL(sameDayDo)} hari ini (konteks — nilai sendiri tak dihakimi)` : "";
+      const doCtx = r.pen_do > 0 ? ` · terima DO ${fmtL(r.pen_do)} (konteks)` : "";
       items.push({
         tone: "danger",
-        tier: lossTier(Math.abs(r.signed), ratio),
-        sev: Math.abs(r.signed),
+        tier: lossTier(Math.abs(r.gl), ratio),
+        sev: Math.abs(r.gl),
         dateIso: r.d,
-        title: `Losses ${signedFmt(r.signed)} L${pctTxt}`,
+        title: `Losses ${signedFmt(r.gl)} L${pctTxt}`,
         unit: unitTag,
-        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%${doCtx}. Metode lama op−bk; akan disejajarkan ke metode RESUME (lihat Laporan Harian).`,
+        desc: `Gain/Losses operasional ${r.nama ?? r.ckdbbm} (metode RESUME: fisik − [fisik D−1 + ΣDO − jual bersih]) — di atas ambang 100 L / 0,5%. Kekurangan kiriman DO tergabung di sini${doCtx}.`,
         time: r.d,
         href,
       });
