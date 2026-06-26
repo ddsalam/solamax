@@ -347,35 +347,6 @@ export interface DeliveryShortfall {
   sbatal: number;
 }
 
-export interface DeliveryByTankDate {
-  d: string;
-  ckdtangki: string;
-  vol: number;
-}
-
-/**
- * Volume DO diterima per (tanggal bisnis × tangki) — KONTEKS untuk anomali
- * opname (mis. "selisih −6.109 L · terima DO 7.814 L hari ini"). Murni
- * informatif; tidak mengklasifikasi/mengecualikan apa pun.
- */
-export async function getDeliveryByTankDate(
-  unit: ScopedUnitId,
-  from: string,
-  to: string,
-): Promise<DeliveryByTankDate[]> {
-  return q<DeliveryByTankDate>(
-    `SELECT to_char(COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date),'YYYY-MM-DD') AS d,
-            trim(t.ckdtangki) AS ckdtangki,
-            COALESCE(sum(t.nvolreal),0)::float8 AS vol
-     FROM delivery t
-     WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
-       AND abs(COALESCE(t.nvolreal,0)) <= ${GARBAGE_STOCK_L}
-       AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
-     GROUP BY 1, 2`,
-    [unit, from, to],
-  );
-}
-
 /** Kekurangan kiriman (NVOLSELISIH delivery) pada rentang — untuk anomali. */
 export async function getDeliveryShortfalls(
   unit: ScopedUnitId,
