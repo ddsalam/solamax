@@ -16,6 +16,7 @@ export const DOMAINS = [
   "edc",
   "pelanggan",
   "tebus",
+  "tera",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 
@@ -38,6 +39,10 @@ export const TABLES_BY_DOMAIN = {
   // Penebusan DO (tr_htebus ⋈ tr_dtebus) — windowed DTGLTBS (date), UPSERT by PK.
   // Sumber kolom "Penebusan DO" + basis running-balance DO Awal/Sisa di laporan.
   tebus: ["tebus_header", "tebus_detail"],
+  // Tera/kalibrasi nozzle (tabel `tera`) — incremental TanggalJam (datetime),
+  // UPSERT by surrogate key. Sumber kolom "Tera (L)" + komponen Penjualan_BERSIH
+  // (= jual KOTOR − tera) di perhitungan Gain/Losses harian (selaras RESUME).
+  tera: ["tera"],
 } as const satisfies Record<Domain, readonly string[]>;
 
 export type TargetTable =

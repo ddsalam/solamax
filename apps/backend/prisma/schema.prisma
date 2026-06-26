@@ -164,6 +164,32 @@ model TebusDetail {
   @@schema("public")
 }
 
+// Tera/kalibrasi nozzle (tabel EasyMax `tera`). Sumber kolom "Tera (L)" +
+// komponen Penjualan_BERSIH (jual KOTOR − tera) di Gain/Losses harian. Watermark
+// TanggalJam (datetime). Surrogate id + UNIQUE (unit_id, tanggaljam, no_nozzle)
+// → idempoten saat re-pull window. ckdbbm di-resolve di agent (join MySQL ke
+// tm_tangki/tm_bbm by name). Identifier mentah (no_nozzle/id_pompa/sa_tangki)
+// disimpan untuk audit + kunci unik.
+model Tera {
+  id           BigInt   @id @default(autoincrement())
+  unitId       Int      @map("unit_id") @db.SmallInt
+  businessDate DateTime @map("business_date") @db.Date
+  tanggaljam   DateTime @db.Timestamptz()
+  noNozzle     String?  @map("no_nozzle") @db.VarChar(4)
+  idPompa      Int?     @map("id_pompa") @db.SmallInt
+  saTangki     Int?     @map("sa_tangki") @db.SmallInt
+  jenis        Int?     @db.SmallInt
+  ckdbbm       String?  @db.Char(5)
+  liter        Decimal? @db.Decimal
+  total        Decimal? @db.Decimal
+  ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, tanggaljam, noNozzle])
+  @@index([unitId, businessDate])
+  @@map("tera")
+  @@schema("public")
+}
+
 model Delivery {
   unitId      Int       @map("unit_id") @db.SmallInt
   ckdtrm      String    @db.Char(15)

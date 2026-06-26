@@ -194,6 +194,29 @@ export const TebusDetailRow = z.object({
   nvolume: num,
 });
 
+/**
+ * Tera/kalibrasi nozzle (sumber tabel `tera`, BUKAN `tr_tera` yang kosong).
+ * Watermark = `TanggalJam` (datetime, agent konversi WIB→UTC; floor ≥ 2020-01-01
+ * membuang baris 1980). `business_date` = tanggal bisnis WIB dari TanggalJam.
+ * `ckdbbm` DI-RESOLVE di agent (join MySQL `tera → tm_tangki → tm_bbm`), produk
+ * via nama (`tm_bbm.VCNMBBM`). `liter` = volume tera (L) yang dikurangkan dari
+ * jual KOTOR untuk Penjualan_BERSIH (perhitungan Gain/Losses). `no_nozzle`/
+ * `id_pompa`/`sa_tangki` = identifier mentah EasyMax (audit + idempotensi).
+ * CATATAN: kunci join tera→tangki adalah ASUMSI yang DIPROBE di mesin SPBU
+ * sebelum di-lock (lihat agent domains.ts).
+ */
+export const TeraRow = z.object({
+  business_date: isoDate,
+  tanggaljam: isoUtc,
+  no_nozzle: str,
+  id_pompa: z.number().int().nullable(),
+  sa_tangki: z.number().int().nullable(),
+  jenis: z.number().int().nullable(), // tipe baris tera (audit; tak memfilter — semua tera dihitung)
+  ckdbbm: str,
+  liter: num,
+  total: num,
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -247,6 +270,7 @@ export const ROW_SCHEMA = {
   voucher_sale: VoucherSaleRow,
   tebus_header: TebusHeaderRow,
   tebus_detail: TebusDetailRow,
+  tera: TeraRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -268,3 +292,4 @@ export type PelangganSaleRow = z.infer<typeof PelangganSaleRow>;
 export type VoucherSaleRow = z.infer<typeof VoucherSaleRow>;
 export type TebusHeaderRow = z.infer<typeof TebusHeaderRow>;
 export type TebusDetailRow = z.infer<typeof TebusDetailRow>;
+export type TeraRow = z.infer<typeof TeraRow>;

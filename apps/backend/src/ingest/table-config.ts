@@ -163,6 +163,22 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     hasIngestedAt: true,
     sumOnConflict: ["nvolume"], // satu DO bisa menebus produk sama di >1 baris
   },
+  // tera: Tera/kalibrasi nozzle (tabel `tera`). UPSERT by (unit_id, tanggaljam,
+  // no_nozzle) — idempoten saat re-pull window. business_date & tanggaljam
+  // ber-cast (date/timestamptz) via COLUMN_CAST (regresi 42804).
+  tera: {
+    table: "tera",
+    columns: [
+      "business_date", "tanggaljam", "no_nozzle", "id_pompa", "sa_tangki",
+      "jenis", "ckdbbm", "liter", "total",
+    ],
+    conflict: ["tanggaljam", "no_nozzle"],
+    hasIngestedAt: true,
+    // Jaring: bila >1 pour ter-log di (tanggaljam, no_nozzle) sama dalam satu
+    // batch → jumlahkan (volume tera tak hilang; Σ-per-produk benar). ON CONFLICT
+    // tetap REPLACE antar-batch/re-pull → idempoten (pola tebus_detail).
+    sumOnConflict: ["liter", "total"],
+  },
   voucher_sale: {
     table: "voucher_sale",
     columns: [
