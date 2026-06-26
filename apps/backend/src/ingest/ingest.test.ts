@@ -55,6 +55,27 @@ describe("IngestService", () => {
     ]);
   });
 
+  it("tebus_header: kolom date dtgltbs di-cast ::date (regresi 42804)", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = {
+      unit_code: "6478111",
+      domain: "tebus",
+      watermark_high: null,
+      tables: {
+        tebus_header: [{ ckdtbs: "TBS1", dtgltbs: "2026-06-24", cnoso: "4062082957", sbatal: 0 }],
+        tebus_detail: [{ ckdtbs: "TBS1", ckdbbm: "BB-03", nvolume: 40000 }],
+      },
+    };
+    const res = await new IngestService(prisma).ingest(1, payload);
+    expect(res.upserted).toEqual({ tebus_header: 1, tebus_detail: 1 });
+    const hdr = executed.find((e) => e.sql.includes('"tebus_header"'))!;
+    // tanpa ::date → Postgres 42804 (text→date). Cast WAJIB hadir.
+    expect(hdr.sql).toMatch(/::date/);
+    expect(hdr.sql).toContain('ON CONFLICT ("unit_id","ckdtbs")');
+    const det = executed.find((e) => e.sql.includes('"tebus_detail"'))!;
+    expect(det.sql).toContain('ON CONFLICT ("unit_id","ckdtbs","ckdbbm")');
+  });
+
   it("menolak tabel melebihi limit baris (422, tanpa eksekusi)", async () => {
     const { prisma, executed } = fakePrisma();
     const big = {

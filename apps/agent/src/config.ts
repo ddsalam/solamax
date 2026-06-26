@@ -41,6 +41,9 @@ const ConfigSchema = z.object({
     pelangganIntervalMs: z.number().int().default(900_000), // 15 menit
     safetyWindowMin: z.number().int().default(60), // re-scan trailing (temuan Q-SALES-3)
     cashRescanDays: z.number().int().default(7),
+    // Window rescan TEBUS (penebusan DO, DTGLTBS date). DO header final per hari;
+    // koreksi/pembatalan jarang → 7 hari cukup. UPSERT by PK CKDTBS (idempoten).
+    tebusRescanDays: z.number().int().default(7),
     // Rescan SALES per business-date (DTGLJUAL) — menyembuhkan baris shift-3
     // ber-DTGLJAM NULL & koreksi back-dated yang lolos sync incremental
     // (DTGLJAM>watermark). 7 hari menutup pengisian susulan H+beberapa hari.

@@ -14,7 +14,8 @@ export const DOMAIN = {
   edc: false, // settlement EDC (D)
   pendapatanLain: false, // pendapatan lain-lain (F)
   setoran: false, // setoran bank (I)
-  do: false, // DO / alokasi (MyPertamina)
+  do: true, // DO Harian (penebusan tr_htebus/tr_dtebus + running-balance) — LIVE
+
   hargaBeli: false, // harga beli & margin (master harga beli)
 } as const;
 

@@ -15,6 +15,7 @@ export const DOMAINS = [
   "deposit",
   "edc",
   "pelanggan",
+  "tebus",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 
@@ -34,6 +35,9 @@ export const TABLES_BY_DOMAIN = {
   edc: ["edc"],
   // Pelanggan tempo (vw_jualplg ⊎ vw_usevouc) — windowed DTGL, REPLACE per business_date.
   pelanggan: ["pelanggan_sale", "voucher_sale"],
+  // Penebusan DO (tr_htebus ⋈ tr_dtebus) — windowed DTGLTBS (date), UPSERT by PK.
+  // Sumber kolom "Penebusan DO" + basis running-balance DO Awal/Sisa di laporan.
+  tebus: ["tebus_header", "tebus_detail"],
 } as const satisfies Record<Domain, readonly string[]>;
 
 export type TargetTable =
