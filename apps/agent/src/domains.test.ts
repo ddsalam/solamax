@@ -8,6 +8,7 @@ import {
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
   SALES_RESYNC,
+  TEBUS_DOMAIN,
 } from "./domains.js";
 import { tzOffsetMinutes, wibDateTimeToUtcIso } from "./transform.js";
 
@@ -61,6 +62,31 @@ describe("CASH.map", () => {
     expect(page.tables.cash_header).toHaveLength(2);
     expect(page.tables.cash_detail).toHaveLength(1); // K2 tak punya CKDPERK
     expect(page.watermarkHigh).toBe("2019-04-17");
+  });
+});
+
+describe("TEBUS.map (tr_htebus ⋈ tr_dtebus — header dedup, detail agregat per produk)", () => {
+  it("AGREGAT detail per (CKDTBS,CKDBBM): cegah dup conflict-key (Postgres 21000)", () => {
+    const page = TEBUS_DOMAIN.map([
+      // T1: dua baris produk SAMA (BB-03) → harus dijumlah jadi 1 detail 40000.
+      { CKDTBS: "T1", DTGLTBS: "2026-06-24", SBATAL: "0", CKDBBM: "BB-03", NVOLUME: "32000" },
+      { CKDTBS: "T1", DTGLTBS: "2026-06-24", SBATAL: "0", CKDBBM: "BB-03", NVOLUME: "8000" },
+      // T1: produk lain (BB-08) → detail terpisah.
+      { CKDTBS: "T1", DTGLTBS: "2026-06-24", SBATAL: "0", CKDBBM: "BB-08", NVOLUME: "8000" },
+      // T2: header lain.
+      { CKDTBS: "T2", DTGLTBS: "2026-06-18", SBATAL: "0", CKDBBM: "BB-07", NVOLUME: "16000" },
+    ]);
+    expect(page.tables.tebus_header).toHaveLength(2); // T1, T2
+    const det = page.tables.tebus_detail!;
+    // T1/BB-03 ter-agregat → satu baris, nvolume = 32000+8000.
+    const t1bb03 = det.filter((d) => d.ckdtbs === "T1" && d.ckdbbm === "BB-03");
+    expect(t1bb03).toHaveLength(1);
+    expect(t1bb03[0]!.nvolume).toBe(40000);
+    // Tak ada dua baris dengan (ckdtbs,ckdbbm) sama (invarian anti-21000).
+    const keys = det.map((d) => `${d.ckdtbs}|${d.ckdbbm}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(det).toHaveLength(3); // T1/BB-03, T1/BB-08, T2/BB-07
+    expect(page.watermarkHigh).toBe("2026-06-24");
   });
 });
 

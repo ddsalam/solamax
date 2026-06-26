@@ -62,6 +62,54 @@ export function classifyProduct(name: string | null): ProductClass | null {
 }
 
 /**
+ * Laporan DO Harian — daftar produk TETAP + urutan (keputusan owner). Premium
+ * (BB-01) DISCONTINUE → dibuang. Baris dirender walau 0. Resolver mencocokkan
+ * NAMA produk EasyMax (tm_bbm.VCNMBBM) → slot, TANPA mengubah CLASS_RULES global
+ * (urutan DO beda dari urutan tabel lain). Negative-lookahead memisahkan
+ * "Pertamax" dari "Pertamax Turbo".
+ */
+export interface DoProduct {
+  key: string;
+  label: string;
+  match: RegExp;
+}
+export const DO_PRODUCTS: DoProduct[] = [
+  { key: "pertamax", label: "Pertamax", match: /PERTAMAX(?!\s*TURBO)/ },
+  { key: "solar", label: "Solar", match: /SOLAR/ },
+  { key: "dexlite", label: "Dexlite", match: /DEXLITE/ },
+  { key: "pertalite", label: "Pertalite", match: /PERTALITE/ },
+  { key: "pertamax_turbo", label: "Pertamax Turbo", match: /PERTAMAX\s*TURBO/ },
+  { key: "pertamina_dex", label: "Pertamina Dex", match: /PERTAMINA\s*DEX/ },
+];
+
+export function resolveDoProduct(name: string | null): DoProduct | null {
+  if (!name) return null;
+  const up = name.toUpperCase();
+  for (const p of DO_PRODUCTS) if (p.match.test(up)) return p;
+  return null;
+}
+
+/**
+ * ⚠️ INERT — TIDAK DIPAKAI lagi (digantikan model per-SO open-balance di
+ * `getDoHarian` v2). Disimpan sbg catatan forensik + fallback darurat.
+ *
+ * Riwayat: cumulative-dari-backfill naive memunculkan δ raksasa per produk (Solar
+ * +280k, Pertalite +328k) — terlacak ke GAP record penebusan ~1–13 Jan 2025
+ * (penerimaan jalan, tr_dtebus kosong). δ = selisih KONSTAN (PNG − kode) 18–24 Jun
+ * 2026 yang dulu mengompensasi gap itu. **Per-SO (F12-equivalent, lewat CNOSO)
+ * menyelesaikannya secara STRUKTURAL tanpa seed** (Solar/Pertalite/P.Dex cocok PNG
+ * 7/7). Nilai di bawah sengaja DIKOSONGKAN; `getDoHarian` v2 tak memanggil `doSeed`.
+ */
+export const DO_SEED: Record<string, Partial<Record<string, number>>> = {
+  // Kosong — per-SO otoritatif. (Forensik δ lama: solar +280k, pertalite +328k,
+  // pertamina_dex +24k, pertamax −44k, pertamax_turbo −20k, dexlite −72k.)
+  "6478111": {},
+};
+export function doSeed(code: string, key: string): number {
+  return DO_SEED[code]?.[key] ?? 0;
+}
+
+/**
  * Target BAURAN (№3, dari workbook — angka NYATA, bukan placeholder).
  * Definisi rasio atas volume liter:
  *   gasoline = (Pertamax + Pertamax Turbo) / Pertalite

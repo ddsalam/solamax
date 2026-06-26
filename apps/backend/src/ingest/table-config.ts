@@ -19,6 +19,14 @@ export interface TableConfig {
    * Agent WAJIB mengirim satu business_date utuh per payload (jangan terpisah).
    */
   replaceByBusinessDate?: boolean;
+  /**
+   * Kolom yang DIJUMLAH saat dua baris berbagi conflict-key yang sama dalam satu
+   * batch. Sumber bisa punya banyak baris per natural-key (mis. tr_dtebus: satu DO
+   * menebus produk sama di beberapa baris) → tanpa agregasi, UPSERT gagal Postgres
+   * 21000 ("ON CONFLICT … cannot affect row a second time"). Jaring backend
+   * (defense-in-depth); agent idealnya sudah meng-agregat di sumber.
+   */
+  sumOnConflict?: readonly string[];
 }
 
 export const TABLE_CONFIG: Record<string, TableConfig> = {
@@ -64,7 +72,7 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
   delivery: {
     table: "delivery",
     columns: [
-      "ckdtrm", "dtgltrm", "dtgljam", "cnodo", "nvoldo", "nvolreal",
+      "ckdtrm", "dtgltrm", "dtgljam", "cnodo", "cnoso", "nvoldo", "nvolreal",
       "nvolselisih", "cnopol", "vcsopir", "ckdtangki", "ckdbbm", "sbatal",
     ],
     conflict: ["ckdtrm"],
@@ -139,6 +147,21 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     conflict: [],
     hasIngestedAt: true,
     replaceByBusinessDate: true,
+  },
+  // tebus: Penebusan DO (tr_htebus ⋈ tr_dtebus). UPSERT by PK (idempoten saat
+  // re-pull window). header by (unit_id,ckdtbs); detail by (unit_id,ckdtbs,ckdbbm).
+  tebus_header: {
+    table: "tebus_header",
+    columns: ["ckdtbs", "dtgltbs", "cnoso", "sbatal"],
+    conflict: ["ckdtbs"],
+    hasIngestedAt: true,
+  },
+  tebus_detail: {
+    table: "tebus_detail",
+    columns: ["ckdtbs", "ckdbbm", "nvolume"],
+    conflict: ["ckdtbs", "ckdbbm"],
+    hasIngestedAt: true,
+    sumOnConflict: ["nvolume"], // satu DO bisa menebus produk sama di >1 baris
   },
   voucher_sale: {
     table: "voucher_sale",

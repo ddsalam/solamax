@@ -133,12 +133,44 @@ model Opname {
   @@schema("public")
 }
 
+// Penebusan DO — header (tr_htebus). UPSERT by (unit_id, ckdtbs). Watermark
+// DTGLTBS (date). Basis kolom "Penebusan DO" + running-balance DO Awal/Sisa.
+model TebusHeader {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdtbs     String   @db.Char(15)
+  dtgltbs    DateTime @db.Date
+  cnoso      String?  @db.Char(20)
+  sbatal     Int?     @db.SmallInt
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtbs])
+  @@index([unitId, dtgltbs])
+  @@map("tebus_header")
+  @@schema("public")
+}
+
+// Penebusan DO — detail per produk (tr_dtebus). Grain (unit_id, ckdtbs, ckdbbm).
+// NSISA = kolom mati (=NVOLUME) → tak di-sync. Surrogate id + unique utk UPSERT.
+model TebusDetail {
+  id         BigInt   @id @default(autoincrement())
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdtbs     String   @db.Char(15)
+  ckdbbm     String?  @db.Char(5)
+  nvolume    Decimal? @db.Decimal
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@unique([unitId, ckdtbs, ckdbbm])
+  @@map("tebus_detail")
+  @@schema("public")
+}
+
 model Delivery {
   unitId      Int       @map("unit_id") @db.SmallInt
   ckdtrm      String    @db.Char(15)
   dtgltrm     DateTime? @db.Date
   dtgljam     DateTime  @db.Timestamptz()
   cnodo       String?
+  cnoso       String?   @db.Char(20)
   nvoldo      Decimal?  @db.Decimal
   nvolreal    Decimal?  @db.Decimal
   nvolselisih Decimal?  @db.Decimal
