@@ -417,8 +417,8 @@ export default async function LaporanPage({
           {glPctDay === null
             ? "Opname penutup tanggal bisnis ini belum ada. "
             : glProvisional
-              ? `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
-              : `Losses harian (opname penutup, fisik − buku) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
+              ? `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
+              : `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
           Bauran NPSO: gasoline {gasMix !== null ? pct(gasMix) : "—"} · gasoil{" "}
           {oilMix !== null ? pct(oilMix) : "—"}.
         </div>
