@@ -4,6 +4,8 @@ import { LaporanToolbar } from "@/components/laporan/Toolbar";
 import {
   canonicalProductKey,
   classifyProduct,
+  DO_PRODUCTS,
+  resolveDoProduct,
   targetVolumePerDay,
   unitDotted,
 } from "@/lib/config";
@@ -16,6 +18,10 @@ import {
   getClosingOpname,
   getCorrections,
   getDeliveryByProduct,
+  getDoAnomalies,
+  getDoHarian,
+  getDoSuspectSO,
+  DO_STALE_DAYS,
   getSalesByProduct,
   getShiftInfo,
   getTankStocks,
@@ -52,7 +58,9 @@ export default async function LaporanPage({
     closingMonth,
     prodMonth,
     delivMonth,
-    delivDay,
+    doDay,
+    doAnomalies,
+    doSuspects,
     shift,
     corrections,
     tanks,
@@ -64,7 +72,9 @@ export default async function LaporanPage({
     getClosingOpname(unit.unit_id, mStart, date),
     getSalesByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, mStart, date),
-    getDeliveryByProduct(unit.unit_id, date, date),
+    getDoHarian(unit.unit_id, date),
+    getDoAnomalies(unit.unit_id, date),
+    getDoSuspectSO(unit.unit_id, date),
     getShiftInfo(unit.unit_id, date),
     getCorrections(unit.unit_id, date),
     getTankStocks(unit.unit_id),
@@ -76,6 +86,41 @@ export default async function LaporanPage({
     [...xs].sort(
       (a, b) => (classifyProduct(a.nama)?.order ?? 9) - (classifyProduct(b.nama)?.order ?? 9),
     );
+
+  // Laporan DO Harian — 6 produk TETAP (urutan referensi). Sisa/DO Awal = per-SO
+  // OTORITATIF (getDoHarian v2, logika F12; TANPA δ-seed). Baris dirender walau 0.
+  // `recon` = (DO Awal + Penebusan − Penerimaan) − Sisa: ≠0 → hari anomali (selisih
+  // = orphan/over-receipt, detail di panel "Alokasi Penerimaan Tidak Sesuai").
+  // TOTAL = jumlah BENAR semua 6 produk (termasuk Pertamina Dex).
+  const doRows = DO_PRODUCTS.map((dp) => {
+    const r = doDay.find((x) => resolveDoProduct(x.nama)?.key === dp.key);
+    const doAwal = r?.do_awal ?? 0;
+    const penerimaan = r?.penerimaan ?? 0;
+    const penebusan = r?.penebusan ?? 0;
+    const sisa = r?.sisa ?? 0;
+    return {
+      key: dp.key,
+      label: dp.label,
+      doAwal,
+      penerimaan,
+      penebusan,
+      sisa,
+      recon: Math.round(doAwal + penebusan - penerimaan - sisa),
+    };
+  });
+  const doTotal = doRows.reduce(
+    (a, r) => ({
+      doAwal: a.doAwal + r.doAwal,
+      penerimaan: a.penerimaan + r.penerimaan,
+      penebusan: a.penebusan + r.penebusan,
+      sisa: a.sisa + r.sisa,
+    }),
+    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0 },
+  );
+  // Anomali alokasi DO (orphan + over-receipt) per produk — untuk panel.
+  const doAnomRows = ordered(
+    doAnomalies.map((a) => ({ ...a, label: resolveDoProduct(a.nama)?.label ?? a.nama })),
+  );
 
   const totSales = prodDay.reduce((s, p) => s + p.vol, 0);
   const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
@@ -512,7 +557,7 @@ export default async function LaporanPage({
             </div>
           </div>
 
-          {/* 8 + 15 · DO — kartu DO live (penerimaan nyata); panel alokasi di-gate */}
+          {/* 8 + 15 · DO Harian — running-balance outstanding DO (live); panel alokasi di-gate */}
           <div className={DOMAIN.do ? "lap-two mt10" : "mt10"}>
             <div className="card tbl-card">
               <div className="lap-cardhead">
@@ -522,33 +567,103 @@ export default async function LaporanPage({
                 <span>Produk</span>
                 {DOMAIN.do && <span className="right">DO Awal</span>}
                 <span className="right">Penerimaan</span>
-                {DOMAIN.do && <span className="right">Penebusan</span>}
-                {DOMAIN.do && <span className="right">Sisa DO Akhir</span>}
+                {DOMAIN.do && <span className="right">Penebusan DO</span>}
+                {DOMAIN.do && <span className="right">Sisa DO</span>}
               </div>
-              {ordered(delivDay).map((d) => (
-                <div key={d.ckdbbm} className={`grid-row cols-do${DOMAIN.do ? "" : " lite"}`}>
-                  <span className="fs16 w600">{d.nama}</span>
-                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
-                  <span className="right fs16 t-secondary num">{fmtL(d.vol)}</span>
-                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
-                  {DOMAIN.do && <span className="right fs16 t-tertiary num">—</span>}
+              {doRows.map((d) => (
+                <div key={d.key} className={`grid-row cols-do${DOMAIN.do ? "" : " lite"}`}>
+                  <span className="fs16 w600">
+                    {d.label}
+                    {DOMAIN.do && d.recon !== 0 && (
+                      <span
+                        className="t-warning"
+                        title={`Alur tak rekonsiliasi (${signed(d.recon)} L) — alokasi tidak sesuai; lihat panel`}
+                      >
+                        {" "}⚠
+                      </span>
+                    )}
+                  </span>
+                  {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.doAwal)}</span>}
+                  <span className="right fs16 t-secondary num">{fmtL(d.penerimaan)}</span>
+                  {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.penebusan)}</span>}
+                  {DOMAIN.do && (
+                    <span className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}`}>
+                      {fmtL(d.sisa)}
+                    </span>
+                  )}
                 </div>
               ))}
-              {delivDay.length === 0 && (
-                <div className="empty-inline">Tidak ada penerimaan BBM pada tanggal ini.</div>
-              )}
+              <div className={`grid-total cols-do${DOMAIN.do ? "" : " lite"}`}>
+                <span className="text-caption w700">TOTAL</span>
+                {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.doAwal)}</span>}
+                <span className="right w700 num lap-totnum">{fmtL(doTotal.penerimaan)}</span>
+                {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.penebusan)}</span>}
+                {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.sisa)}</span>}
+              </div>
               <div className="lap-cardfoot">
                 {DOMAIN.do
-                  ? "Kolom DO awal/penebusan/sisa dari Domain DO. Penerimaan = data nyata EasyMax."
+                  ? "Sisa DO = saldo per-SO (Σ ditebus − diterima, ≥0; logika EasyMax). DO Awal = Sisa kemarin. ⚠ = alur tak sesuai Sisa (alokasi tidak sesuai). Penerimaan = Volume DO (NVOLDO)."
                   : "Penerimaan BBM dari data EasyMax."}
               </div>
             </div>
             {DOMAIN.do && (
-              <EmptyPanel
-                title="Alokasi Penerimaan Tidak Sesuai"
-                domain="Domain DO/alokasi"
-                note="Saat tersambung: hanya produk dengan ketidaksesuaian 5 hari terakhir yang tampil."
-              />
+              <div className="card tbl-card">
+                <div className="lap-cardhead">
+                  <div className="text-h6 t-brand">Alokasi Penerimaan Tidak Sesuai</div>
+                </div>
+                {doSuspects.length === 0 && doAnomRows.length === 0 ? (
+                  <div className="empty-inline">
+                    Tidak ada ketidaksesuaian — semua penerimaan ter-link ke penebusan.
+                  </div>
+                ) : (
+                  <>
+                    {doSuspects.length > 0 && (
+                      <>
+                        <div className="grid-head cols-suspect">
+                          <span>No. SO · Produk</span>
+                          <span className="right">Outstanding</span>
+                          <span className="right">Sejak</span>
+                        </div>
+                        {doSuspects.map((s) => (
+                          <div key={`${s.cnoso}-${s.ckdbbm}`} className="grid-row cols-suspect">
+                            <span className="fs16">
+                              <span className="w600">{s.cnoso}</span> · {s.nama}
+                            </span>
+                            <span className="right fs16 t-warning num">{fmtL(s.outstanding)}</span>
+                            <span className="right fs16 t-tertiary">
+                              {s.sejak} · {s.umur_hari} hr
+                            </span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {doAnomRows.length > 0 && (
+                      <>
+                        <div className="grid-head cols-anom">
+                          <span>Produk</span>
+                          <span className="right">Tanpa Penebusan</span>
+                          <span className="right">Lebih Terima</span>
+                        </div>
+                        {doAnomRows.map((a) => (
+                          <div key={a.ckdbbm} className="grid-row cols-anom">
+                            <span className="fs16 w600">{a.label}</span>
+                            <span className="right fs16 t-warning num">{a.orphan ? fmtL(a.orphan) : "—"}</span>
+                            <span className="right fs16 t-warning num">
+                              {a.over_receipt ? fmtL(a.over_receipt) : "—"}
+                            </span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
+                <div className="lap-cardfoot">
+                  DO belum tuntas &gt;{DO_STALE_DAYS} hari = kemungkinan salah input produk/volume di
+                  EasyMax — verifikasi &amp; ralat di POS (Sisa per-SO bersih sendiri setelahnya).
+                  &ldquo;Tanpa Penebusan&rdquo; = penerimaan ber-SO tanpa penebusan; &ldquo;Lebih
+                  Terima&rdquo; = diterima &gt; ditebus per SO.
+                </div>
+              </div>
             )}
           </div>
 

@@ -72,6 +72,7 @@ export const DeliveryRow = z.object({
   dtgltrm: isoDate.nullable(),
   dtgljam: isoUtc,
   cnodo: str,
+  cnoso: str, // No. SO Pertamina — link ke tr_htebus.CNOSO (per-SO open-balance)
   nvoldo: num,
   nvolreal: num,
   nvolselisih: num,
@@ -169,6 +170,30 @@ export const EdcRow = z.object({
   jrnkey: z.number().int().nullable(),
 });
 
+/**
+ * Penebusan DO — header (sumber `tr_htebus`, PK `CKDTBS`). Watermark = `DTGLTBS`
+ * (tanggal bisnis, kolom DATE tanpa jam → pola windowed à la cash). `sbatal`
+ * ditarik apa adanya; rescan window menangkap pembatalan menyusul (difilter di
+ * query dashboard, bukan di sync).
+ */
+export const TebusHeaderRow = z.object({
+  ckdtbs: z.string(),
+  dtgltbs: isoDate,
+  cnoso: str, // No. SO Pertamina — kunci join penerimaan↔penebusan (per-SO)
+  sbatal: z.number().int().nullable(),
+});
+
+/**
+ * Penebusan DO — detail per produk (sumber `tr_dtebus`, grain `(CKDTBS,CKDBBM)`).
+ * `nvolume` = volume DO yang ditebus (L). CATATAN: `tr_dtebus.NSISA` adalah KOLOM
+ * MATI (selalu = NVOLUME; EasyMax hitung sisa live) → JANGAN di-sync/dipakai.
+ */
+export const TebusDetailRow = z.object({
+  ckdtbs: z.string(),
+  ckdbbm: str,
+  nvolume: num,
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -220,6 +245,8 @@ export const ROW_SCHEMA = {
   card: CardRow,
   pelanggan_sale: PelangganSaleRow,
   voucher_sale: VoucherSaleRow,
+  tebus_header: TebusHeaderRow,
+  tebus_detail: TebusDetailRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -239,3 +266,5 @@ export type EdcRow = z.infer<typeof EdcRow>;
 export type CardRow = z.infer<typeof CardRow>;
 export type PelangganSaleRow = z.infer<typeof PelangganSaleRow>;
 export type VoucherSaleRow = z.infer<typeof VoucherSaleRow>;
+export type TebusHeaderRow = z.infer<typeof TebusHeaderRow>;
+export type TebusDetailRow = z.infer<typeof TebusDetailRow>;

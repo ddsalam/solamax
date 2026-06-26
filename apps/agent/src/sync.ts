@@ -5,6 +5,7 @@ import {
   CASH_DOMAIN,
   DATETIME_DOMAINS,
   DEPOSIT_DOMAIN,
+  TEBUS_DOMAIN,
   EDC_DOMAIN,
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
@@ -263,6 +264,50 @@ async function syncCash(d: SyncDeps): Promise<void> {
   }
   if (allOk && !d.dryRun && page.watermarkHigh) {
     d.store.setWatermark("cash", page.watermarkHigh);
+  }
+}
+
+async function syncTebus(d: SyncDeps): Promise<void> {
+  // Penebusan DO — re-scan BERJENDELA dari (watermark DTGLTBS − tebusRescanDays).
+  // Run pertama (watermark kosong) = backfill penuh tr_htebus (≈1.4k baris).
+  // DTGLTBS date-only → window `>=` + UPSERT by PK CKDTBS (idempoten saat re-pull;
+  // menangkap baris telat & flip SBATAL dalam jendela 7 hari). Pola identik kas.
+  const stored = d.store.getWatermark("tebus"); // "YYYY-MM-DD" | null
+  const startDate = stored
+    ? subtractDays(stored, d.cfg.sync.tebusRescanDays)
+    : EPOCH_DATE;
+
+  const raw = await d.conn.roQuery(TEBUS_DOMAIN.sql, [startDate]);
+  if (raw.length === 0) {
+    log.info("tebus: 0 baris", { since: startDate });
+    return;
+  }
+  const page = TEBUS_DOMAIN.map(raw);
+  const headers = page.tables.tebus_header ?? [];
+  const details = page.tables.tebus_detail ?? [];
+
+  // Pecah per batchSize header (detail ikut header-nya). Watermark maju HANYA
+  // bila SEMUA chunk ter-ingest.
+  let allOk = true;
+  for (let i = 0; i < headers.length; i += d.cfg.sync.batchSize) {
+    const hChunk = headers.slice(i, i + d.cfg.sync.batchSize);
+    const ids = new Set(hChunk.map((h) => h.ckdtbs));
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "tebus",
+      watermark_high: null, // berbasis tanggal; agent simpan watermark DTGLTBS lokal
+      tables: {
+        tebus_header: hChunk,
+        tebus_detail: details.filter((x) => ids.has(x.ckdtbs)),
+      },
+    });
+    if (status !== "ok") {
+      allOk = false;
+      break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+    }
+  }
+  if (allOk && !d.dryRun && page.watermarkHigh) {
+    d.store.setWatermark("tebus", page.watermarkHigh);
   }
 }
 
@@ -795,6 +840,14 @@ export async function runCycle(
   } catch (err) {
     log.error("domain gagal — dilewati siklus ini", {
       domain: "cash",
+      err: String(err),
+    });
+  }
+  try {
+    await syncTebus(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "tebus",
       err: String(err),
     });
   }

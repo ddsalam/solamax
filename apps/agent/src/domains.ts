@@ -37,9 +37,12 @@ export interface DateTimeDomain {
   map(raw: Raw[], offsetMin: number): MappedPage;
 }
 
-/** Domain berbasis DTGL (date) — kas, dorman sejak 2019, re-scan 7 hari. */
+/**
+ * Domain berbasis DTGL (date) — kas (dorman sejak 2019) & penebusan DO. Watermark
+ * tanggal-only → re-scan window `>=` + UPSERT by PK (idempoten saat re-pull).
+ */
 export interface DateDomain {
-  domain: Extract<Domain, "cash">;
+  domain: Extract<Domain, "cash" | "tebus">;
   mode: "date";
   sql: string; // `?1` = cutoff date "YYYY-MM-DD"
   map(raw: Raw[]): MappedPage;
@@ -310,14 +313,14 @@ const DELIVERY: DateTimeDomain = {
   domain: "delivery",
   mode: "datetime",
   sql: `
-    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, NVOLDO, NVOLREAL, NVOLSELISIH,
+    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, CNOSO, NVOLDO, NVOLREAL, NVOLSELISIH,
            CNOPOL, VCSOPIR, CKDTANGKI, CKDBBM, SBATAL
     FROM tr_terimabbm
     WHERE DTGLJAM IS NOT NULL AND DTGLJAM > ?
     ORDER BY DTGLJAM ASC
     LIMIT ?`,
   sqlBoundary: `
-    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, NVOLDO, NVOLREAL, NVOLSELISIH,
+    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, CNOSO, NVOLDO, NVOLREAL, NVOLSELISIH,
            CNOPOL, VCSOPIR, CKDTANGKI, CKDBBM, SBATAL
     FROM tr_terimabbm
     WHERE DTGLJAM = ?`,
@@ -333,6 +336,7 @@ const DELIVERY: DateTimeDomain = {
         dtgltrm: businessDate(str(r.DTGLTRM)),
         dtgljam,
         cnodo: str(r.CNODO),
+        cnoso: str(r.CNOSO),
         nvoldo: num(r.NVOLDO),
         nvolreal: num(r.NVOLREAL),
         nvolselisih: num(r.NVOLSELISIH),
@@ -659,8 +663,61 @@ const REALTANK: RealtankDomain = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// TEBUS (tr_htebus ⋈ tr_dtebus) — Penebusan DO; watermark DTGLTBS (date),
+// re-scan 7 hari. Sumber kolom "Penebusan DO" + basis running-balance DO Awal/
+// Sisa. CATATAN: tr_dtebus.NSISA = KOLOM MATI (selalu = NVOLUME; EasyMax hitung
+// sisa live) → tarik NVOLUME saja. SBATAL ditarik apa adanya (difilter di query
+// dashboard). Pola identik CASH (header⋈detail, dedupe header by CKDTBS).
+// ---------------------------------------------------------------------------
+const TEBUS: DateDomain = {
+  domain: "tebus",
+  mode: "date",
+  sql: `
+    SELECT h.CKDTBS, h.DTGLTBS, h.CNOSO, h.SBATAL, d.CKDBBM, d.NVOLUME
+    FROM tr_htebus h
+    LEFT JOIN tr_dtebus d ON d.CKDTBS = h.CKDTBS
+    WHERE h.DTGLTBS >= ?
+    ORDER BY h.DTGLTBS ASC, h.CKDTBS ASC`,
+  map(raw) {
+    const headers = new Map<string, NonNullable<Tables["tebus_header"]>[number]>();
+    // Detail di-AGREGAT per (ckdtbs, ckdbbm): satu DO bisa punya BANYAK baris
+    // tr_dtebus untuk produk yang sama (per kompartemen) → tanpa agregasi, satu
+    // batch UPSERT memuat dua baris ber-conflict-key sama → Postgres 21000
+    // ("ON CONFLICT … cannot affect row a second time"). Laporan hanya butuh Σ
+    // NVOLUME per produk → menjumlah duplikat = benar.
+    const details = new Map<string, NonNullable<Tables["tebus_detail"]>[number]>();
+    let maxDate: string | null = null;
+    for (const r of raw) {
+      const ckdtbs = String(r.CKDTBS);
+      const dtgltbs = businessDate(str(r.DTGLTBS)) ?? "1970-01-01";
+      if (maxDate === null || dtgltbs > maxDate) maxDate = dtgltbs;
+      if (!headers.has(ckdtbs)) {
+        headers.set(ckdtbs, { ckdtbs, dtgltbs, cnoso: str(r.CNOSO), sbatal: int(r.SBATAL) });
+      }
+      if (r.CKDBBM !== null && r.CKDBBM !== undefined) {
+        const ckdbbm = str(r.CKDBBM);
+        const key = `${ckdtbs} ${ckdbbm ?? ""}`;
+        const vol = num(r.NVOLUME);
+        const ex = details.get(key);
+        if (ex) {
+          ex.nvolume = (ex.nvolume ?? 0) + (vol ?? 0);
+        } else {
+          details.set(key, { ckdtbs, ckdbbm, nvolume: vol });
+        }
+      }
+    }
+    return {
+      tables: { tebus_header: [...headers.values()], tebus_detail: [...details.values()] },
+      watermarkHigh: maxDate,
+      rowCount: raw.length,
+    };
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
+export const TEBUS_DOMAIN = TEBUS;
 export const DEPOSIT_DOMAIN = DEPOSIT;
 export const EDC_DOMAIN = EDC;
 export const PELANGGAN_DOMAIN = PELANGGAN;

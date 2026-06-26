@@ -10,6 +10,7 @@ const COLUMN_CAST: Record<string, string> = {
   dtgl: "date",
   dtaglopn: "date",
   dtgltrm: "date",
+  dtgltbs: "date",
   business_date: "date",
   dtgljam: "timestamptz",
   dtanggaljam: "timestamptz",
@@ -50,6 +51,32 @@ function buildValues(
  * limit 65.535 parameter Postgres). Identifier dari TABLE_CONFIG (konstanta);
  * nilai SELALU lewat parameter — tak ada interpolasi nilai ke SQL.
  */
+/**
+ * Agregasi baris ber-conflict-key sama dalam satu batch: jumlahkan kolom di
+ * `sumOnConflict`, pertahankan nilai pertama untuk kolom lain. Mencegah Postgres
+ * 21000 ("ON CONFLICT … cannot affect row a second time") saat sumber punya >1
+ * baris per natural-key (mis. tr_dtebus produk sama beberapa baris per DO).
+ */
+function aggregateByConflict(
+  cfg: TableConfig,
+  rows: ReadonlyArray<Record<string, unknown>>,
+): ReadonlyArray<Record<string, unknown>> {
+  if (!cfg.sumOnConflict || cfg.conflict.length === 0) return rows;
+  const byKey = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const key = JSON.stringify(cfg.conflict.map((c) => row[c] ?? null));
+    const ex = byKey.get(key);
+    if (!ex) {
+      byKey.set(key, { ...row });
+      continue;
+    }
+    for (const sc of cfg.sumOnConflict) {
+      ex[sc] = Number(ex[sc] ?? 0) + Number(row[sc] ?? 0);
+    }
+  }
+  return [...byKey.values()];
+}
+
 export function buildUpsert(
   cfg: TableConfig,
   unitId: number,
@@ -57,7 +84,7 @@ export function buildUpsert(
 ): { sql: string; params: unknown[] } {
   if (rows.length === 0) throw new Error("buildUpsert: rows kosong");
 
-  const { cols, tuples, params } = buildValues(cfg, unitId, rows);
+  const { cols, tuples, params } = buildValues(cfg, unitId, aggregateByConflict(cfg, rows));
 
   const conflictCols = ["unit_id", ...cfg.conflict];
   const updateCols = cfg.columns.filter((c) => !cfg.conflict.includes(c));
