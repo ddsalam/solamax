@@ -1,5 +1,5 @@
 import { q } from "./db";
-import { GARBAGE_STOCK_L } from "./derive";
+import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L } from "./derive";
 import type { ScopedUnitId } from "./scope";
 
 /**
@@ -205,6 +205,129 @@ export async function getClosingOpname(
      FROM biz b
      WHERE b.rn = 1 AND b.bizdate BETWEEN $2::date AND $3::date
      ORDER BY b.bizdate, trim(b.ckdtangki)`,
+    [unit, from, to],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Gain/Losses harian per produk — metode RESUME OPERASIONAL (otoritatif)
+// ---------------------------------------------------------------------------
+
+export interface DailyGlRow {
+  d: string; // tanggal bisnis
+  ckdbbm: string;
+  nama: string | null;
+  fisik: number | null; // Σ NSTOCKOP penutup non-garbage (Stock Fisik)
+  fisik_prev: number | null; // Stock Fisik hari-bisnis sebelumnya (Stock Awal)
+  pen_do: number; // Σ NVOLDO (Penerimaan) dlm jendela (prev, D]
+  sales_gross: number; // Σ nvolume jual KOTOR dlm jendela (prev, D]
+  tera: number; // Σ tera (L) dlm jendela (prev, D]
+  gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung
+  excluded_tanks: number; // tangki garbage yg dikecualikan dari fisik hari itu
+  provisional: boolean; // penutup D+1 belum ada / anchor D−1 hilang / ada celah
+}
+
+/**
+ * Gain/Losses harian per produk, **metode RESUME OPERASIONAL** (dikunci 2026-06-26,
+ * cocok ±0,06 L di 48 sel 18–25 Jun). BUKAN `NSTOCKOP − NSTOCKBK` (buku EasyMax
+ * dirantai ke volume real → kekurangan kiriman DO tak muncul):
+ *
+ *   Stock Teori(D) = Stock Fisik(D−1) + ΣNVOLDO(D) − Penjualan_BERSIH(D)
+ *   Gain/Losses(D) = Stock Fisik(D) − Stock Teori(D)
+ *   Penjualan_BERSIH = jual KOTOR − Tera   (tera=0 → = kotor)
+ *
+ * - Stock Fisik = Σ NSTOCKOP opname PENUTUP per produk (gabung tangki), guard
+ *   garbage pada baris stok. Stock Fisik(D−1) = penutup hari-bisnis sebelumnya
+ *   (lag; lookback melewati `from` agar hari pertama rentang punya anchor benar).
+ * - Penerimaan = ΣNVOLDO (`sbatal=0`), BUKAN NVOLREAL (sampah). Tera dari domain
+ *   `tera`. Penjualan jual KOTOR dari sales_detail.
+ * - Jendela (prev_date, D] menjumlah penerimaan/jual/tera lintas-celah bila suatu
+ *   hari tak ada opname (fallback penutup terdekat) → ditandai `provisional`.
+ * - Kembalikan baris harian utk SELURUH rentang; pemanggil agregasi harian (kolom
+ *   tabel) atau Σ bulanan (G/L kumulatif). Murni SELECT, ter-scope `ScopedUnitId`.
+ */
+export async function getDailyGlByProduct(
+  unit: ScopedUnitId,
+  from: string,
+  to: string,
+): Promise<DailyGlRow[]> {
+  return q<DailyGlRow>(
+    `WITH biz AS (
+       SELECT o.ckdtangki, o.ckdbbm, o.nstockop, o.nstockbk,
+              COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
+              row_number() OVER (
+                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), o.ckdtangki
+                ORDER BY o.dtgljam DESC
+              ) AS rn,
+              ((o.dtgljam AT TIME ZONE '${TZ}')::date
+                 <= COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date)) AS prov_row
+       FROM opname o
+       WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0
+     ),
+     clo AS (
+       SELECT bizdate, trim(ckdbbm) AS ckdbbm, nstockop::float8 AS op, prov_row,
+              (nstockop < 0 OR nstockop > ${GARBAGE_STOCK_L}
+                OR nstockbk < 0 OR nstockbk > ${GARBAGE_STOCK_L}
+                OR abs(nstockop - nstockbk) > ${GARBAGE_SELISIH_L}) AS garbage
+       FROM biz WHERE rn = 1
+     ),
+     fisik AS (
+       SELECT bizdate, ckdbbm,
+              sum(op) FILTER (WHERE NOT garbage) AS fisik,
+              count(*) FILTER (WHERE garbage)::int AS excluded_tanks,
+              bool_or(prov_row) AS prov
+       FROM clo GROUP BY bizdate, ckdbbm
+     ),
+     seq AS (
+       SELECT f.*,
+              lag(fisik)   OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS fisik_prev,
+              lag(bizdate) OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS prev_date
+       FROM fisik f
+     ),
+     deliv AS (
+       SELECT COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS d,
+              trim(t.ckdbbm) AS ckdbbm, sum(t.nvoldo)::float8 AS v
+       FROM delivery t
+       WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
+         AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
+       GROUP BY 1, 2
+     ),
+     sale AS (
+       SELECT h.dtgljual AS d, trim(sd.ckdbbm) AS ckdbbm, sum(sd.nvolume)::float8 AS v
+       FROM sales_detail sd
+       JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
+       WHERE sd.unit_id = $1
+       GROUP BY 1, 2
+     ),
+     terad AS (
+       SELECT te.business_date AS d, trim(te.ckdbbm) AS ckdbbm, sum(te.liter)::float8 AS v
+       FROM tera te WHERE te.unit_id = $1
+       GROUP BY 1, 2
+     )
+     SELECT to_char(s.bizdate,'YYYY-MM-DD') AS d, s.ckdbbm,
+            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND trim(p.ckdbbm)=s.ckdbbm) AS nama,
+            s.fisik::float8 AS fisik,
+            s.fisik_prev::float8 AS fisik_prev,
+            COALESCE((SELECT sum(v) FROM deliv x WHERE x.ckdbbm=s.ckdbbm
+                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS pen_do,
+            COALESCE((SELECT sum(v) FROM sale x WHERE x.ckdbbm=s.ckdbbm
+                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS sales_gross,
+            COALESCE((SELECT sum(v) FROM terad x WHERE x.ckdbbm=s.ckdbbm
+                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS tera,
+            CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL THEN NULL
+                 ELSE (s.fisik - (s.fisik_prev
+                       + COALESCE((SELECT sum(v) FROM deliv x WHERE x.ckdbbm=s.ckdbbm
+                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)
+                       - (COALESCE((SELECT sum(v) FROM sale x WHERE x.ckdbbm=s.ckdbbm
+                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)
+                          - COALESCE((SELECT sum(v) FROM terad x WHERE x.ckdbbm=s.ckdbbm
+                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0))
+                       ))::float8 END AS gl,
+            s.excluded_tanks,
+            (s.prov OR s.fisik_prev IS NULL OR s.prev_date <> s.bizdate - 1) AS provisional
+     FROM seq s
+     WHERE s.bizdate BETWEEN $2::date AND $3::date
+     ORDER BY s.bizdate, s.ckdbbm`,
     [unit, from, to],
   );
 }

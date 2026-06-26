@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateClosingGl,
+  aggregateDailyGl,
   alarmScore,
   bauran,
   bauranVsTarget,
@@ -12,6 +13,7 @@ import {
   stockNow,
   verdictHeadline,
   type ClosingRow,
+  type DailyGlInput,
 } from "./derive";
 import { canonicalProductKey, classifyProduct, targetBauran, unitLabel } from "./config";
 
@@ -170,6 +172,65 @@ describe("aggregateClosingGl (G/L signed dari opname penutup)", () => {
   it("provisional bila ada baris provisional yang lolos guard", () => {
     const agg = aggregateClosingGl([row({ provisional: true, signed: -5, op: 995 })]);
     expect(agg.provisional).toBe(true);
+  });
+});
+
+describe("aggregateDailyGl (G/L metode RESUME — Σ harian)", () => {
+  const row = (over: Partial<DailyGlInput>): DailyGlInput => ({
+    ckdbbm: "BB-02",
+    nama: "Pertamax",
+    gl: 0,
+    tera: 0,
+    excluded_tanks: 0,
+    provisional: false,
+    ...over,
+  });
+
+  it("menjumlahkan G/L bertanda per produk + total (Σ harian = kumulatif)", () => {
+    // Pertamax 18+19 Jun (RESUME): +2,29 lalu +22,88 → kumulatif +25,17.
+    const agg = aggregateDailyGl([
+      row({ gl: 2.29 }),
+      row({ gl: 22.88 }),
+      row({ ckdbbm: "BB-03", nama: "Solar", gl: 82.3 }),
+    ]);
+    expect(agg.byProduct.get("BB-02")?.signed).toBeCloseTo(25.17, 2);
+    expect(agg.byProduct.get("BB-03")?.signed).toBeCloseTo(82.3, 2);
+    expect(agg.totalSigned).toBeCloseTo(107.47, 2); // 2,29 + 22,88 + 82,30
+    expect(agg.hasGl).toBe(true);
+    expect(agg.provisional).toBe(false);
+  });
+
+  it("menjumlah Tera per produk & total tanpa mengubah G/L (kolom info)", () => {
+    // 25 Jun: Pertamax tera 60, Pertalite 101, Dexlite 40 → total 201.
+    const agg = aggregateDailyGl([
+      row({ ckdbbm: "BB-02", gl: 10.21, tera: 60 }),
+      row({ ckdbbm: "BB-07", nama: "Pertalite", gl: -53.97, tera: 101 }),
+      row({ ckdbbm: "BB-06", nama: "Dexlite", gl: 1252.28, tera: 40 }),
+    ]);
+    expect(agg.byProduct.get("BB-02")?.tera).toBe(60);
+    expect(agg.totalTera).toBe(201);
+    expect(agg.totalSigned).toBeCloseTo(1208.52, 2);
+  });
+
+  it("gl=null (anchor D−1 hilang) → dilewati dari total tapi menandai provisional", () => {
+    const agg = aggregateDailyGl([
+      row({ gl: null, tera: 5 }),
+      row({ ckdbbm: "BB-03", nama: "Solar", gl: 50 }),
+    ]);
+    expect(agg.totalSigned).toBe(50); // null tak ikut
+    expect(agg.totalTera).toBe(5); // tera tetap dijumlah
+    expect(agg.provisional).toBe(true);
+    expect(agg.byProduct.get("BB-02")?.signed).toBe(0); // tak ada gl terhitung
+  });
+
+  it("provisional & excludedTanks ter-propagasi", () => {
+    const agg = aggregateDailyGl([
+      row({ gl: 3, provisional: true, excluded_tanks: 1 }),
+      row({ ckdbbm: "BB-03", gl: 4, excluded_tanks: 2 }),
+    ]);
+    expect(agg.provisional).toBe(true);
+    expect(agg.excludedTanks).toBe(3);
+    expect(agg.hasGl).toBe(true);
   });
 });
 

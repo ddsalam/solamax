@@ -715,9 +715,78 @@ const TEBUS: DateDomain = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// TERA (tabel `tera`) — kalibrasi/test-dispense nozzle. Watermark TanggalJam
+// (datetime), incremental + safety window. Sumber kolom "Tera (L)" + komponen
+// Penjualan_BERSIH (jual KOTOR − tera) di Gain/Losses harian (selaras RESUME).
+// Tabel kecil (~3.8k baris); satu query per siklus, batch dispatch by batchSize.
+// ---------------------------------------------------------------------------
+/**
+ * Domain tera — single-table, watermark TanggalJam (datetime). `?1` = cutoff WIB
+ * string. Floor `TanggalJam >= 2020-01-01` membuang baris 1980 yang akan
+ * meracuni MAX(watermark). Produk DI-RESOLVE di MySQL lewat tangki → `tm_bbm`
+ * (dashboard memetakan ckdbbm→nama by VCNMBBM, sama seperti domain lain).
+ */
+export interface TeraDomain {
+  domain: Extract<Domain, "tera">;
+  mode: "datetime-single";
+  sql: string;
+  map(raw: Raw[], offsetMin: number): {
+    rows: NonNullable<Tables["tera"]>;
+    watermarkHigh: string | null;
+  };
+}
+
+const TERA: TeraDomain = {
+  domain: "tera",
+  mode: "datetime-single",
+  // Kunci join TERKONFIRMASI via PROBE mesin SPBU (SHOW COLUMNS, 2026-06-26):
+  // nama kolom EasyMax = `NoNozle` (satu 'z') & `SalTangki` (ber-'l') — wiki keliru
+  // di KEDUA nama. `tera.SalTangki` (tinyint(4) unsigned NOT NULL, indeks tangki
+  // 1–7) = `tm_tangki.CKDTANGKI2` (1–7, terkonfirmasi P3) → `tm_tangki.CKDBBM`.
+  // LEFT JOIN: kalau suatu baris ber-SalTangki tak terpetakan, ckdbbm = NULL tapi
+  // baris tetap tersync (idempoten by surrogate). CAST utk toleransi tipe.
+  // Identifier mentah (NoNozle/IDPompa/SalTangki) disimpan utk audit. Resolve
+  // produk BY NAME via master (dashboard memetakan ckdbbm→VCNMBBM). Validasi
+  // ANGKA vs PNG (24/25 Jun) lewat dry-run/probe P4' sebelum produksi.
+  sql: `
+    SELECT t.TanggalJam AS TanggalJam, t.NoNozle AS NoNozle, t.IDPompa AS IDPompa,
+           t.SalTangki AS SalTangki, t.Jenis AS Jenis, t.Liter AS Liter,
+           t.TotalHarga AS TotalHarga, tg.CKDBBM AS CKDBBM
+    FROM tera t
+    LEFT JOIN tm_tangki tg ON CAST(tg.CKDTANGKI2 AS UNSIGNED) = t.SalTangki
+    WHERE t.TanggalJam IS NOT NULL
+      AND t.TanggalJam >= '2020-01-01 00:00:00'
+      AND t.TanggalJam > ?
+    ORDER BY t.TanggalJam ASC`,
+  map(raw, offsetMin) {
+    const rows: NonNullable<Tables["tera"]> = [];
+    let maxUtc: string | null = null;
+    for (const r of raw) {
+      const wib = str(r.TanggalJam);
+      const tanggaljam = wibDateTimeToUtcIso(wib, offsetMin);
+      if (tanggaljam === null) continue; // butuh waktu rekam valid
+      if (maxUtc === null || tanggaljam > maxUtc) maxUtc = tanggaljam;
+      rows.push({
+        business_date: businessDate(wib) ?? "1970-01-01",
+        tanggaljam,
+        no_nozzle: str(r.NoNozle),
+        id_pompa: int(r.IDPompa),
+        sa_tangki: int(r.SalTangki),
+        jenis: int(r.Jenis),
+        ckdbbm: str(r.CKDBBM),
+        liter: num(r.Liter),
+        total: num(r.TotalHarga),
+      });
+    }
+    return { rows, watermarkHigh: maxUtc };
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const TEBUS_DOMAIN = TEBUS;
+export const TERA_DOMAIN = TERA;
 export const DEPOSIT_DOMAIN = DEPOSIT;
 export const EDC_DOMAIN = EDC;
 export const PELANGGAN_DOMAIN = PELANGGAN;

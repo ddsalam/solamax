@@ -89,7 +89,7 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         dateIso: r.d,
         title: `Losses ${signedFmt(r.signed)} L${pctTxt}`,
         unit: unitTag,
-        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%${doCtx}.`,
+        desc: `Opname penutup tangki ${r.ckdtangki} ${r.nama ?? r.ckdbbm ?? ""} (fisik − buku) — di atas ambang 100 L / 0,5%${doCtx}. Metode lama op−bk; akan disejajarkan ke metode RESUME (lihat Laporan Harian).`,
         time: r.d,
         href,
       });
