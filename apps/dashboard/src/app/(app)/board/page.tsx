@@ -302,6 +302,9 @@ export default async function BoardPage({
                   : "dalam ambang ±0,5%"}
             </span>
           </div>
+          <div className="fs15 t-tertiary mt1">
+            metode lama (op−bk) — akan disejajarkan ke metode RESUME (Laporan Harian)
+          </div>
         </div>
         <div className="kpi-card">
           <div className="text-caption t-tertiary">Kepatuhan input</div>

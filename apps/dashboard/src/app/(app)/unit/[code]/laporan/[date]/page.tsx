@@ -9,13 +9,13 @@ import {
   targetVolumePerDay,
   unitDotted,
 } from "@/lib/config";
-import { aggregateClosingGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { dateLong, fmtL, idn, parenNeg, pct, rp, rpShort, signed, timeWib } from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
   getCashForDate,
-  getClosingOpname,
+  getDailyGlByProduct,
   getCorrections,
   getDeliveryByProduct,
   getDoAnomalies,
@@ -54,8 +54,7 @@ export default async function LaporanPage({
 
   const [
     prodDay,
-    closingDay,
-    closingMonth,
+    glRows,
     prodMonth,
     delivMonth,
     doDay,
@@ -68,8 +67,9 @@ export default async function LaporanPage({
     cash,
   ] = await Promise.all([
     getSalesByProduct(unit.unit_id, date, date),
-    getClosingOpname(unit.unit_id, date, date),
-    getClosingOpname(unit.unit_id, mStart, date),
+    // G/L harian metode RESUME — satu fetch bulan-berjalan; turunkan harian (filter
+    // d=date) & kumulatif (Σ). Lookback D−1 ditangani di query (anchor benar).
+    getDailyGlByProduct(unit.unit_id, mStart, date),
     getSalesByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, mStart, date),
     getDoHarian(unit.unit_id, date),
@@ -124,20 +124,25 @@ export default async function LaporanPage({
 
   const totSales = prodDay.reduce((s, p) => s + p.vol, 0);
   const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
-  // G/L SIGNED dari opname penutup (fisik − buku), garbage dikecualikan.
-  const aggDay = aggregateClosingGl(closingDay);
-  const aggMonth = aggregateClosingGl(closingMonth);
+  // G/L harian metode RESUME: Fisik − (Fisik D−1 + ΣNVOLDO − jual BERSIH). Sales
+  // (L) & Omzet tetap KOTOR/utuh; Tera hanya mengoreksi Penjualan_BERSIH di G/L.
+  const dayAgg = aggregateDailyGl(glRows.filter((r) => r.d === date));
+  const monthAgg = aggregateDailyGl(glRows);
   const glByCode = new Map(
-    [...aggDay.byProduct].map(([k, v]) => [k, v.signed] as const),
+    [...dayAgg.byProduct].map(([k, v]) => [k, v.signed] as const),
   );
-  const glTotal = aggDay.totalSigned;
-  const glPctDay = closingDay.length > 0 ? glPercent(glTotal, totSales) : null;
-  const glProvisional = aggDay.provisional;
-  const glGarbageCount = aggDay.garbage.length;
+  const teraByCode = new Map(
+    [...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const),
+  );
+  const glTotal = dayAgg.totalSigned;
+  const totTera = dayAgg.totalTera;
+  const glPctDay = dayAgg.hasGl ? glPercent(glTotal, totSales) : null;
+  const glProvisional = dayAgg.provisional;
+  const glGarbageCount = dayAgg.excludedTanks;
 
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
-  const glMonthTotal = aggMonth.totalSigned;
-  const glPctMonth = closingMonth.length > 0 ? glPercent(glMonthTotal, volMonth) : null;
+  const glMonthTotal = monthAgg.totalSigned;
+  const glPctMonth = monthAgg.hasGl ? glPercent(glMonthTotal, volMonth) : null;
 
   const isPartial = isToday && shift.shifts < 3;
   const gasMix = bauran(prodDay, "gasoline");
@@ -361,7 +366,7 @@ export default async function LaporanPage({
       <div className="mt10">
         <div className="section-h">
           <div className="text-h5 t-brand">
-            Omset Penjualan &amp; Gain (Losses){DOMAIN.tera ? " & Tera" : ""} Harian
+            Omset Penjualan, Gain (Losses) &amp; Tera Harian
           </div>
           <span className="fs16 t-tertiary">per produk · dari totalisator nozzle per shift</span>
           {glProvisional && (
@@ -371,21 +376,21 @@ export default async function LaporanPage({
           )}
         </div>
         <div className="card tbl-card mt4">
-          <div className={`grid-head cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
+          <div className="grid-head cols-sales">
             <span>Produk</span>
             <span className="right">Sales (L)</span>
             <span className="right">Gain/Losses (L)</span>
-            {DOMAIN.tera && <span className="right">Tera (L)</span>}
+            <span className="right">Tera (L)</span>
             <span className="right">Omzet (Rp)</span>
-            <span className="right">% Mix</span>
           </div>
           {prodDay.length === 0 && (
             <div className="empty-inline">Belum ada penjualan pada tanggal bisnis ini.</div>
           )}
           {ordered(prodDay).map((p) => {
             const gl = glByCode.get(p.ckdbbm) ?? null;
+            const tera = teraByCode.get(p.ckdbbm) ?? 0;
             return (
-              <div key={p.ckdbbm} className={`grid-row cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
+              <div key={p.ckdbbm} className="grid-row cols-sales">
                 <span className="text-caption w600">{p.nama}</span>
                 <span className="right fs16 num">{idn(p.vol)}</span>
                 <span
@@ -393,23 +398,19 @@ export default async function LaporanPage({
                 >
                   {gl !== null ? signed(gl) : "—"}
                 </span>
-                {DOMAIN.tera && <span className="right fs16 t-tertiary num">—</span>}
+                <span className="right fs16 t-tertiary num">{tera > 0 ? idn(tera) : "—"}</span>
                 <span className="right fs16 num nowrap">{rp(p.omzet)}</span>
-                <span className="right fs16 t-tertiary num">
-                  {totSales > 0 ? pct(p.vol / totSales) : "—"}
-                </span>
               </div>
             );
           })}
-          <div className={`grid-total cols-sales${DOMAIN.tera ? "" : " no-tera"}`}>
+          <div className="grid-total cols-sales">
             <span className="text-caption w700">TOTAL</span>
             <span className="right w700 num lap-totnum">{idn(totSales)}</span>
             <span className={`right w700 num lap-totnum ${glTotal < 0 ? "t-danger" : "t-success"}`}>
               {signed(glTotal)}
             </span>
-            {DOMAIN.tera && <span className="right t-tertiary num">—</span>}
+            <span className="right fs16 t-tertiary num">{totTera > 0 ? idn(totTera) : "—"}</span>
             <span className="right w700 num nowrap lap-totnum">{rp(totOmzet)}</span>
-            <span className="right fs16 t-tertiary">100%</span>
           </div>
         </div>
         <div className="fs15 t-tertiary mt2">
@@ -474,7 +475,7 @@ export default async function LaporanPage({
                 <span className="right">% vs vol</span>
               </div>
               {ordered(
-                [...aggMonth.byProduct].map(([ckdbbm, v]) => ({
+                [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
                   ckdbbm,
                   nama: v.nama ?? ckdbbm,
                   selisih: v.signed,
@@ -495,7 +496,7 @@ export default async function LaporanPage({
                   </div>
                 );
               })}
-              {aggMonth.byProduct.size === 0 && (
+              {monthAgg.byProduct.size === 0 && (
                 <div className="empty-inline">Belum ada opname penutup bulan ini.</div>
               )}
             </div>

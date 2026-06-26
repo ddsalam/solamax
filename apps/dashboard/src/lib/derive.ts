@@ -131,6 +131,65 @@ export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
   return { byProduct, totalSigned, provisional, abnormal, garbage };
 }
 
+// ---------------------------------------------------------------------------
+// Gain/Loss harian metode RESUME (Σ harian) — agregasi untuk tabel & kumulatif
+// ---------------------------------------------------------------------------
+
+/** Baris harian per produk dari getDailyGlByProduct (struktural; hindari siklus import). */
+export interface DailyGlInput {
+  ckdbbm: string;
+  nama: string | null;
+  gl: number | null; // bertanda; null = tak terhitung (anchor D−1 hilang)
+  tera: number;
+  excluded_tanks: number;
+  provisional: boolean;
+}
+
+export interface DailyGlAgg {
+  /** Per produk: G/L bertanda terjumlah + Σ tera. */
+  byProduct: Map<string, { nama: string | null; signed: number; tera: number }>;
+  totalSigned: number;
+  totalTera: number;
+  /** Ada baris provisional / gl tak terhitung → angka belum final. */
+  provisional: boolean;
+  /** Σ tangki garbage yang dikecualikan dari Stock Fisik. */
+  excludedTanks: number;
+  /** Ada minimal satu baris G/L terhitung (gl != null). */
+  hasGl: boolean;
+}
+
+/**
+ * Agregasi G/L harian (metode RESUME) per produk untuk satu hari (filter ke
+ * tanggal di pemanggil) atau seluruh bulan (Σ harian → kumulatif). Baris gl=null
+ * (anchor D−1 hilang) dilewati dari jumlah tapi menandai provisional. Tera tetap
+ * dijumlah (kolom info, tak tergantung G/L terhitung).
+ */
+export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
+  const byProduct = new Map<string, { nama: string | null; signed: number; tera: number }>();
+  let totalSigned = 0;
+  let totalTera = 0;
+  let provisional = false;
+  let excludedTanks = 0;
+  let hasGl = false;
+
+  for (const r of rows) {
+    if (r.provisional) provisional = true;
+    excludedTanks += r.excluded_tanks;
+    const cur = byProduct.get(r.ckdbbm) ?? { nama: r.nama, signed: 0, tera: 0 };
+    cur.tera += r.tera;
+    totalTera += r.tera;
+    if (r.gl === null) {
+      provisional = true; // tak terhitung → jangan klaim final
+    } else {
+      hasGl = true;
+      cur.signed += r.gl;
+      totalSigned += r.gl;
+    }
+    byProduct.set(r.ckdbbm, cur);
+  }
+  return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl };
+}
+
 /**
  * Stok hasil hitung yang MUSTAHIL secara fisik (negatif) → jangan tampilkan
  * sebagai angka; render "data tak wajar". Backstop: idealnya tak terjadi setelah

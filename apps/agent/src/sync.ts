@@ -6,6 +6,7 @@ import {
   DATETIME_DOMAINS,
   DEPOSIT_DOMAIN,
   TEBUS_DOMAIN,
+  TERA_DOMAIN,
   EDC_DOMAIN,
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
@@ -309,6 +310,66 @@ async function syncTebus(d: SyncDeps): Promise<void> {
   if (allOk && !d.dryRun && page.watermarkHigh) {
     d.store.setWatermark("tebus", page.watermarkHigh);
   }
+}
+
+async function syncTera(d: SyncDeps): Promise<void> {
+  // Tera/kalibrasi nozzle — incremental TanggalJam (datetime) + safety window
+  // (sama pola domain datetime). Run pertama (watermark kosong) = backfill penuh
+  // tabel `tera` (~3.8k baris, < MAX_ROWS; floor 2020-01-01 buang baris 1980).
+  // Satu query (tabel kecil) → batch dispatch by batchSize. UPSERT by surrogate
+  // (unit_id, tanggaljam, no_nozzle) → idempoten saat re-pull jendela.
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  const stored = d.store.getWatermark("tera"); // UTC ISO | null
+  const cutoffIso = stored
+    ? subtractMinutesIso(stored, d.cfg.sync.safetyWindowMin)
+    : null;
+  const bind = cutoffIso ? utcIsoToWibString(cutoffIso, offset) : EPOCH_WIB;
+
+  const raw = await d.conn.roQuery(TERA_DOMAIN.sql, [bind]);
+  if (raw.length === 0) {
+    log.info("tera: 0 baris", { since: bind });
+    return;
+  }
+  const { rows, watermarkHigh } = TERA_DOMAIN.map(raw, offset);
+  if (rows.length === 0 || watermarkHigh === null) return;
+
+  if (d.dryRun) {
+    // Rekon dry-run (gate PROBE): Σ liter per (business_date, ckdbbm) → bandingkan
+    // langsung ke kolom "Volume Tera (L)" RESUME (24-Jun Pertamax 21,08; 25-Jun
+    // Pertamax 60 / Pertalite 101 / Dexlite 40). null-ckdbbm = kunci join SALAH.
+    const agg = new Map<string, number>();
+    let nullBbm = 0;
+    for (const r of rows) {
+      if (r.ckdbbm === null) nullBbm += 1;
+      const k = `${r.business_date}|${r.ckdbbm ?? "(null)"}`;
+      agg.set(k, (agg.get(k) ?? 0) + (r.liter ?? 0));
+    }
+    const recent = [...agg.entries()]
+      .filter(([k]) => k >= "2026-06-18")
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    log.info("[dry-run] tera rekon per (tanggal, produk)", {
+      total: rows.length,
+      ckdbbm_null: nullBbm, // > 0 → kunci join SaTangki↔CKDTANGKI2 belum benar
+      recent,
+    });
+  }
+
+  // Batch dispatch by batchSize. Watermark maju HANYA bila SEMUA chunk ter-ingest.
+  let allOk = true;
+  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "tera",
+      watermark_high: watermarkHigh,
+      tables: { tera: chunk },
+    });
+    if (status !== "ok") {
+      allOk = false;
+      break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+    }
+  }
+  if (allOk && !d.dryRun) d.store.setWatermark("tera", watermarkHigh);
 }
 
 async function syncDeposit(d: SyncDeps): Promise<void> {
@@ -848,6 +909,14 @@ export async function runCycle(
   } catch (err) {
     log.error("domain gagal — dilewati siklus ini", {
       domain: "tebus",
+      err: String(err),
+    });
+  }
+  try {
+    await syncTera(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "tera",
       err: String(err),
     });
   }

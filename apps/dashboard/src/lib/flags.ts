@@ -9,7 +9,7 @@
  * self-heal tanpa menyentuh file ini.
  */
 export const DOMAIN = {
-  tera: false, // nozzle-test / kolom Tera (komponen B rekonsiliasi)
+  tera: true, // nozzle-test / kolom Tera + komponen Penjualan_BERSIH G/L (domain `tera` LIVE)
   pelanggan: false, // deposit & piutang pelanggan (C)
   edc: false, // settlement EDC (D)
   pendapatanLain: false, // pendapatan lain-lain (F)
