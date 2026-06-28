@@ -313,6 +313,12 @@ model Edc {
   jrnkey       Int?
   ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
 
+  // Kunci natural anti-kembar (idempotensi REPLACE bersamaan). Index FISIK dibuat
+  // migrasi 0012 dengan NULLS NOT DISTINCT (ckdkartu/cnotrace sering NULL utk
+  // blank-card; Prisma 5.x belum bisa mengekspresikan NULLS NOT DISTINCT → @@unique
+  // di sini hanya model logis, drift NULLS sengaja & terdokumentasi). Nama index
+  // SAMA → ON CONFLICT (sql.ts buildReplace) menginfer index ini.
+  @@unique([unitId, businessDate, cshift, tanggaljam, nonozle, cnotrace, ckdkartu, total], map: "edc_natural_key")
   @@index([unitId, businessDate])
   @@map("edc")
   @@schema("public")

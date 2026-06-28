@@ -92,6 +92,41 @@ d("idempotensi /ingest (DB lokal)", () => {
     expect(await count("edc", "AND business_date = '2026-06-14'")).toBe(2); // 14 tak terhapus
   });
 
+  // REGRESI insiden 2026-06-22: dua /ingest BERSAMAAN utk business_date yang belum
+  // berisi. Tanpa kunci unik + ON CONFLICT, dua transaksi DELETE+INSERT tumpang-
+  // tindih → 2× baris (kembar). Dgn edc_natural_key (NULLS NOT DISTINCT) + ON
+  // CONFLICT DO UPDATE, INSERT kedua memblok lalu update → tetap N baris.
+  it("edc REPLACE: dua /ingest BERSAMAAN → 0 kembar (butuh index edc_natural_key)", async () => {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM public."edc" WHERE unit_id = ${U} AND business_date = '2026-06-19'`,
+    );
+    const p = edcPayload("2026-06-19", 5); // termasuk baris blank-card? — pakai varian campuran
+    // jalankan dua ingest payload identik secara konkuren (koneksi pool terpisah)
+    await Promise.all([svc.ingest(U, p), svc.ingest(U, p)]);
+    expect(await count("edc", "AND business_date = '2026-06-19'")).toBe(5); // bukan 10
+  });
+
+  // Sama, dgn baris blank-card (ckdkartu/cnotrace NULL) — membuktikan NULLS NOT
+  // DISTINCT: tanpa-nya, baris NULL tak ber-konflik → kembar lolos.
+  it("edc REPLACE bersamaan: baris blank-card (NULL) pun tak kembar", async () => {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM public."edc" WHERE unit_id = ${U} AND business_date = '2026-06-20'`,
+    );
+    const blank: IngestPayload = {
+      unit_code: "x", domain: "edc", watermark_high: null,
+      tables: {
+        edc: [
+          { business_date: "2026-06-20", cshift: "1", tanggaljam: "2026-06-20T08:00:00.000Z",
+            ckdkartu: null, total: 100000, liter: 10, jenis: 5, cnotrace: null, nonozle: "3", jrnkey: 202606201 },
+          { business_date: "2026-06-20", cshift: "2", tanggaljam: "2026-06-20T09:00:00.000Z",
+            ckdkartu: "QR01", total: 50000, liter: 5, jenis: 5, cnotrace: "T9", nonozle: "5", jrnkey: 202606202 },
+        ],
+      },
+    };
+    await Promise.all([svc.ingest(U, blank), svc.ingest(U, blank)]);
+    expect(await count("edc", "AND business_date = '2026-06-20'")).toBe(2); // bukan 4
+  });
+
   // Re-sync SALES (FASE 2): UPSERT by (ckdjualbbm,ckdnozzle,nurut). Baris shift-3
   // ber-DTGLJAM NULL di sumber → agent sintesis dtgljam tengah-malam WIB; di sini
   // direpresentasikan sebagai timestamp valid (kolom NOT NULL). Resend → 0 dup.
