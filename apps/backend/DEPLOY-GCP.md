@@ -135,3 +135,25 @@ FROM sales_detail ORDER BY dtgljam DESC LIMIT 10;
 gcloud run services delete solamax-ingest-staging --region=asia-southeast2
 gcloud sql instances delete solamax-pg   # HATI-HATI: menghapus data
 ```
+
+## 8. Catatan: backend BELUM ber-CD — deploy manual = pengecualian, butuh approval
+
+Backend `/ingest` **tidak** punya job CD. `deploy-staging.yml` hanya membangun &
+men-deploy **dashboard** (`solamax-dashboard-staging`) di belakang GitHub
+Environment terproteksi `staging` (required reviewer). Backend di-deploy **manual**
+(langkah 2 migrasi + langkah 4 image, di atas) dan **hanya atas instruksi eksplisit
+user** — tak ada gerbang approval otomatis seperti dashboard.
+
+**Riwayat out-of-band:**
+
+- **2026-06-28 — hotfix idempotensi EDC (PR #23).** EDC ter-ingest ganda saat dua
+  `/ingest` REPLACE bersamaan (retry agent menimpa request yang masih commit).
+  Migrasi `0012_edc_natural_key` (dedup + index unik `NULLS NOT DISTINCT`)
+  di-apply manual via role `ingest`, lalu image di-deploy `gcloud run deploy
+  --source .` → revisi `solamax-ingest-staging-00016-zdt`. Urutan: **migrasi dulu**
+  (ON CONFLICT butuh index sebagai arbiter). No-drift terverifikasi: tree sumber
+  build == `origin/staging`. Pengecualian SATU KALI karena mendesak.
+
+**Tindak lanjut disarankan:** tutup celah ini dengan job CD backend yang mencerminkan
+pola dashboard (Environment `staging` terproteksi + required reviewer), agar deploy
+backend berikutnya lewat pipeline ber-approval, bukan manual.

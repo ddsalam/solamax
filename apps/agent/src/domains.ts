@@ -62,6 +62,20 @@ export interface DepositDomain {
 }
 
 /**
+ * Domain piutang/hutang — FULL SYNC tiap siklus (ledger tr_bppiut ~385k /
+ * tr_bphut). Tanpa watermark: tarik SELURUH baris → nol gap (baris back-dated &
+ * flip SBATAL selalu ikut). UPSERT by PK (unit_id, ckdbppiut|ckdbphut). Batch by
+ * batchSize di sync. Dijalankan ber-interval (cadence master), bukan tiap poll.
+ */
+export interface SaldoLedgerDomain {
+  domain: Extract<Domain, "piutang" | "hutang">;
+  mode: "full";
+  table: "bppiut" | "bphut";
+  sql: string;
+  map(raw: Raw[]): NonNullable<Tables["bppiut"]> | NonNullable<Tables["bphut"]>;
+}
+
+/**
  * Domain EDC (vw_edc3) — incremental per `ctgl` (tanggal bisnis EasyMax) +
  * rescan window. Backend REPLACE per (unit_id, business_date) tiap rescan
  * (EDC final per hari; tr_edc tanpa SBATAL → replace yang menangkap koreksi).
@@ -431,6 +445,68 @@ const DEPOSIT: DepositDomain = {
 };
 
 // ---------------------------------------------------------------------------
+// PIUTANG (tr_bppiut) — buku piutang pelanggan; FULL SYNC. PK CKDBPPIUT.
+// Saldo Piutang Lokal/Online (split tm_plg.SJENIS, DTGL<tanggal) di Laporan.
+// SJNSBP: 1=debet(+), 2=kredit(−). Validasi RESUME: 27-Jun Lokal 51.608.248.203 EKSAK.
+// ---------------------------------------------------------------------------
+const PIUTANG: SaldoLedgerDomain = {
+  domain: "piutang",
+  mode: "full",
+  table: "bppiut",
+  sql: `
+    SELECT CKDBPPIUT, DTGL, CKDPLG, VCREF, VCKET, NJUMLAH, SJNSBP, SBATAL
+    FROM tr_bppiut
+    ORDER BY DTGL ASC, CKDBPPIUT ASC`,
+  map(raw) {
+    const rows: NonNullable<Tables["bppiut"]> = [];
+    for (const r of raw) {
+      rows.push({
+        ckdbppiut: String(r.CKDBPPIUT),
+        dtgl: businessDate(str(r.DTGL)) ?? "1970-01-01",
+        ckdplg: str(r.CKDPLG),
+        vcref: str(r.VCREF),
+        vcket: str(r.VCKET),
+        njumlah: num(r.NJUMLAH),
+        sjnsbp: int(r.SJNSBP),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return rows;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// HUTANG (tr_bphut) — buku hutang pelanggan (liabilitas SPBU); FULL SYNC. PK
+// CKDBPHUT. Saldo Hutang Lokal (negatif) = −Σ NJUMLAH·sign(2=+,1=−), DTGL<tanggal.
+// Validasi: 27-Jun (642.244.312) EKSAK.
+// ---------------------------------------------------------------------------
+const HUTANG: SaldoLedgerDomain = {
+  domain: "hutang",
+  mode: "full",
+  table: "bphut",
+  sql: `
+    SELECT CKDBPHUT, DTGL, CKDPLG, VCREF, VCKET, NJUMLAH, SJNSBP, SBATAL
+    FROM tr_bphut
+    ORDER BY DTGL ASC, CKDBPHUT ASC`,
+  map(raw) {
+    const rows: NonNullable<Tables["bphut"]> = [];
+    for (const r of raw) {
+      rows.push({
+        ckdbphut: String(r.CKDBPHUT),
+        dtgl: businessDate(str(r.DTGL)) ?? "1970-01-01",
+        ckdplg: str(r.CKDPLG),
+        vcref: str(r.VCREF),
+        vcket: str(r.VCKET),
+        njumlah: num(r.NJUMLAH),
+        sjnsbp: int(r.SJNSBP),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return rows;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // EDC (vw_edc3) — incremental per ctgl; channel via tm_card (CKDKARTU→CKDCARD).
 // Rekon terbukti (FASE 0.5d): ctgl 20260614 channel-sum 90.974.097 (blank 3.132.398),
 // 20260617 116.565.499 (blank 3.695.046). business_date dari ctgl.
@@ -618,6 +694,19 @@ const MASTERS: MasterDomain = {
           cgl: str(r.CGL),
         })),
     },
+    {
+      // Master pelanggan AR (tm_plg) — `SJENIS` = diskriminator Lokal/Online utk
+      // Saldo Piutang. PK CKDPLG. (Tabel `pelanggan` = kartu RFID/kuota, BUKAN ini.)
+      table: "pelanggan_master",
+      sql: "SELECT CKDPLG, VCNMPLG, SJENIS, SAKTIF FROM tm_plg",
+      map: (raw) =>
+        raw.map((r) => ({
+          ckdplg: String(r.CKDPLG),
+          vcnmplg: str(r.VCNMPLG),
+          sjenis: int(r.SJENIS),
+          saktif: int(r.SAKTIF),
+        })),
+    },
   ],
 };
 
@@ -788,6 +877,8 @@ export const CASH_DOMAIN = CASH;
 export const TEBUS_DOMAIN = TEBUS;
 export const TERA_DOMAIN = TERA;
 export const DEPOSIT_DOMAIN = DEPOSIT;
+export const PIUTANG_DOMAIN = PIUTANG;
+export const HUTANG_DOMAIN = HUTANG;
 export const EDC_DOMAIN = EDC;
 export const PELANGGAN_DOMAIN = PELANGGAN;
 export const MASTERS_DOMAIN = MASTERS;

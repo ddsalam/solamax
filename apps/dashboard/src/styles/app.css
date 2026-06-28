@@ -253,6 +253,8 @@ body { background: var(--neutral-50); }
 .cols-harga.lite { grid-template-columns: 1.3fr 1fr; }
 .cols-keluar { grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; }
 .cols-net { grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
+/* Saldo Piutang/Hutang — label · nominal (2 kolom). */
+.cols-saldo { grid-template-columns: 1.7fr 1fr; padding-top: 12px; padding-bottom: 12px; }
 
 /* Ranking expand */
 .rank-exp { padding: var(--space-5) 24px var(--space-6) 80px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline); display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: var(--space-8); }
@@ -294,6 +296,8 @@ body { background: var(--neutral-50); }
 
 /* ===== Kas cards ===== */
 .kas-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-4); }
+/* Recap harian — 6 kotak (2 baris × 3). */
+.recap-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
 
 /* ===== Rekonsiliasi ===== */
 .rekon-card { border: 1px solid var(--color-border-hairline); border-radius: var(--radius-xl); box-shadow: var(--shadow-2); overflow: hidden; background: var(--color-surface); }
@@ -425,7 +429,7 @@ body { background: var(--neutral-50); }
   .shell { grid-template-columns: 1fr; }
   .sidebar { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--color-border-hairline); }
   .side-foot { display: none; }
-  .kpi-grid, .kas-grid, .ratio-grid, .hub-grid, .tank-grid { grid-template-columns: 1fr 1fr; }
+  .kpi-grid, .kas-grid, .recap-grid, .ratio-grid, .hub-grid, .tank-grid { grid-template-columns: 1fr 1fr; }
   .rekon-grid { grid-template-columns: 1fr; }
   .main { padding: 20px 16px 32px; }
 }

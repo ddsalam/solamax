@@ -943,3 +943,334 @@ export async function runProbe8(conn: EasyMaxConnection): Promise<void> {
   out("PROBE FASE 0.5g SELESAI — tak ada data dikirim / ditulis (read-only).");
   out("==========================================================");
 }
+
+/** Oracle Saldo (Nominal Rp) dari PDF "Laporan Penjualan Harian" IB — utk dicocokkan. */
+const SALDO_EXPECTED: Record<string, { piutangLokal: string; piutangOnline: string; hutangLokal: string }> = {
+  "2026-06-17": { piutangLokal: "50.835.447.684", piutangOnline: "1.200.000", hutangLokal: "(711.193.196)" },
+  "2026-06-18": { piutangLokal: "50.904.293.353", piutangOnline: "1.200.000", hutangLokal: "(671.925.313)" },
+  "2026-06-19": { piutangLokal: "50.904.293.353", piutangOnline: "1.200.000", hutangLokal: "(671.925.313)" },
+  "2026-06-21": { piutangLokal: "51.073.347.621", piutangOnline: "1.200.000", hutangLokal: "(662.004.309)" },
+  "2026-06-22": { piutangLokal: "51.187.386.591", piutangOnline: "1.200.000", hutangLokal: "(641.185.809)" },
+  "2026-06-23": { piutangLokal: "51.264.863.800", piutangOnline: "1.200.000", hutangLokal: "(662.243.136)" },
+  "2026-06-24": { piutangLokal: "51.427.912.799", piutangOnline: "1.200.000", hutangLokal: "(691.311.547)" },
+  "2026-06-26": { piutangLokal: "51.544.752.814", piutangOnline: "1.200.000", hutangLokal: "(641.452.669)" },
+  "2026-06-27": { piutangLokal: "51.608.248.203", piutangOnline: "1.200.000", hutangLokal: "(642.244.312)" },
+};
+
+/**
+ * RONDE 11 (FASE 1 — SALDO) — kunci 3 baris Saldo blok RECAP HARIAN, READ-ONLY:
+ *   A. Discovery master `pelanggan` — TEMUKAN diskriminator Lokal/Online + kolom saldo (jangan tebak).
+ *   B. PIUTANG `tr_bppiut` — tanda SJNSBP (debit/kredit) → saldo kumulatif as-of per tanggal,
+ *      lalu identifikasi pelanggan Online secara EMPIRIS (saldo flat 1.200.000) + dump master-nya
+ *      vs pelanggan Lokal besar → diskriminator terbukti dari data.
+ *   C. HUTANG (liabilitas deposit) — uji 3 hipotesis: (C1) kolom saldo master, (C2) `tr_deposit.NSALDO`
+ *      baris terakhir per pelanggan as-of, (C3) ledger Σtop-up − Σtarik (deposit-draw vw_jualplg).
+ *      Yang mendarat di oracle Hutang = sumber benar.
+ * Cocokkan ke SALDO_EXPECTED. MySQL 5.0.67-safe (tanpa CTE/window). Nol write/kirim.
+ */
+export async function runProbe11(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length
+    ? datesArg
+    : ["2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-21",
+       "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-26", "2026-06-27"];
+  out("==========================================================");
+  out("FASE 1 PROBE RONDE 11 (READ-ONLY) — SALDO Piutang/Hutang · unit 6478111");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nTarget oracle Saldo (Nominal Rp) — PDF Laporan Penjualan Harian IB:");
+  out("  tgl | Piutang Lokal | Piutang Online | Hutang Lokal");
+  for (const d of dates) {
+    const e = SALDO_EXPECTED[d];
+    if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
+  }
+
+  // ===== A. DISCOVERY master `pelanggan` (diskriminator + kolom saldo) =====
+  out("\n\n##### A. DISCOVERY master `pelanggan` #####");
+  await step(
+    conn,
+    "A1 kolom pelanggan",
+    "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pelanggan' ORDER BY ORDINAL_POSITION",
+  );
+  await step(conn, "A2 sample pelanggan", "SELECT * FROM pelanggan LIMIT 5");
+  await step(
+    conn,
+    "A3 kandidat kolom flag Lokal/Online (by nama)",
+    "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pelanggan' AND ( LOWER(COLUMN_NAME) LIKE '%online%' OR LOWER(COLUMN_NAME) LIKE '%jenis%' OR LOWER(COLUMN_NAME) LIKE '%jns%' OR LOWER(COLUMN_NAME) LIKE '%tipe%' OR LOWER(COLUMN_NAME) LIKE '%type%' OR LOWER(COLUMN_NAME) LIKE '%group%' OR LOWER(COLUMN_NAME) LIKE '%grup%' OR LOWER(COLUMN_NAME) LIKE '%kelompok%' OR LOWER(COLUMN_NAME) LIKE '%kategori%' OR LOWER(COLUMN_NAME) LIKE '%lokal%' OR LOWER(COLUMN_NAME) LIKE '%gol%' ) ORDER BY COLUMN_NAME",
+  );
+  await step(
+    conn,
+    "A4 kandidat kolom saldo/limit (by nama)",
+    "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pelanggan' AND ( LOWER(COLUMN_NAME) LIKE '%saldo%' OR LOWER(COLUMN_NAME) LIKE '%depo%' OR LOWER(COLUMN_NAME) LIKE '%piut%' OR LOWER(COLUMN_NAME) LIKE '%plafon%' OR LOWER(COLUMN_NAME) LIKE '%limit%' OR LOWER(COLUMN_NAME) LIKE '%tagih%' OR LOWER(COLUMN_NAME) LIKE '%hutang%' ) ORDER BY COLUMN_NAME",
+  );
+  await step(conn, "A5 DESCRIBE tr_bppiut", "DESCRIBE tr_bppiut");
+  await step(conn, "A5 DESCRIBE tr_deposit", "DESCRIBE tr_deposit");
+
+  // ===== B. PIUTANG (tr_bppiut) — tanda SJNSBP + saldo as-of + ID Online empiris =====
+  out("\n\n##### B. PIUTANG — tr_bppiut (SJNSBP=jenis debit/kredit) #####");
+  await step(
+    conn,
+    "B1 domain SJNSBP (kumulatif s/d 2026-06-27, non-batal) — tentukan tanda",
+    "SELECT SJNSBP, COUNT(*) AS n, ROUND(SUM(NJUMLAH),2) AS total_raw FROM tr_bppiut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= '2026-06-27' GROUP BY SJNSBP ORDER BY SJNSBP",
+  );
+  out("\n### B2. Saldo PIUTANG kumulatif as-of per tanggal (per SJNSBP → saya tanda-i & jumlahkan; cocokkan ke Lokal+Online)");
+  for (const date of dates) {
+    await step(
+      conn,
+      `B2 kumulatif (asof,SJNSBP) ≤ ${date}`,
+      "SELECT SJNSBP, ROUND(SUM(NJUMLAH),2) AS total_raw, COUNT(*) AS n FROM tr_bppiut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? GROUP BY SJNSBP ORDER BY SJNSBP",
+      [date],
+    );
+  }
+  out("\n### B3. Identifikasi pelanggan ONLINE secara EMPIRIS (saldo kecil/flat ~1.200.000) + dump master");
+  await step(
+    conn,
+    "B3a saldo per pelanggan as-of 2026-06-18 (saldo kecil 1..10jt → kandidat Online)",
+    "SELECT b.CKDPLG, p.VCNMPLG, ROUND(SUM(b.NJUMLAH),2) AS saldo_raw, COUNT(*) AS n FROM tr_bppiut b LEFT JOIN pelanggan p ON p.CKDPLG = b.CKDPLG WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= '2026-06-18' GROUP BY b.CKDPLG, p.VCNMPLG HAVING ABS(saldo_raw) BETWEEN 1 AND 10000000 ORDER BY saldo_raw LIMIT 60",
+  );
+  await step(
+    conn,
+    "B3b DUMP master pelanggan ber-saldo kecil (1..5jt) as-of 18 — lihat flag yang menandai Online",
+    "SELECT p.* FROM pelanggan p WHERE p.CKDPLG IN ( SELECT b.CKDPLG FROM tr_bppiut b WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= '2026-06-18' GROUP BY b.CKDPLG HAVING ROUND(SUM(b.NJUMLAH),2) BETWEEN 1 AND 5000000 )",
+  );
+  await step(
+    conn,
+    "B3c DUMP master pelanggan ber-saldo BESAR (>1 miliar) as-of 18 — kontras flag (Lokal)",
+    "SELECT p.* FROM pelanggan p WHERE p.CKDPLG IN ( SELECT b.CKDPLG FROM tr_bppiut b WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= '2026-06-18' GROUP BY b.CKDPLG HAVING ROUND(SUM(b.NJUMLAH),2) > 1000000000 )",
+  );
+
+  // ===== C. HUTANG (liabilitas deposit) — 3 hipotesis =====
+  out("\n\n##### C. HUTANG — liabilitas deposit (uji 3 hipotesis vs oracle) #####");
+  await step(
+    conn,
+    "C1 struktur tr_deposit: ada baris negatif (tarik) atau hanya top-up? (kumulatif s/d 27)",
+    "SELECT (NTOTAL >= 0) AS is_positif, COUNT(*) AS n, ROUND(SUM(NTOTAL),2) AS total FROM tr_deposit WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= '2026-06-27' GROUP BY (NTOTAL >= 0)",
+  );
+  out("\n### C2. tr_deposit.NSALDO — baris TERAKHIR per pelanggan as-of (Σ) → cocokkan ke Hutang");
+  for (const date of dates) {
+    await step(
+      conn,
+      `C2 Σ NSALDO terakhir/pelanggan ≤ ${date}`,
+      "SELECT ROUND(SUM(t.NSALDO),2) AS hutang_nsaldo, COUNT(*) AS ncust FROM tr_deposit t WHERE COALESCE(t.SBATAL,0) = 0 AND t.DTGL <= ? AND t.CKDDEPO = ( SELECT t2.CKDDEPO FROM tr_deposit t2 WHERE t2.CKDPLG = t.CKDPLG AND COALESCE(t2.SBATAL,0) = 0 AND t2.DTGL <= ? ORDER BY t2.DTGL DESC, t2.CKDDEPO DESC LIMIT 1 )",
+      [date, date],
+    );
+  }
+  out("\n### C3. Ledger Σtop-up − Σtarik (deposit-draw via vw_jualplg.CKDDEPO) as-of → cocokkan ke Hutang");
+  for (const date of dates) {
+    await step(
+      conn,
+      `C3 top-up/tarik/saldo ≤ ${date}`,
+      "SELECT ( SELECT ROUND(SUM(NTOTAL),2) FROM tr_deposit WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? ) AS topup_kumulatif, ( SELECT ROUND(SUM(TotalHarga),2) FROM vw_jualplg WHERE COALESCE(SBATAL,0) = 0 AND CKDDEPO IS NOT NULL AND CKDDEPO <> '' AND DTGL <= ? ) AS tarik_kumulatif",
+      [date, date],
+    );
+  }
+  out("  (Catatan: bila C3 tak landing, tambah penarikan deposit dari voucher/seksi lain — lihat vw_usevouc.CKDDEPO.)");
+
+  out("\n==========================================================");
+  out("PROBE RONDE 11 SELESAI — read-only, nol kirim. Tempel output: saya kunci");
+  out("formula tiap baris Saldo ke oracle untuk SEMUA tanggal lalu lanjut Fase 2.");
+  out("==========================================================");
+}
+
+/**
+ * RONDE 12 (FASE 1 — SALDO, KOREKSI) — perbaiki ronde 11:
+ *   - Master AR yang benar = `tm_plg` (CKDPLG/VCNMPLG), BUKAN `pelanggan` (itu tabel kartu
+ *     RFID/kuota ber-IDKartu). Diskriminator Lokal/Online di `tm_plg`.
+ *   - PIUTANG bukan kumulatif mentah: model PER-PELANGGAN (net signed; uji clamp ≥0) +
+ *     cek kolom saldo terpelihara di tm_plg → cocokkan ke oracle.
+ *   - HUTANG: buang NSALDO (sampah + lambat). Pakai ledger Σtop-up − Σtarik (cepat),
+ *     level total & per-pelanggan (clamp ≥0).
+ * MySQL 5.0.67-safe. Nol write/kirim.
+ */
+export async function runProbe12(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length
+    ? datesArg
+    : ["2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-21",
+       "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-26", "2026-06-27"];
+  out("==========================================================");
+  out("FASE 1 PROBE RONDE 12 (READ-ONLY, KOREKSI) — SALDO · unit 6478111");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nTarget oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
+  for (const d of dates) {
+    const e = SALDO_EXPECTED[d];
+    if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
+  }
+
+  // ===== A. MASTER & BALANCE DISCOVERY (cari tm_plg + kolom flag + kolom saldo + view) =====
+  out("\n\n##### A. DISCOVERY master AR + kolom saldo/flag #####");
+  await step(
+    conn,
+    "A1 SEMUA tabel/kolom ber-CKDPLG (temukan master AR)",
+    "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'CKDPLG' ORDER BY TABLE_NAME",
+  );
+  await step(
+    conn,
+    "A2 kolom saldo/piutang/deposit lintas tabel (cari balance terpelihara/view)",
+    "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(COLUMN_NAME) LIKE '%saldo%' OR LOWER(COLUMN_NAME) LIKE '%piut%' OR LOWER(COLUMN_NAME) LIKE '%hutang%' ) ORDER BY TABLE_NAME, COLUMN_NAME",
+  );
+  await step(conn, "A3 DESCRIBE tm_plg", "DESCRIBE tm_plg");
+  await step(conn, "A3 sample tm_plg (lihat nilai flag)", "SELECT * FROM tm_plg LIMIT 8");
+  await step(
+    conn,
+    "A4 kandidat kolom flag Lokal/Online di tm_plg (by nama)",
+    "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tm_plg' AND ( LOWER(COLUMN_NAME) LIKE '%online%' OR LOWER(COLUMN_NAME) LIKE '%jenis%' OR LOWER(COLUMN_NAME) LIKE '%jns%' OR LOWER(COLUMN_NAME) LIKE '%tipe%' OR LOWER(COLUMN_NAME) LIKE '%type%' OR LOWER(COLUMN_NAME) LIKE '%gol%' OR LOWER(COLUMN_NAME) LIKE '%group%' OR LOWER(COLUMN_NAME) LIKE '%grup%' OR LOWER(COLUMN_NAME) LIKE '%kelompok%' OR LOWER(COLUMN_NAME) LIKE '%kategori%' OR LOWER(COLUMN_NAME) LIKE '%lokal%' ) ORDER BY COLUMN_NAME",
+  );
+
+  // ===== B. PIUTANG — interpretasi SJNSBP + model per-pelanggan + flag empiris =====
+  out("\n\n##### B. PIUTANG — tr_bppiut model per-pelanggan #####");
+  await step(
+    conn,
+    "B1 arti SJNSBP — sampel baris tiap jenis (VCKET/VCREF/tanda NJUMLAH)",
+    "SELECT SJNSBP, VCREF, VCKET, NJUMLAH, DTGL FROM tr_bppiut WHERE COALESCE(SBATAL,0) = 0 AND DTGL BETWEEN '2026-06-17' AND '2026-06-18' ORDER BY SJNSBP, NJUMLAH DESC LIMIT 30",
+  );
+  out("\n### B2. Saldo per-pelanggan → total (signed/clamp, dua konvensi tanda) vs oracle Lokal+Online");
+  for (const date of ["2026-06-18", "2026-06-27"]) {
+    await step(
+      conn,
+      `B2 total saldo as-of ${date} (net1: 1=+,2=−)`,
+      "SELECT ROUND(SUM(net),2) AS total_signed, ROUND(SUM(CASE WHEN net > 0 THEN net ELSE 0 END),2) AS total_clamp_pos, ROUND(SUM(CASE WHEN net < 0 THEN net ELSE 0 END),2) AS total_neg, COUNT(*) AS ncust FROM ( SELECT CKDPLG, SUM(CASE SJNSBP WHEN 1 THEN NJUMLAH WHEN 2 THEN -NJUMLAH ELSE 0 END) AS net FROM tr_bppiut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? GROUP BY CKDPLG ) x",
+      [date],
+    );
+    await step(
+      conn,
+      `B2 total saldo as-of ${date} (net2: 2=+,1=−)`,
+      "SELECT ROUND(SUM(net),2) AS total_signed, ROUND(SUM(CASE WHEN net > 0 THEN net ELSE 0 END),2) AS total_clamp_pos, COUNT(*) AS ncust FROM ( SELECT CKDPLG, SUM(CASE SJNSBP WHEN 2 THEN NJUMLAH WHEN 1 THEN -NJUMLAH ELSE 0 END) AS net FROM tr_bppiut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? GROUP BY CKDPLG ) x",
+      [date],
+    );
+  }
+  out("\n### B3. Identifikasi ONLINE + flag: dump tm_plg.* per saldo-bucket as-of 18 (kontras kecil≈1,2jt vs besar)");
+  await step(
+    conn,
+    "B3a saldo kecil (1..5jt) + master — kandidat Online",
+    "SELECT b.CKDPLG, ROUND(SUM(CASE SJNSBP WHEN 1 THEN NJUMLAH WHEN 2 THEN -NJUMLAH ELSE 0 END),2) AS saldo, m.* FROM tr_bppiut b LEFT JOIN tm_plg m ON m.CKDPLG = b.CKDPLG WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= '2026-06-18' GROUP BY b.CKDPLG HAVING saldo BETWEEN 1 AND 5000000 ORDER BY saldo LIMIT 40",
+  );
+  await step(
+    conn,
+    "B3b saldo besar (>1 miliar) + master — kontras (Lokal)",
+    "SELECT b.CKDPLG, ROUND(SUM(CASE SJNSBP WHEN 1 THEN NJUMLAH WHEN 2 THEN -NJUMLAH ELSE 0 END),2) AS saldo, m.* FROM tr_bppiut b LEFT JOIN tm_plg m ON m.CKDPLG = b.CKDPLG WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= '2026-06-18' GROUP BY b.CKDPLG HAVING saldo > 1000000000 ORDER BY saldo DESC LIMIT 10",
+  );
+
+  // ===== C. HUTANG — ledger Σtop-up − Σtarik (cepat; NSALDO dibuang) =====
+  out("\n\n##### C. HUTANG — ledger deposit Σtop-up − Σtarik (vs oracle Hutang) #####");
+  out("### C1. Total level (semua tanggal): topup(tr_deposit) − tarik(vw_jualplg.CKDDEPO)");
+  for (const date of dates) {
+    await step(
+      conn,
+      `C1 topup/tarik/net ≤ ${date}`,
+      "SELECT ( SELECT ROUND(SUM(NTOTAL),2) FROM tr_deposit WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? ) AS topup, ( SELECT ROUND(SUM(TotalHarga),2) FROM vw_jualplg WHERE COALESCE(SBATAL,0) = 0 AND CKDDEPO IS NOT NULL AND CKDDEPO <> '' AND DTGL <= ? ) AS tarik",
+      [date, date],
+    );
+  }
+  out("\n### C2. Per-pelanggan clamp ≥0 (as-of 18 & 27) — bila total level over/under, ini koreksinya");
+  for (const date of ["2026-06-18", "2026-06-27"]) {
+    await step(
+      conn,
+      `C2 Σ clamp(topup−tarik) as-of ${date} (grouped-join, cepat)`,
+      "SELECT ROUND(SUM(GREATEST(0, COALESCE(t.topup,0) - COALESCE(v.tarik,0))),2) AS hutang_clamp, ROUND(SUM(COALESCE(t.topup,0) - COALESCE(v.tarik,0)),2) AS hutang_signed, COUNT(*) AS ncust FROM ( SELECT CKDPLG, SUM(NTOTAL) AS topup FROM tr_deposit WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? GROUP BY CKDPLG ) t LEFT JOIN ( SELECT CKDPLG, SUM(TotalHarga) AS tarik FROM vw_jualplg WHERE COALESCE(SBATAL,0) = 0 AND CKDDEPO IS NOT NULL AND CKDDEPO <> '' AND DTGL <= ? GROUP BY CKDPLG ) v ON v.CKDPLG = t.CKDPLG",
+      [date, date],
+    );
+  }
+
+  out("\n==========================================================");
+  out("PROBE RONDE 12 SELESAI — read-only, nol kirim. Tempel output untuk kunci formula.");
+  out("==========================================================");
+}
+
+/**
+ * RONDE 13 (FASE 1 — SALDO, DECISIVE) — temuan ronde 12:
+ *   - Flag Lokal/Online = `tm_plg.SJENIS` (int). PIUTANG `tr_bppiut` net OVER ~6,46 M-iliar
+ *     (≈ kelas voucher) → butuh SPLIT per-SJENIS utk pisah Lokal/Online & buktikan eksklusi.
+ *   - HUTANG kemungkinan dari `tr_bphut` (buku hutang), BUKAN deposit. Plus view rollup
+ *     resmi `vw_bukupiuttosend` / `vw_bukuhuttosend` (yang dipakai EasyMax kirim/laporan).
+ * Urutan: query MURAH & DECISIVE dulu (split SJENIS + tr_bphut), scan berat vw_jualplg
+ * (kandidat hutang-deposit) PALING AKHIR agar tak memotong hasil penting. MySQL 5.0-safe.
+ */
+export async function runProbe13(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const dates = datesArg.length
+    ? datesArg
+    : ["2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-21",
+       "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-26", "2026-06-27"];
+  out("==========================================================");
+  out("FASE 1 PROBE RONDE 13 (READ-ONLY, DECISIVE) — SALDO · unit 6478111");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nTarget oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
+  for (const d of dates) {
+    const e = SALDO_EXPECTED[d];
+    if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
+  }
+
+  // ===== A. tm_plg.SJENIS distribusi + view/tabel buku resmi =====
+  out("\n\n##### A. SJENIS distribusi + buku resmi #####");
+  await step(
+    conn,
+    "A1 distribusi tm_plg.SJENIS (arti kelas)",
+    "SELECT SJENIS, COUNT(*) AS n_plg FROM tm_plg GROUP BY SJENIS ORDER BY SJENIS",
+  );
+  await step(conn, "A2 DESCRIBE tr_bphut", "DESCRIBE tr_bphut");
+  await step(conn, "A2 sample tr_bphut", "SELECT * FROM tr_bphut ORDER BY DTGL DESC LIMIT 5");
+  await step(conn, "A3 DESCRIBE vw_bukupiuttosend", "DESCRIBE vw_bukupiuttosend");
+  await step(conn, "A3 sample vw_bukupiuttosend", "SELECT * FROM vw_bukupiuttosend LIMIT 5");
+  await step(conn, "A4 DESCRIBE vw_bukuhuttosend", "DESCRIBE vw_bukuhuttosend");
+  await step(conn, "A4 sample vw_bukuhuttosend", "SELECT * FROM vw_bukuhuttosend LIMIT 5");
+
+  // ===== B. PIUTANG split per SJENIS (DECISIVE: pisah Lokal vs Online + eksklusi voucher) =====
+  out("\n\n##### B. PIUTANG — net tr_bppiut per SJENIS, as-of per tanggal #####");
+  for (const date of dates) {
+    await step(
+      conn,
+      `B per-SJENIS net ≤ ${date}`,
+      "SELECT m.SJENIS, ROUND(SUM(CASE b.SJNSBP WHEN 1 THEN b.NJUMLAH WHEN 2 THEN -b.NJUMLAH ELSE 0 END),2) AS saldo, COUNT(DISTINCT b.CKDPLG) AS ncust FROM tr_bppiut b LEFT JOIN tm_plg m ON m.CKDPLG = b.CKDPLG WHERE COALESCE(b.SBATAL,0) = 0 AND b.DTGL <= ? GROUP BY m.SJENIS ORDER BY m.SJENIS",
+      [date],
+    );
+  }
+
+  // ===== C. HUTANG dari tr_bphut (buku hutang) — net per tanggal + per SJENIS =====
+  out("\n\n##### C. HUTANG — net tr_bphut per tanggal (vs oracle Hutang Lokal) #####");
+  await step(
+    conn,
+    "C0 domain SJNSBP tr_bphut (tentukan tanda; kumulatif s/d 27)",
+    "SELECT SJNSBP, COUNT(*) AS n, ROUND(SUM(NJUMLAH),2) AS total FROM tr_bphut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= '2026-06-27' GROUP BY SJNSBP ORDER BY SJNSBP",
+  );
+  for (const date of dates) {
+    await step(
+      conn,
+      `C net tr_bphut ≤ ${date} (dua konvensi)`,
+      "SELECT ROUND(SUM(CASE SJNSBP WHEN 1 THEN NJUMLAH WHEN 2 THEN -NJUMLAH ELSE 0 END),2) AS net_1pos, ROUND(SUM(CASE SJNSBP WHEN 2 THEN NJUMLAH WHEN 1 THEN -NJUMLAH ELSE 0 END),2) AS net_2pos, COUNT(*) AS n FROM tr_bphut WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ?",
+      [date],
+    );
+  }
+  out("\n### C-split per SJENIS (as-of 18 & 27) — konfirmasi 'Lokal' & cek apakah ada Online");
+  for (const date of ["2026-06-18", "2026-06-27"]) {
+    await step(
+      conn,
+      `C per-SJENIS net tr_bphut ≤ ${date}`,
+      "SELECT m.SJENIS, ROUND(SUM(CASE h.SJNSBP WHEN 1 THEN h.NJUMLAH WHEN 2 THEN -h.NJUMLAH ELSE 0 END),2) AS saldo, COUNT(DISTINCT h.CKDPLG) AS ncust FROM tr_bphut h LEFT JOIN tm_plg m ON m.CKDPLG = h.CKDPLG WHERE COALESCE(h.SBATAL,0) = 0 AND h.DTGL <= ? GROUP BY m.SJENIS ORDER BY m.SJENIS",
+      [date],
+    );
+  }
+
+  // ===== D. (cross-check, AKHIR — scan berat) deposit ledger sbg pembanding hutang =====
+  out("\n\n##### D. CROSS-CHECK deposit ledger (akhir; bila tr_bphut bukan sumbernya) #####");
+  for (const date of ["2026-06-18", "2026-06-27"]) {
+    await step(
+      conn,
+      `D topup−tarik ≤ ${date}`,
+      "SELECT ( SELECT ROUND(SUM(NTOTAL),2) FROM tr_deposit WHERE COALESCE(SBATAL,0) = 0 AND DTGL <= ? ) AS topup, ( SELECT ROUND(SUM(TotalHarga),2) FROM vw_jualplg WHERE COALESCE(SBATAL,0) = 0 AND CKDDEPO IS NOT NULL AND CKDDEPO <> '' AND DTGL <= ? ) AS tarik",
+      [date, date],
+    );
+  }
+
+  out("\n==========================================================");
+  out("PROBE RONDE 13 SELESAI — read-only, nol kirim. Tempel output untuk kunci formula final.");
+  out("==========================================================");
+}

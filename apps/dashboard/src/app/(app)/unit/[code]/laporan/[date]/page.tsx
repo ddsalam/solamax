@@ -26,6 +26,11 @@ import {
   getShiftInfo,
   getTankStocks,
   getAvgDailySales,
+  getSaldoPelanggan,
+  getPelangganForDate,
+  getEdcForDate,
+  getDepositForDate,
+  getManualEntries,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { enduranceDays, enduranceLevel, isStockImplausible, stockNow } from "@/lib/derive";
@@ -65,6 +70,13 @@ export default async function LaporanPage({
     tanks,
     avg7,
     cash,
+    saldo,
+    recapPelanggan,
+    recapEdc,
+    recapDeposit,
+    recapPendapatanLain,
+    recapPengeluaran,
+    recapSetoran,
   ] = await Promise.all([
     getSalesByProduct(unit.unit_id, date, date),
     // G/L harian metode RESUME — satu fetch bulan-berjalan; turunkan harian (filter
@@ -80,6 +92,13 @@ export default async function LaporanPage({
     getTankStocks(unit.unit_id),
     getAvgDailySales(unit.unit_id, addDays(date, -7), addDays(date, -1)),
     getCashForDate(unit.unit_id, date),
+    getSaldoPelanggan(unit.unit_id, date),
+    getPelangganForDate(unit.unit_id, date),
+    getEdcForDate(unit.unit_id, date),
+    getDepositForDate(unit.unit_id, date),
+    getManualEntries(unit.unit_id, date, "pendapatan_lain"),
+    getManualEntries(unit.unit_id, date, "pengeluaran"),
+    getManualEntries(unit.unit_id, date, "setoran_tunai"),
   ]);
 
   const ordered = <T extends { nama: string }>(xs: T[]) =>
@@ -257,19 +276,27 @@ export default async function LaporanPage({
 
   const cashTotal = cash.filter((c) => !c.sbatal).reduce((s, c) => s + (c.ntotal ?? 0), 0);
 
-  // Ringkasan Kas: hanya kartu dengan nilai nyata yang dirender (v1). Kartu
-  // domain dorman (val null) muncul kembali otomatis saat datanya masuk.
-  const kasCards: Array<{ label: string; val: string | null; note: string }> = [
-    { label: "Transaksi Pelanggan", val: null, note: "Domain deposit/piutang" },
-    { label: "EDC", val: null, note: "Domain EDC" },
-    {
-      label: "Pengeluaran",
-      val: cash.length > 0 ? rp(cashTotal) : null,
-      note: cash.length > 0 ? `${cash.length} nota` : "modul kas dorman",
-    },
-    { label: "Pendapatan Lain-Lain", val: null, note: "Domain kas aktif" },
-    { label: "Setoran Bank", val: null, note: "Domain setoran" },
-  ].filter((k) => k.val !== null);
+  // ===== RECAP HARIAN — Saldo Piutang/Hutang + 6 angka recap =====
+  // Saldo: dari domain piutang/hutang (formula terkunci probe 11-13). Enam angka
+  // recap = REUSE penuh sumber Rincian Penjualan (tak menarik ulang EasyMax):
+  // Pelanggan (vw_jualplg⊎vw_usevouc), EDC (vw_edc3), Transfer (= Pendapatan Non
+  // Tunai / deposit), dan 3 input manual pengawas (pengeluaran/pendapatan_lain/
+  // setoran_tunai = "Setoran Bank") dari app.manual_entry.
+  const recapBoxes: Array<{ label: string; val: number; note: string }> = [
+    { label: "Transaksi Pelanggan", val: recapPelanggan.reduce((s, r) => s + r.rp, 0), note: "penjualan tempo (RFID/voucher)" },
+    { label: "Pengeluaran", val: recapPengeluaran.reduce((s, r) => s + r.amount, 0), note: "input pengawas" },
+    { label: "EDC", val: recapEdc.reduce((s, r) => s + r.rp, 0), note: "non-tunai per channel" },
+    { label: "Pendapatan Lain", val: recapPendapatanLain.reduce((s, r) => s + r.amount, 0), note: "input pengawas" },
+    { label: "Transfer", val: recapDeposit.reduce((s, r) => s + r.rp, 0), note: "deposit / non-tunai" },
+    { label: "Setoran Bank", val: recapSetoran.reduce((s, r) => s + r.amount, 0), note: "disetor ke bank (pengawas)" },
+  ];
+  const saldoRows: Array<{ label: string; val: number; danger?: boolean }> = [
+    { label: "Saldo Piutang Pelanggan Lokal", val: saldo.piutangLokal },
+    { label: "Saldo Piutang Pelanggan Online", val: saldo.piutangOnline },
+    { label: "Saldo Hutang Pelanggan Lokal", val: saldo.hutangLokal, danger: true },
+  ];
+  const hasSaldo = saldo.piutangLokal !== 0 || saldo.piutangOnline !== 0 || saldo.hutangLokal !== 0;
+  const hasRecap = hasSaldo || recapBoxes.some((b) => b.val !== 0);
 
   return (
     <div className="lap-page">
@@ -424,16 +451,37 @@ export default async function LaporanPage({
         </div>
       </div>
 
-      {/* 3 · RINGKASAN KAS — hanya kartu dengan nilai nyata (v1) */}
-      {kasCards.length > 0 && (
+      {/* 3 · RECAP HARIAN — Saldo Piutang/Hutang + 6 angka recap (sumber Rincian) */}
+      {hasRecap && (
         <div className="mt10">
-          <div className="text-h5 t-brand">Ringkasan Kas</div>
-          <div className="kas-grid mt4">
-            {kasCards.map((k) => (
-              <div key={k.label} className="card card-pad">
-                <div className="fs15 w600 t-tertiary">{k.label}</div>
-                <div className="text-h6 num nowrap mt2 t-primary">{k.val}</div>
-                <div className="fs15 t-tertiary mt1">{k.note}</div>
+          <div className="section-h">
+            <div className="text-h5 t-brand">Saldo Hutang/Piutang &amp; Recap Harian</div>
+            <span className="fs16 t-tertiary">
+              saldo dibawa per tanggal bisnis · angka recap dari Rincian Penjualan
+            </span>
+          </div>
+
+          {hasSaldo && (
+            <div className="card tbl-card mt4">
+              {saldoRows.map((s) => (
+                <div key={s.label} className="grid-row cols-saldo">
+                  <span className="text-caption w600">{s.label}</span>
+                  <span
+                    className={`right fs16 num nowrap ${s.danger ? "t-danger w700" : "t-primary"}`}
+                  >
+                    {s.danger ? `(${rp(Math.abs(s.val))})` : rp(s.val)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="recap-grid mt4">
+            {recapBoxes.map((b) => (
+              <div key={b.label} className="card card-pad">
+                <div className="fs15 w600 t-tertiary">{b.label}</div>
+                <div className="text-h6 num nowrap mt2 t-primary">{rp(b.val)}</div>
+                <div className="fs15 t-tertiary mt1">{b.note}</div>
               </div>
             ))}
           </div>

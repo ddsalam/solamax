@@ -24,6 +24,9 @@
     "probe6": "tsx src/index.ts --probe6",
     "probe7": "tsx src/index.ts --probe7",
     "probe8": "tsx src/index.ts --probe8",
+    "probe11": "tsx src/index.ts --probe11",
+    "probe12": "tsx src/index.ts --probe12",
+    "probe13": "tsx src/index.ts --probe13",
     "bundle": "node scripts/bundle.mjs"
   },
   "dependencies": {

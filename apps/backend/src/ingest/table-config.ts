@@ -9,7 +9,12 @@ export interface TableConfig {
   table: string;
   /** Kolom payload, urutan tetap. */
   columns: readonly string[];
-  /** Target ON CONFLICT (selain unit_id yang selalu ikut). Kosong utk mode replace. */
+  /**
+   * Target ON CONFLICT (selain unit_id yang selalu ikut). Kosong = tanpa ON
+   * CONFLICT. Mode UPSERT: WAJIB diisi (kunci natural). Mode REPLACE: opsional —
+   * bila diisi, INSERT-nya pakai ON CONFLICT DO UPDATE sebagai jaring anti-kembar
+   * saat REPLACE bersamaan (edc); kosong = REPLACE polos (pelanggan/voucher).
+   */
   conflict: readonly string[];
   /** Punya kolom ingested_at yang di-refresh saat update. */
   hasIngestedAt: boolean;
@@ -17,6 +22,8 @@ export interface TableConfig {
    * REPLACE per (unit_id, business_date): DELETE baris business_date di payload
    * lalu INSERT — utk tabel tanpa PK baris bersih (edc/pelanggan_sale/voucher_sale).
    * Agent WAJIB mengirim satu business_date utuh per payload (jangan terpisah).
+   * Bila `conflict` diisi (edc), INSERT memakai ON CONFLICT DO UPDATE → REPLACE
+   * tetap aman walau dua /ingest tumpang-tindih (lihat catatan edc di bawah).
    */
   replaceByBusinessDate?: boolean;
   /**
@@ -128,13 +135,24 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     hasIngestedAt: false,
   },
   // edc/pelanggan_sale/voucher_sale: REPLACE per (unit_id, business_date).
+  // edc TAMBAH ON CONFLICT (kunci natural) di atas REPLACE → idempoten saat dua
+  // /ingest BERSAMAAN (retry agent menimpa request yang masih commit): tanpa kunci
+  // unik kedua DELETE tak melihat baris uncommitted lawan → keduanya INSERT → baris
+  // kembar (insiden 2026-06-22). Kunci tervalidasi data-live (273k baris, 0 tabrakan
+  // dgn NULLS NOT DISTINCT — ckdkartu/cnotrace sering NULL utk blank-card); index
+  // fisik `edc_natural_key` NULLS NOT DISTINCT (migrasi 0012). DELETE tetap → koreksi
+  // & buang baris usang. cshift+total WAJIB: baris blank-card lintas-shift identik
+  // selain shift; total memisah pour sama-detik beda nominal.
   edc: {
     table: "edc",
     columns: [
       "business_date", "cshift", "tanggaljam", "ckdkartu", "total", "liter",
       "jenis", "cnotrace", "nonozle", "jrnkey",
     ],
-    conflict: [],
+    conflict: [
+      "business_date", "cshift", "tanggaljam", "nonozle", "cnotrace",
+      "ckdkartu", "total",
+    ],
     hasIngestedAt: true,
     replaceByBusinessDate: true,
   },
@@ -188,6 +206,28 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     conflict: [],
     hasIngestedAt: true,
     replaceByBusinessDate: true,
+  },
+
+  // --- Saldo Piutang/Hutang Pelanggan (FASE 1, RECAP) ---
+  // bppiut/bphut: buku piutang/hutang (ledger). Full-sync agent; UPSERT by PK.
+  bppiut: {
+    table: "bppiut",
+    columns: ["ckdbppiut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
+    conflict: ["ckdbppiut"],
+    hasIngestedAt: true,
+  },
+  bphut: {
+    table: "bphut",
+    columns: ["ckdbphut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
+    conflict: ["ckdbphut"],
+    hasIngestedAt: true,
+  },
+  // pelanggan_master: master AR (tm_plg). SJENIS = diskriminator Lokal/Online.
+  pelanggan_master: {
+    table: "pelanggan_master",
+    columns: ["ckdplg", "vcnmplg", "sjenis", "saktif"],
+    conflict: ["ckdplg"],
+    hasIngestedAt: false,
   },
 };
 
