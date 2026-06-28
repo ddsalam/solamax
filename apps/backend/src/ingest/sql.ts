@@ -108,6 +108,13 @@ export function buildUpsert(
  *   1) DELETE baris (unit_id, business_date ∈ payload)  2) INSERT semua baris.
  * Dijalankan berurutan dalam transaksi /ingest → idempoten & menangkap koreksi
  * tanpa collapse. Agent WAJIB kirim satu business_date utuh per payload.
+ *
+ * Bila `cfg.conflict` diisi (edc), INSERT memakai ON CONFLICT (unit_id, …conflict)
+ * DO UPDATE. Tanpa ini, DUA /ingest tumpang-tindih utk business_date yang belum
+ * berisi tetap menggandakan: masing-masing DELETE tak melihat baris uncommitted
+ * lawan, lalu keduanya INSERT (insiden 2026-06-22). Dengan kunci unik, INSERT
+ * kedua memblok pada baris lawan lalu DO UPDATE → 0 baris kembar, tetap idempoten.
+ * Butuh index unik fisik pada kolom yang sama (migrasi 0012, NULLS NOT DISTINCT).
  */
 export function buildReplace(
   cfg: TableConfig,
@@ -123,10 +130,27 @@ export function buildReplace(
   };
 
   const { cols, tuples, params } = buildValues(cfg, unitId, rows);
+
+  // ON CONFLICT opsional: jaring anti-kembar saat REPLACE bersamaan. Kolom non-key
+  // di-refresh (DO UPDATE); bila tak ada kolom non-key, DO NOTHING.
+  let onConflict = "";
+  if (cfg.conflict.length > 0) {
+    const conflictCols = ["unit_id", ...cfg.conflict];
+    const updateCols = cfg.columns.filter((c) => !cfg.conflict.includes(c));
+    const setClauses = updateCols.map((c) => `"${c}" = EXCLUDED."${c}"`);
+    if (cfg.hasIngestedAt) setClauses.push(`"ingested_at" = now()`);
+    onConflict =
+      ` ON CONFLICT (${conflictCols.map((c) => `"${c}"`).join(",")}) ` +
+      (setClauses.length > 0
+        ? `DO UPDATE SET ${setClauses.join(", ")}`
+        : `DO NOTHING`);
+  }
+
   const ins = {
     sql:
       `INSERT INTO "${cfg.table}" (${cols.map((c) => `"${c}"`).join(",")}) ` +
-      `VALUES ${tuples.join(",")}`,
+      `VALUES ${tuples.join(",")}` +
+      onConflict,
     params,
   };
 

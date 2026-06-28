@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUpsert } from "./sql.js";
+import { buildReplace, buildUpsert } from "./sql.js";
 import { TABLE_CONFIG } from "./table-config.js";
 
 describe("buildUpsert", () => {
@@ -79,5 +79,49 @@ describe("buildUpsert", () => {
       expect(cfg.table, name).toBe(name);
       for (const k of cfg.conflict) expect(cfg.columns, name).toContain(k);
     }
+  });
+});
+
+describe("buildReplace", () => {
+  const edcRow = {
+    business_date: "2026-06-22", cshift: "1",
+    tanggaljam: "2026-06-22T08:00:00.000Z", ckdkartu: "QR01", total: 1000,
+    liter: 0, jenis: 5, cnotrace: "T1", nonozle: "3", jrnkey: 202606221,
+  };
+
+  it("edc: [DELETE, INSERT … ON CONFLICT(kunci natural) DO UPDATE] — jaring kembar", () => {
+    const [del, ins] = buildReplace(TABLE_CONFIG.edc!, 1, [edcRow]);
+    // 1) DELETE per (unit_id, business_date)
+    expect(del!.sql).toContain(
+      'DELETE FROM "edc" WHERE "unit_id" = $1 AND "business_date" = ANY($2::date[])',
+    );
+    expect(del!.params).toEqual([1, ["2026-06-22"]]);
+    // 2) INSERT dgn ON CONFLICT pada kunci natural (unit_id + 7 kolom)
+    expect(ins!.sql).toContain('INSERT INTO "edc"');
+    expect(ins!.sql).toContain(
+      'ON CONFLICT ("unit_id","business_date","cshift","tanggaljam","nonozle","cnotrace","ckdkartu","total")',
+    );
+    // kolom non-key di-refresh; kolom key TIDAK
+    expect(ins!.sql).toContain(
+      'DO UPDATE SET "liter" = EXCLUDED."liter", "jenis" = EXCLUDED."jenis", "jrnkey" = EXCLUDED."jrnkey", "ingested_at" = now()',
+    );
+    expect(ins!.sql).not.toContain('"total" = EXCLUDED');
+    expect(ins!.sql).not.toContain('"cshift" = EXCLUDED');
+    // cast eksplisit tetap di VALUES (business_date ::date, tanggaljam ::timestamptz)
+    expect(ins!.sql).toContain("::date");
+    expect(ins!.sql).toContain("::timestamptz");
+  });
+
+  it("pelanggan_sale: REPLACE polos — TANPA ON CONFLICT (conflict kosong)", () => {
+    const [, ins] = buildReplace(TABLE_CONFIG.pelanggan_sale!, 1, [
+      { business_date: "2026-06-16", ckdplg: "PLG1", vcnmplg: "A",
+        ckdjualplg: "JP1", ckdbbm: "BB-07", nshift: 1, liter: 10, total: 100, sbatal: 0 },
+    ]);
+    expect(ins!.sql).toContain('INSERT INTO "pelanggan_sale"');
+    expect(ins!.sql).not.toContain("ON CONFLICT");
+  });
+
+  it("rows kosong → error", () => {
+    expect(() => buildReplace(TABLE_CONFIG.edc!, 1, [])).toThrow();
   });
 });
