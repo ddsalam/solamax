@@ -377,6 +377,62 @@ model Card {
   @@schema("public")
 }
 
+// Buku piutang pelanggan (tr_bppiut). Ledger; full-sync, UPSERT by (unit_id, ckdbppiut).
+// Saldo Piutang = Σ njumlah·sign(sjnsbp:1=+,2=−), sbatal=0, dtgl<tanggal; split via
+// pelanggan_master.sjenis (Lokal 1,5 · Online 3 · 4 dikecualikan).
+model Bppiut {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdbppiut  String   @db.Char(15)
+  dtgl       DateTime @db.Date
+  ckdplg     String?  @db.VarChar(12)
+  vcref      String?  @db.VarChar(20)
+  vcket      String?
+  njumlah    Decimal? @db.Decimal
+  sjnsbp     Int?     @db.SmallInt
+  sbatal     Int?     @db.SmallInt
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdbppiut])
+  @@index([unitId, dtgl])
+  @@index([unitId, ckdplg])
+  @@map("bppiut")
+  @@schema("public")
+}
+
+// Buku hutang pelanggan (tr_bphut). Ledger; full-sync, UPSERT by (unit_id, ckdbphut).
+// Saldo Hutang Lokal = −Σ njumlah·sign(sjnsbp:2=+,1=−), sbatal=0, dtgl<tanggal.
+model Bphut {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdbphut   String   @db.Char(15)
+  dtgl       DateTime @db.Date
+  ckdplg     String?  @db.VarChar(12)
+  vcref      String?  @db.VarChar(20)
+  vcket      String?
+  njumlah    Decimal? @db.Decimal
+  sjnsbp     Int?     @db.SmallInt
+  sbatal     Int?     @db.SmallInt
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdbphut])
+  @@index([unitId, dtgl])
+  @@map("bphut")
+  @@schema("public")
+}
+
+// Master pelanggan AR (tm_plg). PK (unit_id, ckdplg); full-sync. `sjenis` =
+// diskriminator Lokal/Online utk Saldo Piutang. (Tabel `pelanggan` = kartu RFID.)
+model PelangganMaster {
+  unitId  Int     @map("unit_id") @db.SmallInt
+  ckdplg  String  @db.Char(12)
+  vcnmplg String?
+  sjenis  Int?    @db.SmallInt
+  saktif  Int?    @db.SmallInt
+
+  @@id([unitId, ckdplg])
+  @@map("pelanggan_master")
+  @@schema("public")
+}
+
 // ===========================================================================
 // Schema `app` — auth (Auth.js v5 / @auth/pg-adapter) + RBAC multi-tenant.
 // Tabel Auth.js dipetakan VERBATIM sesuai DDL adapter (id serial int, kolom

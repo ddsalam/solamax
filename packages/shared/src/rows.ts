@@ -217,6 +217,51 @@ export const TeraRow = z.object({
   total: num,
 });
 
+/**
+ * Buku piutang pelanggan (sumber `tr_bppiut`, PK `CKDBPPIUT`). Ledger append-only;
+ * saldo = `Σ NJUMLAH·sign(SJNSBP: 1=debet/+, 2=kredit/−)` per pelanggan, `DTGL < tanggal`.
+ * Split Lokal/Online via `tm_plg.SJENIS` (lihat pelanggan_master). Full-sync (UPSERT
+ * by PK menangkap baris back-dated + flip SBATAL). `ckdplg` → `tm_plg.CKDPLG`.
+ */
+export const BppiutRow = z.object({
+  ckdbppiut: z.string(),
+  dtgl: isoDate,
+  ckdplg: str,
+  vcref: str,
+  vcket: str,
+  njumlah: num,
+  sjnsbp: z.number().int().nullable(),
+  sbatal: z.number().int().nullable(),
+});
+
+/**
+ * Buku hutang pelanggan (sumber `tr_bphut`, PK `CKDBPHUT`). Liabilitas SPBU ke
+ * pelanggan (deposit/lebih-bayar). Saldo = `Σ NJUMLAH·sign(SJNSBP: 2=+, 1=−)`,
+ * `DTGL < tanggal` (ditampilkan negatif/merah). Full-sync; UPSERT by PK.
+ */
+export const BphutRow = z.object({
+  ckdbphut: z.string(),
+  dtgl: isoDate,
+  ckdplg: str,
+  vcref: str,
+  vcket: str,
+  njumlah: num,
+  sjnsbp: z.number().int().nullable(),
+  sbatal: z.number().int().nullable(),
+});
+
+/**
+ * Master pelanggan AR (sumber `tm_plg`, PK `CKDPLG`). `sjenis` = diskriminator
+ * kelas (1,5=Lokal · 3=Online · 4=dorman, dikecualikan dari Saldo Piutang).
+ * Full-sync (tabel kecil ~3k). NB: `pelanggan` (kartu RFID/kuota) ≠ master ini.
+ */
+export const PelangganMasterRow = z.object({
+  ckdplg: z.string(),
+  vcnmplg: str,
+  sjenis: z.number().int().nullable(),
+  saktif: z.number().int().nullable(),
+});
+
 export const ProductRow = z.object({
   ckdbbm: z.string(),
   vcnmbbm: str,
@@ -271,6 +316,9 @@ export const ROW_SCHEMA = {
   tebus_header: TebusHeaderRow,
   tebus_detail: TebusDetailRow,
   tera: TeraRow,
+  bppiut: BppiutRow,
+  bphut: BphutRow,
+  pelanggan_master: PelangganMasterRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -293,3 +341,6 @@ export type VoucherSaleRow = z.infer<typeof VoucherSaleRow>;
 export type TebusHeaderRow = z.infer<typeof TebusHeaderRow>;
 export type TebusDetailRow = z.infer<typeof TebusDetailRow>;
 export type TeraRow = z.infer<typeof TeraRow>;
+export type BppiutRow = z.infer<typeof BppiutRow>;
+export type BphutRow = z.infer<typeof BphutRow>;
+export type PelangganMasterRow = z.infer<typeof PelangganMasterRow>;

@@ -14,6 +14,9 @@ import {
   runProbe8,
   runProbe9,
   runProbe10,
+  runProbe11,
+  runProbe12,
+  runProbe13,
 } from "./probe.js";
 import { StateStore } from "./state/store.js";
 import { resyncSales, runCycle, runForever, type SyncDeps } from "./sync.js";
@@ -34,6 +37,9 @@ interface Args {
   probe8: boolean;
   probe9: boolean;
   probe10: boolean;
+  probe11: boolean;
+  probe12: boolean;
+  probe13: boolean;
   resyncSales: boolean;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
@@ -55,6 +61,9 @@ function parseArgs(argv: string[]): Args {
     probe8: false,
     probe9: false,
     probe10: false,
+    probe11: false,
+    probe12: false,
+    probe13: false,
     resyncSales: false,
     probeDiscoveryOnly: false,
     probeDates: [],
@@ -74,6 +83,9 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--probe8") a.probe8 = true;
     else if (arg === "--probe9") a.probe9 = true;
     else if (arg === "--probe10") a.probe10 = true;
+    else if (arg === "--probe11") a.probe11 = true;
+    else if (arg === "--probe12") a.probe12 = true;
+    else if (arg === "--probe13") a.probe13 = true;
     else if (arg === "--resync-sales") a.resyncSales = true;
     else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
@@ -107,6 +119,9 @@ function printHelp(): void {
       "  --probe8            FASE 0.5g: diagnosa lock go-live (MyISAM concurrent_insert + Data_free). Read-only.",
       "  --probe9 [tgl...]   FASE 1: rekon SALES EasyMax per DTGLJUAL vs PDF Omset (default 14–18 Jun). Read-only.",
       "  --probe10 [tgl...]  GOLD CHECK: total EasyMax-kini SEMUA seksi (Omset/Pelanggan/EDC/Deposit) per tgl. Read-only.",
+      "  --probe11 [tgl...]  FASE 1 SALDO: kunci Piutang/Hutang (tr_bppiut + master pelanggan + tr_deposit). Read-only.",
+      "  --probe12 [tgl...]  FASE 1 SALDO (koreksi): master tm_plg + model per-pelanggan + ledger Hutang. Read-only.",
+      "  --probe13 [tgl...]  FASE 1 SALDO (decisive): split SJENIS + tr_bphut + view buku resmi. Read-only.",
       "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
@@ -128,6 +143,12 @@ async function main(): Promise<void> {
     dryRun: args.dryRun,
     mode: args.testConnection
       ? "test-connection"
+      : args.probe13
+      ? "probe13"
+      : args.probe12
+      ? "probe12"
+      : args.probe11
+      ? "probe11"
       : args.probe10
       ? "probe10"
       : args.probe9
@@ -164,6 +185,30 @@ async function main(): Promise<void> {
     }
     if (args.testConnection) {
       await conn.close();
+      return;
+    }
+    if (args.probe13) {
+      try {
+        await runProbe13(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe12) {
+      try {
+        await runProbe12(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe11) {
+      try {
+        await runProbe11(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
       return;
     }
     if (args.probe10) {
