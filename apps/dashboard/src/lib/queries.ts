@@ -944,6 +944,50 @@ export interface ManualEntryRow {
   urut: number;
 }
 
+export interface SaldoPelanggan {
+  /** Saldo Piutang Pelanggan Lokal (SJENIS 1,5) — as-of (dtgl < tanggal bisnis). */
+  piutangLokal: number;
+  /** Saldo Piutang Pelanggan Online (SJENIS 3). */
+  piutangOnline: number;
+  /** Saldo Hutang Pelanggan Lokal — liabilitas (≤0; ditampilkan merah). */
+  hutangLokal: number;
+}
+
+/**
+ * Saldo Piutang/Hutang Pelanggan as-of tanggal bisnis (blok RECAP). Formula
+ * TERKUNCI vs oracle (probe ronde 11-13, EKSAK 27-Jun); "as-of" = saldo dibawa
+ * (dtgl < tanggal). Piutang dari `bppiut` (SJNSBP 1=debet/+, 2=kredit/−), split
+ * via `pelanggan_master.sjenis`: Lokal {1,5}, Online {3}, SJENIS 4 DIKECUALIKAN
+ * (dorman). Hutang dari `bphut` (SJNSBP 2=+, 1=−), dinegatifkan. Murni SELECT,
+ * ter-scope `ScopedUnitId`. trim() kedua sisi join (char(12) vs varchar(12)).
+ */
+export async function getSaldoPelanggan(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<SaldoPelanggan> {
+  const rows = await q<SaldoPelanggan>(
+    `SELECT
+       COALESCE((SELECT sum(b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END)
+                 FROM public.bppiut b
+                 JOIN public.pelanggan_master m
+                   ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
+                 WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0
+                   AND b.dtgl < $2::date AND m.sjenis IN (1,5)),0)::float8 AS "piutangLokal",
+       COALESCE((SELECT sum(b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END)
+                 FROM public.bppiut b
+                 JOIN public.pelanggan_master m
+                   ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
+                 WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0
+                   AND b.dtgl < $2::date AND m.sjenis = 3),0)::float8 AS "piutangOnline",
+       (-COALESCE((SELECT sum(h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END)
+                  FROM public.bphut h
+                  WHERE h.unit_id = $1 AND COALESCE(h.sbatal,0) = 0
+                    AND h.dtgl < $2::date),0))::float8 AS "hutangLokal"`,
+    [unit, date],
+  );
+  return rows[0] ?? { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 };
+}
+
 /** Seksi 4 (pendapatan_lain) & 6 (pengeluaran) — input pengawas, non-void. */
 export async function getManualEntries(
   unit: ScopedUnitId,

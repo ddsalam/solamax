@@ -189,6 +189,28 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     hasIngestedAt: true,
     replaceByBusinessDate: true,
   },
+
+  // --- Saldo Piutang/Hutang Pelanggan (FASE 1, RECAP) ---
+  // bppiut/bphut: buku piutang/hutang (ledger). Full-sync agent; UPSERT by PK.
+  bppiut: {
+    table: "bppiut",
+    columns: ["ckdbppiut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
+    conflict: ["ckdbppiut"],
+    hasIngestedAt: true,
+  },
+  bphut: {
+    table: "bphut",
+    columns: ["ckdbphut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
+    conflict: ["ckdbphut"],
+    hasIngestedAt: true,
+  },
+  // pelanggan_master: master AR (tm_plg). SJENIS = diskriminator Lokal/Online.
+  pelanggan_master: {
+    table: "pelanggan_master",
+    columns: ["ckdplg", "vcnmplg", "sjenis", "saktif"],
+    conflict: ["ckdplg"],
+    hasIngestedAt: false,
+  },
 };
 
 /** Batas keras baris per tabel per request — sumber tunggal di @solamax/shared. */

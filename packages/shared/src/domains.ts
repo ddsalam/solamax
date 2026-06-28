@@ -17,6 +17,8 @@ export const DOMAINS = [
   "pelanggan",
   "tebus",
   "tera",
+  "piutang",
+  "hutang",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 
@@ -26,7 +28,7 @@ export const TABLES_BY_DOMAIN = {
   cash: ["cash_header", "cash_detail"],
   opname: ["opname"],
   delivery: ["delivery"],
-  masters: ["product", "nozzle", "tangki", "account", "card"],
+  masters: ["product", "nozzle", "tangki", "account", "card", "pelanggan_master"],
   // Snapshot ATG (Automatic Tank Gauge) keadaan-kini per tangki — full sync tiap
   // siklus (7 baris), bukan master. Sumber: tb_realtank.
   realtank: ["real_tank"],
@@ -43,6 +45,12 @@ export const TABLES_BY_DOMAIN = {
   // UPSERT by surrogate key. Sumber kolom "Tera (L)" + komponen Penjualan_BERSIH
   // (= jual KOTOR − tera) di perhitungan Gain/Losses harian (selaras RESUME).
   tera: ["tera"],
+  // Buku piutang pelanggan (tr_bppiut) — full-sync, UPSERT by PK CKDBPPIUT.
+  // Saldo Piutang Lokal/Online (split via tm_plg.SJENIS) di Laporan Operasional.
+  piutang: ["bppiut"],
+  // Buku hutang pelanggan (tr_bphut) — full-sync, UPSERT by PK CKDBPHUT.
+  // Saldo Hutang Lokal (negatif) di Laporan Operasional.
+  hutang: ["bphut"],
 } as const satisfies Record<Domain, readonly string[]>;
 
 export type TargetTable =

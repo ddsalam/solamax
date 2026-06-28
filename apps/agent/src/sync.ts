@@ -5,6 +5,8 @@ import {
   CASH_DOMAIN,
   DATETIME_DOMAINS,
   DEPOSIT_DOMAIN,
+  PIUTANG_DOMAIN,
+  HUTANG_DOMAIN,
   TEBUS_DOMAIN,
   TERA_DOMAIN,
   EDC_DOMAIN,
@@ -13,6 +15,7 @@ import {
   REALTANK_DOMAIN,
   SALES_RESYNC,
   type DateTimeDomain,
+  type SaldoLedgerDomain,
 } from "./domains.js";
 import { IngestClient, IngestError } from "./ingest-client.js";
 import { log } from "./logger.js";
@@ -416,6 +419,31 @@ async function syncDeposit(d: SyncDeps): Promise<void> {
       domain: "deposit",
       watermark_high: null, // full-sync; tanpa watermark
       tables: { deposit: chunk },
+    });
+    if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+  }
+}
+
+/**
+ * Full-sync ledger Saldo (piutang/hutang) — tarik SELURUH baris tr_bppiut/tr_bphut,
+ * batch by batchSize, UPSERT by PK (idempoten; menangkap back-dated + flip SBATAL).
+ * Tanpa watermark. Berat (~385k baris piutang) → dipanggil ber-interval (cadence
+ * master), bukan tiap poll. Pola identik syncDeposit.
+ */
+async function syncSaldoLedger(d: SyncDeps, def: SaldoLedgerDomain): Promise<void> {
+  const raw = await d.conn.roQuery(def.sql);
+  const rows = def.map(raw);
+  if (rows.length === 0) {
+    log.info(`${def.domain}: 0 baris`);
+    return;
+  }
+  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: def.domain,
+      watermark_high: null, // full-sync; tanpa watermark
+      tables: { [def.table]: chunk } as Tables,
     });
     if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
   }
@@ -964,6 +992,18 @@ export async function runCycle(
         domain: "masters",
         err: String(err),
       });
+    }
+    // Saldo ledgers (piutang/hutang) — full-sync BERAT (~385k baris); ikut cadence
+    // master (jarang), bukan tiap poll. pelanggan_master ikut di syncMasters.
+    for (const def of [PIUTANG_DOMAIN, HUTANG_DOMAIN]) {
+      try {
+        await syncSaldoLedger(d, def);
+      } catch (err) {
+        log.error("domain gagal — dilewati siklus ini", {
+          domain: def.domain,
+          err: String(err),
+        });
+      }
     }
   }
 }
