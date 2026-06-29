@@ -14,6 +14,7 @@ import {
   getManualEntries,
   getPelangganForDate,
   getSalesByProduct,
+  getTerraResmiForDate,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
@@ -54,9 +55,10 @@ export default async function RincianPage({
   // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
   const hideEmpty = searchParams.kosong !== "tampil";
 
-  const [prod, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran, setoranTunai] =
+  const [prod, terra, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran, setoranTunai] =
     await Promise.all([
       getSalesByProduct(unit.unit_id, date, date),
+      getTerraResmiForDate(unit.unit_id, date),
       getPelangganForDate(unit.unit_id, date),
       getEdcForDate(unit.unit_id, date),
       getEdcBlankCard(unit.unit_id, date),
@@ -72,7 +74,10 @@ export default async function RincianPage({
   const totVol = prod.reduce((s, p) => s + p.vol, 0);
   // Summary A–I (rekon kas; B Terra & I Setoran di luar lingkup v1 → null).
   const A = prod.reduce((s, p) => s + p.omzet, 0);
-  const B = 0; // Terra/Nozzle test (sumber `tera`, fase lain)
+  // B Terra/Nozzle Test = Σ ledger RESMI terra_resmi (DTGLTERRA, sbatal=0). SUMBER
+  // TUNGGAL (sama dgn kolom Tera Laporan & net-sales G/L). Rekon eksak 8/8 hari.
+  const teraLiter = terra.reduce((s, r) => s + r.liter, 0);
+  const B = terra.reduce((s, r) => s + r.rp, 0);
   const pelLiter = pelanggan.reduce((s, r) => s + r.liter, 0);
   const C = pelanggan.reduce((s, r) => s + r.rp, 0);
   const D = edc.reduce((s, r) => s + r.rp, 0);
@@ -104,6 +109,20 @@ export default async function RincianPage({
     },
     {
       num: "2",
+      title: "TERRA",
+      meta: "tera resmi / nozzle test · dikurangkan dari Penjualan Tunai (B)",
+      rows: terra.map((r, i) => ({
+        no: String(i + 1),
+        ket: r.nama ?? r.ckdbbm ?? "—",
+        vol: idn(r.liter, 2),
+        rpv: rp(r.rp),
+      })),
+      totalLabel: "TOTAL TERRA",
+      totalVol: idn(teraLiter, 2),
+      totalRp: rp(B),
+    },
+    {
+      num: "3",
       title: "PELANGGAN",
       meta: "penjualan tempo (RFID/deposit ⊎ voucher)",
       rows: pelanggan.map((r, i) => ({
@@ -117,7 +136,7 @@ export default async function RincianPage({
       totalRp: rp(C),
     },
     {
-      num: "3",
+      num: "4",
       title: "EDC",
       meta:
         edcBlank.rp > 0
@@ -134,7 +153,7 @@ export default async function RincianPage({
       totalRp: rp(D),
     },
     {
-      num: "4",
+      num: "5",
       title: "PENDAPATAN LAIN",
       meta: "input pengawas",
       rows: pendapatanLain.map((r, i) => ({
@@ -148,7 +167,7 @@ export default async function RincianPage({
       totalRp: rp(F),
     },
     {
-      num: "5",
+      num: "6",
       title: "PENDAPATAN NON TUNAI",
       meta: "deposit pelanggan · tidak masuk rekonsiliasi tunai",
       rows: deposit.map((r, i) => ({
@@ -162,7 +181,7 @@ export default async function RincianPage({
       totalRp: rp(depTotal),
     },
     {
-      num: "6",
+      num: "7",
       title: "PENGELUARAN",
       meta: "input pengawas",
       rows: pengeluaran.map((r, i) => ({
@@ -187,7 +206,7 @@ export default async function RincianPage({
     note?: { tone: "ok" | "warn"; text: string };
   }> = [
     { l: "A", label: "Omset Penjualan", val: rp(A) },
-    { l: "B", label: "Terra / Nozzle Test", val: null },
+    { l: "B", label: "Terra / Nozzle Test", val: rp(B) },
     { l: "C", label: "Pelanggan", val: rp(C) },
     { l: "D", label: "EDC", val: rp(D) },
     { l: "E", label: "Penjualan Tunai", formula: "E = A − (B + C + D)", val: rp(E), em: true },

@@ -17,6 +17,7 @@ export const DOMAINS = [
   "pelanggan",
   "tebus",
   "tera",
+  "terra_resmi",
   "piutang",
   "hutang",
 ] as const;
@@ -45,6 +46,12 @@ export const TABLES_BY_DOMAIN = {
   // UPSERT by surrogate key. Sumber kolom "Tera (L)" + komponen Penjualan_BERSIH
   // (= jual KOTOR − tera) di perhitungan Gain/Losses harian (selaras RESUME).
   tera: ["tera"],
+  // Tera RESMI (ledger tr_hterra ⋈ tr_dterra) — full-sync, UPSERT by natural key
+  // (ckdterra, ckdnozzle). SUMBER TUNGGAL semua angka terra laporan: Rincian B +
+  // seksi TERRA + kolom "Tera (L)" Laporan + net-sales G/L (gross − tera RESMI).
+  // Grup tanggal-bisnis = DTGLTERRA. `tera` mentah lama tetap di-sync tapi TIDAK
+  // dipakai laporan mana pun (lihat ADR terra-unification 2026-06-29).
+  terra_resmi: ["terra_resmi"],
   // Buku piutang pelanggan (tr_bppiut) — full-sync, UPSERT by PK CKDBPPIUT.
   // Saldo Piutang Lokal/Online (split via tm_plg.SJENIS) di Laporan Operasional.
   piutang: ["bppiut"],

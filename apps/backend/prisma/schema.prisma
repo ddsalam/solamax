@@ -190,6 +190,33 @@ model Tera {
   @@schema("public")
 }
 
+// Tera RESMI (ledger EasyMax tr_hterra ⋈ tr_dterra). SUMBER TUNGGAL angka terra
+// laporan: Rincian B + seksi TERRA + kolom "Tera (L)" Laporan + net-sales G/L
+// (gross − Σ nvolume). business_date = DTGLTERRA (= DTGLJUAL jurnal tertaut).
+// Full-sync agent; UPSERT by natural key (unit_id, ckdterra, ckdnozzle). Filter
+// laporan sbatal=0. BEDA dari `tera` (log mentah), yang tak lagi dipakai laporan.
+model TerraResmi {
+  unitId       Int      @map("unit_id") @db.SmallInt
+  businessDate DateTime @map("business_date") @db.Date
+  ckdterra     String   @db.VarChar(15)
+  ckdnozzle    String   @db.VarChar(5)
+  nshift       Int?     @db.SmallInt
+  ckdtangki    String?  @db.Char(5)
+  ckdbbm       String?  @db.Char(5)
+  nvolume      Decimal? @db.Decimal
+  nharga       Decimal? @db.Decimal
+  ntotal       Decimal? @db.Decimal
+  dtgljam      DateTime @db.Timestamptz()
+  ckdjualbbm   String?  @db.VarChar(15)
+  sbatal       Int?     @db.SmallInt
+  ingestedAt   DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdterra, ckdnozzle])
+  @@index([unitId, businessDate])
+  @@map("terra_resmi")
+  @@schema("public")
+}
+
 model Delivery {
   unitId      Int       @map("unit_id") @db.SmallInt
   ckdtrm      String    @db.Char(15)

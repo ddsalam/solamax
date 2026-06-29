@@ -9,6 +9,7 @@ import {
   HUTANG_DOMAIN,
   TEBUS_DOMAIN,
   TERA_DOMAIN,
+  TERRA_RESMI_DOMAIN,
   EDC_DOMAIN,
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
@@ -373,6 +374,34 @@ async function syncTera(d: SyncDeps): Promise<void> {
     }
   }
   if (allOk && !d.dryRun) d.store.setWatermark("tera", watermarkHigh);
+}
+
+/**
+ * Tera RESMI (ledger tr_hterra ⋈ tr_dterra) — FULL SYNC tiap siklus (tabel mungil,
+ * ~1,9k baris). UPSERT by natural key (unit_id, ckdterra, ckdnozzle); tanpa
+ * watermark. SUMBER TUNGGAL angka terra laporan (Rincian B + seksi TERRA + kolom
+ * "Tera (L)" Laporan + net-sales G/L). Idempoten via UPSERT (menangkap koreksi/
+ * flip SBATAL + sesi back-dated). `DTGLJAM` butuh offset TZ → konversi WIB→UTC.
+ * Pola dispatch identik syncTera; full-sync seperti syncSaldoLedger (watermark null).
+ */
+async function syncTerraResmi(d: SyncDeps): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  const raw = await d.conn.roQuery(TERRA_RESMI_DOMAIN.sql);
+  const rows = TERRA_RESMI_DOMAIN.map(raw, offset);
+  if (rows.length === 0) {
+    log.info("terra_resmi: 0 baris");
+    return;
+  }
+  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "terra_resmi",
+      watermark_high: null, // full-sync; tanpa watermark
+      tables: { terra_resmi: chunk },
+    });
+    if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
+  }
 }
 
 async function syncDeposit(d: SyncDeps): Promise<void> {
@@ -945,6 +974,14 @@ export async function runCycle(
   } catch (err) {
     log.error("domain gagal — dilewati siklus ini", {
       domain: "tera",
+      err: String(err),
+    });
+  }
+  try {
+    await syncTerraResmi(d);
+  } catch (err) {
+    log.error("domain gagal — dilewati siklus ini", {
+      domain: "terra_resmi",
       err: String(err),
     });
   }
