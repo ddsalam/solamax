@@ -218,6 +218,31 @@ export const TeraRow = z.object({
 });
 
 /**
+ * Tera RESMI (ledger EasyMax `tr_hterra ⋈ tr_dterra`). SUMBER TUNGGAL semua angka
+ * terra laporan (Rincian "Terra/Nozzle Test" B, seksi TERRA, kolom "Tera (L)"
+ * Laporan, net-sales G/L = gross − Σ nvolume). BEDA dari tabel `tera` (log fisik
+ * semua-pour) yang TIDAK dipakai laporan. `business_date` = `DTGLTERRA` (tanggal-
+ * bisnis header, = DTGLJUAL jurnal penjualan tertaut `ckdjualbbm`), bukan jam pour.
+ * Filter laporan: `sbatal = 0`. Natural key UPSERT = (unit_id, ckdterra, ckdnozzle);
+ * produk resolve by name via `product.vcnmbbm` (dari `ckdbbm`). Rekon eksak 8/8 hari
+ * ke RINCIAN PENJUALAN PDF (probe16, 2026-06-29).
+ */
+export const TerraResmiRow = z.object({
+  business_date: isoDate, // DTGLTERRA
+  ckdterra: z.string(), // header PK (NT…)
+  ckdnozzle: z.string(), // detail nozzle (natural key dgn ckdterra)
+  nshift: z.number().int().nullable(),
+  ckdtangki: str,
+  ckdbbm: str,
+  nvolume: num, // Liter tera
+  nharga: num, // harga/L (info)
+  ntotal: num, // Rupiah tera (= B)
+  dtgljam: isoUtc, // waktu pour (audit)
+  ckdjualbbm: str, // FK jurnal penjualan tertaut
+  sbatal: z.number().int().nullable(),
+});
+
+/**
  * Buku piutang pelanggan (sumber `tr_bppiut`, PK `CKDBPPIUT`). Ledger append-only;
  * saldo = `Σ NJUMLAH·sign(SJNSBP: 1=debet/+, 2=kredit/−)` per pelanggan, `DTGL < tanggal`.
  * Split Lokal/Online via `tm_plg.SJENIS` (lihat pelanggan_master). Full-sync (UPSERT
@@ -316,6 +341,7 @@ export const ROW_SCHEMA = {
   tebus_header: TebusHeaderRow,
   tebus_detail: TebusDetailRow,
   tera: TeraRow,
+  terra_resmi: TerraResmiRow,
   bppiut: BppiutRow,
   bphut: BphutRow,
   pelanggan_master: PelangganMasterRow,
@@ -341,6 +367,7 @@ export type VoucherSaleRow = z.infer<typeof VoucherSaleRow>;
 export type TebusHeaderRow = z.infer<typeof TebusHeaderRow>;
 export type TebusDetailRow = z.infer<typeof TebusDetailRow>;
 export type TeraRow = z.infer<typeof TeraRow>;
+export type TerraResmiRow = z.infer<typeof TerraResmiRow>;
 export type BppiutRow = z.infer<typeof BppiutRow>;
 export type BphutRow = z.infer<typeof BphutRow>;
 export type PelangganMasterRow = z.infer<typeof PelangganMasterRow>;

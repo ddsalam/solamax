@@ -38,6 +38,32 @@ describe("buildUpsert", () => {
     expect(det.sql).toContain('ON CONFLICT ("unit_id","ckdtbs","ckdbbm")');
   });
 
+  it("terra_resmi: ON CONFLICT (unit_id,ckdterra,ckdnozzle) + cast date/timestamptz + sumOnConflict", () => {
+    const u = buildUpsert(TABLE_CONFIG.terra_resmi!, 1, [
+      {
+        business_date: "2026-06-17", ckdterra: "NT1", ckdnozzle: "NZ-18", nshift: 2,
+        ckdtangki: "T-06", ckdbbm: "BB-07", nvolume: 41, nharga: 10000, ntotal: 410000,
+        dtgljam: "2026-06-17T10:00:23Z", ckdjualbbm: "JB1", sbatal: 0,
+      },
+      // sesi+nozzle SAMA dalam batch → di-merge; nvolume/ntotal dijumlah (cegah 21000).
+      {
+        business_date: "2026-06-17", ckdterra: "NT1", ckdnozzle: "NZ-18", nshift: 2,
+        ckdtangki: "T-06", ckdbbm: "BB-07", nvolume: 1, nharga: 10000, ntotal: 10000,
+        dtgljam: "2026-06-17T10:05:00Z", ckdjualbbm: "JB1", sbatal: 0,
+      },
+    ]);
+    expect(u.sql).toContain('ON CONFLICT ("unit_id","ckdterra","ckdnozzle")');
+    expect(u.sql).toContain("::date"); // business_date (regresi 42804)
+    expect(u.sql).toContain("::timestamptz"); // dtgljam
+    // dua baris ter-merge → SATU tuple (13 param), nvolume 42 / ntotal 420000.
+    expect(u.params).toHaveLength(13);
+    expect(u.params[7]).toBe(42); // nvolume
+    expect(u.params[9]).toBe(420000); // ntotal
+    // kolom natural-key TIDAK di-update; nilai di-refresh.
+    expect(u.sql).not.toContain('"ckdterra" = EXCLUDED');
+    expect(u.sql).toContain('"nvolume" = EXCLUDED."nvolume"');
+  });
+
   it("nilai hilang → null; objek (jsonb) → string JSON + cast ::jsonb", () => {
     const { sql, params } = buildUpsert(TABLE_CONFIG.product!, 2, [
       { ckdbbm: "P1", perk_map: { CKDPERK1: "x" } }, // vcnmbbm & nhrgjual absen

@@ -1274,3 +1274,440 @@ export async function runProbe13(
   out("PROBE RONDE 13 SELESAI — read-only, nol kirim. Tempel output untuk kunci formula final.");
   out("==========================================================");
 }
+
+/**
+ * RONDE 14 (FASE 0.5h) — SUMBER B / "Terra / Nozzle Test" di RINCIAN PENJUALAN.
+ *
+ * Latar: tabel `tera` (log fisik test-dispense) terbukti SUPERSET dari B. Σ
+ * tera.TotalHarga per hari OVERCOUNT di 6/8 hari oracle (15/16/18=0 tapi tera>0;
+ * 17/24/26/27 overcount oleh stray-pour). Tak ada kolom TER-SYNC (produk/tangki/
+ * nozzle/Jenis/jam/liter) yang memisahkan resmi-vs-stray (17 Jun: nozzle 46 &
+ * Jenis 5 yang SAMA terbelah in/out). Tugas: temukan pembeda OTORITATIF.
+ *
+ * Oracle B (Rp, PDF IB 6478111) — sumber yang BENAR harus reproduksi PERSIS,
+ * termasuk NOL di 5/8 hari (penyaring terkuat):
+ *   14=0  15=0  16=0  17=1.106.200  18=0  24=350.982  26=349.650  27=445.200
+ *
+ * Strategi falsifikasi:
+ *   T0  Skema PENUH `tera` live (cari kolom TAK-tersync = kandidat flag resmi).
+ *   T1  Internal laporan EasyMax (view/procedure di balik Rincian → rumus B).
+ *   T2  Semantik `Jenis` + master tera (apakah satu Jenis = "tera resmi"?).
+ *   T3  DUMP MENTAH `SELECT *` per hari oracle (DECISIVE): baris in vs out
+ *       dibandingkan ke PDF → kolom pembeda tampak. + baseline Σ (rekonfirmasi salah).
+ *   T4  Hipotesis jurnal penjualan (tera di-ring di tr_hjualbbm/VCKET?).
+ *
+ * 🔒 SELECT-only (roQuery → assertSelectOnly). `SHOW CREATE VIEW` DITOLAK guard
+ *    (keyword CREATE) → pakai information_schema.VIEWS/ROUTINES.*_DEFINITION.
+ *    Catatan: *_DEFINITION bisa NULL bila user readonly_sync tak punya SHOW VIEW/
+ *    SHOW ROUTINE — nama objek tetap berguna; laporkan apa adanya.
+ */
+export async function runProbe14(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const ORACLE_B: Record<string, string> = {
+    "2026-06-14": "0",
+    "2026-06-15": "0",
+    "2026-06-16": "0",
+    "2026-06-17": "1.106.200",
+    "2026-06-18": "0",
+    "2026-06-24": "350.982",
+    "2026-06-26": "349.650",
+    "2026-06-27": "445.200",
+  };
+  const dates = datesArg.length ? datesArg : Object.keys(ORACLE_B);
+  out("==========================================================");
+  out("FASE 0.5h PROBE RONDE 14 (READ-ONLY) — SUMBER B/Terra · unit 6478111");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nOracle B (Rp) — sumber benar HARUS cocok PERSIS, termasuk 0:");
+  for (const d of dates) if (ORACLE_B[d]) out(`  ${d} = ${ORACLE_B[d]}`);
+
+  // ===== T0. Skema PENUH tera (kolom tak-tersync = kandidat flag resmi) =====
+  out("\n\n##### T0. SKEMA PENUH `tera` (cari kolom di luar 8 yang ter-sync) #####");
+  out("  (tersync: TanggalJam,IDPompa,NoNozle,SalTangki,Jenis,Liter,TotalHarga + HargaSatuan tidak)");
+  await step(conn, "T0a DESCRIBE tera", "DESCRIBE tera");
+  await step(
+    conn,
+    "T0b kolom tera (tipe/key/null/extra)",
+    "SELECT ORDINAL_POSITION AS pos, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE AS nullable, COLUMN_KEY AS kkey, EXTRA AS extra FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tera' ORDER BY ORDINAL_POSITION",
+  );
+
+  // ===== T1. Internal laporan EasyMax (view/procedure sumber B) =====
+  out("\n\n##### T1. INTERNAL LAPORAN (view/procedure → rumus B otoritatif) #####");
+  await step(
+    conn,
+    "T1a procedure/function menyebut tera/nozzle",
+    "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ( LOWER(ROUTINE_DEFINITION) LIKE '%tera%' OR LOWER(ROUTINE_DEFINITION) LIKE '%nozle%' OR LOWER(ROUTINE_DEFINITION) LIKE '%nozzle%' OR LOWER(ROUTINE_NAME) LIKE '%tera%' OR LOWER(ROUTINE_NAME) LIKE '%rincian%' ) ORDER BY ROUTINE_NAME",
+  );
+  await step(
+    conn,
+    "T1b DEFINISI routine yang menyebut tera (bisa NULL bila tanpa hak)",
+    "SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ( LOWER(ROUTINE_DEFINITION) LIKE '%tera%' OR LOWER(ROUTINE_DEFINITION) LIKE '%nozle%' OR LOWER(ROUTINE_DEFINITION) LIKE '%nozzle%' )",
+  );
+  await step(
+    conn,
+    "T1c view bernama tera/terra/rincian/rekap/jual/lap",
+    "SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(TABLE_NAME) LIKE '%tera%' OR LOWER(TABLE_NAME) LIKE '%terra%' OR LOWER(TABLE_NAME) LIKE '%rincian%' OR LOWER(TABLE_NAME) LIKE '%rekap%' OR LOWER(TABLE_NAME) LIKE '%jual%' OR LOWER(TABLE_NAME) LIKE '%lap%' OR LOWER(TABLE_NAME) LIKE '%report%' ) ORDER BY TABLE_NAME",
+  );
+  await step(
+    conn,
+    "T1d view yang DEFINISINYA menyebut tera (+definisi; bisa NULL)",
+    "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(VIEW_DEFINITION) LIKE '%from tera%' OR LOWER(VIEW_DEFINITION) LIKE '%join tera%' OR LOWER(VIEW_DEFINITION) LIKE '%nozle%' OR LOWER(VIEW_DEFINITION) LIKE '%nozzle%' )",
+  );
+  await step(
+    conn,
+    "T1e SEMUA objek bernama tera (tabel/view)",
+    "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(TABLE_NAME) LIKE '%tera%' OR LOWER(TABLE_NAME) LIKE '%terra%' ) ORDER BY TABLE_NAME",
+  );
+
+  // ===== T2. Semantik Jenis + master tera =====
+  out("\n\n##### T2. SEMANTIK `Jenis` + master tera #####");
+  await step(
+    conn,
+    "T2a tabel/master bernama jenis/tera",
+    "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(TABLE_NAME) LIKE '%jenistera%' OR LOWER(TABLE_NAME) LIKE '%jnstera%' OR LOWER(TABLE_NAME) LIKE '%jenis%' ) ORDER BY TABLE_NAME",
+  );
+  await step(
+    conn,
+    "T2b tera per Jenis (overall: apakah satu Jenis = resmi?)",
+    "SELECT Jenis, COUNT(*) AS n, ROUND(SUM(Liter),2) AS liter, ROUND(SUM(TotalHarga),2) AS total FROM tera WHERE TanggalJam >= '2026-06-01' AND TanggalJam < '2026-07-01' GROUP BY Jenis ORDER BY Jenis",
+  );
+
+  // ===== T3. DUMP MENTAH per hari oracle (DECISIVE) =====
+  out("\n\n##### T3. DUMP `SELECT *` per hari oracle (kolom pembeda in/out) #####");
+  out("  Bandingkan ke PDF: hari B=0 → SEMUA baris 'out'; 17/24/26/27 → sesi ~20L 'in'.");
+  for (const date of dates) {
+    const next = nextDay(date);
+    out(`\n### ${date} (oracle B = ${ORACLE_B[date] ?? "?"})`);
+    await step(
+      conn,
+      `T3 dump tera kalender ${date}`,
+      "SELECT * FROM tera WHERE TanggalJam >= ? AND TanggalJam < ? ORDER BY TanggalJam",
+      [date + " 00:00:00", next + " 00:00:00"],
+    );
+    await step(
+      conn,
+      `T3 baseline Σ tera ${date} (rekonfirmasi salah)`,
+      "SELECT COUNT(*) AS n, ROUND(SUM(Liter),2) AS liter, ROUND(SUM(TotalHarga),2) AS total FROM tera WHERE DATE(TanggalJam) = ?",
+      [date],
+    );
+  }
+
+  // ===== T4. Hipotesis jurnal penjualan (tera di-ring sbg sale?) =====
+  out("\n\n##### T4. Hipotesis JURNAL PENJUALAN (tera di-ring di tr_hjualbbm?) #####");
+  await step(conn, "T4a DESCRIBE tr_hjualbbm", "DESCRIBE tr_hjualbbm");
+  await step(conn, "T4b DESCRIBE tr_djualbbm", "DESCRIBE tr_djualbbm");
+  for (const date of dates) {
+    out(`\n### T4 jurnal ${date} (oracle B = ${ORACLE_B[date] ?? "?"})`);
+    await step(
+      conn,
+      `T4 header VCKET bertanda tera/nozzle ${date}`,
+      "SELECT CKDJUALBBM, NSHIFT, DTGLJUAL, VCKET FROM tr_hjualbbm WHERE DTGLJUAL = ? AND ( LOWER(VCKET) LIKE '%tera%' OR LOWER(VCKET) LIKE '%nozle%' OR LOWER(VCKET) LIKE '%nozzle%' OR LOWER(VCKET) LIKE '%kalib%' OR LOWER(VCKET) LIKE '%test%' )",
+      [date],
+    );
+  }
+
+  out("\n==========================================================");
+  out("PROBE RONDE 14 SELESAI — read-only, nol kirim. Tempel SELURUH output");
+  out("(terutama T0 skema + T1 definisi view + T3 dump per hari) untuk kunci GATE 0.5.");
+  out("==========================================================");
+}
+
+/**
+ * RONDE 15 (FASE 0.5i) — LEDGER TERRA RESMI: tr_hterra/tr_dterra/vw_terra.
+ *
+ * Terobosan R14: tabel `tera` = log test-pour mentah (SUPERSET, tanpa flag resmi).
+ * EasyMax punya LEDGER terra RESMI terpisah → tr_hterra (~418 hdr), tr_dterra
+ * (~1.849 dtl), view vw_terra + vw_terratosend (kandidat sumber otoritatif B
+ * Rincian + Liter benar utk Laporan Harian + net-sales G/L). Tugas: KUNCI sumber.
+ *
+ * Oracle B (Rp) + seksi TERRA per-produk (PDF IB 6478111) — sumber benar HARUS
+ * reproduksi PERSIS, termasuk 0 di 14/15/16/18:
+ *   14=0  15=0  16=0
+ *   17=1.106.200  (DEXLITE 21,00/493.500 + PERTALITE 61,27/612.700)
+ *   18=0
+ *   24=350.982    (PERTAMAX 21,08)
+ *   26=349.650    (PERTAMAX 21,00)
+ *   27=445.200    (PERTAMAX TURBO 21,00)
+ *
+ * 🔒 SELECT-only (assertSelectOnly). `SHOW CREATE VIEW` DITOLAK guard (keyword
+ *    CREATE) → definisi via information_schema.VIEWS.VIEW_DEFINITION (bisa kosong
+ *    bila user readonly_sync tanpa SHOW VIEW — base table tetap otoritatif).
+ *    Query rekon pakai TEBAKAN kolom (konvensi EasyMax: hdr DTGL/CKDTERRA/SBATAL,
+ *    dtl CKDBBM + Liter/TotalHarga ATAU NVOLUME/NSUBTOTAL); yang salah → ERROR
+ *    tercetak (tak fatal), DESCRIBE + dump mentah jadi sumber kebenaran.
+ */
+export async function runProbe15(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const ORACLE_B: Record<string, string> = {
+    "2026-06-14": "0",
+    "2026-06-15": "0",
+    "2026-06-16": "0",
+    "2026-06-17": "1.106.200  (DEXLITE 21,00/493.500 + PERTALITE 61,27/612.700)",
+    "2026-06-18": "0",
+    "2026-06-24": "350.982  (PERTAMAX 21,08)",
+    "2026-06-26": "349.650  (PERTAMAX 21,00)",
+    "2026-06-27": "445.200  (PERTAMAX TURBO 21,00)",
+  };
+  const dates = datesArg.length ? datesArg : Object.keys(ORACLE_B);
+  const HOT = ["2026-06-17", "2026-06-24", "2026-06-26", "2026-06-27"]; // B>0 (rekon ketat)
+  const TERRA_OBJ = ["tr_hterra", "tr_dterra", "vw_terra", "vw_terratosend"];
+  out("==========================================================");
+  out("FASE 0.5i PROBE RONDE 15 (READ-ONLY) — LEDGER TERRA RESMI · unit 6478111");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nOracle B (Rp) + seksi TERRA per-produk — sumber benar HARUS cocok PERSIS:");
+  for (const d of dates) if (ORACLE_B[d]) out(`  ${d} = ${ORACLE_B[d]}`);
+
+  // ===== A. DEFINISI view + SKEMA penuh 4 objek =====
+  out("\n\n##### A. DEFINISI vw_terra/vw_terratosend + SKEMA 4 objek #####");
+  await step(
+    conn,
+    "A1 VIEW_DEFINITION (SHOW CREATE diblok guard → information_schema)",
+    "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('vw_terra','vw_terratosend')",
+  );
+  await step(
+    conn,
+    "A2 SEMUA kolom 4 objek (pos/tipe/key)",
+    "SELECT TABLE_NAME, ORDINAL_POSITION AS pos, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE AS nullable, COLUMN_KEY AS kkey FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('tr_hterra','tr_dterra','vw_terra','vw_terratosend') ORDER BY TABLE_NAME, ORDINAL_POSITION",
+  );
+  for (const t of TERRA_OBJ) {
+    await step(conn, `A3 DESCRIBE ${t}`, `DESCRIBE ${t}`);
+    await step(conn, `A3 sample ${t}`, `SELECT * FROM ${t} LIMIT 8`);
+  }
+  await step(
+    conn,
+    "A4 jumlah baris 4 objek",
+    "SELECT (SELECT COUNT(*) FROM tr_hterra) AS hdr, (SELECT COUNT(*) FROM tr_dterra) AS dtl, (SELECT COUNT(*) FROM vw_terra) AS v_terra, (SELECT COUNT(*) FROM vw_terratosend) AS v_tosend",
+  );
+
+  // ===== B. DUMP MENTAH Juni (gabung hdr⋈dtl; tebakan DTGL + CKDTERRA) =====
+  out("\n\n##### B. DUMP MENTAH ledger Juni 14–27 (tebakan kolom; bila ERROR → pakai A) #####");
+  await step(
+    conn,
+    "B1 tr_hterra⋈tr_dterra Juni (DTGL+CKDTERRA)",
+    "SELECT h.CKDTERRA, h.DTGL, h.NSHIFT, h.SBATAL, d.* FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGL >= ? AND h.DTGL <= ? ORDER BY h.DTGL, h.CKDTERRA",
+    ["2026-06-14", "2026-06-27"],
+  );
+  await step(
+    conn,
+    "B2 tr_hterra Juni (header saja; kalau B1 ERROR di join)",
+    "SELECT * FROM tr_hterra WHERE DTGL >= ? AND DTGL <= ? ORDER BY DTGL",
+    ["2026-06-14", "2026-06-27"],
+  );
+  await step(
+    conn,
+    "B3 vw_terra Juni (tebakan kolom tanggal DTGL)",
+    "SELECT * FROM vw_terra WHERE DTGL >= ? AND DTGL <= ? ORDER BY DTGL LIMIT 200",
+    ["2026-06-14", "2026-06-27"],
+  );
+  await step(
+    conn,
+    "B4 vw_terratosend Juni (tebakan kolom tanggal DTGL)",
+    "SELECT * FROM vw_terratosend WHERE DTGL >= ? AND DTGL <= ? ORDER BY DTGL LIMIT 200",
+    ["2026-06-14", "2026-06-27"],
+  );
+
+  // ===== C. REKON per hari oracle (B per-hari + per-produk; tebakan kolom) =====
+  out("\n\n##### C. REKON per hari (Σ Rp == oracle B; per-produk by tm_bbm.VCNMBBM) #####");
+  for (const date of dates) {
+    out(`\n### ${date} (oracle B = ${ORACLE_B[date] ?? "?"})`);
+    await step(
+      conn,
+      `C1 Σ per-hari ${date} (Liter/TotalHarga)`,
+      "SELECT ROUND(SUM(d.TotalHarga),2) AS rp_total, ROUND(SUM(d.Liter),2) AS liter_total, COUNT(*) AS n FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGL = ? AND COALESCE(h.SBATAL,0) = 0",
+      [date],
+    );
+    if (HOT.includes(date)) {
+      await step(
+        conn,
+        `C2 per-produk ${date} (resolve nama by VCNMBBM)`,
+        "SELECT bb.VCNMBBM AS produk, ROUND(SUM(d.Liter),2) AS liter, ROUND(SUM(d.TotalHarga),2) AS rp, COUNT(*) AS n FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA LEFT JOIN tm_bbm bb ON TRIM(bb.CKDBBM) = TRIM(d.CKDBBM) WHERE h.DTGL = ? AND COALESCE(h.SBATAL,0) = 0 GROUP BY bb.VCNMBBM ORDER BY rp DESC",
+        [date],
+      );
+      await step(
+        conn,
+        `C3 Σ per-hari ${date} FALLBACK (NVOLUME/NSUBTOTAL)`,
+        "SELECT ROUND(SUM(d.NSUBTOTAL),2) AS rp_total, ROUND(SUM(d.NVOLUME),2) AS liter_total, COUNT(*) AS n FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGL = ? AND COALESCE(h.SBATAL,0) = 0",
+        [date],
+      );
+    }
+  }
+
+  // ===== D. GROUPING — kalender DTGL vs shift-3 (spillover) =====
+  out("\n\n##### D. GROUPING: header per DTGL + cek field waktu (shift-3 spillover) #####");
+  for (const date of HOT) {
+    await step(
+      conn,
+      `D header ${date} (DTGL + NSHIFT + semua kolom hdr utk lihat field waktu)`,
+      "SELECT * FROM tr_hterra WHERE DTGL = ? ORDER BY 1",
+      [date],
+    );
+  }
+
+  // ===== E. DELTA vs `tera` mentah (bug Laporan Harian — khusus Pertalite) =====
+  out("\n\n##### E. DELTA Liter: ledger RESMI vs `tera` mentah, per-produk/hari #####");
+  for (const date of dates) {
+    await step(
+      conn,
+      `E tera MENTAH per-produk ${date} (SalTangki→tm_tangki→tm_bbm)`,
+      "SELECT bb.VCNMBBM AS produk, ROUND(SUM(t.Liter),2) AS liter_mentah, ROUND(SUM(t.TotalHarga),2) AS rp_mentah, COUNT(*) AS n FROM tera t LEFT JOIN tm_tangki tg ON CAST(tg.CKDTANGKI2 AS UNSIGNED) = t.SalTangki LEFT JOIN tm_bbm bb ON TRIM(bb.CKDBBM) = TRIM(tg.CKDBBM) WHERE DATE(t.TanggalJam) = ? GROUP BY bb.VCNMBBM ORDER BY produk",
+      [date],
+    );
+  }
+
+  // ===== F. RESUME OPERASIONAL — sumber terra-nya (harus SAMA dgn Rincian) =====
+  out("\n\n##### F. RESUME/Laporan — view/routine yang menyentuh terra #####");
+  await step(
+    conn,
+    "F1 view bernama resume/operasional/arus/bbm/lap",
+    "SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(TABLE_NAME) LIKE '%resume%' OR LOWER(TABLE_NAME) LIKE '%operasional%' OR LOWER(TABLE_NAME) LIKE '%arus%' OR LOWER(TABLE_NAME) LIKE '%bbm%' OR LOWER(TABLE_NAME) LIKE '%lap%' ) ORDER BY TABLE_NAME",
+  );
+  await step(
+    conn,
+    "F2 view yang DEFINISINYA menyentuh terra/tera",
+    "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND ( LOWER(VIEW_DEFINITION) LIKE '%tr_dterra%' OR LOWER(VIEW_DEFINITION) LIKE '%tr_hterra%' OR LOWER(VIEW_DEFINITION) LIKE '%from tera%' OR LOWER(VIEW_DEFINITION) LIKE '%join tera%' )",
+  );
+  await step(
+    conn,
+    "F3 routine yang menyentuh terra/tera (definisi)",
+    "SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_DEFINITION FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE() AND ( LOWER(ROUTINE_DEFINITION) LIKE '%tr_dterra%' OR LOWER(ROUTINE_DEFINITION) LIKE '%terra%' OR LOWER(ROUTINE_DEFINITION) LIKE '% tera %' )",
+  );
+
+  // ===== G. PK / natural key / watermark (utk desain UPSERT nanti) =====
+  out("\n\n##### G. PK / index / watermark ledger (fakta utk sync, JANGAN implement) #####");
+  await step(
+    conn,
+    "G1 kolom ber-key (PRI/UNI/MUL) hdr+dtl",
+    "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_KEY, ORDINAL_POSITION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('tr_hterra','tr_dterra') AND COLUMN_KEY <> '' ORDER BY TABLE_NAME, ORDINAL_POSITION",
+  );
+  await step(
+    conn,
+    "G2 index lengkap hdr+dtl",
+    "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX AS seq, COLUMN_NAME, NON_UNIQUE AS nonuniq FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('tr_hterra','tr_dterra') ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
+  );
+  await step(
+    conn,
+    "G3 rentang DTGL header (watermark? tebakan DTGL)",
+    "SELECT MIN(DTGL) AS mn, MAX(DTGL) AS mx, COUNT(*) AS n FROM tr_hterra",
+  );
+
+  out("\n==========================================================");
+  out("PROBE RONDE 15 SELESAI — read-only, nol kirim. Tempel SELURUH output");
+  out("(A definisi/skema + B dump Juni + C rekon + F sumber RESUME) untuk GATE 0.5 final.");
+  out("Tip encoding: arahkan ke UTF-8 (Out-File -Encoding utf8) agar tak ter-garble.");
+  out("==========================================================");
+}
+
+/**
+ * RONDE 16 (FASE 0.5j) — REKON ledger terra resmi dgn KOLOM BENAR (R15 discovery).
+ *
+ * R15 mengunci skema (recon R15 gagal krn tebak kolom):
+ *   tr_hterra : CKDTERRA(PK) · DTGLTERRA(date, BIZ-DATE) · NSHIFT · CKDJUALBBM(FK→sales) ·
+ *               VCKET · SBATAL · VCALASAN · SEDIT
+ *   tr_dterra : CKDTERRA(FK) · CKDNOZZLE · NVOLUME(L) · NHARGA · NTOTAL(Rp) · CHASIL ·
+ *               VCULANG · SEDIT · DTGLJAM(datetime) · CKDTANGKI · CKDBBM
+ *   vw_terra  : per-pour + nama resolve (VCNMBBM/VCNMTANGKI…) + DTGLTERRA/NSHIFT/SBATAL
+ *
+ * Tujuan: rekon Σ NTOTAL per DTGLTERRA == oracle B (8 hari, termasuk 0); per-produk
+ * 17/24/26/27; grouping DTGLTERRA vs DATE(DTGLJAM) (shift-3); watermark; link sales.
+ * 🔒 SELECT-only (assertSelectOnly).
+ */
+export async function runProbe16(
+  conn: EasyMaxConnection,
+  datesArg: string[] = [],
+): Promise<void> {
+  const ORACLE_B: Record<string, string> = {
+    "2026-06-14": "0",
+    "2026-06-15": "0",
+    "2026-06-16": "0",
+    "2026-06-17": "1.106.200  (DEXLITE 21,00/493.500 + PERTALITE 61,27/612.700)",
+    "2026-06-18": "0",
+    "2026-06-24": "350.982  (PERTAMAX 21,08)",
+    "2026-06-26": "349.650  (PERTAMAX 21,00)",
+    "2026-06-27": "445.200  (PERTAMAX TURBO 21,00)",
+  };
+  const dates = datesArg.length ? datesArg : Object.keys(ORACLE_B);
+  const HOT = ["2026-06-17", "2026-06-24", "2026-06-26", "2026-06-27"];
+  out("==========================================================");
+  out("FASE 0.5j PROBE RONDE 16 (READ-ONLY) — REKON ledger terra (kolom benar)");
+  out("tanggal: " + dates.join(", "));
+  out("==========================================================");
+  out("\nOracle B (Rp) — Σ NTOTAL per DTGLTERRA HARUS cocok PERSIS, termasuk 0:");
+  for (const d of dates) if (ORACLE_B[d]) out(`  ${d} = ${ORACLE_B[d]}`);
+
+  // ===== R. REKON per hari (Σ NTOTAL per DTGLTERRA) =====
+  out("\n\n##### R. REKON Σ per hari (DTGLTERRA, SBATAL=0) vs oracle B #####");
+  for (const date of dates) {
+    out(`\n### ${date} (oracle B = ${ORACLE_B[date] ?? "?"})`);
+    await step(
+      conn,
+      `R1 Σ ledger ${date}`,
+      "SELECT ROUND(SUM(d.NTOTAL),2) AS rp_total, ROUND(SUM(d.NVOLUME),2) AS liter_total, COUNT(*) AS n FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGLTERRA = ? AND COALESCE(h.SBATAL,0) = 0",
+      [date],
+    );
+    if (HOT.includes(date)) {
+      await step(
+        conn,
+        `R2 per-produk ${date} (vw_terra.VCNMBBM)`,
+        "SELECT VCNMBBM AS produk, ROUND(SUM(NVOLUME),2) AS liter, ROUND(SUM(NTOTAL),2) AS rp, COUNT(*) AS n FROM vw_terra WHERE DTGLTERRA = ? AND COALESCE(SBATAL,0) = 0 GROUP BY VCNMBBM ORDER BY rp DESC",
+        [date],
+      );
+    }
+  }
+
+  // ===== S. DUMP MENTAH Juni (hdr⋈dtl) — verifikasi baris + SBATAL =====
+  out("\n\n##### S. DUMP ledger Juni 14–27 (hdr⋈dtl, semua SBATAL) #####");
+  await step(
+    conn,
+    "S1 tr_hterra⋈tr_dterra Juni",
+    "SELECT h.CKDTERRA, h.DTGLTERRA, h.NSHIFT, h.SBATAL, h.CKDJUALBBM, d.DTGLJAM, d.CKDNOZZLE, d.CKDTANGKI, d.CKDBBM, d.NVOLUME, d.NTOTAL FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGLTERRA >= ? AND h.DTGLTERRA <= ? ORDER BY h.DTGLTERRA, d.DTGLJAM",
+    ["2026-06-14", "2026-06-27"],
+  );
+  await step(
+    conn,
+    "S2 header Juni SBATAL<>0 (tera dibatalkan?)",
+    "SELECT CKDTERRA, DTGLTERRA, NSHIFT, SBATAL, VCKET, VCALASAN FROM tr_hterra WHERE DTGLTERRA >= ? AND DTGLTERRA <= ? AND COALESCE(SBATAL,0) <> 0",
+    ["2026-06-14", "2026-06-27"],
+  );
+
+  // ===== T. GROUPING: DTGLTERRA vs DATE(DTGLJAM) (shift-3 spillover) =====
+  out("\n\n##### T. GROUPING — biz-date DTGLTERRA vs wall-clock DATE(DTGLJAM) #####");
+  await step(
+    conn,
+    "T1 DTGLTERRA × pour-date Juni (lihat shift-3 lintas tengah malam)",
+    "SELECT h.DTGLTERRA, h.NSHIFT, DATE(d.DTGLJAM) AS pour_date, COUNT(*) AS n, ROUND(SUM(d.NTOTAL),2) AS rp FROM tr_hterra h JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA WHERE h.DTGLTERRA >= ? AND h.DTGLTERRA <= ? GROUP BY h.DTGLTERRA, h.NSHIFT, DATE(d.DTGLJAM) ORDER BY h.DTGLTERRA, pour_date",
+    ["2026-06-14", "2026-06-27"],
+  );
+
+  // ===== U. WATERMARK / rentang (utk desain sync incremental) =====
+  out("\n\n##### U. WATERMARK & rentang (fakta sync; JANGAN implement) #####");
+  await step(
+    conn,
+    "U1 rentang DTGLTERRA header",
+    "SELECT MIN(DTGLTERRA) AS mn, MAX(DTGLTERRA) AS mx, COUNT(*) AS n FROM tr_hterra",
+  );
+  await step(
+    conn,
+    "U2 rentang DTGLJAM detail (cek tanggal sampah <2020 / >2030)",
+    "SELECT MIN(DTGLJAM) AS mn, MAX(DTGLJAM) AS mx, COUNT(*) AS n, SUM(CASE WHEN DTGLJAM < '2020-01-01' THEN 1 ELSE 0 END) AS pre2020 FROM tr_dterra",
+  );
+
+  // ===== V. LINK ke jurnal penjualan (CKDJUALBBM) — biz-date konsisten? =====
+  out("\n\n##### V. LINK terra→sales (CKDJUALBBM): DTGLTERRA == DTGLJUAL? #####");
+  await step(
+    conn,
+    "V1 hdr terra ⋈ tr_hjualbbm Juni",
+    "SELECT h.CKDTERRA, h.DTGLTERRA, h.NSHIFT AS terra_shift, h.CKDJUALBBM, j.DTGLJUAL, j.NSHIFT AS jual_shift FROM tr_hterra h LEFT JOIN tr_hjualbbm j ON j.CKDJUALBBM = h.CKDJUALBBM WHERE h.DTGLTERRA >= ? AND h.DTGLTERRA <= ? ORDER BY h.DTGLTERRA",
+    ["2026-06-14", "2026-06-27"],
+  );
+
+  out("\n==========================================================");
+  out("PROBE RONDE 16 SELESAI — read-only, nol kirim. Tempel SELURUH output");
+  out("(R rekon 8-hari + R2 per-produk + S dump + T grouping) untuk GATE 0.5 FINAL.");
+  out("Encoding: Out-File -Encoding utf8 (hindari garble).");
+  out("==========================================================");
+}
