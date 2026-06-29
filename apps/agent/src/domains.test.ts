@@ -9,6 +9,7 @@ import {
   REALTANK_DOMAIN,
   SALES_RESYNC,
   TEBUS_DOMAIN,
+  TERRA_RESMI_DOMAIN,
 } from "./domains.js";
 import { tzOffsetMinutes, wibDateTimeToUtcIso } from "./transform.js";
 
@@ -87,6 +88,37 @@ describe("TEBUS.map (tr_htebus ⋈ tr_dtebus — header dedup, detail agregat pe
     expect(new Set(keys).size).toBe(keys.length);
     expect(det).toHaveLength(3); // T1/BB-03, T1/BB-08, T2/BB-07
     expect(page.watermarkHigh).toBe("2026-06-24");
+  });
+});
+
+describe("TERRA_RESMI.map (ledger tr_hterra ⋈ tr_dterra — business_date=DTGLTERRA, DTGLJAM→UTC)", () => {
+  it("business_date dari DTGLTERRA (bukan jam pour); dtgljam WIB→UTC; field & sbatal ter-capture", () => {
+    const rows = TERRA_RESMI_DOMAIN.map(
+      [
+        // 17/6 sesi resmi — DEXLITE (BB-06) nozzle NZ-31.
+        { CKDTERRA: "NT202600036", DTGLTERRA: "2026-06-17", NSHIFT: "2", CKDJUALBBM: "JB202600503",
+          SBATAL: "0", CKDNOZZLE: "NZ-31", CKDTANGKI: "T-01", CKDBBM: "BB-06",
+          NVOLUME: "20", NHARGA: "23500", NTOTAL: "470000", DTGLJAM: "2026-06-17 15:46:25" },
+        // PERTALITE (BB-07) nozzle NZ-18 (konsolidasi 41 L).
+        { CKDTERRA: "NT202600036", DTGLTERRA: "2026-06-17", NSHIFT: "2", CKDJUALBBM: "JB202600503",
+          SBATAL: "0", CKDNOZZLE: "NZ-18", CKDTANGKI: "T-06", CKDBBM: "BB-07",
+          NVOLUME: "41", NHARGA: "10000", NTOTAL: "410000", DTGLJAM: "2026-06-17 17:00:23" },
+      ],
+      WIB,
+    );
+    expect(rows).toHaveLength(2);
+    const r0 = rows[0]!;
+    expect(r0.business_date).toBe("2026-06-17"); // = DTGLTERRA, bukan tanggal DTGLJAM
+    expect(r0.ckdterra).toBe("NT202600036");
+    expect(r0.ckdnozzle).toBe("NZ-31");
+    expect(r0.ckdbbm).toBe("BB-06");
+    expect(r0.nvolume).toBe(20);
+    expect(r0.ntotal).toBe(470000);
+    expect(r0.sbatal).toBe(0);
+    expect(r0.ckdjualbbm).toBe("JB202600503");
+    expect(r0.dtgljam).toBe(wibDateTimeToUtcIso("2026-06-17 15:46:25", WIB));
+    // Σ ntotal ledger 17/6 (DEXLITE+PERTALITE parsial) — basis B Rincian (oracle 1.106.200 penuh).
+    expect(rows.reduce((s, r) => s + (r.ntotal ?? 0), 0)).toBe(880000);
   });
 });
 

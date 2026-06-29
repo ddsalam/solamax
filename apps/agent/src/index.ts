@@ -17,6 +17,9 @@ import {
   runProbe11,
   runProbe12,
   runProbe13,
+  runProbe14,
+  runProbe15,
+  runProbe16,
 } from "./probe.js";
 import { StateStore } from "./state/store.js";
 import { resyncSales, runCycle, runForever, type SyncDeps } from "./sync.js";
@@ -40,6 +43,9 @@ interface Args {
   probe11: boolean;
   probe12: boolean;
   probe13: boolean;
+  probe14: boolean;
+  probe15: boolean;
+  probe16: boolean;
   resyncSales: boolean;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
@@ -64,6 +70,9 @@ function parseArgs(argv: string[]): Args {
     probe11: false,
     probe12: false,
     probe13: false,
+    probe14: false,
+    probe15: false,
+    probe16: false,
     resyncSales: false,
     probeDiscoveryOnly: false,
     probeDates: [],
@@ -86,6 +95,9 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--probe11") a.probe11 = true;
     else if (arg === "--probe12") a.probe12 = true;
     else if (arg === "--probe13") a.probe13 = true;
+    else if (arg === "--probe14") a.probe14 = true;
+    else if (arg === "--probe15") a.probe15 = true;
+    else if (arg === "--probe16") a.probe16 = true;
     else if (arg === "--resync-sales") a.resyncSales = true;
     else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
@@ -122,6 +134,9 @@ function printHelp(): void {
       "  --probe11 [tgl...]  FASE 1 SALDO: kunci Piutang/Hutang (tr_bppiut + master pelanggan + tr_deposit). Read-only.",
       "  --probe12 [tgl...]  FASE 1 SALDO (koreksi): master tm_plg + model per-pelanggan + ledger Hutang. Read-only.",
       "  --probe13 [tgl...]  FASE 1 SALDO (decisive): split SJENIS + tr_bphut + view buku resmi. Read-only.",
+      "  --probe14 [tgl...]  FASE 0.5h: SUMBER B/Terra Rincian (skema tera penuh + view/proc + dump per hari). Read-only.",
+      "  --probe15 [tgl...]  FASE 0.5i: LEDGER terra resmi (tr_hterra/tr_dterra/vw_terra) + rekon B 8-hari. Read-only.",
+      "  --probe16 [tgl...]  FASE 0.5j: REKON ledger terra (kolom benar: DTGLTERRA/NVOLUME/NTOTAL) vs oracle B. Read-only.",
       "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
@@ -143,6 +158,12 @@ async function main(): Promise<void> {
     dryRun: args.dryRun,
     mode: args.testConnection
       ? "test-connection"
+      : args.probe16
+      ? "probe16"
+      : args.probe15
+      ? "probe15"
+      : args.probe14
+      ? "probe14"
       : args.probe13
       ? "probe13"
       : args.probe12
@@ -185,6 +206,30 @@ async function main(): Promise<void> {
     }
     if (args.testConnection) {
       await conn.close();
+      return;
+    }
+    if (args.probe16) {
+      try {
+        await runProbe16(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe15) {
+      try {
+        await runProbe15(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
+      return;
+    }
+    if (args.probe14) {
+      try {
+        await runProbe14(conn, args.probeDates);
+      } finally {
+        await conn.close();
+      }
       return;
     }
     if (args.probe13) {

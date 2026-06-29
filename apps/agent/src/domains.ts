@@ -76,6 +76,20 @@ export interface SaldoLedgerDomain {
 }
 
 /**
+ * Domain Tera RESMI (ledger `tr_hterra ⋈ tr_dterra`) — FULL SYNC (tabel mungil,
+ * ~392 hdr/1.884 dtl). `map` butuh offset TZ utk konversi `DTGLJAM` WIB→UTC;
+ * `business_date` = `DTGLTERRA` (date, tanpa konversi tz). UPSERT by natural key
+ * (unit_id, ckdterra, ckdnozzle). SUMBER TUNGGAL angka terra laporan.
+ */
+export interface TerraResmiDomain {
+  domain: Extract<Domain, "terra_resmi">;
+  mode: "full";
+  table: "terra_resmi";
+  sql: string;
+  map(raw: Raw[], offsetMin: number): NonNullable<Tables["terra_resmi"]>;
+}
+
+/**
  * Domain EDC (vw_edc3) — incremental per `ctgl` (tanggal bisnis EasyMax) +
  * rescan window. Backend REPLACE per (unit_id, business_date) tiap rescan
  * (EDC final per hari; tr_edc tanpa SBATAL → replace yang menangkap koreksi).
@@ -872,10 +886,56 @@ const TERA: TeraDomain = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// TERRA RESMI (ledger tr_hterra ⋈ tr_dterra) — SUMBER TUNGGAL angka terra laporan
+// (Rincian B + seksi TERRA + kolom "Tera (L)" Laporan + net-sales G/L). Full-sync.
+// `DTGLTERRA` = tanggal-bisnis (= DTGLJUAL jurnal tertaut); `SBATAL`/`CKDJUALBBM`
+// dari header didenormalisasi ke tiap detail. Produk by name via `tm_bbm` di
+// dashboard (kirim `ckdbbm` mentah). Rekon eksak 8/8 hari ke PDF (probe16).
+// ---------------------------------------------------------------------------
+const TERRA_RESMI: TerraResmiDomain = {
+  domain: "terra_resmi",
+  mode: "full",
+  sql: `
+    SELECT h.CKDTERRA AS CKDTERRA, h.DTGLTERRA AS DTGLTERRA, h.NSHIFT AS NSHIFT,
+           h.CKDJUALBBM AS CKDJUALBBM, COALESCE(h.SBATAL, 0) AS SBATAL,
+           d.CKDNOZZLE AS CKDNOZZLE, d.CKDTANGKI AS CKDTANGKI, d.CKDBBM AS CKDBBM,
+           d.NVOLUME AS NVOLUME, d.NHARGA AS NHARGA, d.NTOTAL AS NTOTAL,
+           d.DTGLJAM AS DTGLJAM
+    FROM tr_hterra h
+    JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA
+    WHERE h.DTGLTERRA >= '2020-01-01'
+    ORDER BY h.DTGLTERRA ASC, h.CKDTERRA ASC`,
+  table: "terra_resmi",
+  map(raw, offsetMin) {
+    const rows: NonNullable<Tables["terra_resmi"]> = [];
+    for (const r of raw) {
+      const dtgljam = wibDateTimeToUtcIso(str(r.DTGLJAM), offsetMin);
+      if (dtgljam === null) continue; // detail wajib punya waktu pour valid
+      rows.push({
+        business_date: businessDate(str(r.DTGLTERRA)) ?? "1970-01-01",
+        ckdterra: String(r.CKDTERRA),
+        ckdnozzle: String(r.CKDNOZZLE),
+        nshift: int(r.NSHIFT),
+        ckdtangki: str(r.CKDTANGKI),
+        ckdbbm: str(r.CKDBBM),
+        nvolume: num(r.NVOLUME),
+        nharga: num(r.NHARGA),
+        ntotal: num(r.NTOTAL),
+        dtgljam,
+        ckdjualbbm: str(r.CKDJUALBBM),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return rows;
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const TEBUS_DOMAIN = TEBUS;
 export const TERA_DOMAIN = TERA;
+export const TERRA_RESMI_DOMAIN = TERRA_RESMI;
 export const DEPOSIT_DOMAIN = DEPOSIT;
 export const PIUTANG_DOMAIN = PIUTANG;
 export const HUTANG_DOMAIN = HUTANG;

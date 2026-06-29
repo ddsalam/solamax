@@ -207,6 +207,21 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     hasIngestedAt: true,
     replaceByBusinessDate: true,
   },
+  // terra_resmi: Tera RESMI (ledger tr_hterra ⋈ tr_dterra). Full-sync agent; UPSERT
+  // by natural key (unit_id, ckdterra, ckdnozzle) → idempoten saat re-sync penuh
+  // (REPLACE antar-siklus; tangkap koreksi/flip SBATAL). SUMBER TUNGGAL angka terra
+  // laporan. business_date(::date)/dtgljam(::timestamptz) ber-cast via COLUMN_CAST.
+  terra_resmi: {
+    table: "terra_resmi",
+    columns: [
+      "business_date", "ckdterra", "ckdnozzle", "nshift", "ckdtangki",
+      "ckdbbm", "nvolume", "nharga", "ntotal", "dtgljam", "ckdjualbbm", "sbatal",
+    ],
+    conflict: ["ckdterra", "ckdnozzle"],
+    hasIngestedAt: true,
+    // Jaring multi-pour (defensif; EasyMax sudah konsolidasi per sesi×nozzle).
+    sumOnConflict: ["nvolume", "ntotal"],
+  },
 
   // --- Saldo Piutang/Hutang Pelanggan (FASE 1, RECAP) ---
   // bppiut/bphut: buku piutang/hutang (ledger). Full-sync agent; UPSERT by PK.

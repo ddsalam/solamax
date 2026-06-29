@@ -33,6 +33,7 @@ export const IngestPayload = z.object({
       tebus_header: z.array(ROW_SCHEMA.tebus_header).optional(),
       tebus_detail: z.array(ROW_SCHEMA.tebus_detail).optional(),
       tera: z.array(ROW_SCHEMA.tera).optional(),
+      terra_resmi: z.array(ROW_SCHEMA.terra_resmi).optional(),
       bppiut: z.array(ROW_SCHEMA.bppiut).optional(),
       bphut: z.array(ROW_SCHEMA.bphut).optional(),
       pelanggan_master: z.array(ROW_SCHEMA.pelanggan_master).optional(),
