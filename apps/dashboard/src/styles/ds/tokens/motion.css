@@ -6,4 +6,5 @@
   --duration-fast: 150ms;   /* @kind other */ /* hovers, presses */
   --duration-base: 250ms;   /* @kind other */ /* reveals, accordions */
   --duration-slow: 400ms;   /* @kind other */ /* modals, page-level */
+  --shimmer-duration: 1200ms; /* @kind other */ /* skeleton shimmer + spinner sweep */
 }
