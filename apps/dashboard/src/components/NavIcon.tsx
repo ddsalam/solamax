@@ -9,6 +9,7 @@ export type IconName =
   | "clipboard"
   | "report"
   | "receipt"
+  | "fuel"
   | "chart"
   | "users";
 
@@ -32,6 +33,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M5 3h10v14l-2-1.2L11 17l-2-1.2L7 17l-2-1.2V3Z" />
       <path d="M7.5 7h5M7.5 10h5" />
+    </>
+  ),
+  fuel: (
+    <>
+      <path d="M5 17V5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v12" />
+      <path d="M4 17h9" />
+      <path d="M7 8h3" />
+      <path d="M12 8.5l2.2 2.2a1.5 1.5 0 0 0 1 .4h.3a1.2 1.2 0 0 1 1.2 1.2V14a1.3 1.3 0 0 0 2.6 0V9.2a1.5 1.5 0 0 0-.44-1.06L16 6" />
     </>
   ),
   chart: (

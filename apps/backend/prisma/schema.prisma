@@ -589,6 +589,31 @@ model ManualEntry {
   @@schema("app")
 }
 
+// Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
+// tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
+// ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
+// pengawas-driven). Satu baris aktif per (unit,tanggal,produk) — partial unique.
+model UsulanSo {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId           Int       @map("unit_id") @db.SmallInt
+  businessDate     DateTime  @map("business_date") @db.Date
+  productKey       String    @map("product_key")
+  penerimaanHari   Decimal   @default(0) @map("penerimaan_hari") @db.Decimal(14, 2)
+  permintaanBesok  Decimal   @default(0) @map("permintaan_besok") @db.Decimal(14, 2)
+  usulanPenebusan  Decimal   @default(0) @map("usulan_penebusan") @db.Decimal(14, 2)
+  status           String    @default("draft")
+  void             Boolean   @default(false)
+  createdByUserId  Int       @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
+  voidedByUserId   Int?      @map("voided_by_user_id")
+  voidedAt         DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate])
+  @@map("usulan_so")
+  @@schema("app")
+}
+
 model UserUnit {
   membershipId String @map("membership_id") @db.Uuid
   unitId       Int    @map("unit_id") @db.SmallInt
