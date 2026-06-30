@@ -15,6 +15,22 @@ import type { ScopedUnitId } from "./scope";
 
 const TZ = "Asia/Pontianak";
 
+/**
+ * Lookback (hari) sebelum `from` untuk membatasi base-CTE G/L (lihat
+ * getDailyGlByProduct). G/L harian butuh DUA hal dari MASA SEBELUM `from`:
+ *   (1) lag-anchor: Stock Fisik(D−1) untuk hari pertama rentang (window `lag`
+ *       per produk butuh opname penutup terdekat SEBELUM `from`), dan
+ *   (2) gap-window: penerimaan/jual/tera dijumlah pada (prev_date, D] — bila ada
+ *       celah opname, prev_date bisa mundur beberapa hari.
+ * Membatasi base-CTE ke [from − GL_LOOKBACK_DAYS, to] (bukan SELURUH sejarah)
+ * menghasilkan output IDENTIK selama lookback ≥ celah opname terpanjang yang
+ * relevan. Opname masuk ~harian (≈21 baris/hari lintas tangki), dan DO/celah
+ * stok dibatasi DO_STALE_DAYS=30; 365 hari ≫ keduanya → margin keselamatan
+ * besar terhadap celah data panjang apa pun. Terbukti byte-identik vs versi
+ * tak-terbatas (Jun/Mei 2026, Feb 2024, Sep 2022 = tepi anchor bulan pertama).
+ */
+const GL_LOOKBACK_DAYS = 365;
+
 // ---------------------------------------------------------------------------
 // Sinkronisasi
 // ---------------------------------------------------------------------------
@@ -255,7 +271,13 @@ export async function getDailyGlByProduct(
   to: string,
 ): Promise<DailyGlRow[]> {
   return q<DailyGlRow>(
-    `WITH biz AS (
+    `WITH bounds AS (
+       -- Batas bawah pemindaian base-CTE: from − GL_LOOKBACK_DAYS (lihat catatan
+       -- konstanta). dto memakai 'to' apa adanya. Semua base-CTE memfilter ke
+       -- [dlo, dto] agar tak memindai SELURUH sejarah unit untuk 1 bulan output.
+       SELECT $2::date AS dfrom, $3::date AS dto, ($2::date - ${GL_LOOKBACK_DAYS}) AS dlo
+     ),
+     biz AS (
        SELECT o.ckdtangki, o.ckdbbm, o.nstockop, o.nstockbk,
               COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
               row_number() OVER (
@@ -264,8 +286,10 @@ export async function getDailyGlByProduct(
               ) AS rn,
               ((o.dtgljam AT TIME ZONE '${TZ}')::date
                  <= COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date)) AS prov_row
-       FROM opname o
+       FROM opname o, bounds b
        WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0
+         AND COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date)
+             BETWEEN b.dlo AND b.dto
      ),
      clo AS (
        SELECT bizdate, trim(ckdbbm) AS ckdbbm, nstockop::float8 AS op, prov_row,
@@ -290,23 +314,28 @@ export async function getDailyGlByProduct(
      deliv AS (
        SELECT COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS d,
               trim(t.ckdbbm) AS ckdbbm, sum(t.nvoldo)::float8 AS v
-       FROM delivery t
+       FROM delivery t, bounds b
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
          AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
+         AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date)
+             BETWEEN b.dlo AND b.dto
        GROUP BY 1, 2
      ),
      sale AS (
        SELECT h.dtgljual AS d, trim(sd.ckdbbm) AS ckdbbm, sum(sd.nvolume)::float8 AS v
        FROM sales_detail sd
        JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
-       WHERE sd.unit_id = $1
+       , bounds b
+       WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN b.dlo AND b.dto
        GROUP BY 1, 2
      ),
      terad AS (
        -- SUMBER TUNGGAL terra = ledger RESMI (terra_resmi), BUKAN tera mentah.
        -- business_date=DTGLTERRA, hanya sbatal=0; Σ nvolume per (hari, produk).
        SELECT tr.business_date AS d, trim(tr.ckdbbm) AS ckdbbm, sum(tr.nvolume)::float8 AS v
-       FROM terra_resmi tr WHERE tr.unit_id = $1 AND COALESCE(tr.sbatal,0) = 0
+       FROM terra_resmi tr, bounds b
+       WHERE tr.unit_id = $1 AND COALESCE(tr.sbatal,0) = 0
+         AND tr.business_date BETWEEN b.dlo AND b.dto
        GROUP BY 1, 2
      )
      SELECT to_char(s.bizdate,'YYYY-MM-DD') AS d, s.ckdbbm,
