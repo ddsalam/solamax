@@ -7,7 +7,7 @@ import { dateLong } from "@/lib/format";
 import { addDays } from "@/lib/periods";
 import {
   getAvgDailySales,
-  getClosingStock,
+  getDailyGlByProduct,
   getDoHarian,
   getUsulanSo,
   type UsulanStatus,
@@ -29,9 +29,10 @@ export default async function UsulanEditPage({
   const date = params.date;
   const prevDay = addDays(date, -1);
 
-  const [closingPrev, doDay, avg7, existing] = await Promise.all([
-    // "Sisa Stock awal hari D" = penutup D−1 (carry-forward, terbukti probe).
-    getClosingStock(unit.unit_id, prevDay),
+  const [glPrev, doDay, avg7, existing] = await Promise.all([
+    // "Sisa Stock awal hari D" = Stock Fisik penutup D−1 — SUMBER TUNGGAL dgn
+    // Laporan Harian/RESUME (getDailyGlByProduct.fisik). Rentang 1-hari (murah).
+    getDailyGlByProduct(unit.unit_id, prevDay, prevDay),
     // "Sisa DO awal hari D" = do_awal(D) ≡ sisa(D−1) (logika getDoHarian).
     getDoHarian(unit.unit_id, date),
     // Ketahanan = stok awal ÷ rata-rata jual 7 hari (s/d D−1).
@@ -39,14 +40,18 @@ export default async function UsulanEditPage({
     getUsulanSo(unit.unit_id, date),
   ]);
 
-  // Agregasi per slot produk DO (6 kanonik). ckdbbm→key dari nama penutup stok.
+  // Agregasi per slot produk DO (6 kanonik). ckdbbm→key dari nama Fisik penutup.
+  // Provisional/NULL (opname-penutup D−1 belum ada) ⇒ tampil "—" + badge, BUKAN
+  // angka — konsisten RESUME, hindari fallback intraday (akar bug getClosingStock).
   const stockByKey = new Map<string, number>();
+  const provByKey = new Map<string, boolean>();
   const ckdbbmToKey = new Map<string, string>();
-  for (const r of closingPrev) {
+  for (const r of glPrev) {
     const key = resolveDoProduct(r.nama)?.key;
     if (!key) continue;
     ckdbbmToKey.set(r.ckdbbm, key);
-    if (r.stock !== null) stockByKey.set(key, (stockByKey.get(key) ?? 0) + r.stock);
+    if (r.provisional || r.fisik === null) provByKey.set(key, true);
+    else stockByKey.set(key, (stockByKey.get(key) ?? 0) + r.fisik);
   }
   const avgByKey = new Map<string, number>();
   for (const a of avg7) {
@@ -63,13 +68,16 @@ export default async function UsulanEditPage({
   const status: UsulanStatus = existing[0]?.status ?? "draft";
 
   const rows: UsulanRowInput[] = DO_PRODUCTS.map((p) => {
-    const sisaStock = stockByKey.has(p.key) ? stockByKey.get(p.key)! : null;
+    // Provisional/absen ⇒ sisaStock null ("—" + badge); jangan paksa angka.
+    const provisional = provByKey.get(p.key) ?? !stockByKey.has(p.key);
+    const sisaStock = provisional ? null : stockByKey.get(p.key)!;
     const days = enduranceDays(sisaStock, avgByKey.get(p.key) ?? 0);
     const s = savedByKey.get(p.key);
     return {
       key: p.key,
       label: p.label,
       sisaStock,
+      sisaStockProvisional: provisional,
       ketahanan: days,
       ketahananLevel: enduranceLevel(days),
       sisaDo: doAwalByKey.get(p.key) ?? 0,
