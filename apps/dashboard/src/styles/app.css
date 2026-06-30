@@ -255,6 +255,27 @@ body { background: var(--neutral-50); }
 .cols-net { grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
 /* Saldo Piutang/Hutang — label · nominal (2 kolom). */
 .cols-saldo { grid-template-columns: 1.7fr 1fr; padding-top: 12px; padding-bottom: 12px; }
+/* Usulan SO — Produk · Sisa Stock awal · Ketahanan · Sisa DO awal · 3 input. */
+.cols-usulan { grid-template-columns: 1.2fr 1fr 0.85fr 1fr 1.05fr 1.15fr 1.1fr; align-items: center; padding-top: 10px; padding-bottom: 10px; }
+/* Daftar usulan — Tanggal · Penerimaan · Permintaan · Usulan · Status · Tersimpan. */
+.cols-usulan-list { grid-template-columns: 1fr 1.2fr 1.2fr 1.2fr 0.9fr 1.3fr; }
+
+/* Input numerik dalam sel grid Usulan (no-print: dicetak sbg teks angka). */
+.usulan-incell { display: flex; justify-content: flex-end; }
+.usulan-input {
+  width: 100%; max-width: 130px; text-align: right; font-family: var(--font-sans);
+  font-size: 16px; font-variant-numeric: tabular-nums; color: var(--color-text-primary);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: 7px 10px; min-height: 38px;
+}
+.usulan-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+
+.usulan-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: 14px 24px; border-top: 1px solid var(--color-border-hairline); }
+.usulan-actions-btns { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.status-pill { display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; padding: 3px 12px; border-radius: var(--radius-full); }
+.status-pill.draft { color: var(--color-text-secondary); background: var(--neutral-100); }
+.status-pill.diajukan { color: var(--color-accent); background: var(--color-accent-tint); }
+@media print { .usulan-input { border: none; background: transparent; padding: 0; min-height: 0; } }
 
 /* Ranking expand */
 .rank-exp { padding: var(--space-5) 24px var(--space-6) 80px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline); display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: var(--space-8); }

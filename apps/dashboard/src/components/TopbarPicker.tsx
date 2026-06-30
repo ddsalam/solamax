@@ -50,6 +50,10 @@ export function TopbarPicker({
     } else if (/^\/unit\/[^/]+\/rincian\//.test(path)) {
       const k = sp.get("kosong");
       router.push(`/unit/${nextUnit}/rincian/${nextDate}${k ? `?kosong=${k}` : ""}`);
+    } else if (/^\/unit\/[^/]+\/usulan\//.test(path)) {
+      // Pertahankan sub-rute /edit (form) vs daftar saat ganti unit/tanggal.
+      const edit = /\/usulan\/[^/]+\/edit/.test(path) ? "/edit" : "";
+      router.push(`/unit/${nextUnit}/usulan/${nextDate}${edit}`);
     } else if (isDenah) {
       router.push(`/monitoring/denah/${nextUnit}`);
     } else {
