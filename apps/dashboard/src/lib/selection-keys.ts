@@ -9,7 +9,7 @@ export const DATE_COOKIE = "solamax.date";
 /** Umur cookie (detik) — 30 hari. */
 export const SELECTION_MAX_AGE = 60 * 60 * 24 * 30;
 
-const REPORT_ROUTE_RE = /^\/unit\/([^/]+)\/(?:laporan|rincian)\/(\d{4}-\d{2}-\d{2})/;
+const REPORT_ROUTE_RE = /^\/unit\/([^/]+)\/(?:laporan|rincian|usulan)\/(\d{4}-\d{2}-\d{2})/;
 
 /**
  * Sumber nilai TAMPIL picker unit+tanggal. Di rute laporan

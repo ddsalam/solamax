@@ -66,6 +66,12 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
           icon: "receipt",
           match: (p) => /^\/unit\/[^/]+\/rincian/.test(p),
         },
+        {
+          href: unitCode ? `/unit/${unitCode}/usulan/${date}` : null,
+          label: "Usulan Penebusan SO",
+          icon: "fuel",
+          match: (p) => /^\/unit\/[^/]+\/usulan/.test(p),
+        },
       ],
     },
     {
