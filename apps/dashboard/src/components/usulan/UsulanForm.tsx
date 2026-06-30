@@ -17,6 +17,8 @@ export interface UsulanRowInput {
   key: string;
   label: string;
   sisaStock: number | null;
+  /** Stock Fisik penutup D−1 belum final (opname-penutup belum ada) → tampil "—". */
+  sisaStockProvisional: boolean;
   ketahanan: number | null;
   ketahananLevel: "danger" | "warning" | "ok" | "unknown";
   sisaDo: number;
@@ -111,7 +113,18 @@ export function UsulanForm({
       {rows.map((r) => (
         <div key={r.key} className="grid-row cols-usulan">
           <span className="text-caption w600">{r.label}</span>
-          <span className="right fs16 num t-secondary">{r.sisaStock !== null ? fmtL(r.sisaStock) : "—"}</span>
+          <span className="right fs16 num t-secondary">
+            {r.sisaStock !== null ? (
+              fmtL(r.sisaStock)
+            ) : (
+              <>
+                —{" "}
+                <span className="usulan-prov" title="Stock Fisik penutup D−1 belum final">
+                  sementara
+                </span>
+              </>
+            )}
+          </span>
           <span
             className={`right fs16 num ${
               r.ketahananLevel === "danger"
@@ -157,7 +170,17 @@ export function UsulanForm({
       ))}
       <div className="grid-total cols-usulan">
         <span className="text-caption w700">TOTAL</span>
-        <span className="right w700 num lap-totnum">{fmtL(tot.sisaStock)}</span>
+        <span className="right w700 num lap-totnum">
+          {fmtL(tot.sisaStock)}
+          {rows.some((r) => r.sisaStockProvisional) && (
+            <>
+              {" "}
+              <span className="usulan-prov" title="Sebagian produk belum final (sementara)">
+                sebagian
+              </span>
+            </>
+          )}
+        </span>
         <span className="right num t-tertiary">—</span>
         <span className="right w700 num lap-totnum">{fmtL(tot.sisaDo)}</span>
         <span className="right w700 num lap-totnum">{fmtL(tot.penerimaanHari)}</span>
