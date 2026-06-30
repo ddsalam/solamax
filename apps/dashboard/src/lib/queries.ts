@@ -651,55 +651,6 @@ export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
   );
 }
 
-export interface ClosingStockRow {
-  ckdbbm: string;
-  nama: string | null;
-  /** stok PENUTUP (akhir) tanggal bisnis D — null bila tak ada opname dasar. */
-  stock: number | null;
-}
-
-/**
- * Stok PENUTUP per produk pada AKHIR tanggal bisnis D — varian getTankStocks yang
- * TER-BATAS tanggal (getTankStocks tanpa-tanggal = keadaan-kini). Penutup D = opname
- * terakhir dengan instan < awal-(D+1) WIB, + penerimaan (nvolreal) − penjualan
- * (nvolume) setelah opname itu s/d batas yang sama. Dipakai carry-forward Usulan SO:
- * "Sisa Stock awal hari D" = getClosingStock(unit, D−1). Terbukti probe (2026-06-30):
- * getClosingStock(hari ini) == getTankStocks per-produk + TOTAL (eksak). Ter-scope.
- */
-export async function getClosingStock(
-  unit: ScopedUnitId,
-  date: string,
-): Promise<ClosingStockRow[]> {
-  return q<ClosingStockRow>(
-    `WITH bound AS (SELECT ((($2::date)+1)::timestamp AT TIME ZONE '${TZ}') AS upper),
-     last_op AS (
-       SELECT DISTINCT ON (o.ckdtangki) o.ckdtangki, o.ckdbbm, o.nstockop, o.dtgljam
-       FROM opname o, bound b
-       WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0 AND o.dtgljam < b.upper
-       ORDER BY o.ckdtangki, o.dtgljam DESC
-     ),
-     per_tank AS (
-       SELECT trim(COALESCE(lo.ckdbbm, t.ckdbbm)) AS ckdbbm,
-              lo.nstockop::float8 AS stock_op,
-              COALESCE((SELECT sum(sd.nvolume) FROM sales_detail sd, bound b
-                WHERE sd.unit_id = $1 AND sd.ckdtangki = t.ckdtangki
-                  AND abs(COALESCE(sd.nvolume,0)) <= ${GARBAGE_STOCK_L}
-                  AND lo.dtgljam IS NOT NULL AND sd.dtgljam > lo.dtgljam AND sd.dtgljam < b.upper),0)::float8 AS sold,
-              COALESCE((SELECT sum(d.nvolreal) FROM delivery d, bound b
-                WHERE d.unit_id = $1 AND d.ckdtangki = t.ckdtangki AND COALESCE(d.sbatal,0) = 0
-                  AND abs(COALESCE(d.nvolreal,0)) <= ${GARBAGE_STOCK_L}
-                  AND lo.dtgljam IS NOT NULL AND d.dtgljam > lo.dtgljam AND d.dtgljam < b.upper),0)::float8 AS recv
-       FROM tangki t LEFT JOIN last_op lo ON lo.ckdtangki = t.ckdtangki
-       WHERE t.unit_id = $1
-     )
-     SELECT ckdbbm,
-            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id = $1 AND trim(p.ckdbbm) = per_tank.ckdbbm) AS nama,
-            sum(CASE WHEN stock_op IS NULL THEN NULL ELSE stock_op - sold + recv END)::float8 AS stock
-     FROM per_tank GROUP BY ckdbbm ORDER BY ckdbbm`,
-    [unit, date],
-  );
-}
-
 /**
  * Snapshot ATG keadaan-kini per tangki (tabel `real_tank`, di-sync dari view
  * EasyMax `vw_realtm`). `ckdtangki` = kunci natural ("T-0N"); `nkapasitas` =
