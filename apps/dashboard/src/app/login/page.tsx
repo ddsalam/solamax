@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { auth, signIn } from "@/auth";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +12,8 @@ export default async function LoginPage() {
   return (
     <div className="auth-screen">
       <div className="card card-pad-lg auth-card">
-        <img src="/solagroup-logo.png" alt="SolaGroup" className="auth-logo" />
-        <div className="text-h5 t-brand mt4">SolaMax</div>
-        <p className="fs16 t-secondary mt2">
+        <Logo variant="stacked" height={104} priority />
+        <p className="fs16 t-secondary mt4">
           Pengawasan &amp; analisa jaringan SPBU. Masuk dengan akun Google Anda.
         </p>
         <form

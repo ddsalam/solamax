@@ -2,8 +2,9 @@
    re-declares the SEMANTIC layer under :root[data-theme="dark"] only. */
 :root {
   /* ===== Brand constants (from logo) ===== */
-  --brand-navy: #1A3252;   /* wordmark — 10.4:1 on white, AAA */
-  --brand-sky:  #1CA0E6;   /* dot + swoosh — 2.9:1, DECORATIVE ONLY, never text */
+  --brand-navy:      #1A3252;   /* wordmark — 10.4:1 on white, AAA */
+  --brand-navy-deep: #0D284A;   /* logo badge disc / dark surfaces / OG field */
+  --brand-sky:       #1CA0E6;   /* gauge (arcs+needle+dot) — 2.9:1, DECORATIVE ONLY, never text */
 
   /* ===== Base: neutral ramp (cool, apple.com-derived) ===== */
   --neutral-0:   #FFFFFF;

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { signOut } from "@/auth";
 import { getAuthContext } from "@/lib/auth-context";
 
@@ -14,7 +15,7 @@ export default async function NoAccessPage() {
   return (
     <div className="auth-screen">
       <div className="card card-pad-lg auth-card">
-        <div className="empty-hero-icon">—</div>
+        <Logo variant="stacked" height={88} />
         <div className="text-h5 t-primary mt4">Akun belum diberi akses</div>
         <p className="fs16 t-secondary mt2">
           Anda masuk sebagai <strong>{email ?? "akun Google"}</strong>, tetapi akun ini belum
