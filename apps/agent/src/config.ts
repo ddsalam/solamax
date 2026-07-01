@@ -66,6 +66,45 @@ const ConfigSchema = z.object({
     // 288k sekaligus yang STALL di mesin SPBU (21 Jun). 7 hari ≈ ringan & deterministik.
     pelangganChunkDays: z.number().int().default(7),
     batchSize: z.number().int().default(1000),
+
+    // --- Track 2 (2026-07-02): sapuan lebar generik, menutup akar Transaksi
+    // Pelanggan (koreksi EasyMax > window rescan hot-path tak ter-recapture)
+    // untuk SEMUA domain berjendela — bukan cuma pelanggan. Dua tier: (1)
+    // sapuan jendela-terkini per siklus (nightly/weekly, generalisasi
+    // syncSalesRescan), (2) sapuan full-history off-peak jarang sebagai
+    // BACKSTOP (jaring terakhir — tak bergantung intervensi manual).
+    // Off-peak WIB [start,end) — jam sepi pompa; gerbang utk KEDUA tier.
+    offPeakStartHourWib: z.number().int().default(2),
+    offPeakEndHourWib: z.number().int().default(5),
+    // Lebar chunk query per window sapuan (anti-stall 288k 21 Jun) — sama
+    // utk tier-1 & tier-2, semua domain.
+    deepSweepChunkDays: z.number().int().default(7),
+
+    // Tier 1 — sapuan jendela-terkini, per domain (lebar + interval sendiri).
+    pelangganDeepRescanDays: z.number().int().default(30),
+    pelangganDeepRescanIntervalMs: z.number().int().default(86_400_000), // nightly
+    edcDeepRescanDays: z.number().int().default(30),
+    edcDeepRescanIntervalMs: z.number().int().default(86_400_000),
+    opnameDeepRescanDays: z.number().int().default(14),
+    opnameDeepRescanIntervalMs: z.number().int().default(86_400_000),
+    deliveryDeepRescanDays: z.number().int().default(14),
+    deliveryDeepRescanIntervalMs: z.number().int().default(86_400_000),
+    teraDeepRescanDays: z.number().int().default(14),
+    teraDeepRescanIntervalMs: z.number().int().default(86_400_000),
+    cashDeepRescanDays: z.number().int().default(30),
+    cashDeepRescanIntervalMs: z.number().int().default(604_800_000), // weekly
+    tebusDeepRescanDays: z.number().int().default(30),
+    tebusDeepRescanIntervalMs: z.number().int().default(604_800_000),
+
+    // Tier 2 — backstop full-history, jarang + off-peak. Floor sama dgn
+    // backfill pelanggan (~3 thn — data live mulai 2022-08/09). Domain
+    // berat (pelanggan/edc, union-view/join mahal di MySQL 5.0) dapat sapuan
+    // MENENGAH mingguan (wideSweepDays) + full-history tetap bulanan; domain
+    // ringan (opname/delivery/tera/cash/tebus) langsung full-history bulanan.
+    fullSweepFloorDays: z.number().int().default(1095), // ~3 tahun
+    fullSweepIntervalMs: z.number().int().default(2_592_000_000), // ~30 hari
+    wideSweepDays: z.number().int().default(90),
+    wideSweepIntervalMs: z.number().int().default(604_800_000), // weekly
   }),
 
   // Direktori state lokal (watermark + buffer offline). DI-GITIGNORE.

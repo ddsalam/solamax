@@ -7,7 +7,16 @@ import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import { IngestError, type IngestClient } from "./ingest-client.js";
 import { StateStore } from "./state/store.js";
-import { batchByBusinessDate, resyncSales, runCycle, type SyncDeps } from "./sync.js";
+import {
+  batchByBusinessDate,
+  isOffPeakWib,
+  resyncSales,
+  runCycle,
+  runManualSweep,
+  type SweepJob,
+  type SyncDeps,
+} from "./sync.js";
+import { tzOffsetMinutes } from "./transform.js";
 
 const SALES_ROW = {
   CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: 1, NVOLUME: "50", NHARGAJUAL: "10000",
@@ -310,6 +319,91 @@ describe("runCycle", () => {
       { includeMasters: false, includePelanggan: false, includeSalesRescan: true },
     );
     expect(on.sent.some((p) => p.domain === "sales" && (p.tables.sales_detail?.length ?? 0) > 0)).toBe(true);
+  });
+
+  it("Track 2: runManualSweep(edc) — jendela [today-days,today] chunked-by-date, dispatch REPLACE", async () => {
+    const windows: Array<{ lo: string; hiExcl: string }> = [];
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("vw_edc3")) {
+          windows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+          return [];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    await runManualSweep(
+      { conn, client, store, cfg: CFG, dryRun: false },
+      "edc",
+      /* days */ 10,
+      /* chunkDays */ 4,
+    );
+    // 0 baris tiap window → tak ada dispatch, tapi windowing tetap jalan & bounded.
+    expect(sent).toHaveLength(0);
+    expect(windows.length).toBeGreaterThan(0);
+    for (const w of windows) expect(w.lo < w.hiExcl).toBe(true); // selalu bounded, tak pernah unbounded
+  });
+
+  it("Track 2: runManualSweep(pelanggan) — reuse pullPelangganWindow/dispatchPelanggan, dispatch REPLACE", async () => {
+    const PLG_ROW = {
+      DTGL: "2026-06-20", CKDPLG: "PLG1", VCNMPLG: "A", Liter: "10",
+      TotalHarga: "100000", CKDJUALPLG: "JP1", NSHIFT: "1", SBATAL: "0", CKDBBM: "BB-07",
+    };
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("vw_jualplg") ? [PLG_ROW] : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    await runManualSweep({ conn, client, store, cfg: CFG, dryRun: false }, "pelanggan", 5, 5);
+    const plg = sent.filter((p) => p.domain === "pelanggan" && p.tables.pelanggan_sale);
+    expect(plg.length).toBeGreaterThan(0);
+    expect(plg[0]!.tables.pelanggan_sale![0]!.business_date).toBe("2026-06-20");
+    // sapuan REPLACE tak boleh menyertakan watermark_high (watermark disimpan lokal domain hot-path).
+    expect(plg[0]!.watermark_high).toBeNull();
+  });
+
+  it("Track 2: sweepJobs isolasi per domain — satu domain gagal (query throw) tak menghentikan yang lain", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("tr_hkasbank")) throw new Error("MySQL boom");
+        if (sql.includes("vw_edc3")) {
+          return [{
+            TanggalJam: "2026-06-20 08:00:00", ctgl: "20260620", cshift: "1",
+            CKDKARTU: "QR1", TotalHarga: "1000", Liter: "0", Jenis: "5",
+            CNOTRACE: "T1", NoNozle: "3", JrnKey: "1",
+          }];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const jobs: SweepJob[] = [
+      { domain: "cash", tier: "tier1", from: "2026-06-15", toExcl: "2026-06-21", chunkDays: 7 },
+      { domain: "edc", tier: "tier1", from: "2026-06-20", toExcl: "2026-06-21", chunkDays: 7 },
+    ];
+    await runCycle(
+      { conn, client, store, cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false, sweepJobs: jobs },
+    );
+    // cash meledak (query throw) TAPI edc tetap ter-dispatch (isolasi per job).
+    expect(sent.some((p) => p.domain === "edc")).toBe(true);
+  });
+
+  it("isOffPeakWib: [start,end) WIB — batas bawah inklusif, atas eksklusif", () => {
+    const offset = tzOffsetMinutes("Asia/Pontianak"); // +420 (WIB = UTC+7)
+    // nowMs dibuat dari jam-UTC (H - 7) → isOffPeakWib menambah offset kembali ke H WIB.
+    const atWibHour = (hour: number) =>
+      Date.parse("2026-06-20T00:00:00Z") + hour * 3_600_000 - offset * 60_000;
+    expect(isOffPeakWib(atWibHour(1), offset, 2, 5)).toBe(false); // 01:00 — belum
+    expect(isOffPeakWib(atWibHour(2), offset, 2, 5)).toBe(true); // 02:00 — inklusif
+    expect(isOffPeakWib(atWibHour(4), offset, 2, 5)).toBe(true); // 04:00 — masih
+    expect(isOffPeakWib(atWibHour(5), offset, 2, 5)).toBe(false); // 05:00 — eksklusif
+    expect(isOffPeakWib(atWibHour(14), offset, 2, 5)).toBe(false); // siang — jauh dari off-peak
   });
 
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {
