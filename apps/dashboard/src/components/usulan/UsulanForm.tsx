@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { LoadingButton } from "@/components/loading/LoadingButton";
 import { StateView } from "@/components/loading/StateView";
-import { fmtL, idn } from "@/lib/format";
+import { fmtKL, idn } from "@/lib/format";
 import type { UsulanStatus } from "@/lib/queries";
 import { saveUsulanSo } from "@/lib/usulan-actions";
 
@@ -31,6 +31,29 @@ export interface UsulanRowInput {
 
 type Field = "penerimaanHari" | "permintaanBesok" | "usulanPenebusan";
 
+// --- Seam KiloLiter (KL) ↔ Liter -------------------------------------------
+// Penyimpanan tetap Liter (app.usulan_so); konversi HANYA di batas UI.
+// 1 KL = 1000 L. Input & tampilan 3 desimal; KL→Liter selalu integer via
+// round(kl × 1000) sehingga round-trip lossless (storage whole-liter).
+
+/** String KL yg diketik user (koma sbg pemisah) → Liter integer. "" → 0. */
+const parseKlToLiter = (s: string): number => {
+  const kl = Number.parseFloat(s.replace(",", "."));
+  return Number.isFinite(kl) ? Math.round(kl * 1000) : 0;
+};
+
+/** Liter tersimpan → string KL editable (koma, ≤3 desimal, tanpa trailing 0). */
+const literToKlStr = (l: number): string =>
+  l ? String(Number((l / 1000).toFixed(3))).replace(".", ",") : "";
+
+/** Sanitizer input KL: digit + satu pemisah desimal (→koma) + maks 3 desimal. */
+const sanitizeKl = (raw: string): string => {
+  let s = raw.replace(/[^\d.,]/g, "").replace(/[.,]/g, ",");
+  const i = s.indexOf(",");
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/,/g, "").slice(0, 3);
+  return s;
+};
+
 export function UsulanForm({
   code,
   date,
@@ -42,14 +65,14 @@ export function UsulanForm({
   rows: UsulanRowInput[];
   status: UsulanStatus;
 }) {
-  // State angka manual per produk (string utk edit; digit-only → liter bulat).
+  // State angka manual per produk (string KL utk edit; ×1000 → liter bulat saat simpan).
   const init = (): Record<string, Record<Field, string>> => {
     const m: Record<string, Record<Field, string>> = {};
     for (const r of rows) {
       m[r.key] = {
-        penerimaanHari: r.penerimaanHari ? String(r.penerimaanHari) : "",
-        permintaanBesok: r.permintaanBesok ? String(r.permintaanBesok) : "",
-        usulanPenebusan: r.usulanPenebusan ? String(r.usulanPenebusan) : "",
+        penerimaanHari: literToKlStr(r.penerimaanHari),
+        permintaanBesok: literToKlStr(r.permintaanBesok),
+        usulanPenebusan: literToKlStr(r.usulanPenebusan),
       };
     }
     return m;
@@ -68,11 +91,12 @@ export function UsulanForm({
   );
 
   const set = (key: string, field: Field, raw: string): void => {
-    const digits = raw.replace(/\D/g, "");
-    setVals((p) => ({ ...p, [key]: { ...p[key]!, [field]: digits } }));
+    const kl = sanitizeKl(raw);
+    setVals((p) => ({ ...p, [key]: { ...p[key]!, [field]: kl } }));
     setMsg(null);
   };
-  const n = (key: string, field: Field): number => Number(vals[key]?.[field] || 0);
+  // KL string → Liter integer (dipakai TOTAL & save; read-only TOTAL tetap Liter murni).
+  const n = (key: string, field: Field): number => parseKlToLiter(vals[key]?.[field] ?? "");
 
   const tot = rows.reduce(
     (a, r) => ({
@@ -113,19 +137,19 @@ export function UsulanForm({
     <div className="card tbl-card mt4">
       <div className="grid-head cols-usulan">
         <span>Produk</span>
-        <span className="right">Sisa Stock awal</span>
+        <span className="right">Sisa Stock awal (KL)</span>
         <span className="right">Ketahanan</span>
-        <span className="right">Sisa DO awal</span>
-        <span className="right">Penerimaan Hari</span>
-        <span className="right">Plan Permintaan Besok</span>
-        <span className="right">Usulan Penebusan</span>
+        <span className="right">Sisa DO awal (KL)</span>
+        <span className="right">Penerimaan Hari (KL)</span>
+        <span className="right">Plan Permintaan Besok (KL)</span>
+        <span className="right">Usulan Penebusan (KL)</span>
       </div>
       {rows.map((r) => (
         <div key={r.key} className="grid-row cols-usulan">
           <span className="text-caption w600">{r.label}</span>
           <span className="right fs16 num t-secondary">
             {r.sisaStock !== null ? (
-              fmtL(r.sisaStock)
+              fmtKL(r.sisaStock, 3)
             ) : (
               <>
                 —{" "}
@@ -148,11 +172,11 @@ export function UsulanForm({
           >
             {r.ketahanan !== null ? `${idn(r.ketahanan, 1)} hari` : "—"}
           </span>
-          <span className="right fs16 num t-secondary">{fmtL(r.sisaDo)}</span>
+          <span className="right fs16 num t-secondary">{fmtKL(r.sisaDo, 3)}</span>
           <span className="usulan-incell">
             <input
               className="usulan-input"
-              inputMode="numeric"
+              inputMode="decimal"
               value={vals[r.key]?.penerimaanHari ?? ""}
               onChange={(e) => set(r.key, "penerimaanHari", e.target.value)}
               aria-label={`Penerimaan Hari ${r.label}`}
@@ -161,7 +185,7 @@ export function UsulanForm({
           <span className="usulan-incell">
             <input
               className="usulan-input"
-              inputMode="numeric"
+              inputMode="decimal"
               value={vals[r.key]?.permintaanBesok ?? ""}
               onChange={(e) => set(r.key, "permintaanBesok", e.target.value)}
               aria-label={`Plan Permintaan Besok ${r.label}`}
@@ -170,7 +194,7 @@ export function UsulanForm({
           <span className="usulan-incell">
             <input
               className="usulan-input"
-              inputMode="numeric"
+              inputMode="decimal"
               value={vals[r.key]?.usulanPenebusan ?? ""}
               onChange={(e) => set(r.key, "usulanPenebusan", e.target.value)}
               aria-label={`Usulan Penebusan ${r.label}`}
@@ -181,7 +205,7 @@ export function UsulanForm({
       <div className="grid-total cols-usulan">
         <span className="text-caption w700">TOTAL</span>
         <span className="right w700 num lap-totnum">
-          {fmtL(tot.sisaStock)}
+          {fmtKL(tot.sisaStock, 3)}
           {rows.some((r) => r.sisaStockProvisional) && (
             <>
               {" "}
@@ -192,10 +216,10 @@ export function UsulanForm({
           )}
         </span>
         <span className="right num t-tertiary">—</span>
-        <span className="right w700 num lap-totnum">{fmtL(tot.sisaDo)}</span>
-        <span className="right w700 num lap-totnum">{fmtL(tot.penerimaanHari)}</span>
-        <span className="right w700 num lap-totnum">{fmtL(tot.permintaanBesok)}</span>
-        <span className="right w700 num lap-totnum">{fmtL(tot.usulanPenebusan)}</span>
+        <span className="right w700 num lap-totnum">{fmtKL(tot.sisaDo, 3)}</span>
+        <span className="right w700 num lap-totnum">{fmtKL(tot.penerimaanHari, 3)}</span>
+        <span className="right w700 num lap-totnum">{fmtKL(tot.permintaanBesok, 3)}</span>
+        <span className="right w700 num lap-totnum">{fmtKL(tot.usulanPenebusan, 3)}</span>
       </div>
 
       <div className="usulan-actions no-print">

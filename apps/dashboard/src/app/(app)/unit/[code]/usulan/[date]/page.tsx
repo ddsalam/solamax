@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UsulanToolbar } from "@/components/usulan/Toolbar";
 import { unitDotted } from "@/lib/config";
-import { dateLong, dateShort, fmtL, timeWib } from "@/lib/format";
+import { dateLong, dateShort, fmtKL, timeWib } from "@/lib/format";
 import { getUsulanSoList } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
@@ -41,9 +41,9 @@ export default async function UsulanListPage({
       <div className="card tbl-card mt8">
         <div className="grid-head cols-usulan-list">
           <span>Tanggal</span>
-          <span className="right">Total Penerimaan Hari</span>
-          <span className="right">Total Permintaan Besok</span>
-          <span className="right">Total Usulan Penebusan</span>
+          <span className="right">Total Penerimaan Hari (KL)</span>
+          <span className="right">Total Permintaan Besok (KL)</span>
+          <span className="right">Total Usulan Penebusan (KL)</span>
           <span>Status</span>
           <span className="right">Terakhir disimpan</span>
         </div>
@@ -59,9 +59,9 @@ export default async function UsulanListPage({
               className="grid-row cols-usulan-list clickable"
             >
               <span className="text-caption w600 t-primary">{dateShort(u.date)}</span>
-              <span className="right fs16 num">{fmtL(u.totalPenerimaan)}</span>
-              <span className="right fs16 num">{fmtL(u.totalPermintaan)}</span>
-              <span className="right fs16 num w600">{fmtL(u.totalUsulan)}</span>
+              <span className="right fs16 num">{fmtKL(u.totalPenerimaan, 3)}</span>
+              <span className="right fs16 num">{fmtKL(u.totalPermintaan, 3)}</span>
+              <span className="right fs16 num w600">{fmtKL(u.totalUsulan, 3)}</span>
               <span>
                 <span className={`status-pill ${u.status === "diajukan" ? "diajukan" : "draft"}`}>
                   {u.status === "diajukan" ? "Diajukan" : "Draft"}
