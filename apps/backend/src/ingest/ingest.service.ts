@@ -42,7 +42,35 @@ export class IngestService {
         : [buildUpsert(cfg, unitId, rows)];
     });
 
+    // Kunci (table,unit,business_date) utk tabel REPLACE TANPA kunci natural
+    // (pelanggan_sale/voucher_sale — sumber EasyMax tak expose identitas baris
+    // per-line, mis. NURUT; lihat sql.test.ts "REPLACE polos"). Beda dari edc:
+    // ON CONFLICT butuh nilai kolom yang benar-benar unik per baris — di sini baris
+    // ber-nilai identik (mis. pelanggan yg isi BBM sama persis 2× dlm satu shift)
+    // itu SAH, bukan kembar, jadi unique index ala edc akan menelan baris legit
+    // (diverifikasi: DISTINCT atas kolom nilai menjatuhkan total ~35% di bawah PDF).
+    // pg_advisory_xact_lock tak butuh identitas baris — cukup serialkan dua REPLACE
+    // pd (table,unit,business_date) yang sama: transaksi ke-2 menunggu ke-1 commit,
+    // lalu DELETE-nya melihat INSERT ke-1 (bukan lagi uncommitted) → tak dobel.
+    // Lock ter-lepas otomatis di akhir transaksi (varian _xact_). edc tak perlu ini
+    // (sudah dijaga index unik + ON CONFLICT).
+    const lockKeys = [
+      ...new Set(
+        entries.flatMap(([table, rows]) => {
+          const cfg = TABLE_CONFIG[table]!;
+          if (!cfg.replaceByBusinessDate || cfg.conflict.length > 0) return [];
+          return rows.map((r) => `${table}:${unitId}:${String(r["business_date"])}`);
+        }),
+      ),
+    ].sort(); // urutan tetap → dua transaksi mengunci kunci yang sama dgn urutan sama (anti-deadlock)
+
     await this.prisma.$transaction(async (tx) => {
+      for (const key of lockKeys) {
+        await tx.$executeRawUnsafe(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+          key,
+        );
+      }
       for (const { sql, params } of statements) {
         await tx.$executeRawUnsafe(sql, ...params);
       }
