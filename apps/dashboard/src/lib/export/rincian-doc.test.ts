@@ -117,6 +117,60 @@ describe("buildRincianDocDefinition", () => {
     expect(JSON.stringify(noSec1.content)).not.toContain("OMSET PENJUALAN");
   });
 
+  it("mensanitasi glyph tak didukung Roboto di jalur PDF; pertahankan · dan −", () => {
+    const glyphModel: RincianModel = {
+      sections: [
+        {
+          num: "3",
+          title: "PELANGGAN",
+          meta: "penjualan tempo (RFID/deposit ⊎ voucher)",
+          rows: [{ no: "1", ket: "MDU-RFID IB", vol: "", rpv: "Rp 1" }],
+          totalLabel: "TOTAL PELANGGAN",
+          totalVol: "",
+          totalRp: "Rp 1",
+        },
+        {
+          num: "4",
+          title: "EDC",
+          meta: "channel non-tunai · ⚠ blank-card Rp 10 (2 txn, di luar total)",
+          rows: [{ no: "1", ket: "BRI", vol: "", rpv: "Rp 2" }],
+          totalLabel: "TOTAL EDC",
+          totalVol: "",
+          totalRp: "Rp 2",
+        },
+      ],
+      summary: [
+        {
+          l: "H",
+          label: "Uang Tunai",
+          formula: "H = E + F − G",
+          val: "Rp 3",
+          em: true,
+        },
+        {
+          l: "I",
+          label: "Setoran Tunai",
+          val: "Rp 3",
+          em: true,
+          note: { tone: "ok", text: "Setoran menutup uang tunai (I ≥ H)" },
+        },
+      ],
+    };
+    const doc = buildRincianDocDefinition({
+      model: glyphModel,
+      meta,
+      config: { ...DEFAULT_EXPORT_CONFIG, hideEmpty: false },
+    });
+    const json = JSON.stringify(doc.content);
+    for (const g of ["⊎", "⚠", "✓", "✗", "→"]) expect(json).not.toContain(g);
+    expect(json).toContain("RFID/deposit + voucher");
+    expect(json).toContain("! blank-card");
+    // Glyph terbukti ADA di Roboto → TIDAK diganti (setia ke layar):
+    expect(json).toContain("(I ≥ H)"); // ≥ dipertahankan
+    expect(json).toContain("·"); // middot
+    expect(json).toContain("−"); // minus rp()/formula
+  });
+
   it("metadata dokumen tak membocorkan PII (hanya unit + tanggal)", () => {
     const doc = buildRincianDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.info?.title).toContain("64.781.11");
