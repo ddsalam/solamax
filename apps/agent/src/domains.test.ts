@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   CASH_DOMAIN,
+  CASH_RESYNC,
   DATETIME_DOMAINS,
+  DELIVERY_RESYNC,
   DEPOSIT_DOMAIN,
   EDC_DOMAIN,
+  EDC_RESYNC,
   MASTERS_DOMAIN,
+  OPNAME_RESYNC,
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
   SALES_RESYNC,
   TEBUS_DOMAIN,
+  TEBUS_RESYNC,
+  TERA_RESYNC,
   TERRA_RESMI_DOMAIN,
 } from "./domains.js";
 import { tzOffsetMinutes, wibDateTimeToUtcIso } from "./transform.js";
@@ -250,6 +256,76 @@ describe("SALES_RESYNC map (anti-stale; by DTGLJUAL; NULL-DTGLJAM disintesis)", 
     const sql = SALES_RESYNC.sql.replace(/\s+/g, " ");
     expect(sql).toContain("WHERE h.DTGLJUAL >= ? AND h.DTGLJUAL < ?");
     expect(sql).not.toMatch(/DTGLJAM\s+IS\s+NOT\s+NULL/i); // kritis: jangan buang NULL
+  });
+});
+
+describe("Track 2 (2026-07-02) — *_RESYNC: sapuan lebar bounded [lo,hi) generik", () => {
+  it("EDC_RESYNC: sql bounded ctgl [lo,hi); map = reuse EDC.map (kolom identik)", () => {
+    const sql = EDC_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE ctgl >= ? AND ctgl < ?");
+    expect(EDC_RESYNC.map).toBe(EDC_DOMAIN.map);
+  });
+
+  it("CASH_RESYNC: sql bounded DTGL [lo,hi); map = reuse CASH.map", () => {
+    const sql = CASH_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE h.DTGL >= ? AND h.DTGL < ?");
+    expect(CASH_RESYNC.map).toBe(CASH_DOMAIN.map);
+  });
+
+  it("TEBUS_RESYNC: sql bounded DTGLTBS [lo,hi); map = reuse TEBUS.map", () => {
+    const sql = TEBUS_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE h.DTGLTBS >= ? AND h.DTGLTBS < ?");
+    expect(TEBUS_RESYNC.map).toBe(TEBUS_DOMAIN.map);
+  });
+
+  it("TERA_RESYNC: sql bounded TanggalJam [lo,hi), floor 2020 dipertahankan; map = reuse TERA.map", () => {
+    const sql = TERA_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("t.TanggalJam >= ? AND t.TanggalJam < ?");
+    expect(sql).toContain("2020-01-01 00:00:00");
+  });
+
+  it("OPNAME_RESYNC: filter by h.DTAGLOPN (header), TANPA predikat DTGLJAM IS NOT NULL", () => {
+    const sql = OPNAME_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE h.DTAGLOPN >= ? AND h.DTAGLOPN < ?");
+    expect(sql).not.toMatch(/DTGLJAM\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it("OPNAME_RESYNC.map: DTGLJAM NULL → TETAP ikut, disintesis tengah-malam WIB dari DTAGLOPN", () => {
+    const { tables } = OPNAME_RESYNC.map(
+      [
+        {
+          CKDOPNBBM: "O1", CKDTANGKI: "T1", CKDBBM: "P1", NSTOCKBK: "1000",
+          NSTOCKOP: "990", NVOLSELISIH: "-10", DTGLJAM: null,
+          DTAGLOPN: "2026-06-15", SBATAL: "0",
+        },
+      ],
+      WIB,
+    );
+    expect(tables.opname).toHaveLength(1); // BUKAN dibuang (kontras sync incremental)
+    expect(tables.opname[0]!.dtaglopn).toBe("2026-06-15");
+    expect(tables.opname[0]!.dtgljam).toBe(wibDateTimeToUtcIso("2026-06-15 00:00:00", WIB));
+  });
+
+  it("DELIVERY_RESYNC: filter by DTGLTRM (flat table), TANPA predikat DTGLJAM IS NOT NULL", () => {
+    const sql = DELIVERY_RESYNC.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("WHERE DTGLTRM >= ? AND DTGLTRM < ?");
+    expect(sql).not.toMatch(/DTGLJAM\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it("DELIVERY_RESYNC.map: DTGLJAM NULL → TETAP ikut, disintesis tengah-malam WIB dari DTGLTRM", () => {
+    const { tables } = DELIVERY_RESYNC.map(
+      [
+        {
+          CKDTRM: "D1", DTGLTRM: "2026-06-15", DTGLJAM: null, CNODO: "DO1",
+          CNOSO: "SO1", NVOLDO: "8000", NVOLREAL: "7990", NVOLSELISIH: "-10",
+          CNOPOL: "B1", VCSOPIR: "Budi", CKDTANGKI: "T1", CKDBBM: "P1", SBATAL: "0",
+        },
+      ],
+      WIB,
+    );
+    expect(tables.delivery).toHaveLength(1);
+    expect(tables.delivery[0]!.dtgltrm).toBe("2026-06-15");
+    expect(tables.delivery[0]!.dtgljam).toBe(wibDateTimeToUtcIso("2026-06-15 00:00:00", WIB));
   });
 });
 

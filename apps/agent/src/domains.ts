@@ -943,3 +943,140 @@ export const EDC_DOMAIN = EDC;
 export const PELANGGAN_DOMAIN = PELANGGAN;
 export const MASTERS_DOMAIN = MASTERS;
 export const REALTANK_DOMAIN = REALTANK;
+
+// ---------------------------------------------------------------------------
+// *_RESYNC — Track 2 (2026-07-02): sapuan lebar/off-peak generik per domain,
+// gendela BOUNDED [lo,hiExcl) by business-date. Menutup lubang "koreksi EasyMax
+// lebih tua dari window rescan hot-path tak ter-recapture" (akar Transaksi
+// Pelanggan — investigasi 2026-07-01/02) untuk domain SELAIN sales/pelanggan
+// (sudah punya sapuan sendiri: SALES_RESYNC / backfill jalan-mundur pelanggan).
+// EDC/CASH/TEBUS/TERA reuse map() domain asal (kolom identik, cuma bound
+// ditambah). OPNAME/DELIVERY dapat map BARU: filter by tanggal-bisnis header
+// (DTAGLOPN/DTGLTRM), BUKAN DTGLJAM — pola SALES_RESYNC, menangkap baris
+// NULL-DTGLJAM juga (sintesis tengah-malam WIB), bukan cuma back-dated biasa.
+// Dipanggil via walker generik `walkDateWindowsForward` (sync.ts) — SELALU
+// bounded, tak pernah query tanpa batas atas (jaga dari stall 288k 21 Jun).
+// ---------------------------------------------------------------------------
+
+export const EDC_RESYNC = {
+  sql: `
+    SELECT TanggalJam, ctgl, cshift, CKDKARTU, TotalHarga, Liter, Jenis,
+           CNOTRACE, NoNozle, JrnKey
+    FROM vw_edc3
+    WHERE ctgl >= ? AND ctgl < ?
+    ORDER BY ctgl ASC, TanggalJam ASC`,
+  map: EDC.map,
+};
+
+export const CASH_RESYNC = {
+  sql: `
+    SELECT h.CKDKB, h.DTGL, h.VCKET, h.SJNSTRANS, h.NTOTAL, h.VCREF, h.CTMPKAS,
+           h.SBATAL, d.CKDPERK, d.NJUMLAH
+    FROM tr_hkasbank h
+    LEFT JOIN tr_dkasbank d ON d.CKDKB = h.CKDKB
+    WHERE h.DTGL >= ? AND h.DTGL < ?
+    ORDER BY h.DTGL ASC, h.CKDKB ASC`,
+  map: CASH.map,
+};
+
+export const TEBUS_RESYNC = {
+  sql: `
+    SELECT h.CKDTBS, h.DTGLTBS, h.CNOSO, h.SBATAL, d.CKDBBM, d.NVOLUME
+    FROM tr_htebus h
+    LEFT JOIN tr_dtebus d ON d.CKDTBS = h.CKDTBS
+    WHERE h.DTGLTBS >= ? AND h.DTGLTBS < ?
+    ORDER BY h.DTGLTBS ASC, h.CKDTBS ASC`,
+  map: TEBUS.map,
+};
+
+export const TERA_RESYNC = {
+  // `?1`/`?2` = bound WIB datetime string (tera tanpa kolom tanggal-bisnis
+  // header terpisah — business_date DIDERIVE dari TanggalJam, beda dari
+  // opname/delivery/sales); floor 2020-01-01 dipertahankan (buang baris 1980).
+  sql: `
+    SELECT t.TanggalJam AS TanggalJam, t.NoNozle AS NoNozle, t.IDPompa AS IDPompa,
+           t.SalTangki AS SalTangki, t.Jenis AS Jenis, t.Liter AS Liter,
+           t.TotalHarga AS TotalHarga, tg.CKDBBM AS CKDBBM
+    FROM tera t
+    LEFT JOIN tm_tangki tg ON CAST(tg.CKDTANGKI2 AS UNSIGNED) = t.SalTangki
+    WHERE t.TanggalJam IS NOT NULL
+      AND t.TanggalJam >= '2020-01-01 00:00:00'
+      AND t.TanggalJam >= ? AND t.TanggalJam < ?
+    ORDER BY t.TanggalJam ASC`,
+  map: TERA.map,
+};
+
+export const OPNAME_RESYNC = {
+  sql: `
+    SELECT d.CKDOPNBBM, d.CKDTANGKI, d.CKDBBM, d.NSTOCKBK, d.NSTOCKOP,
+           d.NVOLSELISIH, d.DTGLJAM, h.DTAGLOPN, h.SBATAL
+    FROM tr_dopnamebbm d
+    JOIN tr_hopnamebbm h ON h.CKDOPNBBM = d.CKDOPNBBM
+    WHERE h.DTAGLOPN >= ? AND h.DTAGLOPN < ?
+    ORDER BY h.DTAGLOPN ASC`,
+  map(
+    raw: Raw[],
+    offsetMin: number,
+  ): { tables: { opname: NonNullable<Tables["opname"]> } } {
+    const rows: NonNullable<Tables["opname"]> = [];
+    for (const r of raw) {
+      const bd = businessDate(str(r.DTAGLOPN));
+      if (bd === null) continue; // tanpa tanggal-bisnis header tak bisa ditempatkan
+      const rawTs = str(r.DTGLJAM);
+      const dtgljam =
+        (rawTs ? wibDateTimeToUtcIso(rawTs, offsetMin) : null) ??
+        wibDateTimeToUtcIso(`${bd} 00:00:00`, offsetMin)!;
+      rows.push({
+        ckdopnbbm: String(r.CKDOPNBBM),
+        ckdtangki: String(r.CKDTANGKI),
+        ckdbbm: str(r.CKDBBM),
+        dtaglopn: bd,
+        nstockbk: num(r.NSTOCKBK),
+        nstockop: num(r.NSTOCKOP),
+        nvolselisih: num(r.NVOLSELISIH),
+        dtgljam,
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return { tables: { opname: rows } };
+  },
+};
+
+export const DELIVERY_RESYNC = {
+  sql: `
+    SELECT CKDTRM, DTGLTRM, DTGLJAM, CNODO, CNOSO, NVOLDO, NVOLREAL, NVOLSELISIH,
+           CNOPOL, VCSOPIR, CKDTANGKI, CKDBBM, SBATAL
+    FROM tr_terimabbm
+    WHERE DTGLTRM >= ? AND DTGLTRM < ?
+    ORDER BY DTGLTRM ASC`,
+  map(
+    raw: Raw[],
+    offsetMin: number,
+  ): { tables: { delivery: NonNullable<Tables["delivery"]> } } {
+    const rows: NonNullable<Tables["delivery"]> = [];
+    for (const r of raw) {
+      const bd = businessDate(str(r.DTGLTRM));
+      if (bd === null) continue;
+      const rawTs = str(r.DTGLJAM);
+      const dtgljam =
+        (rawTs ? wibDateTimeToUtcIso(rawTs, offsetMin) : null) ??
+        wibDateTimeToUtcIso(`${bd} 00:00:00`, offsetMin)!;
+      rows.push({
+        ckdtrm: String(r.CKDTRM),
+        dtgltrm: bd,
+        dtgljam,
+        cnodo: str(r.CNODO),
+        cnoso: str(r.CNOSO),
+        nvoldo: num(r.NVOLDO),
+        nvolreal: num(r.NVOLREAL),
+        nvolselisih: num(r.NVOLSELISIH),
+        cnopol: str(r.CNOPOL),
+        vcsopir: str(r.VCSOPIR),
+        ckdtangki: str(r.CKDTANGKI),
+        ckdbbm: str(r.CKDBBM),
+        sbatal: int(r.SBATAL),
+      });
+    }
+    return { tables: { delivery: rows } };
+  },
+};
