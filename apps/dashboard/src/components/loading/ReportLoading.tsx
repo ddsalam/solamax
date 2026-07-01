@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Logo } from "@/components/Logo";
 import { Spinner } from "./Spinner";
 
 /**
@@ -38,6 +39,7 @@ export function ReportLoading() {
 
   return (
     <div className="report-load">
+      <Logo variant="symbol" decorative height={24} className="report-load-mark" />
       <span className="report-load-msg" role="status" aria-live="polite">
         <Spinner size="sm" inline label={tier.msg} />
         {tier.msg}
