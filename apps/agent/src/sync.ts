@@ -1153,8 +1153,15 @@ export async function runManualSweep(
 /** Jalankan sweepJobs, isolasi per job (kegagalan satu domain tak henti yang lain). */
 async function runSweepJobs(d: SyncDeps, jobs: readonly SweepJob[]): Promise<void> {
   for (const job of jobs) {
+    // Log mulai/selesai eksplisit (sama pola "sapuan manual") — tanpa ini, sapuan
+    // terjadwal otomatis TAK BISA dibedakan dari sync hot-path biasa di log; operator
+    // tak bisa konfirmasi jadwal benar-benar jalan tanpa menunggu kegagalan.
+    log.info("sapuan terjadwal: mulai", {
+      domain: job.domain, tier: job.tier, from: job.from, toExcl: job.toExcl,
+    });
     try {
       await SWEEP_TABLE[job.domain](d, job.from, job.toExcl, job.chunkDays);
+      log.info("sapuan terjadwal: selesai", { domain: job.domain, tier: job.tier });
     } catch (err) {
       log.error("sapuan gagal — dilewati siklus ini", {
         domain: job.domain,
@@ -1364,6 +1371,23 @@ export async function runForever(d: SyncDeps): Promise<void> {
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+
+  // Track 2: sekali di start — konfirmasi jadwal ter-load tanpa menunggu off-peak
+  // window pertama (operator bisa cek log segera setelah restart Task Scheduler).
+  log.info("Track 2 sapuan terjadwal: konfigurasi dimuat", {
+    offPeakWib: `${d.cfg.sync.offPeakStartHourWib}:00–${d.cfg.sync.offPeakEndHourWib}:00`,
+    tier1: {
+      pelanggan: `${d.cfg.sync.pelangganDeepRescanDays}h/${d.cfg.sync.pelangganDeepRescanIntervalMs}ms`,
+      edc: `${d.cfg.sync.edcDeepRescanDays}h/${d.cfg.sync.edcDeepRescanIntervalMs}ms`,
+      opname: `${d.cfg.sync.opnameDeepRescanDays}h/${d.cfg.sync.opnameDeepRescanIntervalMs}ms`,
+      delivery: `${d.cfg.sync.deliveryDeepRescanDays}h/${d.cfg.sync.deliveryDeepRescanIntervalMs}ms`,
+      tera: `${d.cfg.sync.teraDeepRescanDays}h/${d.cfg.sync.teraDeepRescanIntervalMs}ms`,
+      cash: `${d.cfg.sync.cashDeepRescanDays}h/${d.cfg.sync.cashDeepRescanIntervalMs}ms`,
+      tebus: `${d.cfg.sync.tebusDeepRescanDays}h/${d.cfg.sync.tebusDeepRescanIntervalMs}ms`,
+    },
+    tier2Wide: `${d.cfg.sync.wideSweepDays}h/${d.cfg.sync.wideSweepIntervalMs}ms (pelanggan,edc)`,
+    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (semua 7 domain)`,
+  });
 
   let lastMasters = 0;
   let lastPelanggan = 0;
