@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { ManualEntryForm } from "@/components/rincian/ManualEntryForm";
 import { RincianToolbar } from "@/components/rincian/Toolbar";
 import { classifyProduct, UNIT_DISPLAY, unitDotted } from "@/lib/config";
@@ -252,7 +252,7 @@ export default async function RincianPage({
             </div>
             <div className="fs15 t-tertiary mt1">{disp?.pt ?? "—"}</div>
           </div>
-          <Image src="/solagroup-logo.png" alt="SolaGroup" width={160} height={32} className="doc-logo" />
+          <Logo variant="horizontal" height={32} className="doc-logo" />
         </div>
 
         <div className="doc-titlewrap">

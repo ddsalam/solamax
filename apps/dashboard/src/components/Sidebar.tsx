@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { NavIcon, type IconName } from "@/components/NavIcon";
 import { ago } from "@/lib/format";
 import { deriveTopbarSelection } from "@/lib/selection-keys";
@@ -151,6 +152,10 @@ export function Sidebar({
       aria-modal={mobileOpen}
       aria-label="Menu navigasi"
     >
+      {/* Container-driven: wide column/drawer → horizontal lockup, 64px rail →
+          badge-mark. Keys off actual width, so it's correct on desktop, collapsed
+          rail, and mobile drawer alike (not the collapse toggle). */}
+      <Logo href="/" variant="auto" height={28} label="SolaMax, beranda" className="side-brand" />
       <div className="side-top">
         <button
           type="button"

@@ -107,7 +107,6 @@ body { background: var(--neutral-50); }
   border-bottom: 1px solid var(--color-border-hairline); background: var(--bg-frosted);
   backdrop-filter: var(--blur-frosted); position: sticky; top: 0; z-index: 20;
 }
-.topbar img { height: 20px; display: block; }
 .topbar-div { width: 1px; height: 18px; background: var(--color-border); }
 .role-chip {
   font-size: 15px; font-weight: 600; color: var(--color-accent);
@@ -458,7 +457,6 @@ body { background: var(--neutral-50); }
 
 .anom-list { display: flex; flex-direction: column; gap: var(--space-3); }
 .anom-body { flex: 1; min-width: 0; }
-.topbar-logo { height: 20px; width: auto; }
 .sync-note { display: inline-flex; align-items: center; gap: 7px; }
 .hub-card-top { display: flex; align-items: center; justify-content: space-between; }
 .picker-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
@@ -537,7 +535,6 @@ body { background: var(--neutral-50); }
 /* Auth screens */
 .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-6); }
 .auth-card { max-width: 420px; width: 100%; text-align: center; }
-.auth-logo { height: 28px; width: auto; }
 .auth-btn { width: 100%; justify-content: center; }
 .auth-email { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -643,3 +640,30 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
   /* Group fallback: appear immediately, no fade. */
   .route-fallback { animation: none !important; opacity: 1; }
 }
+
+/* ===== Brand logo (<Logo> — the single logo source; see BRAND.md) ===== */
+/* `display` lives here (not inline) so the .logo-auto container query can flip it. */
+.logo { line-height: 0; }
+.logo-img { display: block; }
+.logo-inline { display: inline-block; line-height: 0; }
+.logo-inline svg { display: block; width: 100%; height: 100%; }
+/* Bare gauge symbol: tint via currentColor, default = decorative sky. */
+.logo-symbol { color: var(--brand-sky); }
+/* Linked logo: predictable focus ring (2px offset halo), no default underline. */
+.logo-link { display: inline-flex; align-items: center; line-height: 0; border-radius: var(--radius-md); outline: none; text-decoration: none; }
+.logo-link:focus-visible { box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-focus-ring); }
+/* Auto: container-driven swap. .logo-auto fills its parent → measures PARENT width,
+   not its own content. ≥ breakpoint → lockup; below → compact badge-mark. */
+.logo-auto { container-type: inline-size; }
+.logo-auto > .logo-compact { display: none; }
+@container (max-width: 120px) {
+  .logo-auto > .logo-lockup { display: none; }
+  .logo-auto > .logo-compact { display: inline-block; }
+}
+/* No container-query support → keep the lockup (graceful, never blank). */
+/* Sidebar brand header: full-width row expanded, centered mark in the 64px rail. */
+.side-brand { align-self: stretch; padding: var(--space-1) var(--space-1) var(--space-3); }
+.shell.collapsed .side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Loading marks: restrained companions to the spinner (Fase 3). */
+.route-fallback-mark { margin-bottom: var(--space-2); opacity: 0.9; }
+.report-load-mark { opacity: 0.85; }

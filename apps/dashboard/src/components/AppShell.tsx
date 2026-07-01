@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Logo } from "@/components/Logo";
 import { GROUP_IDS, Sidebar, type GroupId } from "@/components/Sidebar";
 import { TopbarPicker, type UnitOpt } from "@/components/TopbarPicker";
 import { ago } from "@/lib/format";
@@ -118,9 +118,8 @@ export function AppShell({
             <path d="M3 6h14M3 10h14M3 14h14" />
           </svg>
         </button>
-        <Image src="/solagroup-logo.png" alt="SolaGroup" width={120} height={20} className="topbar-logo" />
+        <Logo variant="horizontal" href="/" height={20} priority label="SolaMax, beranda" />
         <div className="topbar-div mobile-hide" />
-        <span className="text-caption w600 t-secondary mobile-hide">SolaMax</span>
         <span className="role-chip mobile-hide">{roleLabel}</span>
         <TopbarPicker units={units} unit={unitCode} date={date} />
         <div className="topbar-right">

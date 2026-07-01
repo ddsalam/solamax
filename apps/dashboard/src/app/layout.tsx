@@ -10,6 +10,9 @@ import "@/styles/ds/base.css";
 import "@/styles/app.css";
 
 export const metadata: Metadata = {
+  // Resolves relative icon/OG asset URLs (icon.svg, opengraph-image, manifest).
+  // Reuse the deployment URL already configured for auth; localhost for dev.
+  metadataBase: new URL(process.env.AUTH_URL ?? "http://localhost:3000"),
   title: "SolaMax — Pengawasan SPBU SolaGroup",
   description:
     "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU SolaGroup",
