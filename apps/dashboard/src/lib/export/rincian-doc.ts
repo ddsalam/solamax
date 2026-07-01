@@ -35,6 +35,30 @@ export interface RincianDocMeta {
 
 const CONTENT_WIDTH = 515; // A4 (595.28pt) − margin kiri/kanan 40+40
 
+/**
+ * Sanitasi teks KHUSUS PDF: font Roboto tertanam pdfmake tak punya sebagian
+ * glyph dekoratif/simbol (mereka tampil sbg kotak kosong). Ganti dgn padanan
+ * ASCII yang setara makna. Teks LAYAR tak tersentuh (dipakai di jalur PDF saja).
+ * Set ini diverifikasi via cmap Roboto (fontkit): hanya glyph yang BENAR-BENAR
+ * hilang yang dipetakan. Sengaja TIDAK memetakan yang terbukti ADA di Roboto:
+ * "·" (U+00B7), "−" (U+2212), "—" (U+2014), dan "≥/≤/≠" — agar PDF setia ke layar.
+ */
+const GLYPH_MAP: Record<string, string> = {
+  "⊎": "+", // ⊎ multiset-union → +
+  "⚠": "!", // ⚠ warning
+  "✓": "OK", // ✓
+  "✔": "OK", // ✔
+  "✗": "x", // ✗
+  "✘": "x", // ✘
+  "→": "->", // →
+  "←": "<-", // ←
+  "↑": "^", // ↑
+  "↓": "v", // ↓
+};
+function pdfText(s: string): string {
+  return s.replace(/[⊎⚠✓✔✗✘→←↑↓]/g, (c) => GLYPH_MAP[c] ?? c);
+}
+
 /** Layout tabel ledger: header navy, zebra abu-abu muda, garis tipis. */
 const ledgerLayout: CustomTableLayout = {
   fillColor: (rowIndex) => {
@@ -81,7 +105,7 @@ function sectionTable(sec: Section): Content {
     for (const r of sec.rows) {
       body.push([
         { text: r.no, color: PDF.textMuted },
-        { text: r.ket, color: PDF.textPrimary },
+        { text: pdfText(r.ket), color: PDF.textPrimary },
         { text: r.vol, alignment: "right", color: PDF.textSecondary },
         { text: r.rpv, alignment: "right", noWrap: true },
       ]);
@@ -117,7 +141,7 @@ function sectionTable(sec: Section): Content {
       {
         columns: [
           { text: `${sec.num}. ${sec.title}`, style: "sectionTitle", width: "auto" },
-          { text: sec.meta, style: "sectionMeta", alignment: "right", width: "*" },
+          { text: pdfText(sec.meta), style: "sectionMeta", alignment: "right", width: "*" },
         ],
         marginTop: 8,
         marginBottom: 3,
@@ -141,7 +165,7 @@ function summaryTable(summary: SummaryRow[]): Content {
     if (s.formula) label.push({ text: s.formula, fontSize: 7.5, color: PDF.textMuted });
     if (s.note) {
       label.push({
-        text: `${s.note.tone === "ok" ? "✓ " : "⚠ "}${s.note.text}`,
+        text: pdfText(`${s.note.tone === "ok" ? "✓ " : "⚠ "}${s.note.text}`),
         fontSize: 7.5,
         color: s.note.tone === "ok" ? PDF.success : PDF.danger,
       });
@@ -221,7 +245,7 @@ export function buildRincianDocDefinition(args: {
     : { text: "SolaMax", style: "kopSpbu", alignment: "right" };
 
   const scopeBits = [
-    `Unit: SPBU ${meta.unitDotted} · ${meta.unitName}`,
+    `Unit: SPBU ${meta.unitDotted} · ${pdfText(meta.unitName)}`,
     `Tanggal bisnis: ${meta.dateLong}`,
     "Mata uang: Rupiah (Rp), lokal id-ID",
   ];
@@ -233,9 +257,9 @@ export function buildRincianDocDefinition(args: {
         {
           width: "*",
           stack: [
-            { text: `SPBU ${meta.unitDotted} · ${meta.unitName}`, style: "kopSpbu" },
-            { text: meta.address, style: "kopAddr", marginTop: 2 },
-            { text: meta.pt, style: "kopPt", marginTop: 1 },
+            { text: `SPBU ${meta.unitDotted} · ${pdfText(meta.unitName)}`, style: "kopSpbu" },
+            { text: pdfText(meta.address), style: "kopAddr", marginTop: 2 },
+            { text: pdfText(meta.pt), style: "kopPt", marginTop: 1 },
           ],
         },
         { width: 130, stack: [kopRight] },
