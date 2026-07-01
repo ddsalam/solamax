@@ -343,7 +343,7 @@ body { background: var(--neutral-50); }
 
 /* ===== Skeleton & empty ===== */
 .skel { border-radius: var(--radius-lg); background: var(--neutral-100); }
-.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--accent-200); border-top-color: var(--accent-600); animation: sm-spin 0.9s linear infinite; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--accent-200); border-top-color: var(--accent-600); animation: sm-spin var(--shimmer-duration) linear infinite; }
 @keyframes sm-spin { to { transform: rotate(360deg); } }
 .empty-hero { padding: 96px 40px 128px; text-align: center; }
 .empty-hero-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--neutral-100); margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--neutral-400); }
@@ -540,3 +540,106 @@ body { background: var(--neutral-50); }
 .auth-logo { height: 28px; width: auto; }
 .auth-btn { width: 100%; justify-content: center; }
 .auth-email { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Loading kit ===== */
+/* Spinner sizes (reuse .spinner seed; rotation reads --shimmer-duration). */
+.spinner.sm { width: 18px; height: 18px; border-width: 3px; }
+.spinner.md { width: 28px; height: 28px; border-width: 3px; }
+.spinner.lg { width: 40px; height: 40px; border-width: 4px; }
+.spinner-inline { display: inline-flex; vertical-align: middle; }
+.spinner-block { display: flex; align-items: center; justify-content: center; }
+.spinner-wrap { display: inline-flex; align-items: center; gap: var(--space-2); }
+/* Visually-hidden label for screen readers (kept in DOM for role=status). */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Skeleton: extends .skel neutral block with a token-timed shimmer sweep. */
+.skel-shimmer {
+  position: relative; overflow: hidden; background: var(--neutral-100);
+  border-radius: var(--radius-md);
+}
+.skel-shimmer::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: sm-shimmer var(--shimmer-duration) ease-in-out infinite;
+}
+@keyframes sm-shimmer { to { transform: translateX(100%); } }
+.skel-line { height: 14px; margin-bottom: var(--space-2); }
+.skel-line:last-child { margin-bottom: 0; }
+.skel-line.short { width: 60%; }
+.skel-text { display: block; }
+.skel-card { padding: var(--space-6); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-1); }
+.skel-card .skel-shimmer { background: var(--neutral-100); }
+.skel-media { height: 96px; margin-bottom: var(--space-4); border-radius: var(--radius-md); }
+.skel-table { display: flex; flex-direction: column; gap: var(--space-3); }
+.skel-row { height: 20px; }
+.skel-row.head { height: 16px; opacity: 0.7; }
+
+/* Local overlay — scoped to nearest positioned ancestor, never full-screen. */
+.load-overlay-wrap { position: relative; }
+.load-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: var(--space-3);
+  align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.72);
+  border-radius: var(--radius-lg); z-index: 2;
+}
+.load-overlay-msg { font-size: 15px; color: var(--color-text-secondary); }
+
+/* StateView — extends .na-panel / .empty-inline; distinct error vs empty vs loading. */
+.state-loading { display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-8); }
+.state-error { border: 1px solid var(--color-danger-border); background: var(--color-danger-bg); border-radius: var(--radius-lg); padding: var(--space-6); }
+.state-error-title { font-size: 16px; font-weight: 700; color: var(--color-danger); }
+.state-error-msg { font-size: 15px; color: var(--color-text-secondary); margin-top: var(--space-2); }
+.state-error-actions { margin-top: var(--space-4); }
+
+/* Progress (built for kit completeness; unwired in pilot). */
+.progress-track { height: 8px; border-radius: var(--radius-full); background: var(--neutral-100); overflow: hidden; }
+.progress-bar { height: 100%; border-radius: var(--radius-full); background: var(--color-accent); transition: width var(--duration-base) var(--ease-out); }
+.progress-bar.indet { width: 35%; animation: sm-indet var(--shimmer-duration) ease-in-out infinite; }
+@keyframes sm-indet { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+/* Group fallback ((app)/loading.tsx) — CSS-delayed fade-in, zero-shift in both
+   states (it always reserves a centered min-height; only opacity changes). */
+.route-fallback { min-height: 60vh; display: flex; flex-direction: column; gap: var(--space-3); align-items: center; justify-content: center; opacity: 0; animation: sm-fallback-in var(--duration-base) var(--ease-out) 250ms forwards; }
+.route-fallback-msg { font-size: 15px; color: var(--color-text-tertiary); }
+@keyframes sm-fallback-in { to { opacity: 1; } }
+
+/* Report loading escalation (board/laporan) — message + Batal under the skeleton. */
+.report-load { margin-top: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); align-items: flex-start; }
+.report-load-msg { font-size: 15px; color: var(--color-text-secondary); display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* AutoRefresh affordance — FIXED corner pill, out of document flow → zero shift. */
+.refresh-pill {
+  position: fixed; right: var(--space-6); bottom: var(--space-6); z-index: 40;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--color-surface); border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-full); box-shadow: var(--shadow-2);
+  padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary);
+}
+
+/* LoadingButton — spinner sits inline before the label; reuses .spinner seed. */
+.btn-spin { display: inline-flex; align-items: center; gap: var(--space-2); }
+.btn-spin .spinner { border-color: rgba(255, 255, 255, 0.45); border-top-color: currentColor; }
+.btn-tint .spinner, .btn-outline .spinner { border-color: var(--accent-200); border-top-color: var(--accent-600); }
+button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: progress; }
+
+/* Optimistic row pending (ManualEntryForm add). */
+.manual-item.pending { opacity: 0.55; }
+
+/* ===== Reduced motion — honors motion.css's promise; calms ALL motion but keeps
+   spinner + skeleton VISIBLE (static), incl. the existing sm-spin. ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  /* Spinner: stop rotating but stay a visible ring (paired with text label). */
+  .spinner { animation: none !important; }
+  /* Skeleton/Progress: drop the sweep but keep the static neutral fill. */
+  .skel-shimmer::after, .progress-bar.indet { animation: none !important; }
+  .progress-bar.indet { margin-left: 0; }
+  /* Group fallback: appear immediately, no fade. */
+  .route-fallback { animation: none !important; opacity: 1; }
+}

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
+import { LoadingButton } from "@/components/loading/LoadingButton";
+import { StateView } from "@/components/loading/StateView";
 import { fmtL, idn } from "@/lib/format";
 import type { UsulanStatus } from "@/lib/queries";
 import { saveUsulanSo } from "@/lib/usulan-actions";
@@ -57,6 +59,13 @@ export function UsulanForm({
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Optimistic (rule 10, presentasi saja — kontrak action/scope TAK berubah):
+  // pill status melompat ke target saat menyimpan; React auto-revert ke `status`
+  // bila transisi selesai dgagal. Sukses → setStatus mempertahankannya.
+  const [optStatus, setOptStatus] = useOptimistic<UsulanStatus, UsulanStatus>(
+    status,
+    (_, next) => next,
+  );
 
   const set = (key: string, field: Field, raw: string): void => {
     const digits = raw.replace(/\D/g, "");
@@ -80,6 +89,7 @@ export function UsulanForm({
     setErr(null);
     setMsg(null);
     start(async () => {
+      setOptStatus(nextStatus);
       const res = await saveUsulanSo({
         code,
         date,
@@ -189,23 +199,28 @@ export function UsulanForm({
       </div>
 
       <div className="usulan-actions no-print">
-        <span className={`status-pill ${status === "diajukan" ? "diajukan" : "draft"}`}>
-          {status === "diajukan" ? "Diajukan ke Keuangan" : "Draft"}
+        <span className={`status-pill ${optStatus === "diajukan" ? "diajukan" : "draft"}`}>
+          {optStatus === "diajukan" ? "Diajukan ke Keuangan" : "Draft"}
         </span>
         <div className="usulan-actions-btns">
-          {msg && <span className="fs15 w600 t-success">{msg}</span>}
-          {err && <span className="fs15 t-danger">{err}</span>}
-          <button type="button" className="btn-tint sm" disabled={pending} onClick={() => save(status)}>
-            {pending ? "…" : "Simpan"}
-          </button>
-          <button
-            type="button"
-            className="btn-navy"
-            disabled={pending}
-            onClick={() => save("diajukan")}
+          {msg && !err && <StateView state="success" successText={msg} />}
+          {err && <StateView state="error" inline error={err} />}
+          <LoadingButton
+            pending={pending}
+            className="btn-tint sm"
+            onClick={() => save(status)}
+            pendingLabel="Menyimpan…"
           >
-            {pending ? "…" : "Ajukan ke Keuangan"}
-          </button>
+            Simpan
+          </LoadingButton>
+          <LoadingButton
+            pending={pending}
+            className="btn-navy"
+            onClick={() => save("diajukan")}
+            pendingLabel="Menyimpan…"
+          >
+            Ajukan ke Keuangan
+          </LoadingButton>
         </div>
       </div>
     </div>
