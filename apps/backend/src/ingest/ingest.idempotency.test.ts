@@ -39,6 +39,13 @@ d("idempotensi /ingest (DB lokal)", () => {
     await prisma.$executeRawUnsafe(`DELETE FROM public.sync_state WHERE unit_id = ${U}`);
   });
   afterAll(async () => {
+    for (const t of [
+      "deposit", "edc", "pelanggan_sale", "voucher_sale", "card",
+      "sales_detail", "sales_header",
+    ]) {
+      await prisma?.$executeRawUnsafe(`DELETE FROM public."${t}" WHERE unit_id = ${U}`);
+    }
+    await prisma?.$executeRawUnsafe(`DELETE FROM public.sync_state WHERE unit_id = ${U}`);
     await prisma?.$disconnect();
   });
 
@@ -160,6 +167,78 @@ d("idempotensi /ingest (DB lokal)", () => {
       `SELECT nsubtotal FROM public.sales_detail WHERE unit_id = ${U} AND trim(ckdnozzle) = 'N3'`,
     );
     expect(Number(r[0]!.nsubtotal)).toBe(999); // ter-update (UPSERT, bukan dup)
+  });
+
+  // REGRESI temuan investigasi Transaksi Pelanggan (2026-07-01): pelanggan_sale/
+  // voucher_sale = REPLACE polos (conflict kosong — sumber EasyMax tak punya
+  // identitas baris per-line), jadi TAK bisa dipagari ON CONFLICT ala edc tanpa
+  // risiko menelan baris legit ber-nilai sama. Diperbaiki via pg_advisory_xact_lock
+  // per (table,unit,business_date) — dibuktikan live (scratch date, probe manual)
+  // sebelum PR ini: race persis fingerprint insiden edc (~13µs) direproduksi lalu
+  // ditutup. Tes ini membuktikan hal sama lewat IngestService yang sudah dikunci.
+  const pelangganPayload = (date: string, rows: number): IngestPayload => ({
+    unit_code: "x",
+    domain: "pelanggan",
+    watermark_high: null,
+    tables: {
+      pelanggan_sale: Array.from({ length: rows }, (_, i) => ({
+        business_date: date, ckdplg: `PLG${i}`, vcnmplg: `Cust ${i}`,
+        ckdjualplg: `JP${i}`, ckdbbm: "BB-07", nshift: 1, liter: 10 + i,
+        total: 100000 + i, sbatal: 0,
+      })),
+    },
+  });
+
+  const voucherPayload = (date: string, rows: number): IngestPayload => ({
+    unit_code: "x",
+    domain: "pelanggan",
+    watermark_high: null,
+    tables: {
+      voucher_sale: Array.from({ length: rows }, (_, i) => ({
+        business_date: date, ckdplg: `PLG${i}`, vcnmplg: `Cust ${i}`,
+        ckdusevouc: `UV${i}`, ckdbbm: "BB-07", nshift: 1, liter: 2,
+        total: 20000, sbatal: 0,
+      })),
+    },
+  });
+
+  it("pelanggan_sale REPLACE: dua /ingest BERSAMAAN → 0 kembar (advisory lock, TANPA unique index)", async () => {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM public."pelanggan_sale" WHERE unit_id = ${U} AND business_date = '2026-06-21'`,
+    );
+    const p = pelangganPayload("2026-06-21", 5);
+    await Promise.all([svc.ingest(U, p), svc.ingest(U, p)]);
+    expect(await count("pelanggan_sale", "AND business_date = '2026-06-21'")).toBe(5); // bukan 10
+  });
+
+  it("pelanggan_sale REPLACE bersamaan: baris ber-nilai IDENTIK (legit, bukan kembar) tetap semua masuk", async () => {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM public."pelanggan_sale" WHERE unit_id = ${U} AND business_date = '2026-06-22'`,
+    );
+    // Dua baris beda ckdjualplg TAPI nilai lain identik — kasus nyata (pelanggan isi
+    // BBM sama persis 2× dlm satu shift). Advisory lock tak boleh menjatuhkan ini.
+    const identical: IngestPayload = {
+      unit_code: "x", domain: "pelanggan", watermark_high: null,
+      tables: {
+        pelanggan_sale: [
+          { business_date: "2026-06-22", ckdplg: "PLG9", vcnmplg: "Cust", ckdjualplg: "JPA", ckdbbm: "BB-07", nshift: 1, liter: 10, total: 100000, sbatal: 0 },
+          { business_date: "2026-06-22", ckdplg: "PLG9", vcnmplg: "Cust", ckdjualplg: "JPB", ckdbbm: "BB-07", nshift: 1, liter: 10, total: 100000, sbatal: 0 },
+        ],
+      },
+    };
+    await svc.ingest(U, identical);
+    expect(await count("pelanggan_sale", "AND business_date = '2026-06-22'")).toBe(2); // keduanya masuk
+    await svc.ingest(U, identical); // resend
+    expect(await count("pelanggan_sale", "AND business_date = '2026-06-22'")).toBe(2); // tetap 2 (bukan 4)
+  });
+
+  it("voucher_sale REPLACE: dua /ingest BERSAMAAN → 0 kembar (advisory lock)", async () => {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM public."voucher_sale" WHERE unit_id = ${U} AND business_date = '2026-06-21'`,
+    );
+    const p = voucherPayload("2026-06-21", 5);
+    await Promise.all([svc.ingest(U, p), svc.ingest(U, p)]);
+    expect(await count("voucher_sale", "AND business_date = '2026-06-21'")).toBe(5); // bukan 10
   });
 
   it("REPLACE multi-tanggal dalam satu payload: kedua tanggal masuk", async () => {
