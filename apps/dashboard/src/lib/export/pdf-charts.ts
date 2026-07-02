@@ -19,6 +19,10 @@ export function sparklineCanvas(vals: number[], width: number, height: number): 
   }));
   return {
     canvas: [
+      // Rect kotak-penuh (putih) MENGUNCI tinggi elemen canvas: pdfmake menurunkan
+      // tinggi box dari extent rect, BUKAN dari polyline → tanpa ini sparkline
+      // ber-box 0 tinggi & konten berikutnya menimpanya. (h == height reserved.)
+      { type: "rect", x: 0, y: 0, w: width, h: height, color: "#FFFFFF" },
       // area (fill abu-abu muda)
       {
         type: "polyline",
