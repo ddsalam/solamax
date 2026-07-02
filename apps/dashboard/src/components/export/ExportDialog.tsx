@@ -21,6 +21,7 @@ export function ExportDialog({
   filename,
   lastFilename,
   onDownload,
+  orientation = "portrait",
 }: {
   open: boolean;
   title: string;
@@ -32,6 +33,7 @@ export function ExportDialog({
   filename: string;
   lastFilename: string | null;
   onDownload: () => void;
+  orientation?: "portrait" | "landscape";
 }) {
   useEffect(() => {
     if (!open) return;
@@ -96,7 +98,9 @@ export function ExportDialog({
         </div>
 
         <div className="export-foot">
-          <span className="fs15 t-tertiary">A4 · potret · id-ID · WIB</span>
+          <span className="fs15 t-tertiary">
+            A4 · {orientation === "landscape" ? "lanskap" : "potret"} · id-ID · WIB
+          </span>
           <div className="export-foot-actions">
             <button type="button" className="btn-tint" onClick={onClose}>
               Tutup

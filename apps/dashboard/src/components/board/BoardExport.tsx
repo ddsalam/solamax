@@ -66,6 +66,7 @@ export function BoardExport({
         filename={filename}
         lastFilename={lastFilename}
         onDownload={() => void download(buildDoc(), filename)}
+        orientation="landscape"
       >
         <div className="export-group">
           <div className="fs15 w700 t-tertiary">Dokumen</div>
