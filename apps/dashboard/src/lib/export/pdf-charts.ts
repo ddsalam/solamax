@@ -7,7 +7,17 @@
 import type { Content } from "pdfmake/interfaces";
 import { PDF } from "./pdf-tokens";
 
-/** Sparkline: garis + area terisi, dari nilai mentah. */
+/**
+ * Sparkline: SATU polyline (garis), dari nilai mentah.
+ *
+ * PENTING (root-cause blocker board): elemen `canvas` pdfmake dgn BANYAK op
+ * MENUMPUK op secara vertikal — op ke-2 di-offset sebesar tinggi op sebelumnya
+ * (rect(h) → polyline tergambar +h di bawahnya). Versi lama (area-polyline + line
+ * + rect-anchor = 3 op) karena itu menggambar garis ~h di bawah box-nya, menimpa
+ * section berikutnya. SATU op polyline ter-colokasi dgn benar & tinggi box otomatis
+ * ter-reserve dari extent titik → JANGAN tambah op (rect/area) ke canvas ini.
+ * (Titik y dinormalkan ke [2, height]; verifikasi posisi via test render.)
+ */
 export function sparklineCanvas(vals: number[], width: number, height: number): Content {
   const n = vals.length;
   if (n < 2) return { canvas: [], width } as unknown as Content;
@@ -18,22 +28,7 @@ export function sparklineCanvas(vals: number[], width: number, height: number): 
     y: height - ((v - mn) / Math.max(mx - mn, 1)) * (height - 4) - 2,
   }));
   return {
-    canvas: [
-      // Rect kotak-penuh (putih) MENGUNCI tinggi elemen canvas: pdfmake menurunkan
-      // tinggi box dari extent rect, BUKAN dari polyline → tanpa ini sparkline
-      // ber-box 0 tinggi & konten berikutnya menimpanya. (h == height reserved.)
-      { type: "rect", x: 0, y: 0, w: width, h: height, color: "#FFFFFF" },
-      // area (fill abu-abu muda)
-      {
-        type: "polyline",
-        closePath: true,
-        color: PDF.zebra,
-        lineWidth: 0,
-        points: [{ x: 0, y: height }, ...pts, { x: width, y: height }],
-      },
-      // garis
-      { type: "polyline", lineWidth: 1.2, lineColor: PDF.navy, points: pts },
-    ],
+    canvas: [{ type: "polyline", lineWidth: 1.5, lineColor: PDF.navy, points: pts }],
     width,
   } as unknown as Content;
 }

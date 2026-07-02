@@ -64,6 +64,22 @@ describe("buildBoardDocDefinition", () => {
     expect(json).toContain("Imam Bonjol"); // hanya unit ber-scope
   });
 
+  it("sparkline berada ANTARA heading 'Tren omset grup' dan section 'Bauran' (urutan konten)", () => {
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    const content = doc.content as unknown[];
+    const idxOf = (needle: string) =>
+      content.findIndex((c) => JSON.stringify(c).includes(needle));
+    const trenIdx = idxOf("Tren omset grup");
+    const bauranIdx = idxOf("Bauran NPSO / PSO");
+    // sparkline = item canvas berisi polyline
+    const sparkIdx = content.findIndex(
+      (c) => JSON.stringify(c).includes("polyline") && !JSON.stringify(c).includes("Halaman"),
+    );
+    expect(trenIdx).toBeGreaterThanOrEqual(0);
+    expect(sparkIdx).toBeGreaterThan(trenIdx);
+    expect(bauranIdx).toBeGreaterThan(sparkIdx);
+  });
+
   it("memuat chart vektor (canvas), bukan image", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     const json = JSON.stringify(doc.content);

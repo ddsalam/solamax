@@ -7,14 +7,16 @@ function ops(c: unknown): CanvasOp[] {
 }
 
 describe("pdf-charts vector helpers", () => {
-  it("sparkline MENGUNCI tinggi box via rect kotak-penuh (cegah overlap konten)", () => {
+  it("sparkline = SATU op polyline (banyak op → pdfmake menumpuk & overlap)", () => {
     const height = 60;
     const c = ops(sparklineCanvas([1, 5, 2, 8, 3, 9, 4, 6, 7, 2, 5, 8, 1, 9], 560, height));
-    // Wajib ada rect setinggi `height` yang me-reserve box (root-cause blocker board).
-    const anchor = c.find((op) => op.type === "rect" && op.h === height);
-    expect(anchor).toBeDefined();
-    // dan garis + area (polyline) tetap tergambar
-    expect(c.filter((op) => op.type === "polyline").length).toBe(2);
+    // Cegah regresi stacking: TEPAT satu op, polyline, tanpa rect/area tambahan.
+    expect(c).toHaveLength(1);
+    expect(c[0]!.type).toBe("polyline");
+    // Semua titik dalam [0, height] (co-lokasi di dalam box-nya).
+    const ys = (c[0] as unknown as { points: { y: number }[] }).points.map((p) => p.y);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(height);
   });
 
   it("bar: track + isi (rect) + tick target (line)", () => {
