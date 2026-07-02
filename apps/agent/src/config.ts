@@ -96,12 +96,26 @@ const ConfigSchema = z.object({
     tebusDeepRescanDays: z.number().int().default(30),
     tebusDeepRescanIntervalMs: z.number().int().default(604_800_000),
 
-    // Tier 2 — backstop full-history, jarang + off-peak. Floor sama dgn
-    // backfill pelanggan (~3 thn — data live mulai 2022-08/09). Domain
-    // berat (pelanggan/edc, union-view/join mahal di MySQL 5.0) dapat sapuan
+    // Tier 2 — backstop full-history, jarang + off-peak. Domain berat
+    // (pelanggan/edc, union-view/join mahal di MySQL 5.0) dapat sapuan
     // MENENGAH mingguan (wideSweepDays) + full-history tetap bulanan; domain
     // ringan (opname/delivery/tera/cash/tebus) langsung full-history bulanan.
-    fullSweepFloorDays: z.number().int().default(1095), // ~3 tahun
+    //
+    // ⚠️ BATAS TERSADAR (keputusan owner, 2026-07-02, GATE 6): floor ini
+    // ROLLING (hari-ini − N), BUKAN "sejak data mulai". Seiring waktu, jendela
+    // ini bergeser maju — apa pun sebelum floor TAK PERNAH disapu otomatis oleh
+    // tier mana pun (tier1/tier2-wide/tier2-full), selamanya, di bawah
+    // konfigurasi ini. Diverifikasi nyata: backfill awal pelanggan (2026-06-21,
+    // sebelum Track 1/2) meninggalkan 2023-03-15 senilai −71,9% vs EasyMax-now,
+    // tak pernah ter-recapture sampai sapuan manual satu-kali (`--deep-sweep
+    // <domain> ~1460`, floor ke ~2022-07, GATE 6/7) menutupnya.
+    // Keputusan: TIDAK melebarkan floor 1095-hari ini secara permanen & TIDAK
+    // menambah tier baru — risiko residual (koreksi EasyMax pada data >3 tahun
+    // tak ter-tangkap otomatis) diterima sebagai dapat diabaikan utk data BBM
+    // SPBU. Bila prioritas berubah, opsi: lebarkan `fullSweepFloorDays` (biaya:
+    // durasi bulanan lebih panjang — pelanggan @1095h sudah ~85 mnt) atau
+    // jadwalkan sapuan manual "sejak-inception" berkala di luar cadence ini.
+    fullSweepFloorDays: z.number().int().default(1095), // ~3 tahun (BUKAN sejak inception — lihat catatan di atas)
     fullSweepIntervalMs: z.number().int().default(2_592_000_000), // ~30 hari
     wideSweepDays: z.number().int().default(90),
     wideSweepIntervalMs: z.number().int().default(604_800_000), // weekly
