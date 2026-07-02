@@ -1,17 +1,20 @@
 import { notFound } from "next/navigation";
 import { EmptyPanel } from "@/components/EmptyPanel";
-import { LaporanToolbar } from "@/components/laporan/Toolbar";
-import {
-  canonicalProductKey,
-  classifyProduct,
-  DO_PRODUCTS,
-  resolveDoProduct,
-  targetVolumePerDay,
-  unitDotted,
-} from "@/lib/config";
-import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { LaporanExport } from "@/components/laporan/LaporanExport";
+import { unitDotted } from "@/lib/config";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
-import { dateLong, fmtL, idn, parenNeg, pct, rp, rpShort, signed, timeWib } from "@/lib/format";
+import {
+  dateLong,
+  dateShort,
+  fmtL,
+  idn,
+  parenNeg,
+  pct,
+  rp,
+  rpShort,
+  signed,
+  timeWib,
+} from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
   getCashForDate,
@@ -31,6 +34,7 @@ import {
   getManualEntries,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
+import { buildLaporanModel } from "@/lib/laporan-model";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +53,6 @@ export default async function LaporanPage({
   const date = params.date;
   const detail = searchParams.view !== "ringkas";
   const today = todayWib();
-  const isToday = date === today;
   const mi = monthInfo(date);
   const mStart = monthStart(date);
 
@@ -93,179 +96,73 @@ export default async function LaporanPage({
     getManualEntries(unit.unit_id, date, "setoran_tunai"),
   ]);
 
-  const ordered = <T extends { nama: string }>(xs: T[]) =>
-    [...xs].sort(
-      (a, b) => (classifyProduct(a.nama)?.order ?? 9) - (classifyProduct(b.nama)?.order ?? 9),
-    );
-
-  // Laporan DO Harian — 6 produk TETAP (urutan referensi). Sisa/DO Awal = per-SO
-  // OTORITATIF (getDoHarian v2, logika F12; TANPA δ-seed). Baris dirender walau 0.
-  // `recon` = (DO Awal + Penebusan − Penerimaan) − Sisa: ≠0 → hari anomali (selisih
-  // = orphan/over-receipt, detail di panel "Alokasi Penerimaan Tidak Sesuai").
-  // TOTAL = jumlah BENAR semua 6 produk (termasuk Pertamina Dex).
-  const doRows = DO_PRODUCTS.map((dp) => {
-    const r = doDay.find((x) => resolveDoProduct(x.nama)?.key === dp.key);
-    const doAwal = r?.do_awal ?? 0;
-    const penerimaan = r?.penerimaan ?? 0;
-    const penebusan = r?.penebusan ?? 0;
-    const sisa = r?.sisa ?? 0;
-    return {
-      key: dp.key,
-      label: dp.label,
-      doAwal,
-      penerimaan,
-      penebusan,
-      sisa,
-      recon: Math.round(doAwal + penebusan - penerimaan - sisa),
-    };
-  });
-  const doTotal = doRows.reduce(
-    (a, r) => ({
-      doAwal: a.doAwal + r.doAwal,
-      penerimaan: a.penerimaan + r.penerimaan,
-      penebusan: a.penebusan + r.penebusan,
-      sisa: a.sisa + r.sisa,
-    }),
-    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0 },
+  // SUMBER TUNGGAL: model dipakai render layar (di bawah) DAN ekspor PDF → angka
+  // identik "ke rupiah". Data sudah ber-scope (ScopedUnitId).
+  const m = buildLaporanModel(
+    {
+      prodDay,
+      glRows,
+      prodMonth,
+      delivMonth,
+      doDay,
+      doAnomalies,
+      doSuspects,
+      shift,
+      corrections,
+      cash,
+      saldo,
+      recapPelanggan,
+      recapEdc,
+      recapDeposit,
+      recapPendapatanLain,
+      recapPengeluaran,
+      recapSetoran,
+    },
+    { unitCode: unit.code, date, today, mi, detail },
   );
-  // Anomali alokasi DO (orphan + over-receipt) per produk — untuk panel.
-  const doAnomRows = ordered(
-    doAnomalies.map((a) => ({ ...a, label: resolveDoProduct(a.nama)?.label ?? a.nama })),
-  );
+  // Rekonstruksi nama-nama lama agar JSX di bawah tetap identik.
+  const { sales, recap, glMonthly, target, doHarian, harga, rekon, header } = m;
+  const { rows: doRows, totals: doTotal, anomRows: doAnomRows } = doHarian;
+  const {
+    totVol: totSales,
+    totOmzet,
+    glTotal,
+    totTera,
+    glPctDay,
+    glProvisional,
+    glGarbageCount,
+    gasMix,
+    oilMix,
+  } = sales;
+  const { glMonthTotal, glPctMonth } = glMonthly;
+  const { hasRecap, hasSaldo, saldoRows, recapBoxes } = recap;
+  const { isPartial, provisionalCount } = header;
+  const scoreTone = `t-${header.scoreTone}`;
+  const score = { text: header.scoreText, provisional: provisionalCount, fail: header.fail };
+  const visibleChecks = m.checks.filter((c) => c.state !== "na");
 
-  const totSales = prodDay.reduce((s, p) => s + p.vol, 0);
-  const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
-  // G/L harian metode RESUME: Fisik − (Fisik D−1 + ΣNVOLDO − jual BERSIH). Sales
-  // (L) & Omzet tetap KOTOR/utuh; Tera hanya mengoreksi Penjualan_BERSIH di G/L.
-  const dayAgg = aggregateDailyGl(glRows.filter((r) => r.d === date));
-  const monthAgg = aggregateDailyGl(glRows);
-  const glByCode = new Map(
-    [...dayAgg.byProduct].map(([k, v]) => [k, v.signed] as const),
-  );
-  const teraByCode = new Map(
-    [...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const),
-  );
-  const glTotal = dayAgg.totalSigned;
-  const totTera = dayAgg.totalTera;
-  const glPctDay = dayAgg.hasGl ? glPercent(glTotal, totSales) : null;
-  const glProvisional = dayAgg.provisional;
-  const glGarbageCount = dayAgg.excludedTanks;
-
-  const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
-  const glMonthTotal = monthAgg.totalSigned;
-  const glPctMonth = monthAgg.hasGl ? glPercent(glMonthTotal, volMonth) : null;
-
-  const isPartial = isToday && shift.shifts < 3;
-  const gasMix = bauran(prodDay, "gasoline");
-  const oilMix = bauran(prodDay, "gasoil");
-
-  // ===== Alarm (3 cek aktif, 8 menunggu data — №6) =====
-  const targetGap = prodMonth.map((p) => {
-    const perDay = targetVolumePerDay(unit.code, mi.month, p.nama);
-    return perDay !== null ? p.vol - perDay * mi.dayOfMonth : null;
-  });
-  const worstGap = targetGap.filter((x): x is number => x !== null).sort((a, b) => a - b)[0];
-  const hasTarget = targetGap.some((x) => x !== null);
-
-  const na = (label: string, domain: string): AlarmCheck => ({
-    label,
-    state: "na",
-    note: `belum tersedia · ${domain}`,
-  });
-
-  // Cek 1 — Losses harian. Partial-day = PROVISIONAL: %-nya artefak denominator
-  // kecil (mis. 136,90%), jadi tampilkan L berjalan TANPA % dan jangan klaim
-  // aman/gagal. Label mengikuti status (aman / di atas ambang / sementara).
-  const dailyLoss = (): AlarmCheck => {
-    if (glPctDay === null)
-      return { label: "Losses harian — menunggu opname", state: "na", note: "opname penutup belum ada" };
-    if (glProvisional)
-      return {
-        label: "Losses harian — sementara",
-        state: "provisional",
-        note: `${signed(glTotal)} L berjalan · belum final, menunggu opname penutup${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
-      };
-    const within = Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005;
-    return {
-      label: within ? "Losses harian aman" : "Losses harian di atas ambang",
-      state: within ? "ok" : "fail",
-      note: `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
-    };
+  const generatedDate = today;
+  const exportMeta = {
+    unitDotted: unitDotted(unit.code),
+    unitName: unit.name,
+    dateLong: dateLong(date),
+    monthName: dateLong(date).split(" ")[2] ?? "",
+    dayOfMonth: mi.dayOfMonth,
+    daysInMonth: mi.daysInMonth,
+    staleDays: DO_STALE_DAYS,
+    generatedLabel: `${dateShort(generatedDate)} · ${timeWib(new Date().toISOString())}`,
   };
-
-  const monthlyWithin = glPctMonth === null || Math.abs(glPctMonth) <= 0.005;
-  const monthlyLoss: AlarmCheck = {
-    label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
-    state: monthlyWithin ? "ok" : "fail",
-    note: glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
-  };
-
-  const targetCheck = (): AlarmCheck => {
-    if (!hasTarget)
-      return { label: "Target bulan ini — belum diisi", state: "na", note: "target bulan ini belum diisi" };
-    const met = (worstGap ?? 0) >= 0;
-    return {
-      label: met ? "Target bulan ini tercapai" : "Target bulan ini di bawah prorata",
-      state: met ? "ok" : "fail",
-      note: worstGap !== undefined && worstGap < 0 ? `${parenNeg(worstGap)} vs prorata` : "sesuai prorata",
-    };
-  };
-
-  const checks: AlarmCheck[] = [
-    dailyLoss(),
-    monthlyLoss,
-    na("Setoran Bank Sesuai", "Domain setoran"),
-    targetCheck(),
-    na("Pencatatan DO Sesuai", "Domain DO"),
-    na("Pengeluaran Sudah Disahkan", "modul kas dorman"),
-    na("Harga Beli/Jual Benar", "master harga beli"),
-    na("Saldo Hutang/Piutang Pelanggan Sesuai", "Domain deposit"),
-    na("DO Untuk Penerimaan Besok Cukup", "Domain DO"),
-    na("Permintaan Besok Sudah Cukup", "Domain DO"),
-    na("Settlement EDC Sudah Sesuai", "Domain EDC"),
-  ];
-  const score = alarmScore(checks);
-  // fail≥2 → danger; tepat 1 fail → warning; tanpa fail tapi ada provisional → warning.
-  const scoreTone =
-    score.fail >= 2
-      ? "t-danger"
-      : score.fail === 1
-        ? "t-warning"
-        : score.provisional > 0
-          ? "t-warning"
-          : "t-success";
-  // v1: tampilkan hanya cek yang datanya tersedia (state !== "na"). Cek "na"
-  // muncul kembali otomatis begitu datanya masuk. alarmScore sudah
-  // mengecualikan "na" dari pembilang/penyebut → tak ada perubahan matematika.
-  const visibleChecks = checks.filter((c) => c.state !== "na");
-
-  const cashTotal = cash.filter((c) => !c.sbatal).reduce((s, c) => s + (c.ntotal ?? 0), 0);
-
-  // ===== RECAP HARIAN — Saldo Piutang/Hutang + 6 angka recap =====
-  // Saldo: dari domain piutang/hutang (formula terkunci probe 11-13). Enam angka
-  // recap = REUSE penuh sumber Rincian Penjualan (tak menarik ulang EasyMax):
-  // Pelanggan (vw_jualplg⊎vw_usevouc), EDC (vw_edc3), Transfer (= Pendapatan Non
-  // Tunai / deposit), dan 3 input manual pengawas (pengeluaran/pendapatan_lain/
-  // setoran_tunai = "Setoran Bank") dari app.manual_entry.
-  const recapBoxes: Array<{ label: string; val: number; note: string }> = [
-    { label: "Transaksi Pelanggan", val: recapPelanggan.reduce((s, r) => s + r.rp, 0), note: "penjualan tempo (RFID/voucher)" },
-    { label: "Pengeluaran", val: recapPengeluaran.reduce((s, r) => s + r.amount, 0), note: "input pengawas" },
-    { label: "EDC", val: recapEdc.reduce((s, r) => s + r.rp, 0), note: "non-tunai per channel" },
-    { label: "Pendapatan Lain", val: recapPendapatanLain.reduce((s, r) => s + r.amount, 0), note: "input pengawas" },
-    { label: "Transfer", val: recapDeposit.reduce((s, r) => s + r.rp, 0), note: "deposit / non-tunai" },
-    { label: "Setoran Bank", val: recapSetoran.reduce((s, r) => s + r.amount, 0), note: "disetor ke bank (pengawas)" },
-  ];
-  const saldoRows: Array<{ label: string; val: number; danger?: boolean }> = [
-    { label: "Saldo Piutang Pelanggan Lokal", val: saldo.piutangLokal },
-    { label: "Saldo Piutang Pelanggan Online", val: saldo.piutangOnline },
-    { label: "Saldo Hutang Pelanggan Lokal", val: saldo.hutangLokal, danger: true },
-  ];
-  const hasSaldo = saldo.piutangLokal !== 0 || saldo.piutangOnline !== 0 || saldo.hutangLokal !== 0;
-  const hasRecap = hasSaldo || recapBoxes.some((b) => b.val !== 0);
 
   return (
     <div className="lap-page">
-      <LaporanToolbar code={unit.code} date={date} detail={detail} />
+      <LaporanExport
+        code={unit.code}
+        businessDate={date}
+        generatedDate={generatedDate}
+        detail={detail}
+        model={m}
+        meta={exportMeta}
+      />
 
       {/* Header */}
       <div className="board-head mt6">
@@ -378,23 +275,19 @@ export default async function LaporanPage({
           {prodDay.length === 0 && (
             <div className="empty-inline">Belum ada penjualan pada tanggal bisnis ini.</div>
           )}
-          {ordered(prodDay).map((p) => {
-            const gl = glByCode.get(p.ckdbbm) ?? null;
-            const tera = teraByCode.get(p.ckdbbm) ?? 0;
-            return (
-              <div key={p.ckdbbm} className="grid-row cols-sales">
-                <span className="text-caption w600">{p.nama}</span>
-                <span className="right fs16 num">{idn(p.vol)}</span>
-                <span
-                  className={`right fs16 num ${gl !== null && gl < 0 ? "t-danger w700" : gl !== null && gl > 0 ? "t-success" : "t-tertiary"}`}
-                >
-                  {gl !== null ? signed(gl) : "—"}
-                </span>
-                <span className="right fs16 t-tertiary num">{tera > 0 ? idn(tera) : "—"}</span>
-                <span className="right fs16 num nowrap">{rp(p.omzet)}</span>
-              </div>
-            );
-          })}
+          {sales.rows.map((p) => (
+            <div key={p.ckdbbm} className="grid-row cols-sales">
+              <span className="text-caption w600">{p.nama}</span>
+              <span className="right fs16 num">{idn(p.vol)}</span>
+              <span
+                className={`right fs16 num ${p.gl !== null && p.gl < 0 ? "t-danger w700" : p.gl !== null && p.gl > 0 ? "t-success" : "t-tertiary"}`}
+              >
+                {p.gl !== null ? signed(p.gl) : "—"}
+              </span>
+              <span className="right fs16 t-tertiary num">{p.tera > 0 ? idn(p.tera) : "—"}</span>
+              <span className="right fs16 num nowrap">{rp(p.omzet)}</span>
+            </div>
+          ))}
           <div className="grid-total cols-sales">
             <span className="text-caption w700">TOTAL</span>
             <span className="right w700 num lap-totnum">{idn(totSales)}</span>
@@ -487,29 +380,20 @@ export default async function LaporanPage({
                 <span className="right">G/L bulan (L)</span>
                 <span className="right">% vs vol</span>
               </div>
-              {ordered(
-                [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
-                  ckdbbm,
-                  nama: v.nama ?? ckdbbm,
-                  selisih: v.signed,
-                })),
-              ).map((g) => {
-                const vol = prodMonth.find((p) => p.ckdbbm === g.ckdbbm)?.vol ?? 0;
-                return (
-                  <div key={g.ckdbbm} className="grid-row cols-glkum">
-                    <span className="fs16">{g.nama}</span>
-                    <span
-                      className={`right fs16 num ${g.selisih < 0 ? (g.selisih < -100 ? "t-danger w700" : "t-danger") : g.selisih > 0 ? "t-success" : "t-tertiary"}`}
-                    >
-                      {signed(g.selisih)} L
-                    </span>
-                    <span className="right fs16 t-tertiary num">
-                      {vol > 0 ? pct(Math.abs(g.selisih) / vol, 2) : "—"}
-                    </span>
-                  </div>
-                );
-              })}
-              {monthAgg.byProduct.size === 0 && (
+              {glMonthly.rows.map((g) => (
+                <div key={g.ckdbbm} className="grid-row cols-glkum">
+                  <span className="fs16">{g.nama}</span>
+                  <span
+                    className={`right fs16 num ${g.selisih < 0 ? (g.selisih < -100 ? "t-danger w700" : "t-danger") : g.selisih > 0 ? "t-success" : "t-tertiary"}`}
+                  >
+                    {signed(g.selisih)} L
+                  </span>
+                  <span className="right fs16 t-tertiary num">
+                    {g.vol > 0 ? pct(Math.abs(g.selisih) / g.vol, 2) : "—"}
+                  </span>
+                </div>
+              ))}
+              {glMonthly.rows.length === 0 && (
                 <div className="empty-inline">Belum ada opname penutup bulan ini.</div>
               )}
             </div>
@@ -533,39 +417,31 @@ export default async function LaporanPage({
                 <span className="right">Alokasi/bln</span>
                 <span className="right">(Kekurangan)/Kelebihan</span>
               </div>
-              {ordered(prodMonth).map((p) => {
-                const perDay = targetVolumePerDay(unit.code, mi.month, p.nama);
-                const alok = perDay !== null ? perDay * mi.daysInMonth : null;
-                const sel = perDay !== null ? p.vol - perDay * mi.dayOfMonth : null;
-                const terima = delivMonth.find((d) => canonicalProductKey(d.nama) === canonicalProductKey(p.nama))?.vol ?? 0;
-                return (
-                  <div key={p.ckdbbm} className="grid-row cols-target">
-                    <span className="text-caption w600">{p.nama}</span>
-                    <span className="right fs16 num">{fmtL(p.vol)}</span>
-                    <span className="right fs16 t-secondary num">
-                      {fmtL(p.vol / mi.dayOfMonth)}
-                    </span>
-                    <span className="right fs16 t-secondary num">{fmtL(terima)}</span>
-                    <span className="right fs16 t-secondary num">
-                      {alok !== null ? fmtL(alok) : "—"}
-                    </span>
-                    <span
-                      className={`right fs16 num ${
-                        sel === null
-                          ? "t-tertiary"
-                          : sel < -2000
-                            ? "t-danger w700"
-                            : sel < 0
-                              ? "t-warning"
-                              : "t-success"
-                      }`}
-                    >
-                      {sel !== null ? parenNeg(Math.round(sel)) : "target belum diisi"}
-                    </span>
-                  </div>
-                );
-              })}
-              {prodMonth.length === 0 && (
+              {target.rows.map((p) => (
+                <div key={p.ckdbbm} className="grid-row cols-target">
+                  <span className="text-caption w600">{p.nama}</span>
+                  <span className="right fs16 num">{fmtL(p.vol)}</span>
+                  <span className="right fs16 t-secondary num">{fmtL(p.avgPerDay)}</span>
+                  <span className="right fs16 t-secondary num">{fmtL(p.terima)}</span>
+                  <span className="right fs16 t-secondary num">
+                    {p.alok !== null ? fmtL(p.alok) : "—"}
+                  </span>
+                  <span
+                    className={`right fs16 num ${
+                      p.sel === null
+                        ? "t-tertiary"
+                        : p.sel < -2000
+                          ? "t-danger w700"
+                          : p.sel < 0
+                            ? "t-warning"
+                            : "t-success"
+                    }`}
+                  >
+                    {p.sel !== null ? parenNeg(Math.round(p.sel)) : "target belum diisi"}
+                  </span>
+                </div>
+              ))}
+              {target.rows.length === 0 && (
                 <div className="empty-inline">Belum ada penjualan bulan ini.</div>
               )}
             </div>
@@ -694,7 +570,7 @@ export default async function LaporanPage({
                 {DOMAIN.hargaBeli && <span className="right">Margin</span>}
                 {DOMAIN.hargaBeli && <span className="right">%</span>}
               </div>
-              {ordered(prodDay).map((p) => (
+              {harga.rows.map((p) => (
                 <div key={p.ckdbbm} className={`grid-row cols-harga${DOMAIN.hargaBeli ? "" : " lite"}`}>
                   <span className="fs16 w600">{p.nama}</span>
                   {DOMAIN.hargaBeli && <span className="right fs16 t-tertiary num">—</span>}
@@ -748,28 +624,20 @@ export default async function LaporanPage({
         </div>
         <div className="rekon-grid">
           <div>
-            {[
-              { l: "A", label: "Omset Penjualan", val: rp(totOmzet), em: false, op: "" },
-              { l: "B", label: "Tera / Nozzle Test", val: null, op: "−" },
-              { l: "C", label: "Pelanggan (piutang)", val: null, op: "−" },
-              { l: "D", label: "EDC", val: null, op: "−" },
-              { l: "E", label: "Penjualan Tunai", val: null, em: true, formula: "E = A − (B + C + D)" },
-              { l: "F", label: "Pendapatan Lain", val: null, op: "+" },
-              { l: "G", label: "Pengeluaran", val: cash.length > 0 ? rp(cashTotal) : null, op: "−" },
-              { l: "H", label: "Uang Tunai", val: null, em: true, formula: "H = E + F − G" },
-              { l: "I", label: "Setoran Bank", val: null, em: true },
-            ].map((r) => (
+            {rekon.rows.map((r) => (
               <div key={r.l} className={`rekon-row${r.em ? " em" : ""}`}>
                 <span className={`rekon-badge${r.em ? " em" : ""}`}>{r.l}</span>
                 <div className="rekon-label">
                   <span className={`text-body${r.em ? " w700" : ""}`}>{r.label}</span>
-                  {"formula" in r && r.formula && (
+                  {r.formula && (
                     <span className="fs15 t-tertiary mono rekon-formula">{r.formula}</span>
                   )}
                 </div>
                 <span className="fs15 t-tertiary rekon-op">{r.op ?? ""}</span>
-                <span className={`num nowrap rekon-val${r.em ? " w700" : ""} ${r.val ? "t-primary" : "t-tertiary"}`}>
-                  {r.val ?? "belum tersedia"}
+                <span
+                  className={`num nowrap rekon-val${r.em ? " w700" : ""} ${r.val !== null ? "t-primary" : "t-tertiary"}`}
+                >
+                  {r.val !== null ? rp(r.val) : "belum tersedia"}
                 </span>
               </div>
             ))}
