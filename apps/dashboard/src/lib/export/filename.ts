@@ -9,8 +9,10 @@
 export interface ReportFilenameParts {
   /** Nama laporan, mis. "Rincian-Penjualan". */
   reportName: string;
-  /** Kode unit SPBU (scope), mis. "6478111". */
-  unitCode: string;
+  /** Kode unit SPBU → segmen scope "SPBU-{code}". Abaikan bila `scope` diberi. */
+  unitCode?: string;
+  /** Override segmen scope untuk laporan multi-unit, mis. "SolaGroup". */
+  scope?: string;
   /** Periode laporan ISO, mis. "2026-06-11". */
   period: string;
   /** Tanggal dibuat (WIB) ISO, mis. "2026-07-01". */
@@ -29,7 +31,7 @@ function seg(s: string): string {
 }
 
 export function buildReportFilename(parts: ReportFilenameParts): string {
-  const scope = `SPBU-${seg(parts.unitCode)}`;
+  const scope = parts.scope ? seg(parts.scope) : `SPBU-${seg(parts.unitCode ?? "x")}`;
   const bits = [seg(parts.reportName), scope, seg(parts.period), seg(parts.generated)];
   return `${bits.join("_")}.pdf`;
 }

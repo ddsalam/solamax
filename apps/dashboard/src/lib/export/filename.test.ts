@@ -24,6 +24,17 @@ describe("buildReportFilename", () => {
     ).toBe("Rincian-Penjualan_SPBU-64-781-11_2026-06-11_2026-07-01.pdf");
   });
 
+  it("mendukung scope multi-unit (board) via override", () => {
+    expect(
+      buildReportFilename({
+        reportName: "Ringkasan-Direksi",
+        scope: "SolaGroup",
+        period: "2026-07-02",
+        generated: "2026-07-02",
+      }),
+    ).toBe("Ringkasan-Direksi_SolaGroup_2026-07-02_2026-07-02.pdf");
+  });
+
   it("tidak menghasilkan segmen kosong / dash beruntun / dash tepi", () => {
     const name = buildReportFilename({
       reportName: "  ",
