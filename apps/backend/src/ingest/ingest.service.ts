@@ -64,31 +64,45 @@ export class IngestService {
       ),
     ].sort(); // urutan tetap → dua transaksi mengunci kunci yang sama dgn urutan sama (anti-deadlock)
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const key of lockKeys) {
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const key of lockKeys) {
+          await tx.$executeRawUnsafe(
+            `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+            key,
+          );
+        }
+        for (const { sql, params } of statements) {
+          await tx.$executeRawUnsafe(sql, ...params);
+        }
+        // sync_state ikut transaksi yang sama → ter-commit bersama data, tak pernah
+        // mendahuluinya. last_watermark hanya digeser maju (GREATEST).
         await tx.$executeRawUnsafe(
-          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-          key,
+          `INSERT INTO "sync_state" ("unit_id","domain","last_watermark","last_run_at","last_row_count")
+           VALUES ($1,$2,$3::timestamptz,now(),$4)
+           ON CONFLICT ("unit_id","domain") DO UPDATE SET
+             "last_watermark" = GREATEST(COALESCE(EXCLUDED."last_watermark", "sync_state"."last_watermark"), COALESCE("sync_state"."last_watermark", EXCLUDED."last_watermark")),
+             "last_run_at" = now(),
+             "last_row_count" = EXCLUDED."last_row_count"`,
+          unitId,
+          payload.domain,
+          watermark,
+          totalRows,
         );
-      }
-      for (const { sql, params } of statements) {
-        await tx.$executeRawUnsafe(sql, ...params);
-      }
-      // sync_state ikut transaksi yang sama → ter-commit bersama data, tak pernah
-      // mendahuluinya. last_watermark hanya digeser maju (GREATEST).
-      await tx.$executeRawUnsafe(
-        `INSERT INTO "sync_state" ("unit_id","domain","last_watermark","last_run_at","last_row_count")
-         VALUES ($1,$2,$3::timestamptz,now(),$4)
-         ON CONFLICT ("unit_id","domain") DO UPDATE SET
-           "last_watermark" = GREATEST(COALESCE(EXCLUDED."last_watermark", "sync_state"."last_watermark"), COALESCE("sync_state"."last_watermark", EXCLUDED."last_watermark")),
-           "last_run_at" = now(),
-           "last_row_count" = EXCLUDED."last_row_count"`,
-        unitId,
-        payload.domain,
-        watermark,
-        totalRows,
-      );
-    });
+      },
+      // Default Prisma interactive-transaction timeout (5000ms) diamati kena di
+      // produksi (2026-07-01, GATE 7): burst UPSERT besar (piutang/hutang
+      // full-sync, 1000 baris/batch) di bawah kontensi pool kecil
+      // (connection_limit=3) dorong wall-clock transaksi ke 5006-6247ms →
+      // Prisma auto-expire transaksi SEBELUM commit → 500 ke agent. Semua
+      // kejadian pulih via retry bawaan agent (kerja SQL-nya sendiri cepat;
+      // murni kontensi durasi-tunggu, bukan bug data) — tapi retry yang bisa
+      // dihindari = beban ekstra tak perlu. 15s (< pool_timeout=20 agar
+      // transaksi tak pernah nunggu lebih lama dari budget pool) menghapus
+      // false-positive ini tanpa menutupi kegagalan asli (deadlock/hang tetap
+      // timeout, hanya lebih lambat terdeteksi).
+      { timeout: 15_000 },
+    );
 
     const upserted: Record<string, number> = {};
     for (const [table, rows] of entries) upserted[table] = rows.length;
