@@ -22,7 +22,15 @@ import {
   runProbe16,
 } from "./probe.js";
 import { StateStore } from "./state/store.js";
-import { resyncSales, runCycle, runForever, type SyncDeps } from "./sync.js";
+import {
+  resyncSales,
+  runCycle,
+  runForever,
+  runManualSweep,
+  SWEEP_TABLE,
+  type SweepDomain,
+  type SyncDeps,
+} from "./sync.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -47,6 +55,8 @@ interface Args {
   probe15: boolean;
   probe16: boolean;
   resyncSales: boolean;
+  deepSweepDomain?: string;
+  deepSweepDays?: number;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
   configPath?: string;
@@ -99,7 +109,10 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--probe15") a.probe15 = true;
     else if (arg === "--probe16") a.probe16 = true;
     else if (arg === "--resync-sales") a.resyncSales = true;
-    else if (arg === "--discovery") a.probeDiscoveryOnly = true;
+    else if (arg === "--deep-sweep") {
+      a.deepSweepDomain = argv[++i];
+      a.deepSweepDays = Number(argv[++i]);
+    } else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
     else if (arg === "--config") a.configPath = argv[++i];
     else if (arg === "--help" || arg === "-h") {
@@ -138,6 +151,8 @@ function printHelp(): void {
       "  --probe15 [tgl...]  FASE 0.5i: LEDGER terra resmi (tr_hterra/tr_dterra/vw_terra) + rekon B 8-hari. Read-only.",
       "  --probe16 [tgl...]  FASE 0.5j: REKON ledger terra (kolom benar: DTGLTERRA/NVOLUME/NTOTAL) vs oracle B. Read-only.",
       "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
+      "  --deep-sweep <domain> <days>  Track 2: sapuan manual SATU domain, N hari terakhir s/d hari ini.",
+      "                      <domain> ∈ pelanggan|edc|opname|delivery|tera|cash|tebus. Idempoten (REPLACE/UPSERT). MENGIRIM.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
       "  --once              Jalankan satu siklus lalu keluar (default: loop berkala).",
@@ -366,6 +381,18 @@ async function main(): Promise<void> {
         return;
       }
       await resyncSales(deps, from, to);
+    } else if (args.deepSweepDomain !== undefined) {
+      const domain = args.deepSweepDomain as SweepDomain;
+      if (!(domain in SWEEP_TABLE) || !args.deepSweepDays || Number.isNaN(args.deepSweepDays)) {
+        log.error("--deep-sweep butuh <domain> valid + <days> angka", {
+          domain: args.deepSweepDomain,
+          days: args.deepSweepDays,
+          domainValid: Object.keys(SWEEP_TABLE),
+        });
+        process.exitCode = 1;
+        return;
+      }
+      await runManualSweep(deps, domain, args.deepSweepDays);
     } else if (args.once || args.dryRun) {
       await runCycle(deps, {
         includeMasters: true,

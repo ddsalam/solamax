@@ -3,14 +3,20 @@ import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import {
   CASH_DOMAIN,
+  CASH_RESYNC,
   DATETIME_DOMAINS,
+  DELIVERY_RESYNC,
   DEPOSIT_DOMAIN,
   PIUTANG_DOMAIN,
   HUTANG_DOMAIN,
+  OPNAME_RESYNC,
   TEBUS_DOMAIN,
+  TEBUS_RESYNC,
   TERA_DOMAIN,
+  TERA_RESYNC,
   TERRA_RESMI_DOMAIN,
   EDC_DOMAIN,
+  EDC_RESYNC,
   MASTERS_DOMAIN,
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
@@ -861,6 +867,311 @@ async function syncPelanggan(d: SyncDeps): Promise<void> {
   if (high) d.store.setWatermark("pelanggan", high);
 }
 
+// ============================================================================
+// Track 2 (2026-07-02) — sapuan lebar generik: menutup akar Transaksi Pelanggan
+// (koreksi EasyMax lebih tua dari window rescan hot-path tak ter-recapture) untuk
+// SEMUA domain berjendela, bukan cuma pelanggan. edc/pelanggan sudah REPLACE
+// (Track 1: advisory-lock pelanggan/voucher, ON CONFLICT edc); opname/delivery/
+// tera/cash/tebus UPSERT natural-key — re-pull SELALU idempoten by construction,
+// tak butuh kunci tambahan. Dua tier, KEDUANYA otomatis (tanpa manusia):
+//   Tier 1 — jendela-terkini per siklus (nightly/weekly, generalisasi
+//     syncSalesRescan yang sudah terbukti di produksi utk sales).
+//   Tier 2 — backstop full-history off-peak jarang (bulanan; pelanggan/edc dapat
+//     lapis tambahan mingguan 90-hari krn union-view/join-nya mahal di MySQL 5.0).
+// SELALU jalan-MAJU chunked-by-date (walkDateWindowsForward) — tak pernah query
+// tanpa batas atas (jaga dari stall 288k 21 Jun / e3ea59a).
+// ============================================================================
+
+/**
+ * Jalan MAJU per window [lo,hiExcl) menutup [fromDate,toExcl), chunk `chunkDays`
+ * hari. `pull` mengembalikan `false` bila batch gagal terkirim (buffered/dry) →
+ * berhenti; siklus/jadwal berikutnya mengulang (aman: REPLACE/UPSERT idempoten).
+ */
+async function walkDateWindowsForward(
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+  pull: (lo: string, hiExcl: string) => Promise<boolean>,
+): Promise<void> {
+  let lo = fromDate;
+  while (lo < toExcl) {
+    let hiExcl = subtractDays(lo, -chunkDays);
+    if (hiExcl > toExcl) hiExcl = toExcl;
+    const ok = await pull(lo, hiExcl);
+    if (!ok) return;
+    lo = hiExcl;
+  }
+}
+
+/** [fromDate,toExcl) mencakup `days` hari terakhir s/d hari ini (inklusif). */
+function recentWindow(d: SyncDeps, days: number): { from: string; toExcl: string } {
+  const todayWib = new Date(Date.now() + tzOffsetMinutes(d.cfg.timezone) * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  return { from: subtractDays(todayWib, days), toExcl: subtractDays(todayWib, -1) };
+}
+
+/** true bila jam-WIB sekarang ∈ [startHour,endHour) — gerbang off-peak (jauh dari jam pompa sibuk). */
+export function isOffPeakWib(
+  nowMs: number,
+  offsetMin: number,
+  startHour: number,
+  endHour: number,
+): boolean {
+  const hour = new Date(nowMs + offsetMin * 60_000).getUTCHours();
+  return hour >= startHour && hour < endHour;
+}
+
+async function sweepPelanggan(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const { sale, vou } = await pullPelangganWindow(d, lo, hiExcl);
+    if (sale.rows.length === 0 && vou.rows.length === 0) return true;
+    return dispatchPelanggan(d, sale.rows, vou.rows);
+  });
+}
+
+async function sweepEdc(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(EDC_RESYNC.sql, [
+      businessDateToCtgl(lo),
+      businessDateToCtgl(hiExcl),
+    ]);
+    if (raw.length === 0) return true;
+    const { rows } = EDC_RESYNC.map(raw, offset);
+    if (rows.length === 0) return true;
+    for (const chunk of batchByBusinessDate(rows, d.cfg.sync.batchSize)) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "edc",
+        watermark_high: null,
+        tables: { edc: chunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+async function sweepCash(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(CASH_RESYNC.sql, [lo, hiExcl]);
+    if (raw.length === 0) return true;
+    const page = CASH_RESYNC.map(raw);
+    const headers = page.tables.cash_header ?? [];
+    const details = page.tables.cash_detail ?? [];
+    if (headers.length === 0) return true;
+    for (let i = 0; i < headers.length; i += d.cfg.sync.batchSize) {
+      const hChunk = headers.slice(i, i + d.cfg.sync.batchSize);
+      const ids = new Set(hChunk.map((h) => h.ckdkb));
+      const dChunk = details.filter((x) => ids.has(x.ckdkb));
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "cash",
+        watermark_high: null,
+        tables: { cash_header: hChunk, cash_detail: dChunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+async function sweepTebus(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(TEBUS_RESYNC.sql, [lo, hiExcl]);
+    if (raw.length === 0) return true;
+    const page = TEBUS_RESYNC.map(raw);
+    const headers = page.tables.tebus_header ?? [];
+    const details = page.tables.tebus_detail ?? [];
+    if (headers.length === 0) return true;
+    for (let i = 0; i < headers.length; i += d.cfg.sync.batchSize) {
+      const hChunk = headers.slice(i, i + d.cfg.sync.batchSize);
+      const ids = new Set(hChunk.map((h) => h.ckdtbs));
+      const dChunk = details.filter((x) => ids.has(x.ckdtbs));
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "tebus",
+        watermark_high: null,
+        tables: { tebus_header: hChunk, tebus_detail: dChunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+async function sweepOpname(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(OPNAME_RESYNC.sql, [lo, hiExcl]);
+    if (raw.length === 0) return true;
+    const rows = OPNAME_RESYNC.map(raw, offset).tables.opname;
+    if (rows.length === 0) return true;
+    for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+      const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "opname",
+        watermark_high: null,
+        tables: { opname: chunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+async function sweepDelivery(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(DELIVERY_RESYNC.sql, [lo, hiExcl]);
+    if (raw.length === 0) return true;
+    const rows = DELIVERY_RESYNC.map(raw, offset).tables.delivery;
+    if (rows.length === 0) return true;
+    for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+      const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "delivery",
+        watermark_high: null,
+        tables: { delivery: chunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+async function sweepTera(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(TERA_RESYNC.sql, [`${lo} 00:00:00`, `${hiExcl} 00:00:00`]);
+    if (raw.length === 0) return true;
+    const rows = TERA_RESYNC.map(raw, offset).rows;
+    if (rows.length === 0) return true;
+    for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+      const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "tera",
+        watermark_high: null,
+        tables: { tera: chunk },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
+export type SweepDomain =
+  | "pelanggan"
+  | "edc"
+  | "opname"
+  | "delivery"
+  | "tera"
+  | "cash"
+  | "tebus";
+
+type SweepFn = (
+  d: SyncDeps,
+  from: string,
+  toExcl: string,
+  chunkDays: number,
+) => Promise<void>;
+
+export const SWEEP_TABLE: Record<SweepDomain, SweepFn> = {
+  pelanggan: sweepPelanggan,
+  edc: sweepEdc,
+  opname: sweepOpname,
+  delivery: sweepDelivery,
+  tera: sweepTera,
+  cash: sweepCash,
+  tebus: sweepTebus,
+};
+
+/** Satu unit kerja sapuan terjadwal — rentang tanggal sudah dihitung di pemanggil. */
+export interface SweepJob {
+  domain: SweepDomain;
+  tier: "tier1" | "tier2-wide" | "tier2-full";
+  from: string;
+  toExcl: string;
+  chunkDays: number;
+}
+
+/**
+ * Trigger manual satu domain (CLI `--deep-sweep <domain> <days>`, dipakai utk
+ * verifikasi rollout Track 2 — bukan jalur otomatis). Jalan sekali, sinkron.
+ */
+export async function runManualSweep(
+  d: SyncDeps,
+  domain: SweepDomain,
+  days: number,
+  chunkDays?: number,
+): Promise<void> {
+  const { from, toExcl } = recentWindow(d, days);
+  log.info("sapuan manual: mulai", { domain, from, toExcl });
+  await SWEEP_TABLE[domain](d, from, toExcl, chunkDays ?? d.cfg.sync.deepSweepChunkDays);
+  log.info("sapuan manual: selesai", { domain, from, toExcl });
+}
+
+/** Jalankan sweepJobs, isolasi per job (kegagalan satu domain tak henti yang lain). */
+async function runSweepJobs(d: SyncDeps, jobs: readonly SweepJob[]): Promise<void> {
+  for (const job of jobs) {
+    // Log mulai/selesai eksplisit (sama pola "sapuan manual") — tanpa ini, sapuan
+    // terjadwal otomatis TAK BISA dibedakan dari sync hot-path biasa di log; operator
+    // tak bisa konfirmasi jadwal benar-benar jalan tanpa menunggu kegagalan.
+    log.info("sapuan terjadwal: mulai", {
+      domain: job.domain, tier: job.tier, from: job.from, toExcl: job.toExcl,
+    });
+    try {
+      await SWEEP_TABLE[job.domain](d, job.from, job.toExcl, job.chunkDays);
+      log.info("sapuan terjadwal: selesai", { domain: job.domain, tier: job.tier });
+    } catch (err) {
+      log.error("sapuan gagal — dilewati siklus ini", {
+        domain: job.domain,
+        tier: job.tier,
+        err: String(err),
+      });
+    }
+  }
+}
+
 async function syncMasters(d: SyncDeps): Promise<void> {
   const tables: Tables = {};
   // Isolasi per tabel master: satu query gagal (mis. nama kolom beda antar
@@ -910,6 +1221,8 @@ export async function runCycle(
     includeMasters: boolean;
     includePelanggan: boolean;
     includeSalesRescan: boolean;
+    /** Track 2: sapuan terjadwal siklus ini (rentang sudah dihitung pemanggil). */
+    sweepJobs?: readonly SweepJob[];
   },
 ): Promise<void> {
   // Flush buffer dulu (FIFO). Bila backend masih offline → lewati live agar
@@ -1043,6 +1356,11 @@ export async function runCycle(
       }
     }
   }
+  // Track 2: sapuan lebar terjadwal (tier1 nightly/weekly + tier2 backstop
+  // full-history off-peak) — isolasi per domain (lihat runSweepJobs).
+  if (opts.sweepJobs && opts.sweepJobs.length > 0) {
+    await runSweepJobs(d, opts.sweepJobs);
+  }
 }
 
 /** Loop berkala sampai diberhentikan (SIGINT/SIGTERM). */
@@ -1054,17 +1372,100 @@ export async function runForever(d: SyncDeps): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
+  // Track 2: sekali di start — konfirmasi jadwal ter-load tanpa menunggu off-peak
+  // window pertama (operator bisa cek log segera setelah restart Task Scheduler).
+  log.info("Track 2 sapuan terjadwal: konfigurasi dimuat", {
+    offPeakWib: `${d.cfg.sync.offPeakStartHourWib}:00–${d.cfg.sync.offPeakEndHourWib}:00`,
+    tier1: {
+      pelanggan: `${d.cfg.sync.pelangganDeepRescanDays}h/${d.cfg.sync.pelangganDeepRescanIntervalMs}ms`,
+      edc: `${d.cfg.sync.edcDeepRescanDays}h/${d.cfg.sync.edcDeepRescanIntervalMs}ms`,
+      opname: `${d.cfg.sync.opnameDeepRescanDays}h/${d.cfg.sync.opnameDeepRescanIntervalMs}ms`,
+      delivery: `${d.cfg.sync.deliveryDeepRescanDays}h/${d.cfg.sync.deliveryDeepRescanIntervalMs}ms`,
+      tera: `${d.cfg.sync.teraDeepRescanDays}h/${d.cfg.sync.teraDeepRescanIntervalMs}ms`,
+      cash: `${d.cfg.sync.cashDeepRescanDays}h/${d.cfg.sync.cashDeepRescanIntervalMs}ms`,
+      tebus: `${d.cfg.sync.tebusDeepRescanDays}h/${d.cfg.sync.tebusDeepRescanIntervalMs}ms`,
+    },
+    tier2Wide: `${d.cfg.sync.wideSweepDays}h/${d.cfg.sync.wideSweepIntervalMs}ms (pelanggan,edc)`,
+    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (semua 7 domain)`,
+  });
+
   let lastMasters = 0;
   let lastPelanggan = 0;
   let lastSalesRescan = 0;
+  // Track 2: penanda "terakhir jalan" per domain × tier — sama pola optimistik
+  // dgn lastMasters/lastPelanggan/lastSalesRescan di atas (di-set saat DIMASUKKAN
+  // ke siklus, bukan tergantung sukses internal — kegagalan diisolasi & di-log di
+  // runCycle/runSweepJobs; sapuan berikutnya menutup ulang jendela yang tumpang
+  // tindih lebar, jadi retry otomatis tanpa perlu pelacakan sukses/gagal terpisah).
+  const lastTier1: Record<SweepDomain, number> = {
+    pelanggan: 0, edc: 0, opname: 0, delivery: 0, tera: 0, cash: 0, tebus: 0,
+  };
+  const lastTier2Wide: Record<"pelanggan" | "edc", number> = { pelanggan: 0, edc: 0 };
+  let lastTier2Full = 0; // satu penanda: tier2-full jalan utk SEMUA 7 domain bersamaan
+
+  const TIER1_DAYS: Record<SweepDomain, (c: AgentConfig) => number> = {
+    pelanggan: (c) => c.sync.pelangganDeepRescanDays,
+    edc: (c) => c.sync.edcDeepRescanDays,
+    opname: (c) => c.sync.opnameDeepRescanDays,
+    delivery: (c) => c.sync.deliveryDeepRescanDays,
+    tera: (c) => c.sync.teraDeepRescanDays,
+    cash: (c) => c.sync.cashDeepRescanDays,
+    tebus: (c) => c.sync.tebusDeepRescanDays,
+  };
+  const TIER1_INTERVAL_MS: Record<SweepDomain, (c: AgentConfig) => number> = {
+    pelanggan: (c) => c.sync.pelangganDeepRescanIntervalMs,
+    edc: (c) => c.sync.edcDeepRescanIntervalMs,
+    opname: (c) => c.sync.opnameDeepRescanIntervalMs,
+    delivery: (c) => c.sync.deliveryDeepRescanIntervalMs,
+    tera: (c) => c.sync.teraDeepRescanIntervalMs,
+    cash: (c) => c.sync.cashDeepRescanIntervalMs,
+    tebus: (c) => c.sync.tebusDeepRescanIntervalMs,
+  };
+
   while (!stopped) {
     const now = Date.now();
     const includeMasters = now - lastMasters >= d.cfg.sync.masterIntervalMs;
     const includePelanggan = now - lastPelanggan >= d.cfg.sync.pelangganIntervalMs;
     const includeSalesRescan =
       now - lastSalesRescan >= d.cfg.sync.salesRescanIntervalMs;
+
+    // Track 2: gerbang off-peak WIB — tier1/tier2 HANYA due bila jam sekarang
+    // di jendela sepi; bila belum, jam-terakhir TAK di-set → dicoba lagi tiap
+    // poll (2 mnt) sampai off-peak tercapai DAN interval sudah lewat.
+    const offset = tzOffsetMinutes(d.cfg.timezone);
+    const offPeak = isOffPeakWib(
+      now,
+      offset,
+      d.cfg.sync.offPeakStartHourWib,
+      d.cfg.sync.offPeakEndHourWib,
+    );
+    const sweepJobs: SweepJob[] = [];
+    if (offPeak) {
+      for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+        if (now - lastTier1[domain] >= TIER1_INTERVAL_MS[domain](d.cfg)) {
+          const { from, toExcl } = recentWindow(d, TIER1_DAYS[domain](d.cfg));
+          sweepJobs.push({ domain, tier: "tier1", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
+          lastTier1[domain] = now;
+        }
+      }
+      for (const domain of ["pelanggan", "edc"] as const) {
+        if (now - lastTier2Wide[domain] >= d.cfg.sync.wideSweepIntervalMs) {
+          const { from, toExcl } = recentWindow(d, d.cfg.sync.wideSweepDays);
+          sweepJobs.push({ domain, tier: "tier2-wide", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
+          lastTier2Wide[domain] = now;
+        }
+      }
+      if (now - lastTier2Full >= d.cfg.sync.fullSweepIntervalMs) {
+        const { from, toExcl } = recentWindow(d, d.cfg.sync.fullSweepFloorDays);
+        for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+          sweepJobs.push({ domain, tier: "tier2-full", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
+        }
+        lastTier2Full = now;
+      }
+    }
+
     try {
-      await runCycle(d, { includeMasters, includePelanggan, includeSalesRescan });
+      await runCycle(d, { includeMasters, includePelanggan, includeSalesRescan, sweepJobs });
       if (includeMasters) lastMasters = Date.now();
       if (includePelanggan) lastPelanggan = Date.now();
       if (includeSalesRescan) lastSalesRescan = Date.now();
