@@ -11,14 +11,15 @@
  *  6  footer "Halaman X dari Y" NATIF via footer:(currentPage,pageCount)
  * 10  angka/tanggal sudah id-ID/WIB dari lib/format (via rincian-model)
  */
-import type {
-  Content,
-  ContentTable,
-  CustomTableLayout,
-  TableCell,
-  TDocumentDefinitions,
-} from "pdfmake/interfaces";
+import type { Content, ContentTable, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import { sectionEnabled, type ExportConfig } from "./config";
+import { pdfText } from "./glyphs";
+import {
+  CONTENT_WIDTH_PORTRAIT as CONTENT_WIDTH,
+  headerOnlyLayout,
+  ledgerLayout,
+  th,
+} from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import type { RincianModel, Section, SummaryRow } from "@/lib/rincian-model";
 
@@ -31,51 +32,6 @@ export interface RincianDocMeta {
   dateLong: string;
   /** Label "dibuat" untuk footnote, mis. "1 Jul 2026 · 09.14". */
   generatedLabel: string;
-}
-
-const CONTENT_WIDTH = 515; // A4 (595.28pt) − margin kiri/kanan 40+40
-
-/**
- * Sanitasi teks KHUSUS PDF: font Roboto tertanam pdfmake tak punya sebagian
- * glyph dekoratif/simbol (mereka tampil sbg kotak kosong). Ganti dgn padanan
- * ASCII yang setara makna. Teks LAYAR tak tersentuh (dipakai di jalur PDF saja).
- * Set ini diverifikasi via cmap Roboto (fontkit): hanya glyph yang BENAR-BENAR
- * hilang yang dipetakan. Sengaja TIDAK memetakan yang terbukti ADA di Roboto:
- * "·" (U+00B7), "−" (U+2212), "—" (U+2014), dan "≥/≤/≠" — agar PDF setia ke layar.
- */
-const GLYPH_MAP: Record<string, string> = {
-  "⊎": "+", // ⊎ multiset-union → +
-  "⚠": "!", // ⚠ warning
-  "✓": "OK", // ✓
-  "✔": "OK", // ✔
-  "✗": "x", // ✗
-  "✘": "x", // ✘
-  "→": "->", // →
-  "←": "<-", // ←
-  "↑": "^", // ↑
-  "↓": "v", // ↓
-};
-function pdfText(s: string): string {
-  return s.replace(/[⊎⚠✓✔✗✘→←↑↓]/g, (c) => GLYPH_MAP[c] ?? c);
-}
-
-/** Layout tabel ledger: header navy, zebra abu-abu muda, garis tipis. */
-const ledgerLayout: CustomTableLayout = {
-  fillColor: (rowIndex) => {
-    if (rowIndex === 0) return PDF.navy; // header
-    return rowIndex % 2 === 0 ? PDF.zebra : null; // zebra aman-grayscale
-  },
-  hLineWidth: () => 0.5,
-  vLineWidth: () => 0,
-  hLineColor: () => PDF.border,
-  paddingTop: () => 3,
-  paddingBottom: () => 3,
-  paddingLeft: () => 5,
-  paddingRight: () => 5,
-};
-
-function th(text: string, alignment?: "right"): TableCell {
-  return { text, style: "th", alignment };
 }
 
 /** Satu section ledger → tabel pdfmake (header berulang + tak memecah baris). */
@@ -190,16 +146,7 @@ function summaryTable(summary: SummaryRow[]): Content {
       },
       {
         table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths: [18, "*", 110], body },
-        layout: {
-          fillColor: (rowIndex) => (rowIndex === 0 ? PDF.navy : null),
-          hLineWidth: () => 0.5,
-          vLineWidth: () => 0,
-          hLineColor: () => PDF.border,
-          paddingTop: () => 3,
-          paddingBottom: () => 3,
-          paddingLeft: () => 5,
-          paddingRight: () => 5,
-        } as CustomTableLayout,
+        layout: headerOnlyLayout,
       },
     ],
   } as Content;
