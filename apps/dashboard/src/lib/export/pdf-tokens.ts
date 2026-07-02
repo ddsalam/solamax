@@ -15,5 +15,6 @@ export const PDF = {
   border: "#D0D5DD", // --color-border
   borderStrong: "#98A2B3",
   success: "#15803D", // --color-success
+  warning: "#B45309", // --color-warning
   danger: "#B91C1C", // --color-danger
 } as const;

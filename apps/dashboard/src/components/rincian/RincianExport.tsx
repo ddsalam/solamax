@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ExportButton } from "@/components/export/ExportButton";
 import { ExportDialog } from "@/components/export/ExportDialog";
+import { useLogoDataUrl } from "@/components/export/useLogoDataUrl";
 import { usePdfExport } from "@/components/export/usePdfExport";
 import { DEFAULT_EXPORT_CONFIG, sectionEnabled, type ExportConfig } from "@/lib/export/config";
 import { buildReportFilename } from "@/lib/export/filename";
@@ -39,7 +40,7 @@ export function RincianExport({
 
   const [open, setOpen] = useState(false);
   const [config, setConfig] = useState<ExportConfig>(DEFAULT_EXPORT_CONFIG);
-  const [logo, setLogo] = useState<string | undefined>(undefined);
+  const logo = useLogoDataUrl();
   const { status, previewUrl, error, lastFilename, preview, download } = usePdfExport();
 
   const filename = useMemo(
@@ -52,31 +53,6 @@ export function RincianExport({
       }),
     [code, businessDate, generatedDate],
   );
-
-  // Ambil logo (PNG dari /public) sekali → data URL untuk disematkan ke PDF.
-  useEffect(() => {
-    let alive = true;
-    fetch("/brand/solamax-horizontal.png")
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("logo"))))
-      .then(
-        (blob) =>
-          new Promise<string>((res, rej) => {
-            const fr = new FileReader();
-            fr.onload = () => res(fr.result as string);
-            fr.onerror = () => rej(fr.error);
-            fr.readAsDataURL(blob);
-          }),
-      )
-      .then((url) => {
-        if (alive) setLogo(url);
-      })
-      .catch(() => {
-        /* fallback wordmark teks di PDF */
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const buildDoc = useCallback(
     (cfg: ExportConfig) =>
