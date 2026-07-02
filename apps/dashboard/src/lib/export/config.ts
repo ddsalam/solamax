@@ -10,12 +10,15 @@ export interface ExportConfig {
   sections: Record<string, boolean>;
   /** Sertakan blok tanda tangan (default true). */
   includeSignature: boolean;
+  /** Laporan: lengkap (true) vs ringkas (false). Default true. */
+  detail: boolean;
 }
 
 export const DEFAULT_EXPORT_CONFIG: ExportConfig = {
   hideEmpty: true,
   sections: {},
   includeSignature: true,
+  detail: true,
 };
 
 /** True bila section num aktif menurut config (default: aktif). */
