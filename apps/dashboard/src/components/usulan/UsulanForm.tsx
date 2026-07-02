@@ -6,6 +6,7 @@ import { StateView } from "@/components/loading/StateView";
 import { fmtKL, idn } from "@/lib/format";
 import type { UsulanStatus } from "@/lib/queries";
 import { saveUsulanSo } from "@/lib/usulan-actions";
+import type { UsulanRow } from "@/lib/usulan-model";
 
 /**
  * Form Usulan Penebusan SO (no-print input pengawas). Tiga kolom kanan (Penerimaan
@@ -15,20 +16,6 @@ import { saveUsulanSo } from "@/lib/usulan-actions";
  * Status draft→diajukan; setelah diajukan tetap bisa diedit (Simpan pertahankan
  * status). Keamanan scope ditegakkan di action; komponen ini hanya UI.
  */
-export interface UsulanRowInput {
-  key: string;
-  label: string;
-  sisaStock: number | null;
-  /** Stock Fisik penutup D−1 belum final (opname-penutup belum ada) → tampil "—". */
-  sisaStockProvisional: boolean;
-  ketahanan: number | null;
-  ketahananLevel: "danger" | "warning" | "ok" | "unknown";
-  sisaDo: number;
-  penerimaanHari: number;
-  permintaanBesok: number;
-  usulanPenebusan: number;
-}
-
 type Field = "penerimaanHari" | "permintaanBesok" | "usulanPenebusan";
 
 // --- Seam KiloLiter (KL) ↔ Liter -------------------------------------------
@@ -62,7 +49,7 @@ export function UsulanForm({
 }: {
   code: string;
   date: string;
-  rows: UsulanRowInput[];
+  rows: UsulanRow[];
   status: UsulanStatus;
 }) {
   // State angka manual per produk (string KL utk edit; ×1000 → liter bulat saat simpan).

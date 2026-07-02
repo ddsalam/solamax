@@ -24,7 +24,7 @@ export default async function UsulanListPage({
 
   return (
     <div className="lap-page">
-      <UsulanToolbar code={unit.code} date={date} mode="list" />
+      <UsulanToolbar code={unit.code} date={date} />
 
       <div className="board-head mt6">
         <div>
