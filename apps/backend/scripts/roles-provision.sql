@@ -13,14 +13,30 @@
 --
 -- 🔒 NOSUPERUSER NOBYPASSRLS is REQUIRED: either attribute silently bypasses RLS (0016).
 
--- dashboard_app: create if missing, then enforce attributes + password.
+-- Attributes NOSUPERUSER NOBYPASSRLS are set at CREATE (settable everywhere, and the
+-- defaults). The re-assert ALTER sets ONLY the password — on Cloud SQL the admin is
+-- `cloudsqlsuperuser` (NOT a true superuser) and cannot ALTER the SUPERUSER/BYPASSRLS
+-- attribute ("Only roles with the SUPERUSER attribute may change it"); it also cannot
+-- GRANT those attributes, so a role here can never gain them. The assertion below
+-- fail-closes if a pre-existing role somehow carries either.
+
+-- dashboard_app: create if missing (with attrs), then set password.
 SELECT format('CREATE ROLE dashboard_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD %L', :'dashboard_app_pw')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard_app')
 \gexec
-ALTER ROLE dashboard_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'dashboard_app_pw';
+ALTER ROLE dashboard_app WITH LOGIN PASSWORD :'dashboard_app_pw';
 
 -- ingest: backend /ingest writer.
 SELECT format('CREATE ROLE ingest LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD %L', :'ingest_pw')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ingest')
 \gexec
-ALTER ROLE ingest WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD :'ingest_pw';
+ALTER ROLE ingest WITH LOGIN PASSWORD :'ingest_pw';
+
+-- 🔒 Fail-closed guard: RLS (0016) is silently bypassed by SUPERUSER/BYPASSRLS.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('dashboard_app','ingest')
+             AND (rolsuper OR rolbypassrls)) THEN
+    RAISE EXCEPTION 'dashboard_app/ingest must be NOSUPERUSER NOBYPASSRLS (RLS backstop)';
+  END IF;
+END $$;
