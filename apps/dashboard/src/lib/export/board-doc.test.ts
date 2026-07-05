@@ -85,6 +85,6 @@ describe("buildBoardDocDefinition", () => {
     const json = JSON.stringify(doc.content);
     expect(json).toContain("polyline"); // sparkline vektor
     expect(json).toContain("ellipse"); // KPI dots vektor
-    expect(doc.info?.title).toContain("SolaGroup");
+    expect(doc.info?.title).toContain("PT Sola Petra Abadi");
   });
 });

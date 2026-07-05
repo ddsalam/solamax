@@ -1,190 +1,90 @@
-# RLS Staging-Hardening Slice — CUTOVER-READY REVIEW PACKAGE (GATE 3)
+# RLS Staging-Hardening Slice — REVIEW PACKAGE (post-review, cutover-runbook ready)
 
-**Purpose:** exhibit for the independent adversarial review that gates the **live-IB RLS
-cutover**. Everything was built + run on a **fresh, synthetic Postgres 16** (Docker, zero
-live data). **Nothing touched live IB, prod, or Bakau. Nothing deployed. No agent installed.**
+Exhibit for the independent adversarial review. Built + run on a **fresh synthetic Postgres
+16** (Docker, zero live data). **Nothing touched live IB, prod, or Bakau. Nothing deployed.**
+
+The independent review **cleared the RLS mechanism** (could not falsify isolation) and raised
+F1–F7. This revision resolves them. Proven parts (predicate coverage, transaction-local
+semantics, FORCE/NOSUPERUSER/NOBYPASSRLS, 26-table coverage) are unchanged **except** the one
+sanctioned additive touch: the F7 fail-closed cast guard.
 
 **Reproduce from a clean checkout — ONE command:**
 ```
 bash session-notes/rls-rehearsal/rebuild-and-verify.sh
 ```
-It drops/recreates the container, applies migrations `0001→0017`, runs `roles-bootstrap`,
-seeds synthetic data, renames the tenant, and runs every exhibit below. Requires `docker`,
-`psql`, `node>=18`. **The reviewer re-derives all evidence this way — no dependence on the
-current `:55433` container state.**
-
-**Substrate:** local Postgres **16.13** (identical RLS semantics to Cloud SQL PG16). The one
-deferred physical step is `gcloud sql instances create solamax-pg-staging` — migrations/tests
-here re-run against it unchanged.
+Rebuilds container → migrations `0001→0017` → **roles-provision + grants-only** → seed →
+rename → full-app-under-RLS → rehearsal+5 tests → **rollback+cast-guard+preflight guards** →
+integration suites. Requires `docker`, `psql`, `node>=18`.
 
 ---
 
-## 0. Bottom line
+## Review findings → resolution
 
-| Claim | Evidence |
-|---|---|
-| **Every** per-unit data read runs through `qScoped` (RLS-scoped) — zero bare `q<>` reads remain | §2 grep-proof |
-| Write paths (`manual_entry`, `usulan_so`, ingest) set unit context in-transaction | §3 |
-| Full-app-under-RLS: **26/26** RLS tables return exactly the superuser-filtered truth per scope | §4, `06-full-app-under-rls.txt` |
-| Bootstrap tables read before scope exists are **all** RLS-excluded (the lockout that bit once) | §5, `08-bootstrap-exclusion.txt` |
-| Zero-rows failure reproduced, fixed, rolled back | §6, `03-rehearsal-and-tests.txt` |
-| Integration suites (scope + grant + surfaces) run as `dashboard_app` for direksi + pengawas | §7 — **121/121 tests pass** |
-| Out-of-git `ingest` grants reproduced | §8, `roles-bootstrap.sql` |
-| Connection budget + g1-small caveat | §9 |
-
-**Cutover-ready.** The remaining work is the live deploy discipline itself (image-before-migrate,
-§6) + one app-render check that needs the running Next server (§10) — not a DB/RLS gap.
+| # | Sev | Finding | Resolution | Evidence |
+|---|---|---|---|---|
+| F1 | BLOCKER | 0016 ordering spans both services; no rollout guard | [`RLS-CUTOVER-RUNBOOK.md`](../../apps/backend/RLS-CUTOVER-RUNBOOK.md) (backend→100%→dashboard→100%→preflight→0016) + [`preflight-rls-cutover.sh`](../../apps/backend/scripts/preflight-rls-cutover.sh) hard-fails unless BOTH services serve `rls-aware=1` @100% | `09` (preflight self-test ALL-PASS) |
+| F2 | BLOCKER | roles-bootstrap resets passwords on live | **Split**: [`grants-bootstrap.sql`](../../apps/backend/scripts/grants-bootstrap.sql) (grants-only, live-safe, NO password) + [`roles-provision.sql`](../../apps/backend/scripts/roles-provision.sql) (fresh-instance only). Runbook references grants-only on live | rebuild §3 (provision+grants) |
+| F3 | non-blk | no scripted rollback; dangling "0016_rollback note" | [`rls-rollback.sql`](../../apps/backend/scripts/rls-rollback.sql) (DISABLE + drop policy, all tables); 0016 reference fixed | `09` (enable→disable→recover→re-enable) |
+| F4 | doc | metadata/topology + OAuth tokens outside the backstop | Documented in runbook §F4 + below; hardening = separate post-cutover initiative (not attempted) | — |
+| F5 | fold | hardcoded "SolaGroup" ≠ renamed tenant | Replaced tenant/direksi display strings + app title/manifest → "PT Sola Petra Abadi" (left "SolaGroup DS", workbook name, asset filename) | tests updated, 154 pass |
+| F6 | fold | mocks drop the unit arg → scope wiring untested | [`queries.scope-wiring.test.ts`](../../apps/dashboard/src/lib/queries.scope-wiring.test.ts): all **32** converted fns asserted to pass their authorized unit to qScoped | `07` (33 new tests) |
+| F7 | nit | malformed context → error, not 0 rows | 0016 predicate now filters numeric tokens before cast → fail-closed 0 rows, no throw; legit scoping unchanged | `09` (probes) |
 
 ---
 
-## 1. Artifact index
+## Artifact index
 
 | Artifact | Path |
 |---|---|
-| RLS migration | [`apps/backend/prisma/migrations/0016_rls_unit_scope/migration.sql`](../../apps/backend/prisma/migrations/0016_rls_unit_scope/migration.sql) |
-| Audit migration | [`apps/backend/prisma/migrations/0017_audit_log/migration.sql`](../../apps/backend/prisma/migrations/0017_audit_log/migration.sql) |
-| qScoped executor | `apps/dashboard/src/lib/db.ts` |
-| Converted reads (all) | `apps/dashboard/src/lib/queries.ts` |
-| Write paths | `apps/dashboard/src/lib/manual-entry-actions.ts`, `usulan-actions.ts`, `apps/backend/src/ingest/ingest.service.ts` |
-| Audit inserts | `apps/dashboard/src/lib/admin-actions.ts` |
-| Grant-gap repro | [`apps/backend/scripts/roles-bootstrap.sql`](../../apps/backend/scripts/roles-bootstrap.sql) |
-| Tenant rename | [`apps/backend/scripts/rename-tenant.sql`](../../apps/backend/scripts/rename-tenant.sql) |
-| Synthetic fixture | [`synthetic-seed.sql`](synthetic-seed.sql) |
+| RLS migration (+ F7 guard) | [`0016_rls_unit_scope/migration.sql`](../../apps/backend/prisma/migrations/0016_rls_unit_scope/migration.sql) |
+| Audit migration | [`0017_audit_log/migration.sql`](../../apps/backend/prisma/migrations/0017_audit_log/migration.sql) |
+| Rollback (F3) | [`scripts/rls-rollback.sql`](../../apps/backend/scripts/rls-rollback.sql) |
+| Grants-only, live-safe (F2a) | [`scripts/grants-bootstrap.sql`](../../apps/backend/scripts/grants-bootstrap.sql) |
+| Role provisioning, fresh-only (F2b) | [`scripts/roles-provision.sql`](../../apps/backend/scripts/roles-provision.sql) |
+| Preflight gate (F1) | [`scripts/preflight-rls-cutover.sh`](../../apps/backend/scripts/preflight-rls-cutover.sh) |
+| Cutover runbook (F1/F2/F3/F4) | [`RLS-CUTOVER-RUNBOOK.md`](../../apps/backend/RLS-CUTOVER-RUNBOOK.md) |
+| Tenant rename | [`scripts/rename-tenant.sql`](../../apps/backend/scripts/rename-tenant.sql) |
+| qScoped executor + conversions | `apps/dashboard/src/lib/{db,queries,manual-entry-actions,usulan-actions,admin-actions}.ts`, `apps/backend/src/ingest/ingest.service.ts` |
+| Scope-wiring test (F6) | `apps/dashboard/src/lib/queries.scope-wiring.test.ts` |
 | One-command rebuild | [`rebuild-and-verify.sh`](rebuild-and-verify.sh) |
-| Rehearsal + 5 tests | [`run-rehearsal.sh`](run-rehearsal.sh) |
-| Full-app-under-RLS check | [`full-app-rls-check.sh`](full-app-rls-check.sh) |
-| Surface integration test | `apps/dashboard/src/lib/rls-surfaces.integration.test.ts` |
-| **Raw evidence** | `01`…`08` `.txt` in this dir |
+| Guards rehearsal (F3/F7/F1) | [`rollback-and-guards.sh`](rollback-and-guards.sh) |
+| **Raw evidence** | `01`…`09` `.txt` in this dir |
 
 ---
 
-## 2. Conversion completeness — grep-proof
+## Verified (this revision, clean rebuild)
 
-All per-unit data reads now use `qScoped` (transaction-local `set_config('app.unit_ids',…,true)`
-→ RLS filters at the DB layer, under the retained app-level `WHERE unit_id`). Proof:
+- **Full-app-under-RLS 26/26** — `dashboard_app`+ctx == superuser-filtered truth (pengawas / other unit / direksi). `06`.
+- **Rehearsal + 5 tests 10/10** (zero-rows failure → qScoped fix → rollback → re-arm; cross-unit negative; DB-layer independence; direksi-both; ingest WITH CHECK; audit append-only). `03`.
+- **F3 rollback rehearsal** — committed `rls-rollback.sql` drops all 26 policies → dashboard_app reads full data (recovered) → re-apply 0016 → fail-closed again. `09`.
+- **F7 fail-closed cast guard** — unset/empty/` `/`abc`/`-1`/`0`/`x,y`/`1a` → **0 rows, no error**; `1`→2, `1,2`→5 unchanged. `09`.
+- **F1 preflight gate** — self-test ALL-PASS: PASS on 100%+`rls-aware=1`; clean FAIL on split rollout / missing label / label=0 / no active revision. `09`.
+- **Integration + scope-wiring** — 23 files / **154 tests pass** as `dashboard_app` (scope, grant, rls-surfaces, and the 32-function scope-wiring suite). `07`.
+- Typecheck clean; branded `ScopedUnitId` still guarantees only authorized units reach qScoped.
 
-```
-$ grep -nE "\bq<" apps/dashboard/src/lib/queries.ts
-(empty — all 30 converted; getSyncByUnit + getSalesByProduct converted earlier = 32 total)
-```
-The only bare `q()` left in `queries.ts` is a comment. `admin-actions.ts` / `auth-context.ts`
-keep `q()` deliberately — they read the **non-RLS** `app.membership` / Auth.js tables (no
-`unit_id`) and the RLS-**excluded** bootstrap tables (§5).
+## Ordering (unchanged, now enforced) & rollback
 
----
+`0016` is the sole **image-before-migrate** exception: deploy backend RLS-aware image →100% →
+dashboard RLS-aware image →100% → **preflight gate** → apply `0016`. `0017` + all else stay
+migrate-before-image. Rollback = `rls-rollback.sql` (instant, tested). See the runbook.
 
-## 3. Write paths under RLS
+## Connection budget (prod-split step, NOT this slice)
 
-- **`manual-entry-actions.ts`** — `addManualEntry` / `voidManualEntry` now `qScoped(unit.unit_id, …)`.
-- **`usulan-actions.ts`** — its existing `pool.connect()` transaction gets
-  `set_config('app.unit_ids', <unit>, true)` as the first statement (UPDATE+INSERTs then pass
-  USING/WITH CHECK).
-- **ingest** (`ingest.service.ts`) — `set_config` first inside the existing `$transaction`.
+Demand ≈16–18 (dashboard `max:5×≤2` + ingest `3×≤2` + headroom), flat in unit count; qScoped
+adds no net connections. **⚠️ At prod time, verify `SHOW max_connections;` on the patched
+g1-small — do not assume the ~150–200 default.**
 
-Proven live in §6 Test 4 (ingest cross-unit write rejected) and §7 (grant suite: `manual_entry`
-INSERT/UPDATE succeed under context, DELETE denied).
+## F4 — backstop scope (deferred)
 
----
-
-## 4. Full-app-under-RLS — exhaustive (`06-full-app-under-rls.txt`)
-
-For **every** RLS table: `count(dashboard_app, ctx)` == `count(superuser WHERE unit_id)` for
-pengawas (ctx=1), other unit (ctx=2), direksi (ctx=1,2). **26/26 PASS.** Non-empty tables
-(sales, opname, delivery, real_tank, nozzle, deposit, edc, pelanggan_sale, product, sync_state,
-manual_entry, usulan_so) show correct **non-zero** scoping; empty tables are annotated
-`genuinely-empty-in-synthetic` (0==0, **not** RLS-starved — the exact distinction requested).
-
-Excerpt:
-```
-public.sales_detail   |  2/2  3/3  5/5 | ✅ PASS non-empty
-public.real_tank      |  2/2  1/1  3/3 | ✅ PASS non-empty
-app.manual_entry      |  2/2  1/1  3/3 | ✅ PASS non-empty
-public.tera           |  0/0  0/0  0/0 | ✅ PASS genuinely-empty-in-synthetic
-… PASS=26 FAIL=0
-```
+RLS protects per-unit **data** rows. It excludes the auth/identity tables `public.unit`,
+`app.user_unit`, `app.membership`, `app.users` (topology/membership) and `app.accounts`
+(OAuth tokens) — `dashboard_app` reads those because auth resolves before any unit context
+exists. A compromised `dashboard_app` could enumerate all units/members + read tokens
+regardless of RLS. Low while IB is the sole PT; higher across PTs. **Metadata/token hardening
+is a separate post-cutover security initiative — not attempted here.**
 
 ---
 
-## 5. Bootstrap-exclusion — the lockout, closed (`08-bootstrap-exclusion.txt`)
-
-Every table read **before** unit context exists — proven `rls_enabled = f`:
-
-| pre-context table | read by | rls? |
-|---|---|---|
-| `public.unit` | getDataScope (scope.ts:68) | **f** (excluded in 0016) |
-| `app.user_unit` | getAuthContext (auth-context.ts:81) | **f** (excluded in 0016) |
-| `app.membership` | getAuthContext (:52,:67) | **f** (no unit_id) |
-| `app.users`, `app.accounts`, `app.sessions`, `app.verification_token` | Auth.js `auth()` | **f** (no unit_id) |
-
-The two `unit_id`-bearing ones are explicitly excluded in
-[`0016` line 43–45](../../apps/backend/prisma/migrations/0016_rls_unit_scope/migration.sql). This
-is the failure the rehearsal caught first pass (RLS on `unit`/`user_unit` → getDataScope reads 0
-→ total lockout).
-
----
-
-## 6. Image-before-migrate ordering + reproduced failure/fix/rollback (`03-rehearsal-and-tests.txt`)
-
-**Why inverted:** enabling `0016` **before** the qScoped image → `current_setting('app.unit_ids')`
-NULL → `ANY(NULL)` → **0 rows for everyone = IB outage**. So **deploy the image first**, **then**
-run `0016`. Rollback: `ALTER TABLE … DISABLE ROW LEVEL SECURITY` (instant).
-
-Reproduced: **Exhibit A** RLS-on/no-context → 0 rows (the outage). **Exhibit B** qScoped txn →
-2 rows (the fix). **Exhibit C** DISABLE → 6 rows (recovery), ENABLE → 0 (re-armed). Plus the
-5-test bar (cross-unit negative, DB-layer independence, direksi-both, ingest WITH CHECK, audit
-append-only): **10/10 PASS**, roles `rolsuper=f rolbypassrls=f`.
-
----
-
-## 7. Integration suites as `dashboard_app` (`07-integration-suites.txt`)
-
-Run with `DATABASE_URL`/`DASHBOARD_APP_DATABASE_URL` = the **dashboard_app** connection:
-- `scope.integration.test.ts` — real wiring + `unitVisible` (tenant renamed → slug
-  `pt-sola-petra-abadi`; IB under the PT). ✅
-- `grant.integration.test.ts` — public SELECT-only, `app.manual_entry` INSERT/UPDATE under RLS
-  context, DELETE denied. ✅ (updated to a dedicated client + `set_config`).
-- `rls-surfaces.integration.test.ts` (**new**) — drives real query fns: `getSalesByProduct`
-  (no cross-unit name leak), `getSyncByUnit` (direksi `[1,2]` vs pengawas `[1]`), `getRealTank`
-  /`getNozzles` (monitoring), `getManualEntries` (rincian), `getUsulanSoList` (usulan). ✅
-
-**Full run: 22 files / 121 tests pass, 0 fail** (10 pre-existing unit tests whose `./db` mock
-now also delegates `qScoped`).
-
----
-
-## 8. Grant-gap reproduction (`01-roles-and-rls-state.txt`)
-
-`roles-bootstrap.sql` recreates `ingest` + `dashboard_app` (both `NOSUPERUSER NOBYPASSRLS`),
-public/app grants, and re-asserts append/void `REVOKE`s — the single reproducible source for
-the previously out-of-git `ingest` grants. Verified: `rolsuper=f, rolbypassrls=f` for both.
-
----
-
-## 9. Connection budget (prod-split step, NOT this slice)
-
-- f1-micro today: `25 − 3 = 22 usable`. Demand ≈ **16–18** (dashboard `max:5×≤2` + ingest
-  `3×≤2` + headroom), **flat in unit count** (units share the services). qScoped adds **no**
-  net connections (one pooled client/query, wrapped in BEGIN/COMMIT).
-- **⚠️ At prod time, VERIFY `SHOW max_connections;` on the patched g1-small** — do not assume
-  the ~150–200 default. Keep pool `max:5`; re-budget only when raising Cloud Run `maxScale`.
-
----
-
-## 10. Residual for the live cutover (explicitly out of this slice)
-
-1. **Deploy discipline** — ship the (now fully-converted) image FIRST, then run `0016`
-   out-of-band (image-before-migrate); pair rollback with an image rollback.
-2. **Monitoring multi-unit UI render** — the scoped *data* is proven (§4/§7); visually
-   confirming the Monitoring/denah pages render N units needs the running Next server (not a
-   DB/RLS concern). Do this in the maintenance-window dry-run.
-3. **Adversarial angles** (for the reviewer): GUC injection (ids are `Number()`-coerced branded
-   ids, not free text); empty-scope → 0 rows (never "see all"); confirm no future superuser-owned
-   data table; `WITH CHECK` on all ingest UPSERT/REPLACE paths (set_config is first in the txn).
-
----
-
-## 11. Teardown
-Disposable: `docker rm -f solamax-staging-pg`. No cloud resources created; no live systems touched.
-
-**GATE 3 — STOP.** Live-IB RLS cutover, prod split, and Bakau onboarding remain **not started**,
-pending this package's independent adversarial review + a maintenance-window dry-run.
+## GATE — STOP. Blocker fixes (F1–F3) go to a targeted re-check before any live run.
+Live-IB RLS cutover, prod split, and Bakau onboarding remain **not started**. Nothing deployed.
+Teardown: `docker rm -f solamax-staging-pg`.

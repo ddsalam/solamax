@@ -11,7 +11,7 @@ export interface ReportFilenameParts {
   reportName: string;
   /** Kode unit SPBU → segmen scope "SPBU-{code}". Abaikan bila `scope` diberi. */
   unitCode?: string;
-  /** Override segmen scope untuk laporan multi-unit, mis. "SolaGroup". */
+  /** Override segmen scope untuk laporan multi-unit, mis. "PT Sola Petra Abadi". */
   scope?: string;
   /** Periode laporan ISO, mis. "2026-06-11". */
   period: string;

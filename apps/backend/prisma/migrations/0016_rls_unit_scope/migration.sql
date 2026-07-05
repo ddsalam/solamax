@@ -14,8 +14,12 @@
 --    deployed makes current_setting() NULL → ANY(NULL) → ZERO rows for everyone
 --    = outage. Deploy the context-setting image FIRST, then run this migration.
 --
--- Fail-closed: unset/empty context → NULLIF→NULL → ANY(NULL) → no rows (never a leak).
--- Rollback: DISABLE ROW LEVEL SECURITY per table (see 0016_rollback note below).
+-- Fail-closed (F7 cast guard): the context is split on ',' and only NUMERIC tokens
+-- (`~ '^-?[0-9]+$'`) are cast to int — a malformed/whitespace/non-numeric value yields
+-- an EMPTY array → ANY(empty) → no rows, WITHOUT throwing. unset/empty → same. Never a
+-- leak; never an error. Legitimate numeric CSV from qScoped is unchanged.
+-- Rollback: apps/backend/scripts/rls-rollback.sql (drops unit_scope + DISABLEs RLS on all
+-- covered tables; instant, idempotent). Rehearsed in session-notes/rls-rehearsal.
 
 -- Applies to EVERY base table in public/app that carries a unit_id column
 -- (self-adjusting: new unit-scoped tables are covered on re-run). Superusers and
@@ -29,7 +33,12 @@
 DO $$
 DECLARE
   r record;
-  predicate text := $p$unit_id = ANY (string_to_array(NULLIF(current_setting('app.unit_ids', true), ''), ',')::int[])$p$;
+  -- F7: numeric-token filter BEFORE cast → fail-closed (0 rows) on malformed input, no throw.
+  predicate text := $p$unit_id = ANY (ARRAY(
+      SELECT tok::int
+      FROM unnest(string_to_array(NULLIF(current_setting('app.unit_ids', true), ''), ',')) AS tok
+      WHERE tok ~ '^-?[0-9]+$'
+    ))$p$;
 BEGIN
   FOR r IN
     SELECT c.table_schema AS s, c.table_name AS t
