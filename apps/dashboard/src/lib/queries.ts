@@ -1,6 +1,15 @@
-import { q } from "./db";
+import { q, qScoped } from "./db";
 import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L } from "./derive";
 import type { ScopedUnitId } from "./scope";
+
+/**
+ * FASE 3b (RLS backstop, migration 0016): query data per-unit dijalankan lewat
+ * `qScoped(unit, …)` — set GUC `app.unit_ids` transaction-local → Row-Level
+ * Security memfilter di lapisan DB, DI BAWAH filter aplikasi `WHERE unit_id`.
+ * Filter aplikasi TETAP dipertahankan (defense-in-depth). Query yang masih memakai
+ * `q()` polos akan GAGAL-AMAN (0 baris) begitu RLS aktif — daftar konversi penuh
+ * ada di session-notes/rls-rehearsal/ (cutover follow-through).
+ */
 
 /**
  * Semua query dashboard — SELECT murni (read-only, nol mutasi). Konvensi:
@@ -43,7 +52,8 @@ export interface SyncRow {
 /** Sinkron terakhir per unit, DIBATASI ke unit dalam scope caller. */
 export async function getSyncByUnit(unitIds: ScopedUnitId[]): Promise<SyncRow[]> {
   if (unitIds.length === 0) return [];
-  return q<SyncRow>(
+  return qScoped<SyncRow>(
+    unitIds,
     `SELECT unit_id,
             to_char(max(last_run_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_run
      FROM sync_state WHERE unit_id = ANY($1::int[]) GROUP BY unit_id`,
@@ -70,7 +80,8 @@ export async function getSalesByProduct(
   from: string,
   to: string,
 ): Promise<ProductAgg[]> {
-  return q<ProductAgg>(
+  return qScoped<ProductAgg>(
+    unit,
     `SELECT trim(sd.ckdbbm) AS ckdbbm,
             COALESCE(max(p.vcnmbbm), trim(sd.ckdbbm)) AS nama,
             COALESCE(sum(sd.nvolume),0)::float8 AS vol,
@@ -97,7 +108,8 @@ export async function getDailyOmzet(
   from: string,
   to: string,
 ): Promise<DailyOmzet[]> {
-  return q<DailyOmzet>(
+  return qScoped<DailyOmzet>(
+    unit,
     `SELECT to_char(h.dtgljual,'YYYY-MM-DD') AS d,
             COALESCE(sum(sd.nvolume),0)::float8 AS vol,
             COALESCE(sum(sd.nsubtotal),0)::float8 AS omzet
@@ -119,7 +131,8 @@ export async function getSalesTotals(
   from: string,
   to: string,
 ): Promise<SalesTotals> {
-  const rows = await q<SalesTotals>(
+  const rows = await qScoped<SalesTotals>(
+    unit,
     `SELECT COALESCE(sum(sd.nvolume),0)::float8 AS vol,
             COALESCE(sum(sd.nsubtotal),0)::float8 AS omzet
      FROM sales_detail sd
@@ -137,7 +150,8 @@ export interface ShiftInfo {
 }
 
 export async function getShiftInfo(unit: ScopedUnitId, date: string): Promise<ShiftInfo> {
-  const rows = await q<ShiftInfo>(
+  const rows = await qScoped<ShiftInfo>(
+    unit,
     `SELECT count(DISTINCT h.nshift)::int AS shifts,
             to_char(max(sd.dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_dtgljam
      FROM sales_header h
@@ -150,7 +164,8 @@ export async function getShiftInfo(unit: ScopedUnitId, date: string): Promise<Sh
 
 /** Jumlah baris penjualan terkoreksi (SUBAH/SEDIT) pada satu tanggal bisnis. */
 export async function getCorrections(unit: ScopedUnitId, date: string): Promise<number> {
-  const rows = await q<{ n: number }>(
+  const rows = await qScoped<{ n: number }>(
+    unit,
     `SELECT count(*)::int AS n
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
@@ -163,7 +178,8 @@ export async function getCorrections(unit: ScopedUnitId, date: string): Promise<
 
 /** Nozzle yang punya koreksi hari ini (untuk titik ⟳ di denah). */
 export async function getCorrectedNozzles(unit: ScopedUnitId, date: string): Promise<string[]> {
-  const rows = await q<{ ckdnozzle: string }>(
+  const rows = await qScoped<{ ckdnozzle: string }>(
+    unit,
     `SELECT DISTINCT trim(sd.ckdnozzle) AS ckdnozzle
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
@@ -201,7 +217,8 @@ export async function getClosingOpname(
   from: string,
   to: string,
 ): Promise<ClosingOpnameRow[]> {
-  return q<ClosingOpnameRow>(
+  return qScoped<ClosingOpnameRow>(
+    unit,
     `WITH biz AS (
        SELECT o.*, COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
               row_number() OVER (
@@ -270,7 +287,8 @@ export async function getDailyGlByProduct(
   from: string,
   to: string,
 ): Promise<DailyGlRow[]> {
-  return q<DailyGlRow>(
+  return qScoped<DailyGlRow>(
+    unit,
     `WITH bounds AS (
        -- Batas bawah pemindaian base-CTE: from − GL_LOOKBACK_DAYS (lihat catatan
        -- konstanta). dto memakai 'to' apa adanya. Semua base-CTE memfilter ke
@@ -388,7 +406,8 @@ export async function getDeliveryShortfalls(
   to: string,
   limit = 20,
 ): Promise<DeliveryShortfall[]> {
-  return q<DeliveryShortfall>(
+  return qScoped<DeliveryShortfall>(
+    unit,
     `SELECT to_char(COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date),'YYYY-MM-DD') AS d,
             trim(COALESCE(t.cnodo,'-')) AS cnodo, trim(t.ckdbbm) AS ckdbbm,
             (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=t.unit_id AND p.ckdbbm=t.ckdbbm) AS nama,
@@ -421,7 +440,8 @@ export async function getDeliveryByProduct(
   // (kelipatan 8.000 L/kompartemen) — cocok kolom "Penerimaan" laporan DO Harian.
   // NVOLREAL (volume terukur) penuh baris sampah di sumber (mis. −14jt/+247jt) →
   // bukan basis Penerimaan. Guard tetap pada kolom yang dipakai (nvoldo).
-  return q<DeliveryAgg>(
+  return qScoped<DeliveryAgg>(
+    unit,
     `SELECT trim(t.ckdbbm) AS ckdbbm,
             COALESCE(max(p.vcnmbbm), trim(t.ckdbbm)) AS nama,
             COALESCE(sum(t.nvoldo),0)::float8 AS vol
@@ -467,7 +487,8 @@ export async function getDoHarian(
   unit: ScopedUnitId,
   date: string,
 ): Promise<DoHarianRow[]> {
-  return q<DoHarianRow>(
+  return qScoped<DoHarianRow>(
+    unit,
     `WITH red AS (
        SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm,
               sum(td.nvolume) FILTER (WHERE th.dtgltbs <= $2::date) AS v_d,
@@ -544,7 +565,8 @@ export async function getDoAnomalies(
   unit: ScopedUnitId,
   date: string,
 ): Promise<DoAnomalyRow[]> {
-  return q<DoAnomalyRow>(
+  return qScoped<DoAnomalyRow>(
+    unit,
     `WITH red AS (
        SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm, sum(td.nvolume) AS v
        FROM tebus_header th JOIN tebus_detail td ON td.unit_id = th.unit_id AND td.ckdtbs = th.ckdtbs
@@ -603,7 +625,8 @@ export async function getDoSuspectSO(
   unit: ScopedUnitId,
   date: string,
 ): Promise<DoSuspectSO[]> {
-  return q<DoSuspectSO>(
+  return qScoped<DoSuspectSO>(
+    unit,
     `WITH red AS (
        SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm,
               sum(td.nvolume) AS v, max(th.dtgltbs) AS lastd
@@ -651,7 +674,8 @@ export interface TankStock {
 }
 
 export async function getTankStocks(unit: ScopedUnitId): Promise<TankStock[]> {
-  return q<TankStock>(
+  return qScoped<TankStock>(
+    unit,
     `WITH last_op AS (
        SELECT DISTINCT ON (o.ckdtangki) o.ckdtangki, o.ckdbbm, o.nstockop, o.dtgljam
        FROM opname o
@@ -697,7 +721,8 @@ export interface RealTankRow {
 }
 
 export async function getRealTank(unit: ScopedUnitId): Promise<RealTankRow[]> {
-  return q<RealTankRow>(
+  return qScoped<RealTankRow>(
+    unit,
     `SELECT trim(ckdtangki)    AS ckdtangki,
             nkapasitas::float8 AS nkapasitas,
             ntinggi::float8    AS ntinggi,
@@ -725,7 +750,8 @@ export interface LastFillRow {
 }
 
 export async function getLastFills(unit: ScopedUnitId): Promise<LastFillRow[]> {
-  return q<LastFillRow>(
+  return qScoped<LastFillRow>(
+    unit,
     `SELECT DISTINCT ON (trim(ckdtangki)) trim(ckdtangki) AS ckdtangki,
             nvolreal::float8 AS nvolreal,
             nvolselisih::float8 AS nvolselisih,
@@ -743,7 +769,8 @@ export interface NozzleRow {
 }
 
 export async function getNozzles(unit: ScopedUnitId): Promise<NozzleRow[]> {
-  return q<NozzleRow>(
+  return qScoped<NozzleRow>(
+    unit,
     `SELECT trim(ckdnozzle) AS ckdnozzle, trim(ckdtangki) AS ckdtangki
      FROM nozzle WHERE unit_id = $1 ORDER BY trim(ckdnozzle)`,
     [unit],
@@ -761,7 +788,8 @@ export async function getAvgDailySales(
   from: string,
   to: string,
 ): Promise<AvgDaily[]> {
-  return q<AvgDaily>(
+  return qScoped<AvgDaily>(
+    unit,
     `SELECT trim(sd.ckdbbm) AS ckdbbm,
             (COALESCE(sum(sd.nvolume),0) / GREATEST(($3::date - $2::date) + 1, 1))::float8 AS avg_vol
      FROM sales_detail sd
@@ -787,7 +815,8 @@ export async function getComplianceMatrix(
   unit: ScopedUnitId,
   days: number,
 ): Promise<ComplianceDay[]> {
-  return q<ComplianceDay>(
+  return qScoped<ComplianceDay>(
+    unit,
     `WITH hari AS (
        SELECT generate_series(
          (now() AT TIME ZONE '${TZ}')::date - ($2::int - 1),
@@ -807,7 +836,8 @@ export async function getComplianceMatrix(
 }
 
 export async function getTankCount(unit: ScopedUnitId): Promise<number> {
-  const rows = await q<{ n: number }>(
+  const rows = await qScoped<{ n: number }>(
+    unit,
     `SELECT count(*)::int AS n FROM tangki WHERE unit_id = $1`,
     [unit],
   );
@@ -822,7 +852,8 @@ export interface LastInputs {
 }
 
 export async function getLastInputs(unit: ScopedUnitId): Promise<LastInputs> {
-  const rows = await q<LastInputs>(
+  const rows = await qScoped<LastInputs>(
+    unit,
     `SELECT
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM sales_detail WHERE unit_id=$1) AS sales,
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM opname WHERE unit_id=$1) AS opname,
@@ -843,7 +874,8 @@ export interface CashRow {
 
 /** Nota kas pada satu tanggal bisnis (dorman → kosong, itu sinyalnya). */
 export async function getCashForDate(unit: ScopedUnitId, date: string): Promise<CashRow[]> {
-  return q<CashRow>(
+  return qScoped<CashRow>(
+    unit,
     `SELECT trim(ch.ckdkb) AS ckdkb, ch.vcket, ch.ntotal::float8 AS ntotal,
             COALESCE(ch.sbatal,0)::int AS sbatal,
             (SELECT max(a.vcnmperk) FROM cash_detail cd
@@ -876,7 +908,8 @@ export async function getPelangganForDate(
   unit: ScopedUnitId,
   date: string,
 ): Promise<PelangganRow[]> {
-  return q<PelangganRow>(
+  return qScoped<PelangganRow>(
+    unit,
     `SELECT u.ckdplg,
             max(u.nama) AS nama,
             COALESCE(sum(u.liter),0)::float8 AS liter,
@@ -917,7 +950,8 @@ export async function getTerraResmiForDate(
   unit: ScopedUnitId,
   date: string,
 ): Promise<TerraRow[]> {
-  return q<TerraRow>(
+  return qScoped<TerraRow>(
+    unit,
     `SELECT trim(t.ckdbbm) AS ckdbbm,
             COALESCE(max(p.vcnmbbm), trim(t.ckdbbm)) AS nama,
             COALESCE(sum(t.nvolume),0)::float8 AS liter,
@@ -945,7 +979,8 @@ export async function getEdcForDate(
   unit: ScopedUnitId,
   date: string,
 ): Promise<EdcChannelRow[]> {
-  return q<EdcChannelRow>(
+  return qScoped<EdcChannelRow>(
+    unit,
     `SELECT trim(e.ckdkartu) AS ckdkartu,
             COALESCE(max(c.vcnmcard), trim(e.ckdkartu)) AS nama,
             COALESCE(sum(e.total),0)::float8 AS rp
@@ -972,7 +1007,8 @@ export async function getEdcBlankCard(
   unit: ScopedUnitId,
   date: string,
 ): Promise<EdcBlankCard> {
-  const rows = await q<EdcBlankCard>(
+  const rows = await qScoped<EdcBlankCard>(
+    unit,
     `SELECT COALESCE(sum(e.total),0)::float8 AS rp, count(*)::int AS n
      FROM public.edc e
      WHERE e.unit_id = $1 AND e.business_date = $2::date
@@ -993,7 +1029,8 @@ export async function getDepositForDate(
   unit: ScopedUnitId,
   date: string,
 ): Promise<DepositRow[]> {
-  return q<DepositRow>(
+  return qScoped<DepositRow>(
+    unit,
     `SELECT trim(d.ckdplg) AS ckdplg, d.vcket, COALESCE(d.ntotal,0)::float8 AS rp
      FROM public.deposit d
      WHERE d.unit_id = $1 AND d.dtgl = $2::date AND COALESCE(d.sbatal,0) = 0
@@ -1032,7 +1069,8 @@ export async function getSaldoPelanggan(
   unit: ScopedUnitId,
   date: string,
 ): Promise<SaldoPelanggan> {
-  const rows = await q<SaldoPelanggan>(
+  const rows = await qScoped<SaldoPelanggan>(
+    unit,
     `SELECT
        COALESCE((SELECT sum(b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END)
                  FROM public.bppiut b
@@ -1061,7 +1099,8 @@ export async function getManualEntries(
   date: string,
   section: ManualSection,
 ): Promise<ManualEntryRow[]> {
-  return q<ManualEntryRow>(
+  return qScoped<ManualEntryRow>(
+    unit,
     `SELECT id::text AS id, keterangan, amount::float8 AS amount, urut
      FROM app.manual_entry
      WHERE unit_id = $1 AND business_date = $2::date
@@ -1087,7 +1126,8 @@ export interface UsulanSoRow {
 
 /** Baris AKTIF (non-void) usulan per produk untuk (unit, tanggal). Ter-scope. */
 export async function getUsulanSo(unit: ScopedUnitId, date: string): Promise<UsulanSoRow[]> {
-  return q<UsulanSoRow>(
+  return qScoped<UsulanSoRow>(
+    unit,
     `SELECT product_key AS "productKey",
             penerimaan_hari::float8 AS "penerimaanHari",
             permintaan_besok::float8 AS "permintaanBesok",
@@ -1119,7 +1159,8 @@ export async function getUsulanSoList(
   unit: ScopedUnitId,
   limit = 60,
 ): Promise<UsulanSoListItem[]> {
-  return q<UsulanSoListItem>(
+  return qScoped<UsulanSoListItem>(
+    unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS date,
             sum(penerimaan_hari)::float8 AS "totalPenerimaan",
             sum(permintaan_besok)::float8 AS "totalPermintaan",

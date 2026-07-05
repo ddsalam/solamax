@@ -1,0 +1,18 @@
+=== BOOTSTRAP-EXCLUSION PROOF: every table read BEFORE unit context — none is RLS'd ===
+-- Tables read pre-context by getAuthContext (auth-context.ts) + getDataScope (scope.ts)
+-- + Auth.js adapter (via auth()). Prove relrowsecurity=false for each:
+   pre_context_table    | rls_enabled 
+------------------------+-------------
+ app.accounts           | f
+ app.membership         | f
+ app.sessions           | f
+ app.user_unit          | f
+ app.users              | f
+ app.verification_token | f
+ public.unit            | f
+(7 rows)
+
+-- Complement: the two unit_id-bearing bootstrap tables explicitly EXCLUDED in 0016:
+43:      AND (c.table_schema, c.table_name) NOT IN (
+44:            ('public', 'unit'),      -- unit registry: read pre-context to authorize
+45:            ('app',    'user_unit')  -- pengawas→unit map: read pre-context to build scope

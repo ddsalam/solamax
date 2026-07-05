@@ -3,10 +3,14 @@ import type { ScopedUnitId } from "./scope-rule";
 
 // Mock db.q (hindari makePool() yang butuh DATABASE_URL). Verifikasi konstruksi
 // SQL + scoping tanpa DB nyata.
-const { q } = vi.hoisted(() => ({
-  q: vi.fn((_text: string, _params?: unknown[]) => Promise.resolve([] as unknown[])),
-}));
-vi.mock("./db", () => ({ q, pool: {} }));
+// qScoped (RLS executor) di-mock DELEGATE ke q → assertion `q.mock.calls` tetap sah
+// (fungsi kini memanggil qScoped(unit, sql, params); delegasi memanggil q(sql, params)).
+const { q, qScoped } = vi.hoisted(() => {
+  const q = vi.fn((_text: string, _params?: unknown[]) => Promise.resolve([] as unknown[]));
+  const qScoped = vi.fn((_unit: unknown, text: string, params?: unknown[]) => q(text, params));
+  return { q, qScoped };
+});
+vi.mock("./db", () => ({ q, qScoped, pool: {} }));
 
 const {
   getPelangganForDate,
