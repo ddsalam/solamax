@@ -6,10 +6,22 @@ FINAL independent re-check before the live cutover. No script change is silently
 | # | Change | Why (real-infra trigger) | Files | Re-verified |
 |---|---|---|---|---|
 | B1 | `ALTER ROLE` re-assert sets **password only** (not NOSUPERUSER/NOBYPASSRLS); attrs set at CREATE + fail-closed guard DO block | Cloud SQL admin is `cloudsqlsuperuser`, not a true superuser → `ALTER … NOSUPERUSER` errors "permission denied to alter role". Local Docker true-superuser masked it. | `apps/backend/scripts/roles-provision.sql` | Re-ran on `solamax-pg-rlsstg` → both roles `super=f bypass=f`, grants applied ✅ |
-| L2 | *(reserved — label-scope resolution, Phase C2)* | | | |
+| L2 | **No change needed** — `--update-labels rls-aware=1` lands on BOTH serving revision AND service; preflight reads the revision label → works as-is | Label-scope question (Phase C2) | — | Real Cloud Run: rev+svc both `rls-aware=1`; preflight PASS ✅ |
 | pre | Label-wiring: derived `--update-labels rls-aware` from source marker (CD trust anchor) | GATE A (F1) — automatic, tamper-resistant, not hand-set | `.github/workflows/deploy-staging.yml` | Phase C2/C3 on real Cloud Run |
 
-## WATCH items (from B1)
-- **FORCE RLS + Cloud SQL owner**: `postgres` is not a true superuser, so post-`0016` the table
-  owner is ALSO scoped. Ground truth captured pre-0016. Any post-0016 op needing all rows
-  (migrations DDL = fine; verification = read pre-0016 or temporary RLS-disable). Confirm in C4.
+## Phase C validations (not code changes — real-infra facts for the runbook)
+| item | result |
+|---|---|
+| C4 max_connections (db-g1-small) | **50** (superuser_reserved 3 → **47 usable**); pool budget 16 fits. Runbook caveat CLOSED. |
+| C3 load test under RLS (g1-small) | 20×150 qScoped txns = 3000 in 27s, **0 errors, peak 21 conns**. No June-style saturation. |
+| WATCH (B1) FORCE-owner-scoped | **CONFIRMED on real infra**: post-0016 `postgres` no-context read = 0. Runbook note added (verify via context / pre-0016 / temp rollback). Not a blocker (migrations=DDL, app=context). |
+| C2 label scope | RESOLVED — lands on serving revision + service; preflight unmodified. |
+
+## Open item requiring OWNER action (not a code change)
+- **C5 OAuth redirect-URI add** to the live OAuth client for `-rlsstg` must be done in the
+  **API Console** (Google OAuth 2.0 web-client redirect URIs are not gcloud/API-manageable).
+  Add-only; never edit an existing URI. Deferred — I did not touch the live OAuth client.
+  RLS scoping (the core of C5) validated at the DB layer on real infra instead.
+
+## Committed
+- B1 fix + label-wiring: commit `26d3251`. This ledger + runbook → FINAL independent re-check.

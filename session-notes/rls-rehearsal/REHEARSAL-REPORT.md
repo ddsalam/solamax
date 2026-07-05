@@ -53,3 +53,12 @@ db-f1-micro (prorated pennies), Cloud Run idle (~$0), 2 Cloud Build runs (~$0.02
 ## Status: PHASE B COMPLETE — checkpoint before Phase C.
 cloud-sql-proxy running on :5434 (ADC) for psql access. Next: Phase C (deploy labeled images →
 preflight → tier bump + max_connections → 0016/0017 → verify → rollback), checkpointing each.
+
+## PHASE C — real-infra rehearsal (checkpointed)
+- **C1** 0017 applied (migrate-before-image); `app.audit_log` INSERT/SELECT only; 0016 not yet.
+- **C2** `--update-labels rls-aware=1` → lands on serving revision AND service (label-scope resolved, no preflight fix). Both services 100% on labeled revisions.
+- **C3** real preflight **PASS** on labeled `-rlsstg`; identical preflight **hard-FAILs** on unlabeled live-IB staging. Both paths captured.
+- **C4** tier bump → **db-g1-small: max_connections=50 (47 usable)**; 0016 applied out-of-band (26 tables RLS+FORCE); `dashboard_app`+ctx == ground truth; **owner `postgres` also scoped post-0016 (FORCE + cloudsqlsuperuser)** — WATCH confirmed. Load test: 20×150 qScoped txns, **3000 in 27s, 0 errors, peak 21 conns**.
+- **C5** no zero-row regression (sales 2/3/5, opname 2/1/3, manual_entry 2/1/3; foreign unit99 never). OAuth redirect-URI add = **owner console step** (add-only) — deferred.
+- **C6** rollback (`rls-rollback.sql`) → recovery → re-enable → fail-closed. Instant, on real infra.
+- Tier reverted g1-small → **db-f1-micro** for the kept permanent staging env.
