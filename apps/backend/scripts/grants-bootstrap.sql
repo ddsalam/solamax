@@ -32,6 +32,13 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO dashboard_ap
 -- dashboard_app: RW on the app schema (auth/RBAC/manual-entry).
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA app TO dashboard_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT, INSERT, UPDATE ON TABLES TO dashboard_app;
+-- (B2) USAGE on app-schema SEQUENCES — Auth.js pg-adapter `createUser`/`linkAccount`/
+-- `createSession` INSERT into app.users/accounts/sessions whose ids come from
+-- users_id_seq/accounts_id_seq/sessions_id_seq. Without this, first login fails with
+-- "permission denied for sequence users_id_seq". (Surfaced by the real-infra login on
+-- a fresh instance; live IB already had this grant out-of-git.)
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA app TO dashboard_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT USAGE ON SEQUENCES TO dashboard_app;
 
 -- ingest: full DML on public data tables.
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ingest;
