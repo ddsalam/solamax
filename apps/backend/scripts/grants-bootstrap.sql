@@ -23,7 +23,12 @@ END $$;
 
 -- Schema usage.
 GRANT USAGE ON SCHEMA public, app TO dashboard_app;
-GRANT USAGE ON SCHEMA public          TO ingest;
+-- (B3) ingest needs USAGE on `app` too: it OWNS the app-schema RLS tables (manual_entry,
+-- usulan_so) on instances where migrations ran as ingest, and enabling RLS (0016) on them
+-- requires schema USAGE. Without it, `0016` fails partway with "permission denied for schema
+-- app" and the whole DO-block rolls back → 0 policies. (On live, ingest already owns schema
+-- app; this makes fresh-instance provisioning robust when table-owner ≠ schema-owner.)
+GRANT USAGE ON SCHEMA public, app     TO ingest;
 
 -- dashboard_app: SELECT-only on the public data mirror (the out-of-git broad grant).
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO dashboard_app;

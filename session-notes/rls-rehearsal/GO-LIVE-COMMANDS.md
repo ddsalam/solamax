@@ -3,20 +3,24 @@
 Region `asia-southeast2`, project `solamax`. Live services **`solamax-ingest-staging`** +
 **`solamax-dashboard-staging`**, instance **`solamax-pg`**. Runbook: `apps/backend/RLS-CUTOVER-RUNBOOK.md`.
 
-## ⚠️ CRITICAL live-specific caveat (divergence from the rehearsal) — resolve BEFORE go
-The rehearsal ran all DDL as the instance admin **`postgres`**, which **owned** the tables.
-On live, per `apps/backend/DEPLOY-GCP.md`, migrations have historically run as **`ingest`** →
-**`ingest` likely owns the public tables**. On Cloud SQL, `postgres` is `cloudsqlsuperuser`
-(NOT a true superuser) and **cannot `ALTER`/`DROP POLICY` on another role's tables**. Therefore:
-- **`0016` apply AND `rls-rollback.sql` MUST run as the LIVE TABLE-OWNER role** (the role prior
-  migrations ran as — expected `ingest`). Running them as `postgres` will error "must be owner".
-- **CONFIRM the owner role** before STEP 6 (read-only: `\dt+` ownership, or recall which role
-  ran 0012). `$LIVE_OWNER_URL` below = that role's connection via proxy. If it differs from the
-  rehearsal in any other way → STOP and report.
+## ✅ RESOLVED — live table owner = `ingest` (confirmed + rehearsed)
+Read-only ownership query on live (2026-07-06): **ALL 26 RLS tables (24 public + app.manual_entry,
+app.usulan_so) are owned by `ingest`** — single consistent owner, no mixed ownership. On Cloud SQL,
+`postgres` is `cloudsqlsuperuser` (NOT a true superuser) and **cannot `ALTER`/`DROP POLICY` on
+another role's tables**. Therefore **ALL DDL — `0017`, `0016`, and `rls-rollback.sql` — runs as
+`$LIVE_OWNER_URL` (the `ingest` connection), NEVER as `postgres`.**
+
+Rehearsed on `-rlsstg` (Task 3): 0016-as-ingest → 26 policies+FORCE, fail-closed; and `rls-rollback`
+as `postgres` → **`ERROR: must be owner of table sync_state`** (proves it must be the owner).
+
+Also confirmed: enabling RLS on the 2 **app-schema** RLS tables needs the owner to have **USAGE on
+schema `app`** (grants-bootstrap B3 grants it; on live `ingest` already owns schema `app` so it has it).
+If `0016` ever errors `permission denied for schema app` → run `GRANT USAGE ON SCHEMA app TO ingest`
+(as schema owner) and retry.
 
 ```
-# fill at execution (owner-supplied; from Secret Manager, never committed):
-LIVE_OWNER_URL='postgresql://<owner-role>:<pw>@127.0.0.1:5432/solamax'   # ingest/owner via proxy — used for 0017/0016/rollback DDL
+# fill at execution (owner-supplied; ingest URL from Secret Manager `solamax-db-url-staging`, never committed):
+LIVE_OWNER_URL='postgresql://ingest:<pw>@127.0.0.1:5432/solamax'   # the ingest/owner conn via proxy — ALL DDL + rollback
 PROXY='cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432'   # terminal 1
 ```
 

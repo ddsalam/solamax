@@ -54,7 +54,7 @@ exception.
    **logs in via the browser and sees IB data — the board/laporan render real numbers, NOT blank**.
    Plus: `/board`, `/unit/6478111/laporan/<date>` render; ingest writes succeed (agent log
    `ingest ok`, no 422/500); no zero-row regression vs pre-cutover.
-7. **If the smoke test FAILS → immediately** `psql "$SUPERUSER_URL" -f apps/backend/scripts/rls-rollback.sql`
+7. **If the smoke test FAILS → immediately** `psql "$LIVE_OWNER_URL" -f apps/backend/scripts/rls-rollback.sql`
    (DISABLE RLS + drop policies → instant pre-RLS read behavior), **then report**. A failed RLS
    state is an IB outage — restore first. The RLS-aware images, g1-small tier, and `0017` may all stay.
 
@@ -62,7 +62,7 @@ exception.
 
 If IB reads go empty or ingest 500s after step 5:
 ```
-psql "$SUPERUSER_URL" -f apps/backend/scripts/rls-rollback.sql   # DISABLE RLS + drop policies, all tables
+psql "$LIVE_OWNER_URL" -f apps/backend/scripts/rls-rollback.sql   # DISABLE RLS + drop policies, all tables
 ```
 This reverts to app-layer-only scoping immediately. If the RLS-aware image is fine (it is
 backward-compatible — `qScoped` sets a GUC that, with RLS off, is simply unread), no image
@@ -74,7 +74,7 @@ end-to-end (enable→disable→recover→re-enable) in `session-notes/rls-rehear
 To (re-)assert grants on the live/promoted-prod instance use **grants-only**, which never
 touches passwords or role attributes:
 ```
-psql "$SUPERUSER_URL" -f apps/backend/scripts/grants-bootstrap.sql
+psql "$LIVE_OWNER_URL" -f apps/backend/scripts/grants-bootstrap.sql
 ```
 **Do NOT** run `roles-provision.sql` on a live instance — it `ALTER ROLE … PASSWORD` and would
 break the running dashboard + IB agent DB auth until Secret Manager secrets are rotated in
@@ -126,3 +126,9 @@ Observed on real infra:
 3. **OAuth redirect URI** for a new service must be **added in the API Console** (Credentials →
    the OAuth client) — Google OAuth 2.0 web-client redirect URIs are not gcloud/API-manageable.
    Add-only; never edit an existing URI. (Rehearsal: deferred to owner console action.)
+4. **ALL DDL runs as the TABLE-OWNER role, never `postgres` (ledger B3).** Live confirmed:
+   `ingest` owns all 26 RLS tables. `postgres` (cloudsqlsuperuser, non-owner) **cannot**
+   `ENABLE RLS`/`DROP POLICY` — rehearsal error `must be owner of table sync_state`. So `0017`,
+   `0016`, `rls-rollback.sql`, and `grants-bootstrap.sql` all run as `$LIVE_OWNER_URL` (`ingest`).
+   Enabling RLS on the 2 **app-schema** RLS tables also needs the owner to have **USAGE on schema
+   `app`** — grants-bootstrap now grants it (ingest already owns schema `app` on live).
