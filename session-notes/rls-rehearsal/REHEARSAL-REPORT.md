@@ -62,3 +62,27 @@ preflight → tier bump + max_connections → 0016/0017 → verify → rollback)
 - **C5** no zero-row regression (sales 2/3/5, opname 2/1/3, manual_entry 2/1/3; foreign unit99 never). OAuth redirect-URI add = **owner console step** (add-only) — deferred.
 - **C6** rollback (`rls-rollback.sql`) → recovery → re-enable → fail-closed. Instant, on real infra.
 - Tier reverted g1-small → **db-f1-micro** for the kept permanent staging env.
+
+## FINAL end-to-end DRY-RUN — ingest-owner, one continuous pass (2026-07-06)
+Reset -rlsstg to the live baseline (0001–0015, RLS off, f1-micro, **ingest owns app schema +
+all tables + sequences**, public schema default-owned — mirrors live), then replayed
+GO-LIVE STEP 0→7 as ingest. **Clean end-to-end:**
+- STEP 0 g1-small bump **320s (~5.3 min)**; `max_connections=50`.
+- STEP 1 grants-bootstrap as ingest (benign `WARNING: no privileges were granted for "public"`
+  — ingest owns app not public; public USAGE already exists on live, harmless) + `0017` **1s**;
+  `dashboard_app` on audit_log = INSERT,SELECT.
+- STEP 2/3 labeled backend + dashboard (derived label) → 100% (dry-run used `services update`,
+  no rebuild — see window note); STEP 4 preflight **PASS**.
+- STEP 5 `0016` **as ingest** → **26 tables RLS+FORCE** (instant).
+- STEP 6 scoped reads 0/2/5; ingest write-path: unit-2 allowed, cross-unit REJECTED; audit
+  INSERT ok / UPDATE denied.
+- STEP 7 rollback as ingest → recover → re-enable → fail-closed. Tier reverted → f1-micro.
+
+**Maintenance-window estimate (LIVE):** the dry-run relabeled via `services update` (seconds),
+but on live STEP 2/3 are IMAGE deploys — backend `gcloud run deploy --source .` (~5–8 min) +
+dashboard CD build+deploy (~8–12 min). DB DDL (0017/0016) is ~1s each; the g1-small bump is
+~5 min. **Total live window ≈ 25–35 min**, dominated by the bump + the two image builds.
+
+**Guardrails baked into GO-LIVE-COMMANDS.md:** fetch `$LIVE_OWNER_URL` from Secret Manager
+without echoing; assert `current_user='ingest'` before any DDL; grants-bootstrap (incl B3)
+before 0016; all 0017/0016/rollback DDL as ingest.

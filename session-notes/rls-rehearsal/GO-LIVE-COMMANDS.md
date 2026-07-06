@@ -19,10 +19,20 @@ If `0016` ever errors `permission denied for schema app` → run `GRANT USAGE ON
 (as schema owner) and retry.
 
 ```
-# fill at execution (owner-supplied; ingest URL from Secret Manager `solamax-db-url-staging`, never committed):
-LIVE_OWNER_URL='postgresql://ingest:<pw>@127.0.0.1:5432/solamax'   # the ingest/owner conn via proxy — ALL DDL + rollback
-PROXY='cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432'   # terminal 1
+# Terminal 1 — proxy:
+cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432
+# Terminal 2 — build $LIVE_OWNER_URL from Secret Manager WITHOUT echoing the secret, then
+# rewrite the socket host to the local proxy (the secret's URL uses host=/cloudsql/...):
+ING_CRED=$(gcloud secrets versions access latest --secret=solamax-db-url-staging | sed -E 's|^postgresql://([^@]+)@.*|\1|')  # ingest:pw, not printed
+LIVE_OWNER_URL="postgresql://${ING_CRED}@127.0.0.1:5432/solamax"
 ```
+
+### 🔒 GUARDRAIL — run BEFORE any DDL (fail-fast if authenticated as the wrong role)
+```
+psql "$LIVE_OWNER_URL" -tAc "SELECT current_user" | grep -qx ingest \
+  || { echo "ABORT: DDL role is not 'ingest' — do NOT run 0017/0016/rollback"; }
+```
+All `0017`/`0016`/`rls-rollback`/`grants-bootstrap` DDL runs on `$LIVE_OWNER_URL` (ingest). Never postgres.
 
 ## STEP 0 — g1-small bump (FIRST live mutation) + verify max_connections (R1/R2)
 ```
@@ -31,8 +41,15 @@ gcloud sql instances describe solamax-pg --format='value(settings.tier,state)'  
 psql "$LIVE_OWNER_URL" -tAc "SHOW max_connections;"               # → 50 (expect; 47 usable)
 ```
 
-## STEP 1 — apply 0017 (audit) out-of-band, migrate-before-image
+## STEP 1 — grants-bootstrap (incl B3) THEN 0017 (audit), as ingest, out-of-band
 ```
+# grants-bootstrap ensures ingest has USAGE on schema app (B3) before 0016. Run as ingest.
+# NOTE: expect a benign `WARNING: no privileges were granted for "public"` — ingest owns
+# schema app but not public, so it can't re-grant public USAGE; that grant already exists on
+# live, so the warning is harmless. The app USAGE + table grants it needs DO apply.
+psql "$LIVE_OWNER_URL" -f apps/backend/scripts/grants-bootstrap.sql
+psql "$LIVE_OWNER_URL" -tAc "SELECT has_schema_privilege('ingest','app','USAGE');"   # → t (required for 0016)
+
 psql "$LIVE_OWNER_URL" -v ON_ERROR_STOP=1 -f apps/backend/prisma/migrations/0017_audit_log/migration.sql
 apps/backend/node_modules/.bin/prisma migrate resolve --applied 0017_audit_log --schema apps/backend/prisma/schema.prisma
 psql "$LIVE_OWNER_URL" -tAc "SELECT to_regclass('app.audit_log');"   # → app.audit_log

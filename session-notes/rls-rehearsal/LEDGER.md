@@ -29,3 +29,6 @@ FINAL independent re-check before the live cutover. No script change is silently
 
 ## Committed
 - B1 fix + label-wiring: commit `26d3251`. This ledger + runbook → FINAL independent re-check.
+
+## Final end-to-end dry-run (2026-07-06)
+Replayed GO-LIVE STEP 0→7 as ingest-owner on -rlsstg, clean end-to-end (26 policies, scoped 0/2/5, ingest write-path, rollback→recover→re-enable). **No new hard gap.** Note: grants-bootstrap as ingest warns benignly `no privileges were granted for public` (public USAGE pre-exists on live). Timings: bump 320s, 0017/0016 ~1s; live window ≈25–35 min (dominated by bump + backend/dashboard image builds).
