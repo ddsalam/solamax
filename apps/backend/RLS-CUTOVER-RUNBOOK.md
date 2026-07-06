@@ -23,24 +23,40 @@ exception.
 
 ## Sequence (live)
 
-1. **Migrate `0017` (audit_log)** out-of-band — standard order, additive table, no image dep.
-2. **Deploy the backend RLS-aware image** (`solamax-ingest`). CD/deploy sets the label
+0. **PRECONDITION — bump the instance to `db-g1-small` FIRST (R1).** Do this **before** the
+   RLS-aware images serve prod load: the rehearsal peaked at **21 connections** vs f1-micro's
+   **22 usable** — too tight, and the qScoped transaction-wrapping holds a client slightly longer.
+   ```
+   gcloud sql instances patch solamax-pg --tier=db-g1-small     # ~5-min restart; brief IB blip, ingest buffers+retries
+   ```
+   Wait RUNNABLE, then **verify `SHOW max_connections` = 50 (47 usable) on the live instance (R2)**
+   via cloud-sql-proxy. This is the FIRST live mutation.
+1. **Migrate `0017` (audit_log)** out-of-band — additive; must exist **before** the RLS-aware
+   dashboard image (which references `AuditLog`) serves.
+2. **Deploy the backend RLS-aware image** (`solamax-ingest-staging`). The label is set
    AUTOMATICALLY, derived from source (never hand-set):
    `RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)`
-   → `gcloud run deploy solamax-ingest … --update-labels rls-aware=${RLS_AWARE}`. Wait for
-   **100% traffic**. (Rehearsal: the label lands on the serving revision the preflight reads.)
-3. **Deploy the dashboard RLS-aware image** (`solamax-dashboard`) likewise — the dashboard CD
-   ([deploy-staging.yml](../../.github/workflows/deploy-staging.yml)) derives `--update-labels
-   rls-aware` from `apps/dashboard/src/lib/db.ts`. Wait for **100% traffic**.
+   → `gcloud run deploy solamax-ingest-staging … --update-labels rls-aware=${RLS_AWARE}`. Wait
+   for **100% traffic**; `/health` ok. (Rehearsal: label lands on the serving revision the preflight reads.)
+3. **Deploy the dashboard RLS-aware image** (`solamax-dashboard-staging`) via CD — merge the PR
+   to `staging`; the dashboard CD ([deploy-staging.yml](../../.github/workflows/deploy-staging.yml))
+   derives `--update-labels rls-aware` from `apps/dashboard/src/lib/db.ts`. Confirm **100% traffic**
+   AND the `rls-aware=1` label on the serving revision.
 4. **PREFLIGHT GATE (hard stop):**
    ```
-   REGION=asia-southeast2 bash apps/backend/scripts/preflight-rls-cutover.sh
+   REGION=asia-southeast2 BACKEND_SVC=solamax-ingest-staging DASHBOARD_SVC=solamax-dashboard-staging \
+     bash apps/backend/scripts/preflight-rls-cutover.sh
    ```
    Exits nonzero unless BOTH services serve a single `rls-aware=1` revision at 100%. **Do not
    proceed on a nonzero exit.** (Gate logic is unit-tested: `preflight-rls-cutover.sh --selftest`.)
-5. **Apply `0016`** out-of-band (via `prisma migrate deploy`, or `psql -f` the migration).
-6. **Verify** IB reads return data (spot-check `/board`, `/unit/6478111/laporan/<date>`) and
-   ingest writes succeed (agent log: `ingest ok`, no 422/500).
+5. **Apply `0016`** out-of-band (via `prisma migrate deploy`, or `psql -f` the migration). **POINT OF NO RETURN.**
+6. **Smoke test (R3) — must include a BROWSER-LOGIN check:** an IB user (direksi and pengawas)
+   **logs in via the browser and sees IB data — the board/laporan render real numbers, NOT blank**.
+   Plus: `/board`, `/unit/6478111/laporan/<date>` render; ingest writes succeed (agent log
+   `ingest ok`, no 422/500); no zero-row regression vs pre-cutover.
+7. **If the smoke test FAILS → immediately** `psql "$SUPERUSER_URL" -f apps/backend/scripts/rls-rollback.sql`
+   (DISABLE RLS + drop policies → instant pre-RLS read behavior), **then report**. A failed RLS
+   state is an IB outage — restore first. The RLS-aware images, g1-small tier, and `0017` may all stay.
 
 ## Rollback (instant)
 
