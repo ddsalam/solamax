@@ -1,13 +1,5 @@
-import { describe, expect, it } from "vitest";
-import type { ScopedUnitId } from "./scope";
-import {
-  getSalesByProduct,
-  getSyncByUnit,
-  getRealTank,
-  getNozzles,
-  getManualEntries,
-  getUsulanSoList,
-} from "./queries";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { ScopedUnitId } from "./scope-rule";
 
 /**
  * FULL-APP-UNDER-RLS (functional). Drives the REAL dashboard query functions —
@@ -18,7 +10,9 @@ import {
  * just raw SQL.
  *
  * Gated: RLS_SURFACES_LIVE_DB=1 & DATABASE_URL = the dashboard_app connection.
- * (db.ts makePool() connects as whatever DATABASE_URL points to.)
+ * ⚠️ `./queries` is imported LAZILY inside beforeAll (like grant/scope integration
+ * suites): a static import pulls db.ts → makePool(), which throws with no DATABASE_URL
+ * in CI. Lazy import keeps module load DB-free so the suite SKIPS cleanly when not LIVE.
  */
 const LIVE = process.env.RLS_SURFACES_LIVE_DB === "1" && !!process.env.DATABASE_URL;
 const d = LIVE ? describe : describe.skip;
@@ -27,9 +21,14 @@ const U = (n: number) => n as unknown as ScopedUnitId;
 const D = "2026-07-01";
 
 d("full-app under RLS (dashboard_app, synthetic 2-unit PT)", () => {
+  let Q: typeof import("./queries");
+  beforeAll(async () => {
+    Q = await import("./queries"); // deferred → no makePool() at module load
+  });
+
   it("getSalesByProduct scopes by unit (name discrimination, no cross-unit leak)", async () => {
-    const u1 = await getSalesByProduct(U(1), D, D);
-    const u2 = await getSalesByProduct(U(2), D, D);
+    const u1 = await Q.getSalesByProduct(U(1), D, D);
+    const u2 = await Q.getSalesByProduct(U(2), D, D);
     const n1 = u1.map((r) => r.nama);
     const n2 = u2.map((r) => r.nama);
     expect(n1).toContain("PERTAMAX"); // unit 1 product
@@ -39,28 +38,28 @@ d("full-app under RLS (dashboard_app, synthetic 2-unit PT)", () => {
   });
 
   it("getSyncByUnit: direksi spans [1,2]; pengawas sees only its unit", async () => {
-    const direksi = await getSyncByUnit([U(1), U(2)]);
+    const direksi = await Q.getSyncByUnit([U(1), U(2)]);
     expect(direksi.map((r) => r.unit_id).sort()).toEqual([1, 2]);
-    const pengawasIB = await getSyncByUnit([U(1)]);
+    const pengawasIB = await Q.getSyncByUnit([U(1)]);
     expect(pengawasIB.map((r) => r.unit_id)).toEqual([1]);
-    const pengawasBakau = await getSyncByUnit([U(2)]);
+    const pengawasBakau = await Q.getSyncByUnit([U(2)]);
     expect(pengawasBakau.map((r) => r.unit_id)).toEqual([2]);
   });
 
   it("monitoring/denah: getRealTank + getNozzles scoped per unit", async () => {
-    expect((await getRealTank(U(1))).length).toBe(2);
-    expect((await getRealTank(U(2))).length).toBe(1);
-    expect((await getNozzles(U(1))).length).toBe(2);
-    expect((await getNozzles(U(2))).length).toBe(1);
+    expect((await Q.getRealTank(U(1))).length).toBe(2);
+    expect((await Q.getRealTank(U(2))).length).toBe(1);
+    expect((await Q.getNozzles(U(1))).length).toBe(2);
+    expect((await Q.getNozzles(U(2))).length).toBe(1);
   });
 
   it("rincian: getManualEntries scoped per unit", async () => {
-    expect((await getManualEntries(U(1), D, "pengeluaran")).length).toBe(2);
-    expect((await getManualEntries(U(2), D, "pengeluaran")).length).toBe(1);
+    expect((await Q.getManualEntries(U(1), D, "pengeluaran")).length).toBe(2);
+    expect((await Q.getManualEntries(U(2), D, "pengeluaran")).length).toBe(1);
   });
 
   it("usulan: getUsulanSoList scoped per unit", async () => {
-    expect((await getUsulanSoList(U(1), 100)).length).toBe(2);
-    expect((await getUsulanSoList(U(2), 100)).length).toBe(1);
+    expect((await Q.getUsulanSoList(U(1), 100)).length).toBe(2);
+    expect((await Q.getUsulanSoList(U(2), 100)).length).toBe(1);
   });
 });
