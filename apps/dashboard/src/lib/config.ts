@@ -20,6 +20,12 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
     pt: "PT Sola Petra Abadi",
     address: "Jl. Imam Bonjol, Pontianak Selatan, Kalimantan Barat",
   },
+  "6378301": {
+    dotted: "63.783.01",
+    name: "Bakau",
+    pt: "PT Sola Petra Abadi",
+    // TODO(owner): alamat resmi Bakau — placeholder sampai owner memberi (sebelum live).
+  },
 };
 
 export function unitLabel(code: string, fallbackName?: string): string {
@@ -130,6 +136,18 @@ export const TARGET_BAURAN: Record<
       7: 0.3626, 8: 0.3643, 9: 0.3661, 10: 0.3678, 11: 0.3696, 12: 0.3713,
     },
   },
+  // Bakau (63.783.01) — workbook 2026, 12 bulan penuh. Bauran gasoil jauh lebih
+  // rendah dari IB (mix gasoil ~15% vs IB ~36%).
+  "6378301": {
+    gasoline: {
+      1: 0.1113, 2: 0.115, 3: 0.1187, 4: 0.1225, 5: 0.1263, 6: 0.13,
+      7: 0.1338, 8: 0.1375, 9: 0.1412, 10: 0.145, 11: 0.1487, 12: 0.1525,
+    },
+    gasoil: {
+      1: 0.1235, 2: 0.1276, 3: 0.1318, 4: 0.1359, 5: 0.14, 6: 0.1441,
+      7: 0.1482, 8: 0.1524, 9: 0.1565, 10: 0.1606, 11: 0.1647, 12: 0.1688,
+    },
+  },
 };
 
 export function targetBauran(
@@ -158,6 +176,22 @@ export const TARGET_VOLUME_PER_DAY: Record<
       DEXLITE: 3300,
       "PERTAMINA DEX": 5000,
     },
+  },
+  // Bakau (63.783.01) — workbook 2026, 12 bulan penuh (L/HARI). Volume harian
+  // ~37,7k L vs IB ~64k; PERTALITE & SOLAR flat, sisanya naik per bulan.
+  "6378301": {
+    1: { PERTALITE: 16000, PERTAMAX: 1700, "PERTAMAX TURBO": 80, SOLAR: 17000, DEXLITE: 1800, "PERTAMINA DEX": 300 },
+    2: { PERTALITE: 16000, PERTAMAX: 1750, "PERTAMAX TURBO": 90, SOLAR: 17000, DEXLITE: 1850, "PERTAMINA DEX": 320 },
+    3: { PERTALITE: 16000, PERTAMAX: 1800, "PERTAMAX TURBO": 100, SOLAR: 17000, DEXLITE: 1900, "PERTAMINA DEX": 340 },
+    4: { PERTALITE: 16000, PERTAMAX: 1850, "PERTAMAX TURBO": 110, SOLAR: 17000, DEXLITE: 1950, "PERTAMINA DEX": 360 },
+    5: { PERTALITE: 16000, PERTAMAX: 1900, "PERTAMAX TURBO": 120, SOLAR: 17000, DEXLITE: 2000, "PERTAMINA DEX": 380 },
+    6: { PERTALITE: 16000, PERTAMAX: 1950, "PERTAMAX TURBO": 130, SOLAR: 17000, DEXLITE: 2050, "PERTAMINA DEX": 400 },
+    7: { PERTALITE: 16000, PERTAMAX: 2000, "PERTAMAX TURBO": 140, SOLAR: 17000, DEXLITE: 2100, "PERTAMINA DEX": 420 },
+    8: { PERTALITE: 16000, PERTAMAX: 2050, "PERTAMAX TURBO": 150, SOLAR: 17000, DEXLITE: 2150, "PERTAMINA DEX": 440 },
+    9: { PERTALITE: 16000, PERTAMAX: 2100, "PERTAMAX TURBO": 160, SOLAR: 17000, DEXLITE: 2200, "PERTAMINA DEX": 460 },
+    10: { PERTALITE: 16000, PERTAMAX: 2150, "PERTAMAX TURBO": 170, SOLAR: 17000, DEXLITE: 2250, "PERTAMINA DEX": 480 },
+    11: { PERTALITE: 16000, PERTAMAX: 2200, "PERTAMAX TURBO": 180, SOLAR: 17000, DEXLITE: 2300, "PERTAMINA DEX": 500 },
+    12: { PERTALITE: 16000, PERTAMAX: 2250, "PERTAMAX TURBO": 190, SOLAR: 17000, DEXLITE: 2350, "PERTAMINA DEX": 520 },
   },
 };
 
