@@ -24,7 +24,9 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
     dotted: "63.783.01",
     name: "Bakau",
     pt: "PT Sola Petra Abadi",
-    // TODO(owner): alamat resmi Bakau — placeholder sampai owner memberi (sebelum live).
+    address:
+      "Jl. Raya Sungai Bakau Besar Laut, Kec. Sungai Pinyuh, Kab. Mempawah, 78919",
+    // pengawas: Dedek Akramul (spbu6378301sbbl@solagroup.co)
   },
 };
 
