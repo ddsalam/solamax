@@ -132,3 +132,28 @@ Observed on real infra:
    `0016`, `rls-rollback.sql`, and `grants-bootstrap.sql` all run as `$LIVE_OWNER_URL` (`ingest`).
    Enabling RLS on the 2 **app-schema** RLS tables also needs the owner to have **USAGE on schema
    `app`** — grants-bootstrap now grants it (ingest already owns schema `app` on live).
+
+---
+
+## ✅ LIVE-IB CUTOVER — EXECUTED 2026-07-07 (COMPLETE)
+
+Ran on live `solamax-pg` / `solamax-ingest-staging` / `solamax-dashboard-staging`, gated per step,
+DDL as `ingest` (credential re-verified `current_user=ingest` before each). Full evidence +
+per-step timings in [`session-notes/rls-rehearsal/LEDGER.md`](../../session-notes/rls-rehearsal/LEDGER.md)
+(§ LIVE-IB CUTOVER RUN).
+
+- **STEP 0** db-f1-micro → **db-g1-small**, `max_connections=50`; post-restart health gate passed
+  (dashboard 307, ingest `/health` ok, agent reconnected + draining).
+- **STEP 1** grants-bootstrap (as ingest, **0 warnings** — see ledger DEVIATION: live public ACL
+  pre-provisioned, equal-or-better) + `0017_audit_log` applied; `app.audit_log` present, append-only.
+- **STEP 2** backend `solamax-ingest-staging-00024-fzr` @100% `rls-aware=1`.
+- **STEP 3** owner merged PR #62 → dashboard `solamax-dashboard-staging-00036-v4w` @100% `rls-aware=1`.
+- **STEP 4** preflight **GATE PASSED** (both services RLS-aware @100%).
+- **STEP 5** `0016_rls_unit_scope` applied 06:51:00Z → **`pg_policy` unit_scope = 26**.
+- **STEP 6** query-layer: no-context read 0 (fail-closed), IB ctx reads 172,530 rows, cross-unit write
+  rejected; browser `/unit/6478111/laporan/2026-07-06` renders full IB data (omset Rp 983,3 jt), not blank.
+- **STEP 7** **14/14 domains writing under RLS**, zero 4xx/5xx from `/ingest`; audit_log ready
+  (append-only, non-unit-scoped); board `today` empty = no source data for that business date (not RLS).
+
+**Final serving state:** db-g1-small RUNNABLE · ingest `00024-fzr` @100% `rls-aware=1` · dashboard
+`00036-v4w` @100% `rls-aware=1` · migrations `0016`+`0017` applied. Rollback was never needed.
