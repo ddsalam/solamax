@@ -234,7 +234,7 @@ export function buildBoardDocDefinition(args: {
         {
           width: "*",
           stack: [
-            { text: "SolaGroup — Ringkasan Direksi", style: "kopSpbu" },
+            { text: "PT Sola Petra Abadi — Ringkasan Direksi", style: "kopSpbu" },
             { text: `Tanggal bisnis ${meta.dateLong} · Periode ${meta.periodLabel}`, style: "kopAddr", marginTop: 2 },
           ],
         },
@@ -293,9 +293,9 @@ export function buildBoardDocDefinition(args: {
     pageOrientation: "landscape",
     pageMargins: [40, 40, 40, 44],
     info: {
-      title: `Ringkasan Direksi — SolaGroup — ${meta.dateLong}`,
+      title: `Ringkasan Direksi — PT Sola Petra Abadi — ${meta.dateLong}`,
       author: "SolaMax",
-      subject: "Ringkasan Direksi (board) SolaGroup",
+      subject: "Ringkasan Direksi (board) PT Sola Petra Abadi",
       creator: "SolaMax Dashboard",
     },
     defaultStyle: { font: "Roboto", fontSize: 9, color: PDF.textPrimary, lineHeight: 1.12 },
@@ -303,7 +303,7 @@ export function buildBoardDocDefinition(args: {
       currentPage > 1
         ? {
             columns: [
-              { text: `Ringkasan Direksi · SolaGroup`, fontSize: 7.5, color: PDF.textMuted },
+              { text: `Ringkasan Direksi · PT Sola Petra Abadi`, fontSize: 7.5, color: PDF.textMuted },
               { text: meta.dateLong, fontSize: 7.5, color: PDF.textMuted, alignment: "right" },
             ],
             margin: [40, 20, 40, 0],

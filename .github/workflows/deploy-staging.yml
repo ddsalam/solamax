@@ -76,8 +76,14 @@ jobs:
           docker push "${IMAGE}:${GITHUB_SHA}"
       - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling preserved)
         run: |
+          # rls-aware=1 label DERIVED from source (F1 preflight trust anchor) — set
+          # AUTOMATICALLY by CD, never by hand. Present only when the qScoped context
+          # setter is actually in the build; reverting the RLS code drops the label →
+          # apps/backend/scripts/preflight-rls-cutover.sh then refuses the 0016 cutover.
+          RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/dashboard/src/lib/db.ts && echo 1 || echo 0)
           gcloud run deploy ${SERVICE} --region=${REGION} \
-            --image ${IMAGE}:${GITHUB_SHA}
+            --image ${IMAGE}:${GITHUB_SHA} \
+            --update-labels rls-aware=${RLS_AWARE}
       - name: Report serving revision
         run: |
           gcloud run services describe ${SERVICE} --region=${REGION} \

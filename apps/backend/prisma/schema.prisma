@@ -625,3 +625,20 @@ model UserUnit {
   @@map("user_unit")
   @@schema("app")
 }
+
+/// Jejak audit append-only untuk aksi /admin (grant/revoke akses). Migration 0017.
+/// dashboard_app: SELECT+INSERT saja (UPDATE/DELETE dicabut → tak bisa ditulis-ulang).
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId Int      @map("actor_user_id")
+  actorEmail  String?  @map("actor_email")
+  action      String
+  target      String?
+  detail      Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_log")
+  @@schema("app")
+}

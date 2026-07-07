@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { q } from "./db";
+import { qScoped } from "./db";
 import type { ManualSection } from "./queries";
 import { getDataScope } from "./scope";
 
@@ -43,7 +43,8 @@ export async function addManualEntry(input: {
 
   // unit_id = unit.unit_id (TER-SCOPE) — bukan input.code mentah. `urut` = ordering
   // berikutnya per (unit, tanggal, seksi); BUKAN unique (input manusia, ADR-001).
-  await q(
+  await qScoped(
+    unit.unit_id, // RLS (0016): set app.unit_ids → WITH CHECK pada INSERT ke app.manual_entry
     `INSERT INTO app.manual_entry
        (unit_id, business_date, section, urut, keterangan, amount, created_by_user_id)
      VALUES ($1, $2::date, $3::app.manual_entry_section,
@@ -66,7 +67,8 @@ export async function voidManualEntry(input: {
 
   // Lapis-2: `unit_id = $3` ter-scope → mustahil membatalkan entri unit lain
   // walau `id` ditebak. Void (bukan DELETE) → jejak audit utuh.
-  await q(
+  await qScoped(
+    unit.unit_id, // RLS (0016): app.unit_ids → USING+WITH CHECK pada UPDATE app.manual_entry
     `UPDATE app.manual_entry
         SET void=true, voided_by_user_id=$1, voided_at=now(), updated_at=now()
       WHERE id=$2::uuid AND unit_id=$3 AND NOT void`,

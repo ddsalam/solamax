@@ -54,14 +54,38 @@ export async function grantAccess(formData: FormData): Promise<void> {
     }
   }
 
+  // Audit (migration 0017): jejak grant tak-bisa-diubah (append-only).
+  await q(
+    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
+     VALUES ($1, $2, 'grant_access', $3, $4::jsonb)`,
+    [
+      scope.userId,
+      scope.email,
+      String(userId),
+      JSON.stringify({ membership_id: membershipId, role, tenant_id: tenantId, unit_ids: role === "pengawas" ? unitIds : "ALL" }),
+    ],
+  );
+
   revalidatePath("/admin");
 }
 
 export async function revokeAccess(formData: FormData): Promise<void> {
-  await assertSuperAdmin();
+  const scope = await assertSuperAdmin();
   const membershipId = String(formData.get("membershipId") ?? "");
   if (!membershipId) throw new Error("membership tidak valid");
   // super_admin tak bisa dicabut lewat UI (jaga akses bootstrap).
-  await q(`DELETE FROM app.membership WHERE id = $1 AND role <> 'super_admin'`, [membershipId]);
+  const deleted = await q<{ id: string }>(
+    `DELETE FROM app.membership WHERE id = $1 AND role <> 'super_admin' RETURNING id`,
+    [membershipId],
+  );
+
+  // Audit (migration 0017): catat hanya bila benar-benar ada yang dicabut.
+  if (deleted.length > 0) {
+    await q(
+      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
+       VALUES ($1, $2, 'revoke_access', $3, $4::jsonb)`,
+      [scope.userId, scope.email, membershipId, JSON.stringify({ membership_id: membershipId })],
+    );
+  }
   revalidatePath("/admin");
 }

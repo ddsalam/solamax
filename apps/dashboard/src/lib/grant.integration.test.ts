@@ -46,21 +46,27 @@ d("negative-access F1b: dashboard_app SELECT-only public, RW-no-delete app.manua
   it("app.manual_entry: SELECT/INSERT/UPDATE boleh; DELETE DITOLAK", async () => {
     await expect(pool.query(`SELECT 1 FROM app.manual_entry LIMIT 1`)).resolves.toBeDefined();
     // INSERT + UPDATE dalam transaksi yang di-ROLLBACK (cek privilege, tak menyisakan data).
-    await pool.query("BEGIN");
+    // DEDICATED client: RLS (0016) butuh app.unit_ids TRANSACTION-LOCAL — set_config(...,true)
+    // + INSERT/UPDATE HARUS di koneksi yang sama (pool.query bisa pakai koneksi berbeda).
+    // Ini mereplika alur qScoped()/usulan-actions produksi.
+    const client = await pool.connect();
     try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.unit_ids', '1', true)");
       await expect(
-        pool.query(
+        client.query(
           `INSERT INTO app.manual_entry (unit_id, business_date, section, keterangan, amount, created_by_user_id)
            VALUES (1, '2026-06-14', 'pengeluaran', 'negative-access probe', 1000, 1)`,
         ),
       ).resolves.toBeDefined();
       await expect(
-        pool.query(
+        client.query(
           `UPDATE app.manual_entry SET void = true WHERE keterangan = 'negative-access probe'`,
         ),
       ).resolves.toBeDefined();
     } finally {
-      await pool.query("ROLLBACK");
+      await client.query("ROLLBACK");
+      client.release();
     }
     await expect(pool.query(`DELETE FROM app.manual_entry`)).rejects.toThrow(/permission denied/i);
   });

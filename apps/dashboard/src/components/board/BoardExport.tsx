@@ -32,7 +32,7 @@ export function BoardExport({
     () =>
       buildReportFilename({
         reportName: "Ringkasan-Direksi",
-        scope: "SolaGroup",
+        scope: "PT Sola Petra Abadi",
         period: generatedDate,
         generated: generatedDate,
       }),

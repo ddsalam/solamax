@@ -66,6 +66,13 @@ export class IngestService {
 
     await this.prisma.$transaction(
       async (tx) => {
+        // RLS (migration 0016): set konteks unit TRANSACTION-LOCAL agar WITH CHECK
+        // pada INSERT/UPDATE ke tabel data lolos. unitId sudah tervalidasi lawan
+        // API key (ingest.controller). is_local=true → lepas di akhir transaksi.
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('app.unit_ids', $1, true)`,
+          String(unitId),
+        );
         for (const key of lockKeys) {
           await tx.$executeRawUnsafe(
             `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
