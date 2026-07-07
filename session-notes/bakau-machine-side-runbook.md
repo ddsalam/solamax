@@ -57,10 +57,22 @@ SELECT user, host, LENGTH(password) AS panjang_hash FROM mysql.user WHERE user='
      }
    }
    ```
-   > File ini **tidak pernah masuk git** (gitignored). API key = raw key Bakau dari Secret Manager
-   > (Bagian a/STEP 3). Alternatif tanpa menaruh key di file: set env `SOLAMAX_API_KEY` +
-   > `SOLAMAX_MYSQL_PASSWORD`. Driver/charset: kalau error auth/charset lihat Troubleshooting
-   > RUNBOOK-SPBU (`driver:"mysql"`, `charset:"LATIN1_SWEDISH_CI"`).
+   > File ini **tidak pernah masuk git** (gitignored). Driver/charset: kalau error auth/charset lihat
+   > Troubleshooting RUNBOOK-SPBU (`driver:"mysql"`, `charset:"LATIN1_SWEDISH_CI"`).
+
+   ### 🔑 Cara mendapatkan API key Bakau (`backend.apiKey`)
+   API key **dibuat saat provisioning cloud** (runbook (a) STEP 0: `gen-api-key.mjs` → raw key +
+   hash; hash → baris `unit`, raw → Secret Manager `solamax-bakau-agent-key` di STEP 3). **Raw key
+   hanya tampil SEKALI saat dibuat** — dari DB tak bisa dibalik (cuma hash tersimpan).
+   - **Admin** mengambilnya dari Secret Manager:
+     ```bash
+     gcloud secrets versions access latest --secret=solamax-bakau-agent-key
+     ```
+   - Admin memberikannya ke Dion lewat **kanal aman** (password manager / pesan terenkripsi — **bukan**
+     chat/git/email biasa). Tempel ke `backend.apiKey`, atau set env **`SOLAMAX_API_KEY`** (+
+     `SOLAMAX_MYSQL_PASSWORD` untuk password MySQL) agar key tak ditulis di file.
+   - Kalau key hilang / bocor → **rotate**: `gen-api-key.mjs` lagi → update `unit.api_key_hash` (DB)
+     + `gcloud secrets versions add solamax-bakau-agent-key` → ganti di config PC.
 
 ## Bagian D — Tes koneksi + dry-run (belum kirim)
 Dobel-klik `1-tes-koneksi.bat` → cari `"koneksi MySQL OK","version":"5.0.67..."`, `now` ≈ jam WIB.
