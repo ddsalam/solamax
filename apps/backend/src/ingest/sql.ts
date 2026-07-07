@@ -52,16 +52,21 @@ function buildValues(
  * nilai SELALU lewat parameter — tak ada interpolasi nilai ke SQL.
  */
 /**
- * Agregasi baris ber-conflict-key sama dalam satu batch: jumlahkan kolom di
- * `sumOnConflict`, pertahankan nilai pertama untuk kolom lain. Mencegah Postgres
- * 21000 ("ON CONFLICT … cannot affect row a second time") saat sumber punya >1
- * baris per natural-key (mis. tr_dtebus produk sama beberapa baris per DO).
+ * Runtuhkan baris ber-conflict-key sama dalam satu batch → maksimal satu baris per
+ * natural-key. Mencegah Postgres 21000 ("ON CONFLICT … cannot affect row a second
+ * time") saat sumber punya >1 baris per natural-key dalam satu payload. Berlaku
+ * untuk SETIAP tabel ber-`conflict` (upsert maupun replace-per-business_date/edc).
+ * - `sumOnConflict` di-set (mis. tr_dtebus produk sama beberapa baris per DO):
+ *   jumlahkan kolom itu, pertahankan nilai pertama untuk kolom lain.
+ * - selain itu (mis. edc): **keep-last** — baris terakhir menang, persis semantik
+ *   `ON CONFLICT DO UPDATE SET … = EXCLUDED`. Aman: hanya menelan kembar sejati
+ *   (natural-key sudah terverifikasi unik per transaksi; probe edc 0 tabrakan).
  */
-function aggregateByConflict(
+function collapseByConflict(
   cfg: TableConfig,
   rows: ReadonlyArray<Record<string, unknown>>,
 ): ReadonlyArray<Record<string, unknown>> {
-  if (!cfg.sumOnConflict || cfg.conflict.length === 0) return rows;
+  if (cfg.conflict.length === 0) return rows;
   const byKey = new Map<string, Record<string, unknown>>();
   for (const row of rows) {
     const key = JSON.stringify(cfg.conflict.map((c) => row[c] ?? null));
@@ -70,8 +75,12 @@ function aggregateByConflict(
       byKey.set(key, { ...row });
       continue;
     }
-    for (const sc of cfg.sumOnConflict) {
-      ex[sc] = Number(ex[sc] ?? 0) + Number(row[sc] ?? 0);
+    if (cfg.sumOnConflict && cfg.sumOnConflict.length > 0) {
+      for (const sc of cfg.sumOnConflict) {
+        ex[sc] = Number(ex[sc] ?? 0) + Number(row[sc] ?? 0);
+      }
+    } else {
+      byKey.set(key, { ...row }); // keep-last (= EXCLUDED)
     }
   }
   return [...byKey.values()];
@@ -84,7 +93,7 @@ export function buildUpsert(
 ): { sql: string; params: unknown[] } {
   if (rows.length === 0) throw new Error("buildUpsert: rows kosong");
 
-  const { cols, tuples, params } = buildValues(cfg, unitId, aggregateByConflict(cfg, rows));
+  const { cols, tuples, params } = buildValues(cfg, unitId, collapseByConflict(cfg, rows));
 
   const conflictCols = ["unit_id", ...cfg.conflict];
   const updateCols = cfg.columns.filter((c) => !cfg.conflict.includes(c));
@@ -129,7 +138,9 @@ export function buildReplace(
     params: [unitId, dates] as unknown[],
   };
 
-  const { cols, tuples, params } = buildValues(cfg, unitId, rows);
+  // Runtuhkan kembar intra-batch per natural-key (edc dsb.) → hindari 21000 pada
+  // INSERT … ON CONFLICT. DELETE tetap pakai `dates` dari rows asli (di atas).
+  const { cols, tuples, params } = buildValues(cfg, unitId, collapseByConflict(cfg, rows));
 
   // ON CONFLICT opsional: jaring anti-kembar saat REPLACE bersamaan. Kolom non-key
   // di-refresh (DO UPDATE); bila tak ada kolom non-key, DO NOTHING.
