@@ -55,6 +55,11 @@ export async function saveUsulanSo(input: {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // RLS (0016): set konteks unit TRANSACTION-LOCAL agar USING/WITH CHECK pada
+    // app.usulan_so (RLS-enabled) lolos untuk UPDATE + INSERT di transaksi ini.
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [
+      String(unit.unit_id),
+    ]);
     // Void generasi aktif lama (unit,tanggal) — `unit_id` ter-scope (lapis-2).
     await client.query(
       `UPDATE app.usulan_so

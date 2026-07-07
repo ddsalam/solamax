@@ -1,0 +1,92 @@
+### RESET synthetic mutable state (superuser) → deterministic counts ###
+reset done (u1=2, u2=3, u99=1)
+------------------------------------------------------------
+################ EXHIBIT A — zero-rows failure (RLS on, NO app.unit_ids) ################
+Simulates the NOT-YET-updated image doing bare pool.query() with RLS enabled:
+ rows_visible 
+--------------
+            0
+(1 row)
+
+  ✅ PASS whole-table SELECT, no context (got '0', expected '0')
+------------------------------------------------------------
+################ EXHIBIT B — fix via qScoped (transaction-local set_config) ################
+The EXACT flow of apps/dashboard/src/lib/db.ts qScoped(): BEGIN; set_config(local); SELECT; COMMIT
+BEGIN
+ ctx_set 
+---------
+ 1
+(1 row)
+
+ rows_visible_unit1 
+--------------------
+                  2
+(1 row)
+
+COMMIT
+  ✅ PASS context '1' via txn-local set_config (got '2', expected '2')
+------------------------------------------------------------
+################ EXHIBIT C — rollback rehearsal (DISABLE RLS → recovery) ################
+  ✅ PASS after DISABLE, no-context SELECT (recovery) (got '6', expected '6')
+  ✅ PASS after RE-ENABLE, no-context SELECT (fail-closed) (got '0', expected '0')
+------------------------------------------------------------
+################ TEST 1 — cross-UNIT negative (DB layer, no WHERE unit_id) ################
+context='1':
+ unit_id | count 
+---------+-------
+       1 |     2
+(1 row)
+
+context='2':
+ unit_id | count 
+---------+-------
+       2 |     3
+(1 row)
+
+context='99':
+ unit_id | count 
+---------+-------
+      99 |     1
+(1 row)
+
+  ✅ PASS context='1': NON-unit-1 rows leaked (got '0', expected '0')
+------------------------------------------------------------
+################ TEST 2 — DB-layer independent of app choke-point (SELECT *) ################
+Raw SELECT (no getDataScope, no WHERE) under context='2' — distinct unit_ids visible:
+ unit_id 
+---------
+       2
+(1 row)
+
+  ✅ PASS context='2': distinct units visible (got '2', expected '2')
+------------------------------------------------------------
+################ TEST 3 — IB-unaffected regression / direksi-sees-both ################
+Direksi over PT (scope.unitIds=[1,2]) context='1,2':
+ unit_id | count 
+---------+-------
+       1 |     2
+       2 |     3
+(2 rows)
+
+  ✅ PASS direksi visible unit_ids (got '1,2', expected '1,2')
+  ✅ PASS foreign unit 99 visible to direksi (got '0', expected '0')
+  ✅ PASS pengawas-IB (ctx='1') IB row count (got '2', expected '2')
+------------------------------------------------------------
+################ TEST 4 — ingest write-path under RLS (WITH CHECK) ################
+(4a) ingest, context='2', INSERT unit-2 row → expect SUCCEED:
+INSERT 0 1
+(4b) ingest, context='2', INSERT unit-1 row → expect REJECT (WITH CHECK):
+ERROR:  new row violates row-level security policy for table "sales_detail"
+(4c) ingest, NO context, INSERT → expect REJECT (fail-closed):
+ERROR:  new row violates row-level security policy for table "sales_detail"
+------------------------------------------------------------
+################ TEST 5 — audit_log append-only grants ################
+(5a) dashboard_app INSERT audit row → expect SUCCEED:
+INSERT 0 1
+(5b) dashboard_app UPDATE audit → expect DENIED:
+ERROR:  permission denied for table audit_log
+(5c) dashboard_app DELETE audit → expect DENIED:
+ERROR:  permission denied for table audit_log
+  ✅ PASS audit rows present after (superuser) (got '1', expected '1')
+------------------------------------------------------------
+ALL SECTIONS COMPLETE

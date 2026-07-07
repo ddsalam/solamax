@@ -3,6 +3,14 @@
 Langkah yang **Anda** jalankan dari Mac (perlu `gcloud` CLI ter-login). Semua nama memakai
 sufiks **staging**; promosi ke produksi = keputusan terpisah, **hanya atas instruksi eksplisit**.
 
+> **⚠️ RLS AKTIF (sejak 2026-07-07).** `solamax-pg` kini pakai unit-scoped Row-Level Security
+> (`0016`, 26 tabel ENABLE+FORCE) + audit log (`0017`). Konsekuensi deploy: (a) **semua DDL/migrasi
+> dijalankan sebagai role pemilik `ingest`** (bukan `postgres` — cloudsqlsuperuser non-owner tak bisa
+> ALTER/DROP POLICY); (b) image ingest **wajib RLS-aware** (`set_config('app.unit_ids',…)` di
+> `ingest.service.ts`, label `rls-aware=1`); (c) query verifikasi/admin **harus set `app.unit_ids`**
+> atau balik 0 baris (fail-closed, FORCE meng-scope owner juga). Prosedur cutover penuh + rollback:
+> [`RLS-CUTOVER-RUNBOOK.md`](RLS-CUTOVER-RUNBOOK.md).
+
 > Region: `asia-southeast2` (Jakarta). Project: `solamax`.
 > Secret (password DB, API key) tak pernah masuk git — hanya Secret Manager / file gitignored.
 

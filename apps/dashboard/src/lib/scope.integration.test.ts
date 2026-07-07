@@ -31,7 +31,9 @@ d("scope live (data nyata, fixture-free)", () => {
         `SELECT unit_id, code, tenant_id FROM public.unit WHERE active ORDER BY unit_id`,
       )
     ).rows;
-    solaGroup = (await pool.query(`SELECT id FROM app.tenant WHERE slug = 'solagroup'`)).rows[0].id;
+    // Tenant = legal entity (PT) — pilot tenant renamed SolaGroup → PT Sola Petra Abadi
+    // (see apps/backend/scripts/rename-tenant.sql). IB + Bakau live under this one PT.
+    solaGroup = (await pool.query(`SELECT id FROM app.tenant WHERE slug = 'pt-sola-petra-abadi'`)).rows[0].id;
     ib = units.find((u) => u.code === "6478111")!;
   });
 

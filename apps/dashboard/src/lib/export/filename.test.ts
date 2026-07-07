@@ -28,11 +28,11 @@ describe("buildReportFilename", () => {
     expect(
       buildReportFilename({
         reportName: "Ringkasan-Direksi",
-        scope: "SolaGroup",
+        scope: "PT Sola Petra Abadi",
         period: "2026-07-02",
         generated: "2026-07-02",
       }),
-    ).toBe("Ringkasan-Direksi_SolaGroup_2026-07-02_2026-07-02.pdf");
+    ).toBe("Ringkasan-Direksi_PT-Sola-Petra-Abadi_2026-07-02_2026-07-02.pdf");
   });
 
   it("tidak menghasilkan segmen kosong / dash beruntun / dash tepi", () => {

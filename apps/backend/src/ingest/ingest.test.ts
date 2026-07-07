@@ -46,11 +46,15 @@ describe("IngestService", () => {
 
     expect(res.upserted).toEqual({ sales_header: 1, sales_detail: 1 });
     expect(res.new_watermark).toBe("2026-06-11T07:30:00.000Z");
-    expect(executed).toHaveLength(3); // header, detail, sync_state
-    expect(executed[0]!.sql).toContain('"sales_header"');
-    expect(executed[1]!.sql).toContain('"sales_detail"');
-    expect(executed[2]!.sql).toContain('"sync_state"');
-    expect(executed[2]!.params).toEqual([
+    // RLS (0016): set_config('app.unit_ids', <unit>, true) runs FIRST in the txn so
+    // WITH CHECK on the data writes passes, then header, detail, sync_state.
+    expect(executed).toHaveLength(4);
+    expect(executed[0]!.sql).toContain("set_config('app.unit_ids'");
+    expect(executed[0]!.params).toEqual(["1"]); // = unitId, transaction-local context
+    expect(executed[1]!.sql).toContain('"sales_header"');
+    expect(executed[2]!.sql).toContain('"sales_detail"');
+    expect(executed[3]!.sql).toContain('"sync_state"');
+    expect(executed[3]!.params).toEqual([
       1, "sales", "2026-06-11T07:30:00.000Z", 2,
     ]);
   });

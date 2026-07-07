@@ -6,10 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * → tak pernah dari input mentah. Bila gerbang dilepas (pakai input mentah / skip
  * requireUnit), test "out-of-scope" jadi MERAH.
  */
-const { q } = vi.hoisted(() => ({
-  q: vi.fn((_t: string, _p?: unknown[]) => Promise.resolve([] as unknown[])),
-}));
-vi.mock("./db", () => ({ q, pool: {} }));
+// qScoped (RLS executor) di-mock DELEGATE ke q → assertion `q.mock.calls` tetap sah.
+const { q, qScoped } = vi.hoisted(() => {
+  const q = vi.fn((_t: string, _p?: unknown[]) => Promise.resolve([] as unknown[]));
+  const qScoped = vi.fn((_unit: unknown, t: string, p?: unknown[]) => q(t, p));
+  return { q, qScoped };
+});
+vi.mock("./db", () => ({ q, qScoped, pool: {} }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 // Fake scope: requireUnit MENIRU gerbang asli (notFound throw utk kode di luar scope).

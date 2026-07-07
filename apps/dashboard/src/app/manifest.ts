@@ -8,10 +8,10 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SolaMax — Pengawasan SPBU SolaGroup",
+    name: "SolaMax — Pengawasan SPBU PT Sola Petra Abadi",
     short_name: "SolaMax",
     description:
-      "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU SolaGroup",
+      "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU PT Sola Petra Abadi",
     id: "/",
     start_url: "/",
     scope: "/",

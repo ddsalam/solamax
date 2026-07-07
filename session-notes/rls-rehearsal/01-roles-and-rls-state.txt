@@ -1,0 +1,56 @@
+=== running roles-bootstrap.sql ===
+CREATE ROLE
+ALTER ROLE
+CREATE ROLE
+ALTER ROLE
+GRANT
+GRANT
+GRANT
+ALTER DEFAULT PRIVILEGES
+GRANT
+ALTER DEFAULT PRIVILEGES
+GRANT
+ALTER DEFAULT PRIVILEGES
+GRANT
+DO
+
+=== role attributes (rolsuper / rolbypassrls MUST be false) ===
+    rolname    | rolsuper | rolbypassrls | rolcanlogin 
+---------------+----------+--------------+-------------
+ dashboard_app | f        | f            | t
+ ingest        | f        | f            | t
+(2 rows)
+
+=== RLS enabled tables + policy count (public+app) ===
+ schema |      table       | rls_enabled | rls_forced | policies 
+--------+------------------+-------------+------------+----------
+ app    | manual_entry     | t           | t          |        1
+ app    | user_unit        | t           | t          |        1
+ app    | usulan_so        | t           | t          |        1
+ public | account          | t           | t          |        1
+ public | bphut            | t           | t          |        1
+ public | bppiut           | t           | t          |        1
+ public | card             | t           | t          |        1
+ public | cash_detail      | t           | t          |        1
+ public | cash_header      | t           | t          |        1
+ public | delivery         | t           | t          |        1
+ public | deposit          | t           | t          |        1
+ public | edc              | t           | t          |        1
+ public | nozzle           | t           | t          |        1
+ public | opname           | t           | t          |        1
+ public | pelanggan_master | t           | t          |        1
+ public | pelanggan_sale   | t           | t          |        1
+ public | product          | t           | t          |        1
+ public | real_tank        | t           | t          |        1
+ public | sales_detail     | t           | t          |        1
+ public | sales_header     | t           | t          |        1
+ public | sync_state       | t           | t          |        1
+ public | tangki           | t           | t          |        1
+ public | tebus_detail     | t           | t          |        1
+ public | tebus_header     | t           | t          |        1
+ public | tera             | t           | t          |        1
+ public | terra_resmi      | t           | t          |        1
+ public | unit             | t           | t          |        1
+ public | voucher_sale     | t           | t          |        1
+(28 rows)
+

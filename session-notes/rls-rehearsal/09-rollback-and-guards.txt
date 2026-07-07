@@ -1,0 +1,32 @@
+################ F3 — ROLLBACK REHEARSAL (committed rls-rollback.sql, all tables) ################
+policies before rollback: 26
+policies after rollback: 0 ; dashboard_app no-context read: 6
+  ✅ PASS rollback drops all policies (got '0' exp '0')
+  ✅ PASS recovery: reads full data w/o context (got '6' exp '6')
+-- re-apply 0016 (re-enable) --
+  ✅ PASS re-enable restores all policies (got '26' exp '26')
+  ✅ PASS fail-closed again (no context → 0) (got '0' exp '0')
+
+################ F7 — FAIL-CLOSED CAST GUARD (malformed context → 0 rows, NO throw) ################
+unset (no GUC)             -> 0
+app.unit_ids=''            -> 0
+app.unit_ids=' '           -> 0
+app.unit_ids='abc'         -> 0
+app.unit_ids='-1'          -> 0
+app.unit_ids='0'           -> 0
+app.unit_ids='x,y'         -> 0
+app.unit_ids='1a'          -> 0
+-- assertions: every malformed/empty value must be 0 with NO 'ERROR' --
+  ✅ PASS all malformed/empty → 0 rows, no error (got '1' exp '1')
+  ✅ PASS legit '1' still scopes (unchanged) (got '2' exp '2')
+  ✅ PASS legit '1,2' still scopes (unchanged) (got '5' exp '5')
+
+################ F1 — PREFLIGHT GATE SELF-TEST (logic proven without gcloud) ################
+== preflight gate self-test (fixtures; no gcloud) ==
+100% + rls-aware=1                         -> ✅ PASS (expected PASS): OK svc: r-new @100% rls-aware=1
+split 60/40 (rollout mid)                  -> ✅ FAIL (expected FAIL): FAIL svc: 2 active revisions (need exactly one at 100%)
+100% but label missing                     -> ✅ FAIL (expected FAIL): FAIL svc: serving revision r-old not RLS-aware (label rls-aware!=1)
+100% but rls-aware=0                       -> ✅ FAIL (expected FAIL): FAIL svc: serving revision r-old not RLS-aware (label rls-aware!=1)
+no active revision                         -> ✅ FAIL (expected FAIL): FAIL svc: 0 active revisions (need exactly one at 100%)
+selftest result: ALL-PASS
+ALL GUARDS COMPLETE

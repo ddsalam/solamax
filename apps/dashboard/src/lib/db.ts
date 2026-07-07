@@ -53,3 +53,44 @@ export async function q<T extends object>(
   const res = await pool.query(text, params);
   return res.rows as T[];
 }
+
+/**
+ * Executor untuk query data PER-UNIT di bawah Row-Level Security (migration 0016).
+ * Menetapkan GUC `app.unit_ids` TRANSACTION-LOCAL (`set_config(...,true)`) lalu
+ * menjalankan query dalam transaksi yang sama, dan MELEPAS koneksi. Karena pool
+ * `pg` berbagi koneksi antar-request, konteks WAJIB transaction-local — `SET`
+ * level-sesi akan bocor ke request lain di koneksi yang sama.
+ *
+ * `unit` = ScopedUnitId | ScopedUnitId[] dari getDataScope() (choke-point). RLS
+ * memfilter `unit_id = ANY(app.unit_ids)`; konteks kosong/tak-diset = 0 baris
+ * (fail-closed) — query yang lupa lewat sini GAGAL AMAN, tak membocorkan unit lain.
+ *
+ * ⚠️ URUTAN DEPLOY: image yang memakai qScoped() harus rilis SEBELUM migration
+ *    0016 meng-ENABLE RLS (kalau tidak: current_setting NULL → semua 0 baris).
+ */
+export async function qScoped<T extends object>(
+  unit: number | readonly number[],
+  text: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const ids = (Array.isArray(unit) ? unit : [unit]).map((u) => Number(u));
+  const idCsv = ids.join(","); // "" bila kosong → NULLIF→NULL→ANY(NULL)→0 baris
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // is_local=true → berlaku hanya sampai COMMIT/ROLLBACK transaksi ini.
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [idCsv]);
+    const res = await client.query(text, params);
+    await client.query("COMMIT");
+    return res.rows as T[];
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan: koneksi mungkin sudah rusak */
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
