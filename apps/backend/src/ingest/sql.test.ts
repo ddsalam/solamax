@@ -138,6 +138,19 @@ describe("buildReplace", () => {
     expect(ins!.sql).toContain("::timestamptz");
   });
 
+  it("edc: kembar intra-batch (natural-key sama) → 1 tuple keep-last (cegah 21000)", () => {
+    // Dua baris edc dgn kunci natural IDENTIK tapi kolom non-key beda (kasus Bakau):
+    // tanpa dedup, INSERT … ON CONFLICT kena Postgres 21000.
+    const later = { ...edcRow, liter: 99, jenis: 7 };
+    const [, ins] = buildReplace(TABLE_CONFIG.edc!, 1, [edcRow, later]);
+    // Hanya 1 tuple VALUES → batch tak punya conflict-key kembar.
+    const tuples = (ins!.sql.match(/\(\$\d/g) ?? []).length;
+    expect(tuples).toBe(1);
+    // keep-last (= EXCLUDED): baris terakhir menang (liter 99, jenis 7).
+    expect(ins!.params).toContain(99);
+    expect(ins!.params).toContain(7);
+  });
+
   it("pelanggan_sale: REPLACE polos — TANPA ON CONFLICT (conflict kosong)", () => {
     const [, ins] = buildReplace(TABLE_CONFIG.pelanggan_sale!, 1, [
       { business_date: "2026-06-16", ckdplg: "PLG1", vcnmplg: "A",
