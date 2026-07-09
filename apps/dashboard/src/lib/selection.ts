@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { todayWib } from "./periods";
 import type { ScopedUnit } from "./scope";
-import { DATE_COOKIE, UNIT_COOKIE } from "./selection-keys";
+import { DATE_COOKIE, DATE_RE, UNIT_COOKIE } from "./selection-keys";
 
 /**
  * Pilihan unit + tanggal bisnis yang TERBAWA antar layar, dibaca dari cookie
@@ -13,8 +13,6 @@ import { DATE_COOKIE, UNIT_COOKIE } from "./selection-keys";
  * scope), dan tiap halaman per-unit tetap melewati requireUnit/ScopedUnitId →
  * notFound. Tanggal divalidasi format; selain itu → hari ini (WIB).
  */
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 export function getSelection(units: ScopedUnit[]): { unitCode: string | undefined; date: string } {
   const jar = cookies();
   const rawUnit = jar.get(UNIT_COOKIE)?.value;

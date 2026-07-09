@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { GROUP_IDS, Sidebar, type GroupId } from "@/components/Sidebar";
 import { TopbarPicker, type UnitOpt } from "@/components/TopbarPicker";
+import { useSelection } from "@/components/useSelection";
 import { ago } from "@/lib/format";
 
 /**
@@ -55,6 +56,11 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const path = usePathname();
   const hamburgerRef = useRef<HTMLButtonElement>(null);
+
+  // Resolusi pilihan unit+tanggal SEKALI untuk topbar & sidebar (URL kanonik;
+  // prop server unitCode/date hanya seed awal — lihat useSelection).
+  const unitCodes = useMemo(() => units.map((u) => u.code), [units]);
+  const sel = useSelection(unitCodes, unitCode, date);
 
   // Rehidrasi state durabel dari localStorage setelah mount (render awal = default).
   useEffect(() => {
@@ -121,7 +127,7 @@ export function AppShell({
         <Logo variant="horizontal" href="/" height={20} priority label="SolaMax, beranda" />
         <div className="topbar-div mobile-hide" />
         <span className="role-chip mobile-hide">{roleLabel}</span>
-        <TopbarPicker units={units} unit={unitCode} date={date} />
+        <TopbarPicker units={units} unit={sel.unit} date={sel.date} />
         <div className="topbar-right">
           <span className="fs15 t-tertiary sync-note mobile-hide">
             <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />
@@ -142,8 +148,8 @@ export function AppShell({
           <div className="scrim no-print" onClick={() => setMobileOpen(false)} aria-hidden="true" />
         )}
         <Sidebar
-          unitCode={unitCode}
-          date={date}
+          unitCode={sel.unit}
+          date={sel.navDate}
           alertCount={alertCount}
           collapsed={collapsed}
           openGroups={openGroups}

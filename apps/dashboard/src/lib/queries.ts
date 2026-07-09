@@ -1,4 +1,4 @@
-import { q, qScoped } from "./db";
+import { qScoped } from "./db";
 import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L } from "./derive";
 import type { ScopedUnitId } from "./scope";
 

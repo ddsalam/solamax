@@ -1,12 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  DATE_COOKIE,
-  deriveTopbarSelection,
-  SELECTION_MAX_AGE,
-  UNIT_COOKIE,
-} from "@/lib/selection-keys";
+import { DATE_COOKIE, UNIT_COOKIE } from "@/lib/selection-keys";
+import { writeSelectionCookie } from "./useSelection";
 
 export interface UnitOpt {
   code: string;
@@ -14,10 +10,11 @@ export interface UnitOpt {
 }
 
 /**
- * Pemilih unit + tanggal bisnis TUNGGAL di topbar — terbawa antar layar via
- * cookie (seed) + navigasi sadar-rute. Path tetap otoritatif untuk
- * laporan/rincian (query view/kosong dipertahankan). Di layar grup-wide
- * (board/ketaatan/beranda) hanya menulis cookie + refresh.
+ * Pemilih unit + tanggal bisnis TUNGGAL di topbar. Nilai TAMPIL sudah
+ * diresolusi AppShell lewat useSelection (URL kanonik; cookie hanya default
+ * titik-masuk) — komponen ini presentasional + navigasi sadar-rute. Di layar
+ * tanpa unit di URL (board/ketaatan/beranda) ganti pilihan hanya menulis
+ * cookie + refresh.
  */
 export function TopbarPicker({
   units,
@@ -33,17 +30,13 @@ export function TopbarPicker({
   const sp = useSearchParams();
   const isDenah = path.startsWith("/monitoring/denah");
 
-  // Di rute laporan, nilai TAMPIL cermin URL (otoritatif), bukan prop cookie basi.
-  const { unit: curUnit, date: curDate } = deriveTopbarSelection(path, unit, date);
-  const baseUnit = curUnit ?? units[0]?.code ?? "";
-
-  const writeCookie = (key: string, value: string) => {
-    document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${SELECTION_MAX_AGE}; samesite=lax`;
-  };
+  const baseUnit = unit ?? units[0]?.code ?? "";
 
   const apply = (nextUnit: string, nextDate: string) => {
-    writeCookie(UNIT_COOKIE, nextUnit);
-    writeCookie(DATE_COOKIE, nextDate);
+    writeSelectionCookie(UNIT_COOKIE, nextUnit);
+    // Denah tak berdimensi tanggal (input nonaktif, tampil hari ini) — jangan
+    // timpa tanggal terbawa di cookie dari sini.
+    if (!isDenah) writeSelectionCookie(DATE_COOKIE, nextDate);
     if (/^\/unit\/[^/]+\/laporan\//.test(path)) {
       const v = sp.get("view");
       router.push(`/unit/${nextUnit}/laporan/${nextDate}${v ? `?view=${v}` : ""}`);
@@ -67,7 +60,7 @@ export function TopbarPicker({
       <select
         className="select sm"
         value={baseUnit}
-        onChange={(e) => apply(e.target.value, curDate)}
+        onChange={(e) => apply(e.target.value, date)}
         aria-label="Pilih unit"
       >
         {units.map((u) => (
@@ -79,7 +72,7 @@ export function TopbarPicker({
       <input
         className="date-input sm"
         type="date"
-        value={curDate}
+        value={date}
         onChange={(e) => apply(baseUnit, e.target.value)}
         disabled={isDenah}
         aria-label="Tanggal bisnis"
