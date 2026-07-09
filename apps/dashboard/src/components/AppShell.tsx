@@ -149,7 +149,7 @@ export function AppShell({
         )}
         <Sidebar
           unitCode={sel.unit}
-          date={sel.date}
+          date={sel.navDate}
           alertCount={alertCount}
           collapsed={collapsed}
           openGroups={openGroups}

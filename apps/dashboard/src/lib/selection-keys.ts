@@ -17,7 +17,14 @@ const DENAH_ROUTE_RE = /^\/monitoring\/denah\/([^/]+)/;
 
 export interface TopbarSelection {
   unit: string | undefined;
+  /** Tanggal TAMPIL di picker (denah realtime → hari ini). */
   date: string;
+  /**
+   * Tanggal untuk NAVIGASI (link sidebar/hub): tanggal terbawa — di denah
+   * tetap tanggal seed (bukan hari ini), agar detour lewat denah TIDAK
+   * menghapus tanggal laporan yang sedang ditelusuri pengguna.
+   */
+  navDate: string;
   /** true = unit datang dari segmen URL (rute per-unit) — URL otoritatif. */
   unitFromUrl: boolean;
   /** true = tanggal datang dari segmen URL — boleh di-write-through ke cookie. */
@@ -43,10 +50,10 @@ export function deriveTopbarSelection(
   today: string,
 ): TopbarSelection {
   const r = REPORT_ROUTE_RE.exec(path);
-  if (r) return { unit: r[1], date: r[2]!, unitFromUrl: true, dateFromUrl: true };
+  if (r) return { unit: r[1], date: r[2]!, navDate: r[2]!, unitFromUrl: true, dateFromUrl: true };
   const d = DENAH_ROUTE_RE.exec(path);
-  if (d) return { unit: d[1], date: today, unitFromUrl: true, dateFromUrl: false };
-  return { unit: seedUnit, date: seedDate, unitFromUrl: false, dateFromUrl: false };
+  if (d) return { unit: d[1], date: today, navDate: seedDate, unitFromUrl: true, dateFromUrl: false };
+  return { unit: seedUnit, date: seedDate, navDate: seedDate, unitFromUrl: false, dateFromUrl: false };
 }
 
 /**
@@ -60,8 +67,11 @@ export function selectionCookieWrites(
   unitCodes: string[],
   current: { unit?: string; date?: string },
 ): Array<{ key: string; value: string }> {
+  // Unit URL di luar scope caller → halaman 404 via requireUnit; URL 404 tak
+  // boleh menggeser seed terbawa SAMA SEKALI (unit maupun tanggal).
+  if (sel.unitFromUrl && (!sel.unit || !unitCodes.includes(sel.unit))) return [];
   const writes: Array<{ key: string; value: string }> = [];
-  if (sel.unitFromUrl && sel.unit && unitCodes.includes(sel.unit) && current.unit !== sel.unit) {
+  if (sel.unitFromUrl && sel.unit && current.unit !== sel.unit) {
     writes.push({ key: UNIT_COOKIE, value: sel.unit });
   }
   if (sel.dateFromUrl && DATE_RE.test(sel.date) && current.date !== sel.date) {

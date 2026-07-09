@@ -24,6 +24,7 @@ describe("deriveTopbarSelection — picker cermin URL di rute ber-unit", () => {
     expect(derive("/unit/6478111/rincian/2026-06-14")).toEqual({
       unit: "6478111",
       date: "2026-06-14",
+      navDate: "2026-06-14",
       unitFromUrl: true,
       dateFromUrl: true,
     });
@@ -58,11 +59,21 @@ describe("deriveTopbarSelection — picker cermin URL di rute ber-unit", () => {
     expect(r.dateFromUrl).toBe(false);
   });
 
+  it("DENAH detour (B4, walk 2026-07-10): navDate = tanggal terbawa, BUKAN hari ini — link sidebar dari denah mempertahankan tanggal laporan", () => {
+    // laporan 2026-07-05 → denah → sidebar balik ke laporan harus 2026-07-05.
+    const laporan = deriveTopbarSelection("/unit/6478111/laporan/2026-07-05", SEED_UNIT, SEED_DATE, TODAY);
+    expect(laporan.navDate).toBe("2026-07-05");
+    const denah = deriveTopbarSelection("/monitoring/denah/6478111", SEED_UNIT, "2026-07-05", TODAY);
+    expect(denah.date).toBe(TODAY); // tampilan tetap hari ini (realtime)
+    expect(denah.navDate).toBe("2026-07-05"); // navigasi membawa tanggal terbawa
+  });
+
   it("grup-wide (board/ketaatan/beranda/admin): pakai seed cookie", () => {
     for (const p of ["/board", "/monitoring/ketaatan", "/", "/admin", "/monitoring"]) {
       expect(derive(p)).toEqual({
         unit: SEED_UNIT,
         date: SEED_DATE,
+        navDate: SEED_DATE,
         unitFromUrl: false,
         dateFromUrl: false,
       });
@@ -94,6 +105,15 @@ describe("selectionCookieWrites — write-through mengikuti navigasi", () => {
   it("unit di luar scope caller TIDAK pernah ditulis ke cookie", () => {
     const sel = derive("/monitoring/denah/9999999");
     expect(selectionCookieWrites(sel, UNITS, { unit: "6478111", date: SEED_DATE })).toEqual([]);
+  });
+
+  it("URL 404 di luar scope: TANPA tulisan APA PUN — tanggal pun tidak (temuan walk 2026-07-10)", () => {
+    // Pengawas Bakau membuka /unit/<IB>/laporan/<tgl> → 404; tanggal URL tak
+    // boleh menggeser tanggal terbawa.
+    const sel = derive("/unit/6478111/laporan/2026-07-01");
+    expect(selectionCookieWrites(sel, ["6378301"], { unit: "6378301", date: SEED_DATE })).toEqual(
+      [],
+    );
   });
 
   it("rute tanpa unit di URL: tanpa tulisan apa pun", () => {

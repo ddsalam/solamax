@@ -22,6 +22,11 @@ import {
  * Efek write-through: tiap rute ber-unit-di-URL menyalin unit (dan tanggal,
  * bila ada di URL) ke cookie — drill-in/bookmark/back-forward ikut menggeser
  * "unit terakhir dipakai". Validasi scope: hanya kode dalam `unitCodes`.
+ *
+ * Multi-tab: cookie dibagi antar tab → tab unit yang terbuka merebut kembali
+ * "unit terakhir" tiap auto-refresh (last-writer-wins). DISENGAJA & aman:
+ * tampilan tak pernah desync (URL kanonik); hanya seed rute tanpa-unit yang
+ * mengikuti tab yang terakhir aktif.
  */
 
 function readCookie(name: string): string | undefined {
@@ -37,7 +42,7 @@ export function useSelection(
   unitCodes: string[],
   seedUnit: string | undefined,
   seedDate: string,
-): { unit: string | undefined; date: string } {
+): { unit: string | undefined; date: string; navDate: string } {
   const path = usePathname();
   const [seed, setSeed] = useState({ unit: seedUnit, date: seedDate });
 
@@ -66,5 +71,7 @@ export function useSelection(
   // tampilkan kode yang tak ada di daftar opsi; jatuh ke seed ter-validasi.
   const unit =
     sel.unitFromUrl && sel.unit && !unitCodes.includes(sel.unit) ? seed.unit : sel.unit;
-  return { unit, date: sel.date };
+  // date = TAMPIL (denah → hari ini); navDate = terbawa untuk link navigasi
+  // (detour lewat denah tak menghapus tanggal laporan yang sedang ditelusuri).
+  return { unit, date: sel.date, navDate: sel.navDate };
 }
