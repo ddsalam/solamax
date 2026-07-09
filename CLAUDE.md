@@ -59,4 +59,4 @@ pnpm --filter @solamax/agent bundle           # bundle deploy Windows → apps/a
 pnpm --filter @solamax/dashboard dev          # dashboard lokal :3000 (butuh cloud-sql-proxy + .env.local)
 ```
 
-Catatan: `packages/shared` harus di-`build` sebelum agent dijalankan dari `dist` (vitest sudah alias ke source). Driver MySQL agent wajib kompatibel **MySQL 5.0.67** (lihat `apps/agent/README.md`).
+Catatan: `packages/shared` harus di-`build` sebelum agent dijalankan dari `dist` (vitest sudah alias ke source). Di worktree/clone segar, backend juga butuh Prisma client di-generate dulu (`cd apps/backend && pnpm exec prisma generate`) sebelum `pnpm check` lulus. Driver MySQL agent wajib kompatibel **MySQL 5.0.67** (lihat `apps/agent/README.md`).
