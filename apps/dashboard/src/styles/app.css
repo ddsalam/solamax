@@ -621,8 +621,6 @@ body { background: var(--neutral-50); }
 .btn-tint .spinner, .btn-outline .spinner { border-color: var(--accent-200); border-top-color: var(--accent-600); }
 button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: progress; }
 
-/* Optimistic row pending (ManualEntryForm add). */
-.manual-item.pending { opacity: 0.55; }
 
 /* ===== Reduced motion — honors motion.css's promise; calms ALL motion but keeps
    spinner + skeleton VISIBLE (static), incl. the existing sm-spin. ===== */
@@ -732,4 +730,89 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
   .export-body { flex-direction: column; }
   .export-opts { width: 100%; }
   .export-preview { height: 52vh; }
+}
+
+/* ===== Input manual Rincian (panel pengawas, no-print) ===== */
+.manual-panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.manual-card {
+  border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-1); overflow: hidden;
+}
+.manual-head {
+  display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5); background: var(--neutral-50);
+  border-bottom: 1px solid var(--color-border-hairline);
+}
+.manual-count { white-space: nowrap; }
+.manual-subtotal { margin-left: auto; }
+/* Badge sumber "Manual" — pola visual .usulan-prov (uppercase mungil bertinta). */
+.manual-badge {
+  display: inline-flex; align-items: center; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-accent);
+  background: var(--color-accent-tint); border-radius: var(--radius-sm);
+  padding: 1px 7px; align-self: center;
+}
+/* Status rekonsiliasi I-vs-H pada kartu Setoran Tunai (teks+ikon, bukan warna saja). */
+.manual-recon {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-border-hairline);
+}
+.manual-recon .dot { transform: translateY(-1px); }
+.manual-recon.ok { background: var(--color-success-bg); }
+.manual-recon.ok .manual-recon-text { color: var(--color-success); }
+.manual-recon.warn { background: var(--color-danger-bg); }
+.manual-recon.warn .manual-recon-text { color: var(--color-danger); }
+.manual-recon-nums { margin-left: auto; color: var(--color-text-secondary); }
+
+.manual-grid {
+  display: grid; grid-template-columns: 40px 1fr 150px 110px; gap: var(--space-3);
+  align-items: baseline; padding: 10px var(--space-5);
+}
+.manual-grid-head { padding-top: 10px; padding-bottom: 7px; border-bottom: 1px solid var(--color-border-hairline); }
+.manual-grid-head span { font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); }
+.manual-row { border-bottom: 1px solid var(--color-border-hairline); }
+.manual-row:last-child { border-bottom: none; }
+.manual-row.pending { opacity: 0.55; }
+.manual-row.confirming { background: var(--color-danger-bg); }
+.manual-actioncell { justify-self: end; }
+/* Aksi baris: tenang (teks tersier), menguat saat hover — bukan tombol dominan. */
+.manual-void {
+  background: transparent; border: none; cursor: pointer; font-family: var(--font-sans);
+  font-size: 14px; font-weight: 600; color: var(--color-text-tertiary);
+  padding: 3px 10px; border-radius: var(--radius-sm);
+}
+.manual-void:hover { color: var(--color-danger); background: var(--color-danger-bg); }
+.manual-confirm {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-3);
+  flex-wrap: wrap; padding: 4px 0 2px;
+}
+.manual-void-yes {
+  font-family: var(--font-sans); font-size: 14px; font-weight: 700; cursor: pointer;
+  color: var(--color-text-on-accent); background: var(--color-danger);
+  border: none; border-radius: var(--radius-full); padding: 6px 16px; min-height: 34px;
+}
+.manual-void-no { font-size: 14px; padding: 5px 14px; min-height: 34px; }
+
+.manual-addwrap { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border-hairline); }
+.manual-addform { display: grid; grid-template-columns: 1.6fr 1fr auto; gap: var(--space-3); align-items: start; }
+.manual-field { display: flex; flex-direction: column; gap: 4px; }
+.manual-field > label { font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); }
+.manual-input {
+  font-family: var(--font-sans); font-size: 16px; color: var(--color-text-primary);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: 8px 12px; min-height: 42px; width: 100%;
+}
+.manual-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-tint); }
+.manual-input-amt { text-align: right; }
+.manual-preview { min-height: 20px; }
+/* 24px ≈ tinggi label+gap → tombol sejajar input (label di atas). */
+.manual-form-actions { display: flex; gap: var(--space-2); align-items: center; padding-top: 24px; }
+
+@media (max-width: 600px) {
+  .manual-grid-head { display: none; }
+  .manual-grid { grid-template-columns: 28px 1fr max-content; }
+  .manual-row .manual-amt { grid-column: 2 / -1; grid-row: 2; text-align: left; }
+  .manual-actioncell { grid-row: 1; grid-column: 3; }
+  .manual-addform { grid-template-columns: 1fr; }
+  .manual-form-actions { padding-top: 0; }
 }
