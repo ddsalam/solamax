@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Logo } from "@/components/Logo";
-import { ManualEntryForm } from "@/components/rincian/ManualEntryForm";
+import {
+  ManualEntryForm,
+  ManualPanel,
+  ManualSourceBadge,
+} from "@/components/rincian/ManualEntryForm";
 import { RincianExport } from "@/components/rincian/RincianExport";
 import { UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
@@ -22,6 +26,9 @@ import { getDataScope } from "@/lib/scope";
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Section sheet yang bersumber input pengawas (badge "Manual", layar saja). */
+const MANUAL_SECTION_NUMS = new Set(["5", "7"]);
 
 export default async function RincianPage({
   params,
@@ -69,6 +76,16 @@ export default async function RincianPage({
     ? model.sections.filter((s) => s.rows.length > 0)
     : model.sections;
   const summary = model.summary;
+
+  // Status rekonsiliasi I-vs-H utk kartu Setoran Tunai — PASS-THROUGH string
+  // terformat dari model.summary (tanpa hitung ulang formula). I null → null
+  // (indikator disembunyikan, konsisten dgn baris summary).
+  const sumH = summary.find((s) => s.l === "H");
+  const sumI = summary.find((s) => s.l === "I");
+  const setoranRecon =
+    sumI?.val && sumI.note
+      ? { tone: sumI.note.tone, text: sumI.note.text, iVal: sumI.val, hVal: sumH?.val ?? "—" }
+      : null;
 
   const disp = UNIT_DISPLAY[unit.code];
   const generatedDate = todayWib();
@@ -123,6 +140,7 @@ export default async function RincianPage({
             <div className="led-sechead">
               <span className="fs15 w700 t-tertiary num">{sec.num}</span>
               <span className="text-caption w700 t-brand doc-title">{sec.title}</span>
+              {MANUAL_SECTION_NUMS.has(sec.num) && <ManualSourceBadge />}
               <span className="led-meta fs15 t-tertiary">{sec.meta}</span>
             </div>
             <div className="led-head">
@@ -205,21 +223,21 @@ export default async function RincianPage({
         </div>
 
         {/* Input manual (no-print) — Pendapatan Lain & Pengeluaran diisi pengawas.
-            Tulis via server action ber-scope; edit = batalkan + tambah. */}
-        <div className="no-print manual-panel mt12">
-          <div className="fs15 w700 t-tertiary">Input manual (pengawas) · tidak ikut cetak</div>
+            Tulis via server action ber-scope; edit = batalkan + tambah. Nomor
+            seksi mengikuti model (5/7), bukan huruf summary (F/G). */}
+        <ManualPanel>
           <ManualEntryForm
             code={unit.code}
             date={date}
             section="pendapatan_lain"
-            title="4 · Pendapatan Lain"
+            title="5 · Pendapatan Lain"
             entries={pendapatanLain}
           />
           <ManualEntryForm
             code={unit.code}
             date={date}
             section="pengeluaran"
-            title="6 · Pengeluaran"
+            title="7 · Pengeluaran"
             entries={pengeluaran}
           />
           <ManualEntryForm
@@ -228,8 +246,9 @@ export default async function RincianPage({
             section="setoran_tunai"
             title="I · Setoran Tunai (disetor ke bank)"
             entries={setoranTunai}
+            recon={setoranRecon}
           />
-        </div>
+        </ManualPanel>
 
         {/* Tanda tangan */}
         <div className="sig-grid mt12">
