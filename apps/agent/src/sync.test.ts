@@ -366,6 +366,73 @@ describe("runCycle", () => {
     expect(plg[0]!.watermark_high).toBeNull();
   });
 
+  it("sweep tebus: satu payload per jendela ber-replace_window (snapshot delete-capable)", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("tr_htebus") && sql.includes("DTGLTBS >= ? AND")) {
+          return [{
+            CKDTBS: "TB202600136", DTGLTBS: "2026-06-22", CNOSO: "4062051864",
+            SBATAL: "0", CKDBBM: "BB-03", NVOLUME: "40000",
+          }];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    await runManualSweep({ conn, client, store, cfg: CFG, dryRun: false }, "tebus", 5, 30);
+    expect(sent).toHaveLength(1);
+    const p = sent[0]!;
+    expect(p.domain).toBe("tebus");
+    expect(p.replace_window).toBeDefined();
+    expect(p.replace_window!.from < p.replace_window!.to).toBe(true);
+    expect(p.tables.tebus_header).toHaveLength(1);
+    expect(p.tables.tebus_detail).toHaveLength(1);
+    expect(p.watermark_high).toBeNull(); // sapuan tak menggeser watermark
+  });
+
+  it("sweep delivery: jendela KOSONG tetap dikirim sebagai DELETE-only (hapus ghost di mirror)", async () => {
+    const windows: Array<{ lo: string; hiExcl: string }> = [];
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("tr_terimabbm") && sql.includes("DTGLTRM >= ?")) {
+          windows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    await runManualSweep({ conn, client, store, cfg: CFG, dryRun: false }, "delivery", 8, 4);
+    expect(windows.length).toBeGreaterThan(0);
+    expect(sent).toHaveLength(windows.length); // tiap jendela = 1 payload DELETE-only
+    for (const p of sent) {
+      expect(p.domain).toBe("delivery");
+      expect(p.replace_window).toBeDefined();
+      expect(Object.keys(p.tables)).toHaveLength(0);
+    }
+  });
+
+  it("sweep tebus: jendela > kapasitas payload → fallback UPSERT chunked TANPA replace_window", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("tr_htebus") && sql.includes("DTGLTBS >= ? AND")) {
+          return [
+            { CKDTBS: "TB1", DTGLTBS: "2026-06-22", CNOSO: "A", SBATAL: "0", CKDBBM: "BB-03", NVOLUME: "8000" },
+            { CKDTBS: "TB2", DTGLTBS: "2026-06-23", CNOSO: "B", SBATAL: "0", CKDBBM: "BB-07", NVOLUME: "8000" },
+          ];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 1 } } as unknown as AgentConfig;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    await runManualSweep({ conn, client, store, cfg, dryRun: false }, "tebus", 5, 30);
+    expect(sent.length).toBeGreaterThan(1); // ter-chunk per header
+    for (const p of sent) expect(p.replace_window).toBeUndefined();
+  });
+
   it("Track 2: sweepJobs isolasi per domain — satu domain gagal (query throw) tak menghentikan yang lain", async () => {
     const conn = {
       async roQuery(sql: string) {

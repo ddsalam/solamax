@@ -57,6 +57,7 @@ interface Args {
   resyncSales: boolean;
   deepSweepDomain?: string;
   deepSweepDays?: number;
+  deepSweepChunkDays?: number;
   probeDiscoveryOnly: boolean;
   probeDates: string[];
   configPath?: string;
@@ -112,6 +113,14 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--deep-sweep") {
       a.deepSweepDomain = argv[++i];
       a.deepSweepDays = Number(argv[++i]);
+      // Opsional: lebar chunk hari per jendela (angka setelah <days>). Untuk
+      // sapuan full-history sejak-inception, chunk lebih lebar (mis. 92) memangkas
+      // jumlah request tanpa mendekati kapasitas payload (delivery ≤ ~400/92 hari).
+      const maybeChunk = Number(argv[i + 1]);
+      if (argv[i + 1] !== undefined && !Number.isNaN(maybeChunk) && !argv[i + 1]!.startsWith("--")) {
+        a.deepSweepChunkDays = maybeChunk;
+        i++;
+      }
     } else if (arg === "--discovery") a.probeDiscoveryOnly = true;
     else if (DATE_RE.test(arg!)) a.probeDates.push(arg!);
     else if (arg === "--config") a.configPath = argv[++i];
@@ -151,8 +160,9 @@ function printHelp(): void {
       "  --probe15 [tgl...]  FASE 0.5i: LEDGER terra resmi (tr_hterra/tr_dterra/vw_terra) + rekon B 8-hari. Read-only.",
       "  --probe16 [tgl...]  FASE 0.5j: REKON ledger terra (kolom benar: DTGLTERRA/NVOLUME/NTOTAL) vs oracle B. Read-only.",
       "  --resync-sales <from> <to>  Re-backfill SALES per DTGLJUAL [from..to] (UPSERT idempoten, tangkap NULL-DTGLJAM). MENGIRIM.",
-      "  --deep-sweep <domain> <days>  Track 2: sapuan manual SATU domain, N hari terakhir s/d hari ini.",
+      "  --deep-sweep <domain> <days> [chunkDays]  Track 2: sapuan manual SATU domain, N hari terakhir s/d hari ini.",
       "                      <domain> ∈ pelanggan|edc|opname|delivery|tera|cash|tebus. Idempoten (REPLACE/UPSERT). MENGIRIM.",
+      "                      tebus/delivery: sapuan kini DELETE-capable (replace_window) — mirror = snapshot sumber per jendela.",
       "  --discovery         Dengan --probe: hanya jalankan discovery skema (DESCRIBE+sample), berhenti sebelum P1–P6.",
       "  --dry-run           Tarik data & cetak ringkasan payload, TANPA kirim ke backend.",
       "  --once              Jalankan satu siklus lalu keluar (default: loop berkala).",
@@ -392,7 +402,7 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      await runManualSweep(deps, domain, args.deepSweepDays);
+      await runManualSweep(deps, domain, args.deepSweepDays, args.deepSweepChunkDays);
     } else if (args.once || args.dryRun) {
       await runCycle(deps, {
         includeMasters: true,
