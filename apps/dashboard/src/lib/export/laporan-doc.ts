@@ -302,7 +302,8 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
         const ab: TableCell[][] = [[th("Produk"), th("Tanpa Penebusan", "right"), th("Lebih Terima", "right")]];
         for (const a of d.anomRows)
           ab.push([
-            { text: pdfText(a.label), bold: true },
+            // Label identik layar: produk nonaktif diberi tag "· nonaktif".
+            { text: pdfText(`${a.label}${a.aktif ? "" : " · nonaktif"}`), bold: true },
             { text: a.orphan ? fmtL(a.orphan) : "—", alignment: "right", color: PDF.warning },
             { text: a.over_receipt ? fmtL(a.over_receipt) : "—", alignment: "right", color: PDF.warning },
           ]);
