@@ -34,7 +34,7 @@ import {
   getManualEntries,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
-import { buildLaporanModel } from "@/lib/laporan-model";
+import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
 
 export const dynamic = "force-dynamic";
 
@@ -490,6 +490,11 @@ export default async function LaporanPage({
                           {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
                         </span>
                       )}
+                      {d.recon !== 0 && alurSelisihNote(d.alurSelisih) && (
+                        <span className="do-seg text-caption t-warning">
+                          ⚠ {alurSelisihNote(d.alurSelisih)}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
@@ -512,7 +517,7 @@ export default async function LaporanPage({
               </div>
               <div className="lap-cardfoot">
                 {DOMAIN.do
-                  ? `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). DO Awal = Sisa kemarin. ⚠ = alur tak sesuai Sisa. Bagian "macet >${DO_STALE_DAYS} hr" umumnya TIDAK tampil di popup F12 EasyMax — daftar SO-nya di panel Alokasi Penerimaan Tidak Sesuai; angka headline sengaja tetap ledger penuh.`
+                  ? `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). DO Awal = Sisa kemarin. ⚠ = alur hari itu tak terserap penuh ke SO-nya: Sisa = DO Awal + Penebusan − Penerimaan + selisih-tak-terserap (tertera di baris; rinci di panel Alokasi). Bagian "macet >${DO_STALE_DAYS} hr" umumnya TIDAK tampil di popup F12 EasyMax; angka headline sengaja tetap ledger penuh.`
                   : "Penerimaan BBM dari data EasyMax."}
               </div>
             </div>

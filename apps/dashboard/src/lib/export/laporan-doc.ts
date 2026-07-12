@@ -13,7 +13,7 @@ import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from
 import { PDF } from "./pdf-tokens";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { fmtL, idn, parenNeg, pct, rp, signed } from "@/lib/format";
-import type { LaporanModel } from "@/lib/laporan-model";
+import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
 
 export interface LaporanDocMeta {
   unitDotted: string;
@@ -223,6 +223,20 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
   for (const r of d.rows) {
     const warn = full && r.recon !== 0;
     const label = `${r.label}${warn ? " !" : ""}`;
+    // Sub-baris di bawah angka Sisa — identik layar: segmen macet + rekonsiliasi
+    // alur (baris ⚠ balance: DO Awal + Penebusan − Penerimaan + selisih = Sisa).
+    const sisaSub: Content[] = [];
+    if (r.sisaMacet > 0)
+      sisaSub.push({
+        text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet`,
+        alignment: "right", fontSize: 7, color: PDF.warning,
+      });
+    const alurNote = r.recon !== 0 ? alurSelisihNote(r.alurSelisih) : null;
+    if (alurNote)
+      sisaSub.push({
+        text: pdfText(`! ${alurNote}`),
+        alignment: "right", fontSize: 7, color: PDF.warning,
+      });
     body.push(
       full
         ? [
@@ -230,17 +244,11 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
             { text: fmtL(r.doAwal), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penerimaan), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penebusan), alignment: "right", color: PDF.textSecondary },
-            r.sisaMacet > 0
+            sisaSub.length > 0
               ? {
-                  // Segmen berjalan vs macet — identik sub-baris layar.
                   stack: [
                     { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
-                    {
-                      text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet`,
-                      alignment: "right",
-                      fontSize: 7,
-                      color: PDF.warning,
-                    },
+                    ...sisaSub,
                   ],
                 }
               : { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
@@ -275,7 +283,8 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
     out.push({
       text:
         `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). ` +
-        `"!" = alur tak sesuai Sisa. Bagian "macet" umumnya tidak tampil di popup F12 EasyMax — lihat panel Alokasi.`,
+        `"!" = alur hari itu tak terserap penuh ke SO-nya: Sisa = DO Awal + Penebusan − Penerimaan + selisih-tak-terserap (tertera di baris). ` +
+        `Bagian "macet" umumnya tidak tampil di popup F12 EasyMax — rinci di panel Alokasi.`,
       style: "footNote",
       alignment: "left",
     });
