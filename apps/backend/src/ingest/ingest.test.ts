@@ -80,6 +80,64 @@ describe("IngestService", () => {
     expect(det.sql).toContain('ON CONFLICT ("unit_id","ckdtbs","ckdbbm")');
   });
 
+  it("replace_window tebus: lock → DELETE detail (join header) → DELETE header → INSERT, satu transaksi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = {
+      unit_code: "6378301",
+      domain: "tebus",
+      watermark_high: null,
+      replace_window: { from: "2026-06-01", to: "2026-07-01" },
+      tables: {
+        tebus_header: [{ ckdtbs: "TB202600136", dtgltbs: "2026-06-22", cnoso: "4062051864", sbatal: 0 }],
+        tebus_detail: [{ ckdtbs: "TB202600136", ckdbbm: "BB-03", nvolume: 40000 }],
+      },
+    };
+    const res = await new IngestService(prisma).ingest(2, payload);
+    expect(res.upserted).toEqual({ tebus_header: 1, tebus_detail: 1 });
+    const sqls = executed.map((e) => e.sql);
+    // Urutan: set_config → advisory lock → DELETE detail → DELETE header → INSERT×2 → sync_state.
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["replace_window:tebus:2"]);
+    expect(sqls[2]).toContain('DELETE FROM "tebus_detail"');
+    expect(sqls[2]).toContain('USING "tebus_header"');
+    expect(sqls[3]).toContain('DELETE FROM "tebus_header"');
+    expect(executed[3]!.params).toEqual([2, "2026-06-01", "2026-07-01"]);
+    const delIdx = sqls.findIndex((s) => s.includes('DELETE FROM "tebus_header"'));
+    const insIdx = sqls.findIndex((s) => s.includes('INSERT INTO "tebus_header"'));
+    expect(delIdx).toBeGreaterThan(-1);
+    expect(insIdx).toBeGreaterThan(delIdx); // DELETE sebelum INSERT
+  });
+
+  it("replace_window delivery: payload TANPA baris = DELETE-only (jendela kosong di sumber)", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = {
+      unit_code: "6378301",
+      domain: "delivery",
+      watermark_high: null,
+      replace_window: { from: "2020-01-01", to: "2021-01-01" },
+      tables: {},
+    };
+    const res = await new IngestService(prisma).ingest(2, payload);
+    expect(res.upserted).toEqual({});
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls.some((s) => s.includes('DELETE FROM "delivery"') && s.includes('"dtgltrm"'))).toBe(true);
+    expect(sqls.some((s) => s.includes('INSERT INTO "delivery"'))).toBe(false);
+    expect(sqls[sqls.length - 1]).toContain('"sync_state"');
+  });
+
+  it("replace_window pada domain non-whitelist → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = {
+      ...SALES_PAYLOAD,
+      replace_window: { from: "2026-06-01", to: "2026-07-01" },
+    } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(1, payload)).rejects.toThrow(
+      /replace_window tidak sah/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+
   it("menolak tabel melebihi limit baris (422, tanpa eksekusi)", async () => {
     const { prisma, executed } = fakePrisma();
     const big = {

@@ -167,3 +167,41 @@ export function buildReplace(
 
   return [del, ins];
 }
+
+/**
+ * DELETE jendela tanggal-bisnis [from, to) untuk domain `replace_window`
+ * (tebus/delivery) — dijalankan SEBELUM UPSERT baris payload dalam transaksi
+ * yang sama, sehingga mirror = snapshot sumber per jendela: baris yang DIHAPUS
+ * atau di-RENUMBER di EasyMax ikut hilang dari mirror (UPSERT saja tak pernah
+ * membersihkan — akar phantom Sisa DO Bakau 2026-07-12). `tebus_detail` tak
+ * punya kolom tanggal → dihapus via join header SEBELUM header-nya. Identifier
+ * konstanta; nilai via parameter. RLS `unit_scope` tetap membatasi ke unit GUC.
+ */
+export function buildReplaceWindowDeletes(
+  domain: "tebus" | "delivery",
+  unitId: number,
+  window: { from: string; to: string },
+): Array<{ sql: string; params: unknown[] }> {
+  const params = [unitId, window.from, window.to] as unknown[];
+  if (domain === "delivery") {
+    return [
+      {
+        sql: `DELETE FROM "delivery" WHERE "unit_id" = $1 AND "dtgltrm" >= $2::date AND "dtgltrm" < $3::date`,
+        params,
+      },
+    ];
+  }
+  return [
+    {
+      sql:
+        `DELETE FROM "tebus_detail" td USING "tebus_header" th ` +
+        `WHERE td."unit_id" = $1 AND th."unit_id" = $1 AND th."ckdtbs" = td."ckdtbs" ` +
+        `AND th."dtgltbs" >= $2::date AND th."dtgltbs" < $3::date`,
+      params,
+    },
+    {
+      sql: `DELETE FROM "tebus_header" WHERE "unit_id" = $1 AND "dtgltbs" >= $2::date AND "dtgltbs" < $3::date`,
+      params,
+    },
+  ];
+}
