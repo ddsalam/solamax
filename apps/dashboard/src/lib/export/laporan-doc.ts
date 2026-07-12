@@ -230,7 +230,20 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
             { text: fmtL(r.doAwal), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penerimaan), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penebusan), alignment: "right", color: PDF.textSecondary },
-            { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
+            r.sisaMacet > 0
+              ? {
+                  // Segmen berjalan vs macet — identik sub-baris layar.
+                  stack: [
+                    { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
+                    {
+                      text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet`,
+                      alignment: "right",
+                      fontSize: 7,
+                      color: PDF.warning,
+                    },
+                  ],
+                }
+              : { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
           ]
         : [
             { text: r.label, bold: true },
@@ -260,20 +273,28 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
   ];
   if (full) {
     out.push({
-      text: 'Sisa DO = saldo per-SO (Σ ditebus − diterima, ≥0). "!" = alur tak sesuai Sisa (alokasi tidak sesuai).',
+      text:
+        `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). ` +
+        `"!" = alur tak sesuai Sisa. Bagian "macet" umumnya tidak tampil di popup F12 EasyMax — lihat panel Alokasi.`,
       style: "footNote",
       alignment: "left",
     });
     // Alokasi tidak sesuai
-    if (d.suspects.length > 0 || d.anomRows.length > 0) {
+    if (d.suspects.length > 0 || d.suspectsNonaktif.count > 0 || d.anomRows.length > 0) {
       out.push(sectionHeading("Alokasi Penerimaan Tidak Sesuai"));
-      if (d.suspects.length > 0) {
+      if (d.suspects.length > 0 || d.suspectsNonaktif.count > 0) {
         const sb: TableCell[][] = [[th("No. SO · Produk"), th("Outstanding", "right"), th("Sejak", "right")]];
         for (const s of d.suspects)
           sb.push([
             { text: pdfText(`${s.cnoso} · ${s.nama}`) },
             { text: fmtL(s.outstanding), alignment: "right", color: PDF.warning },
             { text: `${s.sejak} · ${s.umur_hari} hr`, alignment: "right", color: PDF.textMuted },
+          ]);
+        if (d.suspectsNonaktif.count > 0)
+          sb.push([
+            { text: pdfText(`Produk nonaktif (tanpa tangki) · ${d.suspectsNonaktif.count} SO`), color: PDF.textMuted },
+            { text: fmtL(d.suspectsNonaktif.liters), alignment: "right", color: PDF.textMuted },
+            { text: "ringkasan", alignment: "right", color: PDF.textMuted },
           ]);
         out.push(table(["*", 90, 90], sb));
       }

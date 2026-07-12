@@ -244,6 +244,8 @@ body { background: var(--neutral-50); }
 .cols-target { grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; }
 .cols-do { grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
 .cols-do.lite { grid-template-columns: 1.3fr 1fr; }
+/* Segmen Sisa DO (berjalan vs macet >30 hr) — sub-baris di bawah angka Sisa. */
+.do-seg { display: block; white-space: nowrap; }
 .cols-anom { grid-template-columns: 1.4fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
 .cols-suspect { grid-template-columns: 1.7fr 1fr 1.1fr; padding-top: 11px; padding-bottom: 11px; }
 .cols-stock { grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; }

@@ -68,6 +68,10 @@ export interface DoHarianRow {
   penerimaan: number;
   penebusan: number;
   sisa: number;
+  /** Segmen `sisa` dari SO macet (>DO_STALE_DAYS; definisi = panel suspect). */
+  sisaMacet: number;
+  /** Segmen `sisa` berjalan (≤DO_STALE_DAYS) = sisa − sisaMacet. */
+  sisaBerjalan: number;
   recon: number;
 }
 export interface HargaRow {
@@ -123,8 +127,17 @@ export interface LaporanModel {
   target: { rows: TargetRow[] };
   doHarian: {
     rows: DoHarianRow[];
-    totals: { doAwal: number; penerimaan: number; penebusan: number; sisa: number };
+    totals: {
+      doAwal: number;
+      penerimaan: number;
+      penebusan: number;
+      sisa: number;
+      sisaMacet: number;
+    };
+    /** Daftar SO macet produk AKTIF (daftar-kerja; nonaktif diringkas terpisah). */
     suspects: DoSuspect[];
+    /** Ringkasan SO macet produk NONAKTIF (mis. PREMIUM) — informasional. */
+    suspectsNonaktif: { count: number; liters: number };
     anomRows: (DoAnom & { label: string })[];
   };
   harga: { rows: HargaRow[] };
@@ -180,6 +193,7 @@ export function buildLaporanModel(
     const penerimaan = r?.penerimaan ?? 0;
     const penebusan = r?.penebusan ?? 0;
     const sisa = r?.sisa ?? 0;
+    const sisaMacet = r?.sisa_macet ?? 0;
     return {
       key: dp.key,
       label: dp.label,
@@ -187,6 +201,8 @@ export function buildLaporanModel(
       penerimaan,
       penebusan,
       sisa,
+      sisaMacet,
+      sisaBerjalan: sisa - sisaMacet,
       recon: Math.round(doAwal + penebusan - penerimaan - sisa),
     };
   });
@@ -196,9 +212,19 @@ export function buildLaporanModel(
       penerimaan: a.penerimaan + r.penerimaan,
       penebusan: a.penebusan + r.penebusan,
       sisa: a.sisa + r.sisa,
+      sisaMacet: a.sisaMacet + r.sisaMacet,
     }),
-    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0 },
+    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0, sisaMacet: 0 },
   );
+  // Suspects: daftar-kerja = produk AKTIF saja; nonaktif (mis. PREMIUM) diringkas
+  // satu baris agar tak menenggelamkan yang bisa ditindak (LIMIT 50 di query).
+  const suspectsAktif = doSuspects.filter((s) => s.aktif);
+  const suspectsNonaktif = doSuspects
+    .filter((s) => !s.aktif)
+    .reduce(
+      (a, s) => ({ count: a.count + 1, liters: a.liters + s.outstanding }),
+      { count: 0, liters: 0 },
+    );
   const anomRows = orderBy(
     doAnomalies.map((a) => ({ ...a, label: resolveDoProduct(a.nama)?.label ?? a.nama })),
   );
@@ -421,7 +447,13 @@ export function buildLaporanModel(
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
     glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth },
     target: { rows: targetRows },
-    doHarian: { rows: doRows, totals: doTotals, suspects: doSuspects, anomRows },
+    doHarian: {
+      rows: doRows,
+      totals: doTotals,
+      suspects: suspectsAktif,
+      suspectsNonaktif,
+      anomRows,
+    },
     harga: { rows: hargaRows },
     rekon: { rows: rekonRows, cashTotal },
     corrections: raw.corrections,
