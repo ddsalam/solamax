@@ -13,7 +13,7 @@ import {
   targetVolumePerDay,
 } from "@/lib/config";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
-import { parenNeg, pct, signed } from "@/lib/format";
+import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import type * as Q from "@/lib/queries";
 
 /** Bentuk kembalian monthInfo() (tak diekspor sebagai tipe di lib/periods). */
@@ -73,6 +73,13 @@ export interface DoHarianRow {
   /** Segmen `sisa` berjalan (≤DO_STALE_DAYS) = sisa − sisaMacet. */
   sisaBerjalan: number;
   recon: number;
+  /**
+   * Selisih alur per-SO (signed, dari query — jalur data yang sama dgn Sisa):
+   * >0 penerimaan tak terserap ke SO-nya; <0 penebusan terserap kelebihan-terima
+   * lama. ≡ −recon by construction (di-pin unit test); baris ⚠ balance visual:
+   * DO Awal + Penebusan − Penerimaan + alurSelisih = Sisa.
+   */
+  alurSelisih: number;
 }
 export interface HargaRow {
   ckdbbm: string;
@@ -165,6 +172,19 @@ export interface LaporanRaw {
   recapSetoran: Manual[];
 }
 
+/**
+ * Kalimat rekonsiliasi baris ⚠ DO Harian (SATU sumber utk layar & PDF):
+ * menjelaskan selisih alur sehingga identitas terlihat balance —
+ * DO Awal + Penebusan − Penerimaan + alurSelisih = Sisa. null = tak dirender.
+ */
+export function alurSelisihNote(alurSelisih: number): string | null {
+  if (alurSelisih > 0)
+    return `${fmtL(alurSelisih)} penerimaan tak terserap ke SO-nya — lihat panel Alokasi Penerimaan Tidak Sesuai`;
+  if (alurSelisih < 0)
+    return `${fmtL(-alurSelisih)} penebusan terserap kelebihan-terima lama — lihat panel Alokasi Penerimaan Tidak Sesuai`;
+  return null;
+}
+
 const orderBy = <T extends { nama: string }>(xs: T[]): T[] =>
   [...xs].sort((a, b) => (classifyProduct(a.nama)?.order ?? 9) - (classifyProduct(b.nama)?.order ?? 9));
 
@@ -204,6 +224,7 @@ export function buildLaporanModel(
       sisaMacet,
       sisaBerjalan: sisa - sisaMacet,
       recon: Math.round(doAwal + penebusan - penerimaan - sisa),
+      alurSelisih: Math.round(r?.alur_selisih ?? 0),
     };
   });
   const doTotals = doRows.reduce(

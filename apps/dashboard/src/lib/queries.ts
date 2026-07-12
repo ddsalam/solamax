@@ -476,6 +476,15 @@ export interface DoHarianRow {
    * owner 2026-07-12): headline tetap ledger penuh, bagian macet ditandai.
    */
   sisa_macet: number;
+  /**
+   * Selisih alur per-SO hari-D (signed): Σ_SO [Δclamped − Δraw].
+   * >0 = penerimaan hari-D jatuh ke SO orphan/habis → tak menurunkan Sisa;
+   * <0 = penebusan hari-D terserap kelebihan-terima lama → tak menaikkan Sisa.
+   * Identitas tampilan: Sisa = DO Awal + Penebusan − Penerimaan + alur_selisih.
+   * = −recon (laporan-model) by construction bila tak ada baris ber-CNOSO NULL
+   * pada alur hari itu (0 baris di kedua unit; equality di-pin unit test).
+   */
+  alur_selisih: number;
 }
 
 /**
@@ -522,12 +531,15 @@ export async function getDoHarian(
        SELECT COALESCE(red.bbm, rec.bbm) AS bbm,
               GREATEST(0, COALESCE(red.v_d,0) - COALESCE(rec.v_d,0)) AS out_d,
               GREATEST(0, COALESCE(red.v_p,0) - COALESCE(rec.v_p,0)) AS out_p,
+              (COALESCE(red.v_d,0) - COALESCE(red.v_p,0))
+                - (COALESCE(rec.v_d,0) - COALESCE(rec.v_p,0)) AS raw_delta,
               red.lastd AS lastd
        FROM red FULL JOIN rec ON red.cnoso = rec.cnoso AND red.bbm = rec.bbm
      ),
      sisa AS (
        SELECT bbm, sum(out_d)::float8 AS sisa, sum(out_p)::float8 AS do_awal,
-              COALESCE(sum(out_d) FILTER (WHERE lastd < $2::date - ${DO_STALE_DAYS}), 0)::float8 AS sisa_macet
+              COALESCE(sum(out_d) FILTER (WHERE lastd < $2::date - ${DO_STALE_DAYS}), 0)::float8 AS sisa_macet,
+              sum((out_d - out_p) - raw_delta)::float8 AS alur_selisih
        FROM per_so GROUP BY bbm
      ),
      penf AS (
@@ -548,7 +560,8 @@ export async function getDoHarian(
             COALESCE(max(pf.v),0)::float8 AS penerimaan,
             COALESCE(max(tf.v),0)::float8 AS penebusan,
             COALESCE(max(s.sisa),0)::float8 AS sisa,
-            COALESCE(max(s.sisa_macet),0)::float8 AS sisa_macet
+            COALESCE(max(s.sisa_macet),0)::float8 AS sisa_macet,
+            COALESCE(max(s.alur_selisih),0)::float8 AS alur_selisih
      FROM prod
      LEFT JOIN sisa s ON s.bbm = prod.bbm
      LEFT JOIN penf pf ON pf.bbm = prod.bbm
