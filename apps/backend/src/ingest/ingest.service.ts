@@ -1,7 +1,8 @@
 import { Injectable, UnprocessableEntityException } from "@nestjs/common";
 import type { IngestPayload, IngestResponse } from "@solamax/shared";
+import { REPLACE_WINDOW_DOMAINS } from "@solamax/shared";
 import { PrismaService } from "../prisma.service.js";
-import { buildReplace, buildUpsert } from "./sql.js";
+import { buildReplace, buildReplaceWindowDeletes, buildUpsert } from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
 
 @Injectable()
@@ -33,14 +34,31 @@ export class IngestService {
     const totalRows = entries.reduce((n, [, rows]) => n + rows.length, 0);
     const watermark = payload.watermark_high; // ISO string; cast ::timestamptz di SQL
 
+    // replace_window (tebus/delivery): DELETE jendela [from,to) SEBELUM upsert —
+    // mirror = snapshot sumber per jendela (tangkap DELETE/renumber di EasyMax).
+    // Zod @solamax/shared sudah membatasi domain, tapi backend tetap menegakkan
+    // whitelist sendiri (defense-in-depth; identifier tak pernah dari input).
+    const win = payload.replace_window;
+    if (win && !(REPLACE_WINDOW_DOMAINS as readonly string[]).includes(payload.domain)) {
+      throw new UnprocessableEntityException(
+        `replace_window tidak sah untuk domain ${payload.domain}`,
+      );
+    }
+    const windowDeletes = win
+      ? buildReplaceWindowDeletes(payload.domain as "tebus" | "delivery", unitId, win)
+      : [];
+
     // REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale) → [DELETE, INSERT];
     // selain itu UPSERT by natural key. Semua di SATU transaksi (atomik + idempoten).
-    const statements = entries.flatMap(([table, rows]) => {
-      const cfg = TABLE_CONFIG[table]!;
-      return cfg.replaceByBusinessDate
-        ? buildReplace(cfg, unitId, rows)
-        : [buildUpsert(cfg, unitId, rows)];
-    });
+    const statements = [
+      ...windowDeletes,
+      ...entries.flatMap(([table, rows]) => {
+        const cfg = TABLE_CONFIG[table]!;
+        return cfg.replaceByBusinessDate
+          ? buildReplace(cfg, unitId, rows)
+          : [buildUpsert(cfg, unitId, rows)];
+      }),
+    ];
 
     // Kunci (table,unit,business_date) utk tabel REPLACE TANPA kunci natural
     // (pelanggan_sale/voucher_sale — sumber EasyMax tak expose identitas baris
@@ -55,13 +73,17 @@ export class IngestService {
     // Lock ter-lepas otomatis di akhir transaksi (varian _xact_). edc tak perlu ini
     // (sudah dijaga index unik + ON CONFLICT).
     const lockKeys = [
-      ...new Set(
-        entries.flatMap(([table, rows]) => {
+      ...new Set([
+        ...entries.flatMap(([table, rows]) => {
           const cfg = TABLE_CONFIG[table]!;
           if (!cfg.replaceByBusinessDate || cfg.conflict.length > 0) return [];
           return rows.map((r) => `${table}:${unitId}:${String(r["business_date"])}`);
         }),
-      ),
+        // replace_window: serialkan DELETE+INSERT per (domain,unit) — dua request
+        // tumpang-tindih (retry agent pasca-timeout, kelas insiden edc 2026-06-22)
+        // dieksekusi berurutan; yang kedua melihat commit pertama → konvergen, 0 ghost.
+        ...(win ? [`replace_window:${payload.domain}:${unitId}`] : []),
+      ]),
     ].sort(); // urutan tetap → dua transaksi mengunci kunci yang sama dgn urutan sama (anti-deadlock)
 
     await this.prisma.$transaction(
