@@ -125,10 +125,11 @@ describe("buildLaporanModel", () => {
     // Identitas tampilan balance: DO Awal + Penebusan − Penerimaan + selisih = Sisa.
     expect(solar.doAwal + solar.penebusan - solar.penerimaan + solar.alurSelisih).toBe(solar.sisa);
     expect(perta.doAwal + perta.penebusan - perta.penerimaan + perta.alurSelisih).toBe(perta.sisa);
-    expect(alurSelisihNote(solar.alurSelisih)).toContain("8.000");
-    expect(alurSelisihNote(solar.alurSelisih)).toContain("penerimaan tak terserap");
+    // Copy KOMPAK (insiden layout 2026-07-13: kalimat panjang + nowrap meledakkan
+    // lebar kolom) — pola & panjang setara sub-baris macet yang terbukti.
+    expect(alurSelisihNote(solar.alurSelisih)).toBe("8.000 L tak terserap · lihat panel Alokasi");
     // Arah sebaliknya (penebusan terserap kelebihan-terima lama).
-    expect(alurSelisihNote(-24000)).toContain("penebusan terserap");
+    expect(alurSelisihNote(-24000)).toBe("24.000 L terserap lebih-terima lama · lihat panel Alokasi");
   });
 
   it("suspects terbelah aktif vs nonaktif (aturan tangki, tanpa hardcode nama)", () => {
