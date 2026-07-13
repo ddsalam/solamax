@@ -473,7 +473,7 @@ export default async function LaporanPage({
                     {DOMAIN.do && d.recon !== 0 && (
                       <span
                         className="t-warning"
-                        title={`Alur tak rekonsiliasi (${signed(d.recon)} L) — alokasi tidak sesuai; lihat panel`}
+                        title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
                       >
                         {" "}⚠
                       </span>

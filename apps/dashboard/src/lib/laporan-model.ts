@@ -173,15 +173,17 @@ export interface LaporanRaw {
 }
 
 /**
- * Kalimat rekonsiliasi baris ⚠ DO Harian (SATU sumber utk layar & PDF):
- * menjelaskan selisih alur sehingga identitas terlihat balance —
- * DO Awal + Penebusan − Penerimaan + alurSelisih = Sisa. null = tak dirender.
+ * Sub-baris rekonsiliasi baris ⚠ DO Harian (SATU sumber utk layar & PDF).
+ * KOMPAK — sel tabel memakai white-space:nowrap (pola sub-baris macet); kalimat
+ * panjang meledakkan lebar min-content kolom (insiden layout 2026-07-13).
+ * Penjelasan penuh (identitas Sisa = DO Awal + Penebusan − Penerimaan +
+ * tak-terserap) ada di tooltip ⚠ dan footnote. null = tak dirender.
  */
 export function alurSelisihNote(alurSelisih: number): string | null {
   if (alurSelisih > 0)
-    return `${fmtL(alurSelisih)} penerimaan tak terserap ke SO-nya — lihat panel Alokasi Penerimaan Tidak Sesuai`;
+    return `${fmtL(alurSelisih)} tak terserap · lihat panel Alokasi`;
   if (alurSelisih < 0)
-    return `${fmtL(-alurSelisih)} penebusan terserap kelebihan-terima lama — lihat panel Alokasi Penerimaan Tidak Sesuai`;
+    return `${fmtL(-alurSelisih)} terserap lebih-terima lama · lihat panel Alokasi`;
   return null;
 }
 
