@@ -55,16 +55,16 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
       title: "Laporan",
       items: [
         {
-          href: unitCode ? `/unit/${unitCode}/laporan/${date}` : null,
-          label: "Operasional harian",
-          icon: "report",
-          match: (p) => /^\/unit\/[^/]+\/laporan/.test(p),
-        },
-        {
           href: unitCode ? `/unit/${unitCode}/rincian/${date}` : null,
           label: "Rincian penjualan",
           icon: "receipt",
           match: (p) => /^\/unit\/[^/]+\/rincian/.test(p),
+        },
+        {
+          href: unitCode ? `/unit/${unitCode}/laporan/${date}` : null,
+          label: "Operasional harian",
+          icon: "report",
+          match: (p) => /^\/unit\/[^/]+\/laporan/.test(p),
         },
         {
           href: unitCode ? `/unit/${unitCode}/usulan/${date}` : null,
