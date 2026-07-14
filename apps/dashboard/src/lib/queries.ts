@@ -470,6 +470,21 @@ export interface DoHarianRow {
   penebusan: number;
   /** Sisa DO = Σ_SO GREATEST(0, ditebus≤D − diterima≤D) — OTORITATIF. */
   sisa: number;
+  /**
+   * Bagian `sisa` dari SO MACET (tebus terakhir > DO_STALE_DAYS hari sebelum D;
+   * definisi identik panel suspect → tertelusur). Segmentasi tampilan (keputusan
+   * owner 2026-07-12): headline tetap ledger penuh, bagian macet ditandai.
+   */
+  sisa_macet: number;
+  /**
+   * Selisih alur per-SO hari-D (signed): Σ_SO [Δclamped − Δraw].
+   * >0 = penerimaan hari-D jatuh ke SO orphan/habis → tak menurunkan Sisa;
+   * <0 = penebusan hari-D terserap kelebihan-terima lama → tak menaikkan Sisa.
+   * Identitas tampilan: Sisa = DO Awal + Penebusan − Penerimaan + alur_selisih.
+   * = −recon (laporan-model) by construction bila tak ada baris ber-CNOSO NULL
+   * pada alur hari itu (0 baris di kedua unit; equality di-pin unit test).
+   */
+  alur_selisih: number;
 }
 
 /**
@@ -492,7 +507,8 @@ export async function getDoHarian(
     `WITH red AS (
        SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm,
               sum(td.nvolume) FILTER (WHERE th.dtgltbs <= $2::date) AS v_d,
-              sum(td.nvolume) FILTER (WHERE th.dtgltbs <  $2::date) AS v_p
+              sum(td.nvolume) FILTER (WHERE th.dtgltbs <  $2::date) AS v_p,
+              max(th.dtgltbs) AS lastd
        FROM tebus_header th
        JOIN tebus_detail td ON td.unit_id = th.unit_id AND td.ckdtbs = th.ckdtbs
        WHERE th.unit_id = $1 AND COALESCE(th.sbatal,0) = 0
@@ -514,10 +530,18 @@ export async function getDoHarian(
      per_so AS (
        SELECT COALESCE(red.bbm, rec.bbm) AS bbm,
               GREATEST(0, COALESCE(red.v_d,0) - COALESCE(rec.v_d,0)) AS out_d,
-              GREATEST(0, COALESCE(red.v_p,0) - COALESCE(rec.v_p,0)) AS out_p
+              GREATEST(0, COALESCE(red.v_p,0) - COALESCE(rec.v_p,0)) AS out_p,
+              (COALESCE(red.v_d,0) - COALESCE(red.v_p,0))
+                - (COALESCE(rec.v_d,0) - COALESCE(rec.v_p,0)) AS raw_delta,
+              red.lastd AS lastd
        FROM red FULL JOIN rec ON red.cnoso = rec.cnoso AND red.bbm = rec.bbm
      ),
-     sisa AS (SELECT bbm, sum(out_d)::float8 AS sisa, sum(out_p)::float8 AS do_awal FROM per_so GROUP BY bbm),
+     sisa AS (
+       SELECT bbm, sum(out_d)::float8 AS sisa, sum(out_p)::float8 AS do_awal,
+              COALESCE(sum(out_d) FILTER (WHERE lastd < $2::date - ${DO_STALE_DAYS}), 0)::float8 AS sisa_macet,
+              sum((out_d - out_p) - raw_delta)::float8 AS alur_selisih
+       FROM per_so GROUP BY bbm
+     ),
      penf AS (
        SELECT trim(t.ckdbbm) AS bbm, sum(t.nvoldo)::float8 AS v FROM delivery t
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0 AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
@@ -535,7 +559,9 @@ export async function getDoHarian(
             COALESCE(max(s.do_awal),0)::float8 AS do_awal,
             COALESCE(max(pf.v),0)::float8 AS penerimaan,
             COALESCE(max(tf.v),0)::float8 AS penebusan,
-            COALESCE(max(s.sisa),0)::float8 AS sisa
+            COALESCE(max(s.sisa),0)::float8 AS sisa,
+            COALESCE(max(s.sisa_macet),0)::float8 AS sisa_macet,
+            COALESCE(max(s.alur_selisih),0)::float8 AS alur_selisih
      FROM prod
      LEFT JOIN sisa s ON s.bbm = prod.bbm
      LEFT JOIN penf pf ON pf.bbm = prod.bbm
@@ -553,6 +579,12 @@ export interface DoAnomalyRow {
   orphan: number;
   /** Σ_SO kelebihan terima vs ditebus (rec−red>0, ≤D), SO yang punya tebus. */
   over_receipt: number;
+  /**
+   * Produk AKTIF = masih dipetakan ≥1 tangki (tm_tangki full-sync tiap siklus).
+   * Aturan berbasis-data, tanpa hardcode nama (keputusan owner 2026-07-12):
+   * produk nonaktif (mis. PREMIUM) dipisahkan dari daftar kerja aktif.
+   */
+  aktif: boolean;
 }
 
 /**
@@ -586,7 +618,8 @@ export async function getDoAnomalies(
        FROM red FULL JOIN rec ON red.cnoso = rec.cnoso AND red.bbm = rec.bbm
      )
      SELECT j.bbm AS ckdbbm, COALESCE(max(p.vcnmbbm), j.bbm) AS nama,
-            sum(j.orphan)::float8 AS orphan, sum(j.over_r)::float8 AS over_receipt
+            sum(j.orphan)::float8 AS orphan, sum(j.over_r)::float8 AS over_receipt,
+            EXISTS (SELECT 1 FROM tangki g WHERE g.unit_id = $1 AND trim(g.ckdbbm) = j.bbm) AS aktif
      FROM j LEFT JOIN product p ON p.unit_id = $1 AND trim(p.ckdbbm) = j.bbm
      GROUP BY j.bbm
      HAVING sum(j.orphan) <> 0 OR sum(j.over_r) <> 0`,
@@ -608,6 +641,8 @@ export interface DoSuspectSO {
   sejak: string;
   /** Umur outstanding dalam hari (≤D). */
   umur_hari: number;
+  /** Produk masih dipetakan tangki (lihat DoAnomalyRow.aktif). */
+  aktif: boolean;
 }
 
 /** Ambang umur (hari) sebuah DO dianggap "macet/suspect" bila belum tuntas. */
@@ -644,12 +679,13 @@ export async function getDoSuspectSO(
             red.v::float8 AS ditebus, COALESCE(rec.v,0)::float8 AS diterima,
             (red.v - COALESCE(rec.v,0))::float8 AS outstanding,
             to_char(red.lastd,'YYYY-MM-DD') AS sejak,
-            ($2::date - red.lastd) AS umur_hari
+            ($2::date - red.lastd) AS umur_hari,
+            EXISTS (SELECT 1 FROM tangki g WHERE g.unit_id = $1 AND trim(g.ckdbbm) = red.bbm) AS aktif
      FROM red LEFT JOIN rec ON rec.cnoso = red.cnoso AND rec.bbm = red.bbm
      LEFT JOIN product p ON p.unit_id = $1 AND trim(p.ckdbbm) = red.bbm
      WHERE red.v - COALESCE(rec.v,0) > 0 AND red.lastd < ($2::date - ${DO_STALE_DAYS})
      GROUP BY red.cnoso, red.bbm, red.v, rec.v, red.lastd
-     ORDER BY outstanding DESC, red.lastd ASC
+     ORDER BY aktif DESC, outstanding DESC, red.lastd ASC
      LIMIT 50`,
     [unit, date],
   );

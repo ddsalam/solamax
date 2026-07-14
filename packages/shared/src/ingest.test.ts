@@ -70,4 +70,55 @@ describe("IngestPayload", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  // ── replace_window (sapuan delete-capable tebus/delivery) ──
+  const winBase = {
+    unit_code: "6378301",
+    watermark_high: null,
+    replace_window: { from: "2026-01-01", to: "2026-02-01" },
+  };
+
+  it("replace_window: sah untuk delivery, termasuk payload TANPA baris (DELETE-only)", () => {
+    const r = IngestPayload.safeParse({ ...winBase, domain: "delivery", tables: {} });
+    expect(r.success).toBe(true);
+  });
+
+  it("replace_window: sah untuk tebus dengan baris", () => {
+    const r = IngestPayload.safeParse({
+      ...winBase,
+      domain: "tebus",
+      tables: {
+        tebus_header: [
+          { ckdtbs: "TB1", dtgltbs: "2026-01-05", cnoso: "4060000001", sbatal: 0 },
+        ],
+        tebus_detail: [{ ckdtbs: "TB1", ckdbbm: "BB-03", nvolume: 8000 }],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("replace_window: DITOLAK untuk domain di luar whitelist (sales)", () => {
+    const r = IngestPayload.safeParse({ ...winBase, domain: "sales", tables: {} });
+    expect(r.success).toBe(false);
+  });
+
+  it("replace_window: from >= to ditolak", () => {
+    const r = IngestPayload.safeParse({
+      ...winBase,
+      domain: "delivery",
+      replace_window: { from: "2026-02-01", to: "2026-02-01" },
+      tables: {},
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("tanpa replace_window: payload kosong tetap ditolak", () => {
+    const r = IngestPayload.safeParse({
+      unit_code: "6378301",
+      domain: "delivery",
+      watermark_high: null,
+      tables: {},
+    });
+    expect(r.success).toBe(false);
+  });
 });

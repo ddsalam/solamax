@@ -13,7 +13,7 @@ import {
   targetVolumePerDay,
 } from "@/lib/config";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
-import { parenNeg, pct, signed } from "@/lib/format";
+import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import type * as Q from "@/lib/queries";
 
 /** Bentuk kembalian monthInfo() (tak diekspor sebagai tipe di lib/periods). */
@@ -68,7 +68,18 @@ export interface DoHarianRow {
   penerimaan: number;
   penebusan: number;
   sisa: number;
+  /** Segmen `sisa` dari SO macet (>DO_STALE_DAYS; definisi = panel suspect). */
+  sisaMacet: number;
+  /** Segmen `sisa` berjalan (≤DO_STALE_DAYS) = sisa − sisaMacet. */
+  sisaBerjalan: number;
   recon: number;
+  /**
+   * Selisih alur per-SO (signed, dari query — jalur data yang sama dgn Sisa):
+   * >0 penerimaan tak terserap ke SO-nya; <0 penebusan terserap kelebihan-terima
+   * lama. ≡ −recon by construction (di-pin unit test); baris ⚠ balance visual:
+   * DO Awal + Penebusan − Penerimaan + alurSelisih = Sisa.
+   */
+  alurSelisih: number;
 }
 export interface HargaRow {
   ckdbbm: string;
@@ -123,8 +134,17 @@ export interface LaporanModel {
   target: { rows: TargetRow[] };
   doHarian: {
     rows: DoHarianRow[];
-    totals: { doAwal: number; penerimaan: number; penebusan: number; sisa: number };
+    totals: {
+      doAwal: number;
+      penerimaan: number;
+      penebusan: number;
+      sisa: number;
+      sisaMacet: number;
+    };
+    /** Daftar SO macet produk AKTIF (daftar-kerja; nonaktif diringkas terpisah). */
     suspects: DoSuspect[];
+    /** Ringkasan SO macet produk NONAKTIF (mis. PREMIUM) — informasional. */
+    suspectsNonaktif: { count: number; liters: number };
     anomRows: (DoAnom & { label: string })[];
   };
   harga: { rows: HargaRow[] };
@@ -150,6 +170,21 @@ export interface LaporanRaw {
   recapPendapatanLain: Manual[];
   recapPengeluaran: Manual[];
   recapSetoran: Manual[];
+}
+
+/**
+ * Sub-baris rekonsiliasi baris ⚠ DO Harian (SATU sumber utk layar & PDF).
+ * KOMPAK — sel tabel memakai white-space:nowrap (pola sub-baris macet); kalimat
+ * panjang meledakkan lebar min-content kolom (insiden layout 2026-07-13).
+ * Penjelasan penuh (identitas Sisa = DO Awal + Penebusan − Penerimaan +
+ * tak-terserap) ada di tooltip ⚠ dan footnote. null = tak dirender.
+ */
+export function alurSelisihNote(alurSelisih: number): string | null {
+  if (alurSelisih > 0)
+    return `${fmtL(alurSelisih)} tak terserap · lihat panel Alokasi`;
+  if (alurSelisih < 0)
+    return `${fmtL(-alurSelisih)} terserap lebih-terima lama · lihat panel Alokasi`;
+  return null;
 }
 
 const orderBy = <T extends { nama: string }>(xs: T[]): T[] =>
@@ -180,6 +215,7 @@ export function buildLaporanModel(
     const penerimaan = r?.penerimaan ?? 0;
     const penebusan = r?.penebusan ?? 0;
     const sisa = r?.sisa ?? 0;
+    const sisaMacet = r?.sisa_macet ?? 0;
     return {
       key: dp.key,
       label: dp.label,
@@ -187,7 +223,10 @@ export function buildLaporanModel(
       penerimaan,
       penebusan,
       sisa,
+      sisaMacet,
+      sisaBerjalan: sisa - sisaMacet,
       recon: Math.round(doAwal + penebusan - penerimaan - sisa),
+      alurSelisih: Math.round(r?.alur_selisih ?? 0),
     };
   });
   const doTotals = doRows.reduce(
@@ -196,9 +235,19 @@ export function buildLaporanModel(
       penerimaan: a.penerimaan + r.penerimaan,
       penebusan: a.penebusan + r.penebusan,
       sisa: a.sisa + r.sisa,
+      sisaMacet: a.sisaMacet + r.sisaMacet,
     }),
-    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0 },
+    { doAwal: 0, penerimaan: 0, penebusan: 0, sisa: 0, sisaMacet: 0 },
   );
+  // Suspects: daftar-kerja = produk AKTIF saja; nonaktif (mis. PREMIUM) diringkas
+  // satu baris agar tak menenggelamkan yang bisa ditindak (LIMIT 50 di query).
+  const suspectsAktif = doSuspects.filter((s) => s.aktif);
+  const suspectsNonaktif = doSuspects
+    .filter((s) => !s.aktif)
+    .reduce(
+      (a, s) => ({ count: a.count + 1, liters: a.liters + s.outstanding }),
+      { count: 0, liters: 0 },
+    );
   const anomRows = orderBy(
     doAnomalies.map((a) => ({ ...a, label: resolveDoProduct(a.nama)?.label ?? a.nama })),
   );
@@ -421,7 +470,13 @@ export function buildLaporanModel(
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
     glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth },
     target: { rows: targetRows },
-    doHarian: { rows: doRows, totals: doTotals, suspects: doSuspects, anomRows },
+    doHarian: {
+      rows: doRows,
+      totals: doTotals,
+      suspects: suspectsAktif,
+      suspectsNonaktif,
+      anomRows,
+    },
     harga: { rows: hargaRows },
     rekon: { rows: rekonRows, cashTotal },
     corrections: raw.corrections,

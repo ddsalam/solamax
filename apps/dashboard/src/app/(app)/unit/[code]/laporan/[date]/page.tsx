@@ -34,7 +34,7 @@ import {
   getManualEntries,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
-import { buildLaporanModel } from "@/lib/laporan-model";
+import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +122,13 @@ export default async function LaporanPage({
   );
   // Rekonstruksi nama-nama lama agar JSX di bawah tetap identik.
   const { sales, recap, glMonthly, target, doHarian, harga, rekon, header } = m;
-  const { rows: doRows, totals: doTotal, anomRows: doAnomRows } = doHarian;
+  const {
+    rows: doRows,
+    totals: doTotal,
+    anomRows: doAnomRows,
+    suspects: doSuspectRows,
+    suspectsNonaktif,
+  } = doHarian;
   const {
     totVol: totSales,
     totOmzet,
@@ -467,7 +473,7 @@ export default async function LaporanPage({
                     {DOMAIN.do && d.recon !== 0 && (
                       <span
                         className="t-warning"
-                        title={`Alur tak rekonsiliasi (${signed(d.recon)} L) — alokasi tidak sesuai; lihat panel`}
+                        title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
                       >
                         {" "}⚠
                       </span>
@@ -479,6 +485,16 @@ export default async function LaporanPage({
                   {DOMAIN.do && (
                     <span className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}`}>
                       {fmtL(d.sisa)}
+                      {d.sisaMacet > 0 && (
+                        <span className="do-seg text-caption t-warning">
+                          {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
+                        </span>
+                      )}
+                      {d.recon !== 0 && alurSelisihNote(d.alurSelisih) && (
+                        <span className="do-seg text-caption t-warning">
+                          ⚠ {alurSelisihNote(d.alurSelisih)}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
@@ -488,11 +504,20 @@ export default async function LaporanPage({
                 {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.doAwal)}</span>}
                 <span className="right w700 num lap-totnum">{fmtL(doTotal.penerimaan)}</span>
                 {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.penebusan)}</span>}
-                {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.sisa)}</span>}
+                {DOMAIN.do && (
+                  <span className="right w700 num lap-totnum">
+                    {fmtL(doTotal.sisa)}
+                    {doTotal.sisaMacet > 0 && (
+                      <span className="do-seg text-caption t-warning">
+                        {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠ {fmtL(doTotal.sisaMacet)} macet
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
               <div className="lap-cardfoot">
                 {DOMAIN.do
-                  ? "Sisa DO = saldo per-SO (Σ ditebus − diterima, ≥0; logika EasyMax). DO Awal = Sisa kemarin. ⚠ = alur tak sesuai Sisa (alokasi tidak sesuai). Penerimaan = Volume DO (NVOLDO)."
+                  ? `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). DO Awal = Sisa kemarin. ⚠ = alur hari itu tak terserap penuh ke SO-nya: Sisa = DO Awal + Penebusan − Penerimaan + selisih-tak-terserap (tertera di baris; rinci di panel Alokasi). Bagian "macet >${DO_STALE_DAYS} hr" umumnya TIDAK tampil di popup F12 EasyMax; angka headline sengaja tetap ledger penuh.`
                   : "Penerimaan BBM dari data EasyMax."}
               </div>
             </div>
@@ -501,20 +526,20 @@ export default async function LaporanPage({
                 <div className="lap-cardhead">
                   <div className="text-h6 t-brand">Alokasi Penerimaan Tidak Sesuai</div>
                 </div>
-                {doSuspects.length === 0 && doAnomRows.length === 0 ? (
+                {doSuspectRows.length === 0 && suspectsNonaktif.count === 0 && doAnomRows.length === 0 ? (
                   <div className="empty-inline">
                     Tidak ada ketidaksesuaian — semua penerimaan ter-link ke penebusan.
                   </div>
                 ) : (
                   <>
-                    {doSuspects.length > 0 && (
+                    {(doSuspectRows.length > 0 || suspectsNonaktif.count > 0) && (
                       <>
                         <div className="grid-head cols-suspect">
                           <span>No. SO · Produk</span>
                           <span className="right">Outstanding</span>
                           <span className="right">Sejak</span>
                         </div>
-                        {doSuspects.map((s) => (
+                        {doSuspectRows.map((s) => (
                           <div key={`${s.cnoso}-${s.ckdbbm}`} className="grid-row cols-suspect">
                             <span className="fs16">
                               <span className="w600">{s.cnoso}</span> · {s.nama}
@@ -525,6 +550,17 @@ export default async function LaporanPage({
                             </span>
                           </div>
                         ))}
+                        {suspectsNonaktif.count > 0 && (
+                          <div className="grid-row cols-suspect">
+                            <span className="fs16 t-tertiary">
+                              Produk nonaktif (tanpa tangki) · {suspectsNonaktif.count} SO
+                            </span>
+                            <span className="right fs16 t-tertiary num">
+                              {fmtL(suspectsNonaktif.liters)}
+                            </span>
+                            <span className="right fs16 t-tertiary">ringkasan</span>
+                          </div>
+                        )}
                       </>
                     )}
                     {doAnomRows.length > 0 && (
@@ -536,7 +572,10 @@ export default async function LaporanPage({
                         </div>
                         {doAnomRows.map((a) => (
                           <div key={a.ckdbbm} className="grid-row cols-anom">
-                            <span className="fs16 w600">{a.label}</span>
+                            <span className="fs16 w600">
+                              {a.label}
+                              {!a.aktif && <span className="text-caption t-tertiary"> · nonaktif</span>}
+                            </span>
                             <span className="right fs16 t-warning num">{a.orphan ? fmtL(a.orphan) : "—"}</span>
                             <span className="right fs16 t-warning num">
                               {a.over_receipt ? fmtL(a.over_receipt) : "—"}

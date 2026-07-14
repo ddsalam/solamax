@@ -1000,11 +1000,32 @@ async function sweepTebus(
 ): Promise<void> {
   await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
     const raw = await d.conn.roQuery(TEBUS_RESYNC.sql, [lo, hiExcl]);
-    if (raw.length === 0) return true;
     const page = TEBUS_RESYNC.map(raw);
     const headers = page.tables.tebus_header ?? [];
     const details = page.tables.tebus_detail ?? [];
-    if (headers.length === 0) return true;
+    // Jendela utuh dalam SATU payload → `replace_window`: backend hapus jendela
+    // lalu insert snapshot — menangkap DELETE/renumber tr_htebus di EasyMax
+    // (akar phantom Sisa DO Bakau 2026-07-12; UPSERT saja tak pernah bersih).
+    // Jendela kosong TETAP dikirim (DELETE-only): sumber kosong = mirror kosong.
+    if (headers.length <= d.cfg.sync.batchSize && details.length <= MAX_ROWS_PER_TABLE) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "tebus",
+        watermark_high: null,
+        replace_window: { from: lo, to: hiExcl },
+        tables:
+          headers.length > 0
+            ? { tebus_header: headers, tebus_detail: details }
+            : {},
+      });
+      return status === "ok";
+    }
+    // Fallback (praktis tak terjadi: ~340 header/tahun ≪ batchSize): UPSERT
+    // chunked TANPA delete — jangan pernah delete jendela yang barisnya terpecah
+    // antar-payload (payload lanjutan bisa buffered → jendela bolong sementara).
+    log.warn("sweep tebus: jendela > kapasitas payload — replace_window dilewati", {
+      lo, hiExcl, headers: headers.length, details: details.length,
+    });
     for (let i = 0; i < headers.length; i += d.cfg.sync.batchSize) {
       const hChunk = headers.slice(i, i + d.cfg.sync.batchSize);
       const ids = new Set(hChunk.map((h) => h.ckdtbs));
@@ -1056,9 +1077,23 @@ async function sweepDelivery(
   const offset = tzOffsetMinutes(d.cfg.timezone);
   await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
     const raw = await d.conn.roQuery(DELIVERY_RESYNC.sql, [lo, hiExcl]);
-    if (raw.length === 0) return true;
     const rows = DELIVERY_RESYNC.map(raw, offset).tables.delivery;
-    if (rows.length === 0) return true;
+    // Satu payload per jendela → `replace_window` (lihat sweepTebus). Jendela
+    // kosong tetap dikirim (DELETE-only): baris tr_terimabbm yang dihapus di
+    // sumber ikut hilang dari mirror.
+    if (rows.length <= d.cfg.sync.batchSize) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "delivery",
+        watermark_high: null,
+        replace_window: { from: lo, to: hiExcl },
+        tables: rows.length > 0 ? { delivery: rows } : {},
+      });
+      return status === "ok";
+    }
+    log.warn("sweep delivery: jendela > kapasitas payload — replace_window dilewati", {
+      lo, hiExcl, rows: rows.length,
+    });
     for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
       const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
       const status = await dispatch(d, {

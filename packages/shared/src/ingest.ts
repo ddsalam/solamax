@@ -7,13 +7,32 @@ import { ROW_SCHEMA } from "./rows.js";
  * `tables` = peta nama-tabel-target → array baris. Semua tabel dalam satu
  * payload di-commit atomik dengan satu watermark.
  */
-export const IngestPayload = z.object({
-  unit_code: z.string().min(1),
-  domain: z.enum(DOMAINS),
-  /** ISO UTC; null untuk masters (full sync, tanpa watermark). */
-  watermark_high: z.string().datetime().nullable(),
-  tables: z
-    .object({
+/** Domain yang boleh membawa `replace_window` (mirror = snapshot sumber per jendela). */
+export const REPLACE_WINDOW_DOMAINS = ["tebus", "delivery"] as const;
+
+export const IngestPayload = z
+  .object({
+    unit_code: z.string().min(1),
+    domain: z.enum(DOMAINS),
+    /** ISO UTC; null untuk masters (full sync, tanpa watermark). */
+    watermark_high: z.string().datetime().nullable(),
+    /**
+     * REPLACE per jendela tanggal-bisnis [from, to): backend MENGHAPUS baris
+     * mirror dalam jendela lalu INSERT baris payload — menangkap DELETE/renumber
+     * di sumber yang UPSERT biasa tak pernah bersihkan (temuan Sisa DO Bakau
+     * 2026-07-12: koreksi/hapus tr_htebus di luar window rescan = phantom
+     * permanen). Hanya untuk domain REPLACE_WINDOW_DOMAINS; payload TANPA baris
+     * sah (jendela kosong di sumber = DELETE-only). Jendela WAJIB utuh dalam
+     * SATU payload (agent memecah jendela, bukan baris).
+     */
+    replace_window: z
+      .object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .refine((w) => w.from < w.to, { message: "replace_window: from harus < to" })
+      .optional(),
+    tables: z.object({
       sales_header: z.array(ROW_SCHEMA.sales_header).optional(),
       sales_detail: z.array(ROW_SCHEMA.sales_detail).optional(),
       cash_header: z.array(ROW_SCHEMA.cash_header).optional(),
@@ -37,11 +56,29 @@ export const IngestPayload = z.object({
       bppiut: z.array(ROW_SCHEMA.bppiut).optional(),
       bphut: z.array(ROW_SCHEMA.bphut).optional(),
       pelanggan_master: z.array(ROW_SCHEMA.pelanggan_master).optional(),
-    })
-    .refine((t) => Object.values(t).some((rows) => rows && rows.length > 0), {
-      message: "payload tidak boleh kosong — minimal satu tabel berisi baris",
     }),
-});
+  })
+  .superRefine((p, ctx) => {
+    // Payload kosong hanya sah bila replace_window hadir (DELETE-only window).
+    const hasRows = Object.values(p.tables).some((rows) => rows && rows.length > 0);
+    if (!hasRows && !p.replace_window) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tables"],
+        message: "payload tidak boleh kosong — minimal satu tabel berisi baris",
+      });
+    }
+    if (
+      p.replace_window &&
+      !(REPLACE_WINDOW_DOMAINS as readonly string[]).includes(p.domain)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["replace_window"],
+        message: `replace_window hanya untuk domain: ${REPLACE_WINDOW_DOMAINS.join(", ")}`,
+      });
+    }
+  });
 export type IngestPayload = z.infer<typeof IngestPayload>;
 
 /**

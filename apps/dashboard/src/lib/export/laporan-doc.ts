@@ -13,7 +13,7 @@ import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from
 import { PDF } from "./pdf-tokens";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { fmtL, idn, parenNeg, pct, rp, signed } from "@/lib/format";
-import type { LaporanModel } from "@/lib/laporan-model";
+import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
 
 export interface LaporanDocMeta {
   unitDotted: string;
@@ -223,6 +223,20 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
   for (const r of d.rows) {
     const warn = full && r.recon !== 0;
     const label = `${r.label}${warn ? " !" : ""}`;
+    // Sub-baris di bawah angka Sisa — identik layar: segmen macet + rekonsiliasi
+    // alur (baris ⚠ balance: DO Awal + Penebusan − Penerimaan + selisih = Sisa).
+    const sisaSub: Content[] = [];
+    if (r.sisaMacet > 0)
+      sisaSub.push({
+        text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet`,
+        alignment: "right", fontSize: 7, color: PDF.warning,
+      });
+    const alurNote = r.recon !== 0 ? alurSelisihNote(r.alurSelisih) : null;
+    if (alurNote)
+      sisaSub.push({
+        text: pdfText(`! ${alurNote}`),
+        alignment: "right", fontSize: 7, color: PDF.warning,
+      });
     body.push(
       full
         ? [
@@ -230,7 +244,14 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
             { text: fmtL(r.doAwal), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penerimaan), alignment: "right", color: PDF.textSecondary },
             { text: fmtL(r.penebusan), alignment: "right", color: PDF.textSecondary },
-            { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
+            sisaSub.length > 0
+              ? {
+                  stack: [
+                    { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
+                    ...sisaSub,
+                  ],
+                }
+              : { text: fmtL(r.sisa), alignment: "right", color: warn ? PDF.warning : PDF.textSecondary },
           ]
         : [
             { text: r.label, bold: true },
@@ -260,14 +281,17 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
   ];
   if (full) {
     out.push({
-      text: 'Sisa DO = saldo per-SO (Σ ditebus − diterima, ≥0). "!" = alur tak sesuai Sisa (alokasi tidak sesuai).',
+      text:
+        `Sisa DO = saldo LEDGER PENUH per-SO (Σ ditebus − diterima, ≥0; semua riwayat). ` +
+        `"!" = alur hari itu tak terserap penuh ke SO-nya: Sisa = DO Awal + Penebusan − Penerimaan + selisih-tak-terserap (tertera di baris). ` +
+        `Bagian "macet" umumnya tidak tampil di popup F12 EasyMax — rinci di panel Alokasi.`,
       style: "footNote",
       alignment: "left",
     });
     // Alokasi tidak sesuai
-    if (d.suspects.length > 0 || d.anomRows.length > 0) {
+    if (d.suspects.length > 0 || d.suspectsNonaktif.count > 0 || d.anomRows.length > 0) {
       out.push(sectionHeading("Alokasi Penerimaan Tidak Sesuai"));
-      if (d.suspects.length > 0) {
+      if (d.suspects.length > 0 || d.suspectsNonaktif.count > 0) {
         const sb: TableCell[][] = [[th("No. SO · Produk"), th("Outstanding", "right"), th("Sejak", "right")]];
         for (const s of d.suspects)
           sb.push([
@@ -275,13 +299,20 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
             { text: fmtL(s.outstanding), alignment: "right", color: PDF.warning },
             { text: `${s.sejak} · ${s.umur_hari} hr`, alignment: "right", color: PDF.textMuted },
           ]);
+        if (d.suspectsNonaktif.count > 0)
+          sb.push([
+            { text: pdfText(`Produk nonaktif (tanpa tangki) · ${d.suspectsNonaktif.count} SO`), color: PDF.textMuted },
+            { text: fmtL(d.suspectsNonaktif.liters), alignment: "right", color: PDF.textMuted },
+            { text: "ringkasan", alignment: "right", color: PDF.textMuted },
+          ]);
         out.push(table(["*", 90, 90], sb));
       }
       if (d.anomRows.length > 0) {
         const ab: TableCell[][] = [[th("Produk"), th("Tanpa Penebusan", "right"), th("Lebih Terima", "right")]];
         for (const a of d.anomRows)
           ab.push([
-            { text: pdfText(a.label), bold: true },
+            // Label identik layar: produk nonaktif diberi tag "· nonaktif".
+            { text: pdfText(`${a.label}${a.aktif ? "" : " · nonaktif"}`), bold: true },
             { text: a.orphan ? fmtL(a.orphan) : "—", alignment: "right", color: PDF.warning },
             { text: a.over_receipt ? fmtL(a.over_receipt) : "—", alignment: "right", color: PDF.warning },
           ]);
