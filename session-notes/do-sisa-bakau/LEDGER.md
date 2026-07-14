@@ -146,3 +146,80 @@ occluded malam hari, keterbatasan diketahui).
   `after-bakau-perso-post-rescan.txt` — snapshot beku.
 - `ib-rollout-runbook.md` — instruksi operator IB + verifikasi.
 - `tm-bbm-saktif-probe.sql` — probe flag produk.
+- `worklist-2026-orphan-receipts.md` — worklist admin: penerimaan 2026 di SO salah.
+
+---
+
+# ADDENDUM I — Penutupan 6/6 (2026-07-13 00:15 WIB)
+
+Owner mengoreksi `4032788844` di POS (header lama `TB202500016` SBATAL=1 + header
+baru `TB202500281` = Solar 32.000 + Pertalite 16.000, leg-for-leg sesuai penerimaan
+fisik Feb-2025) → sapuan sempit `--deep-sweep tebus/delivery 540 92` → **6/6 EXACT
+vs F12**: Pertamax 0 · Solar 40.000 · Pertalite 40.000 · Turbo 0 · Dexlite 4.000 ·
+P.Dex 4.000, dengan dua penerimaan pasca-capture (`PB202600880/881`, −8k Solar/−8k
+Pertalite vs oracle 17:53) direkonsiliasi eksplisit. Koreksi itu sekaligus
+menghapus orphan Pertalite 16.000 dari panel anomali.
+
+**Temuan bonus — kelas gap ke-3 (NULL-DTGLJAM):** `PB202600880/881` masuk EasyMax
+dengan DTGLJAM NULL → dtgljam fallback `<bd> 00:00:00` → sync incremental
+(watermark DTGLJAM) SECARA STRUKTURAL tak pernah melihatnya; hanya sapuan yang
+mendaratkannya. Sapuan delete-capable kini menutup TIGA kelas: (1) delete/renumber/
+cancel sumber, (2) edit di luar jendela rescan, (3) baris null-watermark.
+**Keputusan owner: TANPA hardening tambahan — bound staleness ≤24 jam (sapuan
+nightly) diterima cukup.** Jangan re-discover ini sebagai "bug".
+
+**Cek pagi G/L (prediksi terverifikasi):** penerimaan telat-mendarat malam 07-12
+membuat G/L provisional berayun (−15.934 L); setelah opname penutup, 07-12 FINAL:
+harian **+187 L / 1,79%**, bulanan **−1.165 L / 0,32% (aman)** — normal kembali
+persis seperti diprediksi. Pola ini berulang tiap ada penerimaan masuk mirror
+sebelum opname penutup hari yang sama; selesai sendiri saat opname final.
+
+# ADDENDUM II — Identitas alur DO Harian: verdict SEMANTICS + sub-baris rekonsiliasi (2026-07-13 → 07-14)
+
+**Laporan owner:** Bakau 2026-06-13, Solar `48.000 + 16.000 − 0 ≠ 40.000` (+8.000)
+dan Pertalite `8.000 + 16.000 − 0 ≠ 8.000` (+16.000), keduanya sudah ber-⚠.
+
+**Verdict (GATE A, disetujui): SEMANTICS, bukan defek.** Clamp per-SO bekerja
+sesuai desain pada baris sumber kotor: penerimaan yang jatuh ke SO orphan/habis
+tak bisa menurunkan SO mana pun → Sisa produk tak turun sebesar Penerimaan.
+Atribusi 06-13 sampai ke liter: `PB202600762` 8.000 → SO `4061773905` (orphan,
+tebus 0) = +8.000 Solar; `PB202600763/764` 16.000 → SO `4061911972` (orphan;
+twin transposisi `4061911927`) = +16.000 Pertalite; `PB202600761` terserap normal.
+H-B (dup mirror) REFUTED (0 kembar kunci); H-C (boundary) REFUTED (DO Awal ≡
+Σout(D−1) persis); H-D (efek pembersihan) REFUTED (kedua orphan sudah orphan di
+matcher PRA-pembersihan). Skala fenomena: **Bakau 270 hari-produk sejak 2015-09,
+IB 57 sejak 2022-09** (termasuk era tervalidasi — inheren, bukan regresi).
+Panel anomali sudah menampung liter yang tak terserap (self-consistent); popup F12
+tak punya baris alur level-produk sama sekali — di grain per-SO SolaMax ≡ F12.
+
+**Keputusan owner: opsi (i)** — sub-baris rekonsiliasi pada baris ⚠ (PR #82):
+`getDoHarian.alur_selisih` (Σ_SO [Δclamped − Δraw], CTE yang sama; ≡ −recon,
+kesetaraan di-pin unit test) → identitas terlihat balance:
+`Sisa = DO Awal + Penebusan − Penerimaan + selisih-tak-terserap`.
+**Hotfix layout (PR #83):** kalimat awal terlalu panjang utk sel ber-nowrap
+(`.do-seg`) → lebar min-content kolom meledak, kolom lain tergencet & teks
+terpotong. Copy dikompakkan mengikuti pola sub-baris macet:
+`⚠ 8.000 L tak terserap · lihat panel Alokasi`; penjelasan penuh di tooltip ⚠ +
+footnote. Satu sumber kalimat (`alurSelisihNote`) → layar & PDF.
+
+**Evaluasi live (2026-07-14, revisi `00046-wdh`):** Bakau 06-13 & 06-05 (3 baris ⚠,
+semua identitas balance, kolom rapi — bukti screenshot), IB 03-24 Pertamax ⚠
+16.000 ✓, hari kini 07-14 bersih tanpa sub-baris; PDF 06-13 == layar (catatan
+kompak wrap rapi dalam sel; tag `PREMIUM · nonaktif` kini juga di PDF). Arah
+kebalikan (`terserap lebih-terima lama`) TIDAK ter-exercise oleh tanggal 2026 mana
+pun (0 hari b<0) — ter-pin di unit test saja. Lebar ponsel (≤500px): tabel DO
+5-kolom memang sesak SEJAK DULU (angka wrap juga di baris bersih; sub-baris macet
+terpotong identik) — sub-baris baru berperilaku SAMA PERSIS dgn macet (benchmark
+terpenuhi); penanganan mobile tabel laporan = follow-up pra-eksisting, bukan bagian
+arc ini.
+
+**Worklist admin 2026** (`worklist-2026-orphan-receipts.md`): 69 baris penerimaan
+(~540.000 L) di SO orphan/habis, dgn kandidat SO tujuan (termasuk twin transposisi
+`4061911972→4061911927`, `4061740378→4061743078`) dan 3 kasus "tebus terparkir di
+PREMIUM" (`4060297050`, `4062010741`, `4062051864`) yang fixnya = koreksi PRODUK
+di baris tebus POS. Semua self-heal ≤24 jam via sapuan nightly pasca-koreksi.
+
+**Kesehatan cadence (gerbang pra-IB):** malam-1 (13 Jul 02–05 WIB): tier2-full
+mendarat (~4.001 baris delivery ter-restamp); malam-2 (14 Jul): tier1 nightly
+(54 baris); incremental hidup (sync_state maju per menit). Dua dari tiga malam
+HIJAU; rollout IB ~07-15/16 sesuai runbook.
