@@ -51,16 +51,16 @@ export default async function HubPage() {
       title: "Laporan",
       cards: [
         {
-          tag: "Harian",
-          title: "Operasional harian",
-          desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok.",
-          href: u ? `/unit/${u}/laporan/${date}` : "#",
-        },
-        {
           tag: "Arsip",
           title: "Rincian penjualan",
           desc: "Ledger resmi siap cetak & tanda tangan.",
           href: u ? `/unit/${u}/rincian/${date}` : "#",
+        },
+        {
+          tag: "Harian",
+          title: "Operasional harian",
+          desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok.",
+          href: u ? `/unit/${u}/laporan/${date}` : "#",
         },
       ],
     },
