@@ -29,6 +29,10 @@ export function TopbarPicker({
   const path = usePathname();
   const sp = useSearchParams();
   const isDenah = path.startsWith("/monitoring/denah");
+  // /board punya baris filter sendiri (unit checklist + rentang) — picker global
+  // dinonaktifkan DI HALAMAN INI SAJA agar tak dobel kendali; perilaku di
+  // laporan/rincian/usulan/denah/beranda TIDAK berubah, scope tak tersentuh.
+  const isBoard = path === "/board";
 
   const baseUnit = unit ?? units[0]?.code ?? "";
 
@@ -55,13 +59,17 @@ export function TopbarPicker({
     }
   };
 
+  const boardTip = "Ringkasan Direksi memakai filter unit & periode sendiri di bawah";
+
   return (
-    <div className="topbar-picker">
+    <div className="topbar-picker" title={isBoard ? boardTip : undefined}>
       <select
         className="select sm"
         value={baseUnit}
         onChange={(e) => apply(e.target.value, date)}
+        disabled={isBoard}
         aria-label="Pilih unit"
+        title={isBoard ? boardTip : undefined}
       >
         {units.map((u) => (
           <option key={u.code} value={u.code}>
@@ -74,8 +82,9 @@ export function TopbarPicker({
         type="date"
         value={date}
         onChange={(e) => apply(baseUnit, e.target.value)}
-        disabled={isDenah}
+        disabled={isDenah || isBoard}
         aria-label="Tanggal bisnis"
+        title={isBoard ? boardTip : undefined}
       />
     </div>
   );

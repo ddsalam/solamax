@@ -149,14 +149,23 @@ function trendSection(model: BoardModel): Content[] {
       marginBottom: 3,
     },
   ];
+  const dashOpt = { dashFromIdx: t.runningIdx };
   if (t.series.length === 1) {
-    out.push(sparklineCanvas(t.series[0]!.rp, CW, 56));
+    out.push(sparklineCanvas(t.series[0]!.rp, CW, 56, dashOpt));
   } else {
-    // multi-seri: satu sparkline per unit (op-stacking → jangan overlay 1 canvas)
+    // multi-seri: satu sparkline per unit (overlay 1 canvas berisiko stacking)
     for (const s of t.series) {
       out.push({ text: pdfText(s.name), fontSize: 8, color: PDF.textSecondary, marginTop: 3 });
-      out.push(sparklineCanvas(s.rp, CW, 34));
+      out.push(sparklineCanvas(s.rp, CW, 34, dashOpt));
     }
+  }
+  if (t.runningIdx !== null) {
+    out.push({
+      text: "segmen putus-putus = tanggal bisnis berjalan (input belum lengkap)",
+      fontSize: 7.5,
+      color: PDF.textMuted,
+      marginTop: 2,
+    });
   }
   return out;
 }

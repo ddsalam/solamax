@@ -159,6 +159,12 @@ export interface TrendModel {
   avgLiter: number;
   /** catatan bila tren bukan persis rentang (filter 1 hari → konteks 14 hari) */
   note: string | null;
+  /**
+   * Indeks tanggal-bisnis HARI BERJALAN di `days` (null bila rentang historis).
+   * Titik/segmen ini digambar beda (putus-putus + marker) di layar & PDF agar
+   * tukikan pagi hari tidak terbaca sebagai penurunan nyata.
+   */
+  runningIdx: number | null;
 }
 
 export interface BoardCore {
@@ -328,12 +334,14 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
   const totRp = seriesOf(allIds);
   const avgRp = totRp.rp.reduce((a, b) => a + b, 0) / Math.max(nDays, 1);
   const avgLiter = totRp.liter.reduce((a, b) => a + b, 0) / Math.max(nDays, 1);
+  const runningIdxRaw = days.indexOf(today);
   const trend: TrendModel = {
     days,
     series,
     avgRp,
     avgLiter,
     note: oneDay ? "filter 1 hari — ditampilkan konteks 14 hari terakhir" : null,
+    runningIdx: runningIdxRaw >= 0 ? runningIdxRaw : null,
   };
 
   // ── Panel rasio bauran (per unit bars) ──

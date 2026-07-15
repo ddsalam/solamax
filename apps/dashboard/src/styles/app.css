@@ -515,6 +515,8 @@ body { background: var(--neutral-50); }
 .trend-s3 { stroke: var(--success-600, #047857); }
 .trend-s4 { stroke: var(--danger-600, #b91c1c); }
 .trend-s5 { stroke: var(--neutral-500, #64748b); }
+.trend-dash { stroke-dasharray: 7 6; }
+.trend-run-dot { fill: var(--neutral-0); stroke-width: 2.5; }
 .trend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: currentColor; }
 span.trend-swatch.trend-s0 { background: var(--accent-600); }
 span.trend-swatch.trend-s1 { background: var(--brand-navy); }

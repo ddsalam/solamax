@@ -18,7 +18,21 @@ import { PDF } from "./pdf-tokens";
  * ter-reserve dari extent titik → JANGAN tambah op (rect/area) ke canvas ini.
  * (Titik y dinormalkan ke [2, height]; verifikasi posisi via test render.)
  */
-export function sparklineCanvas(vals: number[], width: number, height: number): Content {
+export function sparklineCanvas(
+  vals: number[],
+  width: number,
+  height: number,
+  opts?: {
+    /**
+     * Indeks HARI BERJALAN: segmen [idx-1..idx] digambar putus-putus. TIDAK
+     * boleh sebagai op ke-2 di canvas yang sama — bug op-stacking pdfmake
+     * TERBUKTI berlaku juga utk 2 op polyline (test render: dash jatuh ~50pt
+     * di bawah box). Solusi: DUA canvas satu-op disandingkan via `columns`
+     * (columnGap 0), normalisasi-Y GLOBAL bersama → garis menyambung mulus.
+     */
+    dashFromIdx?: number | null;
+  },
+): Content {
   const n = vals.length;
   if (n < 2) return { canvas: [], width } as unknown as Content;
   const mn = Math.min(...vals);
@@ -27,6 +41,36 @@ export function sparklineCanvas(vals: number[], width: number, height: number): 
     x: (i * width) / (n - 1),
     y: height - ((v - mn) / Math.max(mx - mn, 1)) * (height - 4) - 2,
   }));
+  const dashIdx = opts?.dashFromIdx ?? null;
+  if (dashIdx !== null && dashIdx > 0 && dashIdx < n) {
+    const splitX = pts[dashIdx - 1]!.x;
+    const solidPts = pts.slice(0, dashIdx);
+    // Rebase x segmen dash ke origin kolom keduanya.
+    const dashPts = pts
+      .slice(dashIdx - 1, dashIdx + 1)
+      .map((p) => ({ x: p.x - splitX, y: p.y }));
+    return {
+      columns: [
+        {
+          width: splitX,
+          canvas: [{ type: "polyline", lineWidth: 1.5, lineColor: PDF.navy, points: solidPts }],
+        },
+        {
+          width: width - splitX,
+          canvas: [
+            {
+              type: "polyline",
+              lineWidth: 1.5,
+              lineColor: PDF.navy,
+              dash: { length: 3, space: 3 },
+              points: dashPts,
+            },
+          ],
+        },
+      ],
+      columnGap: 0,
+    } as unknown as Content;
+  }
   return {
     canvas: [{ type: "polyline", lineWidth: 1.5, lineColor: PDF.navy, points: pts }],
     width,

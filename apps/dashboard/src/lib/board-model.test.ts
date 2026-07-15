@@ -133,6 +133,20 @@ describe("buildBoardCore — tren mengikuti filter & mode", () => {
     expect(m.trend.days).toHaveLength(14);
     expect(m.trend.note).toContain("14 hari");
   });
+  it("penanda hari berjalan: runningIdx = indeks hari ini; null utk rentang historis", () => {
+    // preset bulan berakhir hari ini → titik terakhir = hari berjalan
+    const m = buildBoardCore(coreInput());
+    expect(m.trend.runningIdx).toBe(m.trend.days.length - 1);
+    expect(m.trend.days[m.trend.runningIdx!]).toBe(TODAY);
+    // konteks 14-hari (filter 1 hari) juga berakhir di hari berjalan
+    const t = buildBoardCore(coreInput({ period: resolveBoardPeriod("today", {}, NOW) }));
+    expect(t.trend.runningIdx).toBe(13);
+    // rentang custom sepenuhnya historis → tanpa penanda
+    const h = buildBoardCore(
+      coreInput({ period: resolveBoardPeriod("custom", { from: "2026-06-01", to: "2026-06-30" }, NOW) }),
+    );
+    expect(h.trend.runningIdx).toBeNull();
+  });
 });
 
 function evalInput(over: Partial<BoardEvalInput> = {}): BoardEvalInput {
