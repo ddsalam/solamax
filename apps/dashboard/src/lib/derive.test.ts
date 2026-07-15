@@ -5,6 +5,7 @@ import {
   alarmScore,
   bauran,
   bauranVsTarget,
+  bauranVsTargetRange,
   enduranceDays,
   enduranceLevel,
   glPercent,
@@ -15,7 +16,72 @@ import {
   type ClosingRow,
   type DailyGlInput,
 } from "./derive";
-import { canonicalProductKey, classifyProduct, targetBauran, unitLabel } from "./config";
+import {
+  canonicalProductKey,
+  classifyProduct,
+  targetBauran,
+  targetBauranRange,
+  unitLabel,
+} from "./config";
+
+describe("targetBauranRange (rata-rata tertimbang hari — keputusan FASE 0 №1)", () => {
+  it("rentang dalam satu bulan = target bulan itu", () => {
+    expect(targetBauranRange("6478111", "gasoline", { from: "2026-07-01", to: "2026-07-16" })).toBeCloseTo(
+      0.1253,
+      6,
+    );
+  });
+  it("lintas bulan = tertimbang hari (16 hr Jun + 16 hr Jul)", () => {
+    const t = targetBauranRange("6478111", "gasoline", { from: "2026-06-15", to: "2026-07-16" });
+    expect(t).toBeCloseTo((16 * 0.1217 + 16 * 0.1253) / 32, 6);
+  });
+  it("YTD Jan–Jul: rata-rata tertimbang ≠ target bulan akhir (selisih >1 pt)", () => {
+    const t = targetBauranRange("6478111", "gasoline", { from: "2026-01-01", to: "2026-07-16" })!;
+    const expected =
+      (31 * 0.1033 + 28 * 0.107 + 31 * 0.1107 + 30 * 0.1143 + 31 * 0.118 + 30 * 0.1217 + 16 * 0.1253) /
+      (31 + 28 + 31 + 30 + 31 + 30 + 16);
+    expect(t).toBeCloseTo(expected, 6);
+    expect(0.1253 - t).toBeGreaterThan(0.01); // bulan-akhir menyesatkan >1 pt
+  });
+  it("lintas tahun (Des→Jan) menghitung dua bulan, tahun kabisat aman", () => {
+    const t = targetBauranRange("6478111", "gasoil", { from: "2025-12-31", to: "2026-01-01" });
+    expect(t).toBeCloseTo((1 * 0.3713 + 1 * 0.3522) / 2, 6);
+    // Feb kabisat 29 hari tertimbang benar
+    const feb = targetBauranRange("6478111", "gasoline", { from: "2024-02-01", to: "2024-03-01" });
+    expect(feb).toBeCloseTo((29 * 0.107 + 1 * 0.1107) / 30, 6);
+  });
+  it("unit tanpa target / rentang terbalik → null", () => {
+    expect(targetBauranRange("9999999", "gasoline", { from: "2026-07-01", to: "2026-07-16" })).toBeNull();
+    expect(targetBauranRange("6478111", "gasoline", { from: "2026-07-16", to: "2026-07-01" })).toBeNull();
+  });
+});
+
+describe("bauranVsTargetRange", () => {
+  const prods = [
+    { nama: "PERTALITE", vol: 10000 },
+    { nama: "PERTAMAX", vol: 1000 },
+    { nama: "PERTAMAX TURBO", vol: 200 },
+  ];
+  it("target tertimbang + deltaPt + below", () => {
+    const st = bauranVsTargetRange(prods, "6478111", { from: "2026-07-01", to: "2026-07-16" }, "gasoline");
+    expect(st.actual).toBeCloseTo(0.12, 6);
+    expect(st.target).toBeCloseTo(0.1253, 6);
+    expect(st.below).toBe(true);
+  });
+  it("withTarget=false (jendela pembanding thn lalu): target null, tanpa below", () => {
+    const st = bauranVsTargetRange(
+      prods,
+      "6478111",
+      { from: "2025-07-01", to: "2025-07-16" },
+      "gasoline",
+      false,
+    );
+    expect(st.actual).toBeCloseTo(0.12, 6);
+    expect(st.target).toBeNull();
+    expect(st.deltaPt).toBeNull();
+    expect(st.below).toBe(false);
+  });
+});
 
 const PRODUKSI = [
   { nama: "PERTALITE", vol: 10000 },

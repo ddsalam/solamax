@@ -237,7 +237,7 @@ body { background: var(--neutral-50); }
 .grid-row.expanded { background: var(--neutral-50); }
 .grid-total { background: var(--neutral-50); padding-top: 14px; padding-bottom: 14px; }
 /* kolom per tabel (persis spec) */
-.cols-rank { grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 1fr 1.3fr 32px; }
+.cols-rank { grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 0.9fr 0.9fr 1.3fr 32px; }
 /* Produk · Sales · Gain/Losses · Tera · Omzet (5 kolom; %Mix dihapus). */
 .cols-sales { grid-template-columns: 1.6fr 1.1fr 1.2fr 1fr 1.4fr; }
 .cols-glkum { grid-template-columns: 1.4fr 1fr 0.8fr; padding-top: 10px; padding-bottom: 10px; }
@@ -472,6 +472,75 @@ body { background: var(--neutral-50); }
 
 /* Board */
 .board-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); flex-wrap: wrap; }
+
+/* Board — baris filter direksi (unit checklist + preset + custom + mode) */
+.board-filters { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.unit-picker { position: relative; }
+.unit-picker > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.unit-picker > summary::-webkit-details-marker { display: none; }
+.unit-picker-panel { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 280px; padding: var(--space-3); display: flex; flex-direction: column; gap: 2px; box-shadow: var(--elevation-3, 0 8px 24px rgba(16,24,40,0.12)); }
+.unit-picker-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md, 8px); cursor: pointer; }
+.unit-picker-row:hover { background: var(--neutral-100); }
+.unit-picker-row input { accent-color: var(--brand-navy); width: 16px; height: 16px; }
+.unit-picker-row .mono { margin-left: auto; }
+.unit-picker-foot { display: flex; justify-content: space-between; padding: 8px 10px 4px; border-top: 1px solid var(--color-border-hairline); margin-top: 6px; }
+.linklike { background: none; border: none; padding: 0; cursor: pointer; }
+.range-inputs { display: inline-flex; align-items: center; gap: 8px; }
+.range-inputs input[type="date"] { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md, 8px); font: inherit; font-size: 15px; color: var(--color-text-primary); background: var(--neutral-0); }
+
+/* Board — evaluasi KPI (MoM/YoY/YTD) & badge sementara */
+.prov-badge { margin-left: 6px; font-size: 13px; cursor: help; }
+.kpi-eval { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--color-border-hairline); padding-top: 8px; }
+.kpi-eval-row { display: flex; align-items: baseline; gap: 8px; }
+.kpi-eval-row > :first-child { width: 34px; flex-shrink: 0; }
+.kpi-eval-row .num { font-size: 15px; font-weight: 600; }
+.kpi-perunit { display: flex; flex-direction: column; gap: 2px; }
+.kpi-perunit-row { display: flex; align-items: baseline; gap: 8px; }
+.kpi-perunit-row > :first-child { flex: 1; }
+
+/* Board — tabel evaluasi per cabang */
+.eval-scroll { overflow-x: auto; }
+.eval-labels { padding: var(--space-3) var(--space-6) 0; }
+.cols-eval { grid-template-columns: 1.2fr 1fr 1.2fr 1.2fr 1fr 1.2fr; min-width: 720px; }
+.eval-unit-head { display: flex; align-items: baseline; gap: 10px; padding: var(--space-3) var(--space-6) var(--space-2); background: var(--neutral-50, var(--neutral-100)); border-top: 1px solid var(--color-border-hairline); min-width: 720px; }
+
+/* Board — tren mengikuti filter */
+.trend-body { flex: 1; min-width: 0; }
+.trend-svg-tall { height: 140px; width: 100%; }
+.trend-axis { stroke: var(--color-border-hairline); stroke-width: 1; }
+.trend-line { fill: none; stroke-width: 2.5; }
+.trend-s0 { stroke: var(--accent-600); }
+.trend-s1 { stroke: var(--brand-navy); }
+.trend-s2 { stroke: var(--warning-600, #b45309); }
+.trend-s3 { stroke: var(--success-600, #047857); }
+.trend-s4 { stroke: var(--danger-600, #b91c1c); }
+.trend-s5 { stroke: var(--neutral-500, #64748b); }
+.trend-dash { stroke-dasharray: 7 6; }
+.trend-run-dot { fill: var(--neutral-0); stroke-width: 2.5; }
+.trend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; background: currentColor; }
+span.trend-swatch.trend-s0 { background: var(--accent-600); }
+span.trend-swatch.trend-s1 { background: var(--brand-navy); }
+span.trend-swatch.trend-s2 { background: var(--warning-600, #b45309); }
+span.trend-swatch.trend-s3 { background: var(--success-600, #047857); }
+span.trend-swatch.trend-s4 { background: var(--danger-600, #b91c1c); }
+span.trend-swatch.trend-s5 { background: var(--neutral-500, #64748b); }
+.trend-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-top: 4px; }
+.trend-legend { display: inline-flex; gap: var(--space-4); flex-wrap: wrap; }
+.trend-legend-item { display: inline-flex; align-items: center; }
+.trend-toggle .seg-btn { padding: 4px 12px; font-size: 14px; }
+
+/* Board — skeleton streaming */
+.skeleton-line { height: 14px; border-radius: 7px; background: var(--neutral-100); animation: skel-pulse 1.2s ease-in-out infinite; }
+.skeleton-line.w40 { width: 40%; }
+.skeleton-line.w60 { width: 60%; }
+.skeleton-line.w80 { width: 80%; }
+@keyframes skel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+@media (max-width: 900px) {
+  .trend-card { flex-direction: column; align-items: stretch; }
+  .kpi-eval-row .num { font-size: 14px; }
+  .board-filters .seg { overflow-x: auto; }
+}
 .verdict-h { max-width: 640px; }
 .chip-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .trend-meta { flex-shrink: 0; }

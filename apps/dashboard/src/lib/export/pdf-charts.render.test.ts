@@ -57,4 +57,32 @@ describe("sparkline render position (no overlap)", () => {
     // Sparkline harus SELESAI sebelum marker mulai (tanpa bug stacking, benar).
     expect(polyBottom).toBeLessThanOrEqual(markerTop);
   });
+
+  it("varian ekor putus-putus (2 op polyline): TER-COLOKASI — dash op TIDAK turun ke bawah box", async () => {
+    const vals = [1, 5, 2, 8, 3, 9, 4, 6, 7, 2, 5, 8, 1, 9];
+    const marker = { canvas: [{ type: "rect", x: 0, y: 0, w: 12, h: 12, color: "#010203" }] };
+    const doc = {
+      pageSize: "A4",
+      pageOrientation: "landscape",
+      pageMargins: [40, 40, 40, 44],
+      defaultStyle: { font: "Roboto", fontSize: 9 },
+      content: [
+        { text: "Tren omset" },
+        sparklineCanvas(vals, 762, 60, { dashFromIdx: vals.length - 1 }),
+        marker,
+      ],
+    };
+    const ops = inflatedOps(await render(doc));
+    const polyYs = [...ops.matchAll(/[\d.]+ ([\d.]+) [ml]\b/g)].map((x) => Number(x[1]));
+    const rectYs = [...ops.matchAll(/[\d.]+ ([\d.]+) 12 12 re/g)].map((x) => Number(x[1]));
+    expect(rectYs.length).toBe(1);
+    // dash op menghasilkan operator setDash "d" di content stream
+    expect(/\[\s*3\s+3\s*\]\s*\d*\s*d/.test(ops)).toBe(true);
+    // SEMUA titik polyline (solid + dash) harus di atas marker berikutnya:
+    // kalau op ke-2 menumpuk vertikal (bug stacking), titik dash jatuh ~60pt
+    // di bawah box dan melewati marker → test gagal.
+    const polyBottom = Math.max(...polyYs);
+    const markerTop = Math.min(...rectYs);
+    expect(polyBottom).toBeLessThanOrEqual(markerTop);
+  });
 });
