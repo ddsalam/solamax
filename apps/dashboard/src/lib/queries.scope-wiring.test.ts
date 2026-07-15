@@ -22,6 +22,8 @@ const D = "2026-07-01";
 const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getSyncByUnit", () => Q.getSyncByUnit([U])],
   ["getSalesByProduct", () => Q.getSalesByProduct(U, D, D)],
+  ["getDailySalesByProduct", () => Q.getDailySalesByProduct([U], D, D)],
+  ["getUnitCoverage", () => Q.getUnitCoverage([U])],
   ["getDailyOmzet", () => Q.getDailyOmzet(U, D, D)],
   ["getSalesTotals", () => Q.getSalesTotals(U, D, D)],
   ["getShiftInfo", () => Q.getShiftInfo(U, D)],
@@ -57,7 +59,7 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
 describe("scope-wiring: every converted query passes its authorized unit to qScoped", () => {
   it("covers ALL converted per-unit functions (guards against silent drift)", () => {
     // If someone adds a converted query but forgets a case here, this count trips.
-    expect(CASES.length).toBe(32);
+    expect(CASES.length).toBe(34);
   });
 
   for (const [name, call] of CASES) {

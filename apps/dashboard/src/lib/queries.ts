@@ -121,6 +121,65 @@ export async function getDailyOmzet(
   );
 }
 
+/**
+ * Grain harian × produk × unit — SATU tembakan untuk SEMUA unit terpilih
+ * (board direksi; terukur 0,4 dtk utk 2 unit × 19 bulan). Semua jendela
+ * omzet/volume/bauran (aktif, MoM, YoY, YTD) diagregasi dari grain ini di
+ * server — hindari ledakan query N unit × M jendela. Ter-scope array
+ * ScopedUnitId (pola getSyncByUnit); RLS membatasi di lapisan DB.
+ */
+export interface DailySalesRow {
+  unit_id: number;
+  d: string; // tanggal bisnis
+  ckdbbm: string;
+  nama: string | null;
+  vol: number;
+  omzet: number;
+}
+
+export async function getDailySalesByProduct(
+  unitIds: ScopedUnitId[],
+  from: string,
+  to: string,
+): Promise<DailySalesRow[]> {
+  if (unitIds.length === 0) return [];
+  return qScoped<DailySalesRow>(
+    unitIds,
+    `SELECT sd.unit_id,
+            to_char(h.dtgljual,'YYYY-MM-DD') AS d,
+            trim(sd.ckdbbm) AS ckdbbm,
+            COALESCE(max(p.vcnmbbm), trim(sd.ckdbbm)) AS nama,
+            COALESCE(sum(sd.nvolume),0)::float8 AS vol,
+            COALESCE(sum(sd.nsubtotal),0)::float8 AS omzet
+     FROM sales_detail sd
+     JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
+     LEFT JOIN product p ON p.unit_id = sd.unit_id AND p.ckdbbm = sd.ckdbbm
+     WHERE sd.unit_id = ANY($1::int[]) AND h.dtgljual BETWEEN $2::date AND $3::date
+     GROUP BY sd.unit_id, h.dtgljual, trim(sd.ckdbbm)
+     ORDER BY sd.unit_id, h.dtgljual, trim(sd.ckdbbm)`,
+    [unitIds, from, to],
+  );
+}
+
+/**
+ * Cakupan histori sales per unit (min tanggal bisnis) — penentu sel pembanding
+ * "— · histori < 1 tahun" (keputusan FASE 0: JANGAN 0/parsial diam-diam).
+ */
+export interface UnitCoverageRow {
+  unit_id: number;
+  sales_min: string | null;
+}
+
+export async function getUnitCoverage(unitIds: ScopedUnitId[]): Promise<UnitCoverageRow[]> {
+  if (unitIds.length === 0) return [];
+  return qScoped<UnitCoverageRow>(
+    unitIds,
+    `SELECT unit_id, to_char(min(dtgljual),'YYYY-MM-DD') AS sales_min
+     FROM sales_header WHERE unit_id = ANY($1::int[]) GROUP BY unit_id`,
+    [unitIds],
+  );
+}
+
 export interface SalesTotals {
   vol: number;
   omzet: number;
