@@ -1,0 +1,196 @@
+name: Deploy backend
+
+# Model promosi dua-tier (lihat DEPLOY.md):
+#   push → `staging`  ⇒ tier TESTING → migrasi DB TEST (solamax-pg-rlsstg)
+#                        lalu deploy solamax-ingest-rlsstg   (otomatis, tanpa reviewer)
+#   push → `main`     ⇒ tier PILOT   → gated Environment `pilot`, migrasi DB LIVE
+#                        (solamax-pg) HARUS lulus penuh SEBELUM image baru
+#                        menerima traffic, lalu deploy solamax-ingest-staging
+# URUTAN INTI: build → migrate → deploy. Migrasi gagal = pipeline BERHENTI —
+# revisi lama tetap melayani, tidak ada auto-rollback (halt-semantics).
+# Migrasi dijalankan sebagai role `ingest` (pemilik DDL sejak RLS 0016) via
+# Cloud SQL Auth Proxy di runner — cermin proses manual yang sudah terbukti
+# (apps/backend/DEPLOY-GCP.md), kini terstruktur + guard salah-target.
+
+on:
+  push:
+    branches: [staging, main]
+    paths:
+      - "apps/backend/**"
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - "Dockerfile" # Dockerfile root = image backend
+      - ".github/workflows/deploy-backend.yml"
+      - ".github/actions/prisma-migrate/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # WIF token exchange
+
+# Serialisasi per branch: dua migrate tidak pernah tumpang tindih di DB yang sama.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGION: asia-southeast2
+
+jobs:
+  # ── Gate kualitas (typecheck + seluruh test suite). ──
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: pnpm check
+
+  # ── Build dulu: kalau image saja gagal dibangun, DB tidak pernah disentuh. ──
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: asia-southeast2-docker.pkg.dev/solamax/solamax/${{ github.ref == 'refs/heads/main' && 'solamax-ingest-staging' || 'solamax-ingest-rlsstg' }}
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+          token_format: access_token
+      - name: Build & push image (Dockerfile root)
+        run: |
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin https://asia-southeast2-docker.pkg.dev
+          docker build -f Dockerfile -t "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+      - id: meta
+        run: echo "image=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  # ═══ TIER TESTING (staging → rlsstg) — otomatis, tanpa reviewer ═══
+
+  # Migrasi HANYA DB test solamax-pg-rlsstg. Guard di composite action menolak
+  # DATABASE_URL yang tidak menunjuk instance rlsstg — tier testing secara
+  # struktural tidak bisa menyentuh DB live.
+  migrate-test:
+    if: github.ref == 'refs/heads/staging'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testing
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @solamax/backend...
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: ./.github/actions/prisma-migrate
+        with:
+          instance: solamax:asia-southeast2:solamax-pg-rlsstg
+          db-secret: solamax-db-url-ingest-rlsstg
+
+  deploy-test:
+    if: github.ref == 'refs/heads/staging'
+    needs: [build, migrate-test]
+    runs-on: ubuntu-latest
+    environment: testing
+    env:
+      SERVICE: solamax-ingest-rlsstg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+        run: |
+          # Label rls-aware diturunkan dari source backend (ingest.service.ts).
+          RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)
+          gcloud run deploy ${SERVICE} --region=${REGION} \
+            --image '${{ needs.build.outputs.image }}' \
+            --update-labels rls-aware=${RLS_AWARE}
+      - name: Health check
+        run: |
+          URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')
+          curl -fsS "$URL/health"
+
+  # ═══ TIER PILOT (main → -staging = PILOT LIVE) — gated Environment `pilot` ═══
+
+  # Gate approval ada DI SINI (job pertama yang berefek): klik approve Anda
+  # mencakup migrasi DB live + deploy sesudahnya, dan terjadi SEBELUM DB disentuh.
+  # forbid=rlsstg wajib: connection name pilot adalah prefix dari rlsstg.
+  migrate-pilot:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pilot
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @solamax/backend...
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: ./.github/actions/prisma-migrate
+        with:
+          instance: solamax:asia-southeast2:solamax-pg
+          db-secret: solamax-db-url-staging
+          forbid: rlsstg
+
+  deploy-pilot:
+    if: github.ref == 'refs/heads/main'
+    needs: [build, migrate-pilot]
+    runs-on: ubuntu-latest
+    env:
+      SERVICE: solamax-ingest-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+        run: |
+          RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)
+          gcloud run deploy ${SERVICE} --region=${REGION} \
+            --image '${{ needs.build.outputs.image }}' \
+            --update-labels rls-aware=${RLS_AWARE}
+      - name: Health check
+        run: |
+          URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')
+          curl -fsS "$URL/health"

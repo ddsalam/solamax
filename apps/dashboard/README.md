@@ -90,6 +90,12 @@ pnpm --filter @solamax/dashboard dev   # → http://localhost:3000
 Verifikasi cepat: `pnpm --filter @solamax/dashboard test` (22 unit test: compliance,
 bauran/target workbook, stok/ketahanan, alarm, format unit) · `typecheck` · `lint:ds`.
 
+## Deploy
+
+CD dua-tier via GitHub Actions — push `staging` → `solamax-dashboard-rlsstg` (testing,
+otomatis); push `main` → `solamax-dashboard-staging` (**pilot live**, gated approval).
+Detail: [`DEPLOY.md`](../../DEPLOY.md) root repo.
+
 ## Produksi nanti
 
 User Postgres read-only khusus dashboard + auth di depan (IAP/login) — dashboard berisi
