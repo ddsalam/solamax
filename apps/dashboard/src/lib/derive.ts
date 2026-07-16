@@ -3,7 +3,7 @@
  * bauran NPSO/PSO, gain/loss %, ketahanan stok, verdict, dan cek alarm.
  * Aturan status TETAP dari compliance.ts — tidak ada aturan baru.
  */
-import { classifyProduct, targetBauran, type FuelKind } from "./config";
+import { classifyProduct, targetBauran, targetBauranRange, type FuelKind } from "./config";
 import { isSelisihAbnormal } from "./compliance";
 
 export interface ProductVol {
@@ -48,6 +48,25 @@ export function bauranVsTarget(
   const target = targetBauran(unitCode, kind, month);
   const deltaPt =
     actual !== null && target !== null ? (actual - target) * 100 : null;
+  return { kind, actual, target, deltaPt, below: deltaPt !== null && deltaPt < 0 };
+}
+
+/**
+ * bauranVsTarget untuk RENTANG tanggal — target = rata-rata tertimbang hari
+ * (targetBauranRange, keputusan owner FASE 0 №1). `withTarget=false` untuk
+ * jendela pembanding tahun lalu (target workbook 2026 tak berlaku ke aktual
+ * 2025 — sel tampil tanpa target).
+ */
+export function bauranVsTargetRange(
+  products: ProductVol[],
+  unitCode: string,
+  range: { from: string; to: string },
+  kind: FuelKind,
+  withTarget = true,
+): BauranStatus {
+  const actual = bauran(products, kind);
+  const target = withTarget ? targetBauranRange(unitCode, kind, range) : null;
+  const deltaPt = actual !== null && target !== null ? (actual - target) * 100 : null;
   return { kind, actual, target, deltaPt, below: deltaPt !== null && deltaPt < 0 };
 }
 

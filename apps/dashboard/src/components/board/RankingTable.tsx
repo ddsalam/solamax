@@ -26,6 +26,8 @@ export interface RankRow {
   glAbnormal: boolean;
   glProvisional: boolean;
   rg: string;
+  /** NPSO gasoil (kolom baru redesign direksi). */
+  rd: string;
   inputTone: "success" | "warning" | "danger";
   inputLabel: string;
   products: RankProduct[];
@@ -47,6 +49,7 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
         <span className="right">Volume</span>
         <span className="right">Gain/Loss</span>
         <span className="right">NPSO (G)</span>
+        <span className="right">NPSO (D)</span>
         <span>Input</span>
         <span />
       </div>
@@ -77,6 +80,7 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
                 {u.gl}
               </span>
               <span className="right fs16 t-secondary num">{u.rg}</span>
+              <span className="right fs16 t-secondary num">{u.rd}</span>
               <span className="rank-input">
                 <span className={`dot ${u.inputTone}`} />
                 <span className="fs15 t-secondary">{u.inputLabel}</span>

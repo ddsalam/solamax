@@ -161,6 +161,51 @@ export function targetBauran(
 }
 
 /**
+ * Target bauran untuk RENTANG tanggal = rata-rata TERTIMBANG HARI atas target
+ * bulanan (keputusan owner FASE 0 №1, label UI "target rata-rata periode"):
+ *   Σ(hari rentang dlm bulan m × target(m)) / total hari rentang.
+ * Rasional: aktual KPI adalah Σ volume atas rentang → pembanding apples-to-apples
+ * adalah target rata-rata rentang yang sama, bukan target bulan-akhir (ramp naik
+ * per bulan; memakai bulan akhir menyesatkan >1 pt utk rentang panjang mis. YTD).
+ * null bila ADA bulan dalam rentang tanpa target (jangan parsial diam-diam).
+ * CATATAN: TARGET_BAURAN tanpa dimensi tahun (workbook 2026) — pemanggil TIDAK
+ * menampilkan target untuk jendela pembanding tahun lalu (keputusan owner).
+ */
+export function targetBauranRange(
+  code: string,
+  kind: FuelKind,
+  range: { from: string; to: string },
+): number | null {
+  if (range.from > range.to) return null;
+  const table = TARGET_BAURAN[code]?.[kind];
+  if (!table) return null;
+
+  let weighted = 0;
+  let totalDays = 0;
+  // Iterasi per bulan kalender yang beririsan dengan rentang.
+  let [y, m] = range.from.split("-").map(Number) as [number, number];
+  const [ey, em] = range.to.split("-").map(Number) as [number, number];
+  while (y < ey || (y === ey && m <= em)) {
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const first = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-01`;
+    const last = `${first.slice(0, 8)}${String(daysInMonth).padStart(2, "0")}`;
+    const oFrom = range.from > first ? range.from : first;
+    const oTo = range.to < last ? range.to : last;
+    const days = Number(oTo.slice(8, 10)) - Number(oFrom.slice(8, 10)) + 1;
+    const t = table[m];
+    if (t === undefined) return null;
+    weighted += days * t;
+    totalDays += days;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return totalDays > 0 ? weighted / totalDays : null;
+}
+
+/**
  * Target VOLUME (sheet "Target Volume", L/HARI per produk per bulan).
  * Key produk = nama kanonik (cocokkan via canonicalProductKey()).
  * Pilot: IB Juni 2026 terisi; bulan lain menyusul dari workbook.

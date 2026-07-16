@@ -2,34 +2,73 @@ import type { Content, ContentTable } from "pdfmake/interfaces";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EXPORT_CONFIG } from "./config";
 import { buildBoardDocDefinition, type BoardDocMeta } from "./board-doc";
-import { buildBoardModel, type PerUnitAgg } from "@/lib/board-model";
+import {
+  buildBoardCore,
+  buildBoardEval,
+  type BoardModel,
+  type BoardUnit,
+  type SalesGrainRow,
+} from "@/lib/board-model";
+import type { DailyGlInput } from "@/lib/derive";
+import { resolveBoardPeriod } from "@/lib/periods";
 
-const perUnit: PerUnitAgg[] = [
-  {
-    u: { code: "6478111", name: "Imam Bonjol" },
-    products: [{ ckdbbm: "P1", nama: "Pertalite", vol: 1000 }],
-    totals: { vol: 1000, omzet: 20_000_000 },
-    prevTotals: { omzet: 18_000_000 },
-    glPct: 0.001,
-    glAbnormal: false,
-    glProvisional: false,
-    gas: { kind: "gasoline", actual: 0.3, target: 0.35, deltaPt: -5, below: true },
-    oil: { kind: "gasoil", actual: 0.2, target: 0.2, deltaPt: 0, below: false },
-    shift: { shifts: 3, last_dtgljam: null },
-    daily: [{ d: "2026-07-02", omzet: 20_000_000 }],
-  },
+const NOW = new Date("2026-07-16T03:00:00Z");
+const TODAY = "2026-07-16";
+const PERIOD = resolveBoardPeriod("bulan", {}, NOW);
+const IB: BoardUnit = { unit_id: 1, code: "6478111", name: "Imam Bonjol" };
+
+const SALES: SalesGrainRow[] = [
+  { unit_id: 1, d: "2026-07-10", ckdbbm: "PL", nama: "PERTALITE", vol: 1000, omzet: 10_000_000 },
+  { unit_id: 1, d: "2026-07-10", ckdbbm: "PX", nama: "PERTAMAX", vol: 120, omzet: 1_800_000 },
+  { unit_id: 1, d: "2026-06-10", ckdbbm: "PL", nama: "PERTALITE", vol: 800, omzet: 8_000_000 },
+  { unit_id: 1, d: "2025-07-10", ckdbbm: "PL", nama: "PERTALITE", vol: 500, omzet: 5_000_000 },
 ];
 
-const model = buildBoardModel(
-  { perUnit, anomalies: [] },
-  { firstUnitCode: "6478111", month: 7, today: "2026-07-02" },
-);
+const glRow = (gl: number): DailyGlInput => ({
+  ckdbbm: "PL",
+  nama: "PERTALITE",
+  gl,
+  tera: 0,
+  excluded_tanks: 0,
+  provisional: false,
+});
+
+const core = buildBoardCore({
+  units: [IB],
+  period: PERIOD,
+  mode: "kumulatif",
+  today: TODAY,
+  dailySales: SALES,
+  glRange: new Map([[1, [glRow(-2)]]]),
+  shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]),
+  anomalies: [],
+});
+
+const evalM = buildBoardEval({
+  units: [IB],
+  period: PERIOD,
+  today: TODAY,
+  dailySales: SALES,
+  gl: {
+    range: new Map([[1, [glRow(-2)]]]),
+    momPrev: new Map([[1, [glRow(-1)]]]),
+    yoyPrev: new Map([[1, [glRow(-1)]]]),
+    ytdCur: new Map([[1, [glRow(-3)]]]),
+    ytdPrev: new Map([[1, [glRow(-1)]]]),
+  },
+  coverage: new Map([[1, "2022-08-31"]]),
+  incompleteToday: false,
+});
+
+const model: BoardModel = { mode: "kumulatif", core, eval: evalM };
 
 const meta: BoardDocMeta = {
-  dateLong: "Rabu, 2 Juli 2026",
-  periodLabel: "Hari ini",
+  dateLong: "Kamis, 16 Juli 2026",
+  periodLabel: "1 Jul 2026 – 16 Jul 2026",
+  unitsLabel: "Semua unit (1)",
+  modeLabel: "Kumulatif",
   unitsCount: 1,
-  generatedLabel: "2 Jul 2026 · 22.09",
+  generatedLabel: "16 Jul 2026 · 08.00",
 };
 
 function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] {
@@ -42,7 +81,7 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
   return out;
 }
 
-describe("buildBoardDocDefinition", () => {
+describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
   it("A4 LANSKAP + footer 'Halaman X dari Y' natif", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");
@@ -51,7 +90,7 @@ describe("buildBoardDocDefinition", () => {
     expect(JSON.stringify(footer)).toContain("Halaman 2 dari 2");
   });
 
-  it("ranking = tabel dengan header berulang + tak memecah baris", () => {
+  it("semua tabel: header berulang + tak memecah baris; hanya unit ber-scope", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     const tables = collectTables(doc.content);
     expect(tables.length).toBeGreaterThan(0);
@@ -61,30 +100,40 @@ describe("buildBoardDocDefinition", () => {
     }
     const json = JSON.stringify(doc.content);
     expect(json).toContain("RINGKASAN DIREKSI");
-    expect(json).toContain("Imam Bonjol"); // hanya unit ber-scope
+    expect(json).toContain("Imam Bonjol");
   });
 
-  it("sparkline berada ANTARA heading 'Tren omset grup' dan section 'Bauran' (urutan konten)", () => {
+  it("PARITAS FILTER: unit terpilih, periode, dan mode aktif tercetak", () => {
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    const json = JSON.stringify(doc.content);
+    expect(json).toContain("Semua unit (1)");
+    expect(json).toContain("1 Jul 2026");
+    expect(json).toContain("Kumulatif");
+  });
+
+  it("PARITAS MODEL: evaluasi MoM/YoY/YTD & label jendela ikut tercetak", () => {
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    const json = JSON.stringify(doc.content);
+    expect(json).toContain("Evaluasi per cabang");
+    expect(json).toContain("MoM");
+    expect(json).toContain("YoY");
+    expect(json).toContain("YTD");
+    expect(json).toContain(evalM.labels.yoy.replace(/[▲▼]/g, "")); // label jendela
+    // NPSO gasoil hadir di ranking (kolom baru)
+    expect(json).toContain("NPSO gasoil");
+  });
+
+  it("tren = canvas polyline vektor, di antara KPI dan evaluasi", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     const content = doc.content as unknown[];
-    const idxOf = (needle: string) =>
-      content.findIndex((c) => JSON.stringify(c).includes(needle));
-    const trenIdx = idxOf("Tren omset grup");
-    const bauranIdx = idxOf("Bauran NPSO / PSO");
-    // sparkline = item canvas berisi polyline
+    const idxOf = (needle: string) => content.findIndex((c) => JSON.stringify(c).includes(needle));
+    const trenIdx = idxOf("Tren omset");
+    const evalIdx = idxOf("Evaluasi per cabang");
     const sparkIdx = content.findIndex(
       (c) => JSON.stringify(c).includes("polyline") && !JSON.stringify(c).includes("Halaman"),
     );
     expect(trenIdx).toBeGreaterThanOrEqual(0);
     expect(sparkIdx).toBeGreaterThan(trenIdx);
-    expect(bauranIdx).toBeGreaterThan(sparkIdx);
-  });
-
-  it("memuat chart vektor (canvas), bukan image", () => {
-    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
-    const json = JSON.stringify(doc.content);
-    expect(json).toContain("polyline"); // sparkline vektor
-    expect(json).toContain("ellipse"); // KPI dots vektor
-    expect(doc.info?.title).toContain("PT Sola Petra Abadi");
+    expect(evalIdx).toBeGreaterThan(sparkIdx);
   });
 });
