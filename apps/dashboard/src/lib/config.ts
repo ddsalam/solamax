@@ -3,6 +3,7 @@
  * "Target SPBU SolaGroup 2026" + keputusan Fase B). Struktur siap 7 SPBU;
  * pilot terisi untuk Imam Bonjol (6478111). Unit lain: tambahkan entri.
  */
+// CD smoke (Fase 3, 2026-07-16): komentar no-op untuk memicu pipeline dashboard.
 
 /** Tampilan kode unit: kanonik bertitik + nama (keputusan ambiguitas №7). */
 export interface UnitDisplay {

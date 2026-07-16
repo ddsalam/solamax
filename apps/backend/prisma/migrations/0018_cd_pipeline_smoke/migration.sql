@@ -1,0 +1,6 @@
+-- 0018_cd_pipeline_smoke — smoke-test jalur migrasi CD (Fase 3, 2026-07-16).
+-- SENGAJA TANPA DDL/DML: file ini tidak mengubah skema maupun data apa pun.
+-- Efek satu-satunya: `prisma migrate deploy` menambah SATU baris ledger di
+-- _prisma_migrations, membuktikan end-to-end bahwa pipeline menjalankan
+-- migrasi SEBELUM image baru menerima traffic (testing: solamax-pg-rlsstg,
+-- lalu promosi: solamax-pg live) dan aman di-re-run (idempoten, no pending).
