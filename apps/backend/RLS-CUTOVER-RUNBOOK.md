@@ -38,10 +38,12 @@ exception.
    `RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)`
    → `gcloud run deploy solamax-ingest-staging … --update-labels rls-aware=${RLS_AWARE}`. Wait
    for **100% traffic**; `/health` ok. (Rehearsal: label lands on the serving revision the preflight reads.)
-3. **Deploy the dashboard RLS-aware image** (`solamax-dashboard-staging`) via CD — merge the PR
-   to `staging`; the dashboard CD ([deploy-staging.yml](../../.github/workflows/deploy-staging.yml))
-   derives `--update-labels rls-aware` from `apps/dashboard/src/lib/db.ts`. Confirm **100% traffic**
-   AND the `rls-aware=1` label on the serving revision.
+3. **Deploy the dashboard RLS-aware image** (`solamax-dashboard-staging`) via CD — since
+   2026-07-16 the pilot deploys from `main` behind the `pilot` gate
+   ([deploy-dashboard.yml](../../.github/workflows/deploy-dashboard.yml); see
+   [DEPLOY.md](../../DEPLOY.md)), which derives `--update-labels rls-aware` from
+   `apps/dashboard/src/lib/db.ts`. Confirm **100% traffic** AND the `rls-aware=1` label on
+   the serving revision.
 4. **PREFLIGHT GATE (hard stop):**
    ```
    REGION=asia-southeast2 BACKEND_SVC=solamax-ingest-staging DASHBOARD_SVC=solamax-dashboard-staging \
