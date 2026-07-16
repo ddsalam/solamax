@@ -1,0 +1,137 @@
+name: Deploy dashboard
+
+# Model promosi dua-tier (lihat DEPLOY.md):
+#   push → `staging`  ⇒ tier TESTING  → solamax-dashboard-rlsstg   (otomatis, tanpa reviewer)
+#   push → `main`     ⇒ tier PILOT    → solamax-dashboard-staging  (gated Environment `pilot`)
+# Jebakan nama (sengaja dipertahankan): service bersufiks -staging = PILOT LIVE;
+# service bersufiks -rlsstg = tier testing. Deploy selalu IMAGE-ONLY —
+# env/secrets/cloudsql/scaling service tidak disentuh. Auth via WIF, tanpa SA key.
+
+on:
+  push:
+    branches: [staging, main]
+    paths:
+      - "apps/dashboard/**"
+      - "packages/shared/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-dashboard.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # WIF token exchange
+
+# Serialisasi per branch: merge beruntun antre (bukan saling batalkan) — deploy
+# tidak pernah tumpang tindih di service yang sama.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGION: asia-southeast2
+
+jobs:
+  # ── Gate kualitas: sama seperti CI + DS adherence lint. ──
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: pnpm check
+      - run: pnpm --filter @solamax/dashboard lint:ds
+
+  # ── Build sekali, nama image mengikuti tier. Push image = efek samping aman
+  #    (image hanya "duduk" di Artifact Registry sampai job deploy memakainya). ──
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: asia-southeast2-docker.pkg.dev/solamax/solamax/${{ github.ref == 'refs/heads/main' && 'solamax-dashboard-staging' || 'solamax-dashboard-rlsstg' }}
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+          token_format: access_token
+      # Build in-runner dengan Docker (pelajaran terkunci: `gcloud builds submit`
+      # 403 di bawah WIF), push langsung ke Artifact Registry.
+      - name: Build & push image
+        run: |
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin https://asia-southeast2-docker.pkg.dev
+          docker build -f apps/dashboard/Dockerfile -t "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+      - id: meta
+        run: echo "image=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  # ── TIER TESTING (staging → rlsstg): otomatis, tanpa reviewer. Environment
+  #    `testing` dipakai untuk riwayat deployment + branch-policy (hanya staging). ──
+  deploy-test:
+    if: github.ref == 'refs/heads/staging'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testing
+    env:
+      SERVICE: solamax-dashboard-rlsstg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+        run: |
+          # Label rls-aware DITURUNKAN dari source (trust anchor preflight RLS) —
+          # otomatis oleh CD, tidak pernah manual. Lihat apps/dashboard/src/lib/db.ts.
+          RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/dashboard/src/lib/db.ts && echo 1 || echo 0)
+          gcloud run deploy ${SERVICE} --region=${REGION} \
+            --image '${{ needs.build.outputs.image }}' \
+            --update-labels rls-aware=${RLS_AWARE}
+      - name: Report serving revision
+        run: |
+          gcloud run services describe ${SERVICE} --region=${REGION} \
+            --format="value(status.latestReadyRevisionName, status.url)"
+
+  # ── TIER PILOT (main → -staging = PILOT LIVE): gated Environment `pilot`
+  #    (required reviewer). Klik approve = satu-satunya jalan ke pilot. ──
+  deploy-pilot:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pilot
+    env:
+      SERVICE: solamax-dashboard-staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+        run: |
+          RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/dashboard/src/lib/db.ts && echo 1 || echo 0)
+          gcloud run deploy ${SERVICE} --region=${REGION} \
+            --image '${{ needs.build.outputs.image }}' \
+            --update-labels rls-aware=${RLS_AWARE}
+      - name: Report serving revision
+        run: |
+          gcloud run services describe ${SERVICE} --region=${REGION} \
+            --format="value(status.latestReadyRevisionName, status.url)"
