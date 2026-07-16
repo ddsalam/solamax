@@ -1,5 +1,13 @@
 # DEPLOY — Backend `/ingest` ke GCP (STAGING-FIRST)
 
+> **🚨 PROSEDUR MANUAL DI BAWAH = BREAK-GLASS SAJA (sejak 2026-07-16).** Backend kini
+> ber-CD penuh: push ke `staging` → migrasi DB test + deploy `solamax-ingest-rlsstg`
+> (otomatis); push ke `main` → gate Environment `pilot` → migrasi DB live **lulus dulu**
+> → deploy `solamax-ingest-staging`. Lihat [`DEPLOY.md`](../../DEPLOY.md) (root repo) dan
+> [`deploy-backend.yml`](../../.github/workflows/deploy-backend.yml). Prosedur manual
+> hanya untuk darurat saat CD mati, **atas instruksi eksplisit user**, dan wajib dicatat
+> di §8.
+
 Langkah yang **Anda** jalankan dari Mac (perlu `gcloud` CLI ter-login). Semua nama memakai
 sufiks **staging**; promosi ke produksi = keputusan terpisah, **hanya atas instruksi eksplisit**.
 
@@ -144,13 +152,15 @@ gcloud run services delete solamax-ingest-staging --region=asia-southeast2
 gcloud sql instances delete solamax-pg   # HATI-HATI: menghapus data
 ```
 
-## 8. Catatan: backend BELUM ber-CD — deploy manual = pengecualian, butuh approval
+## 8. Deploy manual = BREAK-GLASS — riwayat out-of-band
 
-Backend `/ingest` **tidak** punya job CD. `deploy-staging.yml` hanya membangun &
-men-deploy **dashboard** (`solamax-dashboard-staging`) di belakang GitHub
-Environment terproteksi `staging` (required reviewer). Backend di-deploy **manual**
-(langkah 2 migrasi + langkah 4 image, di atas) dan **hanya atas instruksi eksplisit
-user** — tak ada gerbang approval otomatis seperti dashboard.
+Backend **sudah ber-CD** sejak 2026-07-16 (lihat banner di atas + [`DEPLOY.md`](../../DEPLOY.md)).
+Deploy manual (langkah 2 migrasi + langkah 4 image, di atas) hanya untuk darurat saat
+pipeline mati, **hanya atas instruksi eksplisit user**, dan **wajib dicatat di bagian
+ini** setelah kejadian. Ingat urutan yang ditegakkan CD dan berlaku juga saat manual:
+**migrasi lulus penuh dulu, baru image serve traffic**; migrasi sebagai role `ingest`;
+verifikasi target instance sebelum `migrate deploy` (jangan sampai menyasar DB test/live
+yang salah).
 
 **Riwayat out-of-band:**
 

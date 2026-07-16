@@ -1,0 +1,78 @@
+name: Prisma migrate deploy (Cloud SQL Auth Proxy)
+description: >
+  Menjalankan `prisma migrate deploy` terhadap SATU instance Cloud SQL lewat
+  Cloud SQL Auth Proxy resmi (mode unix-socket, sehingga secret DATABASE_URL
+  ber-host=/cloudsql/... yang dipakai Cloud Run bekerja verbatim — tanpa
+  rewrite URL). Menolak jalan bila DATABASE_URL tidak menunjuk instance yang
+  diharapkan (guard salah-target; nilai secret tidak pernah di-echo).
+  Prasyarat: job sudah ter-auth via google-github-actions/auth (WIF) dan
+  dependensi backend sudah ter-install (pnpm install --filter @solamax/backend...).
+
+inputs:
+  instance:
+    description: "Connection name instance Cloud SQL (project:region:instance) yang WAJIB menjadi target"
+    required: true
+  db-secret:
+    description: "Nama secret Secret Manager berisi DATABASE_URL role `ingest` untuk tier ini"
+    required: true
+  forbid:
+    description: >
+      Substring yang TIDAK BOLEH muncul di DATABASE_URL. Wajib diisi "rlsstg"
+      pada tier pilot: connection name pilot (…:solamax-pg) adalah prefix dari
+      connection name testing (…:solamax-pg-rlsstg), jadi cek `instance` saja
+      tidak cukup membedakannya.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Ambil DATABASE_URL dari Secret Manager (nilai di-mask di log)
+      id: db
+      uses: google-github-actions/get-secretmanager-secrets@v2
+      with:
+        secrets: |-
+          url:solamax/${{ inputs.db-secret }}
+
+    - name: Jalankan Cloud SQL Auth Proxy (unix socket, binary pinned)
+      shell: bash
+      env:
+        PROXY_VERSION: v2.14.2
+        PROXY_SHA256: 2f819e6e47e9026fa467cf55ca88eb674c698f8a93aecf940a364b4432c933f5
+        INSTANCE: ${{ inputs.instance }}
+      run: |
+        curl -fsSL -o /tmp/cloud-sql-proxy \
+          "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${PROXY_VERSION}/cloud-sql-proxy.linux.amd64"
+        echo "${PROXY_SHA256}  /tmp/cloud-sql-proxy" | sha256sum -c -
+        chmod +x /tmp/cloud-sql-proxy
+        sudo mkdir -p /cloudsql && sudo chown "$(id -u)" /cloudsql
+        /tmp/cloud-sql-proxy --unix-socket /cloudsql "${INSTANCE}" >/tmp/cloud-sql-proxy.log 2>&1 &
+        for i in $(seq 1 30); do
+          [ -S "/cloudsql/${INSTANCE}/.s.PGSQL.5432" ] && break
+          sleep 1
+        done
+        if [ ! -S "/cloudsql/${INSTANCE}/.s.PGSQL.5432" ]; then
+          echo "Proxy gagal siap dalam 30 detik:"; cat /tmp/cloud-sql-proxy.log; exit 1
+        fi
+        echo "Proxy siap: ${INSTANCE}"
+
+    - name: Guard salah-target (secret tidak di-echo)
+      shell: bash
+      env:
+        DATABASE_URL: ${{ steps.db.outputs.url }}
+        INSTANCE: ${{ inputs.instance }}
+        FORBID: ${{ inputs.forbid }}
+      run: |
+        if [[ "$DATABASE_URL" != *"host=/cloudsql/${INSTANCE}"* ]]; then
+          echo "DITOLAK: DATABASE_URL tidak menunjuk ${INSTANCE}"; exit 1
+        fi
+        if [[ -n "$FORBID" && "$DATABASE_URL" == *"$FORBID"* ]]; then
+          echo "DITOLAK: DATABASE_URL mengandung pola terlarang '${FORBID}'"; exit 1
+        fi
+        echo "Target OK: ${INSTANCE}"
+
+    - name: prisma migrate deploy
+      shell: bash
+      env:
+        DATABASE_URL: ${{ steps.db.outputs.url }}
+      run: pnpm --filter @solamax/backend exec prisma migrate deploy
