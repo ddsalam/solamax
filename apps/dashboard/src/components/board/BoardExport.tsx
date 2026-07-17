@@ -32,11 +32,11 @@ export function BoardExport({
     () =>
       buildReportFilename({
         reportName: "Ringkasan-Direksi",
-        scope: "PT Sola Petra Abadi",
+        scope: meta.ptLabel,
         period: generatedDate,
         generated: generatedDate,
       }),
-    [generatedDate],
+    [generatedDate, meta.ptLabel],
   );
 
   const buildDoc = useCallback(

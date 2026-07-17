@@ -8,10 +8,12 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "SolaMax — Pengawasan SPBU PT Sola Petra Abadi",
+    // Netral lintas-PT: manifest PWA global (di-cache per origin, tanpa konteks
+    // auth) tidak boleh menyebut satu PT — multi-tenant sejak unit AS.
+    name: "SolaMax — Pengawasan SPBU SolaGroup",
     short_name: "SolaMax",
     description:
-      "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU PT Sola Petra Abadi",
+      "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU SolaGroup",
     id: "/",
     start_url: "/",
     scope: "/",

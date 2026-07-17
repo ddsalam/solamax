@@ -22,6 +22,8 @@ export interface BoardDocMeta {
   modeLabel: string;
   unitsCount: number;
   generatedLabel: string;
+  /** Nama PT pemilik unit ter-ekspor (multi-tenant) — dari ptLabelForUnits(). */
+  ptLabel: string;
 }
 
 const toneColor = (t: string): string =>
@@ -342,7 +344,7 @@ export function buildBoardDocDefinition(args: {
         {
           width: "*",
           stack: [
-            { text: "PT Sola Petra Abadi — Ringkasan Direksi", style: "kopSpbu" },
+            { text: pdfText(`${meta.ptLabel} — Ringkasan Direksi`), style: "kopSpbu" },
             {
               text: pdfText(`Periode ${meta.periodLabel} · s/d tanggal bisnis ${meta.dateLong}`),
               style: "kopAddr",
@@ -406,9 +408,9 @@ export function buildBoardDocDefinition(args: {
     pageOrientation: "landscape",
     pageMargins: [40, 40, 40, 44],
     info: {
-      title: `Ringkasan Direksi — PT Sola Petra Abadi — ${meta.periodLabel}`,
+      title: `Ringkasan Direksi — ${meta.ptLabel} — ${meta.periodLabel}`,
       author: "SolaMax",
-      subject: "Ringkasan Direksi (board) PT Sola Petra Abadi",
+      subject: `Ringkasan Direksi (board) ${meta.ptLabel}`,
       creator: "SolaMax Dashboard",
     },
     defaultStyle: { font: "Roboto", fontSize: 9, color: PDF.textPrimary, lineHeight: 1.12 },
@@ -416,7 +418,7 @@ export function buildBoardDocDefinition(args: {
       currentPage > 1
         ? {
             columns: [
-              { text: `Ringkasan Direksi · PT Sola Petra Abadi`, fontSize: 7.5, color: PDF.textMuted },
+              { text: pdfText(`Ringkasan Direksi · ${meta.ptLabel}`), fontSize: 7.5, color: PDF.textMuted },
               { text: pdfText(meta.periodLabel), fontSize: 7.5, color: PDF.textMuted, alignment: "right" },
             ],
             margin: [40, 20, 40, 0],

@@ -1,14 +1,24 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { SignOutButton } from "@/components/SignOutButton";
 import { buildAnomalies } from "@/lib/anomalies";
-import { unitLabel } from "@/lib/config";
+import { ptLabelForUnits, unitLabel } from "@/lib/config";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
 import { type Role } from "@/lib/auth-context";
 
 export const dynamic = "force-dynamic";
+
+/** Judul ber-PT per tenant viewer (multi-tenant sejak unit AS). Untuk viewer
+ *  PT Sola Petra Abadi string-nya identik dengan judul lama (tanpa regresi). */
+export async function generateMetadata(): Promise<Metadata> {
+  const scope = await getDataScope();
+  return {
+    title: `SolaMax — Pengawasan SPBU ${ptLabelForUnits(scope.units.map((u) => u.code))}`,
+  };
+}
 
 const ROLE_LABEL: Record<Role, string> = {
   super_admin: "Super Admin",

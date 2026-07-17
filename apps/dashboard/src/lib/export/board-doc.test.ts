@@ -69,6 +69,7 @@ const meta: BoardDocMeta = {
   modeLabel: "Kumulatif",
   unitsCount: 1,
   generatedLabel: "16 Jul 2026 · 08.00",
+  ptLabel: "PT Sola Petra Abadi",
 };
 
 function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] {
@@ -135,5 +136,25 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
     expect(trenIdx).toBeGreaterThanOrEqual(0);
     expect(sparkIdx).toBeGreaterThan(trenIdx);
     expect(evalIdx).toBeGreaterThan(sparkIdx);
+  });
+
+  it("label PT dari meta.ptLabel — string kop/info/header identik dgn legacy utk PT Sola Petra Abadi", () => {
+    // Regresi multi-tenant: viewer PT Sola Petra Abadi harus mendapat output
+    // byte-identik dgn hardcode lama; PT lain (AS) mendapat PT-nya sendiri.
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    expect(JSON.stringify(doc.content)).toContain("PT Sola Petra Abadi — Ringkasan Direksi");
+    expect(doc.info?.title).toBe("Ringkasan Direksi — PT Sola Petra Abadi — 1 Jul 2026 – 16 Jul 2026");
+    expect(doc.info?.subject).toBe("Ringkasan Direksi (board) PT Sola Petra Abadi");
+    const header = (doc.header as (p: number) => Content)(2);
+    expect(JSON.stringify(header)).toContain("Ringkasan Direksi · PT Sola Petra Abadi");
+
+    const docAs = buildBoardDocDefinition({
+      model,
+      meta: { ...meta, ptLabel: "PT Sola Adis Raya" },
+      config: DEFAULT_EXPORT_CONFIG,
+    });
+    expect(JSON.stringify(docAs.content)).toContain("PT Sola Adis Raya — Ringkasan Direksi");
+    expect(JSON.stringify(docAs.content)).not.toContain("PT Sola Petra Abadi");
+    expect(docAs.info?.title).toContain("PT Sola Adis Raya");
   });
 });
