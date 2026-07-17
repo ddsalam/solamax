@@ -14,7 +14,7 @@ import {
   type DeltaCell,
 } from "@/lib/board-model";
 import { parseBoardParams, type BoardParams, type BoardSearchParams } from "@/lib/board-params";
-import { unitDotted } from "@/lib/config";
+import { ptLabelForUnits, unitDotted } from "@/lib/config";
 import { dateLong, dateShort, pct as pctS, signed as signedS, timeWib } from "@/lib/format";
 import { getDailyGlWindow } from "@/lib/gl-window";
 import { addDays, todayWib, type DateRange } from "@/lib/periods";
@@ -429,6 +429,8 @@ async function ExportSection({
     modeLabel: params.mode === "banding" ? "Perbandingan antar unit" : "Kumulatif",
     unitsCount: params.units.length,
     generatedLabel: `${dateShort(today)} · ${timeWib(new Date().toISOString())}`,
+    // Multi-tenant: label PT mengikuti unit yang benar-benar diekspor.
+    ptLabel: ptLabelForUnits(params.units.map((u) => u.code)),
   };
   return (
     <BoardExport

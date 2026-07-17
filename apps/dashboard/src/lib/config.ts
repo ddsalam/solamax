@@ -29,7 +29,28 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
       "Jl. Raya Sungai Bakau Besar Laut, Kec. Sungai Pinyuh, Kab. Mempawah, 78919",
     // pengawas: Dedek Akramul (spbu6378301sbbl@solagroup.co)
   },
+  // Adisucipto (64.781.01) — tenant TERPISAH: PT Sola Adis Raya (Option A).
+  "6478101": {
+    dotted: "64.781.01",
+    name: "Adisucipto",
+    pt: "PT Sola Adis Raya",
+    address:
+      "Jl. Adi Sucipto No 1, Bangka Belitung Laut, Kec. Pontianak Tenggara, 78111",
+    // pengawas: Sabandi (sola.adis.raya@solagroup.co)
+  },
 };
+
+/**
+ * Label PT untuk kumpulan unit (kop/nama-file ekspor multi-unit): satu PT unik
+ * → nama PT itu; campuran lintas-PT atau tak dikenal → payung "SolaGroup".
+ * (Pengganti hardcode "PT Sola Petra Abadi" — multi-tenant sejak unit AS.)
+ */
+export function ptLabelForUnits(codes: string[]): string {
+  const pts = new Set(
+    codes.map((c) => UNIT_DISPLAY[c]?.pt).filter((p): p is string => !!p),
+  );
+  return pts.size === 1 ? [...pts][0]! : "SolaGroup";
+}
 
 export function unitLabel(code: string, fallbackName?: string): string {
   const u = UNIT_DISPLAY[code];
@@ -151,6 +172,19 @@ export const TARGET_BAURAN: Record<
       7: 0.1482, 8: 0.1524, 9: 0.1565, 10: 0.1606, 11: 0.1647, 12: 0.1688,
     },
   },
+  // Adisucipto (64.781.01) — workbook "Target SPBU SolaGroup 2026" baris AS,
+  // 12 bulan penuh (angka NYATA, cross-check owner 2026-07-17). Ramp gasoline
+  // agresif (Turbo baru mulai Jul); gasoil ~28–32%.
+  "6478101": {
+    gasoline: {
+      1: 0.0375, 2: 0.0438, 3: 0.05, 4: 0.0563, 5: 0.0625, 6: 0.0688,
+      7: 0.0775, 8: 0.085, 9: 0.0925, 10: 0.1, 11: 0.1075, 12: 0.115,
+    },
+    gasoil: {
+      1: 0.275, 2: 0.2792, 3: 0.2833, 4: 0.2875, 5: 0.2917, 6: 0.2958,
+      7: 0.3, 8: 0.3042, 9: 0.3083, 10: 0.3125, 11: 0.3167, 12: 0.3208,
+    },
+  },
 };
 
 export function targetBauran(
@@ -240,6 +274,22 @@ export const TARGET_VOLUME_PER_DAY: Record<
     10: { PERTALITE: 16000, PERTAMAX: 2150, "PERTAMAX TURBO": 170, SOLAR: 17000, DEXLITE: 2250, "PERTAMINA DEX": 480 },
     11: { PERTALITE: 16000, PERTAMAX: 2200, "PERTAMAX TURBO": 180, SOLAR: 17000, DEXLITE: 2300, "PERTAMINA DEX": 500 },
     12: { PERTALITE: 16000, PERTAMAX: 2250, "PERTAMAX TURBO": 190, SOLAR: 17000, DEXLITE: 2350, "PERTAMINA DEX": 520 },
+  },
+  // Adisucipto (64.781.01) — workbook 2026 baris AS, 12 bulan penuh (L/HARI).
+  // PERTALITE & SOLAR flat; PERTAMAX TURBO 0 s/d Jun (mulai dijual Jul).
+  "6478101": {
+    1: { PERTALITE: 8000, PERTAMAX: 300, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3000, "PERTAMINA DEX": 300 },
+    2: { PERTALITE: 8000, PERTAMAX: 350, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3020, "PERTAMINA DEX": 330 },
+    3: { PERTALITE: 8000, PERTAMAX: 400, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3040, "PERTAMINA DEX": 360 },
+    4: { PERTALITE: 8000, PERTAMAX: 450, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3060, "PERTAMINA DEX": 390 },
+    5: { PERTALITE: 8000, PERTAMAX: 500, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3080, "PERTAMINA DEX": 420 },
+    6: { PERTALITE: 8000, PERTAMAX: 550, "PERTAMAX TURBO": 0, SOLAR: 12000, DEXLITE: 3100, "PERTAMINA DEX": 450 },
+    7: { PERTALITE: 8000, PERTAMAX: 600, "PERTAMAX TURBO": 20, SOLAR: 12000, DEXLITE: 3120, "PERTAMINA DEX": 480 },
+    8: { PERTALITE: 8000, PERTAMAX: 650, "PERTAMAX TURBO": 30, SOLAR: 12000, DEXLITE: 3140, "PERTAMINA DEX": 510 },
+    9: { PERTALITE: 8000, PERTAMAX: 700, "PERTAMAX TURBO": 40, SOLAR: 12000, DEXLITE: 3160, "PERTAMINA DEX": 540 },
+    10: { PERTALITE: 8000, PERTAMAX: 750, "PERTAMAX TURBO": 50, SOLAR: 12000, DEXLITE: 3180, "PERTAMINA DEX": 570 },
+    11: { PERTALITE: 8000, PERTAMAX: 800, "PERTAMAX TURBO": 60, SOLAR: 12000, DEXLITE: 3200, "PERTAMINA DEX": 600 },
+    12: { PERTALITE: 8000, PERTAMAX: 850, "PERTAMAX TURBO": 70, SOLAR: 12000, DEXLITE: 3220, "PERTAMINA DEX": 630 },
   },
 };
 
