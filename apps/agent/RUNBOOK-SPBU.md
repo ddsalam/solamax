@@ -90,18 +90,25 @@ FROM mysql.user WHERE user = 'readonly_sync';
 1. Salin folder **`bundle-out`** (atau ekstrak `solamax-agent-bundle.zip`) ke mesin SPBU,
    misalnya ke **`C:\solamax-agent`**. Cara transfer: unggah zip ke Google Drive dari Mac,
    lalu unduh dari browser mesin SPBU (atau fitur transfer file Chrome Remote Desktop).
-   Isi folder:
+   Isi folder (zip FLAT — hasil ekstrak langsung file-file ini, TANPA subfolder;
+   bila kamu melihat subfolder `bundle-out\`, itu zip lama — pindahkan isinya naik):
    ```
    solamax-agent.cjs      ← program agent (1 file, tak perlu install apa pun lagi)
    config.local.json      ← file pengaturan — DIEDIT di langkah berikut
+                             (unitCode WAJIB diganti kode unit SPBU ini!)
    1-tes-koneksi.bat      ← dobel-klik untuk tes koneksi
    2-dry-run.bat          ← dobel-klik untuk dry-run
+   3-sync-once.bat        ← sync sekali (uji kirim ke backend)
+   jalankan-agent.bat     ← target Task Scheduler (loop; log → logs\agent-<tgl>.log)
+   resync-bulanan.bat     ← task BULANAN --resync-sales 40 hari (lihat Bagian E)
+   4/5/6-probe*.bat       ← probe saldo (diagnostik, opsional)
    RUNBOOK-SPBU.md        ← dokumen ini
    ```
 2. Klik kanan **`config.local.json`** → **Open with** → **Notepad**. Sesuaikan:
 
    | Field            | Isi                                                             |
    | ---------------- | --------------------------------------------------------------- |
+   | `unitCode`       | **kode unit SPBU ini** (mis. `6478111`/`6378301`/`6478101`) — template sengaja `GANTI_KODE_UNIT`; salah/lupa = backend menolak 403 |
    | `mysql.host`     | `127.0.0.1` (MySQL di mesin yang sama — biarkan)                |
    | `mysql.port`     | `3306` (kalau koneksi ditolak, lihat Troubleshooting №4)        |
    | `mysql.user`     | `readonly_sync` (biarkan)                                       |
@@ -208,3 +215,24 @@ Agent berjalan **terus-menerus (loop)** lewat Windows Task Scheduler →
    `ingest ok … "domain":"realtank"` (dan **tak ada** `422`).
 
 **Rollback:** kembalikan `solamax-agent.PREV.cjs` → `solamax-agent.cjs`, lalu ulangi langkah 3.
+
+### Task bulanan `resync-bulanan.bat` — STANDAR unit kelas NULL-by-default DTGLJAM
+
+Temuan onboarding AS/Adisucipto 2026-07-17: ada EasyMax yang menulis `tr_djualbbm.DTGLJAM`
+**NULL untuk (hampir) semua baris** (kelas varian ke-3; IB = NULL shift-3 saja, Bakau = D2).
+Pada unit begini watermark sales tak pernah maju — sales 100% dibawa rescan jendela 7 hari,
+dan koreksi/back-dating **lebih tua dari 7 hari tidak pernah terheal otomatis** (sales tidak
+ikut sapuan Track 2). Penutupnya: task Scheduler **BULANAN** menjalankan `resync-bulanan.bat`
+(`--resync-sales` hari-ini−40 s/d hari-ini; UPSERT idempoten, MySQL tetap read-only, aman
+berjalan bersamaan loop agent).
+
+Cara cek kelas unit (SEKALI, saat onboarding — WAJIB sebelum go-live):
+```sql
+SELECT COUNT(*) FROM tr_djualbbm WHERE DTGLJAM IS NULL;  -- via user readonly_sync
+```
+`0` atau kecil → kelas IB/Bakau (task bulanan opsional tapi tidak merugikan);
+≈ jumlah seluruh baris → kelas AS (task bulanan **WAJIB**). Parameter task: nama
+`SolaMax Resync Bulanan`, trigger Monthly hari-1 03:30 WIB, "Run whether user is
+logged on or not" + highest privileges, Start-in `C:\solamax-agent`. Log:
+`logs\resync-bulanan.log`. (Roadmap: sales masuk sapuan Track 2 di rilis agent
+berikutnya — sesudah itu task ini menjadi cadangan.)
