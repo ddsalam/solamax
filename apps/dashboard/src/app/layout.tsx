@@ -13,9 +13,11 @@ export const metadata: Metadata = {
   // Resolves relative icon/OG asset URLs (icon.svg, opengraph-image, manifest).
   // Reuse the deployment URL already configured for auth; localhost for dev.
   metadataBase: new URL(process.env.AUTH_URL ?? "http://localhost:3000"),
-  title: "SolaMax — Pengawasan SPBU PT Sola Petra Abadi",
+  // Netral lintas-PT (multi-tenant sejak unit AS) — judul ber-PT di (app)/layout
+  // via generateMetadata (per tenant viewer). Root melayani /login (unauth).
+  title: "SolaMax — Pengawasan SPBU SolaGroup",
   description:
-    "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU PT Sola Petra Abadi",
+    "Lapisan pengawasan, monitoring & analisa di atas data POS EasyMax — SPBU SolaGroup",
 };
 
 /** Root minimal — shell ter-auth ada di (app)/layout; /login & /no-access bare. */
