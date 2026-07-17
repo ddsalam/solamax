@@ -7,13 +7,19 @@
  *     config.local.json     — template config, diedit user di mesin SPBU
  *     1-tes-koneksi.bat     — dobel-klik: tes koneksi read-only
  *     2-dry-run.bat         — dobel-klik: tarik data & cetak ringkasan, TANPA kirim
+ *     jalankan-agent.bat    — target Task Scheduler (loop, log → logs\agent-<tgl>.log)
+ *     resync-bulanan.bat    — task bulanan --resync-sales jendela 40 hari (unit
+ *                             kelas NULL-by-default DTGLJAM, mis. AS 6478101;
+ *                             aman utk semua unit — UPSERT idempoten)
  *     RUNBOOK-SPBU.md       — salinan runbook
- *   + apps/agent/solamax-agent-bundle.zip (bila `zip` tersedia)
+ *   + apps/agent/solamax-agent-bundle.zip (bila `zip` tersedia) — isi FLAT,
+ *     tanpa folder bundle-out/ (defect onboarding AS 2026-07-17: zip nested
+ *     membuat file "tak terlihat" di C:\solamax-agent).
  *
  * Jalankan dari root repo: pnpm --filter @solamax/agent bundle
  */
 import { build } from "esbuild";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,10 +143,48 @@ writeFileSync(
   ]),
 );
 
+// jalankan-agent.bat — target Task Scheduler. Sebelumnya TIDAK pernah ikut
+// bundle (dibuat tangan di IB, disalin turun-temurun; ketahuan saat onboarding
+// AS). Loop tanpa --once; stdout agent di-redirect ke logs\agent-<tgl>.log
+// (agent menulis ke stdout — tanpa redirection TIDAK ada log lokal).
+writeFileSync(
+  resolve(out, "jalankan-agent.bat"),
+  bat([
+    "@echo off",
+    'cd /d "%~dp0"',
+    "if not exist logs mkdir logs",
+    "for /f %%i in ('powershell -NoProfile -Command \"Get-Date -Format yyyy-MM-dd\"') do set TGL=%%i",
+    'node solamax-agent.cjs --config config.local.json >> "logs\\agent-%TGL%.log" 2>&1',
+  ]),
+);
+
+// resync-bulanan.bat — task bulanan --resync-sales (hari-ini−40 .. hari-ini).
+// STANDAR unit kelas NULL-by-default DTGLJAM (AS 6478101): sales 100% lewat
+// rescan 7-hari, back-dating >7 hari hanya terheal lewat resync ini. Aman
+// berjalan bersamaan loop agent (MySQL read-only + UPSERT idempoten).
+writeFileSync(
+  resolve(out, "resync-bulanan.bat"),
+  bat([
+    "@echo off",
+    'cd /d "%~dp0"',
+    "if not exist logs mkdir logs",
+    "for /f %%i in ('powershell -NoProfile -Command \"Get-Date -Format yyyy-MM-dd\"') do set HARIINI=%%i",
+    "for /f %%i in ('powershell -NoProfile -Command \"(Get-Date).AddDays(-40).ToString('yyyy-MM-dd')\"') do set AWAL=%%i",
+    'echo [%HARIINI%] resync-bulanan %AWAL% s/d %HARIINI% >> "logs\\resync-bulanan.log"',
+    'node solamax-agent.cjs --resync-sales %AWAL% %HARIINI% --config config.local.json >> "logs\\resync-bulanan.log" 2>&1',
+  ]),
+);
+
 try {
-  execFileSync("zip", ["-rq", "solamax-agent-bundle.zip", "bundle-out"], {
-    cwd: appDir,
-  });
+  // -j (junk paths): entri zip FLAT — ekstrak langsung menaruh file di target,
+  // tanpa subfolder bundle-out/ (lihat catatan defect di header). Zip lama
+  // dihapus dulu: `zip` meng-update arsip yang ada (entri nested basi bertahan).
+  rmSync(resolve(appDir, "solamax-agent-bundle.zip"), { force: true });
+  execFileSync(
+    "zip",
+    ["-jq", resolve(appDir, "solamax-agent-bundle.zip"), ...readdirSync(out).map((f) => resolve(out, f))],
+    { cwd: appDir },
+  );
   console.log(`zip: ${resolve(appDir, "solamax-agent-bundle.zip")}`);
 } catch {
   console.log("zip tidak tersedia — kompres folder bundle-out/ manual.");
