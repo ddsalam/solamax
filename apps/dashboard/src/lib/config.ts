@@ -38,6 +38,16 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
       "Jl. Adi Sucipto No 1, Bangka Belitung Laut, Kec. Pontianak Tenggara, 78111",
     // pengawas: Sabandi (sola.adis.raya@solagroup.co)
   },
+  // Bundaran Kotabaru (64.781.06) — tenant BARU (ke-3): PT Merita Abadi Sukses
+  // (Option A, isolasi lintas-tenant seperti AS — bukan pola same-tenant Bakau).
+  // Display code "KB" cosmetic saja (≠ Bakau "BK"; kunci runtime = kode 7-digit).
+  "6478106": {
+    dotted: "64.781.06",
+    name: "Bundaran Kotabaru",
+    pt: "PT Merita Abadi Sukses",
+    address: "Jl. Prof. M. Yamin No 1, Kota Baru, Kec. Pontianak Kota, 78116",
+    // pengawas: Eddy Supratman (merita.abadisukses@solagroup.co)
+  },
 };
 
 /**
@@ -185,6 +195,20 @@ export const TARGET_BAURAN: Record<
       7: 0.3, 8: 0.3042, 9: 0.3083, 10: 0.3125, 11: 0.3167, 12: 0.3208,
     },
   },
+  // Bundaran Kotabaru (64.781.06) — tenant BARU PT Merita Abadi Sukses. Workbook
+  // "Target SPBU SolaGroup 2026" baris KB, 12 bulan penuh (angka NYATA, cross-check
+  // owner 2026-07-20). 4dp round-half-up dari raw (mis. gasoline Jan 0.16685714… →
+  // 0.1669). Bauran gasoline TERTINGGI dari semua unit; semua produk aktif sejak Jan.
+  "6478106": {
+    gasoline: {
+      1: 0.1669, 2: 0.17, 3: 0.1731, 4: 0.1763, 5: 0.1794, 6: 0.1826,
+      7: 0.1857, 8: 0.1889, 9: 0.192, 10: 0.1951, 11: 0.1983, 12: 0.2014,
+    },
+    gasoil: {
+      1: 0.33, 2: 0.333, 3: 0.336, 4: 0.339, 5: 0.342, 6: 0.345,
+      7: 0.348, 8: 0.351, 9: 0.354, 10: 0.357, 11: 0.36, 12: 0.363,
+    },
+  },
 };
 
 export function targetBauran(
@@ -290,6 +314,23 @@ export const TARGET_VOLUME_PER_DAY: Record<
     10: { PERTALITE: 8000, PERTAMAX: 750, "PERTAMAX TURBO": 50, SOLAR: 12000, DEXLITE: 3180, "PERTAMINA DEX": 570 },
     11: { PERTALITE: 8000, PERTAMAX: 800, "PERTAMAX TURBO": 60, SOLAR: 12000, DEXLITE: 3200, "PERTAMINA DEX": 600 },
     12: { PERTALITE: 8000, PERTAMAX: 850, "PERTAMAX TURBO": 70, SOLAR: 12000, DEXLITE: 3220, "PERTAMINA DEX": 630 },
+  },
+  // Bundaran Kotabaru (64.781.06) — tenant BARU PT Merita Abadi Sukses. Workbook
+  // 2026 baris KB, 12 bulan penuh (L/HARI). PERTALITE 35k (tertinggi semua unit) &
+  // SOLAR 10k (terendah) flat; semua produk termasuk TURBO aktif sejak Jan (≠ AS).
+  "6478106": {
+    1: { PERTALITE: 35000, PERTAMAX: 5600, "PERTAMAX TURBO": 240, SOLAR: 10000, DEXLITE: 2500, "PERTAMINA DEX": 800 },
+    2: { PERTALITE: 35000, PERTAMAX: 5700, "PERTAMAX TURBO": 250, SOLAR: 10000, DEXLITE: 2510, "PERTAMINA DEX": 820 },
+    3: { PERTALITE: 35000, PERTAMAX: 5800, "PERTAMAX TURBO": 260, SOLAR: 10000, DEXLITE: 2520, "PERTAMINA DEX": 840 },
+    4: { PERTALITE: 35000, PERTAMAX: 5900, "PERTAMAX TURBO": 270, SOLAR: 10000, DEXLITE: 2530, "PERTAMINA DEX": 860 },
+    5: { PERTALITE: 35000, PERTAMAX: 6000, "PERTAMAX TURBO": 280, SOLAR: 10000, DEXLITE: 2540, "PERTAMINA DEX": 880 },
+    6: { PERTALITE: 35000, PERTAMAX: 6100, "PERTAMAX TURBO": 290, SOLAR: 10000, DEXLITE: 2550, "PERTAMINA DEX": 900 },
+    7: { PERTALITE: 35000, PERTAMAX: 6200, "PERTAMAX TURBO": 300, SOLAR: 10000, DEXLITE: 2560, "PERTAMINA DEX": 920 },
+    8: { PERTALITE: 35000, PERTAMAX: 6300, "PERTAMAX TURBO": 310, SOLAR: 10000, DEXLITE: 2570, "PERTAMINA DEX": 940 },
+    9: { PERTALITE: 35000, PERTAMAX: 6400, "PERTAMAX TURBO": 320, SOLAR: 10000, DEXLITE: 2580, "PERTAMINA DEX": 960 },
+    10: { PERTALITE: 35000, PERTAMAX: 6500, "PERTAMAX TURBO": 330, SOLAR: 10000, DEXLITE: 2590, "PERTAMINA DEX": 980 },
+    11: { PERTALITE: 35000, PERTAMAX: 6600, "PERTAMAX TURBO": 340, SOLAR: 10000, DEXLITE: 2600, "PERTAMINA DEX": 1000 },
+    12: { PERTALITE: 35000, PERTAMAX: 6700, "PERTAMAX TURBO": 350, SOLAR: 10000, DEXLITE: 2610, "PERTAMINA DEX": 1020 },
   },
 };
 

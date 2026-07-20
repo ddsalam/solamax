@@ -55,3 +55,43 @@ describe("entri Adisucipto 6478101 (workbook 2026 baris AS)", () => {
     }
   });
 });
+
+describe("entri Bundaran Kotabaru 6478106 (workbook 2026 baris KB, tenant BARU PT Merita Abadi Sukses)", () => {
+  it("UNIT_DISPLAY: dotted/PT/alamat benar", () => {
+    const d = UNIT_DISPLAY["6478106"]!;
+    expect(d.dotted).toBe("64.781.06");
+    expect(d.name).toBe("Bundaran Kotabaru");
+    expect(d.pt).toBe("PT Merita Abadi Sukses");
+    expect(d.address).toContain("Kota Baru");
+  });
+
+  it("target 12 bulan penuh; semua produk (termasuk TURBO) aktif sejak Jan (≠ AS)", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(TARGET_BAURAN["6478106"]!.gasoline[m]).toBeTypeOf("number");
+      expect(TARGET_BAURAN["6478106"]!.gasoil[m]).toBeTypeOf("number");
+      expect(Object.keys(TARGET_VOLUME_PER_DAY["6478106"]![m]!)).toHaveLength(6);
+    }
+    // TURBO tak pernah 0 di KB (dijual penuh sejak Jan) — beda dgn AS.
+    expect(targetVolumePerDay("6478106", 1, "PERTAMAX TURBO")).toBe(240);
+    expect(targetVolumePerDay("6478106", 12, "PERTAMAX TURBO")).toBe(350);
+    // PERTALITE 35k / SOLAR 10k flat (karakteristik KB).
+    expect(targetVolumePerDay("6478106", 6, "PERTALITE")).toBe(35000);
+    expect(targetVolumePerDay("6478106", 6, "SOLAR")).toBe(10000);
+  });
+
+  it("bauran konsisten dgn rasio volume workbook (toleransi pembulatan 4dp)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const v = TARGET_VOLUME_PER_DAY["6478106"]![m]!;
+      const gasoline = (v["PERTAMAX"]! + v["PERTAMAX TURBO"]!) / v["PERTALITE"]!;
+      const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
+      expect(targetBauran("6478106", "gasoline", m)!).toBeCloseTo(gasoline, 3);
+      expect(targetBauran("6478106", "gasoil", m)!).toBeCloseTo(gasoil, 3);
+    }
+  });
+
+  it("label PT ekspor: unit KB → PT Merita Abadi Sukses; campuran lintas-PT → SolaGroup", () => {
+    expect(ptLabelForUnits(["6478106"])).toBe("PT Merita Abadi Sukses");
+    expect(ptLabelForUnits(["6478106", "6478111"])).toBe("SolaGroup");
+    expect(ptLabelForUnits(["6478106", "6478101"])).toBe("SolaGroup");
+  });
+});
