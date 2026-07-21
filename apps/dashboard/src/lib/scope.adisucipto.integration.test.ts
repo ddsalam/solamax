@@ -11,8 +11,11 @@ import { ptLabelForUnits } from "./config";
  * di sini batasnya TENANT (Option A onboarding AS) — direksi/admin tenant lama
  * TIDAK boleh melihat AS sama sekali, dan sebaliknya, tanpa grant per-unit.
  *
- * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN unit AS ada —
- * otomatis SKIP pada instance tanpa AS, sehingga tetap hijau di mana pun.
+ * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN unit AS ada.
+ * Bila AS BELUM ada di instance itu, tiap test melapor **SKIP eksplisit**
+ * (`ctx.skip()`), BUKAN `return` senyap — sebab vitest melaporkan return senyap
+ * sebagai ✓ PASS, yang membuat "unit tidak ada" tak bisa dibedakan dari
+ * "isolasi terverifikasi" (false assurance). Tetap aman dijalankan di mana pun.
  * Pasangan DB-layer-nya = RLS 0016 (lihat rls-surfaces.integration.test.ts).
  */
 const LIVE = process.env.SCOPE_LIVE_DB === "1" && !!process.env.DATABASE_URL;
@@ -48,8 +51,8 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
     await pool?.end();
   });
 
-  it("prasyarat: AS aktif di bawah tenant PT Sola Adis Raya ≠ tenant lama (skip jika AS belum ada)", () => {
-    if (!as) return; // instance tanpa AS → sisanya di-skip lewat guard di tiap test
+  it("prasyarat: AS aktif di bawah tenant PT Sola Adis Raya ≠ tenant lama (skip jika AS belum ada)", (ctx) => {
+    if (!as) return ctx.skip(); // absen → SKIP eksplisit, BUKAN pass senyap
     expect(ptAdis).toBeTruthy();
     expect(as!.tenant_id).toBe(ptAdis);
     expect(ptLama).toBeTruthy();
@@ -58,27 +61,27 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
     expect(lama.map((u) => u.unit_id)).not.toContain(as!.unit_id);
   });
 
-  it("direksi tenant LAMA → TIDAK melihat AS (unit tenant lama saja)", () => {
-    if (!as) return;
+  it("direksi tenant LAMA → TIDAK melihat AS (unit tenant lama saja)", (ctx) => {
+    if (!as) return ctx.skip();
     const a = allowed({ role: "direksi", tenantId: ptLama!, unitScope: "ALL" });
     expect(a).not.toContain(as!.unit_id);
     for (const u of lama) expect(a).toContain(u.unit_id);
   });
 
-  it("admin_perusahaan tenant LAMA → TIDAK melihat AS", () => {
-    if (!as) return;
+  it("admin_perusahaan tenant LAMA → TIDAK melihat AS", (ctx) => {
+    if (!as) return ctx.skip();
     const a = allowed({ role: "admin_perusahaan", tenantId: ptLama!, unitScope: "ALL" });
     expect(a).not.toContain(as!.unit_id);
   });
 
-  it("direksi PT Sola Adis Raya → HANYA AS (tanpa grant per-unit)", () => {
-    if (!as) return;
+  it("direksi PT Sola Adis Raya → HANYA AS (tanpa grant per-unit)", (ctx) => {
+    if (!as) return ctx.skip();
     const a = allowed({ role: "direksi", tenantId: ptAdis!, unitScope: "ALL" });
     expect(a).toEqual([as!.unit_id]);
   });
 
-  it("pengawas[AS] → HANYA AS; pengawas tenant lama TIDAK melihat AS", () => {
-    if (!as) return;
+  it("pengawas[AS] → HANYA AS; pengawas tenant lama TIDAK melihat AS", (ctx) => {
+    if (!as) return ctx.skip();
     const a = allowed({ role: "pengawas", tenantId: ptAdis!, unitScope: [as!.unit_id] });
     expect(a).toEqual([as!.unit_id]);
     for (const u of lama) {
@@ -87,8 +90,8 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
     }
   });
 
-  it("404 lintas-tenant: unit AS tak terlihat viewer tenant lama (→ notFound, tanpa bocor eksistensi)", () => {
-    if (!as) return;
+  it("404 lintas-tenant: unit AS tak terlihat viewer tenant lama (→ notFound, tanpa bocor eksistensi)", (ctx) => {
+    if (!as) return ctx.skip();
     // scope.requireUnit() melempar notFound() bila unit tak lolos unitVisible —
     // 404 identik dgn unit-tak-ada, jadi eksistensi AS tidak bocor.
     expect(
@@ -107,15 +110,15 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
     }
   });
 
-  it("super_admin → melihat semua unit kedua tenant", () => {
-    if (!as) return;
+  it("super_admin → melihat semua unit kedua tenant", (ctx) => {
+    if (!as) return ctx.skip();
     const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
     expect(a).toContain(as!.unit_id);
     for (const u of lama) expect(a).toContain(u.unit_id);
   });
 
-  it("label PT ekspor: unit AS → PT Sola Adis Raya; campuran lintas-PT → payung SolaGroup", () => {
-    if (!as) return;
+  it("label PT ekspor: unit AS → PT Sola Adis Raya; campuran lintas-PT → payung SolaGroup", (ctx) => {
+    if (!as) return ctx.skip();
     expect(ptLabelForUnits(["6478101"])).toBe("PT Sola Adis Raya");
     expect(ptLabelForUnits(["6478111", "6378301"])).toBe("PT Sola Petra Abadi");
     expect(ptLabelForUnits(["6478111", "6478101"])).toBe("SolaGroup");

@@ -15,8 +15,11 @@ import { ptLabelForUnits } from "./config";
  * ditegakkan di scope-rule.ts:35 (`unit.tenant_id !== ctx.tenantId → false`),
  * simetris.
  *
- * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN unit BL ada —
- * otomatis SKIP pada instance tanpa BL, sehingga tetap hijau di mana pun.
+ * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN unit BL ada.
+ * Bila BL BELUM ada di instance itu, tiap test melapor **SKIP eksplisit**
+ * (`ctx.skip()`), BUKAN `return` senyap — sebab vitest melaporkan return senyap
+ * sebagai ✓ PASS, yang membuat "unit tidak ada" tak bisa dibedakan dari
+ * "isolasi terverifikasi" (false assurance). Tetap aman dijalankan di mana pun.
  * Pasangan DB-layer-nya = RLS 0016 (lihat rls-surfaces.integration.test.ts).
  */
 const LIVE = process.env.SCOPE_LIVE_DB === "1" && !!process.env.DATABASE_URL;
@@ -50,8 +53,8 @@ d("BL⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     await pool?.end();
   });
 
-  it("prasyarat: BL aktif di bawah tenant PT Batu Layang Jaya ≠ tenant lain (skip jika BL belum ada)", () => {
-    if (!bl) return; // instance tanpa BL → sisanya di-skip lewat guard di tiap test
+  it("prasyarat: BL aktif di bawah tenant PT Batu Layang Jaya ≠ tenant lain (skip jika BL belum ada)", (ctx) => {
+    if (!bl) return ctx.skip(); // absen → SKIP eksplisit, BUKAN pass senyap
     expect(ptBl).toBeTruthy();
     expect(bl!.tenant_id).toBe(ptBl);
     // BL tidak boleh menumpang tenant lain (Option A — bukan pola Bakau).
@@ -60,8 +63,8 @@ d("BL⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     expect(others.length).toBeGreaterThan(0);
   });
 
-  it("direksi tiap tenant LAIN → TIDAK melihat BL (hanya unit tenant-nya sendiri)", () => {
-    if (!bl) return;
+  it("direksi tiap tenant LAIN → TIDAK melihat BL (hanya unit tenant-nya sendiri)", (ctx) => {
+    if (!bl) return ctx.skip();
     const otherTenants = [...new Set(others.map((u) => u.tenant_id))];
     for (const t of otherTenants) {
       const a = allowed({ role: "direksi", tenantId: t!, unitScope: "ALL" });
@@ -71,22 +74,22 @@ d("BL⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     }
   });
 
-  it("admin_perusahaan tiap tenant LAIN → TIDAK melihat BL", () => {
-    if (!bl) return;
+  it("admin_perusahaan tiap tenant LAIN → TIDAK melihat BL", (ctx) => {
+    if (!bl) return ctx.skip();
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
       const a = allowed({ role: "admin_perusahaan", tenantId: t!, unitScope: "ALL" });
       expect(a).not.toContain(bl!.unit_id);
     }
   });
 
-  it("direksi PT Batu Layang Jaya → HANYA BL (tanpa grant per-unit)", () => {
-    if (!bl) return;
+  it("direksi PT Batu Layang Jaya → HANYA BL (tanpa grant per-unit)", (ctx) => {
+    if (!bl) return ctx.skip();
     const a = allowed({ role: "direksi", tenantId: ptBl!, unitScope: "ALL" });
     expect(a).toEqual([bl!.unit_id]);
   });
 
-  it("pengawas[BL] → HANYA BL; pengawas tenant lain TIDAK melihat BL", () => {
-    if (!bl) return;
+  it("pengawas[BL] → HANYA BL; pengawas tenant lain TIDAK melihat BL", (ctx) => {
+    if (!bl) return ctx.skip();
     const a = allowed({ role: "pengawas", tenantId: ptBl!, unitScope: [bl!.unit_id] });
     expect(a).toEqual([bl!.unit_id]);
     for (const u of others) {
@@ -95,8 +98,8 @@ d("BL⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     }
   });
 
-  it("404 lintas-tenant dua arah: BL tak terlihat viewer tenant lain, dan sebaliknya", () => {
-    if (!bl) return;
+  it("404 lintas-tenant dua arah: BL tak terlihat viewer tenant lain, dan sebaliknya", (ctx) => {
+    if (!bl) return ctx.skip();
     // Arah 1: viewer tenant lain → BL tak terlihat (notFound(), tanpa bocor eksistensi).
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
       expect(
@@ -117,15 +120,15 @@ d("BL⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     }
   });
 
-  it("super_admin → melihat semua unit (BL + semua tenant lain)", () => {
-    if (!bl) return;
+  it("super_admin → melihat semua unit (BL + semua tenant lain)", (ctx) => {
+    if (!bl) return ctx.skip();
     const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
     expect(a).toContain(bl!.unit_id);
     for (const u of others) expect(a).toContain(u.unit_id);
   });
 
-  it("label PT ekspor: unit BL → PT Batu Layang Jaya; campuran lintas-PT → payung SolaGroup", () => {
-    if (!bl) return;
+  it("label PT ekspor: unit BL → PT Batu Layang Jaya; campuran lintas-PT → payung SolaGroup", (ctx) => {
+    if (!bl) return ctx.skip();
     expect(ptLabelForUnits(["6478201"])).toBe("PT Batu Layang Jaya");
     expect(ptLabelForUnits(["6478201", "6478111"])).toBe("SolaGroup");
     expect(ptLabelForUnits(["6478201", "6478106"])).toBe("SolaGroup");

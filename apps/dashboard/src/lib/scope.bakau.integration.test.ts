@@ -8,8 +8,11 @@ import { unitVisible, type ScopeCtx } from "./scope-rule";
  * SATU tenant PT: pengawas Bakau melihat HANYA Bakau, pengawas IB HANYA IB, direksi
  * melihat KEDUANYA, dan permintaan lintas-unit tak terlihat (→ notFound/404).
  *
- * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN kedua unit ada — otomatis
- * SKIP pada instance 1-unit, sehingga tetap hijau di live sampai Bakau di-provision.
+ * Jalan hanya bila SCOPE_LIVE_DB=1 & DATABASE_URL di-set DAN unit Bakau ada.
+ * Bila Bakau BELUM ada di instance itu, tiap test melapor **SKIP eksplisit**
+ * (`ctx.skip()`), BUKAN `return` senyap — sebab vitest melaporkan return senyap
+ * sebagai ✓ PASS, yang membuat "unit tidak ada" tak bisa dibedakan dari
+ * "isolasi terverifikasi" (false assurance). Tetap aman dijalankan di mana pun.
  * Pasangan DB-layer-nya = RLS 0016 (lihat rls-surfaces.integration.test.ts).
  */
 const LIVE = process.env.SCOPE_LIVE_DB === "1" && !!process.env.DATABASE_URL;
@@ -41,44 +44,44 @@ d("Bakau⊥IB scope isolation (data nyata, fixture-free)", () => {
     await pool?.end();
   });
 
-  it("prasyarat: IB + Bakau aktif di bawah satu tenant PT (skip jika Bakau belum ada)", () => {
-    if (!bakau) return; // instance 1-unit → sisanya di-skip lewat guard di tiap test
+  it("prasyarat: IB + Bakau aktif di bawah satu tenant PT (skip jika Bakau belum ada)", (ctx) => {
+    if (!bakau) return ctx.skip(); // absen → SKIP eksplisit, BUKAN pass senyap
     expect(ib).toBeTruthy();
     expect(ib!.tenant_id).toBe(pt);
     expect(bakau!.tenant_id).toBe(pt);
     expect(pt).toBeTruthy();
   });
 
-  it("direksi PT → melihat KEDUA IB + Bakau", () => {
-    if (!bakau) return;
+  it("direksi PT → melihat KEDUA IB + Bakau", (ctx) => {
+    if (!bakau) return ctx.skip();
     const a = allowed({ role: "direksi", tenantId: pt!, unitScope: "ALL" });
     expect(a).toContain(ib!.unit_id);
     expect(a).toContain(bakau!.unit_id);
   });
 
-  it("pengawas[Bakau] → HANYA Bakau (bukan IB)", () => {
-    if (!bakau) return;
+  it("pengawas[Bakau] → HANYA Bakau (bukan IB)", (ctx) => {
+    if (!bakau) return ctx.skip();
     const a = allowed({ role: "pengawas", tenantId: pt!, unitScope: [bakau!.unit_id] });
     expect(a).toEqual([bakau!.unit_id]);
     expect(a).not.toContain(ib!.unit_id);
   });
 
-  it("pengawas[IB] → HANYA IB (bukan Bakau)", () => {
-    if (!bakau) return;
+  it("pengawas[IB] → HANYA IB (bukan Bakau)", (ctx) => {
+    if (!bakau) return ctx.skip();
     const a = allowed({ role: "pengawas", tenantId: pt!, unitScope: [ib!.unit_id] });
     expect(a).toEqual([ib!.unit_id]);
     expect(a).not.toContain(bakau!.unit_id);
   });
 
-  it("super_admin → melihat keduanya", () => {
-    if (!bakau) return;
+  it("super_admin → melihat keduanya", (ctx) => {
+    if (!bakau) return ctx.skip();
     const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
     expect(a).toContain(ib!.unit_id);
     expect(a).toContain(bakau!.unit_id);
   });
 
-  it("404 lintas-unit: pengawas Bakau minta IB (dan sebaliknya) → tak terlihat", () => {
-    if (!bakau) return;
+  it("404 lintas-unit: pengawas Bakau minta IB (dan sebaliknya) → tak terlihat", (ctx) => {
+    if (!bakau) return ctx.skip();
     // scope.requireUnit() melempar notFound() bila unit tak lolos unitVisible.
     expect(
       unitVisible(
