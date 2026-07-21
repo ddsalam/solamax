@@ -53,7 +53,13 @@
    `return ctx.skip()`, JANGAN `return;` senyap** — vitest melaporkan return senyap sebagai
    ✓ PASS dgn nol assertion, sehingga "unit belum ada" tak terbedakan dari "isolasi
    terverifikasi" (ditemukan di BL: `scope.kotabaru` hijau 8/8 di `-rlsstg` padahal KB tak
-   ada di sana). PR → `staging` →
+   ada di sana). **Superlatif lintas-unit di tes karakterisasi hanya sah bila terverifikasi
+   12/12 thd SEMUA unit** (koreksi KR) — pakai komparator spesifik atau rujuk matriks
+   `wikis/spbu-sola/wiki/concepts/npso-pso-mix.md`; dua kekeliruan nyata lahir dari sini
+   (BL "gasoline terendah", KR "gasoil terendah" — keduanya *data benar, prosa salah*).
+   Waspadai pula entri **tak ber-12-bulan**: IB hanya punya bulan 6, jadi
+   `targetVolumePerDay("6478111", 1|12, …)` = `null` dan perbandingan ramp lintas-unit
+   WAJIB mengecualikannya eksplisit. PR → `staging` →
    rehearsal `-rlsstg` → PR `staging`→`main` gated `pilot`. **Tanpa deploy manual.**
 5. **Rehearsal `-rlsstg`** (bukti sebelum live): provision serupa di DB test + RLS proofs
    (write-in-scope OK / cross-unit WITH CHECK reject / read isolation / no-context=0) +
@@ -66,9 +72,15 @@
    sehingga terlihat seperti key/provisioning yang rusak. **`watermark_high` WAJIB ada**
    (`.nullable()`, bukan `.optional()` —
    [`ingest.ts:17`](../packages/shared/src/ingest.ts)) → kirim `null`; kalau tidak, 422
-   muncul sebelum logika auth/scope sempat teruji. Payload DELETE-only yang sah:
+   muncul sebelum logika auth/scope sempat teruji. **`replace_window.from` harus
+   STRIKTLY `<` `to`** (koreksi KR): tanggal sama → `422 "replace_window: from harus
+   < to"`, lagi-lagi SEBELUM auth/scope, sehingga menyamar sebagai key/provisioning
+   rusak. Payload DELETE-only yang sah:
    `{"unit_code":"…","domain":"delivery","watermark_high":null,
-   "replace_window":{"from":"…","to":"…"},"tables":{}}`. Kolom mirror `sales_detail` =
+   "replace_window":{"from":"2026-07-20","to":"2026-07-21"},"tables":{}}`.
+   Kontrol yang layak dijalankan tiap rehearsal: kirim key BENAR dgn header
+   `x-api-key` → harus `401 "API key tidak ada"` (membuktikan header-lah yang
+   diuji, bukan key). Kolom mirror `sales_detail` =
    `nurut` + `dtgljam` (timestamptz NOT NULL); **tidak ada `dtgljual`** di mirror — nama
    itu hanya milik sumber EasyMax.
 6. **OAuth test user** (Console, manual) + **grant pengawas via `/admin` SETELAH login
@@ -78,7 +90,14 @@
 ## 2. Machine-side (owner via CRD) — dgn pelajaran AS
 
 1. Node 18 (mesin lama: lihat tabel RUNBOOK-SPBU) · MySQL user `readonly_sync` SELECT-only,
-   password konvensi `SPBU<kode>`.
+   password konvensi `SPBU<kode>`. **🔴 JANGAN asumsikan DB bernama `easymax`** (koreksi KR):
+   jalankan `SHOW DATABASES;` DULU — KR ternyata **`easymax_korek`**, nama bersifat per-situs,
+   dan nilainya dipakai di GRANT **dan** `config.local.json` (`mysql.database`). Ini harus
+   mendahului pembuatan user karena **MySQL menerima GRANT atas database yang TIDAK ADA tanpa
+   error**: salah nama → user dgn **nol hak efektif**, gagal jauh di hilir dgn pesan yang
+   menyesatkan (seolah key/provisioning rusak). Sebelum `GRANT`, cek pula
+   `SELECT user, host FROM mysql.user WHERE user='readonly_sync';` dan pakai `host` yang sudah
+   terdaftar — di MySQL 5.0 `GRANT` polos ke host baru bisa **membuat akun tanpa password**.
 2. Bundle dari `main` yang sudah dipromosikan: `pnpm --filter @solamax/agent bundle`.
    Zip kini **FLAT** (fix defect AS) dan **berisi `jalankan-agent.bat` + `resync-bulanan.bat`
    ter-generate** — tidak ada lagi file buatan-tangan. `config.local.json`: `unitCode` WAJIB
@@ -91,8 +110,16 @@
      `VCNAMA` (nama PT), `VCALAMAT`/`CKOTA`. Cocokkan **ketiganya** dgn kode + PT + alamat
      yang di-provision; beda = STOP. Catatan: pipeline **tidak pernah** membaca identitas
      unit dari EasyMax (`unitCode` murni dari `config.local.json`), jadi ini cek-silang
-     manual — tapi `VCNAMA` sekaligus **membuktikan keputusan tenant** (di BL ia
-     mengonfirmasi "PT. BATU LAYANG JAYA" = PT keempat, jadi tenant baru bukan asumsi).
+     manual. **Bobot bukti tiap kolom BERBEDA (koreksi KR):** hanya **`CSPBU` yang
+     DECISIVE** (beda = STOP). `VCNAMA` *bisa* membuktikan keputusan tenant — di BL ia
+     mengonfirmasi "PT. BATU LAYANG JAYA" = PT keempat — tetapi di KR ia berisi
+     **"SPBU KOREK"** (nama stasiun, bukan PT), `VCALAMAT` kosong, `CKOTA` "PONTIANAK".
+     **Cek yang tidak konklusif BUKAN kegagalan**: `tm_konfid` dipelihara admin POS situs
+     dan sering terbengkalai. Yang wajib dilakukan = **catat tingkat buktinya dengan jujur**:
+     tenant BL bersandar **konfirmasi POS**; tenant KR/KB/AS bersandar **pernyataan owner
+     saja**. **JANGAN menulis ke EasyMax** untuk "memperbaiki" `tm_konfid` — read-only
+     mutlak; itu ranah admin POS situs. Alamat kop tetap dari vault, bukan dari `CKOTA`
+     legacy (bukan konflik, hanya field kasar).
    - **Census NULL-DTGLJAM (WAJIB — pelajaran AS):**
      `SELECT COUNT(*) FROM tr_djualbbm WHERE DTGLJAM IS NULL;`
      `0`/kecil = kelas IB/Bakau · **≈semua baris = kelas AS (NULL-by-default)** → task
