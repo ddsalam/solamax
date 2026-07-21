@@ -160,3 +160,86 @@ describe("entri Batu Layang 6478201 (workbook 2026 baris BL, tenant BARU PT Batu
     expect(ptLabelForUnits(["6478201", "6478106"])).toBe("SolaGroup");
   });
 });
+
+describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Indah Lestari Oil Pratama)", () => {
+  it("UNIT_DISPLAY: dotted/PT/alamat benar", () => {
+    const d = UNIT_DISPLAY["6478311"]!;
+    expect(d.dotted).toBe("64.783.11");
+    expect(d.name).toBe("Korek");
+    expect(d.pt).toBe("PT Mitra Indah Lestari Oil Pratama");
+    // Satu-satunya unit di luar kota Pontianak.
+    expect(d.address).toContain("Kubu Raya");
+  });
+
+  it("target 12 bulan penuh; semua produk (termasuk TURBO) aktif sejak Jan (≠ AS)", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(TARGET_BAURAN["6478311"]!.gasoline[m]).toBeTypeOf("number");
+      expect(TARGET_BAURAN["6478311"]!.gasoil[m]).toBeTypeOf("number");
+      expect(Object.keys(TARGET_VOLUME_PER_DAY["6478311"]![m]!)).toHaveLength(6);
+    }
+    expect(targetVolumePerDay("6478311", 1, "PERTAMAX TURBO")).toBe(80);
+    expect(targetVolumePerDay("6478311", 12, "PERTAMAX TURBO")).toBe(190);
+    // PERTALITE 28k / SOLAR 10k flat (karakteristik KR).
+    expect(targetVolumePerDay("6478311", 6, "PERTALITE")).toBe(28000);
+    expect(targetVolumePerDay("6478311", 6, "SOLAR")).toBe(10000);
+  });
+
+  it("DEXLITE 1.750 FLAT 12/12 — satu-satunya unit tanpa ramp Dexlite", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(targetVolumePerDay("6478311", m, "DEXLITE")).toBe(1750);
+    }
+    // Semua unit lain ber-SERI-12-BULAN MENAIK dari Jan ke Des (ramp) — KR tidak.
+    // IB (6478111) sengaja DIKECUALIKAN: entri pilot-nya hanya berisi bulan 6,
+    // jadi tak ada ramp yang bisa diamati (targetVolumePerDay → null di bulan 1/12).
+    for (const other of ["6378301", "6478101", "6478106", "6478201"]) {
+      expect(targetVolumePerDay(other, 12, "DEXLITE")!).toBeGreaterThan(
+        targetVolumePerDay(other, 1, "DEXLITE")!,
+      );
+    }
+    expect(targetVolumePerDay("6478111", 1, "DEXLITE")).toBeNull(); // IB: pilot 1 bulan
+  });
+
+  it("gasoil rendah: di BAWAH IB/AS/KB/BL 12/12, tetapi DI ATAS Bakau 12/12 (Bakau-lah yg terendah)", () => {
+    // Catatan: KR BUKAN gasoil terendah — Bakau (0,1235–0,1688) lebih rendah.
+    // Superlatif lintas-unit hanya sah bila terverifikasi 12/12 thd SEMUA unit.
+    for (let m = 1; m <= 12; m++) {
+      const kr = targetBauran("6478311", "gasoil", m)!;
+      for (const other of ["6478111", "6478101", "6478106", "6478201"]) {
+        expect(kr).toBeLessThan(targetBauran(other, "gasoil", m)!);
+      }
+      expect(kr).toBeGreaterThan(targetBauran("6378301", "gasoil", m)!);
+    }
+  });
+
+  it("gasoline: di bawah IB/Bakau/KB 12/12; MENYILANG AS & BL di bulan 5 (KR lebih tinggi Jan–Apr)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const kr = targetBauran("6478311", "gasoline", m)!;
+      for (const other of ["6478111", "6378301", "6478106"]) {
+        expect(kr).toBeLessThan(targetBauran(other, "gasoline", m)!);
+      }
+      // AS & BL mulai lebih rendah (Jan 0,0375 / 0,0425) lalu naik lebih curam
+      // → KR menyalip ke bawah sejak Mei.
+      for (const crossing of ["6478101", "6478201"]) {
+        const o = targetBauran(crossing, "gasoline", m)!;
+        if (m <= 4) expect(kr).toBeGreaterThan(o);
+        else expect(kr).toBeLessThan(o);
+      }
+    }
+  });
+
+  it("bauran konsisten dgn rasio volume workbook (toleransi pembulatan 4dp)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const v = TARGET_VOLUME_PER_DAY["6478311"]![m]!;
+      const gasoline = (v["PERTAMAX"]! + v["PERTAMAX TURBO"]!) / v["PERTALITE"]!;
+      const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
+      expect(targetBauran("6478311", "gasoline", m)!).toBeCloseTo(gasoline, 3);
+      expect(targetBauran("6478311", "gasoil", m)!).toBeCloseTo(gasoil, 3);
+    }
+  });
+
+  it("label PT ekspor: unit KR → PT Mitra Indah Lestari Oil Pratama; campuran lintas-PT → SolaGroup", () => {
+    expect(ptLabelForUnits(["6478311"])).toBe("PT Mitra Indah Lestari Oil Pratama");
+    expect(ptLabelForUnits(["6478311", "6478111"])).toBe("SolaGroup");
+    expect(ptLabelForUnits(["6478311", "6478201"])).toBe("SolaGroup");
+  });
+});
