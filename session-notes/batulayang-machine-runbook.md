@@ -83,6 +83,11 @@ Kirim isi `output-tes-koneksi.txt` + `output-dry-run.txt`. Yang saya cek: view
 
 ## 7. 🛑 STOP-CHECK WAJIB #1 — Census DTGLJAM
 
+> ✅ **Hasil BL 2026-07-21: 14.661 NULL / 165.852 total = 8,84% → kelas IB/Bakau.**
+> Diperkuat bukti independen: dry-run `sales` mengembalikan
+> `watermark_high: 2019-10-04T14:02:33Z` (watermark inkremental HIDUP; kelas AS =
+> NULL permanen). → **Task bulanan TIDAK dipasang** (langkah 12 dilewati).
+
 Di **SQL Manager** (read-only), jalankan:
 
 ```sql
@@ -107,14 +112,31 @@ SELECT COUNT(*) AS n_tangki_atg FROM vw_realtm;
 - **0 atau view tidak ada** → unit tanpa ATG (pola AS) → denah tangki **empty-state
   BY DESIGN**, `real_tank`=0. Bukan defect — dicatat sebagai karakteristik unit.
 
-## 8b. Verifikasi kode unit (RED FLAG bila beda)
+> ✅ **Hasil BL 2026-07-21: `vw_realtm` = 8 → ATG HADIR**, dikonfirmasi end-to-end oleh
+> dry-run (`domain:"realtank", counts:{real_tank:8}`). Denah/tank-gauge BL **live**.
+
+## 8b. Verifikasi identitas unit (RED FLAG bila beda)
 
 ```sql
-SELECT * FROM tm_spbu;
+SELECT * FROM tm_konfid;
 ```
 
-Kode unit di EasyMax **harus** `6478201`. Kalau beda — **BERHENTI dan lapor**,
-jangan "diperbaiki" diam-diam (cloud sudah ter-provision dengan kode ini).
+> ⚠️ Tabel identitas SPBU di EasyMax bernama **`tm_konfid`** — **bukan** `tm_spbu`
+> (tebakan salah di draf pertama runbook ini; `tm_spbu` tidak ada). EasyMax tidak punya
+> tabel identitas yang DIBACA pipeline — `unitCode` murni dari `config.local.json` —
+> jadi `tm_konfid` dipakai khusus sebagai cek-silang manual bahwa mesin ini memang
+> unit yang di-provision di cloud.
+
+Harus cocok **ketiganya**:
+- `CSPBU` = **64.782.01** (= kode POS `6478201`)
+- `VCNAMA` = **PT. BATU LAYANG JAYA** (= tenant `pt-batu-layang-jaya`)
+- `VCALAMAT` / `CKOTA` = Batu Layang / PONTIANAK
+
+Kalau ada yang beda — **BERHENTI dan lapor**, jangan "diperbaiki" diam-diam
+(cloud sudah ter-provision dengan kode + PT ini).
+
+✅ **Hasil BL 2026-07-21: cocok 3/3** (`64.782.01` · `PT. BATU LAYANG JAYA` ·
+`Batu Layang, PONTIANAK`). `VCNAMA` sekaligus membuktikan keputusan tenant #4 benar.
 
 > **Tunggu konfirmasi saya setelah langkah 7 + 8 sebelum lanjut ke 9.**
 
@@ -151,7 +173,12 @@ node solamax-agent.cjs --deep-sweep delivery 600 92 --config config.local.json
   trigger **"At log on"** + launcher VBS hidden (minta saya kalau kena ini).
 - Setiap kali bundle di-swap: **End task → kill `node.exe` → Run**.
 
-## 12. Task bulanan — HANYA bila langkah 7 = kelas AS
+## 12. Task bulanan — ❌ TIDAK DIPASANG untuk BL
+
+Census langkah 7 = **kelas IB/Bakau** → **lewati seksi ini.** (Instruksi di bawah
+disimpan untuk unit berikutnya.)
+
+### (referensi) HANYA bila census = kelas AS
 
 Kalau (dan hanya kalau) census menunjukkan ≈semua NULL:
 
