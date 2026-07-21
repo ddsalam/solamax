@@ -22,6 +22,64 @@ describe("ptLabelForUnits (label PT multi-tenant)", () => {
   });
 });
 
+describe("entri Imam Bonjol 6478111 — target 12 bulan (dilengkapi 2026-07-22)", () => {
+  // REGRESI KUNCI: bulan 6 adalah entri pilot yang SUDAH ada sebelum backfill.
+  // Nilainya WAJIB tak berubah; kalau bergeser, berarti workbook kanonik tidak
+  // sepakat dgn config live — itu TEMUAN, bukan sekadar update.
+  it("bulan 6 TIDAK berubah dari entri pilot (jangkar regresi, byte-identical)", () => {
+    const v = TARGET_VOLUME_PER_DAY["6478111"]![6]!;
+    expect(v).toEqual({
+      PERTALITE: 30000,
+      PERTAMAX: 3500,
+      "PERTAMAX TURBO": 150,
+      SOLAR: 23000,
+      DEXLITE: 3300,
+      "PERTAMINA DEX": 5000,
+    });
+    expect(targetBauran("6478111", "gasoline", 6)).toBe(0.1217);
+    expect(targetBauran("6478111", "gasoil", 6)).toBe(0.3609);
+  });
+
+  it("12 bulan penuh, 6 produk tiap bulan (dulu HANYA bulan 6)", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(Object.keys(TARGET_VOLUME_PER_DAY["6478111"]![m]!)).toHaveLength(6);
+      expect(TARGET_BAURAN["6478111"]!.gasoline[m]).toBeTypeOf("number");
+      expect(TARGET_BAURAN["6478111"]!.gasoil[m]).toBeTypeOf("number");
+    }
+    // PERTALITE 30k & SOLAR 23k flat; keduanya TERTINGGI semua unit.
+    for (let m = 1; m <= 12; m++) {
+      expect(targetVolumePerDay("6478111", m, "PERTALITE")).toBe(30000);
+      expect(targetVolumePerDay("6478111", m, "SOLAR")).toBe(23000);
+    }
+    // Ramp: Pertamax 3000→4100, Turbo 100→210, Dexlite 3200→3420, PDex 4900→5120.
+    expect(targetVolumePerDay("6478111", 1, "PERTAMAX")).toBe(3000);
+    expect(targetVolumePerDay("6478111", 12, "PERTAMAX")).toBe(4100);
+    expect(targetVolumePerDay("6478111", 1, "PERTAMAX TURBO")).toBe(100);
+    expect(targetVolumePerDay("6478111", 12, "PERTAMAX TURBO")).toBe(210);
+    expect(targetVolumePerDay("6478111", 12, "PERTAMINA DEX")).toBe(5120);
+  });
+
+  it("bauran konsisten dgn rasio volume workbook (toleransi pembulatan 4dp)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const v = TARGET_VOLUME_PER_DAY["6478111"]![m]!;
+      const gasoline = (v["PERTAMAX"]! + v["PERTAMAX TURBO"]!) / v["PERTALITE"]!;
+      const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
+      expect(targetBauran("6478111", "gasoline", m)!).toBeCloseTo(gasoline, 3);
+      expect(targetBauran("6478111", "gasoil", m)!).toBeCloseTo(gasoil, 3);
+    }
+  });
+
+  it("volume harian total IB = TERTINGGI semua unit, 12/12 bulan", () => {
+    const total = (code: string, m: number) =>
+      Object.values(TARGET_VOLUME_PER_DAY[code]![m]!).reduce((a, b) => a + b, 0);
+    for (let m = 1; m <= 12; m++) {
+      for (const other of ["6378301", "6478101", "6478106", "6478201", "6478311"]) {
+        expect(total("6478111", m)).toBeGreaterThan(total(other, m));
+      }
+    }
+  });
+});
+
 describe("entri Adisucipto 6478101 (workbook 2026 baris AS)", () => {
   it("UNIT_DISPLAY: dotted/PT/alamat benar", () => {
     const d = UNIT_DISPLAY["6478101"]!;
@@ -188,15 +246,14 @@ describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Inda
     for (let m = 1; m <= 12; m++) {
       expect(targetVolumePerDay("6478311", m, "DEXLITE")).toBe(1750);
     }
-    // Semua unit lain ber-SERI-12-BULAN MENAIK dari Jan ke Des (ramp) — KR tidak.
-    // IB (6478111) sengaja DIKECUALIKAN: entri pilot-nya hanya berisi bulan 6,
-    // jadi tak ada ramp yang bisa diamati (targetVolumePerDay → null di bulan 1/12).
-    for (const other of ["6378301", "6478101", "6478106", "6478201"]) {
+    // Semua unit lain MENAIK dari Jan ke Des (ramp) — KR tidak. IB kini ikut
+    // dibandingkan: entri 12-bulannya dilengkapi 2026-07-22 (dulu hanya bulan 6,
+    // sehingga sengaja dikecualikan di sini).
+    for (const other of ["6478111", "6378301", "6478101", "6478106", "6478201"]) {
       expect(targetVolumePerDay(other, 12, "DEXLITE")!).toBeGreaterThan(
         targetVolumePerDay(other, 1, "DEXLITE")!,
       );
     }
-    expect(targetVolumePerDay("6478111", 1, "DEXLITE")).toBeNull(); // IB: pilot 1 bulan
   });
 
   it("gasoil rendah: di BAWAH IB/AS/KB/BL 12/12, tetapi DI ATAS Bakau 12/12 (Bakau-lah yg terendah)", () => {
