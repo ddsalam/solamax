@@ -57,6 +57,17 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
     address: "Jl. Batu Layang, Kec. Pontianak Utara, 78244",
     // pengawas: Indra Wahyudi (spbu6478201bl@solagroup.co)
   },
+  // Korek (64.783.11) — tenant BARU (ke-5): PT Mitra Indah Lestari Oil Pratama
+  // (Option A, isolasi lintas-tenant seperti AS/KB/BL — bukan pola same-tenant Bakau).
+  // Satu-satunya unit di luar kota (Kab. Kubu Raya).
+  "6478311": {
+    dotted: "64.783.11",
+    name: "Korek",
+    pt: "PT Mitra Indah Lestari Oil Pratama",
+    address:
+      "Jl. Trans Kalimantan, Desa Korek, Kec. Sungai Ambawang, Kab. Kubu Raya, 78393",
+    // pengawas: Rio Prasetiawan (spbu6478311milop@solagroup.co)
+  },
 };
 
 /**
@@ -233,6 +244,24 @@ export const TARGET_BAURAN: Record<
       7: 0.52, 8: 0.5224, 9: 0.5247, 10: 0.5271, 11: 0.5294, 12: 0.5318,
     },
   },
+  // Korek (64.783.11) — tenant BARU PT Mitra Indah Lestari Oil Pratama. Workbook
+  // "Target SPBU SolaGroup 2026" baris KR, 12 bulan penuh (angka NYATA, cross-check
+  // owner 2026-07-21; 96/96 sel eksak + bauran terderivasi dari volume 12/12).
+  // 4dp round-half-up dari raw (mis. gasoline Jan 0.05285714… → 0.0529).
+  // Profil: bauran gasoil RENDAH (0,255–0,277) — lebih rendah dari IB/KB/AS/BL
+  // 12/12, tetapi TETAP DI ATAS Bakau (0,1235–0,1688); Bakau-lah yang terendah.
+  // Gasoline lebih rendah dari IB/Bakau/KB 12/12, tetapi menyilang AS & BL di
+  // bulan 5 (KR lebih tinggi Jan–Apr, lebih rendah Mei–Des).
+  "6478311": {
+    gasoline: {
+      1: 0.0529, 2: 0.055, 3: 0.0571, 4: 0.0593, 5: 0.0614, 6: 0.0636,
+      7: 0.0657, 8: 0.0679, 9: 0.07, 10: 0.0721, 11: 0.0743, 12: 0.0764,
+    },
+    gasoil: {
+      1: 0.255, 2: 0.257, 3: 0.259, 4: 0.261, 5: 0.263, 6: 0.265,
+      7: 0.267, 8: 0.269, 9: 0.271, 10: 0.273, 11: 0.275, 12: 0.277,
+    },
+  },
 };
 
 export function targetBauran(
@@ -373,6 +402,24 @@ export const TARGET_VOLUME_PER_DAY: Record<
     10: { PERTALITE: 20000, PERTAMAX: 1700, "PERTAMAX TURBO": 140, SOLAR: 17000, DEXLITE: 3180, "PERTAMINA DEX": 5780 },
     11: { PERTALITE: 20000, PERTAMAX: 1800, "PERTAMAX TURBO": 150, SOLAR: 17000, DEXLITE: 3200, "PERTAMINA DEX": 5800 },
     12: { PERTALITE: 20000, PERTAMAX: 1900, "PERTAMAX TURBO": 160, SOLAR: 17000, DEXLITE: 3220, "PERTAMINA DEX": 5820 },
+  },
+  // Korek (64.783.11) — tenant BARU PT Mitra Indah Lestari Oil Pratama. Workbook
+  // 2026 baris KR, 12 bulan penuh (L/HARI). PERTALITE 28k & SOLAR 10k flat (SOLAR
+  // seri terendah, seri KB); semua produk termasuk TURBO aktif sejak Jan (≠ AS).
+  // DEXLITE 1.750 FLAT 12 bulan — satu-satunya unit tanpa ramp Dexlite.
+  "6478311": {
+    1: { PERTALITE: 28000, PERTAMAX: 1400, "PERTAMAX TURBO": 80, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 800 },
+    2: { PERTALITE: 28000, PERTAMAX: 1450, "PERTAMAX TURBO": 90, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 820 },
+    3: { PERTALITE: 28000, PERTAMAX: 1500, "PERTAMAX TURBO": 100, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 840 },
+    4: { PERTALITE: 28000, PERTAMAX: 1550, "PERTAMAX TURBO": 110, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 860 },
+    5: { PERTALITE: 28000, PERTAMAX: 1600, "PERTAMAX TURBO": 120, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 880 },
+    6: { PERTALITE: 28000, PERTAMAX: 1650, "PERTAMAX TURBO": 130, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 900 },
+    7: { PERTALITE: 28000, PERTAMAX: 1700, "PERTAMAX TURBO": 140, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 920 },
+    8: { PERTALITE: 28000, PERTAMAX: 1750, "PERTAMAX TURBO": 150, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 940 },
+    9: { PERTALITE: 28000, PERTAMAX: 1800, "PERTAMAX TURBO": 160, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 960 },
+    10: { PERTALITE: 28000, PERTAMAX: 1850, "PERTAMAX TURBO": 170, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 980 },
+    11: { PERTALITE: 28000, PERTAMAX: 1900, "PERTAMAX TURBO": 180, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 1000 },
+    12: { PERTALITE: 28000, PERTAMAX: 1950, "PERTAMAX TURBO": 190, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 1020 },
   },
 };
 
