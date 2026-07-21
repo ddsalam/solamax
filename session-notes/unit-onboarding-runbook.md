@@ -90,7 +90,14 @@
 ## 2. Machine-side (owner via CRD) — dgn pelajaran AS
 
 1. Node 18 (mesin lama: lihat tabel RUNBOOK-SPBU) · MySQL user `readonly_sync` SELECT-only,
-   password konvensi `SPBU<kode>`.
+   password konvensi `SPBU<kode>`. **🔴 JANGAN asumsikan DB bernama `easymax`** (koreksi KR):
+   jalankan `SHOW DATABASES;` DULU — KR ternyata **`easymax_korek`**, nama bersifat per-situs,
+   dan nilainya dipakai di GRANT **dan** `config.local.json` (`mysql.database`). Ini harus
+   mendahului pembuatan user karena **MySQL menerima GRANT atas database yang TIDAK ADA tanpa
+   error**: salah nama → user dgn **nol hak efektif**, gagal jauh di hilir dgn pesan yang
+   menyesatkan (seolah key/provisioning rusak). Sebelum `GRANT`, cek pula
+   `SELECT user, host FROM mysql.user WHERE user='readonly_sync';` dan pakai `host` yang sudah
+   terdaftar — di MySQL 5.0 `GRANT` polos ke host baru bisa **membuat akun tanpa password**.
 2. Bundle dari `main` yang sudah dipromosikan: `pnpm --filter @solamax/agent bundle`.
    Zip kini **FLAT** (fix defect AS) dan **berisi `jalankan-agent.bat` + `resync-bulanan.bat`
    ter-generate** — tidak ada lagi file buatan-tangan. `config.local.json`: `unitCode` WAJIB
@@ -103,8 +110,16 @@
      `VCNAMA` (nama PT), `VCALAMAT`/`CKOTA`. Cocokkan **ketiganya** dgn kode + PT + alamat
      yang di-provision; beda = STOP. Catatan: pipeline **tidak pernah** membaca identitas
      unit dari EasyMax (`unitCode` murni dari `config.local.json`), jadi ini cek-silang
-     manual — tapi `VCNAMA` sekaligus **membuktikan keputusan tenant** (di BL ia
-     mengonfirmasi "PT. BATU LAYANG JAYA" = PT keempat, jadi tenant baru bukan asumsi).
+     manual. **Bobot bukti tiap kolom BERBEDA (koreksi KR):** hanya **`CSPBU` yang
+     DECISIVE** (beda = STOP). `VCNAMA` *bisa* membuktikan keputusan tenant — di BL ia
+     mengonfirmasi "PT. BATU LAYANG JAYA" = PT keempat — tetapi di KR ia berisi
+     **"SPBU KOREK"** (nama stasiun, bukan PT), `VCALAMAT` kosong, `CKOTA` "PONTIANAK".
+     **Cek yang tidak konklusif BUKAN kegagalan**: `tm_konfid` dipelihara admin POS situs
+     dan sering terbengkalai. Yang wajib dilakukan = **catat tingkat buktinya dengan jujur**:
+     tenant BL bersandar **konfirmasi POS**; tenant KR/KB/AS bersandar **pernyataan owner
+     saja**. **JANGAN menulis ke EasyMax** untuk "memperbaiki" `tm_konfid` — read-only
+     mutlak; itu ranah admin POS situs. Alamat kop tetap dari vault, bukan dari `CKOTA`
+     legacy (bukan konflik, hanya field kasar).
    - **Census NULL-DTGLJAM (WAJIB — pelajaran AS):**
      `SELECT COUNT(*) FROM tr_djualbbm WHERE DTGLJAM IS NULL;`
      `0`/kecil = kelas IB/Bakau · **≈semua baris = kelas AS (NULL-by-default)** → task

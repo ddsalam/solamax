@@ -30,16 +30,41 @@ Verifikasi di **Command Prompt baru**: `node --version` → harus keluar nomor v
 
 ## 2. User MySQL baca-saja (5 mnt)
 
-Buka **SQL Manager**, login **admin/root**, jalankan **satu per satu**:
+### 2a. 🔴 CEK DULU nama database — JANGAN diasumsikan `easymax`
+
+```sql
+SHOW DATABASES;
+```
+
+**Nama DB berbeda per situs.** Di KR namanya **`easymax_korek`**, bukan `easymax`.
+Catat nama persisnya; dipakai di GRANT (2c) **dan** di `config.local.json` (langkah 5).
+
+> ⚠️ Kenapa ini langkah pertama: **MySQL menerima GRANT atas database yang tidak ada
+> tanpa error.** Salah nama → user terbentuk dengan **nol hak efektif**, dan
+> kegagalannya baru muncul jauh di hilir sebagai error yang membingungkan (seolah key
+> atau provisioning rusak). Cek nama dulu, baru buat user.
+
+### 2b. Cek user yang sudah ada (cegah akun tanpa password)
+
+```sql
+SELECT user, host FROM mysql.user WHERE user='readonly_sync';
+```
+
+Kalau sudah ada, catat `host`-nya dan **pakai host itu** di GRANT — jangan bikin baris
+baru. Di MySQL 5.0, `GRANT` polos ke host yang belum terdaftar bisa **membuat akun
+tanpa password**. Kalau belum ada, lanjut 2c.
+
+### 2c. Buat user + GRANT ke DB yang BENAR
 
 ```sql
 SET SESSION old_passwords = 0;
 CREATE USER 'readonly_sync'@'localhost' IDENTIFIED BY 'SPBU6478311';
-GRANT SELECT ON easymax.* TO 'readonly_sync'@'localhost';
+GRANT SELECT ON easymax_korek.* TO 'readonly_sync'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
 Konvensi password = `SPBU<kode unit>` → **`SPBU6478311`**. Hanya `SELECT`, tidak lebih.
+Ganti `easymax_korek` bila `SHOW DATABASES` di situs lain menunjukkan nama lain.
 
 ## 3. Salin bundle ke folder LOKAL (3 mnt)
 
@@ -69,6 +94,7 @@ Buka `C:\solamax-agent\config.local.json` di Notepad, ubah **4 baris**:
 | Baris | Dari | Menjadi |
 | --- | --- | --- |
 | `unitCode` | `"GANTI_KODE_UNIT"` | `"6478311"` |
+| `mysql.database` | `"easymax"` | **`"easymax_korek"`** (dari langkah 2a) |
 | `mysql.password` | `"GANTI_DENGAN_PASSWORD_readonly_sync"` | `"SPBU6478311"` |
 | `backend.baseUrl` | `"https://dummy.invalid"` | `"https://solamax-ingest-staging-wn6i64kvza-et.a.run.app"` |
 | `backend.apiKey` | `"dummy-belum-dipakai-sampai-fase-2"` | *(key dari langkah 4)* |
@@ -109,6 +135,15 @@ Bukti silang independen dari langkah 6: kalau `sales.watermark_high` di dry-run 
 timestamp nyata → watermark hidup → kelas IB/Bakau. Kelas AS **didefinisikan** oleh
 watermark yang NULL permanen. Dua sinyal harus sepakat.
 
+> ✅ **Hasil KR 2026-07-21 — DUA SINYAL SEPAKAT, klasifikasi DIKUNCI:**
+> - Sinyal 1: **7.159 NULL / 103.794 total = 6,90%** (minoritas jelas; bandingkan
+>   KB 4,14% · BL 8,84%).
+> - Sinyal 2: `sales.watermark_high` = **2021-04-06T23:24:52Z** — watermark
+>   inkremental NYATA & maju (kelas AS = NULL permanen).
+>
+> → **kelas IB/Bakau** → **task bulanan TIDAK dipasang** (langkah 12 dilewati).
+> Riwayat KR mundur sampai setidaknya **2021** → backfill pertama panjang & senyap.
+
 ## 8. 🛑 STOP-CHECK WAJIB #2 — Probe ATG
 
 ```sql
@@ -119,6 +154,10 @@ SELECT COUNT(*) AS n_tangki_atg FROM vw_realtm;
 - **0 atau view tidak ada** → unit tanpa ATG (pola AS) → denah tangki **empty-state
   BY DESIGN**, `real_tank`=0, domain realtank tak pernah dispatch. **Bukan defect** —
   dicatat sebagai karakteristik unit.
+
+> ✅ **Hasil KR 2026-07-21: ATG HADIR, 7 tangki.** `vw_realtm` = 7, dikonfirmasi
+> end-to-end oleh payload dry-run `realtank` = 7. Denah/tank-gauge KR **live**.
+> Catatan: KR punya **7** tangki, bukan 8 seperti BL/KB — jangan salin angka antar unit.
 
 ## 8b. 🛑 STOP-CHECK WAJIB #3 — Identitas unit (RED FLAG bila beda)
 
@@ -132,15 +171,37 @@ SELECT * FROM tm_konfid;
 > `config.local.json` — jadi ini **cek-silang manual** bahwa mesin ini benar unit yang
 > saya provision di cloud.
 
-Harus cocok **ketiganya**:
+Yang dicocokkan — **dengan bobot bukti yang BERBEDA**:
 
-- `CSPBU` = **64.783.11** (= kode POS `6478311`)
-- `VCNAMA` = **PT. MITRA INDAH LESTARI OIL PRATAMA** (= tenant `pt-mitra-indah-lestari-oil-pratama`)
-- `VCALAMAT` / `CKOTA` = Korek / Sungai Ambawang / Kubu Raya
+- `CSPBU` = **64.783.11** — **DECISIVE.** Beda = STOP, tanpa kecuali.
+- `VCNAMA` — *idealnya* nama PT (`PT. MITRA INDAH LESTARI OIL PRATAMA`), yang akan
+  mengonfirmasi keputusan tenant dari sisi POS. Tapi banyak situs mengisinya dengan
+  **nama stasiun**; itu **tidak konklusif**, bukan kontradiksi.
+- `VCALAMAT` / `CKOTA` — sering kosong/kasar. **Corroborating saja**, tak pernah decisive.
 
-`VCNAMA` sekaligus **membuktikan keputusan tenant ke-5** dari sisi POS, bukan sekadar
-asumsi. Kalau ada yang beda — **BERHENTI dan lapor**, jangan "diperbaiki" diam-diam
+Kalau ada yang beda — **BERHENTI dan lapor**, jangan "diperbaiki" diam-diam
 (cloud sudah ter-provision dengan kode + PT ini).
+
+> ⚠️ **Cek ini bisa TIDAK KONKLUSIF — dan itu bukan kegagalan.** `tm_konfid` diisi oleh
+> admin POS situs; banyak situs tidak memeliharanya. Yang **decisive** hanya `CSPBU`.
+>
+> ✅ **Hasil KR 2026-07-21 (adjudikasi owner):**
+> - `CSPBU` = **64.783.11 — COCOK PERSIS** (decisive → mesin ini benar unit KR).
+> - `VCNAMA` = **"SPBU KOREK"** — nama stasiun, **bukan** nama PT. Tidak membantah
+>   apa pun; hanya tak memberi konfirmasi.
+> - `VCALAMAT` kosong; `CKOTA` = "PONTIANAK" (field legacy kasar).
+>
+> **Konsekuensi yang dicatat jujur:** tenant KR (`pt-mitra-indah-lestari-oil-pratama`)
+> bersandar pada **pernyataan owner saja** — sama seperti KB & AS, dan **berbeda dari
+> BL** yang tenant-nya terkonfirmasi POS lewat `VCNAMA = PT. BATU LAYANG JAYA`.
+> Ini **bukan** red flag; ini tingkat bukti yang lebih rendah, dan direkam apa adanya.
+>
+> **JANGAN menulis ke EasyMax** untuk "memperbaiki" `tm_konfid` — read-only bersifat
+> mutlak; itu pekerjaan admin POS situs, di luar pipeline ini.
+>
+> Alamat di `config.ts` tetap memakai **alamat vault** (Jl. Trans Kalimantan, Desa Korek,
+> Kec. Sungai Ambawang, Kab. Kubu Raya, 78393). `CKOTA` "PONTIANAK" dicatat sebagai
+> karakteristik field legacy, **bukan** konflik data.
 
 > **Tunggu konfirmasi saya setelah langkah 7 + 8 + 8b sebelum lanjut ke 9.**
 
@@ -162,12 +223,11 @@ Buka **Command Prompt**, `cd C:\solamax-agent`, jalankan berurutan
 
 ```bat
 node solamax-agent.cjs --resync-sales 2025-01-01 <hari-ini> --config config.local.json
-node solamax-agent.cjs --deep-sweep tebus 600 92 --config config.local.json
-node solamax-agent.cjs --deep-sweep delivery 600 92 --config config.local.json
+node solamax-agent.cjs --deep-sweep tebus 730 92 --config config.local.json
+node solamax-agent.cjs --deep-sweep delivery 730 92 --config config.local.json
 ```
 
-(`2025-01-01` dan `600` = tanggal mulai operasi + umur unit dalam hari; saya sesuaikan
-setelah lihat rentang tanggal nyata dari langkah 9.)
+(`730` = konvensi BL, cukup untuk riwayat KR yang mundur sampai 2021.)
 
 ## 11. Task Scheduler (loop kontinu)
 
@@ -220,7 +280,10 @@ node solamax-agent.cjs --probe10 <tgl1> <tgl2> <tgl3> <tgl4> <tgl5> <tgl6> <tgl7
 - **Nol di tengah siklus ≠ celah data**: `pelanggan` (900 dtk) dan `realtank` (siklus
   masters) dispatch lebih jarang dari `sales`, jadi bisa terbaca 0 saat sales sudah
   mengalir. Cek ulang setelah satu siklus penuh.
-- **`kas` boleh kosong secara sah** — BL nol baris by design (modul kas EasyMax tak
-  dipakai). Kalau KR juga 0, saya karakterisasi dari bukti, bukan diasumsikan celah.
-  (Baris log `kas: 0 baris (dorman sejak 2019 — normal)` teksnya **hardcoded**, bukan
-  spesifik unit.)
+- **`kas` KR TIDAK dorman** — dry-run mengembalikan **3 header / 3 detail**. Ini
+  **berbeda dari BL** yang nol baris by design. Jangan bawa asumsi "modul kas tak
+  dipakai" antar unit; karakterisasi dari bukti per unit. (Baris log
+  `kas: 0 baris (dorman sejak 2019 — normal)` teksnya **hardcoded** di
+  `apps/agent/src/sync.ts:249` — bukan pernyataan spesifik unit.)
+- **Nama DB per situs** — KR = `easymax_korek`, bukan `easymax`. Selalu
+  `SHOW DATABASES;` dulu (langkah 2a).
