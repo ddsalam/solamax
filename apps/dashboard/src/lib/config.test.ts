@@ -95,3 +95,68 @@ describe("entri Bundaran Kotabaru 6478106 (workbook 2026 baris KB, tenant BARU P
     expect(ptLabelForUnits(["6478106", "6478101"])).toBe("SolaGroup");
   });
 });
+
+describe("entri Batu Layang 6478201 (workbook 2026 baris BL, tenant BARU PT Batu Layang Jaya)", () => {
+  it("UNIT_DISPLAY: dotted/PT/alamat benar", () => {
+    const d = UNIT_DISPLAY["6478201"]!;
+    expect(d.dotted).toBe("64.782.01");
+    expect(d.name).toBe("Batu Layang");
+    expect(d.pt).toBe("PT Batu Layang Jaya");
+    expect(d.address).toContain("Pontianak Utara");
+  });
+
+  it("target 12 bulan penuh; semua produk (termasuk TURBO) aktif sejak Jan (≠ AS)", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(TARGET_BAURAN["6478201"]!.gasoline[m]).toBeTypeOf("number");
+      expect(TARGET_BAURAN["6478201"]!.gasoil[m]).toBeTypeOf("number");
+      expect(Object.keys(TARGET_VOLUME_PER_DAY["6478201"]![m]!)).toHaveLength(6);
+    }
+    // TURBO tak pernah 0 di BL (dijual penuh sejak Jan) — beda dgn AS.
+    expect(targetVolumePerDay("6478201", 1, "PERTAMAX TURBO")).toBe(50);
+    expect(targetVolumePerDay("6478201", 12, "PERTAMAX TURBO")).toBe(160);
+    // PERTALITE 20k / SOLAR 17k flat (karakteristik BL).
+    expect(targetVolumePerDay("6478201", 6, "PERTALITE")).toBe(20000);
+    expect(targetVolumePerDay("6478201", 6, "SOLAR")).toBe(17000);
+  });
+
+  it("profil DIESEL-HEAVY: gasoil TERTINGGI semua unit, 12/12 bulan", () => {
+    for (let m = 1; m <= 12; m++) {
+      const bl = targetBauran("6478201", "gasoil", m)!;
+      expect(bl).toBeGreaterThan(0.5); // ~0,51 — satu-satunya unit di atas 0,5
+      for (const other of ["6478111", "6378301", "6478101", "6478106"]) {
+        expect(bl).toBeGreaterThan(targetBauran(other, "gasoil", m)!);
+      }
+    }
+    // PERTAMINA DEX BL = tertinggi semua unit (5.600 L/hari di Jan).
+    expect(targetVolumePerDay("6478201", 1, "PERTAMINA DEX")).toBe(5600);
+  });
+
+  it("gasoline terendah vs IB/Bakau/KB 12/12; vs AS baru menyalip turun sejak Jul (ramp AS lebih curam)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const bl = targetBauran("6478201", "gasoline", m)!;
+      for (const other of ["6478111", "6378301", "6478106"]) {
+        expect(bl).toBeLessThan(targetBauran(other, "gasoline", m)!);
+      }
+      // AS mulai lebih rendah (Jan 0,0375) lalu naik lebih cepat → silang di Jul.
+      const as = targetBauran("6478101", "gasoline", m)!;
+      if (m <= 6) expect(bl).toBeGreaterThan(as);
+      else expect(bl).toBeLessThan(as);
+    }
+  });
+
+  it("bauran konsisten dgn rasio volume workbook (toleransi pembulatan 4dp)", () => {
+    for (let m = 1; m <= 12; m++) {
+      const v = TARGET_VOLUME_PER_DAY["6478201"]![m]!;
+      const gasoline = (v["PERTAMAX"]! + v["PERTAMAX TURBO"]!) / v["PERTALITE"]!;
+      const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
+      expect(targetBauran("6478201", "gasoline", m)!).toBeCloseTo(gasoline, 3);
+      expect(targetBauran("6478201", "gasoil", m)!).toBeCloseTo(gasoil, 3);
+    }
+  });
+
+  it("label PT ekspor: unit BL → PT Batu Layang Jaya; campuran lintas-PT → SolaGroup", () => {
+    expect(ptLabelForUnits(["6478201"])).toBe("PT Batu Layang Jaya");
+    expect(ptLabelForUnits(["6478201", "6478111"])).toBe("SolaGroup");
+    expect(ptLabelForUnits(["6478201", "6478106"])).toBe("SolaGroup");
+  });
+});

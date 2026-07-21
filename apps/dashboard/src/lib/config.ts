@@ -48,6 +48,15 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
     address: "Jl. Prof. M. Yamin No 1, Kota Baru, Kec. Pontianak Kota, 78116",
     // pengawas: Eddy Supratman (merita.abadisukses@solagroup.co)
   },
+  // Batu Layang (64.782.01) — tenant BARU (ke-4): PT Batu Layang Jaya
+  // (Option A, isolasi lintas-tenant seperti AS/KB — bukan pola same-tenant Bakau).
+  "6478201": {
+    dotted: "64.782.01",
+    name: "Batu Layang",
+    pt: "PT Batu Layang Jaya",
+    address: "Jl. Batu Layang, Kec. Pontianak Utara, 78244",
+    // pengawas: Indra Wahyudi (spbu6478201bl@solagroup.co)
+  },
 };
 
 /**
@@ -209,6 +218,21 @@ export const TARGET_BAURAN: Record<
       7: 0.348, 8: 0.351, 9: 0.354, 10: 0.357, 11: 0.36, 12: 0.363,
     },
   },
+  // Batu Layang (64.782.01) — tenant BARU PT Batu Layang Jaya. Workbook
+  // "Target SPBU SolaGroup 2026" baris BL, 12 bulan penuh (angka NYATA, cross-check
+  // owner 2026-07-21). 4dp round-half-up dari raw (mis. gasoil Jan 0.50588235… →
+  // 0.5059). Profil DIESEL-HEAVY: bauran gasoil TERTINGGI semua unit (~0,51) &
+  // gasoline TERENDAH — kebalikan KB.
+  "6478201": {
+    gasoline: {
+      1: 0.0425, 2: 0.048, 3: 0.0535, 4: 0.059, 5: 0.0645, 6: 0.07,
+      7: 0.0755, 8: 0.081, 9: 0.0865, 10: 0.092, 11: 0.0975, 12: 0.103,
+    },
+    gasoil: {
+      1: 0.5059, 2: 0.5082, 3: 0.5106, 4: 0.5129, 5: 0.5153, 6: 0.5176,
+      7: 0.52, 8: 0.5224, 9: 0.5247, 10: 0.5271, 11: 0.5294, 12: 0.5318,
+    },
+  },
 };
 
 export function targetBauran(
@@ -331,6 +355,24 @@ export const TARGET_VOLUME_PER_DAY: Record<
     10: { PERTALITE: 35000, PERTAMAX: 6500, "PERTAMAX TURBO": 330, SOLAR: 10000, DEXLITE: 2590, "PERTAMINA DEX": 980 },
     11: { PERTALITE: 35000, PERTAMAX: 6600, "PERTAMAX TURBO": 340, SOLAR: 10000, DEXLITE: 2600, "PERTAMINA DEX": 1000 },
     12: { PERTALITE: 35000, PERTAMAX: 6700, "PERTAMAX TURBO": 350, SOLAR: 10000, DEXLITE: 2610, "PERTAMINA DEX": 1020 },
+  },
+  // Batu Layang (64.782.01) — tenant BARU PT Batu Layang Jaya. Workbook 2026
+  // baris BL, 12 bulan penuh (L/HARI). PERTALITE 20k & SOLAR 17k flat; semua
+  // produk termasuk TURBO aktif sejak Jan (≠ AS). PERTAMINA DEX 5,6k = TERTINGGI
+  // semua unit (unit diesel-heavy).
+  "6478201": {
+    1: { PERTALITE: 20000, PERTAMAX: 800, "PERTAMAX TURBO": 50, SOLAR: 17000, DEXLITE: 3000, "PERTAMINA DEX": 5600 },
+    2: { PERTALITE: 20000, PERTAMAX: 900, "PERTAMAX TURBO": 60, SOLAR: 17000, DEXLITE: 3020, "PERTAMINA DEX": 5620 },
+    3: { PERTALITE: 20000, PERTAMAX: 1000, "PERTAMAX TURBO": 70, SOLAR: 17000, DEXLITE: 3040, "PERTAMINA DEX": 5640 },
+    4: { PERTALITE: 20000, PERTAMAX: 1100, "PERTAMAX TURBO": 80, SOLAR: 17000, DEXLITE: 3060, "PERTAMINA DEX": 5660 },
+    5: { PERTALITE: 20000, PERTAMAX: 1200, "PERTAMAX TURBO": 90, SOLAR: 17000, DEXLITE: 3080, "PERTAMINA DEX": 5680 },
+    6: { PERTALITE: 20000, PERTAMAX: 1300, "PERTAMAX TURBO": 100, SOLAR: 17000, DEXLITE: 3100, "PERTAMINA DEX": 5700 },
+    7: { PERTALITE: 20000, PERTAMAX: 1400, "PERTAMAX TURBO": 110, SOLAR: 17000, DEXLITE: 3120, "PERTAMINA DEX": 5720 },
+    8: { PERTALITE: 20000, PERTAMAX: 1500, "PERTAMAX TURBO": 120, SOLAR: 17000, DEXLITE: 3140, "PERTAMINA DEX": 5740 },
+    9: { PERTALITE: 20000, PERTAMAX: 1600, "PERTAMAX TURBO": 130, SOLAR: 17000, DEXLITE: 3160, "PERTAMINA DEX": 5760 },
+    10: { PERTALITE: 20000, PERTAMAX: 1700, "PERTAMAX TURBO": 140, SOLAR: 17000, DEXLITE: 3180, "PERTAMINA DEX": 5780 },
+    11: { PERTALITE: 20000, PERTAMAX: 1800, "PERTAMAX TURBO": 150, SOLAR: 17000, DEXLITE: 3200, "PERTAMINA DEX": 5800 },
+    12: { PERTALITE: 20000, PERTAMAX: 1900, "PERTAMAX TURBO": 160, SOLAR: 17000, DEXLITE: 3220, "PERTAMINA DEX": 5820 },
   },
 };
 
