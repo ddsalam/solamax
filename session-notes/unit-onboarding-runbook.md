@@ -23,6 +23,19 @@
 
 ## 1. Cloud-side (urutan teruji AS; ~30 menit di luar CI)
 
+0. **🔴 SEBELUM MENULIS APA PUN — pastikan Anda di instance yang benar** (pelajaran BL):
+   - **JANGAN mewarisi nomor port dari runbook.** Di sesi BL, port `5433` yang disebut
+     runbook KB untuk `-rlsstg` ternyata **sudah dipakai proxy lain**. Cek dulu
+     (`lsof -nP -iTCP:5433 -sTCP:LISTEN`), lalu jalankan proxy sendiri di port bebas
+     (BL pakai `5434` = rlsstg, `5435` = live) dan **jangan pernah mematikan proxy yang
+     bukan Anda yang start**.
+   - **Assert identitas cluster sebelum WRITE apa pun** — satu query, tak bisa ditipu
+     hostname/port: `SELECT system_identifier FROM pg_control_system();`
+     (live `solamax-pg` = `7650126488674766864`, test `solamax-pg-rlsstg` =
+     `7659054651798528016`). Tanda sekunder: unit 1 di rlsstg bernama `IB-equiv (synthetic)`.
+   - Tulis guard sebagai blok `DO $$ … RAISE EXCEPTION $$` **di dalam transaksi**, bukan
+     SELECT yang dibaca mata — prasyarat salah = transaksi abort, bukan bergantung operator
+     menyadari.
 1. **Preflight read-only**: `unit_id`/`code` bebas di live; slug tenant belum ada (bila PT
    baru); `timezone` ikuti baris unit live yang ada (konvensi: `Asia/Pontianak`).
 2. **API key**: `node apps/backend/scripts/gen-api-key.mjs` → raw HANYA ke scratch
@@ -36,12 +49,28 @@
    TARGET_VOLUME_PER_DAY 12 bulan — cross-check angka parse vs angka owner, beda = STOP) +
    perluas tes scope pola fixture-free auto-skip
    ([`scope.adisucipto.integration.test.ts`](../apps/dashboard/src/lib/scope.adisucipto.integration.test.ts)
-   = template cross-tenant; `scope.bakau…` = template same-tenant). PR → `staging` →
+   = template cross-tenant; `scope.bakau…` = template same-tenant). **Guard absen WAJIB
+   `return ctx.skip()`, JANGAN `return;` senyap** — vitest melaporkan return senyap sebagai
+   ✓ PASS dgn nol assertion, sehingga "unit belum ada" tak terbedakan dari "isolasi
+   terverifikasi" (ditemukan di BL: `scope.kotabaru` hijau 8/8 di `-rlsstg` padahal KB tak
+   ada di sana). PR → `staging` →
    rehearsal `-rlsstg` → PR `staging`→`main` gated `pilot`. **Tanpa deploy manual.**
 5. **Rehearsal `-rlsstg`** (bukti sebelum live): provision serupa di DB test + RLS proofs
    (write-in-scope OK / cross-unit WITH CHECK reject / read isolation / no-context=0) +
    suite scope `SCOPE_LIVE_DB=1` + smoke ingest E2E `200/403/401` dgn REHEARSAL key
    (bukan key live!) + `rls-surfaces` self-seeding 5/5 (`RLS_SURFACES_SEED_URL`).
+   **Kontrak ingest (koreksi BL — jangan ulangi):** header auth =
+   **`Authorization: Bearer <key>`**, BUKAN `x-api-key`
+   ([`api-key.guard.ts`](../apps/backend/src/auth/api-key.guard.ts)) — header salah
+   memberi `401 "API key tidak ada"` di SEMUA kasus, termasuk yang harusnya 200/403,
+   sehingga terlihat seperti key/provisioning yang rusak. **`watermark_high` WAJIB ada**
+   (`.nullable()`, bukan `.optional()` —
+   [`ingest.ts:17`](../packages/shared/src/ingest.ts)) → kirim `null`; kalau tidak, 422
+   muncul sebelum logika auth/scope sempat teruji. Payload DELETE-only yang sah:
+   `{"unit_code":"…","domain":"delivery","watermark_high":null,
+   "replace_window":{"from":"…","to":"…"},"tables":{}}`. Kolom mirror `sales_detail` =
+   `nurut` + `dtgljam` (timestamptz NOT NULL); **tidak ada `dtgljual`** di mirror — nama
+   itu hanya milik sumber EasyMax.
 6. **OAuth test user** (Console, manual) + **grant pengawas via `/admin` SETELAH login
    pertama** (butuh baris `app.users`); direksi/admin PT baru: grant via `/admin` pilih
    tenant baru. Audit_log otomatis.
@@ -57,6 +86,13 @@
    `gcloud secrets versions access latest --secret solamax-<unit>-agent-key` di laptop owner.
 3. **Cek dini WAJIB sebelum go-live** (STOP-and-report bila gagal — jangan improvisasi):
    - `1-tes-koneksi` + `2-dry-run` bersih; view `vw_jualplg`/`vw_usevouc`/`vw_edc3` ada.
+   - **Identitas unit = `tm_konfid`** (koreksi BL — **`tm_spbu` TIDAK ADA** di EasyMax;
+     itu tebakan yang salah): `SELECT * FROM tm_konfid;` → `CSPBU` (mis. `64.782.01`),
+     `VCNAMA` (nama PT), `VCALAMAT`/`CKOTA`. Cocokkan **ketiganya** dgn kode + PT + alamat
+     yang di-provision; beda = STOP. Catatan: pipeline **tidak pernah** membaca identitas
+     unit dari EasyMax (`unitCode` murni dari `config.local.json`), jadi ini cek-silang
+     manual — tapi `VCNAMA` sekaligus **membuktikan keputusan tenant** (di BL ia
+     mengonfirmasi "PT. BATU LAYANG JAYA" = PT keempat, jadi tenant baru bukan asumsi).
    - **Census NULL-DTGLJAM (WAJIB — pelajaran AS):**
      `SELECT COUNT(*) FROM tr_djualbbm WHERE DTGLJAM IS NULL;`
      `0`/kecil = kelas IB/Bakau · **≈semua baris = kelas AS (NULL-by-default)** → task
