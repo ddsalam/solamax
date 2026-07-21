@@ -53,7 +53,13 @@
    `return ctx.skip()`, JANGAN `return;` senyap** — vitest melaporkan return senyap sebagai
    ✓ PASS dgn nol assertion, sehingga "unit belum ada" tak terbedakan dari "isolasi
    terverifikasi" (ditemukan di BL: `scope.kotabaru` hijau 8/8 di `-rlsstg` padahal KB tak
-   ada di sana). PR → `staging` →
+   ada di sana). **Superlatif lintas-unit di tes karakterisasi hanya sah bila terverifikasi
+   12/12 thd SEMUA unit** (koreksi KR) — pakai komparator spesifik atau rujuk matriks
+   `wikis/spbu-sola/wiki/concepts/npso-pso-mix.md`; dua kekeliruan nyata lahir dari sini
+   (BL "gasoline terendah", KR "gasoil terendah" — keduanya *data benar, prosa salah*).
+   Waspadai pula entri **tak ber-12-bulan**: IB hanya punya bulan 6, jadi
+   `targetVolumePerDay("6478111", 1|12, …)` = `null` dan perbandingan ramp lintas-unit
+   WAJIB mengecualikannya eksplisit. PR → `staging` →
    rehearsal `-rlsstg` → PR `staging`→`main` gated `pilot`. **Tanpa deploy manual.**
 5. **Rehearsal `-rlsstg`** (bukti sebelum live): provision serupa di DB test + RLS proofs
    (write-in-scope OK / cross-unit WITH CHECK reject / read isolation / no-context=0) +
@@ -66,9 +72,15 @@
    sehingga terlihat seperti key/provisioning yang rusak. **`watermark_high` WAJIB ada**
    (`.nullable()`, bukan `.optional()` —
    [`ingest.ts:17`](../packages/shared/src/ingest.ts)) → kirim `null`; kalau tidak, 422
-   muncul sebelum logika auth/scope sempat teruji. Payload DELETE-only yang sah:
+   muncul sebelum logika auth/scope sempat teruji. **`replace_window.from` harus
+   STRIKTLY `<` `to`** (koreksi KR): tanggal sama → `422 "replace_window: from harus
+   < to"`, lagi-lagi SEBELUM auth/scope, sehingga menyamar sebagai key/provisioning
+   rusak. Payload DELETE-only yang sah:
    `{"unit_code":"…","domain":"delivery","watermark_high":null,
-   "replace_window":{"from":"…","to":"…"},"tables":{}}`. Kolom mirror `sales_detail` =
+   "replace_window":{"from":"2026-07-20","to":"2026-07-21"},"tables":{}}`.
+   Kontrol yang layak dijalankan tiap rehearsal: kirim key BENAR dgn header
+   `x-api-key` → harus `401 "API key tidak ada"` (membuktikan header-lah yang
+   diuji, bukan key). Kolom mirror `sales_detail` =
    `nurut` + `dtgljam` (timestamptz NOT NULL); **tidak ada `dtgljual`** di mirror — nama
    itu hanya milik sumber EasyMax.
 6. **OAuth test user** (Console, manual) + **grant pengawas via `/admin` SETELAH login
