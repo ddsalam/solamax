@@ -165,6 +165,17 @@
   **NULL permanen = kelas AS** (sales 100% via rescan 7-hari; segar ≤ ~32 mnt; back-dating
   >7 hari BUTUH resync bulanan). Jangan panik lihat watermark NULL — itu by-design untuk
   kelas ini.
+- **🔴 PRASYARAT PRA-REGISTRASI (koreksi 28 Oktober) — jangan menyegel dari mirror yang
+  belum lengkap.** Nilai gold-check hanya boleh disegel **setelah SELURUH domain SELESAI
+  backfill**. Verifikasi dulu: tiap domain hadir di `sync_state` dgn `last_run_at` yang
+  **stabil pada dua pembacaan berjarak**, dan census sumber-vs-mirror sudah tutup.
+  Di 28 Oktober, seksi PELANGGAN disegel saat backfill `pelanggan` masih berjalan →
+  meleset 8/8 **padahal pipeline-nya setia** (query ulang: selisih 0 di kedelapan
+  tanggal). Tanda tangannya khas: selisih **selalu kurang, tak pernah lebih**.
+  Akar kegagalannya layak dinamai — aturan *zero mid-cycle bukan gap* & *baca
+  `sync_state` dua kali* diterapkan pada **penafsiran keluaran** tetapi TIDAK pada
+  **kelayakan masukan**. Menyegel dari mirror belum lengkap **memproduksi miss palsu**:
+  menuduh pipeline atas keterlambatan yang dibuat oleh metode.
 - Gold-check `--probe10` **dengan tanggal eksplisit** (default beku Juni 2026!) ≥5 hari
   terakhir — cocok ke rupiah per seksi; domain dorman dijelaskan dgn bukti sumber, bukan
   di-skip. Karakterisasi: `CKDNOZZLE` collision (kode tabrakan = fold senyap), varian nama
