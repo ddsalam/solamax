@@ -39,6 +39,16 @@ const SLUG_ENERGI = "pt-sola-petra-energi"; // tenant BARU (28 Oktober)
 const SLUG_ABADI = "pt-sola-petra-abadi"; // tenant LAMA (IB + Bakau) — bukan ini!
 const CODE_28 = "63781002"; // DELAPAN digit — satu-satunya di armada
 
+/**
+ * Sidik jari instance LIVE (`solamax-pg`). Bukan rahasia — sudah tercatat di
+ * session-notes/unit-onboarding-runbook.md §1.0 sebagai guard anti-salah-cluster.
+ * Dipakai untuk MEMBATASI klaim topologi ("armada 7/7") ke instance live saja:
+ * `-rlsstg` sengaja hanya memuat subset sintetis, jadi menuntut 7 unit di sana
+ * akan merah PALSU — bukan temuan. Invarian yang berlaku di KEDUA instance
+ * (tiap unit DB punya entri config) tetap diuji tanpa gerbang.
+ */
+const LIVE_SYSTEM_ID = "7650126488674766864";
+
 d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
   let pool: Pool;
   let units: { unit_id: number; code: string; tenant_id: string | null }[];
@@ -46,6 +56,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
   let ptAbadi: string | undefined;
   let o28: { unit_id: number; tenant_id: string | null } | undefined;
   let others: { unit_id: number; code: string; tenant_id: string | null }[] = [];
+  let isLiveInstance = false;
 
   const allowed = (ctx: ScopeCtx) =>
     units.filter((u) => unitVisible(ctx, u)).map((u) => u.unit_id).sort((a, b) => a - b);
@@ -64,6 +75,10 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     ptAbadi = (
       await pool.query(`SELECT id FROM app.tenant WHERE slug = $1`, [SLUG_ABADI])
     ).rows[0]?.id;
+    isLiveInstance =
+      (
+        await pool.query(`SELECT system_identifier::text AS id FROM pg_control_system()`)
+      ).rows[0]?.id === LIVE_SYSTEM_ID;
     o28 = units.find((u) => u.code === CODE_28);
     // "others" = SEMUA unit tenant lain (lintas lima tenant lama), by tenant_id.
     others = o28 ? units.filter((u) => u.tenant_id !== o28!.tenant_id) : [];
@@ -191,13 +206,23 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     for (const u of others) expect(a).toContain(u.unit_id);
   });
 
-  it("armada LENGKAP 7/7: tujuh unit aktif, enam tenant, config ⋈ DB konsisten", (ctx) => {
+  it("tiap unit di DB punya entri config (berlaku di SEMUA instance)", (ctx) => {
     if (!o28) return ctx.skip();
+    // Arah subset ini benar di live MAUPUN -rlsstg: cegah unit "yatim" yang
+    // tampil tanpa PT/kop. Arah sebaliknya (tiap config punya unit) hanya benar
+    // di live — diuji di test berikutnya.
+    for (const u of units) expect(Object.keys(UNIT_DISPLAY)).toContain(u.code);
+  });
+
+  it("armada LENGKAP 7/7: tujuh unit aktif, enam tenant, config ⋈ DB set-equal (LIVE saja)", (ctx) => {
+    if (!o28) return ctx.skip();
+    // Klaim topologi ini hanya sah di instance live. `-rlsstg` memuat subset
+    // sintetis (mis. unit 1 = "IB-equiv (synthetic)"), jadi menuntutnya di sana
+    // = merah palsu. SKIP eksplisit, bukan pass senyap.
+    if (!isLiveInstance) return ctx.skip();
     // Unit terakhir. Kalau angka ini meleset, ada unit tak terduga di instance.
     expect(units).toHaveLength(7);
     expect(new Set(units.map((u) => u.tenant_id)).size).toBe(6);
-    // Tiap unit di DB punya entri config (dan sebaliknya) — cegah unit "yatim"
-    // yang tampil tanpa PT/kop, atau entri config tanpa unit.
     expect(units.map((u) => u.code).sort()).toEqual(Object.keys(UNIT_DISPLAY).sort());
   });
 
