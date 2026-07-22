@@ -133,3 +133,78 @@ node solamax-agent.cjs --probe10 2026-07-05 2026-07-06 2026-07-09 2026-07-10 202
 Setelah `--resync-sales` + deep-sweep, **minimal satu tanggal gold-check diverifikasi
 ulang tidak bergerak** (OMSET sampai 0,1 Rp + jumlah baris). Bergerak = resync mengubah
 data yang sudah diklaim lengkap → temuan.
+
+---
+
+# HASIL — ditulis SESUDAH `--probe10` dijalankan (2026-07-23)
+
+> **Angka prediksi di atas TIDAK diubah sedikit pun.** Seksi ini ditambahkan
+> (*append*), bukan menyunting. Pre-registrasi yang diam-diam disunting berhenti
+> menjadi bukti; termasuk ketika ia membuat penulisnya terlihat buruk.
+
+## Ringkasan verdict
+
+| Seksi | Hasil | Catatan |
+| --- | --- | --- |
+| OMSET (rp + n) | **EKSAK 8/8** | `,5` di persis 4 treatment, tanpa pecahan di persis 4 kontrol; n=90 semua |
+| EDC non-blank (rp + **rows**) | **EKSAK 8/8** | rows 76/83/64/36/107/58/61/64 |
+| EDC blank-card (rp + rows) | **EKSAK 8/8** | |
+| DEPOSIT (rp + n) | **EKSAK 8/8** | termasuk **KEDUA prediksi ketiadaan** (07-10 & 07-14) terbukti |
+| PELANGGAN | **PREDIKSI MELESET 8/8** | **data BENAR**; lihat post-mortem di bawah |
+
+**Hipotesis pembulatan TERKONFIRMASI:** pecahan `,5` muncul persis di empat tanggal
+treatment dan **tidak di satu pun kontrol**. Karena tiap kontrol bersebelahan (D+1)
+dengan treatment-nya, efek spesifik-hari ikut terserap — desain berpasangan ini
+bekerja sebagaimana dimaksud.
+
+## Post-mortem PELANGGAN — kesalahan METODE, bukan gap pipeline
+
+Nilai tersegel kurang **28–66 juta/hari di kedelapan tanggal, selalu kurang, tak
+pernah lebih**. Query ulang mirror terhadap oracle `probe10` yang sama: **selisih = 0
+di kedelapan tanggal** (140.685.507 / 120.444.207 / 103.008.308 / 93.605.868 /
+115.354.089 / 143.257.602 / 96.827.749 / 122.085.867; rows 223/205/181/145/208/194/
+160/181). Mirror `pelanggan_sale`: 68.080 baris, 2024-12-06 → 2026-07-22.
+
+**Penyebab:** nilai pelanggan disegel **saat backfill domain `pelanggan` masih
+berjalan**. Yang tersegel bukan prediksi atas pipeline, melainkan **potret mirror yang
+belum lengkap** — lalu mirror menyusul dan "prediksi" itu otomatis meleset. Arah
+selisih yang **selalu kurang, tak pernah lebih** adalah tanda tangan khas kondisi ini,
+dan seharusnya saya kenali sendiri sebelum menyegel.
+
+**Kegagalan penalarannya spesifik dan patut dinamai:** pada siklus yang sama saya
+menandai `real_tank = 0` sebagai "mid-cycle, akan diverifikasi ulang" — penerapan yang
+benar dari aturan *zero mid-cycle bukan gap*. Lalu saya menyegel prediksi pelanggan
+**dari state mid-cycle yang persis sama**. Aturan itu saya terapkan pada **penafsiran
+keluaran**, tetapi tidak pada **kelayakan masukan**. Aturan `sync_state` dibaca dua
+kali pun mestinya menggerbangi langkah pra-registrasi, bukan cuma diagnosa stall.
+
+### PRASYARAT BARU (mengikat untuk unit berikutnya — tak ada unit #8, jadi ini untuk pipeline apa pun)
+
+> **Pra-registrasi hanya boleh dilakukan setelah SELURUH domain SELESAI backfill.**
+> Verifikasi sebelum menyegel: tiap domain hadir di `sync_state` dengan `last_run_at`
+> yang stabil pada **dua pembacaan berjarak**, dan census sumber-vs-mirror sudah tutup.
+> Menyegel dari mirror yang belum lengkap **memproduksi miss palsu**: ia menuduh
+> pipeline atas keterlambatan yang dibuat oleh metode.
+
+## Gerbang STOP pasca-sweep — LULUS
+
+`--resync-sales 2025-01-01 2026-07-23` **menulis ulang seluruh rentang, termasuk
+kedelapan tanggal gold-check**, jadi ini bukan formalitas.
+
+Mirror pasca-sweep vs nilai tersegel, **kedelapan tanggal** (bukan hanya dua minimum):
+**delta 0,0 Rp dan n=90 identik, 8/8 IDENTIK.** Resync terbukti idempoten dan tidak
+merusak apa pun yang sudah dinyatakan benar.
+
+## Temuan pendukung dari sweep
+
+- **Cakupan shift SEMPURNA:** nol hari non-3-shift sepanjang 2025-01-01 → 2026-07-21,
+  dan **567 hari terliput dari 567 hari kalender** — tak ada satu hari pun bolong.
+  Ekor `2026-07-22` = 2 shift (1,2) sebab resync jalan 02:14 WIB dan shift 3 belum
+  tutup — tafsiran terkonfirmasi dari `sales_header`, bukan diasumsikan.
+- **Progresi 234 → 262 → 270 = penambahan nozzle**, terkunci dari data: nozzle
+  **26 → 30 pada persis 2026-02-13**, satu-satunya perubahan dalam 18+ bulan.
+  78/hari = 26×3 shift; 90/hari = 30×3; hari transisi 02-13 = 82 (26+26+30).
+- **Window 300 = hari PERUBAHAN HARGA**, bukan anomali: pada hari tsb tiap nozzle
+  terdampak menulis baris detail kedua (mis. 2026-06-30 NZ-03 20.150 → 23.500).
+  `104 = 78 + 26` (26 nozzle diubah harganya), `120 = 90 + 30`. 14 dari 19 hari
+  elevated adalah akhir bulan (penyesuaian harga Pertamina).
