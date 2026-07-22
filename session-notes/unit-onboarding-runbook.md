@@ -98,6 +98,26 @@
    menyesatkan (seolah key/provisioning rusak). Sebelum `GRANT`, cek pula
    `SELECT user, host FROM mysql.user WHERE user='readonly_sync';` dan pakai `host` yang sudah
    terdaftar — di MySQL 5.0 `GRANT` polos ke host baru bisa **membuat akun tanpa password**.
+
+   **🔴 VERIFIKASI SESUDAH `GRANT` — WAJIB, satu query (koreksi 28 Oktober).** Tiga kegagalan
+   nyata di tiga unit berbeda berbagi SATU akar: **langkah grant bisa TERLIHAT sukses padahal
+   tidak meninggalkan akun yang bisa dipakai.**
+   | # | Unit | Gejala | Akar |
+   | - | ---- | ------ | ---- |
+   | 1 | KR | `Unknown database 'easymax'` | nama DB per-situs (`easymax_korek`) |
+   | 2 | KR | user ada, hak nol | GRANT atas DB TIDAK ADA diterima tanpa error |
+   | 3 | **28 Okt** | login ditolak langsung | **akun `readonly_sync` TIDAK PERNAH terbentuk** |
+
+   Karena itu, SEBELUM menyentuh `config.local.json`, jalankan:
+   ```sql
+   SELECT user, host, LENGTH(password) FROM mysql.user WHERE user='readonly_sync';
+   ```
+   Satu query, tiga jawaban: **eksistensi** (nol baris = akun tak ada → kasus #3), **host**
+   (harus cocok dgn yang dipakai agent), dan **panjang hash** — `LENGTH(password) = 16` berarti
+   format lama 41-bit (`old_passwords=1`) yang **tidak bisa diautentikasi `mysql2`** sekalipun
+   akun & hak sudah benar; `41` = format baru yang benar. Nol baris atau panjang 16 = perbaiki
+   di sini, jangan lanjut. Semua gejala hilir dari ketiganya **menyerupai API key/provisioning
+   rusak** — itulah sebabnya verifikasi ditaruh di sumbernya.
 2. Bundle dari `main` yang sudah dipromosikan: `pnpm --filter @solamax/agent bundle`.
    Zip kini **FLAT** (fix defect AS) dan **berisi `jalankan-agent.bat` + `resync-bulanan.bat`
    ter-generate** — tidak ada lagi file buatan-tangan. `config.local.json`: `unitCode` WAJIB

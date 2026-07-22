@@ -82,6 +82,25 @@ Konvensi password = `SPBU<kode unit>` → **`SPBU63781002`** (ikut 8 digit).
 Hanya `SELECT`, tidak lebih.
 **Ganti `easymax`** dengan nama sebenarnya dari langkah 2a bila berbeda.
 
+### 2d. 🔴 VERIFIKASI akun benar-benar terbentuk — WAJIB sebelum lanjut
+
+```sql
+SELECT user, host, LENGTH(password) FROM mysql.user WHERE user='readonly_sync';
+```
+
+| Hasil | Artinya |
+| --- | --- |
+| **nol baris** | akun **TIDAK terbentuk** → ulangi 2c, jangan lanjut |
+| `LENGTH(password)` = **16** | hash format lama 41-bit → **`mysql2` tak bisa login** meski akun benar. Set `old_passwords = 0` lalu `SET PASSWORD` ulang |
+| `LENGTH(password)` = **41** | ✅ format benar |
+| `host` ≠ yang dipakai agent | pakai host yang terdaftar |
+
+> ⚠️ **Kenapa ini wajib:** di unit ini, GRANT tampak sukses tetapi akun `readonly_sync`
+> **tidak pernah ada**, sehingga MySQL menolak login mentah-mentah. Bersama dua kasus KR
+> (nama DB per-situs; GRANT atas DB tak-ada diterima tanpa error), polanya satu:
+> **langkah grant bisa terlihat sukses tanpa meninggalkan akun yang bisa dipakai**, dan
+> semua gejalanya di hilir **menyerupai API key rusak**. Satu query ini menutup ketiganya.
+
 ## 3. Salin bundle ke folder LOKAL (3 mnt)
 
 Bundle sudah di-build dari `main` yang dipromosikan (**`89a9eb9`**):
