@@ -73,7 +73,9 @@ describe("entri Imam Bonjol 6478111 — target 12 bulan (dilengkapi 2026-07-22)"
     const total = (code: string, m: number) =>
       Object.values(TARGET_VOLUME_PER_DAY[code]![m]!).reduce((a, b) => a + b, 0);
     for (let m = 1; m <= 12; m++) {
-      for (const other of ["6378301", "6478101", "6478106", "6478201", "6478311"]) {
+      for (const other of [
+        "6378301", "6478101", "6478106", "6478201", "6478311", "63781002",
+      ]) {
         expect(total("6478111", m)).toBeGreaterThan(total(other, m));
       }
     }
@@ -181,7 +183,12 @@ describe("entri Batu Layang 6478201 (workbook 2026 baris BL, tenant BARU PT Batu
     for (let m = 1; m <= 12; m++) {
       const bl = targetBauran("6478201", "gasoil", m)!;
       expect(bl).toBeGreaterThan(0.5); // ~0,51 — satu-satunya unit di atas 0,5
-      for (const other of ["6478111", "6378301", "6478101", "6478106"]) {
+      // Loop DILENGKAPI jadi 6/6 unit lain (dulu hanya 4 — KR & 28 Oktober
+      // belum ada saat tes ini ditulis). Superlatif "TERTINGGI semua unit"
+      // hanya sah bila diuji thd SELURUH armada, 12/12 bulan.
+      for (const other of [
+        "6478111", "6378301", "6478101", "6478106", "6478311", "63781002",
+      ]) {
         expect(bl).toBeGreaterThan(targetBauran(other, "gasoil", m)!);
       }
     }
@@ -249,7 +256,9 @@ describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Inda
     // Semua unit lain MENAIK dari Jan ke Des (ramp) — KR tidak. IB kini ikut
     // dibandingkan: entri 12-bulannya dilengkapi 2026-07-22 (dulu hanya bulan 6,
     // sehingga sengaja dikecualikan di sini).
-    for (const other of ["6478111", "6378301", "6478101", "6478106", "6478201"]) {
+    for (const other of [
+      "6478111", "6378301", "6478101", "6478106", "6478201", "63781002",
+    ]) {
       expect(targetVolumePerDay(other, 12, "DEXLITE")!).toBeGreaterThan(
         targetVolumePerDay(other, 1, "DEXLITE")!,
       );
@@ -261,7 +270,9 @@ describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Inda
     // Superlatif lintas-unit hanya sah bila terverifikasi 12/12 thd SEMUA unit.
     for (let m = 1; m <= 12; m++) {
       const kr = targetBauran("6478311", "gasoil", m)!;
-      for (const other of ["6478111", "6478101", "6478106", "6478201"]) {
+      for (const other of [
+        "6478111", "6478101", "6478106", "6478201", "63781002",
+      ]) {
         expect(kr).toBeLessThan(targetBauran(other, "gasoil", m)!);
       }
       expect(kr).toBeGreaterThan(targetBauran("6378301", "gasoil", m)!);
@@ -271,7 +282,7 @@ describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Inda
   it("gasoline: di bawah IB/Bakau/KB 12/12; MENYILANG AS & BL di bulan 5 (KR lebih tinggi Jan–Apr)", () => {
     for (let m = 1; m <= 12; m++) {
       const kr = targetBauran("6478311", "gasoline", m)!;
-      for (const other of ["6478111", "6378301", "6478106"]) {
+      for (const other of ["6478111", "6378301", "6478106", "63781002"]) {
         expect(kr).toBeLessThan(targetBauran(other, "gasoline", m)!);
       }
       // AS & BL mulai lebih rendah (Jan 0,0375 / 0,0425) lalu naik lebih curam
@@ -298,5 +309,116 @@ describe("entri Korek 6478311 (workbook 2026 baris KR, tenant BARU PT Mitra Inda
     expect(ptLabelForUnits(["6478311"])).toBe("PT Mitra Indah Lestari Oil Pratama");
     expect(ptLabelForUnits(["6478311", "6478111"])).toBe("SolaGroup");
     expect(ptLabelForUnits(["6478311", "6478201"])).toBe("SolaGroup");
+  });
+});
+
+describe("entri 28 Oktober 63781002 (workbook 2026 baris 28, tenant BARU PT Sola Petra Energi)", () => {
+  it("kode POS DELAPAN digit — satu-satunya di armada (bukan 7)", () => {
+    // Regresi terhadap asumsi "kode SPBU selalu 7 digit" yang beredar di prosa
+    // brief/runbook. Kode adalah string OPAQUE; tak ada kode runtime yang
+    // memotong/mem-pad/mencocokkan panjangnya.
+    expect("63781002").toHaveLength(8);
+    expect(UNIT_DISPLAY["63781002"]).toBeDefined();
+    const sevens = Object.keys(UNIT_DISPLAY).filter((c) => c.length === 7);
+    expect(sevens).toHaveLength(6); // enam unit lain tetap 7 digit
+    expect(Object.keys(UNIT_DISPLAY)).toHaveLength(7); // armada LENGKAP 7/7
+  });
+
+  it("UNIT_DISPLAY: dotted/PT/alamat benar", () => {
+    const d = UNIT_DISPLAY["63781002"]!;
+    expect(d.dotted).toBe("63.781.002");
+    expect(d.name).toBe("28 Oktober");
+    expect(d.pt).toBe("PT Sola Petra Energi");
+    expect(d.address).toContain("28 Oktober");
+    expect(d.address).toContain("Siantan Hulu");
+  });
+
+  it("⚠️ PT Sola Petra ENERGI ≠ PT Sola Petra ABADI (near-collision, beda satu kata)", () => {
+    // Jebakan paling berbahaya di seri ini: memasang 28 Oktober di bawah tenant
+    // IB/Bakau akan membocorkan datanya ke direksi mereka SECARA SAH — scope-rule
+    // tak akan menyalak karena ia memang bekerja benar. Karena itu label PT diuji
+    // sebagai string EKSAK, dan campurannya WAJIB jatuh ke payung SolaGroup.
+    expect(UNIT_DISPLAY["63781002"]!.pt).not.toBe(UNIT_DISPLAY["6478111"]!.pt);
+    expect(UNIT_DISPLAY["63781002"]!.pt).not.toBe(UNIT_DISPLAY["6378301"]!.pt);
+    expect(ptLabelForUnits(["63781002"])).toBe("PT Sola Petra Energi");
+    // IB & Bakau bersama tetap "PT Sola Petra Abadi"; begitu 28 Oktober ikut,
+    // labelnya HARUS runtuh jadi SolaGroup (bukan diam-diam "Sola Petra …").
+    expect(ptLabelForUnits(["6478111", "6378301"])).toBe("PT Sola Petra Abadi");
+    expect(ptLabelForUnits(["63781002", "6478111"])).toBe("SolaGroup");
+    expect(ptLabelForUnits(["63781002", "6378301"])).toBe("SolaGroup");
+    expect(ptLabelForUnits(["63781002", "6478111", "6378301"])).toBe("SolaGroup");
+  });
+
+  it("target 12 bulan penuh; semua produk (termasuk TURBO) aktif sejak Jan (≠ AS)", () => {
+    for (let m = 1; m <= 12; m++) {
+      expect(TARGET_BAURAN["63781002"]!.gasoline[m]).toBeTypeOf("number");
+      expect(TARGET_BAURAN["63781002"]!.gasoil[m]).toBeTypeOf("number");
+      expect(Object.keys(TARGET_VOLUME_PER_DAY["63781002"]![m]!)).toHaveLength(6);
+    }
+    expect(targetVolumePerDay("63781002", 1, "PERTAMAX TURBO")).toBe(90);
+    expect(targetVolumePerDay("63781002", 12, "PERTAMAX TURBO")).toBe(200);
+    // PERTALITE 21k / SOLAR 17k flat (karakteristik 28 Oktober).
+    for (let m = 1; m <= 12; m++) {
+      expect(targetVolumePerDay("63781002", m, "PERTALITE")).toBe(21000);
+      expect(targetVolumePerDay("63781002", m, "SOLAR")).toBe(17000);
+    }
+  });
+
+  it("gasoil PERINGKAT 2 dari 7, 12/12 — di bawah BL saja, di atas lima unit lain", () => {
+    // Superlatif diuji thd SELURUH armada 12/12 (aturan pasca-KR), bukan slogan.
+    for (let m = 1; m <= 12; m++) {
+      const o28 = targetBauran("63781002", "gasoil", m)!;
+      expect(o28).toBeLessThan(targetBauran("6478201", "gasoil", m)!); // BL saja
+      for (const lower of ["6478111", "6378301", "6478101", "6478106", "6478311"]) {
+        expect(o28).toBeGreaterThan(targetBauran(lower, "gasoil", m)!);
+      }
+    }
+    // Pemisahan rentang bersih — tak bergantung bulan: BL min > 28 max > IB max.
+    const span = (code: string) => {
+      const v = Array.from({ length: 12 }, (_, i) => targetBauran(code, "gasoil", i + 1)!);
+      return { min: Math.min(...v), max: Math.max(...v) };
+    };
+    expect(span("6478201").min).toBeGreaterThan(span("63781002").max);
+    expect(span("63781002").min).toBeGreaterThan(span("6478111").max);
+  });
+
+  it("gasoline PERINGKAT 4 dari 7, 12/12 — di bawah IB/Bakau/KB, di atas AS/BL/KR", () => {
+    for (let m = 1; m <= 12; m++) {
+      const o28 = targetBauran("63781002", "gasoline", m)!;
+      for (const higher of ["6478111", "6378301", "6478106"]) {
+        expect(o28).toBeLessThan(targetBauran(higher, "gasoline", m)!);
+      }
+      for (const lower of ["6478101", "6478201", "6478311"]) {
+        expect(o28).toBeGreaterThan(targetBauran(lower, "gasoline", m)!);
+      }
+    }
+  });
+
+  it("satu-satunya unit TANPA persilangan di kedua sumbu (peringkat tetap 12/12)", () => {
+    // KR menyilang AS & BL di bulan 5; BL menyilang AS di bulan 7. 28 Oktober
+    // tidak menyilang siapa pun — peringkatnya konstan sepanjang tahun.
+    const fleet = ["6478111", "6378301", "6478101", "6478106", "6478201", "6478311", "63781002"];
+    for (const kind of ["gasoline", "gasoil"] as const) {
+      const ranks = Array.from({ length: 12 }, (_, i) =>
+        fleet
+          .slice()
+          .sort((a, b) => targetBauran(b, kind, i + 1)! - targetBauran(a, kind, i + 1)!)
+          .indexOf("63781002") + 1,
+      );
+      expect(new Set(ranks).size).toBe(1); // peringkat identik 12 bulan
+      expect(ranks[0]).toBe(kind === "gasoil" ? 2 : 4);
+    }
+  });
+
+  it("bauran TERDERIVASI eksak dari volume 12/12 (4dp round-half-up, bukan sekadar dekat)", () => {
+    // Uji konsistensi internal yang lebih kuat dari toBeCloseTo unit lain:
+    // tiap sel bauran HARUS sama persis dgn pembulatan 4dp rasio volumenya.
+    for (let m = 1; m <= 12; m++) {
+      const v = TARGET_VOLUME_PER_DAY["63781002"]![m]!;
+      const gasoline = (v["PERTAMAX"]! + v["PERTAMAX TURBO"]!) / v["PERTALITE"]!;
+      const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
+      expect(targetBauran("63781002", "gasoline", m)).toBe(Math.round(gasoline * 1e4) / 1e4);
+      expect(targetBauran("63781002", "gasoil", m)).toBe(Math.round(gasoil * 1e4) / 1e4);
+    }
   });
 });

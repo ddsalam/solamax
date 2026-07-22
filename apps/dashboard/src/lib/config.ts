@@ -40,7 +40,10 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
   },
   // Bundaran Kotabaru (64.781.06) — tenant BARU (ke-3): PT Merita Abadi Sukses
   // (Option A, isolasi lintas-tenant seperti AS — bukan pola same-tenant Bakau).
-  // Display code "KB" cosmetic saja (≠ Bakau "BK"; kunci runtime = kode 7-digit).
+  // Display code "KB" cosmetic saja (≠ Bakau "BK"; kunci runtime = kode POS di
+  // bawah ini). CATATAN (2026-07-22): kode POS TIDAK selalu 7 digit — 28 Oktober
+  // memakai `63781002` (DELAPAN digit). Tak ada kode runtime yang mengasumsikan
+  // panjang; perlakukan kode sebagai string opaque.
   "6478106": {
     dotted: "64.781.06",
     name: "Bundaran Kotabaru",
@@ -67,6 +70,22 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
     address:
       "Jl. Trans Kalimantan, Desa Korek, Kec. Sungai Ambawang, Kab. Kubu Raya, 78393",
     // pengawas: Rio Prasetiawan (spbu6478311milop@solagroup.co)
+  },
+  // 28 Oktober (63.781.002) — tenant BARU (ke-6): PT Sola Petra Energi.
+  // ⚠️ ENTITAS BERBEDA dari "PT Sola Petra Abadi" (pemilik IB + Bakau) — beda
+  // SATU kata, dikonfirmasi owner sebagai badan hukum terpisah. Slug tenant
+  // `pt-sola-petra-energi` vs `pt-sola-petra-abadi`: JANGAN pernah memilih
+  // tenant dgn LIKE/prefix, selalu string eksak (salah pilih = data 28 Oktober
+  // terlihat direksi IB/Bakau "sesuai aturan", tanpa scope-rule menyalak).
+  // ⚠️ Kode POS DELAPAN digit (satu-satunya di armada) — bukan 7.
+  // Unit ke-7 = unit TERAKHIR; armada lengkap 7/7.
+  "63781002": {
+    dotted: "63.781.002",
+    name: "28 Oktober",
+    pt: "PT Sola Petra Energi",
+    address: "Jl. 28 Oktober, Siantan Hulu, Kec. Pontianak Utara, 78242",
+    // pengawas: Rossi Machus (solapetraenergi@gmail.com — Gmail biasa, by design:
+    // akses invite-gated lewat membership, bukan lewat domain email)
   },
 };
 
@@ -262,6 +281,28 @@ export const TARGET_BAURAN: Record<
       7: 0.267, 8: 0.269, 9: 0.271, 10: 0.273, 11: 0.275, 12: 0.277,
     },
   },
+  // 28 Oktober (63.781.002) — tenant BARU PT Sola Petra Energi. Workbook
+  // "Target SPBU SolaGroup 2026" baris 28, 12 bulan penuh (angka NYATA,
+  // cross-check owner 2026-07-22; 24/24 sel bauran TERDERIVASI eksak dari tabel
+  // volume di bawah, 4dp round-half-up — mis. gasoline Jan 1790/21000 =
+  // 0,08523809… → 0,0852; gasoil Jan 6800/17000 = 0,4000 tepat).
+  // Profil (matriks 7 unit dihitung, BUKAN diwarisi):
+  //   gasoil   = PERINGKAT 2 dari 7, 12/12 bulan — di bawah BL saja
+  //              (BL min 0,5059 > 28 max 0,4259; 28 min 0,4000 > IB max 0,3713).
+  //   gasoline = PERINGKAT 4 dari 7, 12/12 bulan — di bawah IB/Bakau/KB,
+  //              di atas AS/BL/KR.
+  // Satu-satunya unit TANPA persilangan sama sekali di kedua sumbu (KR menyilang
+  // AS/BL di bulan 5; BL menyilang AS di bulan 7).
+  "63781002": {
+    gasoline: {
+      1: 0.0852, 2: 0.0905, 3: 0.0957, 4: 0.101, 5: 0.1062, 6: 0.1114,
+      7: 0.1167, 8: 0.1219, 9: 0.1271, 10: 0.1324, 11: 0.1376, 12: 0.1429,
+    },
+    gasoil: {
+      1: 0.4, 2: 0.4024, 3: 0.4047, 4: 0.4071, 5: 0.4094, 6: 0.4118,
+      7: 0.4141, 8: 0.4165, 9: 0.4188, 10: 0.4212, 11: 0.4235, 12: 0.4259,
+    },
+  },
 };
 
 export function targetBauran(
@@ -430,6 +471,25 @@ export const TARGET_VOLUME_PER_DAY: Record<
     10: { PERTALITE: 28000, PERTAMAX: 1850, "PERTAMAX TURBO": 170, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 980 },
     11: { PERTALITE: 28000, PERTAMAX: 1900, "PERTAMAX TURBO": 180, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 1000 },
     12: { PERTALITE: 28000, PERTAMAX: 1950, "PERTAMAX TURBO": 190, SOLAR: 10000, DEXLITE: 1750, "PERTAMINA DEX": 1020 },
+  },
+  // 28 Oktober (63.781.002) — tenant BARU PT Sola Petra Energi. Workbook 2026
+  // baris 28, 12 bulan penuh (L/HARI). PERTALITE 21k & SOLAR 17k flat (SOLAR
+  // sama dgn Bakau/BL); semua produk termasuk TURBO aktif sejak Jan (≠ AS).
+  // DEXLITE & PERTAMINA DEX sama-sama ramp +20/bulan (pola BL) tapi dari basis
+  // lebih rendah. Total harian ~46,6k→48,2k L — tetap di bawah IB (~64,2k→65,9k).
+  "63781002": {
+    1: { PERTALITE: 21000, PERTAMAX: 1700, "PERTAMAX TURBO": 90, SOLAR: 17000, DEXLITE: 2900, "PERTAMINA DEX": 3900 },
+    2: { PERTALITE: 21000, PERTAMAX: 1800, "PERTAMAX TURBO": 100, SOLAR: 17000, DEXLITE: 2920, "PERTAMINA DEX": 3920 },
+    3: { PERTALITE: 21000, PERTAMAX: 1900, "PERTAMAX TURBO": 110, SOLAR: 17000, DEXLITE: 2940, "PERTAMINA DEX": 3940 },
+    4: { PERTALITE: 21000, PERTAMAX: 2000, "PERTAMAX TURBO": 120, SOLAR: 17000, DEXLITE: 2960, "PERTAMINA DEX": 3960 },
+    5: { PERTALITE: 21000, PERTAMAX: 2100, "PERTAMAX TURBO": 130, SOLAR: 17000, DEXLITE: 2980, "PERTAMINA DEX": 3980 },
+    6: { PERTALITE: 21000, PERTAMAX: 2200, "PERTAMAX TURBO": 140, SOLAR: 17000, DEXLITE: 3000, "PERTAMINA DEX": 4000 },
+    7: { PERTALITE: 21000, PERTAMAX: 2300, "PERTAMAX TURBO": 150, SOLAR: 17000, DEXLITE: 3020, "PERTAMINA DEX": 4020 },
+    8: { PERTALITE: 21000, PERTAMAX: 2400, "PERTAMAX TURBO": 160, SOLAR: 17000, DEXLITE: 3040, "PERTAMINA DEX": 4040 },
+    9: { PERTALITE: 21000, PERTAMAX: 2500, "PERTAMAX TURBO": 170, SOLAR: 17000, DEXLITE: 3060, "PERTAMINA DEX": 4060 },
+    10: { PERTALITE: 21000, PERTAMAX: 2600, "PERTAMAX TURBO": 180, SOLAR: 17000, DEXLITE: 3080, "PERTAMINA DEX": 4080 },
+    11: { PERTALITE: 21000, PERTAMAX: 2700, "PERTAMAX TURBO": 190, SOLAR: 17000, DEXLITE: 3100, "PERTAMINA DEX": 4100 },
+    12: { PERTALITE: 21000, PERTAMAX: 2800, "PERTAMAX TURBO": 200, SOLAR: 17000, DEXLITE: 3120, "PERTAMINA DEX": 4120 },
   },
 };
 
