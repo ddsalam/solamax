@@ -329,3 +329,71 @@ lebih berharga daripada prediksinya sendiri.
 Selisih G/L MTD IB kini punya kandidat sebab yang masuk akal (komposisi
 Solar/Pertalite di PDF salah → Penjualan_BERSIH per produk berbeda → G/L per
 produk berbeda). **BL tetap tak terjelaskan** dan tidak ditambal.
+
+---
+
+# ENTRI BARU — 2026-07-24 (Gate 4b), sesudah penyegelan
+
+## E8. Cacat #1 terkonfirmasi KETIGA KALINYA — lewat halaman terpasang
+
+Vault membaca `/laporan-harian?d=2026-07-22` di `-rlsstg`: rasio harian AS
+**43,55 % / 2,64 % / 46,20 %** muncul persis di **kolom terakhir PDF yang
+berlabel `KR` dua kali**. Kolom itu memang milik AS. Tiga pembacaan independen
+kini: identitas `b/(1+b)` (E1), tabel rasio, dan halaman terpasang.
+
+## E9. BLOCKER Gate 4 — root cause, dan hipotesis §3(b)1 saya GUGUR
+
+Gejala: (a) G/L MTD identik dengan G/L harian, 24/24 sel, pada 23 Juli;
+(b) seluruh G/L **nol** pada 22 Juli — padahal penjualan di halaman yang sama
+cocok eksak.
+
+**Bukan** optimasi "satu jendela G/L per unit". Konsumennya benar, dan sudah
+dijaga test sejak Fase 3: dari SATU jendela `[20..22]`,
+`glDaily.totalsByUnit[4] = 149` sementara `glMonthly…kum = 159`
+(`harian-model.test.ts:334`). Kalau MTD ikut memfilter `d = D`, test itu merah.
+
+**Sebab sesungguhnya: cache `unstable_cache` 24 jam menyajikan hasil KOSONG.**
+Rantai buktinya:
+1. `gl-window.ts:39-42` memecah jendela: prefiks historis (`to ≤ hari-ini−2`)
+   di-cache, sufiks hari-berjalan selalu segar.
+2. `gl-window.ts:46` `GL_CACHE_REVALIDATE_S = 86_400` — **24 jam**.
+3. Instrumentasi Cloud Run: render pertama **15:20:13 UTC** dengan
+   `rows_sales: 5` — yaitu SEBELUM impor D9 (±15:27 UTC). Prefiks `[07-01..07-22]`
+   karena itu ter-cache dalam keadaan kosong.
+4. Render 22 Juli terbaru: `ms_gl: 1` ms untuk 3 unit × jendela 22 hari —
+   mustahil dari DB; itu cache hit. `cold: false` (22 Jul ≤ hari-ini−2).
+5. Query produksi `getDailyGlByProduct` dijalankan LANGSUNG ke `-rlsstg`
+   mengembalikan **132 baris / 22 hari**, Σgl IB −4.968 — identik LIVE. DB sehat.
+
+Jadi 23 Juli = prefiks kosong (cache) + sufiks segar (1 hari) → MTD == harian.
+22 Juli = seluruhnya prefiks → semua nol. **Dua gejala, satu sebab.**
+
+**Status: artefak lingkungan D9** (mengimpor data di bawah instance yang sedang
+berjalan dengan cache 24 jam), bukan cacat kode PR #128. Di produksi, perilaku
+yang sama berlaku untuk koreksi back-dated — dan itu memang **disengaja** &
+terdokumentasi di `gl-window.ts:1-22`, dengan pre-warm harian sebagai
+penyeimbangnya. `-rlsstg` tak punya `WARM_BOARD_SECRET`, jadi tak ada pre-warm.
+
+## E10. Perbaikan yang tetap saya lakukan — guard cakupan G/L
+
+Meski akarnya lingkungan, gejalanya tak boleh senyap: **0 tidak bisa dibedakan
+dari "tak ada selisih"**. Model kini membandingkan hari-ber-G/L vs
+hari-berpenjualan per unit dalam jendela MTD; kalau kurang → `glIncomplete`,
+catatan kaki menyebut `n/m hari` per unit, dan kedua tabel G/L memasang peringatan
+merah "jangan baca angka G/L sampai cakupannya penuh". Empat test baru
+mereproduksi **kedua gejala Gate 4 persis** sebagai kondisi yang menyalakan guard.
+
+## E11. Layout — diukur pada 7 KOLOM
+
+Sebelum: 1024 px → `pageScrollsX: true`, KPI meluber, kolom TOTAL di luar layar.
+Sesudah (`harian-kpi` + kolom sticky, `/board` tak disentuh):
+
+| lebar | body geser-X | KPI meluber | TOTAL terlihat | kolom KPI |
+|---|---|---|---|---|
+| 1024 | tidak | tidak | ya | 2 |
+| 1280 | tidak | tidak | ya | 4 |
+| 1440 | tidak | tidak | ya | 4 |
+| 1920 | tidak | tidak | ya | 4 |
+
+Kolom Produk (kiri) & TOTAL (kanan) sticky, dengan gutter + bayangan supaya
+kolom yang lewat di bawahnya tak terbaca menempel.

@@ -131,7 +131,7 @@ d("render Laporan Harian dari data live", () => {
       writeFileSync(
         OUT,
         `<!doctype html><meta charset="utf-8"><title>Laporan Harian ${DATE}</title>
-<style>${css}</style><body><div class="page" style="padding:24px;max-width:1400px;margin:0 auto">${body}</div></body>`,
+<style>${css}</style><body><div class="shell"><nav class="sidebar" style="height:100vh"></nav><main class="main page">${body}</main></div></body>`,
       );
       expect(body.length).toBeGreaterThan(5000);
       console.log(`HTML → ${OUT} (${body.length} byte markup)`);
@@ -150,7 +150,7 @@ function Page({ model }: { model: HarianModel }) {
         </div>
       </div>
       <StaleBanner model={model} />
-      <div className="kpi-grid mt8">
+      <div className="kpi-grid harian-kpi mt8">
         {[
           ["Total hari ini (liter)", idn(Math.round(model.daily.grandTotal))],
           ["Total bulan berjalan (liter)", idn(Math.round(model.monthly.grand.kum))],

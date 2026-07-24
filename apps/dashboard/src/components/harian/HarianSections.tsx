@@ -82,6 +82,7 @@ export function MatrixTable({
   deltaTotal,
   signTone = false,
   provisional = false,
+  glIncomplete = false,
 }: {
   title: string;
   hint: string;
@@ -97,6 +98,8 @@ export function MatrixTable({
   signTone?: boolean;
   /** true = baris G/L tanggal ini masih provisional (penutup belum final). */
   provisional?: boolean;
+  /** true = jendela G/L kurang hari → sel kosong tampil 0 dan menyesatkan. */
+  glIncomplete?: boolean;
 }) {
   const style = colStyle(units.length);
   return (
@@ -172,6 +175,13 @@ export function MatrixTable({
           berikutnya). Nilai akan berubah.
         </div>
       )}
+      {glIncomplete && (
+        <div className="fs15 t-danger mt2">
+          ⚠ Gain/Losses TIDAK LENGKAP — jendela memuat lebih sedikit hari daripada yang punya
+          penjualan. Sel tanpa data tampil <b>0</b>, dan 0 tak bisa dibedakan dari “tak ada
+          selisih”. Jangan baca angka G/L di bawah sampai cakupannya penuh (lihat Catatan data).
+        </div>
+      )}
     </div>
   );
 }
@@ -188,6 +198,7 @@ export function MonthlyMatrix({
   divisor,
   incomplete,
   signTone = false,
+  glIncomplete = false,
 }: {
   title: string;
   hint: string;
@@ -198,6 +209,7 @@ export function MonthlyMatrix({
   divisor: number;
   incomplete: boolean;
   signTone?: boolean;
+  glIncomplete?: boolean;
 }) {
   const style = colStyle(units.length * 2);
   const cell = (u: UnitStatus, c: { kum: number; avg: number } | undefined, bold = false) =>
@@ -260,6 +272,12 @@ export function MonthlyMatrix({
       </div>
       {incomplete && (
         <div className="fs15 t-warning mt2">⚠ TOTAL tidak lengkap — lihat banner di atas halaman.</div>
+      )}
+      {glIncomplete && (
+        <div className="fs15 t-danger mt2">
+          ⚠ Gain/Losses TIDAK LENGKAP — sel tanpa data tampil <b>0</b>. Jangan dibaca sampai
+          cakupannya penuh.
+        </div>
       )}
     </div>
   );
