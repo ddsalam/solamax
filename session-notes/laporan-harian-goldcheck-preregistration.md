@@ -397,3 +397,67 @@ Sesudah (`harian-kpi` + kolom sticky, `/board` tak disentuh):
 
 Kolom Produk (kiri) & TOTAL (kanan) sticky, dengan gutter + bayangan supaya
 kolom yang lewat di bawahnya tak terbaca menempel.
+
+## E12. D13 — jangan sajikan hasil KOSONG dari cache (gl-window.ts)
+
+Guard `glIncomplete` (E10) hanya melindungi halaman baru; `/board` memakai cache
+yang sama tanpa guard. Jalur produksinya nyata: **onboarding unit baru** — siapa
+pun yang membuka halaman saat backfill berjalan mengunci G/L unit itu jadi 0
+selama 24 jam. Bentuk baru dari pelajaran 28 Oktober.
+
+Aturan: **nol BARIS**, bukan nol NILAI. Σgl = 0 dengan baris ADA tetap ter-cache.
+Melengkapi `glIncomplete`, tidak menggantikan: yang di gl-window menutup keracunan
+TOTAL, yang di harian-model menangkap prefiks SEBAGIAN. Ditulis di komentar
+supaya tak ada yang menghapus salah satunya karena mengira redundan.
+
+Netralitas `/board` diuji langsung: `resolveHistoricPart` mengembalikan
+**referensi yang sama** untuk cache non-kosong dan **tidak pernah** memanggil
+jalur fresh (`freshCalls === 0`).
+
+Biaya DIUKUR (LIVE, median 3×, 2026-07-25): jendela nol-baris **135–154 ms**,
+jendela berisi 224–415 ms. Jendela nol-baris justru LEBIH MURAH, dan hanya
+menyentuh unit sebelum tanggal onboarding-nya.
+
+---
+
+# ENTRI BARU — 2026-07-25 (Gate 5), sesudah penyegelan
+
+## E13. Cache G/L bertahan MENEMBUS redeploy — memperkuat D17
+
+Bukti dari Cloud Run: revisi `-rlsstg-00018-xlb` (dari merge #129) dibuat
+17:09:57 UTC, tetapi render 22 Juli di atasnya (17:33–17:35) TETAP `ms_gl`
+1–2 ms — cache-kosong yang teracuni **tidak dibersihkan oleh revisi baru**.
+`unstable_cache` di setup ini persisten lintas-revisi. Kesimpulan: **redeploy
+saja tak cukup**; perbaikan kode D17 (`resolveHistoricPart` men-bypass hasil
+kosong) memang perlu. Ini sekaligus oracle bersih untuk verifikasi D17: begitu
+#131 deploy ke `-rlsstg`, 22 Juli harus berbalik jadi G/L bukan-nol TANPA impor
+ulang, karena satu-satunya yang berubah adalah kode.
+
+## E14. Root cause login `-rlsstg` — BUKAN skema `app` (hipotesis vault GUGUR)
+
+Vault menduga tabel auth / grant skema `app` di DB test. **Dibantah dengan
+bukti**: seluruh jalur adapter `@auth/pg-adapter` LOLOS sebagai `dashboard_app`
+di `-rlsstg` — createUser (id 22), linkAccount, createSession semuanya OK
+(di-ROLLBACK; nol baris tersisa). Grant lengkap (INSERT/SELECT/UPDATE di
+accounts/sessions/users/verification_token), USAGE skema app = true.
+
+**Sebab sesungguhnya, dari log server:**
+`[auth][error] InvalidCheck: pkceCodeVerifier value could not be parsed`.
+Ini masalah **cookie PKCE**, bukan DB. Vektornya: `-rlsstg` punya DUA hostname
+Cloud Run yang sama-sama melayani —
+`…-wn6i64kvza-et.a.run.app` (dipakai worker di Fase 4) dan
+`…-113869564052.asia-southeast2.run.app` (= `AUTH_URL`). Cookie PKCE bersifat
+HOST-ONLY: bila login dimulai di host A sementara `AUTH_URL` memaksa callback ke
+host B, cookie tak terkirim → "could not be parsed" → `error=Configuration`.
+Callback di log mendarat di host `113869564052` dengan `prompt=none` (re-auth
+senyap), konsisten dengan cookie yang di-set di host lain / dari secret lama.
+
+**Perbaikan = pemakaian, bukan kode/DB:** akses `-rlsstg` HANYA lewat host
+`AUTH_URL` (`…-113869564052.asia-southeast2.run.app`), cookie situs dibersihkan
+dulu. Nol perubahan skema `app`, nol grant, nol kode. Worker **tidak** mencoba
+alur login Google sendiri (autentikasi = butuh tindakan Dion; D19).
+
+## E15. Konfirmasi ketiga cacat #1 (dicatat vault di E8, ditegaskan di sini)
+
+Nilai rasio harian AS 22 Juli **43,55 / 2,64 / 46,20** muncul di kolom terakhir
+PDF yang berlabel `KR` ganda — kolom itu milik AS. Tiga pembacaan independen.
