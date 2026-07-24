@@ -450,3 +450,95 @@ describe("G/L provisional (hari berjalan)", () => {
     expect(m.glProvisional).toBe(false);
   });
 });
+
+describe("N3 — provisional pada D−1 di JAM PAGI (kondisi harian, bukan tepi)", () => {
+  /**
+   * Tanggal default halaman = KEMARIN. Opname PENUTUP D−1 baru terekam pagi
+   * hari D — jadi direksi yang membuka halaman ini pukul 6 pagi melihat D−1
+   * dalam keadaan provisional. Ini terjadi SETIAP hari kerja.
+   */
+  const glRow = (d: string, gl: number, provisional: boolean): DailyGlRow => ({
+    d,
+    ckdbbm: "BB-03",
+    nama: "SOLAR",
+    fisik: provisional ? null : 1000,
+    fisik_prev: 900,
+    pen_do: 0,
+    sales_gross: 0,
+    tera: 0,
+    gl,
+    excluded_tanks: 0,
+    provisional,
+  });
+
+  it("D = kemarin, penutupnya belum masuk → DITANDAI", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-23", // kemarin, dilihat pagi tanggal 24
+        gl: new Map([[4, [glRow("2026-07-22", 40, false), glRow("2026-07-23", -98_000, true)]]]),
+        dailySales: [sale(4, "2026-07-23", "SOLAR", 1000)],
+      }),
+    );
+    expect(m.glProvisional).toBe(true);
+    expect(m.notes.join(" ")).toContain("SEMENTARA");
+  });
+
+  it("siang hari, penutup D−1 sudah masuk → TIDAK ditandai", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-23",
+        gl: new Map([[4, [glRow("2026-07-23", 42, false)]]]),
+        dailySales: [sale(4, "2026-07-23", "SOLAR", 1000)],
+      }),
+    );
+    expect(m.glProvisional).toBe(false);
+  });
+
+  it("cukup SATU unit provisional untuk menandai halaman (tak boleh tenggelam)", () => {
+    const m = buildHarianModel(
+      base({
+        units: [KB, IB],
+        coverage: [cov(4, "2011-10-06"), cov(1, "2022-08-31")],
+        sync: [syn(4, "2026-07-24T07:33:00Z"), syn(1, "2026-07-24T07:33:00Z")],
+        date: "2026-07-23",
+        gl: new Map([
+          [4, [glRow("2026-07-23", 42, false)]],
+          [1, [glRow("2026-07-23", -50_000, true)]],
+        ]),
+        dailySales: [sale(4, "2026-07-23", "SOLAR", 1), sale(1, "2026-07-23", "SOLAR", 1)],
+      }),
+    );
+    expect(m.glProvisional).toBe(true);
+  });
+});
+
+describe("D6 — dua skala tren dipisah (batang vs garis TOTAL)", () => {
+  const m = buildHarianModel(
+    base({
+      units: [KB, IB],
+      coverage: [cov(4, "2011-10-06"), cov(1, "2022-08-31")],
+      sync: [syn(4, "2026-07-24T07:33:00Z"), syn(1, "2026-07-24T07:33:00Z")],
+      dailySales: [
+        sale(4, "2026-07-22", "SOLAR", 1_500_000),
+        sale(1, "2026-07-22", "SOLAR", 1_000_000),
+      ],
+    }),
+  );
+
+  it("barMax = nilai per-unit terbesar, BUKAN total", () => {
+    expect(m.trend.barMaxKum).toBeCloseTo(1500, 6);
+    expect(m.trend.totalMaxKum).toBeCloseTo(2500, 6);
+  });
+
+  it("barMax selalu ≤ totalMax (≥2 unit) — sumbu kiri tak pernah lebih longgar", () => {
+    expect(m.trend.barMaxKum).toBeLessThanOrEqual(m.trend.totalMaxKum);
+    expect(m.trend.barMaxAvg).toBeLessThanOrEqual(m.trend.totalMaxAvg);
+  });
+
+  it("scope 1 unit: barMax == totalMax (dua sumbu berimpit, tetap benar)", () => {
+    const one = buildHarianModel(
+      base({ dailySales: [sale(4, "2026-07-22", "SOLAR", 1_000_000)] }),
+    );
+    expect(one.trend.barMaxKum).toBeCloseTo(one.trend.totalMaxKum, 6);
+  });
+});

@@ -160,7 +160,18 @@ export interface HarianModel {
   glDaily: { rows: ValueRow[]; totalsByUnit: Record<number, number>; grandTotal: number };
   glMonthly: { rows: MonthlyRow[]; totalsByUnit: Record<number, MonthlyCell>; grand: MonthlyCell };
   share: ShareRow[];
-  trend: { months: TrendMonth[]; yMaxKum: number; yMaxAvg: number };
+  /**
+   * Skala tren DIPISAH: batang per-unit dan garis TOTAL punya orde berbeda
+   * (~1.500 KL vs ~9.200 KL). Keduanya dipakai untuk DUA sumbu BERLABEL —
+   * kiri = per unit, kanan = TOTAL (keputusan owner D6).
+   */
+  trend: {
+    months: TrendMonth[];
+    barMaxKum: number;
+    totalMaxKum: number;
+    barMaxAvg: number;
+    totalMaxAvg: number;
+  };
   ratios: { daily: Record<number, RatioCell>; monthly: Record<number, RatioCell>; dailyTotal: RatioCell; monthlyTotal: RatioCell };
   bbk: { monthly: Record<number, BbkCell>; monthlyTotal: BbkCell };
   record: RecordFact;
@@ -495,14 +506,10 @@ export function buildHarianModel(input: HarianInput): HarianModel {
       days,
     });
   }
-  const yMaxKum = Math.max(
-    1,
-    ...months.map((m) => Math.max(m.totalKl, ...unitIds.map((id) => m.byUnit[id] ?? 0))),
-  );
-  const yMaxAvg = Math.max(
-    1,
-    ...months.map((m) => Math.max(m.avgTotalKl, ...unitIds.map((id) => m.avgByUnit[id] ?? 0))),
-  );
+  const barMaxKum = Math.max(1, ...months.flatMap((m) => unitIds.map((id) => m.byUnit[id] ?? 0)));
+  const totalMaxKum = Math.max(1, ...months.map((m) => m.totalKl));
+  const barMaxAvg = Math.max(1, ...months.flatMap((m) => unitIds.map((id) => m.avgByUnit[id] ?? 0)));
+  const totalMaxAvg = Math.max(1, ...months.map((m) => m.avgTotalKl));
 
   // ── Rasio & BBK ───────────────────────────────────────────────────────────
   const volsFor = (src: Map<string, number>, id: number): Partial<Record<HarianProductKey, number>> => {
@@ -613,7 +620,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     glDaily,
     glMonthly,
     share,
-    trend: { months, yMaxKum, yMaxAvg },
+    trend: { months, barMaxKum, totalMaxKum, barMaxAvg, totalMaxAvg },
     ratios: {
       daily: ratiosDaily,
       monthly: ratiosMonthly,

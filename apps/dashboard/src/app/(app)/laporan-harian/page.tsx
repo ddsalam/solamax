@@ -105,6 +105,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
   const spanFrom = harianSpanFrom(date, FLEET_RECORD_FLOOR);
   const mFrom = monthStart(date);
 
+  const t0 = Date.now();
   // Empat query multi-unit — satu tembakan masing-masing.
   const [dailySales, coverage, sync, zeros] = await Promise.all([
     getDailySalesByProduct(unitIds, spanFrom, date),
@@ -123,11 +124,14 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
    * jendelanya. Invarian itu diuji sendiri di harian.integration.test.ts —
    * TIDAK menumpang test board.
    */
+  const tSales = Date.now();
+  const msSales = tSales - t0;
   const glPairs = await mapLimit(units, 2, async (u) => {
     const rows = await getDailyGlWindow(u.unit_id, mFrom, date);
     return [u.unit_id as number, rows] as const;
   });
   const gl = new Map<number, DailyGlRow[]>(glPairs);
+  const msGl = Date.now() - tSales;
 
   const model = buildHarianModel({
     units,
@@ -141,6 +145,29 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
   });
 
   const hasAny = model.daily.grandTotal > 0 || model.monthly.grand.kum > 0;
+
+  /**
+   * INSTRUMENTASI — satu baris JSON per render ke Cloud Run logs (pola
+   * /api/warm-board). Dipasang SEJAK MENIT PERTAMA halaman ini hidup, bukan
+   * menyusul: latensi produksi tak bisa diukur dari laptop maupun dari
+   * `-rlsstg` (DB test tak berskala produksi), jadi log inilah satu-satunya
+   * sumber angka yang sah. `cold` = hari terpilih ada di sisi tak-ter-cache
+   * gl-window (to > hari-ini−2) — selalu true untuk default "kemarin".
+   */
+  console.log(
+    JSON.stringify({
+      msg: "laporan-harian",
+      date,
+      units: units.length,
+      ms_total: Date.now() - t0,
+      ms_sales: msSales,
+      ms_gl: msGl,
+      cold: date > addDays(today, -2),
+      rows_sales: dailySales.length,
+      stale: model.freshness.staleUnits.length,
+      provisional: model.glProvisional,
+    }),
+  );
 
   return (
     <div>
@@ -209,8 +236,10 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
           <TrendSection
             units={model.units}
             months={model.trend.months}
-            yMaxKum={model.trend.yMaxKum}
-            yMaxAvg={model.trend.yMaxAvg}
+            barMaxKum={model.trend.barMaxKum}
+            totalMaxKum={model.trend.totalMaxKum}
+            barMaxAvg={model.trend.barMaxAvg}
+            totalMaxAvg={model.trend.totalMaxAvg}
           />
 
           <RatioBbkTable units={model.units} model={model} />

@@ -211,8 +211,10 @@ function Page({ model }: { model: HarianModel }) {
       <TrendSection
         units={model.units}
         months={model.trend.months}
-        yMaxKum={model.trend.yMaxKum}
-        yMaxAvg={model.trend.yMaxAvg}
+        barMaxKum={model.trend.barMaxKum}
+        totalMaxKum={model.trend.totalMaxKum}
+        barMaxAvg={model.trend.barMaxAvg}
+        totalMaxAvg={model.trend.totalMaxAvg}
       />
       <RatioBbkTable units={model.units} model={model} />
       <RecordCard units={model.units} model={model} />

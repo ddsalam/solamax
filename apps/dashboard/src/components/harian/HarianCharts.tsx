@@ -114,10 +114,12 @@ export function GlBars({
 // ---------------------------------------------------------------------------
 
 const W = 900;
-const H = 260;
-const PAD_L = 44;
+const H = 268;
+const PAD_L = 46;
+/** Ruang untuk sumbu KANAN (TOTAL) — tanpa ini tick-nya terpotong. */
+const PAD_R = 52;
 const PAD_B = 34;
-const PAD_T = 16;
+const PAD_T = 22;
 
 /**
  * Sumbu-Y "bulat": 4 tick, langkah dari tangga mantissa yang cukup rapat agar
@@ -135,82 +137,108 @@ export function niceAxisMax(v: number): number {
 }
 
 /**
- * Tren 13 bulan — batang BERTUMPUK per unit; puncak tumpukan = TOTAL grup.
+ * Tren 13 bulan — BATANG per unit (sumbu KIRI) + GARIS TOTAL (sumbu KANAN).
  * Satuan **KL** — laporan Excel memberi judul "(Dalam Ton)" padahal angkanya KL
  * (TOTAL Juli 6.445 = 6.446.221 L ÷ 1000); tak ada konversi densitas di mana pun.
  *
- * MENYIMPANG dari bentuk Excel (batang berdampingan + garis TOTAL), dengan alasan
- * yang terlihat saat pemeriksaan render: satu sumbu bersama untuk batang per-unit
- * (~1.500 KL) DAN garis TOTAL (~9.200 KL) membuat batangnya tenggelam jadi tak
- * terbaca. Excel menyembunyikan itu dengan sumbu sekunder — yaitu memplot dua
- * skala berbeda di satu bidang, yang tak pernah jujur. Bertumpuk menyelesaikannya
- * tanpa berbohong: puncak tumpukan MEMANG total, jadi keduanya terbaca pada satu
- * skala dan tak ada informasi yang hilang.
+ * SUMBU GANDA, DENGAN SENGAJA DAN DIBERI LABEL (keputusan owner D6). Batang
+ * per-unit (~1.500 KL) dan TOTAL grup (~9.200 KL) berbeda orde; satu sumbu
+ * bersama membuat batangnya tenggelam tak terbaca. Bentuk ini yang dibaca
+ * direksi tiap hari, jadi bentuknya dipertahankan — TETAPI cacat Excel-nya
+ * diperbaiki: di sana skala keduanya disembunyikan, di sini KEDUA sumbu diberi
+ * label eksplisit ("KL per unit" kiri, "KL TOTAL" kanan) dan tick-nya dicetak.
+ * Sumbu ganda yang berlabel bukan tipuan; yang menyesatkan adalah yang
+ * disembunyikan. (Varian batang-bertumpuk sempat dibangun & ditolak owner —
+ * kandidat backlog bernama "tren tumpuk satu-sumbu", jangan dihidupkan diam-diam.)
  */
 export function TrendCombo({
   units,
   months,
-  yMax,
+  barMax,
+  totalMax,
   mode,
   title,
 }: {
   units: UnitStatus[];
   months: TrendMonth[];
-  yMax: number;
+  /** Nilai per-unit terbesar → skala sumbu KIRI. */
+  barMax: number;
+  /** TOTAL grup terbesar → skala sumbu KANAN. */
+  totalMax: number;
   mode: "kum" | "avg";
   title: string;
 }) {
-  const plotW = W - PAD_L - 8;
+  const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const slot = plotW / months.length;
-  const barW = slot * 0.62;
-  const axisMax = niceAxisMax(yMax);
-  const y = (v: number) => PAD_T + plotH - (v / axisMax) * plotH;
+  const barW = Math.max(1.5, (slot * 0.74) / Math.max(1, units.length));
+  const leftMax = niceAxisMax(barMax);
+  const rightMax = niceAxisMax(totalMax);
+  /** Sumbu KIRI (batang). */
+  const yL = (v: number) => PAD_T + plotH - (v / leftMax) * plotH;
+  /** Sumbu KANAN (garis TOTAL) — skala BERBEDA, karena itu diberi label. */
+  const yR = (v: number) => PAD_T + plotH - (v / rightMax) * plotH;
 
   const pick = (m: TrendMonth, id: number): number | null =>
     mode === "kum" ? m.byUnit[id] ?? null : m.avgByUnit[id] ?? null;
   const total = (m: TrendMonth): number => (mode === "kum" ? m.totalKl : m.avgTotalKl);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * axisMax);
+  const fr = [0, 0.25, 0.5, 0.75, 1];
+  const line = months.map((m, i) => `${PAD_L + i * slot + slot / 2},${yR(total(m))}`).join(" ");
 
   return (
     <div className="card card-pad-lg mt5">
       <div className="text-caption w600 t-secondary">{title}</div>
       <div className="harian-chart-scroll mt3">
         <svg viewBox={`0 0 ${W} ${H}`} className="harian-chart" role="img" aria-label={title}>
-          {ticks.map((t, i) => (
+          {/* Judul kedua sumbu — inilah yang membuat skala ganda jadi jujur. */}
+          <text x={2} y={PAD_T - 5} className="harian-axis-title">
+            KL per unit ▮
+          </text>
+          <text x={W - 2} y={PAD_T - 5} textAnchor="end" className="harian-axis-title">
+            ▬ KL TOTAL grup
+          </text>
+          {fr.map((f, i) => (
             <g key={i}>
-              <line x1={PAD_L} y1={y(t)} x2={W - 8} y2={y(t)} stroke="var(--color-border-hairline)" />
-              <text x={PAD_L - 6} y={y(t) + 4} textAnchor="end" className="harian-axis">
-                {idn(Math.round(t))}
+              <line
+                x1={PAD_L}
+                y1={PAD_T + plotH - f * plotH}
+                x2={W - PAD_R}
+                y2={PAD_T + plotH - f * plotH}
+                stroke="var(--color-border-hairline)"
+              />
+              <text x={PAD_L - 6} y={PAD_T + plotH - f * plotH + 4} textAnchor="end" className="harian-axis">
+                {idn(Math.round(f * leftMax))}
+              </text>
+              <text
+                x={W - PAD_R + 6}
+                y={PAD_T + plotH - f * plotH + 4}
+                className="harian-axis harian-axis-right"
+              >
+                {idn(Math.round(f * rightMax))}
               </text>
             </g>
           ))}
           {months.map((m, mi) => {
             const cx = PAD_L + mi * slot + slot / 2;
-            let acc = 0;
+            const x0 = cx - (barW * units.length) / 2;
             return (
               <g key={m.ym}>
                 {units.map((u, ui) => {
                   const v = pick(m, u.unitId);
-                  if (v === null || v <= 0) return null; // belum beroperasi → TAK ADA segmen
-                  const yTop = y(acc + v);
-                  const h = Math.max(0.5, y(acc) - yTop);
-                  acc += v;
+                  if (v === null) return null; // belum beroperasi → TAK ADA batang
+                  const yTop = yL(v);
                   return (
                     <rect
                       key={u.unitId}
-                      x={cx - barW / 2}
+                      x={x0 + ui * barW}
                       y={yTop}
-                      width={barW}
-                      height={h}
+                      width={Math.max(1, barW - 0.8)}
+                      height={Math.max(0, PAD_T + plotH - yTop)}
                       fill={seriesColor(ui)}
                       opacity={m.partial ? 0.6 : 1}
                     />
                   );
                 })}
-                <text x={cx} y={y(total(m)) - 5} textAnchor="middle" className="harian-axis-val">
-                  {idn(Math.round(total(m)))}
-                </text>
                 <text x={cx} y={H - PAD_B + 16} textAnchor="middle" className="harian-axis">
                   {m.label}
                 </text>
@@ -222,6 +250,25 @@ export function TrendCombo({
               </g>
             );
           })}
+          <polyline points={line} fill="none" stroke="var(--color-text-primary)" strokeWidth={1.8} />
+          {months.map((m, i) => (
+            <g key={m.ym}>
+              <circle
+                cx={PAD_L + i * slot + slot / 2}
+                cy={yR(total(m))}
+                r={2.6}
+                fill="var(--color-text-primary)"
+              />
+              <text
+                x={PAD_L + i * slot + slot / 2}
+                y={yR(total(m)) - 7}
+                textAnchor="middle"
+                className="harian-axis-val"
+              >
+                {idn(Math.round(total(m)))}
+              </text>
+            </g>
+          ))}
         </svg>
       </div>
       <div className="harian-legend mt3">
@@ -231,8 +278,9 @@ export function TrendCombo({
             {u.name}
           </span>
         ))}
-        <span className="fs15 t-tertiary">
-          angka di atas tiap batang = TOTAL grup bulan itu
+        <span className="harian-legend-item fs15 t-secondary">
+          <i className="harian-legend-line" />
+          TOTAL grup (sumbu kanan)
         </span>
       </div>
     </div>
@@ -242,24 +290,43 @@ export function TrendCombo({
 export function TrendSection({
   units,
   months,
-  yMaxKum,
-  yMaxAvg,
+  barMaxKum,
+  totalMaxKum,
+  barMaxAvg,
+  totalMaxAvg,
 }: {
   units: UnitStatus[];
   months: TrendMonth[];
-  yMaxKum: number;
-  yMaxAvg: number;
+  barMaxKum: number;
+  totalMaxKum: number;
+  barMaxAvg: number;
+  totalMaxAvg: number;
 }) {
   return (
     <div className="mt10">
       <div className="section-h">
         <div className="text-h5 t-brand">Penjualan 13 bulan terakhir</div>
         <span className="fs16 t-tertiary">
-          satuan <b>KL</b> (kilo liter) · bulan berjalan dipotong di tanggal laporan
+          satuan <b>KL</b> (kilo liter) · <b>dua skala</b>: batang = sumbu kiri, garis TOTAL = sumbu
+          kanan · bulan berjalan dipotong di tanggal laporan
         </span>
       </div>
-      <TrendCombo units={units} months={months} yMax={yMaxKum} mode="kum" title="Kumulatif per bulan (KL)" />
-      <TrendCombo units={units} months={months} yMax={yMaxAvg} mode="avg" title="Rata-rata per hari (KL/hari)" />
+      <TrendCombo
+        units={units}
+        months={months}
+        barMax={barMaxKum}
+        totalMax={totalMaxKum}
+        mode="kum"
+        title="Kumulatif per bulan (KL)"
+      />
+      <TrendCombo
+        units={units}
+        months={months}
+        barMax={barMaxAvg}
+        totalMax={totalMaxAvg}
+        mode="avg"
+        title="Rata-rata per hari (KL/hari)"
+      />
     </div>
   );
 }

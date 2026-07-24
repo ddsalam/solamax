@@ -40,14 +40,31 @@ function UnitHeads({ units }: { units: UnitStatus[] }) {
   );
 }
 
+/**
+ * Sel matriks. DUA keadaan dirender "—" alih-alih angka (keputusan owner D7):
+ *  - `notYet`  : unit belum beroperasi pada tanggal itu.
+ *  - `stale`   : unit belum mengirim data untuk tanggal itu.
+ * Keduanya berarti "TIDAK ADA DATA", dan 0 adalah jawaban yang salah untuk itu —
+ * 0 berarti "tak menjual setetes pun". Konsekuensinya TOTAL grup tidak lagi sama
+ * dengan jumlah sel yang terlihat; itu disengaja dan dijelaskan banner + label
+ * TIDAK LENGKAP. (Alasan KEDUA total tak menjumlah adalah pembulatan ±1 L —
+ * beda hal, tak boleh tertukar: yang ini menghilangkan KOLOM, yang itu menggeser
+ * digit terakhir.)
+ */
 function cellText(u: UnitStatus, v: number | undefined, fmt: (n: number) => string): string {
-  if (u.notYet) return "—";
+  if (u.notYet || u.stale) return "—";
   return fmt(v ?? 0);
 }
 
 /** Kelas warna untuk angka bertanda (dipakai tabel G/L): negatif = danger. */
 function toneOf(signTone: boolean, v: number | undefined): string {
   return signTone && (v ?? 0) < 0 ? " t-danger" : "";
+}
+
+/** Varian per-unit: sel tanpa data ("—") tak boleh diwarnai seolah punya tanda. */
+function toneOfUnit(signTone: boolean, u: UnitStatus, v: number | undefined): string {
+  if (u.notYet || u.stale) return "";
+  return toneOf(signTone, v);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +116,7 @@ export function MatrixTable({
             <div key={r.key} className="grid-row cols-harian" style={style}>
               <span className="fs16 t-primary">{r.label}</span>
               {units.map((u) => (
-                <span key={u.unitId} className={`fs16 right num${toneOf(signTone, r.byUnit[u.unitId])}`}>
+                <span key={u.unitId} className={`fs16 right num${toneOfUnit(signTone, u, r.byUnit[u.unitId])}`}>
                   {cellText(u, r.byUnit[u.unitId], fmt)}
                 </span>
               ))}
@@ -109,7 +126,7 @@ export function MatrixTable({
           <div className="grid-total cols-harian" style={style}>
             <span className="fs16 w700 t-brand">Total</span>
             {units.map((u) => (
-              <span key={u.unitId} className={`fs16 w700 right num${toneOf(signTone, totalsByUnit[u.unitId])}`}>
+              <span key={u.unitId} className={`fs16 w700 right num${toneOfUnit(signTone, u, totalsByUnit[u.unitId])}`}>
                 {cellText(u, totalsByUnit[u.unitId], fmt)}
               </span>
             ))}
@@ -184,7 +201,7 @@ export function MonthlyMatrix({
 }) {
   const style = colStyle(units.length * 2);
   const cell = (u: UnitStatus, c: { kum: number; avg: number } | undefined, bold = false) =>
-    u.notYet ? (
+    u.notYet || u.stale ? (
       <>
         <span key={`${u.unitId}k`} className={`fs16 right num${bold ? " w700" : ""}`}>—</span>
         <span key={`${u.unitId}a`} className="fs15 right num t-tertiary">—</span>
@@ -290,7 +307,7 @@ export function RatioBbkTable({
           <span className="fs16 t-primary">{name}</span>
           {units.map((u) => (
             <span key={u.unitId} className="fs16 right num">
-              {u.notYet ? "—" : P(pick(get(u.unitId)))}
+              {u.notYet || u.stale ? "—" : P(pick(get(u.unitId)))}
             </span>
           ))}
           <span className="fs16 w600 right num">{P(pick(total))}</span>
@@ -304,7 +321,9 @@ export function RatioBbkTable({
       <span className="fs16 t-primary">{name}</span>
       {units.map((u) => (
         <span key={u.unitId} className="fs16 right num">
-          {u.notYet ? "—" : P(pick(model.bbk.monthly[u.unitId] ?? { gasoline: null, diesel: null }))}
+          {u.notYet || u.stale
+            ? "—"
+            : P(pick(model.bbk.monthly[u.unitId] ?? { gasoline: null, diesel: null }))}
         </span>
       ))}
       <span className="fs16 w600 right num">{P(pick(model.bbk.monthlyTotal))}</span>
@@ -415,7 +434,9 @@ export function StaleBanner({ model }: { model: HarianModel }) {
             .join(" · ")}
         </div>
         <div className="fs15 t-tertiary mt2">
-          Angka TOTAL tetap ditampilkan tetapi terlalu kecil. Kolom unit yang tertinggal ditandai ⚠.
+          Kolom unit yang tertinggal ditandai ⚠ dan selnya dirender “—” (tidak ada data — bukan nol
+          penjualan). TOTAL tetap ditampilkan sebagai jumlah unit yang PUNYA data, jadi ia terlalu
+          kecil dan tidak sama dengan jumlah kolom yang terlihat.
         </div>
       </div>
     </div>
