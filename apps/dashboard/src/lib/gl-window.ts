@@ -45,12 +45,70 @@ export function splitGlWindow(from: string, to: string, today: string): GlWindow
 /** Revalidate 24 jam — selaras cadence deep-rescan agent (koreksi back-dated). */
 const GL_CACHE_REVALIDATE_S = 86_400;
 
+/**
+ * JANGAN SAJIKAN HASIL KOSONG DARI CACHE (keputusan owner D13, 2026-07-25).
+ *
+ * AKAR MASALAH — bukan hipotetis, ini menjatuhkan Gate 4: bila prefiks historis
+ * pernah di-query saat datanya BELUM ada, `unstable_cache` menyimpan array
+ * kosong dan menyajikannya **24 jam**. Akibatnya seluruh G/L tampil 0, dan 0
+ * tak bisa dibedakan dari "tidak ada selisih". Terbukti di `-rlsstg`: render
+ * pertama 15:20:13 UTC (`rows_sales: 5`, sebelum data masuk) → seluruh render
+ * 22 Juli sesudahnya `ms_gl: 1` ms = cache hit atas hasil kosong, sementara
+ * query yang sama langsung ke DB itu mengembalikan 132 baris.
+ *
+ * JALUR PRODUKSINYA NYATA: onboarding unit baru. Siapa pun yang membuka
+ * `/board` atau `/laporan-harian` saat backfill unit baru masih berjalan akan
+ * mengunci G/L unit itu jadi 0 sampai sehari penuh.
+ *
+ * ATURAN: **nol BARIS**, bukan nol NILAI. Unit yang sah-sah saja tak punya
+ * selisih (Σ gl = 0) tetap ter-cache seperti biasa — yang ditolak hanyalah
+ * "query tak mengembalikan baris sama sekali", yang untuk prefiks HISTORIS
+ * berarti datanya belum ada, bukan bahwa tak ada yang terjadi.
+ *
+ * ⚠️ INI MELENGKAPI `glIncomplete` (harian-model.ts), BUKAN MENGGANTIKANNYA.
+ * Jangan hapus salah satunya karena mengira redundan:
+ *   - di sini  → menutup keracunan TOTAL (nol baris sama sekali);
+ *   - di sana  → menangkap prefiks SEBAGIAN (beberapa hari ada, sisanya hilang),
+ *                yang TIDAK akan pernah terdeteksi pemeriksaan kosong ini.
+ * Keduanya nyata dan tak saling menutupi.
+ *
+ * BIAYA — DIUKUR, bukan ditaksir (LIVE lewat proxy, median dari 3 kali, 2026-07-25):
+ *   nol baris  AS Sep 2025  →  154 ms      nol baris  AS Ags 2025 →  135 ms
+ *   berisi     AS Jun 2026  →  224 ms      berisi     IB Jun 2026 →  415 ms
+ * Jadi jendela nol-baris memang dihitung ulang tiap request, ~135–155 ms per
+ * unit-jendela — LEBIH MURAH daripada jendela berisi (query berhenti lebih awal
+ * karena tak ada baris opname untuk dirangkai). Yang terkena hanyalah unit
+ * SEBELUM tanggal onboarding-nya; unit aktif selalu punya baris sehingga
+ * jalurnya tak pernah tersentuh.
+ */
+export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
+  return rows.length === 0;
+}
+
+/**
+ * Ambil prefiks historis. Non-kosong → NILAI CACHE dipakai apa adanya dan
+ * `fresh` TIDAK pernah dipanggil (netralitas perilaku untuk `/board`).
+ * Terpisah dari `cachedGl` agar keputusannya teruji tanpa runtime Next
+ * (`unstable_cache` melempar di luar RSC).
+ */
+export async function resolveHistoricPart(
+  cached: () => Promise<DailyGlRow[]>,
+  fresh: () => Promise<DailyGlRow[]>,
+): Promise<DailyGlRow[]> {
+  const hit = await cached();
+  if (!shouldBypassEmptyCache(hit)) return hit;
+  return fresh();
+}
+
 function cachedGl(unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> {
-  return unstable_cache(
+  return resolveHistoricPart(
+    unstable_cache(
+      () => getDailyGlByProduct(unit, from, to),
+      ["gl-window", String(unit), from, to],
+      { revalidate: GL_CACHE_REVALIDATE_S },
+    ),
     () => getDailyGlByProduct(unit, from, to),
-    ["gl-window", String(unit), from, to],
-    { revalidate: GL_CACHE_REVALIDATE_S },
-  )();
+  );
 }
 
 // React.cache hanya ada di build server (RSC); fallback identity utk vitest.
