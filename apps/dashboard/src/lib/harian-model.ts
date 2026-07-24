@@ -166,6 +166,14 @@ export interface HarianModel {
   record: RecordFact;
   /** Sel G/L yang tersentuh penutup opname bernilai NOL (lihat glZeroNotes). */
   glSuspectUnits: UnitRef[];
+  /**
+   * true = ADA baris G/L hari-D yang masih PROVISIONAL (penutup D+1 belum
+   * terekam / anchor D−1 hilang / ada celah opname). Terjadi setiap kali D =
+   * hari berjalan: opname penutup baru masuk pagi berikutnya, sehingga angka
+   * G/L hari ini terlihat sebagai kerugian raksasa yang sepenuhnya semu.
+   * Ditandai, BUKAN disembunyikan.
+   */
+  glProvisional: boolean;
   notes: string[];
 }
 
@@ -384,8 +392,10 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   // ── G/L ───────────────────────────────────────────────────────────────────
   const glDayCell = new Map<string, number>();
   const glMtdCell = new Map<string, number>();
+  let glProvisional = false;
   for (const id of unitIds) {
     for (const r of gl.get(id) ?? []) {
+      if (r.d === date && r.provisional) glProvisional = true;
       if (r.gl === null) continue;
       const key = rowKeyOf(r.nama, r.ckdbbm);
       const k = `${id}|${key}`;
@@ -574,6 +584,11 @@ export function buildHarianModel(input: HarianInput): HarianModel {
       `Pencarian rekor mengabaikan ${record.droppedUnitDays} unit-hari di luar batas wajar (>${GARBAGE_DAY_SALES_L.toLocaleString("id-ID")} L/unit/hari).`,
     );
   }
+  if (glProvisional) {
+    notes.push(
+      "Gain/Losses tanggal ini masih SEMENTARA: opname penutup hari itu belum lengkap (penutup harian baru terekam pagi berikutnya). Angka akan berubah — jangan diambil sebagai kesimpulan.",
+    );
+  }
   const suspects = statuses.filter((s) => input.glSuspect?.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
@@ -608,6 +623,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     bbk: { monthly: bbkMonthly, monthlyTotal: bbkOf(toProductVol(mtdAll)) },
     record,
     glSuspectUnits: suspects.map((s) => ({ unitId: s.unitId, code: s.code, name: s.name })),
+    glProvisional,
     notes,
   };
 }

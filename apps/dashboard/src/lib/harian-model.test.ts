@@ -410,3 +410,43 @@ describe("util bulan", () => {
     expect(harianSpanFrom("2028-07-22", "2025-12-29")).toBe("2025-12-29");
   });
 });
+
+describe("G/L provisional (hari berjalan)", () => {
+  const glRow = (d: string, gl: number, provisional: boolean): DailyGlRow => ({
+    d,
+    ckdbbm: "BB-03",
+    nama: "SOLAR",
+    fisik: 0,
+    fisik_prev: 0,
+    pen_do: 0,
+    sales_gross: 0,
+    tera: 0,
+    gl,
+    excluded_tanks: 0,
+    provisional,
+  });
+
+  it("baris hari-D provisional → ditandai & dicatat, TIDAK disembunyikan", () => {
+    const m = buildHarianModel(
+      base({ gl: new Map([[4, [glRow("2026-07-22", -116_445, true)]]]) }),
+    );
+    expect(m.glProvisional).toBe(true);
+    expect(m.glDaily.totalsByUnit[4]).toBe(-116_445); // angkanya TETAP tampil
+    expect(m.notes.join(" ")).toContain("SEMENTARA");
+  });
+
+  it("baris final → tak ada penanda", () => {
+    const m = buildHarianModel(
+      base({ gl: new Map([[4, [glRow("2026-07-22", 58, false)]]]) }),
+    );
+    expect(m.glProvisional).toBe(false);
+    expect(m.notes.join(" ")).not.toContain("SEMENTARA");
+  });
+
+  it("provisional pada hari LAIN dalam jendela MTD tidak menandai hari-D", () => {
+    const m = buildHarianModel(
+      base({ gl: new Map([[4, [glRow("2026-07-20", 10, true), glRow("2026-07-22", 5, false)]]]) }),
+    );
+    expect(m.glProvisional).toBe(false);
+  });
+});

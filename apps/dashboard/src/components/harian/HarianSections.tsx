@@ -45,6 +45,11 @@ function cellText(u: UnitStatus, v: number | undefined, fmt: (n: number) => stri
   return fmt(v ?? 0);
 }
 
+/** Kelas warna untuk angka bertanda (dipakai tabel G/L): negatif = danger. */
+function toneOf(signTone: boolean, v: number | undefined): string {
+  return signTone && (v ?? 0) < 0 ? " t-danger" : "";
+}
+
 // ---------------------------------------------------------------------------
 
 export function MatrixTable({
@@ -58,6 +63,8 @@ export function MatrixTable({
   fmt = (n) => idn(Math.round(n)),
   delta,
   deltaTotal,
+  signTone = false,
+  provisional = false,
 }: {
   title: string;
   hint: string;
@@ -69,6 +76,10 @@ export function MatrixTable({
   fmt?: (n: number) => string;
   delta?: Record<number, number | null>;
   deltaTotal?: number | null;
+  /** true = angka bertanda (G/L): negatif diberi warna danger. */
+  signTone?: boolean;
+  /** true = baris G/L tanggal ini masih provisional (penutup belum final). */
+  provisional?: boolean;
 }) {
   const style = colStyle(units.length);
   return (
@@ -88,21 +99,21 @@ export function MatrixTable({
             <div key={r.key} className="grid-row cols-harian" style={style}>
               <span className="fs16 t-primary">{r.label}</span>
               {units.map((u) => (
-                <span key={u.unitId} className="fs16 right num">
+                <span key={u.unitId} className={`fs16 right num${toneOf(signTone, r.byUnit[u.unitId])}`}>
                   {cellText(u, r.byUnit[u.unitId], fmt)}
                 </span>
               ))}
-              <span className="fs16 w600 right num">{fmt(r.total)}</span>
+              <span className={`fs16 w600 right num${toneOf(signTone, r.total)}`}>{fmt(r.total)}</span>
             </div>
           ))}
           <div className="grid-total cols-harian" style={style}>
             <span className="fs16 w700 t-brand">Total</span>
             {units.map((u) => (
-              <span key={u.unitId} className="fs16 w700 right num">
+              <span key={u.unitId} className={`fs16 w700 right num${toneOf(signTone, totalsByUnit[u.unitId])}`}>
                 {cellText(u, totalsByUnit[u.unitId], fmt)}
               </span>
             ))}
-            <span className="fs16 w700 right num">{fmt(grandTotal)}</span>
+            <span className={`fs16 w700 right num${toneOf(signTone, grandTotal)}`}>{fmt(grandTotal)}</span>
           </div>
           {delta && (
             <div className="grid-row cols-harian harian-delta" style={style}>
@@ -138,6 +149,12 @@ export function MatrixTable({
           ⚠ TOTAL menjumlah unit yang datanya belum lengkap untuk tanggal ini — angkanya terlalu kecil.
         </div>
       )}
+      {provisional && (
+        <div className="fs15 t-warning mt2">
+          ⏳ Angka SEMENTARA — opname penutup tanggal ini belum lengkap (baru terekam pagi
+          berikutnya). Nilai akan berubah.
+        </div>
+      )}
     </div>
   );
 }
@@ -153,6 +170,7 @@ export function MonthlyMatrix({
   grand,
   divisor,
   incomplete,
+  signTone = false,
 }: {
   title: string;
   hint: string;
@@ -162,6 +180,7 @@ export function MonthlyMatrix({
   grand: { kum: number; avg: number };
   divisor: number;
   incomplete: boolean;
+  signTone?: boolean;
 }) {
   const style = colStyle(units.length * 2);
   const cell = (u: UnitStatus, c: { kum: number; avg: number } | undefined, bold = false) =>
@@ -172,7 +191,10 @@ export function MonthlyMatrix({
       </>
     ) : (
       <>
-        <span key={`${u.unitId}k`} className={`fs16 right num${bold ? " w700" : ""}`}>
+        <span
+          key={`${u.unitId}k`}
+          className={`fs16 right num${bold ? " w700" : ""}${toneOf(signTone, c?.kum)}`}
+        >
           {idn(Math.round(c?.kum ?? 0))}
         </span>
         <span key={`${u.unitId}a`} className="fs15 right num t-tertiary">

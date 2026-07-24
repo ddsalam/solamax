@@ -177,6 +177,8 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             totalsByUnit={model.glDaily.totalsByUnit}
             grandTotal={model.glDaily.grandTotal}
             incomplete={model.freshness.incomplete}
+            signTone
+            provisional={model.glProvisional}
           />
 
           <MonthlyMatrix
@@ -201,6 +203,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             grand={model.glMonthly.grand}
             divisor={model.avgDivisor}
             incomplete={model.freshness.incomplete}
+            signTone
           />
 
           <TrendSection

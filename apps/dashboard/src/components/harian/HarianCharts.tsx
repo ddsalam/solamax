@@ -88,12 +88,15 @@ export function GlBars({
               </div>
               <div className="harian-gl-track">
                 <div className="harian-gl-zero" />
+                {/* Warna HANYA menyandikan TANDA. Memakai palet per-unit di sini
+                    membuat unit ke-2 (merah) tampak rugi padahal untung — cacat
+                    yang tertangkap saat pemeriksaan render, bukan oleh test. */}
                 <div
                   className="harian-gl-fill"
                   style={{
                     left: v < 0 ? `${50 - w}%` : "50%",
                     width: `${w}%`,
-                    background: v < 0 ? "var(--color-danger)" : seriesColor(i),
+                    background: v < 0 ? "var(--color-danger)" : "var(--color-success)",
                   }}
                 />
               </div>
@@ -117,9 +120,32 @@ const PAD_B = 34;
 const PAD_T = 16;
 
 /**
- * Combo 13 bulan: batang per unit + garis TOTAL. Satuan **KL** — laporan Excel
- * memberi judul "(Dalam Ton)" padahal angkanya KL (TOTAL Juli 6.445 = 6.446.221 L
- * ÷ 1000); tak ada konversi densitas di mana pun. Nol asumsi: kami menulis KL.
+ * Sumbu-Y "bulat": 4 tick, langkah dari tangga mantissa yang cukup rapat agar
+ * puncak data tak pernah tenggelam di separuh bawah grafik. Tangga kasar
+ * (1/2/5 saja) memberi maks 20.000 untuk data 9.206 — setengah bidang kosong,
+ * tertangkap saat pemeriksaan render.
+ */
+const NICE_STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+export function niceAxisMax(v: number): number {
+  if (v <= 0) return 1;
+  const step0 = v / 4;
+  const mag = 10 ** Math.floor(Math.log10(step0));
+  const step = NICE_STEPS.map((k) => k * mag).find((s) => s >= step0) ?? 10 * mag;
+  return step * 4;
+}
+
+/**
+ * Tren 13 bulan — batang BERTUMPUK per unit; puncak tumpukan = TOTAL grup.
+ * Satuan **KL** — laporan Excel memberi judul "(Dalam Ton)" padahal angkanya KL
+ * (TOTAL Juli 6.445 = 6.446.221 L ÷ 1000); tak ada konversi densitas di mana pun.
+ *
+ * MENYIMPANG dari bentuk Excel (batang berdampingan + garis TOTAL), dengan alasan
+ * yang terlihat saat pemeriksaan render: satu sumbu bersama untuk batang per-unit
+ * (~1.500 KL) DAN garis TOTAL (~9.200 KL) membuat batangnya tenggelam jadi tak
+ * terbaca. Excel menyembunyikan itu dengan sumbu sekunder — yaitu memplot dua
+ * skala berbeda di satu bidang, yang tak pernah jujur. Bertumpuk menyelesaikannya
+ * tanpa berbohong: puncak tumpukan MEMANG total, jadi keduanya terbaca pada satu
+ * skala dan tak ada informasi yang hilang.
  */
 export function TrendCombo({
   units,
@@ -137,17 +163,14 @@ export function TrendCombo({
   const plotW = W - PAD_L - 8;
   const plotH = H - PAD_T - PAD_B;
   const slot = plotW / months.length;
-  const barW = Math.max(2, (slot * 0.72) / Math.max(1, units.length));
-  const y = (v: number) => PAD_T + plotH - (v / yMax) * plotH;
+  const barW = slot * 0.62;
+  const axisMax = niceAxisMax(yMax);
+  const y = (v: number) => PAD_T + plotH - (v / axisMax) * plotH;
 
   const pick = (m: TrendMonth, id: number): number | null =>
     mode === "kum" ? m.byUnit[id] ?? null : m.avgByUnit[id] ?? null;
   const total = (m: TrendMonth): number => (mode === "kum" ? m.totalKl : m.avgTotalKl);
-
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * yMax);
-  const line = months
-    .map((m, i) => `${PAD_L + i * slot + slot / 2},${y(total(m))}`)
-    .join(" ");
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * axisMax);
 
   return (
     <div className="card card-pad-lg mt5">
@@ -163,56 +186,42 @@ export function TrendCombo({
             </g>
           ))}
           {months.map((m, mi) => {
-            const x0 = PAD_L + mi * slot + slot * 0.14;
+            const cx = PAD_L + mi * slot + slot / 2;
+            let acc = 0;
             return (
               <g key={m.ym}>
                 {units.map((u, ui) => {
                   const v = pick(m, u.unitId);
-                  if (v === null) return null; // belum beroperasi → TAK ADA batang
-                  const h = Math.max(0, PAD_T + plotH - y(v));
+                  if (v === null || v <= 0) return null; // belum beroperasi → TAK ADA segmen
+                  const yTop = y(acc + v);
+                  const h = Math.max(0.5, y(acc) - yTop);
+                  acc += v;
                   return (
                     <rect
                       key={u.unitId}
-                      x={x0 + ui * barW}
-                      y={y(v)}
-                      width={Math.max(1, barW - 0.8)}
+                      x={cx - barW / 2}
+                      y={yTop}
+                      width={barW}
                       height={h}
                       fill={seriesColor(ui)}
-                      opacity={m.partial ? 0.55 : 1}
+                      opacity={m.partial ? 0.6 : 1}
                     />
                   );
                 })}
-                <text
-                  x={PAD_L + mi * slot + slot / 2}
-                  y={H - PAD_B + 16}
-                  textAnchor="middle"
-                  className="harian-axis"
-                >
+                <text x={cx} y={y(total(m)) - 5} textAnchor="middle" className="harian-axis-val">
+                  {idn(Math.round(total(m)))}
+                </text>
+                <text x={cx} y={H - PAD_B + 16} textAnchor="middle" className="harian-axis">
                   {m.label}
                 </text>
                 {m.partial && (
-                  <text
-                    x={PAD_L + mi * slot + slot / 2}
-                    y={H - PAD_B + 28}
-                    textAnchor="middle"
-                    className="harian-axis-sub"
-                  >
+                  <text x={cx} y={H - PAD_B + 28} textAnchor="middle" className="harian-axis-sub">
                     parsial
                   </text>
                 )}
               </g>
             );
           })}
-          <polyline points={line} fill="none" stroke="var(--color-text-primary)" strokeWidth={1.8} />
-          {months.map((m, i) => (
-            <circle
-              key={m.ym}
-              cx={PAD_L + i * slot + slot / 2}
-              cy={y(total(m))}
-              r={2.6}
-              fill="var(--color-text-primary)"
-            />
-          ))}
         </svg>
       </div>
       <div className="harian-legend mt3">
@@ -222,9 +231,8 @@ export function TrendCombo({
             {u.name}
           </span>
         ))}
-        <span className="harian-legend-item fs15 t-secondary">
-          <i style={{ background: "var(--color-text-primary)" }} />
-          TOTAL
+        <span className="fs15 t-tertiary">
+          angka di atas tiap batang = TOTAL grup bulan itu
         </span>
       </div>
     </div>
