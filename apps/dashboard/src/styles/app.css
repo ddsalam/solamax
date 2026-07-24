@@ -932,3 +932,47 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .harian-axis-title { font-size: 11px; font-weight: 600; fill: var(--color-text-tertiary); }
 .harian-axis-right { text-anchor: start; }
 .harian-legend-line { width: 14px; height: 0; border-top: 2px solid var(--color-text-primary); border-radius: 0; }
+
+/* ===== Laporan Harian — perbaikan lebar (BLOCKER Gate 4 §3) =====
+   Diukur pada 7 KOLOM (bukan 3) di 1024/1280/1440/1920. Gejala di 1024:
+   badan halaman menggeser horizontal, kartu KPI ke-4 terpotong, dan kolom TOTAL
+   — angka yang paling dilihat direksi — jatuh di luar layar.
+   Semua diperbaiki lewat kelas KHUSUS halaman ini; .kpi-grid bersama /board
+   TIDAK disentuh. */
+
+/* 1fr default = min-width:auto → track tak bisa menyusut di bawah isinya, dan
+   grid mendorong .main melebar. minmax(0,1fr) memulihkan kemampuan menyusut. */
+.harian-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .harian-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .harian-kpi { grid-template-columns: minmax(0, 1fr); } }
+.harian-kpi .kpi-card { min-width: 0; }
+.harian-kpi .text-h2 { overflow-wrap: anywhere; }
+
+/* Kolom PRODUK (kiri) & TOTAL (kanan) menempel saat isinya digeser — TOTAL
+   selalu terbaca tanpa menggeser apa pun. */
+.cols-harian > :first-child,
+.cols-harian2 > :first-child {
+  position: sticky; left: 0; z-index: 2; background: inherit;
+  padding-right: 10px; margin-right: 2px;
+  box-shadow: 1px 0 0 var(--color-border), 10px 0 10px -8px rgba(0,0,0,.16);
+}
+.cols-harian > :last-child {
+  position: sticky; right: 0; z-index: 2; background: inherit;
+  /* Sticky MENUMPANG, tidak menyisakan ruang → tanpa gutter + garis tegas,
+     angka unit terakhir terbaca menempel pada TOTAL. */
+  padding-left: 10px; margin-left: 2px;
+  box-shadow: -1px 0 0 var(--color-border), -10px 0 10px -8px rgba(0,0,0,.16);
+}
+.cols-harian2 > :last-child,
+.cols-harian2 > :nth-last-child(2) { position: sticky; z-index: 2; background: inherit; }
+.cols-harian2 > :last-child { right: 0; }
+.cols-harian2 > :nth-last-child(2) {
+  right: 84px; padding-left: 10px; margin-left: 2px;
+  box-shadow: -1px 0 0 var(--color-border), -10px 0 10px -8px rgba(0,0,0,.16);
+}
+/* Baris grid transparan → sticky menampilkan yang lewat di bawahnya; beri warna
+   yang sama dengan barisnya. */
+.grid-head.cols-harian, .grid-head.cols-harian2,
+.grid-total.cols-harian, .grid-total.cols-harian2,
+.harian-subhead, .harian-delta { background: var(--neutral-50); }
+.grid-row.cols-harian, .grid-row.cols-harian2 { background: var(--color-surface); }

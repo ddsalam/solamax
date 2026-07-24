@@ -206,6 +206,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             incomplete={model.freshness.incomplete}
             signTone
             provisional={model.glProvisional}
+            glIncomplete={model.glIncomplete}
           />
 
           <MonthlyMatrix
@@ -231,6 +232,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             divisor={model.avgDivisor}
             incomplete={model.freshness.incomplete}
             signTone
+            glIncomplete={model.glIncomplete}
           />
 
           <TrendSection
@@ -291,7 +293,7 @@ function SummaryCards({ model }: { model: HarianModel }) {
     { k: "glm", t: "Gain / Losses bulan berjalan", v: idn(Math.round(gm)), sub: gm < 0 ? "losses" : "gain" },
   ];
   return (
-    <div className="kpi-grid mt8">
+    <div className="kpi-grid harian-kpi mt8">
       {cards.map((c) => (
         <div key={c.k} className="kpi-card">
           <div className="text-caption t-tertiary">{c.t}</div>

@@ -542,3 +542,64 @@ describe("D6 — dua skala tren dipisah (batang vs garis TOTAL)", () => {
     expect(one.trend.barMaxKum).toBeCloseTo(one.trend.totalMaxKum, 6);
   });
 });
+
+describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan KOSONG)", () => {
+  const glRow = (d: string, gl: number): DailyGlRow => ({
+    d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0,
+    sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: false,
+  });
+  const salesDays = (unit: number, days: string[]) =>
+    days.map((d) => sale(unit, d, "SOLAR", 1000));
+
+  it("GEJALA PERSIS Gate 4: jendela hanya berisi hari-D → MTD == harian → DITANDAI", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-23",
+        dailySales: salesDays(4, ["2026-07-21", "2026-07-22", "2026-07-23"]),
+        gl: new Map([[4, [glRow("2026-07-23", 100)]]]), // prefiks historis hilang
+      }),
+    );
+    expect(m.glDaily.totalsByUnit[4]).toBe(100);
+    expect(m.glMonthly.totalsByUnit[4]!.kum).toBe(100); // identik — inilah gejalanya
+    expect(m.glIncomplete).toBe(true); // …dan sekarang MENYALAK
+    expect(m.notes.join(" ")).toContain("Gain/Losses TIDAK LENGKAP");
+    expect(m.notes.join(" ")).toContain("1/3 hari");
+  });
+
+  it("GEJALA KEDUA: jendela KOSONG total → semua sel 0 → DITANDAI", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-22",
+        dailySales: salesDays(4, ["2026-07-21", "2026-07-22"]),
+        gl: new Map([[4, []]]),
+      }),
+    );
+    expect(m.glDaily.totalsByUnit[4]).toBe(0);
+    expect(m.glIncomplete).toBe(true);
+    expect(m.glCoverage.find((c) => c.unitId === 4)).toMatchObject({ glDays: 0, salesDays: 2 });
+  });
+
+  it("cakupan penuh → TIDAK menyalak (guard tak berisik)", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-22",
+        dailySales: salesDays(4, ["2026-07-21", "2026-07-22"]),
+        gl: new Map([[4, [glRow("2026-07-21", 10), glRow("2026-07-22", 42)]]]),
+      }),
+    );
+    expect(m.glIncomplete).toBe(false);
+    expect(m.glDaily.totalsByUnit[4]).toBe(42);
+    expect(m.glMonthly.totalsByUnit[4]!.kum).toBe(52); // MTD ≠ harian
+  });
+
+  it("hari G/L LEBIH banyak dari hari penjualan bukan alarm (opname tanpa jualan)", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-22",
+        dailySales: salesDays(4, ["2026-07-22"]),
+        gl: new Map([[4, [glRow("2026-07-21", 10), glRow("2026-07-22", 42)]]]),
+      }),
+    );
+    expect(m.glIncomplete).toBe(false);
+  });
+});

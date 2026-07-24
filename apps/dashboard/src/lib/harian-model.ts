@@ -185,6 +185,17 @@ export interface HarianModel {
    * Ditandai, BUKAN disembunyikan.
    */
   glProvisional: boolean;
+  /**
+   * true = jendela G/L memuat LEBIH SEDIKIT hari daripada yang punya penjualan.
+   * Sel G/L yang kosong dirender 0, dan 0 TIDAK BISA dibedakan dari "tak ada
+   * selisih" — persis kelas gagal-senyap yang menjatuhkan Gate 4: cache
+   * `unstable_cache` 24 jam di gl-window.ts:46 menyimpan hasil KOSONG yang
+   * dihitung sebelum data masuk, lalu menyajikannya seharian. Halaman kini
+   * menyalak alih-alih menampilkan nol yang meyakinkan.
+   */
+  glIncomplete: boolean;
+  /** Cakupan per unit: hari berpenjualan vs hari ber-baris-G/L dalam jendela. */
+  glCoverage: Array<{ unitId: number; code: string; salesDays: number; glDays: number }>;
   notes: string[];
 }
 
@@ -290,6 +301,8 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   const monthly = new Map<string, number>();
   /** (d,unit) → liter (untuk rekor) */
   const dayUnit = new Map<string, number>();
+  /** Hari unik berpenjualan per unit dalam [mFrom..date] — pembanding guard G/L. */
+  const salesDaysByUnit = new Map<number, Set<string>>();
 
   for (const r of dailySales) {
     if (!idSet.has(r.unit_id)) continue; // sabuk pengaman; RLS+scope sudah menjamin
@@ -312,6 +325,9 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     if (r.d >= mFrom && r.d <= date) {
       const k = `${r.unit_id}|${key}`;
       mtdCell.set(k, (mtdCell.get(k) ?? 0) + r.vol);
+      const set = salesDaysByUnit.get(r.unit_id) ?? new Set<string>();
+      set.add(r.d);
+      salesDaysByUnit.set(r.unit_id, set);
     }
   }
 
@@ -404,6 +420,8 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   const glDayCell = new Map<string, number>();
   const glMtdCell = new Map<string, number>();
   let glProvisional = false;
+  /** Hari unik ber-baris-G/L per unit dalam [mFrom..date] — bahan guard cakupan. */
+  const glDaysByUnit = new Map<number, Set<string>>();
   for (const id of unitIds) {
     for (const r of gl.get(id) ?? []) {
       if (r.d === date && r.provisional) glProvisional = true;
@@ -411,7 +429,12 @@ export function buildHarianModel(input: HarianInput): HarianModel {
       const key = rowKeyOf(r.nama, r.ckdbbm);
       const k = `${id}|${key}`;
       if (r.d === date) glDayCell.set(k, (glDayCell.get(k) ?? 0) + r.gl);
-      if (r.d >= mFrom && r.d <= date) glMtdCell.set(k, (glMtdCell.get(k) ?? 0) + r.gl);
+      if (r.d >= mFrom && r.d <= date) {
+        glMtdCell.set(k, (glMtdCell.get(k) ?? 0) + r.gl);
+        const set = glDaysByUnit.get(id) ?? new Set<string>();
+        set.add(r.d);
+        glDaysByUnit.set(id, set);
+      }
     }
   }
   const glKeys: RowKey[] = [...HARIAN_PRODUCTS.map((p) => p.key as RowKey)];
@@ -596,6 +619,23 @@ export function buildHarianModel(input: HarianInput): HarianModel {
       "Gain/Losses tanggal ini masih SEMENTARA: opname penutup hari itu belum lengkap (penutup harian baru terekam pagi berikutnya). Angka akan berubah — jangan diambil sebagai kesimpulan.",
     );
   }
+  // ── Guard cakupan G/L ─────────────────────────────────────────────────────
+  const glCoverage = statuses.map((s) => ({
+    unitId: s.unitId,
+    code: s.code,
+    salesDays: salesDaysByUnit.get(s.unitId)?.size ?? 0,
+    glDays: glDaysByUnit.get(s.unitId)?.size ?? 0,
+  }));
+  const glShort = glCoverage.filter((c) => c.glDays < c.salesDays);
+  const glIncomplete = glShort.length > 0;
+  if (glIncomplete) {
+    notes.push(
+      `Gain/Losses TIDAK LENGKAP: ${glShort
+        .map((c) => `${statuses.find((s) => s.unitId === c.unitId)?.name ?? c.code} ${c.glDays}/${c.salesDays} hari`)
+        .join(" · ")}. Sel tanpa baris G/L tampil 0 dan 0 tak bisa dibedakan dari "tak ada selisih" — jangan baca angka G/L di halaman ini sampai cakupannya penuh.`,
+    );
+  }
+
   const suspects = statuses.filter((s) => input.glSuspect?.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
@@ -631,6 +671,8 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     record,
     glSuspectUnits: suspects.map((s) => ({ unitId: s.unitId, code: s.code, name: s.name })),
     glProvisional,
+    glIncomplete,
+    glCoverage,
     notes,
   };
 }
