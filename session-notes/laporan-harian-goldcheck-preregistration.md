@@ -397,3 +397,23 @@ Sesudah (`harian-kpi` + kolom sticky, `/board` tak disentuh):
 
 Kolom Produk (kiri) & TOTAL (kanan) sticky, dengan gutter + bayangan supaya
 kolom yang lewat di bawahnya tak terbaca menempel.
+
+## E12. D13 — jangan sajikan hasil KOSONG dari cache (gl-window.ts)
+
+Guard `glIncomplete` (E10) hanya melindungi halaman baru; `/board` memakai cache
+yang sama tanpa guard. Jalur produksinya nyata: **onboarding unit baru** — siapa
+pun yang membuka halaman saat backfill berjalan mengunci G/L unit itu jadi 0
+selama 24 jam. Bentuk baru dari pelajaran 28 Oktober.
+
+Aturan: **nol BARIS**, bukan nol NILAI. Σgl = 0 dengan baris ADA tetap ter-cache.
+Melengkapi `glIncomplete`, tidak menggantikan: yang di gl-window menutup keracunan
+TOTAL, yang di harian-model menangkap prefiks SEBAGIAN. Ditulis di komentar
+supaya tak ada yang menghapus salah satunya karena mengira redundan.
+
+Netralitas `/board` diuji langsung: `resolveHistoricPart` mengembalikan
+**referensi yang sama** untuk cache non-kosong dan **tidak pernah** memanggil
+jalur fresh (`freshCalls === 0`).
+
+Biaya DIUKUR (LIVE, median 3×, 2026-07-25): jendela nol-baris **135–154 ms**,
+jendela berisi 224–415 ms. Jendela nol-baris justru LEBIH MURAH, dan hanya
+menyentuh unit sebelum tanggal onboarding-nya.
