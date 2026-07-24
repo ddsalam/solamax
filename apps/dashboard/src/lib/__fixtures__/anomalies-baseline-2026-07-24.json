@@ -1,5 +1,5 @@
 {
-  "count": 240,
+  "count": 241,
   "items": [
     {
       "tone": "danger",
@@ -2639,6 +2639,18 @@
       "desc": "Gain/Losses operasional PERTAMAX TURBO (metode RESUME: fisik − [fisik D−1 + ΣDO − jual bersih]) — di atas ambang 100 L / 0,5%. Kekurangan kiriman DO tergabung di sini.",
       "time": "2026-07-22",
       "href": "/unit/6478311/laporan/2026-07-24",
+      "standing": false
+    },
+    {
+      "tone": "warning",
+      "tier": "major",
+      "sev": 10180.18,
+      "dateIso": "2026-07-22",
+      "title": "Penutup opname tercatat 0 — tangki T-05",
+      "unit": "28 Oktober · 63.781.002",
+      "desc": "PERTAMAX: fisik penutup 0 padahal buku 10.180 L, kemarin 10.180 L dan besoknya 10.172 L tanpa penerimaan yang menjelaskan (DO H+1 0 L). Gain/Losses hari ini turun ~10.180 L lalu naik setara besoknya — keduanya SEMU. Perlu koreksi entri opname di EasyMax.",
+      "time": "2026-07-22",
+      "href": "/unit/63781002/laporan/2026-07-24",
       "standing": false
     },
     {

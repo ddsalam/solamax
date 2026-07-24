@@ -14,6 +14,7 @@ import {
   getLastInputs,
   getShiftInfo,
   getTankStocks,
+  getZeroClosingEvents,
 } from "./queries";
 import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
@@ -58,6 +59,25 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
   const today = todayWib();
   const items: AnomalyItem[] = [];
   let kasOldest: { date: string } | null = null;
+
+  /**
+   * Penutup opname bernilai NOL (keputusan owner D2, 2026-07-24). SATU query
+   * multi-unit di luar loop — tidak menambah fan-out per unit.
+   *
+   * TIER: `warning`/`major`, SENGAJA BUKAN `danger` (= tak dihitung badge merah).
+   * Alasannya berbasis angka: aturannya menyala 2× dalam 30 hari terakhir dan 1×
+   * dalam jendela 7 hari yang dipakai feed ini — cukup senyap. Tapi ini cacat
+   * ENTRI DATA, bukan bahaya operasional (tak ada BBM yang benar-benar hilang);
+   * badge merah dikalibrasi untuk yang kedua. Menaikkannya ke danger akan
+   * mengencerkan sinyal yang justru harus dipercaya.
+   */
+  const unitIds = units.map((u) => u.unit_id);
+  const byUnitZero = new Map<number, Awaited<ReturnType<typeof getZeroClosingEvents>>>();
+  for (const z of await getZeroClosingEvents(unitIds, addDays(today, -6), today)) {
+    const list = byUnitZero.get(z.unit_id) ?? [];
+    list.push(z);
+    byUnitZero.set(z.unit_id, list);
+  }
 
   for (const u of units) {
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
@@ -207,6 +227,21 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         unit: unitTag,
         desc: "Baris penjualan direvisi pengawas (SUBAH/SEDIT). Angka di dashboard sudah keadaan terbaru.",
         time: "hari ini",
+        href,
+      });
+    }
+
+    // Kualitas data: penutup opname 0 padahal tangki tak pernah kosong.
+    for (const z of byUnitZero.get(u.unit_id as number) ?? []) {
+      items.push({
+        tone: "warning",
+        tier: "major",
+        sev: Math.abs(z.prev),
+        dateIso: z.d,
+        title: `Penutup opname tercatat 0 — tangki ${z.ckdtangki}`,
+        unit: unitTag,
+        desc: `${z.nama ?? z.ckdbbm}: fisik penutup 0 padahal buku ${fmtL(z.bk)}, kemarin ${fmtL(z.prev)} dan besoknya ${fmtL(z.next)} tanpa penerimaan yang menjelaskan (DO H+1 ${fmtL(z.recv_next)}). Gain/Losses hari ini turun ~${fmtL(z.prev)} lalu naik setara besoknya — keduanya SEMU. Perlu koreksi entri opname di EasyMax.`,
+        time: z.d,
         href,
       });
     }
