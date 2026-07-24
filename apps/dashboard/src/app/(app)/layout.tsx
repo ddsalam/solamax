@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { SignOutButton } from "@/components/SignOutButton";
-import { buildAnomalies } from "@/lib/anomalies";
+import { getAnomalies } from "@/lib/anomalies";
 import { ptLabelForUnits, unitLabel } from "@/lib/config";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
@@ -49,7 +49,7 @@ export default async function AppShellLayout({
         .sort()
         .pop() ?? null;
     // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
-    alertCount = (await buildAnomalies(scope.units)).filter(
+    alertCount = (await getAnomalies(scope.units)).filter(
       (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
     ).length;
   } catch {

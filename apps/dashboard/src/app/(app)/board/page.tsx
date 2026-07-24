@@ -5,7 +5,7 @@ import { BoardExport } from "@/components/board/BoardExport";
 import { BoardFilters } from "@/components/board/BoardFilters";
 import { RankingTable } from "@/components/board/RankingTable";
 import { TrendChart } from "@/components/board/TrendChart";
-import { buildAnomalies } from "@/lib/anomalies";
+import { getAnomalies } from "@/lib/anomalies";
 import {
   buildBoardCore,
   buildBoardEval,
@@ -91,7 +91,7 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
     getDailySalesByProduct(units.map((u) => u.unit_id), spanFrom, range.to),
     getUnitCoverage(units.map((u) => u.unit_id)),
     Promise.all(units.map(async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, today)] as const)),
-    buildAnomalies(units),
+    getAnomalies(units),
     glWindow(range),
   ]);
 
