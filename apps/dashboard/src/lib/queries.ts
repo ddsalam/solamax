@@ -252,6 +252,106 @@ export async function getCorrectedNozzles(unit: ScopedUnitId, date: string): Pro
 // ---------------------------------------------------------------------------
 // Opname penutup (gain/loss SIGNED) — fix G/L
 // ---------------------------------------------------------------------------
+// Kualitas data: penutup opname bernilai NOL (blank entry)
+// ---------------------------------------------------------------------------
+
+export interface ZeroClosingRow {
+  unit_id: number;
+  d: string; // tanggal bisnis penutup yang bernilai 0
+  ckdtangki: string;
+  ckdbbm: string;
+  nama: string | null;
+  bk: number; // stok BUKU hari itu (biasanya masih penuh → itulah petunjuknya)
+  prev: number; // fisik penutup hari sebelumnya
+  next: number; // fisik penutup hari berikutnya
+  recv_next: number; // ΣNVOLDO tangki itu pada hari berikutnya
+}
+
+/**
+ * Penutup opname per tangki tercatat **0** padahal tangki tidak pernah kosong.
+ *
+ * Ditemukan lewat investigasi 28 Oktober (2026-07-24): G/L 22 Jul unit 28 Okt
+ * −9.814 L vs laporan Excel +388 L. Sebabnya BUKAN backfill (14/14 domain
+ * lengkap, opname 24 baris/hari tanpa bolong) melainkan tangki T-05 (Pertamax)
+ * yang penutupnya tercatat 0 sementara buku 10.180 dan keesokan harinya kembali
+ * 10.172 TANPA penerimaan sebesar itu. Metode RESUME menyalurkannya apa adanya:
+ * rugi semu −10.180 pada hari D, untung semu setara pada D+1.
+ *
+ * Guard `garbage` yang ada TIDAK menangkapnya: |op − bk| = 10.180 < 50.000
+ * (GARBAGE_SELISIH_L) dan `provisional` juga false — barisnya tampak bersih.
+ *
+ * ATURAN (v2, dipilih setelah mengukur positif-palsunya):
+ *   op = 0 ∧ prev > 1.000 ∧ next > 1.000 ∧ **ΣNVOLDO(hari berikutnya) < next**
+ * Syarat terakhir itu yang penting. Tangki yang MEMANG dikosongkan lalu diisi
+ * ulang punya DO yang menjelaskan pengisiannya; tanpa DO, angka 0 itu mustahil.
+ * Terukur atas 12 bulan × 7 unit: aturan tanpa syarat DO menyala 36×, dengan
+ * syarat DO 31× — dan pada 30 hari terakhir 4× → **2×**, di mana kedua yang
+ * dibuang (KR 17 & 20 Jul, T-05 Dexlite, DO 8.000 L keesokan harinya) memang
+ * tangki yang benar-benar kering. Penanda yang sering salah akan dilatih untuk
+ * diabaikan; itu sebabnya syarat DO tidak opsional.
+ *
+ * Murni SELECT, multi-unit dalam SATU query (tak menambah fan-out per unit).
+ */
+export async function getZeroClosingEvents(
+  unitIds: ScopedUnitId[],
+  from: string,
+  to: string,
+): Promise<ZeroClosingRow[]> {
+  if (unitIds.length === 0) return [];
+  return qScoped<ZeroClosingRow>(
+    unitIds,
+    `WITH biz AS (
+       SELECT o.unit_id, o.ckdtangki, trim(o.ckdbbm) AS ckdbbm, o.nstockop, o.nstockbk,
+              COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
+              row_number() OVER (
+                PARTITION BY o.unit_id,
+                             COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date),
+                             o.ckdtangki
+                ORDER BY o.dtgljam DESC) AS rn
+       FROM opname o
+       WHERE o.unit_id = ANY($1::int[]) AND COALESCE(o.sbatal,0) = 0
+         AND COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date)
+             BETWEEN $2::date AND $3::date
+     ),
+     c AS (
+       SELECT unit_id, ckdtangki, ckdbbm, bizdate,
+              nstockop::float8 AS op, nstockbk::float8 AS bk,
+              lag(nstockop::float8)  OVER w AS prv,
+              lead(nstockop::float8) OVER w AS nxt,
+              lead(bizdate)          OVER w AS nxtd
+       FROM biz WHERE rn = 1
+       WINDOW w AS (PARTITION BY unit_id, ckdtangki ORDER BY bizdate)
+     ),
+     d AS (
+       SELECT t.unit_id, t.ckdtangki,
+              COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS dd,
+              sum(t.nvoldo)::float8 AS v
+       FROM delivery t
+       WHERE t.unit_id = ANY($1::int[]) AND COALESCE(t.sbatal,0) = 0
+         AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
+         AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date)
+             BETWEEN $2::date AND ($3::date + 1)
+       GROUP BY 1,2,3
+     )
+     SELECT c.unit_id, to_char(c.bizdate,'YYYY-MM-DD') AS d,
+            trim(c.ckdtangki) AS ckdtangki, c.ckdbbm,
+            (SELECT max(p.vcnmbbm) FROM product p
+              WHERE p.unit_id = c.unit_id AND trim(p.ckdbbm) = c.ckdbbm) AS nama,
+            c.bk, c.prv AS prev, c.nxt AS next,
+            COALESCE((SELECT sum(v) FROM d
+                       WHERE d.unit_id = c.unit_id AND d.ckdtangki = c.ckdtangki
+                         AND d.dd = c.nxtd), 0)::float8 AS recv_next
+     FROM c
+     WHERE c.op = 0 AND COALESCE(c.prv,0) > 1000 AND COALESCE(c.nxt,0) > 1000
+       AND COALESCE((SELECT sum(v) FROM d
+                      WHERE d.unit_id = c.unit_id AND d.ckdtangki = c.ckdtangki
+                        AND d.dd = c.nxtd), 0) < c.nxt
+     ORDER BY c.unit_id, c.bizdate`,
+    [unitIds, from, to],
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export interface ClosingOpnameRow {
   d: string; // tanggal bisnis (dtaglopn, atau fallback tanggal rekam WIB)

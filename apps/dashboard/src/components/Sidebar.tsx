@@ -78,6 +78,12 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
       id: "direksi",
       title: "Direksi & admin",
       items: [
+        {
+          href: "/laporan-harian",
+          label: "Laporan Harian",
+          icon: "report",
+          match: (p) => p.startsWith("/laporan-harian"),
+        },
         { href: "/board", label: "Ringkasan direksi", icon: "chart", match: (p) => p.startsWith("/board") },
         { href: "/admin", label: "Kelola akses", icon: "users", match: (p) => p.startsWith("/admin") },
       ],
