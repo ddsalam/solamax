@@ -240,3 +240,92 @@ memprediksi bentuk selisihnya per produk.
 **DISEGEL 2026-07-24, sebelum perhitungan Fase 4 mana pun.**
 Penambahan apa pun setelah ini ditulis di bawah garis ini sebagai entri baru
 bertanggal, tidak pernah dengan menyunting yang di atas.
+
+---
+
+# ENTRI BARU — 2026-07-24, sesudah penyegelan
+
+Ditambahkan di bawah garis, tanpa menyunting apa pun di atas.
+
+## E1. B3 diselesaikan oleh vault SEBELUM Fase 4 dijalankan — TERBUKTI
+
+Vault membaca hal. 3 PDF 19 & 21 Juli dan memakai identitas yang saya turunkan
+(`BBK = b/(1+b)`) sebagai alat uji. Untuk 21 Juli bulanan, kedelapan kolom
+rekonsiliasi tepat, termasuk kolom terakhir: `b` = 39,34 % → `b/(1+b)` = 28,24 %
+= BBK DIESEL kolom terakhir, dan itu **nilai AS**, sementara KR muncul terpisah
+dengan 36,90 % → 26,95 %. **Header `KR` ganda murni salah salin label; datanya
+milik AS.** Klaim final B3 TERBUKTI.
+
+**Ambiguitas B3 saya akui:** kalimat B3 memuat koreksi di tengah ("8,42/28,26 …
+TIDAK — …"), sehingga bisa dibaca dua arah. Yang dinilai adalah klaim FINAL
+(kolom terakhir = data AS). Kalau saya menulisnya bersih sejak awal, tak perlu
+ada catatan ini.
+
+## E2. B9 — PREMIS DIBATALKAN OLEH INTERVENSI (bukan lulus, bukan gugur)
+
+B9 dibuat di bawah asumsi "`-rlsstg` tak menerima ingest sehingga datanya
+tertinggal". Keputusan owner **D9** (sesudah segel ditutup) mengisi `-rlsstg`
+dengan salinan data nyata. Prediksi yang lingkungannya kita ubah sendiri tidak
+boleh dihitung ke arah mana pun. Perilaku data-basi tetap wajib diuji, lewat
+simulasi yang disengaja.
+
+## E3. HASIL gold-check — 708 sel dibandingkan terprogram (PDF di-parse, bukan
+diketik ulang)
+
+| Bagian | Klaim | Hasil |
+|---|---|---|
+| **B1** rasio harian | cocok eksak 7/7 × 4 tanggal | **LULUS 90/96**; 19, 20, 22 Juli **24/24 eksak**. 6 meleset semuanya 21 Juli, akibat cacat PDF (E4). Rasio ekstrem ikut cocok: BL 19 Jul 157,26 % ✓, IB 21 Jul 135,72 % ✓ (SolaMax 135,71 — batas pembulatan 0,01 pp) |
+| **B2** rasio bulanan ≤0,20 pp | tak satu pun melebihi | **GUGUR.** Berlaku untuk KB 0,054 · BK 0,041 · BL 0,026 · KR 0,000 · 28 0,000. Dilanggar IB **1,011** & AS **2,675** — keduanya tertelusur ke cacat PDF (E4/E5), bukan drift |
+| **B3** BBK arah | `BBK < rasio Total` 7/7 × 4 tgl | **LULUS 32/32** |
+| **B3** BBK cocok | pola sama B2 | pola sama: KB 0,030 · BK 0,025 · BL 0,013 · KR 0,018 · 28 0,000; IB 0,450 · AS 1,408 |
+| **B4** produk harian 19/20/21 | cocok eksak | **LULUS untuk 19 & 20 Juli (56/56 masing-masing)**; 21 Juli 52/56 — 4 sel adalah cacat PDF (E4) |
+| **B5** Δ grup MTD 19 Jul ∈ +700…+1.100 L | | **LULUS — +970,3 L.** Lebih kuat: Δ per unit **konstan** di keempat tanggal (KB +524, BK +182, BL +174, KR +92, 28 ≈0, AS 0, IB −3) → drift memang mengendap sebelum 19 Juli dan berhenti |
+| **B6** tren: SolaMax tak lebih tinggi >60 KL | | **LULUS — maksimum +12 KL.** Des −210 · Jan −320 · Feb −336 (pita 210–340 ✓); Apr −1 · Mei +12 · Jun −44 · Jul +1 (≤50 ✓). Mar 26 **tak bisa dinilai** — label PDF tertutup di grafiknya |
+| **B7** rekor: PDF yang salah | | **LULUS.** SolaMax 2026-04-01 = 377.511; PDF 9 Mar = 384.658 dengan sel IB 86.419 yang tak pernah terjadi |
+| **B8** share ≤0,15 pp + urutan sama | | **LULUS — \|Δ\| maks 0,04 pp**, urutan identik (IB > KB > 28 > BL > KR > BK > AS) |
+| **B9** | premis dibatalkan (E2) | — |
+| **B10** meta: ≥1 seksi meleset di luar dugaan | | **LULUS, dan kandidat yang saya sebut MELESET.** Saya menduga tabel G/L bulanan; yang sebenarnya mengejutkan adalah **dua transposisi produk di PDF** (E4/E5) — kelas cacat yang tak saya bayangkan sama sekali |
+
+G/L harian: **178/196 sel cocok** (19 Jul 45/49 · 20 Jul 42/49 · 21 Jul 44/49 ·
+22 Jul 47/49). Meleset terbesar tetap 28 Oktober 22 Jul (−10.200, sebab penutup
+T-05 nol, sudah diketahui); sisanya 5–160 L.
+
+## E4. CACAT BARU laporan acuan #10 — AS 21 Juli, Dexlite ⇄ Pertalite TERTUKAR
+
+PDF: AS Dexlite 9.678 / Pertalite 3.452. SolaMax: 3.452 / 9.678. **Tiga
+pembacaan independen** menyimpulkan PDF yang salah:
+1. model SolaMax; 2. SQL langsung ke `sales_detail` (BB-06 = 3.452, BB-07 =
+9.678); 3. pola unit itu sendiri — Dexlite AS 18–22 Juli 4.997/2.079/4.526/
+3.452/5.359 dan Pertalite 8.606/8.024/8.790/9.678/9.926. Nilai PDF membalik
+keduanya keluar dari rentang normal masing-masing.
+
+Akibat di PDF: TOTAL Dexlite 21 Juli tertulis 30.635 (seharusnya 24.409), TOTAL
+Pertalite 128.398 (seharusnya 134.624), rasio harian AS 89,17 % (seharusnya
+31,80 %), dan rasio grup ikut bergeser 6,47 pp.
+
+## E5. CACAT BARU #11 — IB, Solar ⇄ Pertalite tertukar ~8.100 L di 1–18 Juli
+
+MTD 1–22 Juli per produk, Δ (SolaMax − PDF): Solar **+8.098**, Pertalite
+**−8.101**, produk lain ≈0, NET **−4 L**. Transposisi, bukan drift. Tak terlihat
+di level TOTAL — persis kelas "gagal diam-diam" yang saya daftarkan di C12.
+**Arah belum bisa dibuktikan**: PDF harian 1–18 Juli tidak ada, jadi tak ada
+pembacaan ketiga. Preseden E4 dan konsistensi internal menunjuk ke PDF, tetapi
+saya TIDAK menyetel apa pun dan tidak mengklaim lebih dari ini.
+
+## E6. Selisih MTD punya DUA sebab, bukan satu
+
+- **Transposisi PDF**: IB (Σ|Δ| 16.201 L, net −4) dan AS (Σ|Δ| 12.452 L, net 0).
+- **Drift net-positif kecil**: KB +524 · BK +182 · BL +174 · KR +92, tersebar di
+  banyak produk, semua bertanda sama → data back-dated yang masuk ke SolaMax
+  sesudah Excel dicetak. 28 Oktober Σ|Δ| = 3 L (praktis sempurna).
+
+Ini juga **membatalkan sebagian penalaran B2 saya**: saya memprediksi IB & AS
+COCOK justru karena Δ MTD totalnya ≈0. Kesimpulan itu keliru secara metode —
+**kesamaan di level TOTAL tidak menyiratkan kesamaan komposisi.** Pelajaran yang
+lebih berharga daripada prediksinya sendiri.
+
+## E7. G/L MTD IB & BL — sebagian terjelaskan, sebagian TETAP tidak
+
+Selisih G/L MTD IB kini punya kandidat sebab yang masuk akal (komposisi
+Solar/Pertalite di PDF salah → Penjualan_BERSIH per produk berbeda → G/L per
+produk berbeda). **BL tetap tak terjelaskan** dan tidak ditambal.
