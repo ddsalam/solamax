@@ -8,6 +8,21 @@ Sejak 2026-07-16 kedua app (dashboard + backend) ber-CD penuh via GitHub Actions
 - Service bersufiks **`-staging`** = **PILOT LIVE** (staging = prod pilot sampai tenant #2).
 - Service bersufiks **`-rlsstg`** = **tier TESTING** (bekas rehearsal RLS, di-repurpose).
 
+## ⚠️ Login `-rlsstg` (& `-staging`) — hanya lewat host `AUTH_URL`
+
+Cloud Run mengekspos **dua** hostname untuk service yang sama
+(`…-<hash>-<region>.a.run.app` **dan** `…-<projnum>.<region>.run.app`). Cookie
+PKCE Auth.js bersifat **host-only**; login yang dimulai di host ≠ `AUTH_URL`
+memutus callback → `InvalidCheck: pkceCodeVerifier … could not be parsed` →
+`/api/auth/error?error=Configuration` (500). Ini **bukan** cacat kode/DB
+(adapter & grant skema `app` terbukti sehat) — murni pemakaian.
+
+**Aturan:** buka `-rlsstg` HANYA lewat host `AUTH_URL`-nya
+(`https://solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app`),
+**bukan** varian `…-wn6i64kvza-et.a.run.app`. Sama untuk pilot (`-staging`):
+pakai `…-staging-113869564052…`. Bila terlanjur gagal, bersihkan cookie situs
+lalu ulangi di host kanonik. (Ditemukan Gate 4b/5, 2026-07-25.)
+
 ## Alur promosi
 
 | Trigger | App | Service Cloud Run | DB yang dimigrasi | Gate |

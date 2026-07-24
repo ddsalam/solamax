@@ -461,3 +461,45 @@ alur login Google sendiri (autentikasi = butuh tindakan Dion; D19).
 
 Nilai rasio harian AS 22 Juli **43,55 / 2,64 / 46,20** muncul di kolom terakhir
 PDF yang berlabel `KR` ganda — kolom itu milik AS. Tiga pembacaan independen.
+
+---
+
+# ENTRI BARU — 2026-07-25 (Gate 5, koreksi vault), sesudah penyegelan
+
+## E16. KOREKSI mekanisme cache (E13 imprecise) + D17 terbukti di halaman oleh vault
+
+Vault mengoreksi klaim E13 "cache persisten lintas-revisi" dengan data
+`revision_name` + `instanceId` per render:
+- Revisi baru `-rlsstg-00018-xlb`, instance `57b25c52`, render 22-Juli PERTAMA
+  17:10:59 = **1245 ms & 1143 ms** — itu **cold recompute DB (MISS)**, bukan hit.
+- 17:11:59 dst. balik ke 1–2 ms — hit lagi.
+
+**Mekanisme yang BENAR:** bukan store yang persisten menembus revisi. Tiap
+instance baru **menghitung ulang** lalu **men-cache hasil KOSONG yang sama**,
+karena KODE-nya masih menyimpan prefiks kosong. Redeploy kode-yang-sama tak
+menolong; hanya perbaikan kode (D17) yang menghentikannya. **Kesimpulan akhir
+E13 tetap benar** (redeploy saja tak cukup, perlu D17) — yang salah hanya
+mekanisme yang saya sebutkan.
+
+Pelajaran metode: `ms_gl: 1` membuktikan **ADA hit**, bukan **NILAI apa** yang
+di-cache. Untuk klaim "masih teracuni", baca **nilai G/L di halaman**, jangan
+simpulkan dari timing. Ini pengulangan pelajaran "test sumber ≠ test perkabelan"
+dalam bentuk "timing ≠ nilai".
+
+**D17 TERBUKTI di halaman terpasang — oleh VAULT, bukan worker** (worker tak
+menjalankan alur login; autentikasi = tindakan Dion/vault). `-rlsstg` pada
+revisi `00019-rx7` (deploy #131). `/laporan-harian?d=2026-07-22` menampilkan G/L
+berbalik dari nol: IB **6.557**, Bakau **287**, AS **−240** — cocok oracle A5.
+Tabel harian kini beda struktur dari MTD (harian IB 6.557 vs MTD −4.968 = A6).
+Gejala Gate-4 tertutup DI HALAMAN.
+
+## E17. Cacat #1 — konfirmasi KETIGA (vault, di halaman `00019`)
+
+Nilai rasio harian AS 22 Juli **43,55 / 2,64 / 46,20** muncul di kolom terakhir
+PDF berlabel `KR` ganda; kolom itu milik AS. (E8/E15 mencatat dua konfirmasi
+sebelumnya; ini yang ketiga, dari halaman terpasang.)
+
+## E18. Root cause login `-rlsstg` DITUTUP sebagai soal pemakaian (D20)
+
+Diperinci di E14. Ditutup: akses hanya lewat host `AUTH_URL`. Runbook satu baris
+ditambahkan ke `DEPLOY.md` §"Login -rlsstg". Nol perubahan kode/DB/grant.
