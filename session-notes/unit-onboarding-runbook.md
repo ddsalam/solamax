@@ -46,7 +46,13 @@
    tenant yang benar. Verifikasi WAJIB dipaste sebagai evidence: daftar unit ⋈ tenant +
    `count(DISTINCT tenant_id)`. Rollback aman selama belum ada data: DELETE unit (+ tenant).
 4. **Kode**: entri `config.ts` (UNIT_DISPLAY dgn `pt`+alamat kop, TARGET_BAURAN 4dp,
-   TARGET_VOLUME_PER_DAY 12 bulan — cross-check angka parse vs angka owner, beda = STOP) +
+   TARGET_VOLUME_PER_DAY 12 bulan — cross-check angka parse vs angka owner, beda = STOP).
+   **WAJIB juga: `FLEET_RECORD_FLOOR`** — bandingkan `min(dtgljual)` unit baru dengan
+   nilai konstanta sekarang; bila LEBIH AKHIR, perbarui konstantanya (rekor grup
+   "Penjualan Total Tertinggi 1 Hari" di `/laporan-harian` memakainya sebagai lantai
+   periode). TIDAK bisa di-query saat runtime: `sales_header` ber-RLS, `dashboard_app`
+   hanya melihat unit ber-scope. Melewatkan langkah ini = rekor grup dihitung atas
+   periode saat unit baru belum punya data → TOTAL-nya kurang satu unit, diam-diam. +
    perluas tes scope pola fixture-free auto-skip
    ([`scope.adisucipto.integration.test.ts`](../apps/dashboard/src/lib/scope.adisucipto.integration.test.ts)
    = template cross-tenant; `scope.bakau…` = template same-tenant). **Guard absen WAJIB

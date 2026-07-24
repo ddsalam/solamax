@@ -4,6 +4,7 @@
  * shift belum input, stok kritis, koreksi totalisator. Urut: paling perlu
  * tindakan dulu (danger → warning → info).
  */
+import { unstable_cache } from "next/cache";
 import {
   getAvgDailySales,
   getClosingOpname,
@@ -13,6 +14,7 @@ import {
   getLastInputs,
   getShiftInfo,
   getTankStocks,
+  getZeroClosingEvents,
 } from "./queries";
 import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
@@ -57,6 +59,25 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
   const today = todayWib();
   const items: AnomalyItem[] = [];
   let kasOldest: { date: string } | null = null;
+
+  /**
+   * Penutup opname bernilai NOL (keputusan owner D2, 2026-07-24). SATU query
+   * multi-unit di luar loop — tidak menambah fan-out per unit.
+   *
+   * TIER: `warning`/`major`, SENGAJA BUKAN `danger` (= tak dihitung badge merah).
+   * Alasannya berbasis angka: aturannya menyala 2× dalam 30 hari terakhir dan 1×
+   * dalam jendela 7 hari yang dipakai feed ini — cukup senyap. Tapi ini cacat
+   * ENTRI DATA, bukan bahaya operasional (tak ada BBM yang benar-benar hilang);
+   * badge merah dikalibrasi untuk yang kedua. Menaikkannya ke danger akan
+   * mengencerkan sinyal yang justru harus dipercaya.
+   */
+  const unitIds = units.map((u) => u.unit_id);
+  const byUnitZero = new Map<number, Awaited<ReturnType<typeof getZeroClosingEvents>>>();
+  for (const z of await getZeroClosingEvents(unitIds, addDays(today, -6), today)) {
+    const list = byUnitZero.get(z.unit_id) ?? [];
+    list.push(z);
+    byUnitZero.set(z.unit_id, list);
+  }
 
   for (const u of units) {
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
@@ -210,6 +231,21 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       });
     }
 
+    // Kualitas data: penutup opname 0 padahal tangki tak pernah kosong.
+    for (const z of byUnitZero.get(u.unit_id as number) ?? []) {
+      items.push({
+        tone: "warning",
+        tier: "major",
+        sev: Math.abs(z.prev),
+        dateIso: z.d,
+        title: `Penutup opname tercatat 0 — tangki ${z.ckdtangki}`,
+        unit: unitTag,
+        desc: `${z.nama ?? z.ckdbbm}: fisik penutup 0 padahal buku ${fmtL(z.bk)}, kemarin ${fmtL(z.prev)} dan besoknya ${fmtL(z.next)} tanpa penerimaan yang menjelaskan (DO H+1 ${fmtL(z.recv_next)}). Gain/Losses hari ini turun ~${fmtL(z.prev)} lalu naik setara besoknya — keduanya SEMU. Perlu koreksi entri opname di EasyMax.`,
+        time: z.d,
+        href,
+      });
+    }
+
     if (last.cash && (!kasOldest || last.cash < kasOldest.date)) {
       kasOldest = { date: last.cash };
     }
@@ -241,4 +277,59 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       tierRank[a.tier] - tierRank[b.tier] ||
       b.sev - a.sev,
   );
+}
+
+/**
+ * TTL cache feed anomali (detik). Keputusan owner D3 (2026-07-24).
+ *
+ * MASALAH: `buildAnomalies` menembakkan 8 query PARALEL per unit di dalam loop
+ * unit yang SERIAL (lihat atas) → untuk armada 7 unit itu **56 query per render**
+ * di atas pool `max: 5` (db.ts), dan ia dipanggil layout grup `(app)` di SETIAP
+ * halaman. Terukur 2026-07-24: **240 item, 5,36 detik**, tiap render, tiap
+ * halaman. Itu fondasi yang dipijak Laporan Harian; menambah beban di atasnya
+ * tanpa membereskannya tidak masuk akal.
+ *
+ * PERBAIKAN yang dipilih dari tiga opsi owner ("batasi konkurensi / gabungkan
+ * query / jangan panggil tiap render") = **yang ketiga**. Alasan menolak dua
+ * lainnya, dengan angka:
+ *  - Membatasi konkurensi inner (8→4) adalah PESIMISASI: total query tetap 56,
+ *    tetapi tiap unit jadi 2 gelombang → wall-time naik, dan koneksi ditahan
+ *    LEBIH LAMA (memperbesar risiko `connectionTimeoutMillis` 10 dtk), bukan
+ *    lebih pendek. Puncak permintaan 8-di-atas-pool-5 sudah di-antre pg dengan
+ *    aman hari ini (tak ada query mendekati 10 dtk: 5,36 dtk / 7 unit ≈ 0,77
+ *    dtk per gelombang 8-query).
+ *  - Menggabungkan 8 query jadi multi-unit berarti menulis ulang antara lain
+ *    getDailyGlByProduct — 90 baris SQL paling kritis di proyek ini yang sudah
+ *    kita tolak tulis-ulang secara sadar di Fase 2.
+ *
+ * KONSEKUENSI KONEKSI: puncak per-build TIDAK berubah (tetap 8), tetapi
+ * FREKUENSInya turun dari "tiap render tiap halaman" jadi ≤1 per 120 detik per
+ * (himpunan unit × tanggal WIB). Untuk direksi yang membuka 5 halaman dalam satu
+ * menit: 280 query → 56.
+ *
+ * KESEGARAN: data sumbernya sendiri sudah bergerak dalam orde menit (jadwal
+ * agent), dan shell me-refresh tiap 60 dtk (AutoRefresh) — 120 dtk tak menggeser
+ * apa pun yang bisa ditindaklanjuti. Bandingkan skala insiden yang jadi alasan
+ * pengawasan ini ada: agent Bakau mati **34 jam**.
+ *
+ * RBAC: key memuat daftar unit_id ber-scope yang TERURUT — dua pemakai berbagi
+ * entri HANYA bila scope-nya identik (persis pola cache per-unit di gl-window.ts).
+ * `todayWib()` masuk key agar cache berganti tepat di tengah malam WIB, bukan
+ * menyajikan `today` kemarin selama 2 menit.
+ *
+ * ⚠️ EFEK KE `/board`: panel anomali board ikut memakai cache ini (satu fungsi,
+ * dua pemanggil) → isinya bisa tertinggal ≤120 dtk. Disengaja & disebut di
+ * deskripsi PR; revert = satu baris.
+ */
+const ANOMALIES_TTL_S = 120;
+
+/** Feed anomali ber-cache — dipakai layout `(app)` dan `/board`. */
+export function getAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]> {
+  const ids = units
+    .map((u) => u.unit_id as number)
+    .sort((a, b) => a - b)
+    .join(",");
+  return unstable_cache(() => buildAnomalies(units), ["anomalies", todayWib(), ids], {
+    revalidate: ANOMALIES_TTL_S,
+  })();
 }

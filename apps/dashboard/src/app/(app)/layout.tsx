@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { SignOutButton } from "@/components/SignOutButton";
-import { buildAnomalies } from "@/lib/anomalies";
+import { getAnomalies } from "@/lib/anomalies";
 import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { worstSyncAt } from "@/lib/freshness";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
@@ -41,15 +42,13 @@ export default async function AppShellLayout({
   let lastSync: string | null = null;
   let alertCount = 0;
   try {
+    // MIN (unit TERBURUK), bukan MAX — lihat lib/freshness.ts untuk akar masalah
+    // (agent Bakau mati 34 jam sementara badge hijau "1 menit lalu") dan untuk
+    // pertukaran yang disengaja pada rute per-unit.
     const sync = await getSyncByUnit(scope.unitIds);
-    lastSync =
-      sync
-        .map((s) => s.last_run)
-        .filter((x): x is string => x !== null)
-        .sort()
-        .pop() ?? null;
+    lastSync = worstSyncAt(scope.unitIds, sync);
     // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
-    alertCount = (await buildAnomalies(scope.units)).filter(
+    alertCount = (await getAnomalies(scope.units)).filter(
       (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
     ).length;
   } catch {
