@@ -92,6 +92,21 @@ export { isSelisihAbnormal };
 export const GARBAGE_STOCK_L = 100_000; // tak ada tangki SPBU sebesar ini
 export const GARBAGE_SELISIH_L = 50_000; // selisih sebesar ini = salah entri
 
+/**
+ * Ambang kewajaran PENJUALAN satu unit dalam satu hari. Dipakai HANYA sebagai
+ * guard pencarian rekor grup ("Penjualan Total Tertinggi dalam 1 Hari") — bukan
+ * ambang KPI, dan TIDAK menyaring baris dari tabel/total mana pun.
+ *
+ * Bukti angkanya (probe live 2026-07-24, seluruh sejarah 7 unit):
+ *   - unit-hari SAH tertinggi yang pernah tercatat: **121.214 L** (KR 2021-11-06);
+ *     era 2026 tak pernah melewati ~81.405 L (IB 2026-04-02).
+ *   - satu-satunya unit-hari di atas 200.000 L: **31.615.851 L** (KR 2021-10-18)
+ *     — sampah, ±260× hari tersibuk unit itu.
+ * 200.000 L duduk ~1,6× di atas rekor sah dan ~158× di bawah sampahnya → tak ada
+ * nilai nyata yang berisiko terpangkas.
+ */
+export const GARBAGE_DAY_SALES_L = 200_000;
+
 export function isOpnameGarbage(bk: number | null, op: number | null): boolean {
   if (bk === null || op === null) return false; // null ditangani terpisah
   if (bk < 0 || op < 0) return true;

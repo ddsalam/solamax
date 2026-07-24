@@ -4,12 +4,15 @@
  * unit ber-scope caller (keputusan FASE 0 №3: intersect-fallback, bukan 404) —
  * user TIDAK BISA memilih unit di luar scope-nya via URL; hasil intersect kosong
  * / param absen → fallback SEMUA unit ber-scope (URL shareable terdegradasi anggun,
- * tanpa membocorkan keberadaan unit asing).
+ * tanpa membocorkan keberadaan unit asing). Aturan itu sendiri kini tinggal di
+ * lib/unit-params.ts (salinan TUNGGAL, dipakai board + laporan-harian) — perilaku
+ * di sini TIDAK berubah; board-params.test.ts tetap hijau tanpa disunting.
  *
  * Kompat mundur URL lama: p=week→7d, p=month→30d (link/bookmark pra-redesign).
  */
 import { resolveBoardPeriod, type BoardPeriod } from "./periods";
 import type { ScopedUnit } from "./scope-rule";
+import { intersectScopedUnits } from "./unit-params";
 
 export type BoardMode = "kumulatif" | "banding";
 
@@ -39,14 +42,7 @@ export function parseBoardParams(
   now: Date = new Date(),
 ): BoardParams {
   // ── Unit: intersect URL ∩ scope (fallback semua scope) ──
-  const requested = new Set(
-    (sp.units ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0),
-  );
-  const picked = scopeUnits.filter((u) => requested.has(u.code));
-  const units = picked.length > 0 ? picked : scopeUnits;
+  const { units, allUnits } = intersectScopedUnits(sp.units, scopeUnits);
 
   // ── Periode (default today — selaras board lama) ──
   const key = sp.p === undefined ? "today" : (LEGACY_P[sp.p] ?? sp.p);
@@ -54,7 +50,7 @@ export function parseBoardParams(
 
   const mode: BoardMode = sp.mode === "banding" ? "banding" : "kumulatif";
 
-  return { units, allUnits: units.length === scopeUnits.length, period, mode };
+  return { units, allUnits, period, mode };
 }
 
 /** Serialisasi state → query string kanonik (dipakai link preset/komponen filter). */

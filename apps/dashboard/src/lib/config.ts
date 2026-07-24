@@ -90,6 +90,30 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
 };
 
 /**
+ * LANTAI PERIODE REKOR GRUP — tanggal saat SELURUH armada sudah punya data
+ * penjualan di SolaMax (= `max(sales_min)` lintas KETUJUH unit; AS onboard
+ * paling akhir, `sales_min` 2025-12-29).
+ *
+ * KENAPA ADA: rekor "Penjualan Total Tertinggi dalam 1 Hari" menjumlah semua
+ * unit. Sebelum tanggal ini TOTAL harian selalu kurang ≥1 unit → rekornya tak
+ * sebanding, dan tanpa lantai jawabannya jatuh ke era pra-akuisisi (hari
+ * tertinggi KB tercatat sejak 2011).
+ *
+ * KENAPA KONSTANTA, BUKAN QUERY: `sales_header` ada di bawah RLS (migrasi 0016)
+ * dan `dashboard_app` HANYA melihat unit ber-scope. `max(sales_min)` se-ARMADA
+ * karena itu MUSTAHIL dibaca saat runtime oleh pengawas 1-unit — dan bagi mereka
+ * `max(sales_min)` ber-scope justru mengembalikan 2011, persis yang mau dibuang.
+ * Melonggarkan policy demi satu tanggal = harga yang salah. Sekeluarga dengan
+ * TARGET_BAURAN / TARGET_VOLUME_PER_DAY yang juga fakta armada tertulis tangan.
+ *
+ * ⚠️ SAAT UNIT BARU ONBOARD: perbarui nilai ini bila `sales_min` unit baru LEBIH
+ * AKHIR dari nilai sekarang (langkah wajib di session-notes/unit-onboarding-runbook.md
+ * §1.4). Rekor lama akan hilang dari tampilan — itu semantik yang BENAR (periode
+ * pembandingnya memang berubah), tapi harus disengaja, bukan mengagetkan.
+ */
+export const FLEET_RECORD_FLOOR = "2025-12-29";
+
+/**
  * Label PT untuk kumpulan unit (kop/nama-file ekspor multi-unit): satu PT unik
  * → nama PT itu; campuran lintas-PT atau tak dikenal → payung "SolaGroup".
  * (Pengganti hardcode "PT Sola Petra Abadi" — multi-tenant sejak unit AS.)
