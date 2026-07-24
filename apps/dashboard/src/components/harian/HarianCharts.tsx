@@ -77,7 +77,7 @@ export function GlBars({
         <span className="fs16 t-tertiary">semua unit memakai nilai Kumulatif (liter)</span>
       </div>
       <div className="card card-pad-lg mt5">
-        {units.map((u, i) => {
+        {units.map((u) => {
           const v = totals[u.unitId]?.kum ?? 0;
           const w = (Math.abs(v) / max) * 50;
           return (
