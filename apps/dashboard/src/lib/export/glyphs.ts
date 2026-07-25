@@ -22,12 +22,13 @@ export const GLYPH_MAP: Record<string, string> = {
   "▼": "v", // trend down
   "▾": "v", // expand chevron
   "⟳": "*", // "angka pernah dikoreksi" marker
+  "⏳": "*", // provisional/"sementara" — HANYA di footnote; makna dibawa LABEL
   "⇒": "=>",
   "≡": "=",
   "↔": "<->",
 };
 
-const GLYPH_RE = /[⊎⚠✓✔✗✘→←↑↓▲▼▾⟳⇒≡↔]/g;
+const GLYPH_RE = /[⊎⚠✓✔✗✘→←↑↓▲▼▾⟳⏳⇒≡↔]/g;
 
 /** Ganti glyph yang tak didukung Roboto dengan padanan ASCII. Idempoten. */
 export function pdfText(s: string): string {

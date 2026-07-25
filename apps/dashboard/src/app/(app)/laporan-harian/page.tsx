@@ -10,9 +10,10 @@ import {
   StaleBanner,
 } from "@/components/harian/HarianSections";
 import { HarianSkeleton } from "@/components/harian/HarianSkeleton";
+import { HarianExport } from "@/components/harian/HarianExport";
 import { mapLimit } from "@/lib/concurrency";
 import { FLEET_RECORD_FLOOR, ptLabelForUnits, unitDotted } from "@/lib/config";
-import { ago, dateLong, idn } from "@/lib/format";
+import { ago, dateLong, dateShort, idn, timeWib } from "@/lib/format";
 import { getDailyGlWindow } from "@/lib/gl-window";
 import { buildHarianModel, harianSpanFrom, type HarianModel } from "@/lib/harian-model";
 import {
@@ -262,6 +263,18 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
 
 function HarianHead({ model, scopeLabel }: { model: HarianModel; scopeLabel: string }) {
   const f = model.freshness;
+  const freshnessLabel = f.worstSyncAt
+    ? `sinkron terlama: ${f.worstSyncUnit?.name ?? "—"}, ${ago(f.worstSyncAt)}`
+    : "ada unit belum pernah tersinkron";
+  // Meta PDF dibangun SERVER (ago butuh waktu kini); PDF pakai MODEL yang sama.
+  const meta = {
+    ptLabel: scopeLabel,
+    dateLong: dateLong(model.date),
+    unitsCount: model.units.length,
+    divisor: model.avgDivisor,
+    generatedLabel: `${dateShort(todayWib())} · ${timeWib(new Date().toISOString())}`,
+    freshnessLabel,
+  };
   return (
     <div className="board-head mt4">
       <div>
@@ -276,6 +289,7 @@ function HarianHead({ model, scopeLabel }: { model: HarianModel; scopeLabel: str
             : "Ada unit yang belum pernah tersinkron"}
         </div>
       </div>
+      <HarianExport model={model} meta={meta} />
     </div>
   );
 }
