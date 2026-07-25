@@ -503,3 +503,78 @@ sebelumnya; ini yang ketiga, dari halaman terpasang.)
 
 Diperinci di E14. Ditutup: akses hanya lewat host `AUTH_URL`. Runbook satu baris
 ditambahkan ke `DEPLOY.md` §"Login -rlsstg". Nol perubahan kode/DB/grant.
+
+---
+
+# ENTRI BARU — 2026-07-25 (Fase 5, verifikasi PILOT), sesudah penyegelan
+
+Semua di bawah dibaca **dari halaman pilot terpasang** (`solamax-dashboard-staging`,
+sesi super_admin, 7 SPBU, host `AUTH_URL`), bukan dari model/harness.
+
+## E19a. Spot-check 22 Juli — LULUS (dibaca dari DOM pilot)
+
+Omzet harian, baris Total per unit (halaman == oracle A1, EKSAK):
+IB 70.782 · BK 23.878 · AS 28.140 · KB 45.422 · BL 45.888 · KR 38.071 ·
+28 51.926 · TOTAL **304.106**. Δ vs hari sebelumnya TOTAL **23.092** (= gold-check).
+Dexlite TOTAL halaman **23.061** (PDF 23.062 — pembulatan ½-rupiah, dikenal/D8).
+
+G/L harian, baris Total per unit (halaman == oracle A5):
+IB **6.557** · BK **287** · AS **−240** · KB **58** · BL **55** · KR **478** ·
+28 **−9.814** (cacat sumber penutup-nol T-05, dikenal) · TOTAL −2.619.
+
+## E19b. D17 terkonfirmasi DI PILOT — G/L MTD ≠ G/L harian
+
+Gejala Gate-4 (MTD == harian) TIDAK ADA di pilot. Baris Total G/L MTD (Kumulatif):
+IB **−4.968** · BK 4.285 · AS **−3.137** · KB 1.123 · BL 3.137 · KR 3.084 ·
+28 −6.793 · TOTAL −3.270 — cocok oracle A6, dan berbeda dari G/L harian per unit
+(IB 6.557≠−4.968; BK 287≠4.285; AS −240≠−3.137). Rata-Rata IB −4.968/22=−226 ✓
+(÷ hari kalender). Peringatan `glIncomplete` TIDAK menyala palsu (data lengkap).
+
+## E19c. Provisional — mekanisme LULUS pada data nyata
+
+Melihat **hari ini (25 Jul)** di pilot: G/L ditandai "⏳ Angka SEMENTARA — opname
+penutup tanggal ini belum lengkap…" + catatan kaki, dan G/L hari ini menampilkan
+losses provisional besar (IB −19.911, BL −25.546) yang benar-ditandai. Jendela
+spesifik "**D−1 di pagi hari**" TAK tertangkap (penutup 24 Jul sudah masuk saat
+diperiksa) — mekanismenya identik & terbukti via hari-ini, tapi kemunculan
+D−1-pagi alami **belum diuji**.
+
+## E19d. Data basi — TAK muncul alami, dikatakan apa adanya
+
+Default (24 Jul) & semua tampilan: **tak ada banner/kolom basi** — ketujuh unit
+segar ("Sinkron terlama: Adisucipto/Imam Bonjol, 2 mnt"). Kesegaran MIN + nama
+unit terburuk bekerja. Kondisi basi alami **belum muncul**; perilaku terbukti via
+simulasi + test, bukan diamati alami. TIDAK dikarang.
+
+## E19e. Layout 7 kolom — halaman LULUS; satu temuan PRA-ADA di luar lingkup
+
+Tabel omzet: konten 807px di kontainer 675px → **scroll internal** ✓; kolom
+**Produk** & **TOTAL** `position: sticky` ✓; 8 header berbeda terbaca. Di ≥1280
+semua muat. **Body geser-X di vw=980** — penyebab `.topbar-right` (chrome AppShell
+bersama: role-chip + email + tombol sign-out, right=1123), **bukan** halaman
+Laporan Harian; pra-ada, sama di `/board`, di luar lingkup. Kosmetik minor:
+di <~1150px header "28 Oktober" duduk di belakang TOTAL sticky (fungsional —
+scroll menampakkannya).
+
+## E19f. RBAC 1-unit — BELUM diverifikasi di UI pilot
+
+Hanya sesi super_admin (7 unit) yang tersedia; tak ada akun pengawas untuk
+membuka tampilan 1-kolom di pilot. Ditegakkan server-side & hijau di
+scope integration test (CI), tapi **belum** dibaca di UI pilot dengan akun
+pengawas. Gap jujur.
+
+## E19g. Latensi produksi 7-unit — ANGKA PERTAMA (butir tertua sejak Fase 2)
+
+Diukur sisi-klien (TTFB, termasuk RTT ke asia-southeast2), bukan server-internal:
+- **default/kemarin (G/L suffix selalu segar): 2149–2684 ms** — < target 3 dtk ✓
+- historis warm (G/L ter-cache): ~1350 ms; cold recompute pertama ~2566 ms.
+
+Server-internal `ms_gl`/`ms_total` dari log Cloud Run **belum** terbaca (token
+gcloud kedua akun kedaluwarsa, butuh `gcloud auth login` interaktif). Jadi angka
+di atas menutup "ada sinyal produksi 7-unit < 3 dtk", TAPI verifikasi
+server-internal masih terbuka. Angka `-rlsstg` 3-unit tidak dipakai.
+
+## E19h. Konfirmasi lain di pilot
+Menu "Laporan Harian" = item PERTAMA grup Direksi ✓ · default tanggal = kemarin ✓
+· Rata-Rata ÷22 tercetak ✓ · catatan kaki Pertalite Khusus & 28-Oktober kata-kata
+benar ✓ · screenshot penuh tersimpan (ss pilot 22 Jul).
