@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { unitVisible, type ScopeCtx } from "./scope-rule";
+import { ctxAll, ctxSuper, ctxUnits } from "./test-ctx";
 
 /**
  * UJI AKSES-NEGATIF DB-LIVE (penegasan A) — FIXTURE-FREE & READ-ONLY.
@@ -48,29 +49,29 @@ d("scope live (data nyata, fixture-free)", () => {
   });
 
   it("super_admin → melihat IB", () => {
-    expect(allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" })).toContain(ib.unit_id);
+    expect(allowed(ctxSuper())).toContain(ib.unit_id);
   });
 
   it("direksi SolaGroup → melihat IB", () => {
-    expect(allowed({ role: "direksi", tenantId: solaGroup, unitScope: "ALL" })).toContain(ib.unit_id);
+    expect(allowed(ctxAll("direksi", solaGroup))).toContain(ib.unit_id);
   });
 
   it("direksi tenant ASING → TIDAK melihat IB (isolasi lintas-tenant)", () => {
-    expect(allowed({ role: "direksi", tenantId: FOREIGN_TENANT, unitScope: "ALL" })).not.toContain(
+    expect(allowed(ctxAll("direksi", FOREIGN_TENANT))).not.toContain(
       ib.unit_id,
     );
   });
 
   it("pengawas SolaGroup [IB] → melihat IB; [] → nol", () => {
-    expect(allowed({ role: "pengawas", tenantId: solaGroup, unitScope: [ib.unit_id] })).toContain(
+    expect(allowed(ctxUnits("pengawas", solaGroup, [ib.unit_id]))).toContain(
       ib.unit_id,
     );
-    expect(allowed({ role: "pengawas", tenantId: solaGroup, unitScope: [] })).toEqual([]);
+    expect(allowed(ctxUnits("pengawas", solaGroup, []))).toEqual([]);
   });
 
   it("pengawas tenant ASING (scope berisi id IB) → TIDAK melihat IB (tenant mismatch)", () => {
     expect(
-      allowed({ role: "pengawas", tenantId: FOREIGN_TENANT, unitScope: [ib.unit_id] }),
+      allowed(ctxUnits("pengawas", FOREIGN_TENANT, [ib.unit_id])),
     ).not.toContain(ib.unit_id);
   });
 });

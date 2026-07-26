@@ -60,7 +60,7 @@ export default async function AppShellLayout({
       <AppShell
         roleLabel={ROLE_LABEL[scope.role]}
         email={scope.email}
-        isSuperAdmin={scope.isSuperAdmin}
+        canManageAccess={scope.canManageAccess}
         lastSync={lastSync}
         alertCount={alertCount}
         units={scope.units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}

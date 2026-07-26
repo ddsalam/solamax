@@ -1,13 +1,28 @@
 import { auth } from "@/auth";
 import { q } from "./db";
+import {
+  ACTIVE_MEMBERSHIPS_SQL,
+  toAssignments,
+  type MembershipRow,
+} from "./membership-query";
+import { resolveRole, type Assignment } from "./scope-rule";
 
 /**
  * Otorisasi server-side. getAuthContext() = sumber kebenaran role+scope untuk
- * SETIAP query data (dipakai di Fase 3 untuk men-scope semua query). Default-deny:
- * tanpa membership aktif → status "no-access" (nol data).
+ * SETIAP query data. Default-deny: tanpa membership aktif → status "no-access".
  *
- * Hierarki role: super_admin (lintas-tenant) > admin_perusahaan > direksi
- * (semua unit tenant) > pengawas (unit di user_unit).
+ * MODEL (migrasi 0019): hak efektif = GABUNGAN seluruh penugasan aktif.
+ * Sebelumnya fungsi ini mengambil SATU membership (`ORDER BY role LIMIT 1`),
+ * sehingga membership tenant kedua senyap tak berefek.
+ *
+ * ROLE TUNGGAL PER ORANG (keputusan owner): role tidak bervariasi antar-PT — yang
+ * melebar hanyalah cakupan unit/tenant. Invariannya ditegakkan DEKLARATIF di DB
+ * (app.user_role + FK komposit); di sini hanya resolusi fail-closed bila data
+ * pernah dilanggar lewat penulisan manual (paling restriktif menang).
+ *
+ * ⚠️ Dibaca dari DB pada SETIAP request (tanpa cache(), tanpa JWT) — itulah yang
+ *    membuat pencabutan akses berlaku SEKETIKA pada request berikutnya, tanpa
+ *    logout. Jangan pindahkan scope ke JWT.
  */
 export type Role = "super_admin" | "admin_perusahaan" | "direksi" | "pengawas";
 
@@ -15,11 +30,12 @@ export interface AuthContext {
   userId: number;
   email: string | null;
   name: string | null;
+  /** Global per orang (keputusan owner). */
   role: Role;
-  /** null = super_admin (lintas semua tenant). */
-  tenantId: string | null;
-  /** "ALL" = semua unit dalam scope tenant; number[] = unit_id tertentu (pengawas). */
-  unitScope: "ALL" | number[];
+  /** Gabungan penugasan aktif. Kosong untuk super_admin. */
+  assignments: Assignment[];
+  /** true = DB memuat >1 role untuk orang ini (invarian dilanggar) → banner /admin. */
+  roleConflict: boolean;
 }
 
 export type AuthState =
@@ -54,6 +70,14 @@ export async function getAuthContext(): Promise<AuthState> {
       [userId],
     );
     if (existing.length === 0) {
+      // user_role DULU: membership.(user_id, role) ber-FK komposit ke sini (0019).
+      await q(
+        `INSERT INTO app.user_role (user_id, role) VALUES ($1, 'super_admin')
+         ON CONFLICT (user_id) DO UPDATE SET role = 'super_admin'`,
+        [userId],
+      );
+      // Sejak 0019 unique-nya NULLS NOT DISTINCT → ON CONFLICT ini benar-benar
+      // cocok saat tenant_id NULL (sebelumnya tidak pernah → baris ganda saat balapan).
       await q(
         `INSERT INTO app.membership (user_id, tenant_id, role, status)
          VALUES ($1, NULL, 'super_admin', 'active')
@@ -63,37 +87,25 @@ export async function getAuthContext(): Promise<AuthState> {
     }
   }
 
-  // Membership aktif (pilih yang tertinggi bila ada beberapa).
-  const rows = await q<{ id: string; tenant_id: string | null; role: Role; status: string }>(
-    `SELECT id, tenant_id, role, status FROM app.membership
-     WHERE user_id = $1 AND status = 'active'
-     ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'admin_perusahaan' THEN 1
-                        WHEN 'direksi' THEN 2 ELSE 3 END
-     LIMIT 1`,
-    [userId],
-  );
-  const m = rows[0];
-  if (!m) return { status: "no-access", email };
+  // SEMUA membership aktif + unit-nya, dalam satu query (SQL dipakai bersama tes T-REV).
+  const rows = await q<MembershipRow>(ACTIVE_MEMBERSHIPS_SQL, [userId]);
+  if (rows.length === 0) return { status: "no-access", email };
 
-  // Scope unit: super_admin/admin/direksi = ALL (dalam tenant); pengawas = user_unit.
-  let unitScope: "ALL" | number[] = "ALL";
-  if (m.role === "pengawas") {
-    const units = await q<{ unit_id: number }>(
-      `SELECT unit_id FROM app.user_unit WHERE membership_id = $1`,
-      [m.id],
+  const { role, conflict } = resolveRole(rows.map((r) => r.role));
+  if (conflict) {
+    // Jalur BACA — jangan menulis DB di sini. Sinyal yang terlihat = banner /admin.
+    console.error(
+      `[rbac] invarian role dilanggar: user ${userId} punya role ${[
+        ...new Set(rows.map((r) => r.role)),
+      ].join("/")} — dipakai yang paling restriktif: ${role}`,
     );
-    unitScope = units.map((u) => u.unit_id);
   }
+
+  // super_admin tak punya assignment (cabang lintas-tenant di unitVisible).
+  const assignments: Assignment[] = toAssignments(rows);
 
   return {
     status: "ok",
-    ctx: {
-      userId,
-      email,
-      name: user.name ?? null,
-      role: m.role,
-      tenantId: m.tenant_id,
-      unitScope,
-    },
+    ctx: { userId, email, name: user.name ?? null, role, assignments, roleConflict: conflict },
   };
 }

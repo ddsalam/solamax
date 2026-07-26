@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getAuthContext, type AuthContext, type Role } from "./auth-context";
 import { q } from "./db";
-import { unitVisible, type ScopedUnit, type ScopedUnitId } from "./scope-rule";
+import { unitVisible, type Assignment, type ScopedUnit, type ScopedUnitId } from "./scope-rule";
 
 /**
  * CHOKE-POINT SCOPING (Fase 3 — keamanan inti multi-tenant), lapisan SERVER.
@@ -16,26 +16,41 @@ import { unitVisible, type ScopedUnit, type ScopedUnitId } from "./scope-rule";
  */
 
 export { unitVisible } from "./scope-rule";
-export type { ScopedUnit, ScopedUnitId, ScopeCtx } from "./scope-rule";
+export type { Assignment, ScopedUnit, ScopedUnitId, ScopeCtx } from "./scope-rule";
 
 /** Pegangan scope ter-otorisasi. Hanya dibuat oleh getDataScope(). */
 export class DataScope {
   readonly userId: number;
   readonly role: Role;
   readonly email: string | null;
-  readonly tenantId: string | null;
+  readonly assignments: Assignment[];
+  readonly roleConflict: boolean;
   readonly units: ScopedUnit[];
 
   constructor(ctx: AuthContext, units: ScopedUnit[]) {
     this.userId = ctx.userId;
     this.role = ctx.role;
     this.email = ctx.email;
-    this.tenantId = ctx.tenantId;
+    this.assignments = ctx.assignments;
+    this.roleConflict = ctx.roleConflict;
     this.units = units;
   }
 
   get isSuperAdmin(): boolean {
     return this.role === "super_admin";
+  }
+
+  /** Tenant tempat caller punya penugasan aktif (kosong untuk super_admin). */
+  get tenantIds(): string[] {
+    return [...new Set(this.assignments.map((a) => a.tenantId))];
+  }
+
+  /**
+   * Boleh membuka /admin: super_admin (semua tenant) atau admin_perusahaan
+   * (HANYA tenant-nya sendiri — pembatasannya ditegakkan di admin-actions.ts).
+   */
+  get canManageAccess(): boolean {
+    return this.role === "super_admin" || this.role === "admin_perusahaan";
   }
 
   /** unit_id yang boleh dilihat caller (untuk query agregat lintas-unit). */
