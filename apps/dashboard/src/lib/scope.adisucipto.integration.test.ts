@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { unitVisible, type ScopeCtx } from "./scope-rule";
+import { ctxAll, ctxSuper, ctxUnits } from "./test-ctx";
 import { ptLabelForUnits } from "./config";
 
 /**
@@ -63,29 +64,29 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
 
   it("direksi tenant LAMA → TIDAK melihat AS (unit tenant lama saja)", (ctx) => {
     if (!as) return ctx.skip();
-    const a = allowed({ role: "direksi", tenantId: ptLama!, unitScope: "ALL" });
+    const a = allowed(ctxAll("direksi", ptLama!));
     expect(a).not.toContain(as!.unit_id);
     for (const u of lama) expect(a).toContain(u.unit_id);
   });
 
   it("admin_perusahaan tenant LAMA → TIDAK melihat AS", (ctx) => {
     if (!as) return ctx.skip();
-    const a = allowed({ role: "admin_perusahaan", tenantId: ptLama!, unitScope: "ALL" });
+    const a = allowed(ctxAll("admin_perusahaan", ptLama!));
     expect(a).not.toContain(as!.unit_id);
   });
 
   it("direksi PT Sola Adis Raya → HANYA AS (tanpa grant per-unit)", (ctx) => {
     if (!as) return ctx.skip();
-    const a = allowed({ role: "direksi", tenantId: ptAdis!, unitScope: "ALL" });
+    const a = allowed(ctxAll("direksi", ptAdis!));
     expect(a).toEqual([as!.unit_id]);
   });
 
   it("pengawas[AS] → HANYA AS; pengawas tenant lama TIDAK melihat AS", (ctx) => {
     if (!as) return ctx.skip();
-    const a = allowed({ role: "pengawas", tenantId: ptAdis!, unitScope: [as!.unit_id] });
+    const a = allowed(ctxUnits("pengawas", ptAdis!, [as!.unit_id]));
     expect(a).toEqual([as!.unit_id]);
     for (const u of lama) {
-      const b = allowed({ role: "pengawas", tenantId: ptLama!, unitScope: [u.unit_id] });
+      const b = allowed(ctxUnits("pengawas", ptLama!, [u.unit_id]));
       expect(b).not.toContain(as!.unit_id);
     }
   });
@@ -96,14 +97,14 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
     // 404 identik dgn unit-tak-ada, jadi eksistensi AS tidak bocor.
     expect(
       unitVisible(
-        { role: "direksi", tenantId: ptLama!, unitScope: "ALL" },
+        ctxAll("direksi", ptLama!),
         { unit_id: as!.unit_id, tenant_id: as!.tenant_id },
       ),
     ).toBe(false);
     for (const u of lama) {
       expect(
         unitVisible(
-          { role: "direksi", tenantId: ptAdis!, unitScope: "ALL" },
+          ctxAll("direksi", ptAdis!),
           { unit_id: u.unit_id, tenant_id: u.tenant_id },
         ),
       ).toBe(false);
@@ -112,7 +113,7 @@ d("Adisucipto⊥PT-lama cross-TENANT isolation (data nyata, fixture-free)", () =
 
   it("super_admin → melihat semua unit kedua tenant", (ctx) => {
     if (!as) return ctx.skip();
-    const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
+    const a = allowed(ctxSuper());
     expect(a).toContain(as!.unit_id);
     for (const u of lama) expect(a).toContain(u.unit_id);
   });

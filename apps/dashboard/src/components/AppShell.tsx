@@ -31,7 +31,7 @@ const DEFAULT_OPEN = Object.fromEntries(GROUP_IDS.map((id) => [id, true])) as Re
 export function AppShell({
   roleLabel,
   email,
-  isSuperAdmin,
+  canManageAccess,
   lastSync,
   alertCount,
   units,
@@ -42,7 +42,7 @@ export function AppShell({
 }: {
   roleLabel: string;
   email: string | null;
-  isSuperAdmin: boolean;
+  canManageAccess: boolean;
   lastSync: string | null;
   alertCount: number;
   units: UnitOpt[];
@@ -133,7 +133,7 @@ export function AppShell({
             <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />
             {lastSync ? `data terakhir masuk ${ago(lastSync)}` : "menunggu koneksi data"}
           </span>
-          {isSuperAdmin && (
+          {canManageAccess && (
             <Link href="/admin" className="fs15 w600 t-accent mobile-hide">
               Akses
             </Link>
