@@ -10,6 +10,7 @@ import {
   canHardDelete,
   canManageAccess,
   checkTouchMembership,
+  roleGrantAllowed,
   type AdminAuthority,
 } from "./admin-rules";
 import type { Role } from "./auth-context";
@@ -155,19 +156,30 @@ export async function grantAccess(formData: FormData): Promise<void> {
   if (!assignableRoles(ctx.authority).includes(role)) throw new Error("role tidak valid");
   if (!tenantId) throw new Error("tenant wajib untuk role ini");
 
-  // Role TUNGGAL per orang: set di app.user_role dulu (FK komposit membership → sini).
-  // ON UPDATE CASCADE merambatkan perubahan role ke seluruh membership orang itu.
-  await q(
-    `INSERT INTO app.user_role (user_id, role) VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role`,
-    [userId, role],
+  // 🔴 Form ini TIDAK PERNAH mengubah role. Sebelumnya ia meng-upsert app.user_role,
+  // sehingga menambah perusahaan kedua untuk seorang PENGAWAS — tanpa menyentuh select
+  // Role yang default-nya "Direksi" — diam-diam menaikkannya jadi direksi di SEMUA
+  // perusahaannya lewat ON UPDATE CASCADE. Ditegakkan di SERVER, bukan hanya dikunci
+  // di UI: prinsip yang sama dengan docblock di atas ("bukan sekadar sembunyi menu").
+  const roleRows = await q<{ role: Role }>(
+    `SELECT role FROM app.user_role WHERE user_id = $1`,
+    [userId],
   );
+  const roleLama = roleRows[0]?.role ?? null;
+  const verdict = roleGrantAllowed(roleLama, role);
+  if (!verdict.ok) throw new Error(`forbidden: ${verdict.reason}`);
+
+  // Hanya pengguna BARU (belum punya baris user_role) yang menetapkan role di sini.
+  // FK komposit membership→user_role menuntut barisnya ada lebih dulu.
+  if (roleLama === null) {
+    await q(`INSERT INTO app.user_role (user_id, role) VALUES ($1, $2)`, [userId, role]);
+  }
 
   const rows = await q<{ id: string }>(
     `INSERT INTO app.membership (user_id, tenant_id, role, status, all_units, invited_by_email)
      VALUES ($1, $2, $3, 'active', $4, $5)
      ON CONFLICT (user_id, tenant_id)
-       DO UPDATE SET role = EXCLUDED.role, status = 'active', all_units = EXCLUDED.all_units
+       DO UPDATE SET status = 'active', all_units = EXCLUDED.all_units
      RETURNING id`,
     [userId, tenantId, role, allUnits, scope.email],
   );

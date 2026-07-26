@@ -79,6 +79,33 @@ export function assignableRoles(a: AdminAuthority): readonly string[] {
 }
 
 /**
+ * Form "beri akses" TIDAK BOLEH mengubah role. Role bersifat global per orang, dan
+ * `grantAccess` dulu meng-upsert `app.user_role` — sehingga admin yang menambahkan
+ * perusahaan kedua untuk seorang PENGAWAS, tanpa menyentuh select Role yang default-nya
+ * "Direksi", diam-diam menaikkannya jadi direksi di SEMUA perusahaannya lewat
+ * ON UPDATE CASCADE. Kelas cacat yang tak tertangkap suite: kedua keadaan sama-sama
+ * sah, dan uji UI selalu memilih role secara sengaja sehingga tak pernah melewati
+ * jalur default.
+ *
+ * Aturannya: role yang dikirim harus SAMA dengan yang sudah dimiliki. Hanya pengguna
+ * yang belum punya baris `app.user_role` (membership pertamanya) yang boleh menentukan
+ * role di sini. Perubahan role punya aksinya sendiri (`setUserRole`) yang tunduk A3.
+ */
+export function roleGrantAllowed(
+  existing: Role | null,
+  submitted: string,
+): { ok: true } | { ok: false; reason: string } {
+  if (existing === null) return { ok: true }; // pengguna baru — satu-satunya kasus sah
+  if (existing === submitted) return { ok: true };
+  return {
+    ok: false,
+    reason:
+      `pengguna ini sudah ber-role "${existing}"; form ini tidak mengubah role ` +
+      `(role berlaku di SEMUA perusahaannya). Pakai kontrol "Set" di baris penugasannya.`,
+  };
+}
+
+/**
  * A3 — role bersifat GLOBAL per orang, jadi mengubahnya di satu PT ikut mengubahnya
  * di PT lain tempat orang itu punya penugasan. Admin terdelegasi karena itu hanya
  * boleh mengubah role bila SELURUH penugasan target ada di dalam tenant-nya.
