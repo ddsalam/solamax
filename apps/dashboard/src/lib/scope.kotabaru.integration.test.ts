@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { unitVisible, type ScopeCtx } from "./scope-rule";
+import { ctxAll, ctxSuper, ctxUnits } from "./test-ctx";
 import { ptLabelForUnits } from "./config";
 
 /**
@@ -65,7 +66,7 @@ d("KB⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     if (!kb) return ctx.skip();
     const otherTenants = [...new Set(others.map((u) => u.tenant_id))];
     for (const t of otherTenants) {
-      const a = allowed({ role: "direksi", tenantId: t!, unitScope: "ALL" });
+      const a = allowed(ctxAll("direksi", t!));
       expect(a).not.toContain(kb!.unit_id);
       // direksi tenant-lain tetap melihat unit-nya sendiri.
       for (const u of others.filter((x) => x.tenant_id === t)) expect(a).toContain(u.unit_id);
@@ -75,23 +76,23 @@ d("KB⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
   it("admin_perusahaan tiap tenant LAIN → TIDAK melihat KB", (ctx) => {
     if (!kb) return ctx.skip();
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
-      const a = allowed({ role: "admin_perusahaan", tenantId: t!, unitScope: "ALL" });
+      const a = allowed(ctxAll("admin_perusahaan", t!));
       expect(a).not.toContain(kb!.unit_id);
     }
   });
 
   it("direksi PT Merita Abadi Sukses → HANYA KB (tanpa grant per-unit)", (ctx) => {
     if (!kb) return ctx.skip();
-    const a = allowed({ role: "direksi", tenantId: ptKb!, unitScope: "ALL" });
+    const a = allowed(ctxAll("direksi", ptKb!));
     expect(a).toEqual([kb!.unit_id]);
   });
 
   it("pengawas[KB] → HANYA KB; pengawas tenant lain TIDAK melihat KB", (ctx) => {
     if (!kb) return ctx.skip();
-    const a = allowed({ role: "pengawas", tenantId: ptKb!, unitScope: [kb!.unit_id] });
+    const a = allowed(ctxUnits("pengawas", ptKb!, [kb!.unit_id]));
     expect(a).toEqual([kb!.unit_id]);
     for (const u of others) {
-      const b = allowed({ role: "pengawas", tenantId: u.tenant_id!, unitScope: [u.unit_id] });
+      const b = allowed(ctxUnits("pengawas", u.tenant_id!, [u.unit_id]));
       expect(b).not.toContain(kb!.unit_id);
     }
   });
@@ -102,7 +103,7 @@ d("KB⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
       expect(
         unitVisible(
-          { role: "direksi", tenantId: t!, unitScope: "ALL" },
+          ctxAll("direksi", t!),
           { unit_id: kb!.unit_id, tenant_id: kb!.tenant_id },
         ),
       ).toBe(false);
@@ -111,7 +112,7 @@ d("KB⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
     for (const u of others) {
       expect(
         unitVisible(
-          { role: "direksi", tenantId: ptKb!, unitScope: "ALL" },
+          ctxAll("direksi", ptKb!),
           { unit_id: u.unit_id, tenant_id: u.tenant_id },
         ),
       ).toBe(false);
@@ -120,7 +121,7 @@ d("KB⊥tenant-lain cross-TENANT isolation (data nyata, fixture-free)", () => {
 
   it("super_admin → melihat semua unit (KB + semua tenant lain)", (ctx) => {
     if (!kb) return ctx.skip();
-    const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
+    const a = allowed(ctxSuper());
     expect(a).toContain(kb!.unit_id);
     for (const u of others) expect(a).toContain(u.unit_id);
   });

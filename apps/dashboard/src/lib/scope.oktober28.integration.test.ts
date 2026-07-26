@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { unitVisible, type ScopeCtx } from "./scope-rule";
+import { ctxAll, ctxSuper, ctxUnits } from "./test-ctx";
 import { ptLabelForUnits, UNIT_DISPLAY } from "./config";
 
 /**
@@ -133,7 +134,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     if (!o28) return ctx.skip();
     const otherTenants = [...new Set(others.map((u) => u.tenant_id))];
     for (const t of otherTenants) {
-      const a = allowed({ role: "direksi", tenantId: t!, unitScope: "ALL" });
+      const a = allowed(ctxAll("direksi", t!));
       expect(a).not.toContain(o28!.unit_id);
       // direksi tenant-lain tetap melihat unit-nya sendiri.
       for (const u of others.filter((x) => x.tenant_id === t)) expect(a).toContain(u.unit_id);
@@ -144,7 +145,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     if (!o28) return ctx.skip();
     // Uji eksplisit untuk tenant yang slug-nya nyaris sama — inilah kebocoran
     // yang paling mungkin terjadi dan paling sulit terdeteksi.
-    const a = allowed({ role: "direksi", tenantId: ptAbadi!, unitScope: "ALL" });
+    const a = allowed(ctxAll("direksi", ptAbadi!));
     expect(a).not.toContain(o28!.unit_id);
     const ib = units.find((u) => u.code === "6478111")!;
     const bk = units.find((u) => u.code === "6378301")!;
@@ -155,23 +156,23 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
   it("admin_perusahaan tiap tenant LAIN → TIDAK melihat 28 Oktober", (ctx) => {
     if (!o28) return ctx.skip();
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
-      const a = allowed({ role: "admin_perusahaan", tenantId: t!, unitScope: "ALL" });
+      const a = allowed(ctxAll("admin_perusahaan", t!));
       expect(a).not.toContain(o28!.unit_id);
     }
   });
 
   it("direksi PT Sola Petra Energi → HANYA 28 Oktober (tanpa grant per-unit)", (ctx) => {
     if (!o28) return ctx.skip();
-    const a = allowed({ role: "direksi", tenantId: ptEnergi!, unitScope: "ALL" });
+    const a = allowed(ctxAll("direksi", ptEnergi!));
     expect(a).toEqual([o28!.unit_id]);
   });
 
   it("pengawas[28 Oktober] → HANYA 28 Oktober; pengawas tenant lain TIDAK melihatnya", (ctx) => {
     if (!o28) return ctx.skip();
-    const a = allowed({ role: "pengawas", tenantId: ptEnergi!, unitScope: [o28!.unit_id] });
+    const a = allowed(ctxUnits("pengawas", ptEnergi!, [o28!.unit_id]));
     expect(a).toEqual([o28!.unit_id]);
     for (const u of others) {
-      const b = allowed({ role: "pengawas", tenantId: u.tenant_id!, unitScope: [u.unit_id] });
+      const b = allowed(ctxUnits("pengawas", u.tenant_id!, [u.unit_id]));
       expect(b).not.toContain(o28!.unit_id);
     }
   });
@@ -183,7 +184,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     for (const t of [...new Set(others.map((u) => u.tenant_id))]) {
       expect(
         unitVisible(
-          { role: "direksi", tenantId: t!, unitScope: "ALL" },
+          ctxAll("direksi", t!),
           { unit_id: o28!.unit_id, tenant_id: o28!.tenant_id },
         ),
       ).toBe(false);
@@ -192,7 +193,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
     for (const u of others) {
       expect(
         unitVisible(
-          { role: "direksi", tenantId: ptEnergi!, unitScope: "ALL" },
+          ctxAll("direksi", ptEnergi!),
           { unit_id: u.unit_id, tenant_id: u.tenant_id },
         ),
       ).toBe(false);
@@ -201,7 +202,7 @@ d("28 Oktober ⊥ tenant-lain cross-TENANT isolation (data nyata, fixture-free)"
 
   it("super_admin → melihat semua unit (28 Oktober + semua tenant lain)", (ctx) => {
     if (!o28) return ctx.skip();
-    const a = allowed({ role: "super_admin", tenantId: null, unitScope: "ALL" });
+    const a = allowed(ctxSuper());
     expect(a).toContain(o28!.unit_id);
     for (const u of others) expect(a).toContain(u.unit_id);
   });

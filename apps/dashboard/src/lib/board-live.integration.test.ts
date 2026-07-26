@@ -112,9 +112,20 @@ d("board live — paritas angka vs Laporan Operasional (2 tanggal × 2 unit)", (
     { timeout: 240_000 },
   );
 
-  it("RBAC lapis-data: grain multi-unit hanya memuat unit dalam daftar scoped", async () => {
+  it("RBAC lapis-data: grain multi-unit hanya memuat unit dalam daftar scoped", async (ctx) => {
     const Q = await import("./queries");
     type SUID = Parameters<typeof Q.getSalesTotals>[0];
+    // Guard data: suite ini bergantung pada penjualan NYATA di rentang DATES, yang
+    // hanya ada di instance LIVE. Di `-rlsstg` (mirror sintetis, nol sales_header)
+    // ia dulu MERAH — bukan karena RBAC rusak, melainkan karena datanya tak ada.
+    // SKIP EKSPLISIT, bukan `return` senyap: "tak ada data" harus terbedakan dari
+    // "terverifikasi". Bila ADA data, asersinya tetap sekeras semula.
+    const semua = await Q.getDailySalesByProduct(
+      [1 as unknown as SUID, 2 as unknown as SUID],
+      DATES[0]!,
+      DATES[1]!,
+    );
+    if (semua.length === 0) return ctx.skip();
     const onlyBakau = await Q.getDailySalesByProduct(
       [2 as unknown as SUID],
       DATES[0]!,
@@ -122,5 +133,7 @@ d("board live — paritas angka vs Laporan Operasional (2 tanggal × 2 unit)", (
     );
     expect(onlyBakau.length).toBeGreaterThan(0);
     expect(onlyBakau.every((r) => r.unit_id === 2)).toBe(true);
+    // Non-vacuity: daftar scoped [2] harus BENAR-BENAR membuang baris unit 1.
+    expect(semua.some((r) => r.unit_id === 1)).toBe(true);
   });
 });
