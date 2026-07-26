@@ -23,11 +23,13 @@ model Unit {
   timezone   String   @default("Asia/Pontianak")
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  tenantId   String?  @map("tenant_id") @db.Uuid // pemilik SPBU (multi-tenant)
+  tenantId   String   @map("tenant_id") @db.Uuid // pemilik SPBU (multi-tenant); WAJIB sejak 0019
 
-  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
   userUnits UserUnit[]
 
+  /// Target FK komposit dari app.user_unit (0019): mengunci keselarasan unit<->tenant.
+  @@unique([unitId, tenantId])
   @@map("unit")
   @@schema("public")
 }
@@ -476,6 +478,7 @@ model User {
   image         String?
 
   memberships Membership[] // relasi milik kita (FK di sisi membership)
+  userRole    UserRole?
 
   @@map("users")
   @@schema("app")
@@ -544,6 +547,9 @@ model Membership {
   tenantId       String?  @map("tenant_id") @db.Uuid
   role           String // super_admin | admin_perusahaan | direksi | pengawas
   status         String   @default("active") // active | invited | disabled
+  /// true = semua unit tenant ini (unit BARU ikut otomatis); false = hanya daftar
+  /// di user_unit (beku). Himpunan kosong TIDAK PERNAH berarti "semua" (0019).
+  allUnits       Boolean  @default(false) @map("all_units")
   invitedByEmail String?  @map("invited_by_email")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -551,7 +557,11 @@ model Membership {
   tenant Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   units  UserUnit[]
 
+  /// Unique-nya NULLS NOT DISTINCT di SQL (0019) — Prisma belum memodelkannya, jadi
+  /// baris ini model LOGIS; drift disengaja & terdokumentasi (pola model Edc).
   @@unique([userId, tenantId])
+  /// Target FK komposit dari app.user_unit (0019).
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("membership")
   @@schema("app")
@@ -594,29 +604,50 @@ model ManualEntry {
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
 // pengawas-driven). Satu baris aktif per (unit,tanggal,produk) — partial unique.
 model UsulanSo {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId           Int       @map("unit_id") @db.SmallInt
-  businessDate     DateTime  @map("business_date") @db.Date
-  productKey       String    @map("product_key")
-  penerimaanHari   Decimal   @default(0) @map("penerimaan_hari") @db.Decimal(14, 2)
-  permintaanBesok  Decimal   @default(0) @map("permintaan_besok") @db.Decimal(14, 2)
-  usulanPenebusan  Decimal   @default(0) @map("usulan_penebusan") @db.Decimal(14, 2)
-  status           String    @default("draft")
-  void             Boolean   @default(false)
-  createdByUserId  Int       @map("created_by_user_id")
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
-  voidedByUserId   Int?      @map("voided_by_user_id")
-  voidedAt         DateTime? @map("voided_at") @db.Timestamptz()
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  businessDate    DateTime  @map("business_date") @db.Date
+  productKey      String    @map("product_key")
+  penerimaanHari  Decimal   @default(0) @map("penerimaan_hari") @db.Decimal(14, 2)
+  permintaanBesok Decimal   @default(0) @map("permintaan_besok") @db.Decimal(14, 2)
+  usulanPenebusan Decimal   @default(0) @map("usulan_penebusan") @db.Decimal(14, 2)
+  status          String    @default("draft")
+  void            Boolean   @default(false)
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
 
   @@index([unitId, businessDate])
   @@map("usulan_so")
   @@schema("app")
 }
 
+/// INVARIAN "satu role per orang" (0019), DEKLARATIF. Tepat satu baris per user
+/// (PK user_id); membership.(user_id, role) ber-FK komposit ke sini, sehingga semua
+/// membership seseorang WAJIB berbagi role yang sama. Ubah role = satu UPDATE di
+/// sini + ON UPDATE CASCADE. Bukan trigger: trigger prosedural & tak terlihat di \d.
+model UserRole {
+  userId Int    @id @map("user_id")
+  role   String // super_admin | admin_perusahaan | direksi | pengawas
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@map("user_role")
+  @@schema("app")
+}
+
 model UserUnit {
   membershipId String @map("membership_id") @db.Uuid
   unitId       Int    @map("unit_id") @db.SmallInt
+  /// Turunan dari membership; ada semata agar FK KOMPOSIT ke DUA sisi
+  /// ((unit_id,tenant_id)->unit dan (membership_id,tenant_id)->membership) bisa
+  /// mengunci keselarasan unit<->tenant SECARA STRUKTURAL (0019). Di SQL kedua FK
+  /// itu komposit; di sini relasinya tetap tunggal (model LOGIS, drift disengaja)
+  /// karena backend tidak pernah menulis tabel ini — dashboard memakai `pg` mentah.
+  tenantId     String @map("tenant_id") @db.Uuid
 
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   unit       Unit       @relation(fields: [unitId], references: [unitId], onDelete: Cascade)
@@ -629,6 +660,10 @@ model UserUnit {
 /// Jejak audit append-only untuk aksi /admin (grant/revoke akses). Migration 0017.
 /// dashboard_app: SELECT+INSERT saja (UPDATE/DELETE dicabut → tak bisa ditulis-ulang).
 model AuditLog {
+  /// Tenant yang disentuh aksi ini (0019). NULL = aksi global ⇒ hanya terlihat
+  /// super_admin (fail-closed untuk pembaca admin terdelegasi).
+  tenantId String? @map("tenant_id") @db.Uuid
+
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   actorUserId Int      @map("actor_user_id")
   actorEmail  String?  @map("actor_email")
