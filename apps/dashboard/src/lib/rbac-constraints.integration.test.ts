@@ -253,16 +253,29 @@ d("0019 — keselarasan unit↔tenant & invarian role ditegakkan DB", () => {
     });
   });
 
-  it("public.unit: tenant WAJIB, dan unit yatim tak bisa dibuat", async (ctx) => {
+  it("public.unit: tenant WAJIB + kunci komposit terpasang (dibaca dari katalog)", async (ctx) => {
     if (!ready()) return ctx.skip();
-    await tx(async (c) => {
-      await expect(
-        c.query(
-          `INSERT INTO public.unit (unit_id, code, name, api_key_hash, tenant_id)
-           VALUES (99,'9999999','uji',repeat('0',64),NULL)`,
-        ),
-      ).rejects.toThrow(/null value|not-null/i);
-    });
+    // Diuji lewat KATALOG, bukan dengan mencoba INSERT: `dashboard_app` memang
+    // SELECT-only pada schema public (dibuktikan grant.integration.test.ts), jadi
+    // percobaan INSERT gagal dgn "permission denied" — hijau karena alasan yang
+    // SALAH, dan tetap merah kalau NOT NULL-nya dijatuhkan. Katalog menjawab
+    // pertanyaan yang sebenarnya: apakah constraint-nya ADA.
+    const nullable = await pool.query(
+      `SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='unit' AND column_name='tenant_id'`,
+    );
+    expect(nullable.rows[0].is_nullable).toBe("NO");
+    const uk = await pool.query(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conname = 'unit_unit_id_tenant_id_key'`,
+    );
+    expect(uk.rowCount).toBe(1);
+    expect(uk.rows[0].def).toMatch(/UNIQUE \(unit_id, tenant_id\)/);
+    // FK tenant harus RESTRICT (bukan SET NULL — bertabrakan dgn NOT NULL).
+    const fk = await pool.query(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname='unit_tenant_id_fkey'`,
+    );
+    expect(fk.rows[0].def).toMatch(/ON DELETE RESTRICT/);
   });
 
   it("T-REV: cabut penugasan → hilang pada PEMBACAAN BERIKUTNYA, tanpa logout", async (ctx) => {
