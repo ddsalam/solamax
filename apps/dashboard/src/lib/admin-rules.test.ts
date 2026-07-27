@@ -6,6 +6,7 @@ import {
   canHardDelete,
   canManageAccess,
   checkTouchMembership,
+  roleGrantAllowed,
   type AdminAuthority,
 } from "./admin-rules";
 
@@ -133,5 +134,24 @@ describe("admin dengan penugasan di DUA PT", () => {
   });
   it("A3 memakai gabungan tenantnya", () => {
     expect(canChangeRole(adminAB, [PT_A, PT_B]).ok).toBe(true);
+  });
+});
+
+describe("roleGrantAllowed — form 'beri akses' tak pernah mengubah role", () => {
+  it("pengguna BARU (belum punya role) → boleh menetapkan role", () => {
+    expect(roleGrantAllowed(null, "pengawas").ok).toBe(true);
+    expect(roleGrantAllowed(null, "direksi").ok).toBe(true);
+  });
+  it("role SAMA → lolos (menambah perusahaan tanpa menyentuh role)", () => {
+    expect(roleGrantAllowed("pengawas", "pengawas").ok).toBe(true);
+  });
+  it("role BERBEDA → DITOLAK, dengan alasan yang menunjuk ke kontrol yang benar", () => {
+    const v = roleGrantAllowed("pengawas", "direksi");
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toMatch(/Set/);
+  });
+  it("penurunan role pun ditolak — arah mana pun bukan urusan form ini", () => {
+    expect(roleGrantAllowed("direksi", "pengawas").ok).toBe(false);
+    expect(roleGrantAllowed("admin_perusahaan", "direksi").ok).toBe(false);
   });
 });
