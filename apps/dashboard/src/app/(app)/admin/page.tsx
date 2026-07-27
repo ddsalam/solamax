@@ -10,6 +10,7 @@ import {
   updateScope,
 } from "@/lib/admin-actions";
 import { AccessGrantForm } from "@/components/AccessGrantForm";
+import { PESAN_HASIL, type KodeHasil } from "@/lib/admin-rules";
 import { ADMIN_MEMBERSHIPS_SQL } from "@/lib/membership-query";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +75,7 @@ const GRID = "1.2fr 1.8fr 0.7fr 1.1fr";
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: { tambah?: string };
+  searchParams: { tambah?: string; h?: string };
 }) {
   const scope = await getDataScope();
   if (!scope.canManageAccess) notFound(); // bukan sekadar sembunyikan menu
@@ -125,6 +126,9 @@ export default async function AdminPage({
 
   const unitsOf = (tenantId: string | null) => units.filter((u) => u.tenant_id === tenantId);
 
+  const kode = searchParams.h;
+  const hasil = kode && kode in PESAN_HASIL ? PESAN_HASIL[kode as KodeHasil] : null;
+
   /**
    * Kelompokkan penugasan PER ORANG. Pemetaan baris→membership TIDAK berubah: tiap
    * `m` tetap membawa `m.id` sendiri ke form "Simpan cakupan", dan `defaultChecked`
@@ -164,6 +168,27 @@ export default async function AdminPage({
           menghapus penugasan permanen adalah wewenang super admin; gunakan{" "}
           <strong>Nonaktifkan</strong> untuk mencabut akses sementara.
         </p>
+      )}
+
+      {/* Hasil aksi terakhir. Aksi server melempar, dan build produksi Next.js
+          MENYEMBUNYIKAN pesannya — tanpa banner ini penolakan tak terlihat sama sekali,
+          dan admin bisa mengira aksinya berhasil. Teksnya berasal dari KODE, bukan dari
+          pesan galat: satu teks untuk SEMUA penolakan wewenang, apa pun sebabnya. */}
+      {hasil && (
+        <div
+          className="card card-pad mt6"
+          role="status"
+          style={{
+            borderStyle: "solid",
+            borderWidth: 2,
+            borderColor: hasil.nada === "ok" ? "var(--success)" : "var(--danger)",
+          }}
+        >
+          <span className="fs16" style={{ color: hasil.nada === "ok" ? "var(--success)" : "var(--danger)" }}>
+            {hasil.nada === "ok" ? "✓ " : "⚠️ "}
+            {hasil.teks}
+          </span>
+        </div>
       )}
 
       {(scope.roleConflict || conflicts.length > 0) && (
