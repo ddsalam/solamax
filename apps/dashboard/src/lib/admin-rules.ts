@@ -130,3 +130,40 @@ export function canChangeRole(
   }
   return { ok: true };
 }
+
+/**
+ * UMPAN BALIK AKSI ADMIN — cermin terbalik dari cacat yang ditutup #141.
+ *
+ * Dulu UI diam-diam berbuat LEBIH dari yang dimaksud (menaikkan role lewat default
+ * select). Setelah penegakan server dipasang, ia diam-diam berbuat KURANG: aksi yang
+ * ditolak melempar, dan build produksi Next.js menyembunyikan pesannya sama sekali —
+ * admin menekan tombol, tak terjadi apa-apa, tanpa satu pun keterangan. Di layar
+ * PEMBERIAN AKSES, admin yang mengira berhasil padahal ditolak memegang keyakinan
+ * SALAH tentang siapa boleh melihat apa.
+ *
+ * ⚠️ NETRALITAS: SEMUA penolakan wewenang dipetakan ke SATU kode yang sama, apa pun
+ * sebabnya (tenant lain / diri sendiri / super_admin / A3 lintas-tenant). Menambah
+ * umpan balik TIDAK BOLEH mengembalikan kebocoran yang ditutup #142 — pesan yang
+ * membedakan sebab akan mengonfirmasi keberadaan penugasan lintas-tenant.
+ */
+export type KodeHasil = "ok" | "wewenang" | "input";
+
+export function kodeGagal(err: unknown): Exclude<KodeHasil, "ok"> {
+  const pesan = err instanceof Error ? err.message : String(err);
+  // Semua aturan A1–A4 + roleGrantAllowed melempar dengan awalan "forbidden:".
+  return pesan.startsWith("forbidden:") ? "wewenang" : "input";
+}
+
+export const PESAN_HASIL: Record<KodeHasil, { nada: "ok" | "gagal"; teks: string }> = {
+  ok: { nada: "ok", teks: "Perubahan tersimpan." },
+  wewenang: {
+    nada: "gagal",
+    teks:
+      "Aksi ditolak — di luar wewenang Anda. Tidak ada yang diubah. " +
+      "Hubungi super admin bila menurut Anda ini keliru.",
+  },
+  input: {
+    nada: "gagal",
+    teks: "Aksi gagal — data isian tidak valid. Tidak ada yang diubah.",
+  },
+};

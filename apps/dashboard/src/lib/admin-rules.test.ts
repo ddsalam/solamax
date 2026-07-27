@@ -6,6 +6,8 @@ import {
   canHardDelete,
   canManageAccess,
   checkTouchMembership,
+  kodeGagal,
+  PESAN_HASIL,
   roleGrantAllowed,
   type AdminAuthority,
 } from "./admin-rules";
@@ -165,5 +167,36 @@ describe("roleGrantAllowed — form 'beri akses' tak pernah mengubah role", () =
   it("penurunan role pun ditolak — arah mana pun bukan urusan form ini", () => {
     expect(roleGrantAllowed("direksi", "pengawas").ok).toBe(false);
     expect(roleGrantAllowed("admin_perusahaan", "direksi").ok).toBe(false);
+  });
+});
+
+describe("umpan balik aksi — netral, dan tak mengembalikan kebocoran #142", () => {
+  it("SEMUA penolakan wewenang → SATU kode yang sama, apa pun sebabnya", () => {
+    const sebab = [
+      // A1 tenant lain · A2 super_admin · A4 diri sendiri  (checkTouchMembership)
+      checkTouchMembership(adminA, { userId: 9, tenantId: PT_B, role: "pengawas" }),
+      checkTouchMembership(adminA, { userId: 9, tenantId: null, role: "super_admin" }),
+      checkTouchMembership(adminA, { userId: adminA.userId, tenantId: PT_A, role: "direksi" }),
+      // A3 lintas-tenant + A3 membership global
+      canChangeRole(adminA, [PT_A, PT_B]),
+      canChangeRole(adminA, [PT_A, null]),
+      // form beri-akses mengubah role
+      roleGrantAllowed("pengawas", "direksi"),
+    ];
+    const kode = sebab.map((v) => kodeGagal(new Error(`forbidden: ${v.ok ? "" : v.reason}`)));
+    expect(new Set(kode).size).toBe(1); // TIDAK bisa dibedakan
+    expect(kode[0]).toBe("wewenang");
+  });
+
+  it("teks yang ditampilkan tidak menyebut perusahaan/tenant lain", () => {
+    const t = PESAN_HASIL.wewenang.teks;
+    expect(t).not.toMatch(/perusahaan lain|tenant lain|PT lain|punya penugasan/i);
+    expect(t).toMatch(/Tidak ada yang diubah/); // memberi tahu bahwa aksi TIDAK berlaku
+  });
+
+  it("galat non-wewenang dipetakan terpisah (agar 'tersimpan' tak pernah dikira gagal)", () => {
+    expect(kodeGagal(new Error("role tidak valid"))).toBe("input");
+    expect(kodeGagal(new Error("membership tidak ditemukan"))).toBe("input");
+    expect(PESAN_HASIL.ok.nada).toBe("ok");
   });
 });

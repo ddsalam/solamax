@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getDataScope, type DataScope } from "./scope";
 import { q } from "./db";
 import {
@@ -10,6 +11,7 @@ import {
   canHardDelete,
   canManageAccess,
   checkTouchMembership,
+  kodeGagal,
   roleGrantAllowed,
   type AdminAuthority,
 } from "./admin-rules";
@@ -131,6 +133,29 @@ async function writeUnits(m: MembershipRow, allUnits: boolean, unitIds: number[]
   }
 }
 
+/**
+ * Jalankan aksi, lalu SELALU kembali ke /admin dengan kode hasil di query.
+ *
+ * Kenapa redirect + kode, bukan melempar: build produksi Next.js menyembunyikan pesan
+ * aksi server seluruhnya, sehingga penolakan menjadi SENYAP di layar — admin menekan
+ * tombol dan tak terjadi apa-apa. Kenapa KODE, bukan pesan aslinya: satu kode untuk
+ * SEMUA penolakan wewenang menjaga netralitas #142 — pesan yang membedakan sebab akan
+ * mengonfirmasi keberadaan penugasan lintas-tenant.
+ *
+ * `redirect()` melempar NEXT_REDIRECT, jadi ia dipanggil DI LUAR try/catch.
+ */
+async function jalankan(kerja: () => Promise<void>): Promise<never> {
+  let hasil: string = "ok";
+  try {
+    await kerja();
+  } catch (err) {
+    hasil = kodeGagal(err);
+    console.error("[admin] aksi ditolak/gagal:", err); // sebab lengkap HANYA ke log server
+  }
+  revalidatePath("/admin");
+  redirect(`/admin?h=${hasil}`);
+}
+
 function parseScopeFields(formData: FormData): { allUnits: boolean; unitIds: number[] } {
   const allUnits = String(formData.get("unitMode") ?? "") === "all";
   const unitIds = formData
@@ -144,119 +169,123 @@ function parseScopeFields(formData: FormData): { allUnits: boolean; unitIds: num
 
 /** Membuat / memperbarui membership. HANYA super_admin (lihat catatan direktori). */
 export async function grantAccess(formData: FormData): Promise<void> {
-  const ctx = await requireSuperAdmin();
-  const scope = ctx.scope;
+  await jalankan(async () => {
+    const ctx = await requireSuperAdmin();
+    const scope = ctx.scope;
 
-  const userId = Number(formData.get("userId"));
-  const role = String(formData.get("role") ?? "");
-  const tenantId = String(formData.get("tenantId") ?? "") || null;
-  const { allUnits, unitIds } = parseScopeFields(formData);
+    const userId = Number(formData.get("userId"));
+    const role = String(formData.get("role") ?? "");
+    const tenantId = String(formData.get("tenantId") ?? "") || null;
+    const { allUnits, unitIds } = parseScopeFields(formData);
 
-  if (!Number.isInteger(userId)) throw new Error("user tidak valid");
-  if (!assignableRoles(ctx.authority).includes(role)) throw new Error("role tidak valid");
-  if (!tenantId) throw new Error("tenant wajib untuk role ini");
+    if (!Number.isInteger(userId)) throw new Error("user tidak valid");
+    if (!assignableRoles(ctx.authority).includes(role)) throw new Error("role tidak valid");
+    if (!tenantId) throw new Error("tenant wajib untuk role ini");
 
-  // 🔴 Form ini TIDAK PERNAH mengubah role. Sebelumnya ia meng-upsert app.user_role,
-  // sehingga menambah perusahaan kedua untuk seorang PENGAWAS — tanpa menyentuh select
-  // Role yang default-nya "Direksi" — diam-diam menaikkannya jadi direksi di SEMUA
-  // perusahaannya lewat ON UPDATE CASCADE. Ditegakkan di SERVER, bukan hanya dikunci
-  // di UI: prinsip yang sama dengan docblock di atas ("bukan sekadar sembunyi menu").
-  const roleRows = await q<{ role: Role }>(
-    `SELECT role FROM app.user_role WHERE user_id = $1`,
-    [userId],
-  );
-  const roleLama = roleRows[0]?.role ?? null;
-  const verdict = roleGrantAllowed(roleLama, role);
-  if (!verdict.ok) throw new Error(`forbidden: ${verdict.reason}`);
+    // 🔴 Form ini TIDAK PERNAH mengubah role. Sebelumnya ia meng-upsert app.user_role,
+    // sehingga menambah perusahaan kedua untuk seorang PENGAWAS — tanpa menyentuh select
+    // Role yang default-nya "Direksi" — diam-diam menaikkannya jadi direksi di SEMUA
+    // perusahaannya lewat ON UPDATE CASCADE. Ditegakkan di SERVER, bukan hanya dikunci
+    // di UI: prinsip yang sama dengan docblock di atas ("bukan sekadar sembunyi menu").
+    const roleRows = await q<{ role: Role }>(
+      `SELECT role FROM app.user_role WHERE user_id = $1`,
+      [userId],
+    );
+    const roleLama = roleRows[0]?.role ?? null;
+    const verdict = roleGrantAllowed(roleLama, role);
+    if (!verdict.ok) throw new Error(`forbidden: ${verdict.reason}`);
 
-  // Hanya pengguna BARU (belum punya baris user_role) yang menetapkan role di sini.
-  // FK komposit membership→user_role menuntut barisnya ada lebih dulu.
-  if (roleLama === null) {
-    await q(`INSERT INTO app.user_role (user_id, role) VALUES ($1, $2)`, [userId, role]);
-  }
+    // Hanya pengguna BARU (belum punya baris user_role) yang menetapkan role di sini.
+    // FK komposit membership→user_role menuntut barisnya ada lebih dulu.
+    if (roleLama === null) {
+      await q(`INSERT INTO app.user_role (user_id, role) VALUES ($1, $2)`, [userId, role]);
+    }
 
-  const rows = await q<{ id: string }>(
-    `INSERT INTO app.membership (user_id, tenant_id, role, status, all_units, invited_by_email)
-     VALUES ($1, $2, $3, 'active', $4, $5)
-     ON CONFLICT (user_id, tenant_id)
-       DO UPDATE SET status = 'active', all_units = EXCLUDED.all_units
-     RETURNING id`,
-    [userId, tenantId, role, allUnits, scope.email],
-  );
-  const membershipId = rows[0]!.id;
+    const rows = await q<{ id: string }>(
+      `INSERT INTO app.membership (user_id, tenant_id, role, status, all_units, invited_by_email)
+       VALUES ($1, $2, $3, 'active', $4, $5)
+       ON CONFLICT (user_id, tenant_id)
+         DO UPDATE SET status = 'active', all_units = EXCLUDED.all_units
+       RETURNING id`,
+      [userId, tenantId, role, allUnits, scope.email],
+    );
+    const membershipId = rows[0]!.id;
 
-  await writeUnits(
-    { id: membershipId, user_id: userId, tenant_id: tenantId, role, status: "active" },
-    allUnits,
-    unitIds,
-  );
+    await writeUnits(
+      { id: membershipId, user_id: userId, tenant_id: tenantId, role, status: "active" },
+      allUnits,
+      unitIds,
+    );
 
-  await audit(ctx, "grant_access", String(userId), tenantId, {
-    membership_id: membershipId,
-    role,
-    tenant_id: tenantId,
-    all_units: allUnits,
-    unit_ids: allUnits ? "ALL" : unitIds,
+    await audit(ctx, "grant_access", String(userId), tenantId, {
+      membership_id: membershipId,
+      role,
+      tenant_id: tenantId,
+      all_units: allUnits,
+      unit_ids: allUnits ? "ALL" : unitIds,
+    });
   });
-  revalidatePath("/admin");
 }
 
 /** HARD-DELETE membership. HANYA super_admin; admin terdelegasi memakai suspend. */
 export async function revokeAccess(formData: FormData): Promise<void> {
-  const ctx = await requireSuperAdmin();
-  const membershipId = String(formData.get("membershipId") ?? "");
-  if (!membershipId) throw new Error("membership tidak valid");
+  await jalankan(async () => {
+    const ctx = await requireSuperAdmin();
+    const membershipId = String(formData.get("membershipId") ?? "");
+    if (!membershipId) throw new Error("membership tidak valid");
 
-  // super_admin tak bisa dicabut lewat UI (jaga akses bootstrap).
-  const deleted = await q<{ id: string; user_id: number; tenant_id: string | null }>(
-    `DELETE FROM app.membership WHERE id = $1 AND role <> 'super_admin'
-     RETURNING id, user_id, tenant_id`,
-    [membershipId],
-  );
-  if (deleted.length > 0) {
-    const d = deleted[0]!;
-    await audit(ctx, "revoke_access", membershipId, d.tenant_id, {
-      membership_id: membershipId,
-      user_id: d.user_id,
-    });
-  }
-  revalidatePath("/admin");
+    // super_admin tak bisa dicabut lewat UI (jaga akses bootstrap).
+    const deleted = await q<{ id: string; user_id: number; tenant_id: string | null }>(
+      `DELETE FROM app.membership WHERE id = $1 AND role <> 'super_admin'
+       RETURNING id, user_id, tenant_id`,
+      [membershipId],
+    );
+    if (deleted.length > 0) {
+      const d = deleted[0]!;
+      await audit(ctx, "revoke_access", membershipId, d.tenant_id, {
+        membership_id: membershipId,
+        user_id: d.user_id,
+      });
+    }
+  });
 }
 
 /* ───────────────── super_admin + admin_perusahaan (dlm tenant) ───────────────── */
 
 /** Ubah cakupan unit sebuah penugasan (all_units ↔ daftar unit). */
 export async function updateScope(formData: FormData): Promise<void> {
-  const ctx = await requireAdmin();
-  const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
-  const { allUnits, unitIds } = parseScopeFields(formData);
+  await jalankan(async () => {
+    const ctx = await requireAdmin();
+    const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
+    const { allUnits, unitIds } = parseScopeFields(formData);
 
-  await q(`UPDATE app.membership SET all_units = $2 WHERE id = $1`, [m.id, allUnits]);
-  await writeUnits(m, allUnits, unitIds);
+    await q(`UPDATE app.membership SET all_units = $2 WHERE id = $1`, [m.id, allUnits]);
+    await writeUnits(m, allUnits, unitIds);
 
-  await audit(ctx, "update_scope", m.id, m.tenant_id, {
-    membership_id: m.id,
-    user_id: m.user_id,
-    all_units: allUnits,
-    unit_ids: allUnits ? "ALL" : unitIds,
+    await audit(ctx, "update_scope", m.id, m.tenant_id, {
+      membership_id: m.id,
+      user_id: m.user_id,
+      all_units: allUnits,
+      unit_ids: allUnits ? "ALL" : unitIds,
+    });
   });
-  revalidatePath("/admin");
 }
 
 /** Suspend / aktifkan kembali (menggantikan hard-delete bagi admin terdelegasi). */
 export async function setMembershipStatus(formData: FormData): Promise<void> {
-  const ctx = await requireAdmin();
-  const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
-  const status = String(formData.get("status") ?? "");
-  if (!["active", "disabled"].includes(status)) throw new Error("status tidak valid");
+  await jalankan(async () => {
+    const ctx = await requireAdmin();
+    const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
+    const status = String(formData.get("status") ?? "");
+    if (!["active", "disabled"].includes(status)) throw new Error("status tidak valid");
 
-  await q(`UPDATE app.membership SET status = $2 WHERE id = $1`, [m.id, status]);
-  await audit(ctx, status === "disabled" ? "suspend_access" : "reactivate_access", m.id, m.tenant_id, {
-    membership_id: m.id,
-    user_id: m.user_id,
-    status,
+    await q(`UPDATE app.membership SET status = $2 WHERE id = $1`, [m.id, status]);
+    await audit(ctx, status === "disabled" ? "suspend_access" : "reactivate_access", m.id, m.tenant_id, {
+      membership_id: m.id,
+      user_id: m.user_id,
+      status,
+    });
   });
-  revalidatePath("/admin");
 }
 
 /**
@@ -265,27 +294,28 @@ export async function setMembershipStatus(formData: FormData): Promise<void> {
  * hanya boleh mengubahnya bila SELURUH membership target berada di tenant-nya.
  */
 export async function setUserRole(formData: FormData): Promise<void> {
-  const ctx = await requireAdmin();
-  const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
-  const role = String(formData.get("role") ?? "");
+  await jalankan(async () => {
+    const ctx = await requireAdmin();
+    const m = await requireTargetMembership(ctx, String(formData.get("membershipId") ?? ""));
+    const role = String(formData.get("role") ?? "");
 
-  if (!assignableRoles(ctx.authority).includes(role)) throw new Error("role tidak valid"); // A2
+    if (!assignableRoles(ctx.authority).includes(role)) throw new Error("role tidak valid"); // A2
 
-  // A3 — role GLOBAL per orang: cek SELURUH penugasan target, bukan hanya yang ini.
-  const semua = await q<{ tenant_id: string | null }>(
-    `SELECT tenant_id FROM app.membership WHERE user_id = $1`,
-    [m.user_id],
-  );
-  const verdict = canChangeRole(ctx.authority, semua.map((r) => r.tenant_id));
-  if (!verdict.ok) throw new Error(`forbidden: ${verdict.reason}`);
+    // A3 — role GLOBAL per orang: cek SELURUH penugasan target, bukan hanya yang ini.
+    const semua = await q<{ tenant_id: string | null }>(
+      `SELECT tenant_id FROM app.membership WHERE user_id = $1`,
+      [m.user_id],
+    );
+    const verdict = canChangeRole(ctx.authority, semua.map((r) => r.tenant_id));
+    if (!verdict.ok) throw new Error(`forbidden: ${verdict.reason}`);
 
-  // Satu UPDATE; ON UPDATE CASCADE (0019) merambatkannya ke semua membership.
-  await q(`UPDATE app.user_role SET role = $2 WHERE user_id = $1`, [m.user_id, role]);
-  await audit(ctx, "set_role", String(m.user_id), m.tenant_id, {
-    membership_id: m.id,
-    user_id: m.user_id,
-    role_lama: m.role,
-    role_baru: role,
+    // Satu UPDATE; ON UPDATE CASCADE (0019) merambatkannya ke semua membership.
+    await q(`UPDATE app.user_role SET role = $2 WHERE user_id = $1`, [m.user_id, role]);
+    await audit(ctx, "set_role", String(m.user_id), m.tenant_id, {
+      membership_id: m.id,
+      user_id: m.user_id,
+      role_lama: m.role,
+      role_baru: role,
+    });
   });
-  revalidatePath("/admin");
 }

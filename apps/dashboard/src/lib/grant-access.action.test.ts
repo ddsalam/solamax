@@ -15,6 +15,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const revalidatePath = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: (p: string) => revalidatePath(p) }));
 
+/** `jalankan()` mengakhiri SETIAP aksi dengan redirect ke /admin?h=<kode>. Aksi tak
+ *  lagi melempar ke pemanggil (build produksi Next menyembunyikan pesannya), jadi
+ *  yang diuji adalah KODE HASIL + properti "nol tulisan terjadi" — lebih kuat dari
+ *  sekadar `rejects.toThrow`, karena penolakan yang bocor menulis akan tetap merah. */
+const redirects: string[] = [];
+vi.mock("next/navigation", () => ({ redirect: (u: string) => { redirects.push(u); } }));
+
 const scope = {
   userId: 1,
   role: "super_admin" as const,
@@ -54,29 +61,31 @@ const TENANT_B = "bbbb2222-2222-2222-2222-222222222222";
 
 beforeEach(() => {
   queries.length = 0;
+  redirects.length = 0;
   revalidatePath.mockClear();
 });
+
+const kodeTerakhir = () => redirects.at(-1)?.replace("/admin?h=", "") ?? "(tanpa redirect)";
+const tulisan = () => queries.filter((x) => /INSERT|UPDATE|DELETE/i.test(x.sql));
 
 describe("grantAccess — form ini TIDAK PERNAH mengubah role", () => {
   it("role BERBEDA dari yang sudah dimiliki → DITOLAK (bukan di-upsert)", async () => {
     roleTersimpan = "pengawas";
-    await expect(
-      grantAccess(fd({ userId: "7", role: "direksi", tenantId: TENANT_B, unitMode: "all" })),
-    ).rejects.toThrow(/forbidden.*sudah ber-role "pengawas"/);
+    await grantAccess(fd({ userId: "7", role: "direksi", tenantId: TENANT_B, unitMode: "all" }));
+    expect(kodeTerakhir()).toBe("wewenang");
     // dan TIDAK ada satu pun tulisan yang terjadi
-    const tulis = queries.filter((x) => /INSERT|UPDATE|DELETE/i.test(x.sql));
-    expect(tulis).toEqual([]);
+    expect(tulisan()).toEqual([]);
   });
 
   it("skenario nyata: default 'Direksi' pada seorang PENGAWAS → DITOLAK", async () => {
     // Persis alur yang ditakutkan: admin memilih pengguna + perusahaan + unit,
     // lupa menurunkan select Role dari default "Direksi".
     roleTersimpan = "pengawas";
-    await expect(
-      grantAccess(
-        fd({ userId: "7", role: "direksi", tenantId: TENANT_B, unitMode: "list", unitIds: ["4"] }),
-      ),
-    ).rejects.toThrow(/forbidden/);
+    await grantAccess(
+      fd({ userId: "7", role: "direksi", tenantId: TENANT_B, unitMode: "list", unitIds: ["4"] }),
+    );
+    expect(kodeTerakhir()).toBe("wewenang");
+    expect(tulisan()).toEqual([]); // nol tulisan — termasuk nol INSERT app.user_role
     expect(queries.some((x) => x.sql.includes("app.user_role") && /INSERT/i.test(x.sql))).toBe(false);
   });
 
@@ -88,6 +97,7 @@ describe("grantAccess — form ini TIDAK PERNAH mengubah role", () => {
     expect(queries.some((x) => /INSERT INTO app\.user_role/.test(x.sql))).toBe(false);
     expect(queries.some((x) => /INSERT INTO app\.membership/.test(x.sql))).toBe(true);
     expect(revalidatePath).toHaveBeenCalledWith("/admin");
+    expect(kodeTerakhir()).toBe("ok"); // berhasil DIBERI TAHU, bukan senyap
   });
 
   it("pengguna BARU (belum punya role) → role BOLEH ditetapkan di sini", async () => {
