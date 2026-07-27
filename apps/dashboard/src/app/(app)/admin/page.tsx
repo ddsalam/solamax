@@ -10,6 +10,7 @@ import {
   updateScope,
 } from "@/lib/admin-actions";
 import { AccessGrantForm } from "@/components/AccessGrantForm";
+import { ADMIN_MEMBERSHIPS_SQL } from "@/lib/membership-query";
 
 export const dynamic = "force-dynamic";
 
@@ -104,19 +105,7 @@ export default async function AdminPage({
             WHERE active AND tenant_id = ANY($1::uuid[]) ORDER BY unit_id`,
           [myTenants],
         ),
-    q<MembershipRow>(
-      `SELECT m.id, m.user_id, u.email, m.role, m.tenant_id, t.name AS tenant_name,
-              m.status, m.all_units,
-              COALESCE(array_agg(uu.unit_id) FILTER (WHERE uu.unit_id IS NOT NULL), '{}') AS unit_ids
-         FROM app.membership m
-         JOIN app.users u ON u.id = m.user_id
-         LEFT JOIN app.tenant t ON t.id = m.tenant_id
-         LEFT JOIN app.user_unit uu ON uu.membership_id = m.id
-        WHERE $1::boolean OR m.tenant_id = ANY($2::uuid[])
-        GROUP BY m.id, m.user_id, u.email, m.role, m.tenant_id, t.name, m.status, m.all_units
-        ORDER BY u.email, m.role`,
-      [isSuper, myTenants],
-    ),
+    q<MembershipRow>(ADMIN_MEMBERSHIPS_SQL, [isSuper, myTenants]),
     q<AuditRow>(
       `SELECT a.id, a.actor_email, a.action, a.target, t.name AS tenant_name,
               to_char(a.created_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS created_at
@@ -239,7 +228,10 @@ export default async function AdminPage({
                   </form>
                 )}
                 <span className="fs15 t-tertiary">
-                  {g.items.length} perusahaan
+                  {/* Bagi admin terdelegasi angka ini adalah yang TERLIHAT olehnya
+                      (query di atas ter-filter tenant), bukan total milik orang itu.
+                      Melabelinya "perusahaan" begitu saja akan menyiratkan total. */}
+                  {g.items.length} {isSuper ? "perusahaan" : "penugasan di perusahaan Anda"}
                 </span>
                 {isSuper && !isSuperUser && (
                   <Link

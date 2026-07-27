@@ -119,10 +119,13 @@ export function canChangeRole(
   if (isSuper(a)) return { ok: true };
   const luar = targetTenantIds.filter((t) => t === null || !a.tenantIds.includes(t));
   if (luar.length > 0) {
+    // ⚠️ Pesan NETRAL dengan sengaja. Menyebut "punya penugasan di perusahaan lain"
+    // akan MENGONFIRMASI keberadaan penugasan lintas-tenant kepada admin yang tak
+    // berhak mengetahuinya — kebocoran yang sama dengan daftar penugasan lintas-PT,
+    // lewat pintu pesan galat. Alasan sebenarnya hanya ada di komentar ini.
     return {
       ok: false,
-      reason:
-        "pengguna ini punya penugasan di perusahaan lain — hanya super_admin yang boleh mengubah rolenya",
+      reason: "perubahan role pengguna ini di luar wewenang Anda — hubungi super admin",
     };
   }
   return { ok: true };
