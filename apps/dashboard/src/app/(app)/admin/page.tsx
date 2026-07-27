@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDataScope } from "@/lib/scope";
 import { q } from "@/lib/db";
@@ -9,6 +10,7 @@ import {
   updateScope,
 } from "@/lib/admin-actions";
 import { AccessGrantForm } from "@/components/AccessGrantForm";
+import { ADMIN_MEMBERSHIPS_SQL } from "@/lib/membership-query";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +61,7 @@ interface ConflictRow {
   roles: string;
 }
 
-const GRID = "1.7fr 1fr 1.1fr 1.7fr 0.8fr 1.2fr";
+const GRID = "1.2fr 1.8fr 0.7fr 1.1fr";
 
 /**
  * Kelola Akses — terbuka untuk super_admin (semua tenant) dan admin_perusahaan
@@ -69,7 +71,11 @@ const GRID = "1.7fr 1fr 1.1fr 1.7fr 0.8fr 1.2fr";
  *    tabel ber-unit, jadi RLS 0016 maupun unitVisible tidak menjaganya — merendernya
  *    untuk admin terdelegasi = membocorkan direktori pengguna PT lain.
  */
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: { tambah?: string };
+}) {
   const scope = await getDataScope();
   if (!scope.canManageAccess) notFound(); // bukan sekadar sembunyikan menu
   const isSuper = scope.isSuperAdmin;
@@ -99,19 +105,7 @@ export default async function AdminPage() {
             WHERE active AND tenant_id = ANY($1::uuid[]) ORDER BY unit_id`,
           [myTenants],
         ),
-    q<MembershipRow>(
-      `SELECT m.id, m.user_id, u.email, m.role, m.tenant_id, t.name AS tenant_name,
-              m.status, m.all_units,
-              COALESCE(array_agg(uu.unit_id) FILTER (WHERE uu.unit_id IS NOT NULL), '{}') AS unit_ids
-         FROM app.membership m
-         JOIN app.users u ON u.id = m.user_id
-         LEFT JOIN app.tenant t ON t.id = m.tenant_id
-         LEFT JOIN app.user_unit uu ON uu.membership_id = m.id
-        WHERE $1::boolean OR m.tenant_id = ANY($2::uuid[])
-        GROUP BY m.id, m.user_id, u.email, m.role, m.tenant_id, t.name, m.status, m.all_units
-        ORDER BY u.email, m.role`,
-      [isSuper, myTenants],
-    ),
+    q<MembershipRow>(ADMIN_MEMBERSHIPS_SQL, [isSuper, myTenants]),
     q<AuditRow>(
       `SELECT a.id, a.actor_email, a.action, a.target, t.name AS tenant_name,
               to_char(a.created_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS created_at
@@ -130,6 +124,29 @@ export default async function AdminPage() {
   ]);
 
   const unitsOf = (tenantId: string | null) => units.filter((u) => u.tenant_id === tenantId);
+
+  /**
+   * Kelompokkan penugasan PER ORANG. Pemetaan baris→membership TIDAK berubah: tiap
+   * `m` tetap membawa `m.id` sendiri ke form "Simpan cakupan", dan `defaultChecked`
+   * tetap dibaca dari `m.unit_ids`/`m.all_units` milik penugasan itu. Kalau
+   * pengelompokan sampai menggeser pemetaan ini, admin yang menekan "Simpan cakupan"
+   * akan menulis ulang akses orang lain — karena itu diverifikasi ulang dari DOM.
+   */
+  const perUser = [
+    ...memberships
+      .reduce((map, m) => {
+        const g = map.get(m.user_id) ?? {
+          user_id: m.user_id,
+          email: m.email,
+          role: m.role,
+          items: [] as MembershipRow[],
+        };
+        g.items.push(m);
+        map.set(m.user_id, g);
+        return map;
+      }, new Map<number, { user_id: number; email: string | null; role: string; items: MembershipRow[] }>())
+      .values(),
+  ].sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""));
 
   return (
     <div>
@@ -173,127 +190,170 @@ export default async function AdminPage() {
         </div>
       )}
 
-      {/* Penugasan terdaftar */}
+      {/* Penugasan terdaftar — SATU BLOK PER ORANG.
+          Sebelumnya satu baris per membership, sehingga kepemilikan lintas-PT tak
+          pernah terlihat di layar dan kemampuannya tampak seperti tidak ada. */}
       <div className="mt8">
-        <div className="text-h6 t-brand">Penugasan terdaftar ({memberships.length})</div>
-        <div className="card tbl-card mt4">
-          <div className="grid-head" style={{ gridTemplateColumns: GRID }}>
-            <span>Email</span>
-            <span>Role</span>
-            <span>Perusahaan</span>
-            <span>Cakupan unit</span>
-            <span>Status</span>
-            <span />
-          </div>
-          {memberships.map((m) => {
-            const tenantUnits = unitsOf(m.tenant_id);
-            const isSuperRow = m.role === "super_admin";
-            return (
-              <div key={m.id} className="grid-row" style={{ gridTemplateColumns: GRID }}>
-                <span className="fs16">{m.email}</span>
-                <span className="fs16">
-                  {isSuperRow ? (
-                    ROLE_LABEL[m.role]
-                  ) : (
-                    <form action={setUserRole} style={{ display: "flex", gap: 4 }}>
-                      <input type="hidden" name="membershipId" value={m.id} />
-                      <select name="role" defaultValue={m.role} className="seg-btn fs15">
-                        <option value="pengawas">Pengawas</option>
-                        <option value="direksi">Direksi</option>
-                        {isSuper && <option value="admin_perusahaan">Admin Perusahaan</option>}
-                      </select>
-                      <button type="submit" className="btn-outline sm">
-                        Set
-                      </button>
-                    </form>
-                  )}
-                </span>
-                <span className="fs16 t-secondary">{m.tenant_name ?? "— (lintas tenant)"}</span>
-                <span className="fs16 t-secondary">
-                  {isSuperRow ? (
-                    "semua perusahaan"
-                  ) : (
-                    <form action={updateScope} style={{ display: "grid", gap: 2 }}>
-                      <input type="hidden" name="membershipId" value={m.id} />
-                      <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input
-                          type="radio"
-                          name="unitMode"
-                          value="all"
-                          defaultChecked={m.all_units}
-                        />
-                        <span className="fs15">semua unit PT</span>
-                      </label>
-                      <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input
-                          type="radio"
-                          name="unitMode"
-                          value="list"
-                          defaultChecked={!m.all_units}
-                        />
-                        <span className="fs15">unit tertentu:</span>
-                      </label>
-                      <span style={{ display: "grid", gap: 2, paddingLeft: 18 }}>
-                        {tenantUnits.map((u) => (
-                          <label
-                            key={u.unit_id}
-                            className="fs15"
-                            style={{ display: "flex", gap: 6, alignItems: "center" }}
-                          >
-                            <input
-                              type="checkbox"
-                              name="unitIds"
-                              value={u.unit_id}
-                              defaultChecked={m.unit_ids.includes(u.unit_id)}
-                            />
-                            {u.code}
-                          </label>
-                        ))}
-                      </span>
-                      <button type="submit" className="btn-outline sm" style={{ justifySelf: "start" }}>
-                        Simpan cakupan
-                      </button>
-                    </form>
-                  )}
-                </span>
-                <span className="fs16 t-secondary">
-                  {m.status === "active" ? "aktif" : m.status}
-                </span>
-                <span className="right" style={{ display: "grid", gap: 4 }}>
-                  {!isSuperRow && (
-                    <form action={setMembershipStatus}>
-                      <input type="hidden" name="membershipId" value={m.id} />
-                      <input
-                        type="hidden"
-                        name="status"
-                        value={m.status === "active" ? "disabled" : "active"}
-                      />
-                      <button type="submit" className="btn-outline sm">
-                        {m.status === "active" ? "Nonaktifkan" : "Aktifkan"}
-                      </button>
-                    </form>
-                  )}
-                  {isSuper && !isSuperRow && (
-                    <form action={revokeAccess}>
-                      <input type="hidden" name="membershipId" value={m.id} />
-                      <button type="submit" className="btn-outline sm">
-                        Hapus
-                      </button>
-                    </form>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-          {memberships.length === 0 && <div className="empty-inline">Belum ada penugasan.</div>}
+        <div className="text-h6 t-brand">
+          Pengguna ({perUser.length}) · penugasan ({memberships.length})
         </div>
+        {perUser.map((g) => {
+          const isSuperUser = g.role === "super_admin";
+          // Handle untuk aksi per-ORANG (role global): pakai penugasan pertama.
+          const handle = g.items[0]!;
+          return (
+            <div key={g.user_id} className="card card-pad mt4">
+              <div
+                style={{
+                  display: "flex",
+                  gap: "var(--space-3)",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span className="fs16 w600">{g.email}</span>
+                {isSuperUser ? (
+                  <span className="fs15 t-secondary">{ROLE_LABEL[g.role] ?? g.role}</span>
+                ) : (
+                  <form action={setUserRole} style={{ display: "flex", gap: 4 }}>
+                    <input type="hidden" name="membershipId" value={handle.id} />
+                    <select name="role" defaultValue={g.role} className="seg-btn fs15">
+                      <option value="pengawas">Pengawas</option>
+                      <option value="direksi">Direksi</option>
+                      {isSuper && <option value="admin_perusahaan">Admin Perusahaan</option>}
+                    </select>
+                    <button type="submit" className="btn-outline sm">
+                      Set
+                    </button>
+                  </form>
+                )}
+                <span className="fs15 t-tertiary">
+                  {/* Bagi admin terdelegasi angka ini adalah yang TERLIHAT olehnya
+                      (query di atas ter-filter tenant), bukan total milik orang itu.
+                      Melabelinya "perusahaan" begitu saja akan menyiratkan total. */}
+                  {g.items.length} {isSuper ? "perusahaan" : "penugasan di perusahaan Anda"}
+                </span>
+                {isSuper && !isSuperUser && (
+                  <Link
+                    href={`/admin?tambah=${g.user_id}#beri-akses`}
+                    className="btn-outline sm"
+                    style={{ marginLeft: "auto", textDecoration: "none" }}
+                  >
+                    + Tambah perusahaan
+                  </Link>
+                )}
+              </div>
+
+              {isSuperUser ? (
+                <p className="fs15 t-tertiary mt3" style={{ marginBottom: 0 }}>
+                  Lintas semua perusahaan. Tidak dikelola lewat layar ini.
+                </p>
+              ) : (
+                <div className="tbl-card mt3">
+                  <div className="grid-head" style={{ gridTemplateColumns: GRID }}>
+                    <span>Perusahaan</span>
+                    <span>Cakupan unit</span>
+                    <span>Status</span>
+                    <span />
+                  </div>
+                  {g.items.map((m) => {
+                    const tenantUnits = unitsOf(m.tenant_id);
+                    return (
+                      <div key={m.id} className="grid-row" style={{ gridTemplateColumns: GRID }}>
+                        <span className="fs16 t-secondary">{m.tenant_name ?? "—"}</span>
+                        <span className="fs16 t-secondary">
+                          <form action={updateScope} style={{ display: "grid", gap: 2 }}>
+                            <input type="hidden" name="membershipId" value={m.id} />
+                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input
+                                type="radio"
+                                name="unitMode"
+                                value="all"
+                                defaultChecked={m.all_units}
+                              />
+                              <span className="fs15">semua unit PT</span>
+                            </label>
+                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input
+                                type="radio"
+                                name="unitMode"
+                                value="list"
+                                defaultChecked={!m.all_units}
+                              />
+                              <span className="fs15">unit tertentu:</span>
+                            </label>
+                            <span style={{ display: "grid", gap: 2, paddingLeft: 18 }}>
+                              {tenantUnits.map((u) => (
+                                <label
+                                  key={u.unit_id}
+                                  className="fs15"
+                                  style={{ display: "flex", gap: 6, alignItems: "center" }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    name="unitIds"
+                                    value={u.unit_id}
+                                    defaultChecked={m.unit_ids.includes(u.unit_id)}
+                                  />
+                                  {u.code}
+                                </label>
+                              ))}
+                            </span>
+                            <button
+                              type="submit"
+                              className="btn-outline sm"
+                              style={{ justifySelf: "start" }}
+                            >
+                              Simpan cakupan
+                            </button>
+                          </form>
+                        </span>
+                        <span className="fs16 t-secondary">
+                          {m.status === "active" ? "aktif" : m.status}
+                        </span>
+                        <span className="right" style={{ display: "grid", gap: 4 }}>
+                          <form action={setMembershipStatus}>
+                            <input type="hidden" name="membershipId" value={m.id} />
+                            <input
+                              type="hidden"
+                              name="status"
+                              value={m.status === "active" ? "disabled" : "active"}
+                            />
+                            <button type="submit" className="btn-outline sm">
+                              {m.status === "active" ? "Nonaktifkan" : "Aktifkan"}
+                            </button>
+                          </form>
+                          {isSuper && (
+                            <form action={revokeAccess}>
+                              <input type="hidden" name="membershipId" value={m.id} />
+                              <button type="submit" className="btn-outline sm">
+                                Hapus
+                              </button>
+                            </form>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {memberships.length === 0 && <div className="empty-inline mt4">Belum ada penugasan.</div>}
       </div>
 
       {/* Beri akses — super_admin saja */}
       {isSuper && (
-        <div className="mt10">
-          <div className="text-h6 t-brand">Beri / ubah akses</div>
-          <AccessGrantForm users={users} tenants={tenants} units={units} action={grantAccess} />
+        <div className="mt10" id="beri-akses">
+          <div className="text-h6 t-brand">Beri akses / tambah perusahaan</div>
+          <AccessGrantForm
+            users={users}
+            tenants={tenants}
+            units={units}
+            action={grantAccess}
+            preselectUserId={searchParams.tambah}
+          />
           <p className="fs15 t-tertiary mt3">
             super_admin tidak diberikan di sini (hanya lewat SUPERADMIN_EMAILS). Cakupan
             &quot;unit tertentu&quot; tanpa satu pun unit dicentang = tidak melihat data apa pun

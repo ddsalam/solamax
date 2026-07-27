@@ -6,6 +6,7 @@ import {
   canHardDelete,
   canManageAccess,
   checkTouchMembership,
+  roleGrantAllowed,
   type AdminAuthority,
 } from "./admin-rules";
 
@@ -85,7 +86,19 @@ describe("A3 — role GLOBAL: eskalasi lintas-PT lewat admin terdelegasi", () =>
   it("DITOLAK bila target punya penugasan di PT lain", () => {
     const v = canChangeRole(adminA, [PT_A, PT_B]);
     expect(v.ok).toBe(false);
-    expect(v.ok === false && v.reason).toMatch(/perusahaan lain/);
+  });
+  it("pesan penolakan TIDAK mengonfirmasi adanya penugasan lintas-tenant", () => {
+    // Menyembunyikan/mengubah pesan BERDASARKAN keberadaan penugasan lain adalah
+    // sinyal itu sendiri. Pesannya harus tak menjawab pertanyaan yang tak berhak
+    // ditanyakan — dan harus SAMA untuk kedua sebab penolakan.
+    const lintas = canChangeRole(adminA, [PT_A, PT_B]);
+    const global = canChangeRole(adminA, [PT_A, null]);
+    expect(lintas.ok).toBe(false);
+    expect(global.ok).toBe(false);
+    const pesan = lintas.ok === false ? lintas.reason : "";
+    expect(pesan).not.toMatch(/perusahaan lain|tenant lain|PT lain|punya penugasan/i);
+    expect(pesan).toMatch(/di luar wewenang Anda/);
+    expect(global.ok === false && global.reason).toBe(pesan); // identik, tak bisa dibedakan
   });
   it("DITOLAK bila target punya membership global (tenant NULL)", () => {
     expect(canChangeRole(adminA, [PT_A, null]).ok).toBe(false);
@@ -133,5 +146,24 @@ describe("admin dengan penugasan di DUA PT", () => {
   });
   it("A3 memakai gabungan tenantnya", () => {
     expect(canChangeRole(adminAB, [PT_A, PT_B]).ok).toBe(true);
+  });
+});
+
+describe("roleGrantAllowed — form 'beri akses' tak pernah mengubah role", () => {
+  it("pengguna BARU (belum punya role) → boleh menetapkan role", () => {
+    expect(roleGrantAllowed(null, "pengawas").ok).toBe(true);
+    expect(roleGrantAllowed(null, "direksi").ok).toBe(true);
+  });
+  it("role SAMA → lolos (menambah perusahaan tanpa menyentuh role)", () => {
+    expect(roleGrantAllowed("pengawas", "pengawas").ok).toBe(true);
+  });
+  it("role BERBEDA → DITOLAK, dengan alasan yang menunjuk ke kontrol yang benar", () => {
+    const v = roleGrantAllowed("pengawas", "direksi");
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toMatch(/Set/);
+  });
+  it("penurunan role pun ditolak — arah mana pun bukan urusan form ini", () => {
+    expect(roleGrantAllowed("direksi", "pengawas").ok).toBe(false);
+    expect(roleGrantAllowed("admin_perusahaan", "direksi").ok).toBe(false);
   });
 });

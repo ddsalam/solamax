@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import { UNIT_DISPLAY } from "./config";
-import { ACTIVE_MEMBERSHIPS_SQL, toAssignments, type MembershipRow } from "./membership-query";
+import {
+  ACTIVE_MEMBERSHIPS_SQL,
+  ADMIN_MEMBERSHIPS_SQL,
+  toAssignments,
+  type MembershipRow,
+} from "./membership-query";
 import { unitVisible } from "./scope-rule";
 
 /**
@@ -345,5 +350,71 @@ d("T-CFG — unit.tenant_id (otorisasi) SEPAKAT dengan UNIT_DISPLAY[].pt (kop la
       .filter((r) => UNIT_DISPLAY[r.code]?.pt !== r.pt_db)
       .map((r) => `${r.code}: DB="${r.pt_db}" config="${UNIT_DISPLAY[r.code]?.pt}"`);
     expect(beda).toEqual([]);
+  });
+});
+
+d("isolasi blok /admin — admin terdelegasi tak melihat penugasan lintas-tenant", () => {
+  let pool: Pool;
+  let ptA: string | undefined;
+  let ptB: string | undefined;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
+    const t = (
+      await pool.query(
+        `SELECT DISTINCT tenant_id FROM public.unit WHERE active AND tenant_id IS NOT NULL
+          ORDER BY tenant_id LIMIT 2`,
+      )
+    ).rows as { tenant_id: string }[];
+    ptA = t[0]?.tenant_id;
+    ptB = t[1]?.tenant_id;
+  });
+  afterAll(async () => {
+    await pool?.end();
+  });
+
+  it("query /admin ter-filter: admin PT A tak melihat SATU PUN baris PT lain", async (ctx) => {
+    if (!ptA || !ptB) return ctx.skip();
+    const rows = (await pool.query(ADMIN_MEMBERSHIPS_SQL, [false, [ptA]])).rows as {
+      tenant_id: string | null;
+    }[];
+    expect(rows.length).toBeGreaterThan(0); // non-vacuity: benar-benar ada yang terbaca
+    expect(rows.every((r) => r.tenant_id === ptA)).toBe(true);
+  });
+
+  it("pengguna lintas-PT muncul HANYA lewat penugasan PT si admin (jumlah tak membocorkan)", async (ctx) => {
+    if (!ptA || !ptB) return ctx.skip();
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      const u = (
+        await c.query(`INSERT INTO app.users (email, name) VALUES ($1,$1) RETURNING id`, [
+          "lintas@rehearsal.invalid",
+        ])
+      ).rows[0].id;
+      await c.query(`INSERT INTO app.user_role (user_id, role) VALUES ($1,'direksi')`, [u]);
+      for (const t of [ptA, ptB]) {
+        await c.query(
+          `INSERT INTO app.membership (user_id, tenant_id, role, status, all_units)
+           VALUES ($1,$2,'direksi','active',true)`,
+          [u, t],
+        );
+      }
+      const semua = (await c.query(ADMIN_MEMBERSHIPS_SQL, [true, []])).rows as {
+        user_id: number;
+      }[];
+      expect(semua.filter((r) => r.user_id === u)).toHaveLength(2); // super_admin: 2
+
+      const adminA = (await c.query(ADMIN_MEMBERSHIPS_SQL, [false, [ptA]])).rows as {
+        user_id: number;
+        tenant_id: string;
+      }[];
+      const terlihat = adminA.filter((r) => r.user_id === u);
+      expect(terlihat).toHaveLength(1); // admin PT A: HANYA 1 — jumlah pun tak bocor
+      expect(terlihat[0]!.tenant_id).toBe(ptA);
+    } finally {
+      await c.query("ROLLBACK").catch(() => {});
+      c.release();
+    }
   });
 });

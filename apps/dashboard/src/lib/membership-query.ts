@@ -38,3 +38,26 @@ export function toAssignments(rows: readonly MembershipRow[]): Assignment[] {
       unitIds: r.unit_ids.map(Number),
     }));
 }
+
+/**
+ * Daftar penugasan untuk layar /admin. `$1` = pelaku super_admin, `$2` = tenant si
+ * pelaku (dipakai bila bukan super).
+ *
+ * ⚠️ FILTER TENANT DI SINI ADALAH SATU-SATUNYA PENJAGANYA. `app.membership` tak
+ * ber-`unit_id`, jadi RLS 0016 TIDAK menjaganya — tak ada jaring kedua di bawah
+ * query ini. Sejak layar dikelompokkan per ORANG, satu blok menampilkan semua
+ * penugasan orang itu; tanpa filter ini blok tersebut akan membocorkan keanggotaan
+ * lintas-tenant kepada admin terdelegasi — kerabat langsung dari kebocoran direktori
+ * pengguna yang ditutup di GATE 1. Diuji terhadap DB nyata, bukan disalin ke tes.
+ */
+export const ADMIN_MEMBERSHIPS_SQL = `
+  SELECT m.id, m.user_id, u.email, m.role, m.tenant_id, t.name AS tenant_name,
+         m.status, m.all_units,
+         COALESCE(array_agg(uu.unit_id) FILTER (WHERE uu.unit_id IS NOT NULL), '{}') AS unit_ids
+    FROM app.membership m
+    JOIN app.users u ON u.id = m.user_id
+    LEFT JOIN app.tenant t ON t.id = m.tenant_id
+    LEFT JOIN app.user_unit uu ON uu.membership_id = m.id
+   WHERE $1::boolean OR m.tenant_id = ANY($2::uuid[])
+   GROUP BY m.id, m.user_id, u.email, m.role, m.tenant_id, t.name, m.status, m.all_units
+   ORDER BY u.email, m.role`;
