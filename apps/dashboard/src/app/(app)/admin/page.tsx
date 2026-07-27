@@ -10,6 +10,7 @@ import {
   updateScope,
 } from "@/lib/admin-actions";
 import { AccessGrantForm } from "@/components/AccessGrantForm";
+import { HasilBanner } from "@/components/HasilBanner";
 import { PESAN_HASIL, type KodeHasil } from "@/lib/admin-rules";
 import { ADMIN_MEMBERSHIPS_SQL } from "@/lib/membership-query";
 
@@ -170,26 +171,12 @@ export default async function AdminPage({
         </p>
       )}
 
-      {/* Hasil aksi terakhir. Aksi server melempar, dan build produksi Next.js
-          MENYEMBUNYIKAN pesannya — tanpa banner ini penolakan tak terlihat sama sekali,
-          dan admin bisa mengira aksinya berhasil. Teksnya berasal dari KODE, bukan dari
-          pesan galat: satu teks untuk SEMUA penolakan wewenang, apa pun sebabnya. */}
-      {hasil && (
-        <div
-          className="card card-pad mt6"
-          role="status"
-          style={{
-            borderStyle: "solid",
-            borderWidth: 2,
-            borderColor: hasil.nada === "ok" ? "var(--success)" : "var(--danger)",
-          }}
-        >
-          <span className="fs16" style={{ color: hasil.nada === "ok" ? "var(--success)" : "var(--danger)" }}>
-            {hasil.nada === "ok" ? "✓ " : "⚠️ "}
-            {hasil.teks}
-          </span>
-        </div>
-      )}
+      {/* Hasil aksi terakhir — MELAYANG (lihat HasilBanner). Versi pertama merender
+          ini di puncak DOKUMEN; pada halaman produksi form "Beri akses" ada ~4.550 px
+          di bawahnya (≈3,5 layar), sehingga umpan baliknya tak pernah terlihat oleh
+          orang yang baru menekan "Simpan akses". Teksnya tetap berasal dari KODE:
+          satu teks untuk SEMUA penolakan wewenang, apa pun sebabnya. */}
+      {hasil && <HasilBanner nada={hasil.nada} teks={hasil.teks} />}
 
       {(scope.roleConflict || conflicts.length > 0) && (
         <div
