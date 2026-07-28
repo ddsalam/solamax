@@ -1,7 +1,8 @@
 /**
  * Nama cookie pilihan unit+tanggal terbawa. File ini SENGAJA tanpa import
  * server (mis. next/headers) agar aman diimpor dari komponen client
- * (TopbarPicker) maupun server (selection.ts).
+ * (useSelection, dipakai AppShell untuk tautan sidebar) maupun server
+ * (selection.ts).
  */
 export const UNIT_COOKIE = "solamax.unit";
 export const DATE_COOKIE = "solamax.date";
@@ -17,7 +18,7 @@ const DENAH_ROUTE_RE = /^\/monitoring\/denah\/([^/]+)/;
 
 export interface TopbarSelection {
   unit: string | undefined;
-  /** Tanggal TAMPIL di picker (denah realtime → hari ini). */
+  /** Tanggal terbawa hasil resolusi (denah realtime → hari ini). */
   date: string;
   /**
    * Tanggal untuk NAVIGASI (link sidebar/hub): tanggal terbawa — di denah
@@ -32,13 +33,17 @@ export interface TopbarSelection {
 }
 
 /**
- * Sumber nilai TAMPIL picker unit+tanggal — URL KANONIK. Di SEMUA rute yang
- * membawa unit di path (laporan/rincian/usulan + denah) picker WAJIB cermin
- * URL, BUKAN cookie/seed; cookie hanya default titik-masuk tanpa unit di URL
+ * Sumber unit+tanggal terbawa — URL KANONIK. Di SEMUA rute yang membawa unit
+ * di path (laporan/rincian/usulan + denah) hasilnya WAJIB cermin URL, BUKAN
+ * cookie/seed; cookie hanya default titik-masuk tanpa unit di URL
  * (beranda/board/ketaatan). (Akar bug: layout grup `(app)` tak re-render saat
- * navigasi lunak → prop cookie basi → `<input value>` controlled tetap basi →
- * desync. `usePathname()` berubah tiap navigasi → komponen client re-render
- * dgn nilai segar walau layout server tidak.)
+ * navigasi lunak → prop cookie basi → nilai terbawa ikut basi → desync.
+ * `usePathname()` berubah tiap navigasi → komponen client re-render dgn nilai
+ * segar walau layout server tidak.)
+ *
+ * Sejak filter jadi milik halaman, satu-satunya konsumen adalah TAUTAN sidebar
+ * (AppShell → useSelection) + write-through cookie di bawah; tak ada lagi
+ * kontrol topbar yang nilainya diresolusi di sini.
  *
  * Denah realtime: tak punya dimensi tanggal → tampilkan `today`, dan
  * dateFromUrl=false agar cookie tanggal terbawa TIDAK ditimpa dari denah.

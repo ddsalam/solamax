@@ -13,8 +13,18 @@
  * Hanya dimensi yang BENAR-BENAR dipakai halaman yang dirender:
  *   - denah realtime → unit saja + teks konteks (tanpa kontrol tanggal);
  *   - scope 1 unit  → dimensi unit degenerate → chip konteks, bukan dropdown.
+ *
+ * PEMILIHAN ≠ PENERAPAN (temuan review owner). Versi pertama memakai grup
+ * `radio` yang bernavigasi pada `change`: pada grup radio native, tombol PANAH
+ * memindahkan fokus SEKALIGUS mengubah pilihan → satu tekan panah = satu muat
+ * halaman penuh + satu entri history, sehingga daftar unit MUSTAHIL disusuri
+ * dengan keyboard. Sekarang tiap unit adalah TAUTAN: panah/Tab hanya memindah
+ * fokus (nol navigasi), dan hanya aktivasi eksplisit (klik / Enter) yang
+ * berpindah. Bonus dari anchor sungguhan: unit lain bisa dibuka di tab baru
+ * (⌘/ctrl-klik) — konsisten dengan "URL adalah sumber kebenaran".
  */
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef } from "react";
 import { addDays } from "@/lib/periods";
@@ -60,53 +70,90 @@ export function UnitDateFilters({
   const router = useRouter();
   const sp = useSearchParams();
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+  const optRefs = useRef<Array<HTMLAnchorElement | null>>([]);
 
   const query = sp.toString();
-  const nav = (over: { code?: string; date?: string }) => {
-    detailsRef.current?.removeAttribute("open");
-    router.push(
-      unitRouteHref({
-        segment,
-        code: over.code ?? code,
-        date: over.date ?? date,
-        edit,
-        query,
-      }),
-    );
+  /** Hanya untuk kontrol TANGGAL; unit berpindah lewat <Link> (lihat di atas). */
+  const navDate = (nextDate: string) => {
+    router.push(unitRouteHref({ segment, code, date: nextDate, edit, query }));
   };
 
-  const active = units.find((u) => u.code === code);
+  const activeIndex = units.findIndex((u) => u.code === code);
+  const active = activeIndex >= 0 ? units[activeIndex] : undefined;
   const activeLabel = active?.name ?? code;
 
   const shift = (days: number) => {
     if (!date) return;
     const next = addDays(date, days);
     if (maxDate && next > maxDate) return;
-    nav({ date: next });
+    navDate(next);
+  };
+
+  const closePicker = (refocus: boolean) => {
+    const d = detailsRef.current;
+    if (!d?.open) return;
+    d.open = false;
+    if (refocus) summaryRef.current?.focus();
+  };
+
+  const focusOpt = (i: number) => {
+    const list = optRefs.current.filter((el): el is HTMLAnchorElement => el !== null);
+    if (list.length === 0) return;
+    list[((i % list.length) + list.length) % list.length]?.focus();
+  };
+
+  /**
+   * Navigasi keyboard di dalam picker — MEMINDAH FOKUS SAJA, tak pernah pindah
+   * halaman. Esc menutup tanpa navigasi; Shift+Tab keluar begitu saja (tak ada
+   * handler blur yang "menerapkan" diam-diam).
+   */
+  const onPickerKeyDown = (e: React.KeyboardEvent<HTMLDetailsElement>) => {
+    const d = detailsRef.current;
+    if (!d) return;
+    if (e.key === "Escape") {
+      if (!d.open) return;
+      e.preventDefault();
+      closePicker(true);
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault(); // jangan menggulir halaman
+    if (!d.open) d.open = true;
+    const list = optRefs.current.filter((el): el is HTMLAnchorElement => el !== null);
+    const cur = list.indexOf(document.activeElement as HTMLAnchorElement);
+    // Dari summary (fokus belum di daftar): masuk ke unit yang sedang aktif.
+    if (cur === -1) focusOpt(e.key === "ArrowDown" ? Math.max(activeIndex, 0) : list.length - 1);
+    else focusOpt(cur + (e.key === "ArrowDown" ? 1 : -1));
   };
 
   return (
     <div className="board-filters no-print">
       {units.length > 1 ? (
-        <details ref={detailsRef} className="unit-picker">
-          <summary className="btn-outline unit-picker-btn">
+        <details ref={detailsRef} className="unit-picker" onKeyDown={onPickerKeyDown}>
+          <summary ref={summaryRef} className="btn-outline unit-picker-btn">
             <span className="fs15 t-tertiary">Unit</span>
             <span className="fs16 w600">{activeLabel}</span>
             <span className="t-tertiary">▾</span>
           </summary>
           <div className="unit-picker-panel card" role="group" aria-label="Pilih unit">
-            {units.map((u) => (
-              <label key={u.code} className="unit-picker-row">
-                <input
-                  type="radio"
-                  name="filter-unit"
-                  value={u.code}
-                  checked={u.code === code}
-                  onChange={() => nav({ code: u.code })}
-                />
+            {units.map((u, i) => (
+              <Link
+                key={u.code}
+                ref={(el) => {
+                  optRefs.current[i] = el;
+                }}
+                href={unitRouteHref({ segment, code: u.code, date, edit, query })}
+                className="unit-picker-row unit-picker-opt"
+                aria-current={u.code === code ? "true" : undefined}
+                onClick={() => closePicker(false)}
+              >
+                <span className="unit-picker-mark" aria-hidden="true">
+                  {u.code === code ? "✓" : ""}
+                </span>
                 <span className="fs16 t-primary">{u.name}</span>
                 <span className="fs15 t-tertiary mono">{u.dotted}</span>
-              </label>
+              </Link>
             ))}
           </div>
         </details>
@@ -138,7 +185,7 @@ export function UnitDateFilters({
             type="date"
             value={date}
             max={maxDate}
-            onChange={(e) => e.target.value && nav({ date: e.target.value })}
+            onChange={(e) => e.target.value && navDate(e.target.value)}
           />
           <button
             type="button"
@@ -150,7 +197,7 @@ export function UnitDateFilters({
             ›
           </button>
           {today !== undefined && date !== today && (
-            <button type="button" className="btn-tint sm" onClick={() => nav({ date: today })}>
+            <button type="button" className="btn-tint sm" onClick={() => navDate(today)}>
               Hari ini
             </button>
           )}

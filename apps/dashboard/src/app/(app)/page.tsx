@@ -78,6 +78,16 @@ export default async function HubPage() {
       title: "Direksi & admin",
       cards: [
         {
+          // Tak berdimensi unit MAUPUN tanggal terbawa: /laporan-harian punya
+          // filter URL sendiri (semua unit ber-scope + default kemarin), jadi
+          // konteksnya menyebut default halaman itu — bukan seed cookie.
+          tag: "Direksi",
+          title: "Laporan Harian",
+          desc: "Performa seluruh SPBU dalam satu layar — omzet & gain/losses, harian & MTD.",
+          ctx: `Semua unit dalam akses Anda (${scope.units.length}) · default kemarin`,
+          href: "/laporan-harian",
+        },
+        {
           tag: "Analisa",
           title: "Ringkasan direksi",
           desc: "Verdict kesehatan grup, KPI, bauran vs target, ranking unit, anomali.",
