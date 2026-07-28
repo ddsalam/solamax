@@ -3,7 +3,8 @@
 import Link from "next/link";
 
 /** Toolbar Usulan Penebusan SO — view daftar (riwayat). Unit & tanggal bisnis
- *  dipilih di picker topbar. View form memakai UsulanExport (jalur PDF pdfmake).
+ *  dipilih di filter halaman (UnitDateFilters), bukan di topbar.
+ *  View form memakai UsulanExport (jalur PDF pdfmake).
  *  Ekspor daftar masih via window.print() (di luar lingkup v1 form). */
 export function UsulanToolbar({ code, date }: { code: string; date: string }) {
   return (

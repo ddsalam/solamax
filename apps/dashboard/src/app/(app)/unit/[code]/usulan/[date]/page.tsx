@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { UsulanToolbar } from "@/components/usulan/Toolbar";
 import { unitDotted } from "@/lib/config";
 import { dateLong, dateShort, fmtKL, timeWib } from "@/lib/format";
+import { todayWib } from "@/lib/periods";
 import { getUsulanSoList } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 
@@ -24,6 +26,15 @@ export default async function UsulanListPage({
 
   return (
     <div className="lap-page">
+      {/* Filter MILIK HALAMAN — unit + tanggal usulan yang akan dibuat/diedit. */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="usulan"
+        date={date}
+        today={todayWib()}
+      />
+
       <UsulanToolbar code={unit.code} date={date} />
 
       <div className="board-head mt6">
@@ -76,7 +87,10 @@ export default async function UsulanListPage({
       </div>
 
       <div className="page-foot mt8">
-        <span>Pilih tanggal di topbar lalu &ldquo;Buat / edit usulan&rdquo; untuk tanggal itu.</span>
+        <span>
+          Pilih tanggal di filter halaman ini lalu &ldquo;Buat / edit usulan&rdquo; untuk tanggal
+          itu.
+        </span>
         <span>Hari aktif: {dateLong(date)}</span>
       </div>
     </div>

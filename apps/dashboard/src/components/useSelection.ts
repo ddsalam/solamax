@@ -13,20 +13,21 @@ import {
 } from "@/lib/selection-keys";
 
 /**
- * Resolusi pilihan unit+tanggal di sisi CLIENT — satu tempat untuk topbar &
+ * Resolusi unit+tanggal TERBAWA di sisi CLIENT — kini SATU konsumen: tautan
  * sidebar (dipanggil AppShell). URL kanonik lewat deriveTopbarSelection; di
  * rute tanpa unit di URL, seed = cookie TERBARU dibaca client pasca-mount
  * (prop layout server bisa basi karena layout tak re-render pada navigasi
  * lunak) → render awal tetap pakai prop server (hydration-safe).
  *
- * Efek write-through: tiap rute ber-unit-di-URL menyalin unit (dan tanggal,
- * bila ada di URL) ke cookie — drill-in/bookmark/back-forward ikut menggeser
- * "unit terakhir dipakai". Validasi scope: hanya kode dalam `unitCodes`.
+ * Cookie = SEED, bukan kendali. Tidak ada kontrol UI yang menulisnya; satu-
+ * satunya penulis adalah write-through di bawah: tiap rute ber-unit-di-URL
+ * menyalin unit (dan tanggal, bila ada di URL) ke cookie — drill-in/bookmark/
+ * back-forward ikut menggeser "unit terakhir dipakai". Validasi scope: hanya
+ * kode dalam `unitCodes`.
  *
- * Multi-tab: cookie dibagi antar tab → tab unit yang terbuka merebut kembali
- * "unit terakhir" tiap auto-refresh (last-writer-wins). DISENGAJA & aman:
- * tampilan tak pernah desync (URL kanonik); hanya seed rute tanpa-unit yang
- * mengikuti tab yang terakhir aktif.
+ * Multi-tab: cookie dibagi antar tab (last-writer-wins). DISENGAJA & aman —
+ * halaman aktif tak pernah desync (URL kanonik, dan filternya ada DI halaman);
+ * yang mengikuti tab terakhir aktif hanyalah tujuan tautan sidebar.
  */
 
 function readCookie(name: string): string | undefined {
@@ -34,7 +35,7 @@ function readCookie(name: string): string | undefined {
   return hit ? decodeURIComponent(hit.slice(name.length + 1)) : undefined;
 }
 
-export function writeSelectionCookie(key: string, value: string): void {
+function writeSelectionCookie(key: string, value: string): void {
   document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${SELECTION_MAX_AGE}; samesite=lax`;
 }
 
