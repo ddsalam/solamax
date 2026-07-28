@@ -74,12 +74,6 @@ body { background: var(--neutral-50); }
   background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-full);
   padding: 7px 16px; cursor: pointer;
 }
-.select, .date-input {
-  font-family: var(--font-sans); font-size: 16px; font-weight: 600; color: var(--color-text-primary);
-  background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  padding: 10px 14px; min-height: var(--target-min); cursor: pointer;
-}
-
 /* Segmented control */
 .seg { display: flex; background: var(--neutral-100); border-radius: var(--radius-full); padding: 4px; }
 .seg-btn {
@@ -165,11 +159,9 @@ body { background: var(--neutral-50); }
 
 .main { padding: 32px 36px 44px; background: var(--color-bg); min-width: 0; }
 
-/* ===== Topbar: hamburger + picker tunggal ===== */
+/* ===== Topbar: hamburger (topbar TIDAK lagi memuat kontrol unit/tanggal) ===== */
 .hamburger { display: none; background: transparent; border: none; cursor: pointer; color: var(--color-text-secondary); padding: 6px; border-radius: var(--radius-md); }
 .hamburger:hover { background: var(--neutral-100); color: var(--color-text-primary); }
-.topbar-picker { display: flex; align-items: center; gap: var(--space-2); }
-.select.sm, .date-input.sm { padding: 6px 10px; min-height: 38px; font-size: 15px; }
 
 /* ===== Mobile (≤768): drawer off-canvas + topbar diringkas ===== */
 @media (max-width: 768px) {
@@ -189,7 +181,6 @@ body { background: var(--neutral-50); }
   .sidebar .side-label, .sidebar .side-group-head { display: flex; }
   .sidebar .side-item { justify-content: flex-start; }
   .sidebar .side-badge { margin-left: auto; }
-  .topbar-picker .select.sm { max-width: 44vw; }
 }
 
 /* ===== Mobile (≤600): alarm 1 kolom + tombol/angka ringkas ===== */
@@ -483,10 +474,20 @@ body { background: var(--neutral-50); }
 .unit-picker-row:hover { background: var(--neutral-100); }
 .unit-picker-row input { accent-color: var(--brand-navy); width: 16px; height: 16px; }
 .unit-picker-row .mono { margin-left: auto; }
+/* Opsi unit tunggal = TAUTAN (panah/Tab hanya memindah fokus; hanya klik/Enter
+   yang berpindah halaman — lihat UnitDateFilters). */
+.unit-picker-opt { text-decoration: none; color: inherit; }
+.unit-picker-opt[aria-current="true"] { background: var(--neutral-100); }
+.unit-picker-mark { width: 16px; flex-shrink: 0; text-align: center; color: var(--brand-navy); font-weight: 700; }
 .unit-picker-foot { display: flex; justify-content: space-between; padding: 8px 10px 4px; border-top: 1px solid var(--color-border-hairline); margin-top: 6px; }
 .linklike { background: none; border: none; padding: 0; cursor: pointer; }
-.range-inputs { display: inline-flex; align-items: center; gap: 8px; }
+.range-inputs { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .range-inputs input[type="date"] { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md, 8px); font: inherit; font-size: 15px; color: var(--color-text-primary); background: var(--neutral-0); }
+
+/* Filter halaman — konteks non-interaktif (dimensi degenerate) & catatan.
+   Dipakai agar tak pernah ada input NONAKTIF yang tetap memamerkan nilai. */
+.filter-static { display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-full); }
+.filter-note { max-width: 46ch; line-height: 1.35; }
 
 /* Board — evaluasi KPI (MoM/YoY/YTD) & badge sementara */
 .prov-badge { margin-left: 6px; font-size: 13px; cursor: help; }

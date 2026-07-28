@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { UsulanExport } from "@/components/usulan/UsulanExport";
 import { UsulanForm } from "@/components/usulan/UsulanForm";
 import { unitDotted } from "@/lib/config";
@@ -51,6 +52,17 @@ export default async function UsulanEditPage({
 
   return (
     <div className="lap-page">
+      {/* Filter MILIK HALAMAN — unit + tanggal usulan. Mengganti salah satunya
+          berpindah ke usulan tanggal/unit itu (sub-rute form dipertahankan). */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="usulan"
+        edit
+        date={date}
+        today={generatedDate}
+      />
+
       <UsulanExport
         code={unit.code}
         businessDate={date}

@@ -7,6 +7,7 @@ import {
   ManualSourceBadge,
 } from "@/components/rincian/ManualEntryForm";
 import { RincianExport } from "@/components/rincian/RincianExport";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, timeWib } from "@/lib/format";
@@ -101,7 +102,17 @@ export default async function RincianPage({
 
   return (
     <div className="doc-wrap">
-      <div className="no-print rincian-links">
+      {/* Filter MILIK HALAMAN — dimensi yang benar-benar dipakai: unit + tanggal. */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="rincian"
+        date={date}
+        today={generatedDate}
+        maxDate={generatedDate}
+      />
+
+      <div className="no-print rincian-links mt4">
         <Link href={`/unit/${unit.code}/laporan/${date}`} className="fs16 w600 t-accent">
           ← Laporan Operasional (versi kaya)
         </Link>

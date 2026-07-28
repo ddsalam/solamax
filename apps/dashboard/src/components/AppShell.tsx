@@ -5,13 +5,26 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { GROUP_IDS, Sidebar, type GroupId } from "@/components/Sidebar";
-import { TopbarPicker, type UnitOpt } from "@/components/TopbarPicker";
 import { useSelection } from "@/components/useSelection";
 import { ago } from "@/lib/format";
+
+/** Opsi unit untuk resolusi seed navigasi (bukan kontrol — lihat di bawah). */
+export interface UnitOpt {
+  code: string;
+  label: string;
+}
 
 /**
  * Chrome aplikasi (client): topbar + drawer/sidebar + main, sehingga satu
  * komponen memegang seluruh state UI nav.
+ *
+ * TOPBAR TIDAK MENGENDALIKAN UNIT/TANGGAL. Filter adalah milik halaman
+ * (UnitDateFilters / BoardFilters / HarianFilters); chrome global hanya membawa
+ * identitas & kesegaran. `units`/`unitCode`/`date` di sini semata SEED untuk
+ * membentuk tautan sidebar ke rute per-unit — bukan state yang bisa diubah dari
+ * topbar. Akar masalah yang dihapus: picker global yang nilainya diabaikan
+ * halaman ber-filter sendiri (/board, /laporan-harian) atau tak berdimensi
+ * (/admin, /monitoring/ketaatan) tetapi tetap menulis cookie & memicu refresh.
  *
  * Durabel (localStorage, tahan router.refresh & reload): rail ringkas +
  * buka/tutup grup. EPHEMERAL (useState, default tertutup tiap load): drawer
@@ -57,8 +70,8 @@ export function AppShell({
   const path = usePathname();
   const hamburgerRef = useRef<HTMLButtonElement>(null);
 
-  // Resolusi pilihan unit+tanggal SEKALI untuk topbar & sidebar (URL kanonik;
-  // prop server unitCode/date hanya seed awal — lihat useSelection).
+  // Resolusi unit+tanggal terbawa SEKALI, untuk TAUTAN sidebar saja (URL
+  // kanonik; prop server unitCode/date hanya seed awal — lihat useSelection).
   const unitCodes = useMemo(() => units.map((u) => u.code), [units]);
   const sel = useSelection(unitCodes, unitCode, date);
 
@@ -127,7 +140,6 @@ export function AppShell({
         <Logo variant="horizontal" href="/" height={20} priority label="SolaMax, beranda" />
         <div className="topbar-div mobile-hide" />
         <span className="role-chip mobile-hide">{roleLabel}</span>
-        <TopbarPicker units={units} unit={sel.unit} date={sel.date} />
         <div className="topbar-right">
           <span className="fs15 t-tertiary sync-note mobile-hide">
             <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />

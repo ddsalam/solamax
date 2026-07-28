@@ -1,16 +1,19 @@
+import { FilterBarSkeleton } from "@/components/loading/FilterBarSkeleton";
 import { ReportLoading } from "@/components/loading/ReportLoading";
 import { Skeleton, SkeletonTable } from "@/components/loading/Skeleton";
 
 /**
- * Skeleton khusus /laporan — cermin laporan/page.tsx:267+: .lap-page →
- * .lap-toolbar (seg Ringkas/Lengkap + tombol kanan) → .board-head (eyebrow + h1
- * + headnums) → kartu seksi (tbl-card). Tampil instan; berukuran agar nol
- * pergeseran (rule 9). ReportLoading = reasuransi bertingkat + Batal (beban G/L
- * sebulan: agregat bulanan di halaman ini).
+ * Skeleton khusus /laporan — cermin laporan/page.tsx: .lap-page → filter
+ * halaman (unit + tanggal) → .lap-toolbar (seg Ringkas/Lengkap + tombol kanan)
+ * → .board-head (eyebrow + h1 + headnums) → kartu seksi (tbl-card). Tampil
+ * instan; berukuran agar nol pergeseran (rule 9). ReportLoading = reasuransi
+ * bertingkat + Batal (beban G/L sebulan: agregat bulanan di halaman ini).
  */
 export default function LaporanLoading() {
   return (
     <div className="lap-page">
+      <FilterBarSkeleton />
+
       <div className="lap-toolbar">
         <Skeleton inline width="var(--space-32)" height="var(--target-min)" radius="var(--radius-full)" />
         <div className="lap-toolbar-right">

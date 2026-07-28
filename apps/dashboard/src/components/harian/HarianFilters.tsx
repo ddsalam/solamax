@@ -102,15 +102,18 @@ export function HarianFilters({
       </details>
 
       <div className="range-inputs">
+        <label htmlFor="filter-date" className="fs15 t-tertiary">
+          Tanggal
+        </label>
         <button type="button" className="btn-outline" onClick={() => shift(-1)} aria-label="Hari sebelumnya">
           ‹
         </button>
         <input
+          id="filter-date"
           type="date"
           value={date}
           max={maxDate}
           onChange={(e) => e.target.value && nav({ date: e.target.value })}
-          aria-label="Tanggal laporan"
         />
         <button
           type="button"
@@ -127,6 +130,12 @@ export function HarianFilters({
           </button>
         )}
       </div>
+
+      {/* Default halaman ini KEMARIN, bukan hari ini — perbedaan yang tanpa
+          penjelasan terbaca sebagai bug. Alasannya proses bisnis, bukan teknis. */}
+      <span className="filter-note fs15 t-tertiary">
+        Default kemarin: opname penutup hari baru lengkap pada pagi berikutnya.
+      </span>
     </div>
   );
 }

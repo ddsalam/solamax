@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ago } from "@/lib/format";
+import { ago, dateShort } from "@/lib/format";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
@@ -26,9 +26,15 @@ export default async function HubPage() {
     }
   }
 
-  // 6 kartu pintasan, dikelompokkan sama dengan grup sidebar. Unit & tanggal
-  // datang dari pilihan terbawa (cookie) yang diatur oleh picker topbar.
+  // 6 kartu pintasan, dikelompokkan sama dengan grup sidebar.
+  //
+  // `ctx` = KONTEKS TUJUAN, bukan janji kendali: hanya kartu yang URL-nya
+  // benar-benar membawa unit/tanggal yang menyebut unit/tanggal, dan bunyinya
+  // persis mengikuti `href` di sebelahnya. Unit & tanggal di sini adalah SEED
+  // titik-masuk (cookie "terakhir dipakai", divalidasi terhadap scope) — setiap
+  // halaman tujuan punya filternya sendiri untuk mengubahnya.
   const u = unit?.code;
+  const unitCtx = unit?.name ?? "unit belum tersedia";
   const groups = [
     {
       title: "Monitoring realtime",
@@ -37,12 +43,14 @@ export default async function HubPage() {
           tag: "Realtime",
           title: "Denah tangki & nozzle",
           desc: "Volume ATG live, fill bar, ketahanan hari & nozzle per tangki.",
+          ctx: `${unitCtx} · kondisi terkini (tanpa tanggal)`,
           href: u ? `/monitoring/denah/${u}` : "#",
         },
         {
           tag: "Realtime",
           title: "Ketaatan administrasi",
           desc: "Heatmap kepatuhan input penjualan, opname & kas per hari.",
+          ctx: `Semua unit dalam akses Anda (${scope.units.length}) · 14 hari terakhir`,
           href: "/monitoring/ketaatan",
         },
       ],
@@ -54,12 +62,14 @@ export default async function HubPage() {
           tag: "Arsip",
           title: "Rincian penjualan",
           desc: "Ledger resmi siap cetak & tanda tangan.",
+          ctx: `${unitCtx} · ${dateShort(date)}`,
           href: u ? `/unit/${u}/rincian/${date}` : "#",
         },
         {
           tag: "Harian",
           title: "Operasional harian",
           desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok.",
+          ctx: `${unitCtx} · ${dateShort(date)}`,
           href: u ? `/unit/${u}/laporan/${date}` : "#",
         },
       ],
@@ -68,15 +78,27 @@ export default async function HubPage() {
       title: "Direksi & admin",
       cards: [
         {
+          // Tak berdimensi unit MAUPUN tanggal terbawa: /laporan-harian punya
+          // filter URL sendiri (semua unit ber-scope + default kemarin), jadi
+          // konteksnya menyebut default halaman itu — bukan seed cookie.
+          tag: "Direksi",
+          title: "Laporan Harian",
+          desc: "Performa seluruh SPBU dalam satu layar — omzet & gain/losses, harian & MTD.",
+          ctx: `Semua unit dalam akses Anda (${scope.units.length}) · default kemarin`,
+          href: "/laporan-harian",
+        },
+        {
           tag: "Analisa",
           title: "Ringkasan direksi",
           desc: "Verdict kesehatan grup, KPI, bauran vs target, ranking unit, anomali.",
+          ctx: "Unit & periode dipilih di halaman itu",
           href: "/board",
         },
         {
           tag: "Admin",
           title: "Kelola akses",
           desc: "Undang & atur peran pengguna dashboard.",
+          ctx: null,
           href: "/admin",
         },
       ],
@@ -86,7 +108,11 @@ export default async function HubPage() {
   return (
     <div>
       <div className="text-eyebrow t-tertiary">Beranda</div>
-      <h1 className="text-h4 t-brand mt2">Pilih unit &amp; tanggal di atas, lalu buka modul</h1>
+      <h1 className="text-h4 t-brand mt2">Buka modul pengawasan</h1>
+      <p className="fs16 t-secondary mt2 hub-lede">
+        Setiap modul punya filternya sendiri. Kartu di bawah menyebutkan titik masuk yang akan
+        dibuka.
+      </p>
 
       <div className="fs16 t-secondary mt5">
         <span className={`dot ${lastSync ? "success" : "muted"}`} />{" "}
@@ -105,6 +131,7 @@ export default async function HubPage() {
                 </div>
                 <div className="text-h6 t-brand mt4">{c.title}</div>
                 <p className="fs16 t-secondary mt2">{c.desc}</p>
+                {c.ctx && <div className="fs15 t-tertiary mt2">{c.ctx}</div>}
               </Link>
             ))}
           </div>
