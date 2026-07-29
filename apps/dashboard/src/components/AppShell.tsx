@@ -18,9 +18,17 @@ export interface UnitOpt {
  * Chrome aplikasi (client): topbar + drawer/sidebar + main, sehingga satu
  * komponen memegang seluruh state UI nav.
  *
- * TOPBAR TIDAK MENGENDALIKAN UNIT/TANGGAL. Filter adalah milik halaman
- * (UnitDateFilters / BoardFilters / HarianFilters); chrome global hanya membawa
- * identitas & kesegaran. `units`/`unitCode`/`date` di sini semata SEED untuk
+ * TOPBAR HANYA HIDUP DI ≤768px. Sejak picker unit/tanggal dihapus (#155) isinya
+ * tinggal identitas — dibaca sekali lalu diabaikan — padahal ia memegang satu-
+ * satunya slot sticky, sementara baris filter yang diraih berulang justru
+ * tergulung. Di ≥769px topbar di-`display:none` (app.css), sidebar jadi chrome
+ * tunggal dan memikul identitas lewat `.drawer-foot`, dan slot sticky-nya
+ * diserahkan ke baris filter. Markup topbar SENGAJA dipertahankan utuh: di
+ * mobile ia tetap satu-satunya pembawa hamburger, logo, dan tombol Keluar.
+ *
+ * Filter tetap MILIK HALAMAN (UnitDateFilters / BoardFilters / HarianFilters);
+ * chrome global tak pernah mengendalikan unit/tanggal. `units`/`unitCode`/`date`
+ * di sini semata SEED untuk
  * membentuk tautan sidebar ke rute per-unit — bukan state yang bisa diubah dari
  * topbar. Akar masalah yang dihapus: picker global yang nilainya diabaikan
  * halaman ber-filter sendiri (/board, /laporan-harian) atau tak berdimensi
@@ -46,6 +54,7 @@ export function AppShell({
   email,
   canManageAccess,
   lastSync,
+  lastSyncUnit,
   alertCount,
   units,
   unitCode,
@@ -57,6 +66,8 @@ export function AppShell({
   email: string | null;
   canManageAccess: boolean;
   lastSync: string | null;
+  /** Nama unit dengan sinkron TERLAMA (nilai lastSync = MIN lintas scope). */
+  lastSyncUnit: string | null;
   alertCount: number;
   units: UnitOpt[];
   unitCode?: string;
@@ -163,6 +174,8 @@ export function AppShell({
           unitCode={sel.unit}
           date={sel.navDate}
           alertCount={alertCount}
+          signOutSlot={signOutSlot}
+          lastSyncUnit={lastSyncUnit}
           collapsed={collapsed}
           openGroups={openGroups}
           mobileOpen={mobileOpen}

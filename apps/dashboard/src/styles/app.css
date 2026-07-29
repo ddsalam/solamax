@@ -147,6 +147,9 @@ body { background: var(--neutral-50); }
 .side-chevron { font-size: 12px; }
 .drawer-close { background: transparent; border: none; cursor: pointer; color: var(--color-text-secondary); font-size: 18px; padding: 4px 8px; border-radius: var(--radius-md); }
 .drawer-foot { margin-top: auto; padding: var(--space-4) var(--space-3) var(--space-2); border-top: 1px solid var(--color-border-hairline); display: flex; flex-direction: column; gap: 4px; }
+/* Aksi identitas (Keluar) — HANYA ≥769px. Di mobile tombolnya tetap di topbar,
+   supaya perilaku ≤768px tak bergeser sedikit pun. */
+.foot-actions { display: none; margin-top: var(--space-2); }
 .mobile-only { display: none; }
 .scrim { display: none; }
 
@@ -162,6 +165,31 @@ body { background: var(--neutral-50); }
 /* ===== Topbar: hamburger (topbar TIDAK lagi memuat kontrol unit/tanggal) ===== */
 .hamburger { display: none; background: transparent; border: none; cursor: pointer; color: var(--color-text-secondary); padding: 6px; border-radius: var(--radius-md); }
 .hamburger:hover { background: var(--neutral-100); color: var(--color-text-primary); }
+
+/* ===== Desktop (≥769): sidebar = chrome TUNGGAL, slot sticky untuk filter =====
+   Sejak picker dihapus (#155) topbar hanya memuat identitas — dibaca sekali —
+   padahal ia memegang satu-satunya slot sticky. Di sini ia dibubarkan: sidebar
+   menempel (nav + identitas selalu terlihat) dan baris filter mewarisi slot
+   sticky-nya. `align-self: start` WAJIB: tanpa itu grid item meregang setinggi
+   baris (terukur 3627px) dan sticky tak pernah aktif. */
+@media (min-width: 769px) {
+  .topbar { display: none; }
+  .shell { min-height: 100vh; }
+  .sidebar { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; }
+  .foot-actions { display: flex; }
+  /* Rail ringkas 64px: tombol dipadatkan agar tetap terjangkau. */
+  .shell.collapsed .drawer-foot { padding-left: 6px; padding-right: 6px; }
+  .shell.collapsed .foot-actions .btn-outline { width: 100%; padding: 7px 4px; font-size: 13px; }
+  /* Bilah filter milik halaman — latar SOLID (konten lewat di belakangnya) dan
+     z-index di atas segalanya. Panel dropdown unit terkurung di stacking context
+     bilah ini, jadi z-index DI SINI-lah yang menentukan; lihat probe H5. */
+  .filters-sticky {
+    position: sticky; top: 0; z-index: 40;
+    background: var(--color-bg);
+    padding-block: var(--space-3);
+    margin-block-start: calc(-1 * var(--space-3));
+  }
+}
 
 /* ===== Mobile (≤768): drawer off-canvas + topbar diringkas ===== */
 @media (max-width: 768px) {
@@ -487,7 +515,12 @@ body { background: var(--neutral-50); }
 /* Filter halaman — konteks non-interaktif (dimensi degenerate) & catatan.
    Dipakai agar tak pernah ada input NONAKTIF yang tetap memamerkan nilai. */
 .filter-static { display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-full); }
-.filter-note { max-width: 46ch; line-height: 1.35; }
+/* Teks penjelas — DI BAWAH bilah sticky, ikut tergulung. Tetap teks terlihat
+   (bukan title=/tooltip): penjelasan yang hanya hidup di tooltip tak terjangkau
+   sentuh/keyboard/screen reader. */
+.filter-note { display: block; max-width: 62ch; line-height: 1.35; margin-top: var(--space-2); }
+/* Baris filter kedua (board): rentang custom + mode — ikut tergulung. */
+.filters-flow { margin-top: var(--space-2); }
 
 /* Board — evaluasi KPI (MoM/YoY/YTD) & badge sementara */
 .prov-badge { margin-left: 6px; font-size: 13px; cursor: help; }

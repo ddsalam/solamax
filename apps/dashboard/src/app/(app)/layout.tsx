@@ -4,7 +4,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { SignOutButton } from "@/components/SignOutButton";
 import { getAnomalies } from "@/lib/anomalies";
 import { ptLabelForUnits, unitLabel } from "@/lib/config";
-import { worstSyncAt } from "@/lib/freshness";
+import { worstSyncAt, worstSyncUnitId } from "@/lib/freshness";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
@@ -40,6 +40,7 @@ export default async function AppShellLayout({
 
   // Sync & anomali HANYA untuk unit dalam scope caller (lewat scope.unitIds / scope.units).
   let lastSync: string | null = null;
+  let lastSyncUnit: string | null = null;
   let alertCount = 0;
   try {
     // MIN (unit TERBURUK), bukan MAX — lihat lib/freshness.ts untuk akar masalah
@@ -47,6 +48,11 @@ export default async function AppShellLayout({
     // pertukaran yang disengaja pada rute per-unit.
     const sync = await getSyncByUnit(scope.unitIds);
     lastSync = worstSyncAt(scope.unitIds, sync);
+    // NAMA unit terburuk — angka telanjang ("data terakhir masuk 3 mnt lalu")
+    // berbunyi seperti pernyataan tentang SATU unit padahal nilainya MIN lintas
+    // scope. Samakan dengan Laporan Harian: sebut unitnya.
+    const worstId = worstSyncUnitId(scope.unitIds, sync);
+    lastSyncUnit = scope.units.find((u) => u.unit_id === worstId)?.name ?? null;
     // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
     alertCount = (await getAnomalies(scope.units)).filter(
       (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
@@ -62,6 +68,7 @@ export default async function AppShellLayout({
         email={scope.email}
         canManageAccess={scope.canManageAccess}
         lastSync={lastSync}
+        lastSyncUnit={lastSyncUnit}
         alertCount={alertCount}
         units={scope.units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
         unitCode={unitCode}

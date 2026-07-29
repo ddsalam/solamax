@@ -104,6 +104,8 @@ export function Sidebar({
   email,
   roleLabel,
   lastSync,
+  lastSyncUnit,
+  signOutSlot,
 }: {
   unitCode?: string;
   date: string;
@@ -117,6 +119,11 @@ export function Sidebar({
   email: string | null;
   roleLabel: string;
   lastSync: string | null;
+  /** Unit dengan sinkron TERLAMA — disebut namanya, lihat komentar di bawah. */
+  lastSyncUnit: string | null;
+  /** Tombol Keluar (server action). Hanya tampil ≥769px — di mobile ia tetap
+   *  di topbar, sehingga perilaku ≤768px tak berubah sama sekali. */
+  signOutSlot: React.ReactNode;
 }) {
   const path = usePathname();
   // unitCode/date sudah diresolusi AppShell via useSelection (URL kanonik) →
@@ -199,13 +206,23 @@ export function Sidebar({
         </div>
       ))}
 
-      {/* Identitas (mobile) — dipindah dari topbar yang diringkas */}
-      <div className="drawer-foot mobile-only">
-        <span className="fs15 w600 t-secondary">{roleLabel}</span>
-        {email && <span className="fs15 t-tertiary auth-email">{email}</span>}
-        <span className="fs15 t-tertiary">
-          {lastSync ? `data terakhir masuk ${ago(lastSync)}` : "menunggu koneksi data"}
+      {/* Identitas — kini di SEMUA ukuran layar (dulu `mobile-only`). Di ≥769px
+          topbar disembunyikan, jadi inilah satu-satunya tempat peran, email,
+          kesegaran, dan Keluar. `.side-label` dipakai agar rail ringkas (64px)
+          menyembunyikannya lewat aturan collapsed yang sudah ada. */}
+      <div className="drawer-foot">
+        <span className="fs15 w600 t-secondary side-label">{roleLabel}</span>
+        {email && <span className="fs15 t-tertiary auth-email side-label">{email}</span>}
+        {/* Nilai lastSync = MIN lintas scope (unit TERBURUK). Menyebut angka
+            tanpa unit berbunyi seperti pernyataan tentang satu unit — cacat yang
+            tercatat sejak insiden Bakau. Bunyinya disamakan dengan Laporan
+            Harian: sebut unitnya. */}
+        <span className="fs15 t-tertiary side-label">
+          {lastSync
+            ? `Sinkron terlama: ${lastSyncUnit ?? "—"}, ${ago(lastSync)}`
+            : "Ada unit yang belum pernah tersinkron"}
         </span>
+        <div className="foot-actions">{signOutSlot}</div>
       </div>
     </nav>
   );
