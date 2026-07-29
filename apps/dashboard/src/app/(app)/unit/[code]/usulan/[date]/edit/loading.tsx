@@ -1,14 +1,17 @@
+import { FilterBarSkeleton } from "@/components/loading/FilterBarSkeleton";
 import { Skeleton, SkeletonTable } from "@/components/loading/Skeleton";
 
 /**
- * Skeleton khusus /usulan/edit — cermin edit/page.tsx:91+: .lap-page →
- * UsulanToolbar → .board-head → UsulanForm (kartu tabel grid cols-usulan, 7
- * kolom). Beban G/L di sini 1-hari (murah) → tanpa ReportLoading; skeleton
- * instan nol-pergeseran (rule 9).
+ * Skeleton khusus /usulan/edit — cermin edit/page.tsx: .lap-page → filter
+ * halaman (unit + tanggal) → UsulanToolbar → .board-head → UsulanForm (kartu
+ * tabel grid cols-usulan, 7 kolom). Beban G/L di sini 1-hari (murah) → tanpa
+ * ReportLoading; skeleton instan nol-pergeseran (rule 9).
  */
 export default function UsulanEditLoading() {
   return (
     <div className="lap-page">
+      <FilterBarSkeleton />
+
       <div className="lap-toolbar">
         <Skeleton inline width="var(--space-24)" height="var(--space-10)" radius="var(--radius-full)" />
         <div className="lap-toolbar-right">

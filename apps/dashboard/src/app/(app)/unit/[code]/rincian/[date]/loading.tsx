@@ -1,15 +1,18 @@
+import { FilterBarSkeleton } from "@/components/loading/FilterBarSkeleton";
 import { Skeleton, SkeletonTable } from "@/components/loading/Skeleton";
 
 /**
- * Skeleton khusus /rincian — cermin rincian/page.tsx:234+: .doc-wrap →
- * .rincian-links → .rincian-toolbar (card) → .doc-sheet (kop + judul + ledger).
- * Halaman ini RINGAN (tanpa G/L) → tanpa ReportLoading; cukup skeleton instan
- * nol-pergeseran (rule 9).
+ * Skeleton khusus /rincian — cermin rincian/page.tsx: .doc-wrap → filter
+ * halaman (unit + tanggal) → .rincian-links → .rincian-toolbar (card) →
+ * .doc-sheet (kop + judul + ledger). Halaman ini RINGAN (tanpa G/L) → tanpa
+ * ReportLoading; cukup skeleton instan nol-pergeseran (rule 9).
  */
 export default function RincianLoading() {
   return (
     <div className="doc-wrap">
-      <div className="rincian-links">
+      <FilterBarSkeleton />
+
+      <div className="rincian-links mt4">
         <Skeleton inline width="var(--space-32)" height="var(--space-5)" />
       </div>
 

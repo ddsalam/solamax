@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TankGauge } from "@/components/mon/TankGauge";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { tankFillVar, unitDotted } from "@/lib/config";
 import { enduranceDays, enduranceLevel, GARBAGE_STOCK_L, isStockImplausible, stockNow } from "@/lib/derive";
 import { ago, fmtL, idn, timeWib } from "@/lib/format";
@@ -98,7 +99,19 @@ export default async function DenahPage({ params }: { params: { code: string } }
 
   return (
     <div>
-      <div className="picker-row mt6">
+      {/* Filter MILIK HALAMAN — HANYA unit. Denah membaca ATG live: tidak ada
+          dimensi tanggal, jadi tidak ada kontrol tanggal (dulu: input tanggal
+          nonaktif di topbar yang tetap memamerkan nilai terbawa). */}
+      <div className="mt5">
+        <UnitDateFilters
+          units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+          code={unit.code}
+          segment="denah"
+          note="Realtime — halaman ini selalu menampilkan kondisi terkini, tanpa pilihan tanggal."
+        />
+      </div>
+
+      <div className="picker-row mt5">
         <Link href="/monitoring" className="btn-tint sm">
           ← Jaringan
         </Link>

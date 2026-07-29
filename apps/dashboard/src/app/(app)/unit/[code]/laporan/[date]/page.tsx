@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { EmptyPanel } from "@/components/EmptyPanel";
 import { LaporanExport } from "@/components/laporan/LaporanExport";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { unitDotted } from "@/lib/config";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import {
@@ -161,6 +162,16 @@ export default async function LaporanPage({
 
   return (
     <div className="lap-page">
+      {/* Filter MILIK HALAMAN — dimensi yang benar-benar dipakai: unit + tanggal. */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="laporan"
+        date={date}
+        today={today}
+        maxDate={today}
+      />
+
       <LaporanExport
         code={unit.code}
         businessDate={date}

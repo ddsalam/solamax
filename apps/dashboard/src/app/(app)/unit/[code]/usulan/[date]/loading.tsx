@@ -1,13 +1,17 @@
+import { FilterBarSkeleton } from "@/components/loading/FilterBarSkeleton";
 import { Skeleton, SkeletonTable } from "@/components/loading/Skeleton";
 
 /**
- * Skeleton khusus /usulan (daftar) — cermin usulan/page.tsx:25+: .lap-page →
- * UsulanToolbar (.lap-toolbar) → .board-head → kartu tabel (grid cols-usulan-list,
- * 6 kolom). Ringan; skeleton instan nol-pergeseran (rule 9).
+ * Skeleton khusus /usulan (daftar) — cermin usulan/page.tsx: .lap-page → filter
+ * halaman (unit + tanggal) → UsulanToolbar (.lap-toolbar) → .board-head →
+ * kartu tabel (grid cols-usulan-list, 6 kolom). Ringan; skeleton instan
+ * nol-pergeseran (rule 9).
  */
 export default function UsulanListLoading() {
   return (
     <div className="lap-page">
+      <FilterBarSkeleton />
+
       <div className="lap-toolbar">
         <Skeleton inline width="var(--space-32)" height="var(--target-min)" radius="var(--radius-full)" />
         <div className="lap-toolbar-right">
