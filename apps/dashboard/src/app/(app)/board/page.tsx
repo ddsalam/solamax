@@ -4,6 +4,7 @@ import { AnomalyFeed } from "@/components/AnomalyFeed";
 import { BoardExport } from "@/components/board/BoardExport";
 import { BoardFilters } from "@/components/board/BoardFilters";
 import { RankingTable } from "@/components/board/RankingTable";
+import { SectionBoundary } from "@/components/board/SectionBoundary";
 import { TrendChart } from "@/components/board/TrendChart";
 import { getAnomalies } from "@/lib/anomalies";
 import {
@@ -14,6 +15,7 @@ import {
   type DeltaCell,
 } from "@/lib/board-model";
 import { parseBoardParams, type BoardParams, type BoardSearchParams } from "@/lib/board-params";
+import { mapLimit } from "@/lib/concurrency";
 import { ptLabelForUnits, unitDotted } from "@/lib/config";
 import { dateLong, dateShort, pct as pctS, signed as signedS, timeWib } from "@/lib/format";
 import { getDailyGlWindow } from "@/lib/gl-window";
@@ -80,20 +82,51 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
     addDays(range.to, -13),
   );
 
+  /**
+   * FAN-OUT TERBATAS — akar "Halaman gagal dimuat" pada jendela G/L yang belum
+   * ter-cache. Pool `pg` `max: 5` dengan `connectionTimeoutMillis: 10_000`
+   * (db.ts); versi lama menembakkan `Promise.all` atas 7 unit sekaligus, dan
+   * tiap `getDailyGlWindow` sendiri memecah jendelanya jadi 2 query (prefiks
+   * ter-cache + sufiks segar) → 14 permintaan koneksi per jendela. Dengan empat
+   * jendela pembanding di `evalPromise` (lihat di bawah) puncaknya ~56, jauh di
+   * atas 5: yang mengantre >10 dtk dilempar sebagai
+   * "timeout exceeded when trying to connect" dan halaman jatuh ke error
+   * boundary. Saat cache panas semuanya dilayani `unstable_cache` dan tak
+   * pernah menyentuh DB — itulah kenapa muat ulang berhasil.
+   *
+   * Batas 2 unit = 4 query serentak, menyisakan 1 slot pool. Obat ini bukan
+   * baru: `mapLimit` ditulis untuk skenario PERSIS ini (lihat doc-comment
+   * lib/concurrency.ts, insiden saturasi 30 Juni) lalu dipasang HANYA di
+   * /laporan-harian. Query, urutan hasil, dan angka TIDAK berubah — `mapLimit`
+   * mempertahankan urutan masukan.
+   */
   const glWindow = async (r: DateRange) =>
     new Map(
-      await Promise.all(
-        units.map(async (u) => [u.unit_id as number, await getDailyGlWindow(u.unit_id, r.from, r.to)] as const),
-      ),
+      await mapLimit(units, 2, async (u) => [u.unit_id as number, await getDailyGlWindow(u.unit_id, r.from, r.to)] as const),
     );
 
-  const [dailySales, coverageRows, shiftPairs, anomalies, glRange] = await Promise.all([
+  /**
+   * TIGA TAHAP, bukan satu `Promise.all` berisi lima.
+   *
+   * Catatan atas rumusan "tunda evalPromise sampai badan utama selesai": itu
+   * SUDAH berlaku — `evalPromise` di bawah memang dibuat setelah blok ini
+   * di-await. Tumpang-tindih yang tersisa ada DI DALAM blok ini: `getAnomalies`
+   * (4 query serentak setelah dipecah, lihat anomalies.ts) berjalan bersamaan
+   * dengan `glWindow(range)` (4 query) plus tiga query tunggal ≈ 11 serentak
+   * terhadap pool 5. Karena `connectionTimeoutMillis` mengukur MENUNGGU SLOT dan
+   * slot ditahan selama query berjalan, konsumen berat yang tumpang-tindih
+   * membuat pemohon berikutnya menunggu >10 dtk lalu dilempar.
+   *
+   * Tahap 1 = tiga query multi-unit yang murah (aman serentak). Tahap 2 & 3 =
+   * dua konsumen berat, dijalankan bergantian. Puncak turun ke ≈4.
+   */
+  const [dailySales, coverageRows, shiftPairs] = await Promise.all([
     getDailySalesByProduct(units.map((u) => u.unit_id), spanFrom, range.to),
     getUnitCoverage(units.map((u) => u.unit_id)),
-    Promise.all(units.map(async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, today)] as const)),
-    getAnomalies(units),
-    glWindow(range),
+    mapLimit(units, 2, async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, today)] as const),
   ]);
+  const anomalies = await getAnomalies(units);
+  const glRange = await glWindow(range);
 
   const core = buildBoardCore({
     units,
@@ -112,12 +145,16 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
   // Pembanding (berat: G/L jendela panjang) — TIDAK di-await di sini; anak-anak
   // Suspense yang menunggu (KPI eval lines, tabel evaluasi, tombol ekspor).
   const evalPromise = (async (): Promise<BoardEval> => {
-    const [momPrev, yoyPrev, ytdCur, ytdPrev] = await Promise.all([
-      glWindow(period.mom.prev),
-      glWindow(period.yoy.prev),
-      glWindow(period.ytd.cur),
-      glWindow(period.ytd.prev),
-    ]);
+    // Keempat jendela pembanding dijalankan BERURUTAN, bukan serentak. Tiap
+    // `glWindow` sudah dibatasi 2 unit (=4 query); menjalankan empat sekaligus
+    // mengalikannya jadi 16 dan mengembalikan masalah yang baru saja ditutup.
+    // Berurutan = puncak tetap 4 query, di bawah pool 5. Halaman jadi lebih
+    // lambat saat dingin, tapi SELESAI alih-alih gagal — dan seksi ini memang
+    // sudah di-stream lewat Suspense, jadi ia tak menahan render pertama.
+    const momPrev = await glWindow(period.mom.prev);
+    const yoyPrev = await glWindow(period.yoy.prev);
+    const ytdCur = await glWindow(period.ytd.cur);
+    const ytdPrev = await glWindow(period.ytd.prev);
     const coverage = new Map(units.map((u) => [u.unit_id as number, null as string | null]));
     for (const c of coverageRows) coverage.set(c.unit_id, c.sales_min);
     return buildBoardEval({
@@ -153,9 +190,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
             ))}
           </div>
         </div>
-        <Suspense fallback={<div className="fs15 t-tertiary">Menyiapkan ekspor…</div>}>
-          <ExportSection core={core} evalPromise={evalPromise} params={params} today={today} />
-        </Suspense>
+        <SectionBoundary judul="Ekspor">
+          <Suspense fallback={<div className="fs15 t-tertiary">Menyiapkan ekspor…</div>}>
+            <ExportSection core={core} evalPromise={evalPromise} params={params} today={today} />
+          </Suspense>
+        </SectionBoundary>
       </div>
 
       {/* 4 kartu KPI (keluarga TETAP) + evaluasi streaming */}
@@ -184,9 +223,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
                 ))}
               </div>
             )}
-            <Suspense fallback={<div className="kpi-eval mt3 fs15 t-tertiary">menghitung evaluasi…</div>}>
-              <KpiEvalLines evalPromise={evalPromise} k={c.key} />
-            </Suspense>
+            <SectionBoundary judul="Evaluasi KPI">
+              <Suspense fallback={<div className="kpi-eval mt3 fs15 t-tertiary">menghitung evaluasi…</div>}>
+                <KpiEvalLines evalPromise={evalPromise} k={c.key} />
+              </Suspense>
+            </SectionBoundary>
           </div>
         ))}
       </div>
@@ -200,9 +241,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
           <div className="text-h5 t-brand">Evaluasi per cabang</div>
           <span className="fs16 t-tertiary">nilai periode aktif · MoM · YoY · YTD</span>
         </div>
-        <Suspense fallback={<EvalSkeleton />}>
-          <EvalTable evalPromise={evalPromise} />
-        </Suspense>
+        <SectionBoundary judul="Evaluasi per cabang">
+          <Suspense fallback={<EvalSkeleton />}>
+            <EvalTable evalPromise={evalPromise} />
+          </Suspense>
+        </SectionBoundary>
       </div>
 
       {/* Bauran NPSO/PSO */}

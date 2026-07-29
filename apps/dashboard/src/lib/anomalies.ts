@@ -83,12 +83,27 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
     const unitTag = `${u.name} · ${unitDotted(u.code)}`;
     const href = `/unit/${u.code}/laporan/${today}`;
 
-    const [closing, glRows, deliv, shift, corrections, last, tanks, avg] = await Promise.all([
+    /**
+     * DUA GELOMBANG 4, bukan satu gelombang 8. Pool `pg` `max: 5` (db.ts):
+     * delapan query serentak per unit sudah melampaui pool SENDIRIAN, dan
+     * karena feed ini dipanggil bersamaan dengan jendela G/L board, ia yang
+     * membuat pemanggil lain (`getShiftInfo`) mengantre >10 dtk lalu dilempar
+     * "timeout exceeded when trying to connect" → board jatuh ke error
+     * boundary. Terbukti empiris: membatasi fan-out di board/page.tsx saja
+     * TIDAK cukup — gerbang repro tetap merah sampai gelombang ini dipecah.
+     *
+     * Query, parameter, dan hasilnya identik; hanya kapan ia ditembakkan yang
+     * berubah. Cache (`unstable_cache`, 120 dtk) tak tersentuh — jebakan D17
+     * (cache menyimpan G/L kosong) tak dibangkitkan.
+     */
+    const [closing, glRows, deliv, shift] = await Promise.all([
       getClosingOpname(u.unit_id, addDays(today, -6), today),
       // G/L metode RESUME per produk × hari (reuse laporan harian) — sumber item Losses.
       getDailyGlByProduct(u.unit_id, addDays(today, -6), today),
       getDeliveryShortfalls(u.unit_id, addDays(today, -6), today, 10),
       getShiftInfo(u.unit_id, today),
+    ]);
+    const [corrections, last, tanks, avg] = await Promise.all([
       getCorrections(u.unit_id, today),
       getLastInputs(u.unit_id),
       getTankStocks(u.unit_id),
