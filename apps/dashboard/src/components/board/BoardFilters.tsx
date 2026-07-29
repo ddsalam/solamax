@@ -77,7 +77,22 @@ export function BoardFilters({
       : `${selected.length} unit dipilih`;
 
   return (
-    <div className="board-filters no-print">
+    <>
+    {/*
+      DUA BARIS, sengaja.
+
+      Baris 1 (sticky) = yang diraih BERULANG saat membaca board: unit & periode.
+      Baris 2 (ikut tergulung) = yang di-set SEKALI di awal: mode tampilan
+      (keputusan owner) dan rentang custom.
+
+      Rentang custom ditaruh di baris 2 — bukan baris 1 — karena ia muncul
+      BERSYARAT (`pkey === "custom"`). Di baris sticky ia akan membuat tinggi
+      bilah berubah-ubah tiap kali preset diganti, sehingga konten melompat;
+      di baris 2 tinggi bilah sticky tetap konstan di semua preset. Ia tetap
+      terlihat saat muncul karena mengganti preset = navigasi (router.push) dan
+      Next mengembalikan scroll ke atas — diverifikasi, bukan diasumsikan.
+    */}
+    <div className="board-filters filters-sticky no-print" role="group" aria-label="Filter unit & periode">
       {/* Checklist unit multi-pilih */}
       <details ref={detailsRef} className="unit-picker">
         <summary className="btn-outline unit-picker-btn">
@@ -134,6 +149,9 @@ export function BoardFilters({
         ))}
       </div>
 
+    </div>
+
+    <div className="board-filters filters-flow no-print" role="group" aria-label="Rentang custom & mode tampilan">
       {/* Rentang custom */}
       {pkey === "custom" && (
         <div className="range-inputs">
@@ -179,5 +197,6 @@ export function BoardFilters({
         ))}
       </div>
     </div>
+    </>
   );
 }

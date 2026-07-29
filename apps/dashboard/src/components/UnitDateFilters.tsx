@@ -128,7 +128,12 @@ export function UnitDateFilters({
   };
 
   return (
-    <div className="board-filters no-print">
+    <>
+    {/* Bilah sticky = KONTROL saja. Teks penjelas ditaruh di bawahnya (ikut
+        tergulung) agar tinggi bilah tetap satu baris di semua lebar — mengukur
+        di 1440..800px menunjukkan teks penjelas di dalam bilahlah yang membuat
+        chrome permanen justru MEMBENGKAK di bawah ~1280px. */}
+    <div className="board-filters filters-sticky no-print" role="group" aria-label="Filter halaman">
       {units.length > 1 ? (
         <details ref={detailsRef} className="unit-picker" onKeyDown={onPickerKeyDown}>
           <summary ref={summaryRef} className="btn-outline unit-picker-btn">
@@ -204,7 +209,8 @@ export function UnitDateFilters({
         </div>
       )}
 
-      {note && <span className="filter-note fs15 t-tertiary">{note}</span>}
     </div>
+    {note && <p className="filter-note fs15 t-tertiary no-print">{note}</p>}
+    </>
   );
 }

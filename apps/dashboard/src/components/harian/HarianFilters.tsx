@@ -66,7 +66,11 @@ export function HarianFilters({
       : `${selected.length} unit dipilih`;
 
   return (
-    <div className="board-filters no-print">
+    <>
+    {/* Bilah sticky = KONTROL saja; catatan default "kemarin" pindah ke BAWAH
+        bilah. Terukur: catatan di dalam bilah membuatnya membungkus jadi 95px
+        di bawah ~1280px — lebih tinggi daripada topbar yang digantikannya. */}
+    <div className="board-filters filters-sticky no-print" role="group" aria-label="Filter laporan harian">
       <details className="unit-picker">
         <summary className="btn-outline unit-picker-btn">
           <span className="fs15 t-tertiary">Unit</span>
@@ -130,12 +134,16 @@ export function HarianFilters({
           </button>
         )}
       </div>
-
-      {/* Default halaman ini KEMARIN, bukan hari ini — perbedaan yang tanpa
-          penjelasan terbaca sebagai bug. Alasannya proses bisnis, bukan teknis. */}
-      <span className="filter-note fs15 t-tertiary">
-        Default kemarin: opname penutup hari baru lengkap pada pagi berikutnya.
-      </span>
     </div>
+
+    {/* Default halaman ini KEMARIN, bukan hari ini — perbedaan yang tanpa
+        penjelasan terbaca sebagai bug. Alasannya proses bisnis, bukan teknis.
+        TETAP teks terlihat di DOM (bukan title=/tooltip): penjelasan yang hanya
+        hidup di tooltip tak terjangkau sentuh, keyboard, maupun screen reader —
+        persis cacat yang dihapus di #155. */}
+    <p className="filter-note fs15 t-tertiary no-print">
+      Default kemarin: opname penutup hari baru lengkap pada pagi berikutnya.
+    </p>
+    </>
   );
 }
