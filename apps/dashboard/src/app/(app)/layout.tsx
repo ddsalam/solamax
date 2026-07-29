@@ -66,7 +66,6 @@ export default async function AppShellLayout({
       <AppShell
         roleLabel={ROLE_LABEL[scope.role]}
         email={scope.email}
-        canManageAccess={scope.canManageAccess}
         lastSync={lastSync}
         lastSyncUnit={lastSyncUnit}
         alertCount={alertCount}

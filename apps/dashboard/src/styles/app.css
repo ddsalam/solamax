@@ -108,8 +108,16 @@ body { background: var(--neutral-50); }
 }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); }
 
-.shell { display: grid; grid-template-columns: 232px 1fr; min-height: calc(100vh - 61px); }
+/* Topbar kini GRID ITEM di dalam .shell (lihat AppShell) → tinggi shell = penuh. */
+.shell {
+  display: grid; min-height: 100vh;
+  grid-template-columns: 232px 1fr; grid-template-rows: auto 1fr;
+  grid-template-areas: "brand brand" "nav main";
+}
 .shell.collapsed { grid-template-columns: 64px 1fr; }
+.topbar { grid-area: brand; }
+.sidebar { grid-area: nav; }
+.main { grid-area: main; }
 .sidebar {
   border-right: 1px solid var(--color-border-hairline); background: var(--neutral-50);
   padding: var(--space-5) var(--space-3); display: flex; flex-direction: column; gap: 4px;
@@ -173,9 +181,25 @@ body { background: var(--neutral-50); }
    sticky-nya. `align-self: start` WAJIB: tanpa itu grid item meregang setinggi
    baris (terukur 3627px) dan sticky tak pernah aktif. */
 @media (min-width: 769px) {
-  .topbar { display: none; }
-  .shell { min-height: 100vh; }
-  .sidebar { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; }
+  /* Topbar menyusut jadi BARIS MEREK kolom kiri: hanya logo yang tersisa, dan
+     ia ikut menempel di atas nav. Isi lainnya (hamburger, chip peran, identitas,
+     Keluar versi mobile) benar-benar display:none → keluar dari layout DAN dari
+     pohon aksesibilitas, sehingga tak pernah ada dua tombol Keluar sekaligus. */
+  /* Tinggi baris merek = logo 20px + padding 16+12 = 48px. Disatukan di satu
+     variabel supaya offset menempel nav tak pernah lepas sinkron dengan tinggi
+     baris merek (celah/tumpang-tindih di kolom kiri). */
+  .shell { grid-template-areas: "brand main" "nav main"; --brand-h: 48px; }
+  .topbar {
+    position: sticky; top: 0; z-index: 45; height: var(--brand-h);
+    padding: var(--space-4) var(--space-3) var(--space-3);
+    background: var(--neutral-50); border-bottom: none; backdrop-filter: none;
+    gap: 0;
+  }
+  .topbar > :not(.shell-brand) { display: none; }
+  .sidebar {
+    position: sticky; top: var(--brand-h); align-self: start;
+    height: calc(100vh - var(--brand-h)); overflow-y: auto; padding-top: var(--space-2);
+  }
   .foot-actions { display: flex; }
   /* Rail ringkas 64px: tombol dipadatkan agar tetap terjangkau. */
   .shell.collapsed .drawer-foot { padding-left: 6px; padding-right: 6px; }
@@ -183,11 +207,17 @@ body { background: var(--neutral-50); }
   /* Bilah filter milik halaman — latar SOLID (konten lewat di belakangnya) dan
      z-index di atas segalanya. Panel dropdown unit terkurung di stacking context
      bilah ini, jadi z-index DI SINI-lah yang menentukan; lihat probe H5. */
+  /* Padding SEKECIL mungkin: tiap px di sini jadi chrome permanen. Versi
+     pertama memakai --space-3 (12+12) → bilah 67,7px, LEBIH TINGGI daripada
+     topbar 59,4px yang digantikannya — Δ positif, kebalikan dari tujuannya.
+     --space-2 (8+8) + garis rambut memberi pemisah yang cukup dari konten yang
+     lewat di belakangnya, dengan ongkos 17px bukan 24px. */
   .filters-sticky {
     position: sticky; top: 0; z-index: 40;
     background: var(--color-bg);
-    padding-block: var(--space-3);
-    margin-block-start: calc(-1 * var(--space-3));
+    padding-block: var(--space-2);
+    margin-block-start: calc(-1 * var(--space-2));
+    border-bottom: 1px solid var(--color-border-hairline);
   }
 }
 
@@ -196,7 +226,9 @@ body { background: var(--neutral-50); }
   .hamburger { display: inline-flex; align-items: center; }
   .mobile-hide { display: none !important; }
   .mobile-only { display: flex; }
-  .shell, .shell.collapsed { grid-template-columns: 1fr; }
+  /* Satu kolom: topbar = header penuh di atas konten (persis seperti sebelum
+     ia dipindah ke dalam .shell). Sidebar `fixed` → keluar dari alur grid. */
+  .shell, .shell.collapsed { grid-template-columns: 1fr; grid-template-areas: "brand" "main"; }
   .sidebar {
     position: fixed; top: 0; left: 0; height: 100vh; width: 280px; z-index: 40;
     transform: translateX(-100%); transition: transform var(--duration-fast) var(--ease-out);
@@ -466,11 +498,15 @@ body { background: var(--neutral-50); }
 .page-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--color-border-hairline); }
 .page-foot span { font-size: 15px; color: var(--color-text-tertiary); }
 
-/* Responsif dasar (web-first; mobile seadanya) */
+/* Responsif dasar (web-first; mobile seadanya)
+   CATATAN: tiga aturan shell/sidebar di blok ini DIHAPUS — peninggalan sebelum
+   drawer ≤768px ada. Efeknya di pita 769–900px: `.shell{grid-template-columns:1fr}`
+   membuat kolom kiri menyusut ke lebar konten (terukur 24px, logo hilang) dan
+   `.sidebar{flex-direction:row}` mengubah nav vertikal jadi strip horizontal —
+   bertabrakan dengan sidebar menempel. `.side-foot` sendiri selektor MATI (nol
+   kemunculan di src/, kini bernama `.drawer-foot`). Sisa aturan grid konten
+   di bawah tetap berlaku. */
 @media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--color-border-hairline); }
-  .side-foot { display: none; }
   .kpi-grid, .kas-grid, .recap-grid, .ratio-grid, .hub-grid, .tank-grid { grid-template-columns: 1fr 1fr; }
   .rekon-grid { grid-template-columns: 1fr; }
   .main { padding: 20px 16px 32px; }
@@ -765,8 +801,11 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 }
 /* No container-query support → keep the lockup (graceful, never blank). */
 /* Sidebar brand header: full-width row expanded, centered mark in the 64px rail. */
-.side-brand { align-self: stretch; padding: var(--space-1) var(--space-1) var(--space-3); }
-.shell.collapsed .side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Slot merek tunggal (dulu `.side-brand` di dalam sidebar). Container query
+   milik <Logo variant="auto"> mengukur SLOT ini, jadi rail 64px otomatis dapat
+   badge-mark tanpa markup kedua. */
+.shell-brand { align-self: center; }
+.shell.collapsed .shell-brand { justify-content: center; }
 /* Loading marks: restrained companions to the spinner (Fase 3). */
 .route-fallback-mark { margin-bottom: var(--space-2); opacity: 0.9; }
 .report-load-mark { opacity: 0.85; }

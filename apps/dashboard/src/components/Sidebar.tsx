@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Logo } from "@/components/Logo";
 import { NavIcon, type IconName } from "@/components/NavIcon";
 import { ago } from "@/lib/format";
 
@@ -163,10 +162,10 @@ export function Sidebar({
       aria-modal={mobileOpen}
       aria-label="Menu navigasi"
     >
-      {/* Container-driven: wide column/drawer → horizontal lockup, 64px rail →
-          badge-mark. Keys off actual width, so it's correct on desktop, collapsed
-          rail, and mobile drawer alike (not the collapse toggle). */}
-      <Logo href="/" variant="auto" height={28} label="SolaMax, beranda" className="side-brand" />
+      {/* Logo TIDAK lagi di sini. Ia dulu dirender dua kali (topbar + sini);
+          instance tunggalnya kini hidup di `.topbar` — satu-satunya wadah yang
+          terlihat saat drawer mobile tertutup — dan ditempatkan sebagai baris
+          merek kolom kiri di ≥769px lewat grid-area "brand". Lihat AppShell. */}
       <div className="side-top">
         <button
           type="button"

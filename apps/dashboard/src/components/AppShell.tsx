@@ -1,12 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { GROUP_IDS, Sidebar, type GroupId } from "@/components/Sidebar";
 import { useSelection } from "@/components/useSelection";
-import { ago } from "@/lib/format";
 
 /** Opsi unit untuk resolusi seed navigasi (bukan kontrol — lihat di bawah). */
 export interface UnitOpt {
@@ -18,21 +16,24 @@ export interface UnitOpt {
  * Chrome aplikasi (client): topbar + drawer/sidebar + main, sehingga satu
  * komponen memegang seluruh state UI nav.
  *
- * TOPBAR HANYA HIDUP DI ≤768px. Sejak picker unit/tanggal dihapus (#155) isinya
- * tinggal identitas — dibaca sekali lalu diabaikan — padahal ia memegang satu-
- * satunya slot sticky, sementara baris filter yang diraih berulang justru
- * tergulung. Di ≥769px topbar di-`display:none` (app.css), sidebar jadi chrome
- * tunggal dan memikul identitas lewat `.drawer-foot`, dan slot sticky-nya
- * diserahkan ke baris filter. Markup topbar SENGAJA dipertahankan utuh: di
- * mobile ia tetap satu-satunya pembawa hamburger, logo, dan tombol Keluar.
+ * SIDEBAR = CHROME TUNGGAL DI ≥769px. Sejak picker unit/tanggal dihapus (#155)
+ * topbar hanya memuat identitas — dibaca sekali lalu diabaikan — padahal ia
+ * memegang satu-satunya slot sticky, sementara baris filter yang diraih berulang
+ * justru tergulung (terukur: topbar sticky 60,5px; `.board-filters` static).
+ * Sekarang `<header>` jadi GRID ITEM `.shell` dan berperan ganda:
+ *   ≥769px → menyusut jadi baris merek kolom kiri (hanya logo), menempel di atas
+ *            nav; identitas pindah ke `.drawer-foot`; slot sticky diserahkan ke
+ *            baris filter halaman;
+ *   ≤768px → tetap header penuh: hamburger + logo + Keluar (perilaku mobile
+ *            sengaja TIDAK diubah).
  *
  * Filter tetap MILIK HALAMAN (UnitDateFilters / BoardFilters / HarianFilters);
  * chrome global tak pernah mengendalikan unit/tanggal. `units`/`unitCode`/`date`
- * di sini semata SEED untuk
- * membentuk tautan sidebar ke rute per-unit — bukan state yang bisa diubah dari
- * topbar. Akar masalah yang dihapus: picker global yang nilainya diabaikan
- * halaman ber-filter sendiri (/board, /laporan-harian) atau tak berdimensi
- * (/admin, /monitoring/ketaatan) tetapi tetap menulis cookie & memicu refresh.
+ * di sini semata SEED untuk membentuk tautan sidebar ke rute per-unit — bukan
+ * state yang bisa diubah dari chrome. Akar masalah yang dihapus di #155: picker
+ * global yang nilainya diabaikan halaman ber-filter sendiri (/board,
+ * /laporan-harian) atau tak berdimensi (/admin, /monitoring/ketaatan) tetapi
+ * tetap menulis cookie & memicu refresh.
  *
  * Durabel (localStorage, tahan router.refresh & reload): rail ringkas +
  * buka/tutup grup. EPHEMERAL (useState, default tertutup tiap load): drawer
@@ -52,7 +53,6 @@ const DEFAULT_OPEN = Object.fromEntries(GROUP_IDS.map((id) => [id, true])) as Re
 export function AppShell({
   roleLabel,
   email,
-  canManageAccess,
   lastSync,
   lastSyncUnit,
   alertCount,
@@ -64,7 +64,6 @@ export function AppShell({
 }: {
   roleLabel: string;
   email: string | null;
-  canManageAccess: boolean;
   lastSync: string | null;
   /** Nama unit dengan sinkron TERLAMA (nilai lastSync = MIN lintas scope). */
   lastSyncUnit: string | null;
@@ -134,7 +133,15 @@ export function AppShell({
     });
 
   return (
-    <>
+    <div className={`shell${collapsed ? " collapsed" : ""}`}>
+      {/* Topbar ADA DI DALAM shell agar ia bisa jadi grid-area "brand": di ≥769px
+          ia menyusut jadi baris merek kolom kiri (di atas nav, ikut menempel), di
+          ≤768px ia tetap header penuh. Berada di dalam `.shell` juga membuat
+          `.shell.collapsed .topbar` bisa menyamakan lebarnya dengan rail 64px —
+          mustahil kalau ia tetap saudara di luar. Inilah yang memungkinkan LOGO
+          jadi SATU elemen: satu-satunya wadah yang terlihat di mobile (drawer
+          tertutup = seluruh <nav> ter-translate keluar layar) sekaligus bisa
+          ditempatkan di kolom kiri saat desktop. */}
       <header className="topbar no-print">
         <button
           ref={hamburgerRef}
@@ -148,46 +155,53 @@ export function AppShell({
             <path d="M3 6h14M3 10h14M3 14h14" />
           </svg>
         </button>
-        <Logo variant="horizontal" href="/" height={20} priority label="SolaMax, beranda" />
-        <div className="topbar-div mobile-hide" />
-        <span className="role-chip mobile-hide">{roleLabel}</span>
-        <div className="topbar-right">
-          <span className="fs15 t-tertiary sync-note mobile-hide">
-            <span className={`dot ${lastSync ? "success pulse" : "muted"}`} />
-            {lastSync ? `data terakhir masuk ${ago(lastSync)}` : "menunggu koneksi data"}
-          </span>
-          {canManageAccess && (
-            <Link href="/admin" className="fs15 w600 t-accent mobile-hide">
-              Akses
-            </Link>
-          )}
-          <span className="fs15 t-tertiary auth-email mobile-hide">{email}</span>
-          {signOutSlot}
-        </div>
+        {/* SATU-SATUNYA logo di aplikasi (dulu dirender dua kali: di sini dan di
+            `.side-brand`). `variant="auto"` = swap lockup ↔ badge-mark menurut
+            LEBAR SLOT lewat container query, jadi elemen yang sama melayani
+            header mobile (lebar), kolom merek desktop (232px), dan rail ringkas
+            (64px → badge) tanpa duplikasi di call site. */}
+        {/* height 20 = nilai topbar SEBELUM perubahan ini → geometri header
+            ≤768px tetap identik (kriteria terima owner). */}
+        <Logo variant="auto" href="/" height={20} priority label="SolaMax, beranda" className="shell-brand" />
+        {/* Chip peran, badge kesegaran, tautan Akses, dan email DIHAPUS dari sini:
+            semuanya ber-`mobile-hide` (mati ≤768px) dan kini juga tertutup aturan
+            desktop `.topbar > :not(.shell-brand)` — terukur tak terlihat di 1440,
+            900, maupun 375px. Identitas hidup di `.drawer-foot`; "Akses" memang
+            sudah ada sebagai item sidebar "Kelola akses" (nol kehilangan akses).
+
+            KELUAR SENGAJA DIRENDER DUA KALI (di sini untuk ≤768px, dan di
+            `.drawer-foot` untuk ≥769px) — PENGECUALIAN yang didokumentasikan,
+            bukan pola umum. Menyatukannya menuntut restrukturisasi lintas-subtree
+            (<header> vs <nav>) yang lebih besar risikonya daripada manfaatnya.
+            Syarat yang dijaga & diverifikasi: server action IDENTIK ($ACTION_ID
+            sama), label identik "Keluar", TIDAK PERNAH terlihat bersamaan, yang
+            tersembunyi keluar dari layout DAN pohon aksesibilitas lewat
+            `display:none` (bukan visibility/opacity/off-screen), nol duplicate id.
+            Jangan merestrukturisasi layout hanya demi menghapus duplikasi ini
+            kecuali ditemukan bug atau masalah aksesibilitas nyata. */}
+        <div className="topbar-right">{signOutSlot}</div>
       </header>
 
-      <div className={`shell${collapsed ? " collapsed" : ""}`}>
-        {mobileOpen && (
-          <div className="scrim no-print" onClick={() => setMobileOpen(false)} aria-hidden="true" />
-        )}
-        <Sidebar
-          unitCode={sel.unit}
-          date={sel.navDate}
-          alertCount={alertCount}
-          signOutSlot={signOutSlot}
-          lastSyncUnit={lastSyncUnit}
-          collapsed={collapsed}
-          openGroups={openGroups}
-          mobileOpen={mobileOpen}
-          onToggleCollapse={toggleCollapse}
-          onToggleGroup={toggleGroup}
-          onCloseMobile={() => setMobileOpen(false)}
-          email={email}
-          roleLabel={roleLabel}
-          lastSync={lastSync}
-        />
-        <main className="main">{children}</main>
-      </div>
-    </>
+      {mobileOpen && (
+        <div className="scrim no-print" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+      )}
+      <Sidebar
+        unitCode={sel.unit}
+        date={sel.navDate}
+        alertCount={alertCount}
+        signOutSlot={signOutSlot}
+        lastSyncUnit={lastSyncUnit}
+        collapsed={collapsed}
+        openGroups={openGroups}
+        mobileOpen={mobileOpen}
+        onToggleCollapse={toggleCollapse}
+        onToggleGroup={toggleGroup}
+        onCloseMobile={() => setMobileOpen(false)}
+        email={email}
+        roleLabel={roleLabel}
+        lastSync={lastSync}
+      />
+      <main className="main">{children}</main>
+    </div>
   );
 }
