@@ -4,6 +4,7 @@ import { AnomalyFeed } from "@/components/AnomalyFeed";
 import { BoardExport } from "@/components/board/BoardExport";
 import { BoardFilters } from "@/components/board/BoardFilters";
 import { RankingTable } from "@/components/board/RankingTable";
+import { SectionBoundary } from "@/components/board/SectionBoundary";
 import { TrendChart } from "@/components/board/TrendChart";
 import { getAnomalies } from "@/lib/anomalies";
 import {
@@ -104,13 +105,28 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
       await mapLimit(units, 2, async (u) => [u.unit_id as number, await getDailyGlWindow(u.unit_id, r.from, r.to)] as const),
     );
 
-  const [dailySales, coverageRows, shiftPairs, anomalies, glRange] = await Promise.all([
+  /**
+   * TIGA TAHAP, bukan satu `Promise.all` berisi lima.
+   *
+   * Catatan atas rumusan "tunda evalPromise sampai badan utama selesai": itu
+   * SUDAH berlaku — `evalPromise` di bawah memang dibuat setelah blok ini
+   * di-await. Tumpang-tindih yang tersisa ada DI DALAM blok ini: `getAnomalies`
+   * (4 query serentak setelah dipecah, lihat anomalies.ts) berjalan bersamaan
+   * dengan `glWindow(range)` (4 query) plus tiga query tunggal ≈ 11 serentak
+   * terhadap pool 5. Karena `connectionTimeoutMillis` mengukur MENUNGGU SLOT dan
+   * slot ditahan selama query berjalan, konsumen berat yang tumpang-tindih
+   * membuat pemohon berikutnya menunggu >10 dtk lalu dilempar.
+   *
+   * Tahap 1 = tiga query multi-unit yang murah (aman serentak). Tahap 2 & 3 =
+   * dua konsumen berat, dijalankan bergantian. Puncak turun ke ≈4.
+   */
+  const [dailySales, coverageRows, shiftPairs] = await Promise.all([
     getDailySalesByProduct(units.map((u) => u.unit_id), spanFrom, range.to),
     getUnitCoverage(units.map((u) => u.unit_id)),
     mapLimit(units, 2, async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, today)] as const),
-    getAnomalies(units),
-    glWindow(range),
   ]);
+  const anomalies = await getAnomalies(units);
+  const glRange = await glWindow(range);
 
   const core = buildBoardCore({
     units,
@@ -174,9 +190,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
             ))}
           </div>
         </div>
-        <Suspense fallback={<div className="fs15 t-tertiary">Menyiapkan ekspor…</div>}>
-          <ExportSection core={core} evalPromise={evalPromise} params={params} today={today} />
-        </Suspense>
+        <SectionBoundary judul="Ekspor">
+          <Suspense fallback={<div className="fs15 t-tertiary">Menyiapkan ekspor…</div>}>
+            <ExportSection core={core} evalPromise={evalPromise} params={params} today={today} />
+          </Suspense>
+        </SectionBoundary>
       </div>
 
       {/* 4 kartu KPI (keluarga TETAP) + evaluasi streaming */}
@@ -205,9 +223,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
                 ))}
               </div>
             )}
-            <Suspense fallback={<div className="kpi-eval mt3 fs15 t-tertiary">menghitung evaluasi…</div>}>
-              <KpiEvalLines evalPromise={evalPromise} k={c.key} />
-            </Suspense>
+            <SectionBoundary judul="Evaluasi KPI">
+              <Suspense fallback={<div className="kpi-eval mt3 fs15 t-tertiary">menghitung evaluasi…</div>}>
+                <KpiEvalLines evalPromise={evalPromise} k={c.key} />
+              </Suspense>
+            </SectionBoundary>
           </div>
         ))}
       </div>
@@ -221,9 +241,11 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
           <div className="text-h5 t-brand">Evaluasi per cabang</div>
           <span className="fs16 t-tertiary">nilai periode aktif · MoM · YoY · YTD</span>
         </div>
-        <Suspense fallback={<EvalSkeleton />}>
-          <EvalTable evalPromise={evalPromise} />
-        </Suspense>
+        <SectionBoundary judul="Evaluasi per cabang">
+          <Suspense fallback={<EvalSkeleton />}>
+            <EvalTable evalPromise={evalPromise} />
+          </Suspense>
+        </SectionBoundary>
       </div>
 
       {/* Bauran NPSO/PSO */}
