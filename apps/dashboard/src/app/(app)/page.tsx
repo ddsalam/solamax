@@ -26,7 +26,8 @@ export default async function HubPage() {
     }
   }
 
-  // 6 kartu pintasan, dikelompokkan sama dengan grup sidebar.
+  // 8 kartu pintasan — cermin PENUH grup & item sidebar (Monitoring 2 · Laporan
+  // 3 · Direksi & admin 3), supaya Beranda tidak diam-diam menyembunyikan modul.
   //
   // `ctx` = KONTEKS TUJUAN, bukan janji kendali: hanya kartu yang URL-nya
   // benar-benar membawa unit/tanggal yang menyebut unit/tanggal, dan bunyinya
@@ -71,6 +72,13 @@ export default async function HubPage() {
           desc: "Alarm indikator, omset & gain/loss per produk, target, ketahanan stok.",
           ctx: `${unitCtx} · ${dateShort(date)}`,
           href: u ? `/unit/${u}/laporan/${date}` : "#",
+        },
+        {
+          tag: "Input",
+          title: "Usulan Penebusan SO",
+          desc: "Sisa stok & DO awal hari, ketahanan, lalu usulan penebusan ke Keuangan.",
+          ctx: `${unitCtx} · ${dateShort(date)}`,
+          href: u ? `/unit/${u}/usulan/${date}` : "#",
         },
       ],
     },
