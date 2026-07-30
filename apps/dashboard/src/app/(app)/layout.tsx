@@ -76,7 +76,10 @@ export default async function AppShellLayout({
       >
         {children}
       </AppShell>
-      <AutoRefresh seconds={60} />
+      {/* Kadensi ditentukan komponen dari pathname — realtime 60 dtk, analisa
+          300 dtk, dan berhenti total saat tab tersembunyi. Lihat
+          lib/refresh-cadence.ts untuk angka produksi yang mendasarinya. */}
+      <AutoRefresh />
     </>
   );
 }
