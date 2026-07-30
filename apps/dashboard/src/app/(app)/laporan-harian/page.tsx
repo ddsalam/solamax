@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { AgoLive } from "@/components/AgoLive";
 import { HarianFilters } from "@/components/harian/HarianFilters";
 import { GlBars, ShareBars, TrendSection } from "@/components/harian/HarianCharts";
 import {
@@ -284,9 +285,17 @@ function HarianHead({ model, scopeLabel }: { model: HarianModel; scopeLabel: str
         <h1 className="text-h3 t-brand mt2">Laporan Harian Total — {dateLong(model.date)}</h1>
         <div className="fs15 t-tertiary mt2">
           {/* MIN lintas unit: menyebut unit TERBURUK, bukan yang paling segar. */}
-          {f.worstSyncAt
-            ? `Sinkron terlama: ${f.worstSyncUnit?.name ?? "—"}, ${ago(f.worstSyncAt)}`
-            : "Ada unit yang belum pernah tersinkron"}
+          {/* MENUA SENDIRI. Hanya baris DI LAYAR — `freshnessLabel` di atas
+              sengaja tetap beku karena ia masuk ke meta PDF, dan PDF adalah
+              snapshot: teks yang ikut menua di dalam berkas cetak justru salah. */}
+          {f.worstSyncAt ? (
+            <>
+              Sinkron terlama: {f.worstSyncUnit?.name ?? "—"},{" "}
+              <AgoLive iso={f.worstSyncAt} awal={ago(f.worstSyncAt)} />
+            </>
+          ) : (
+            "Ada unit yang belum pernah tersinkron"
+          )}
         </div>
       </div>
       <HarianExport model={model} meta={meta} />

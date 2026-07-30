@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AgoLive } from "@/components/AgoLive";
 import { ago, dateShort } from "@/lib/format";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
@@ -124,7 +125,16 @@ export default async function HubPage() {
 
       <div className="fs16 t-secondary mt5">
         <span className={`dot ${lastSync ? "success" : "muted"}`} />{" "}
-        {lastSync ? `Data terakhir masuk ${ago(lastSync)}.` : "Menunggu data tersinkron."}
+        {/* MENUA SENDIRI di klien. Beranda = kelas "analisa" (kadensi 300 dtk sejak
+            PR #164), jadi tanpa ticker teks ini basi sampai 5 menit. `awal`
+            dihitung DI SINI (server component) → aman-hidrasi tanpa plumbing. */}
+        {lastSync ? (
+          <>
+            Data terakhir masuk <AgoLive iso={lastSync} awal={ago(lastSync)} />.
+          </>
+        ) : (
+          "Menunggu data tersinkron."
+        )}
       </div>
 
       {groups.map((g) => (
