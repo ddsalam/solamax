@@ -4,6 +4,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { SignOutButton } from "@/components/SignOutButton";
 import { getAnomalies } from "@/lib/anomalies";
 import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { ago } from "@/lib/format";
 import { worstSyncAt, worstSyncUnitId } from "@/lib/freshness";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
@@ -68,6 +69,11 @@ export default async function AppShellLayout({
         email={scope.email}
         lastSync={lastSync}
         lastSyncUnit={lastSyncUnit}
+        // String awal DIHITUNG DI SERVER dan dikirim sebagai data. AppShell &
+        // Sidebar adalah komponen KLIEN: kalau mereka memanggil `ago()` sendiri di
+        // render awal, pass SSR memakai jam server dan pass hidrasi memakai jam
+        // klien → teks bisa berbeda di batas pembulatan menit. Lihat AgoLive.
+        lastSyncAwal={lastSync ? ago(lastSync) : null}
         alertCount={alertCount}
         units={scope.units.map((u) => ({ code: u.code, label: unitLabel(u.code, u.name) }))}
         unitCode={unitCode}

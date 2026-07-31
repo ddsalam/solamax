@@ -55,6 +55,7 @@ export function AppShell({
   email,
   lastSync,
   lastSyncUnit,
+  lastSyncAwal,
   alertCount,
   units,
   unitCode,
@@ -67,6 +68,10 @@ export function AppShell({
   lastSync: string | null;
   /** Nama unit dengan sinkron TERLAMA (nilai lastSync = MIN lintas scope). */
   lastSyncUnit: string | null;
+  /** Teks "N mnt lalu" yang DIHITUNG DI SERVER — render awal yang aman-hidrasi
+   *  untuk AgoLive. Komponen ini klien; menghitungnya sendiri berarti jam server
+   *  (SSR) vs jam klien (hidrasi). Lihat components/AgoLive.tsx. */
+  lastSyncAwal: string | null;
   alertCount: number;
   units: UnitOpt[];
   unitCode?: string;
@@ -191,6 +196,7 @@ export function AppShell({
         alertCount={alertCount}
         signOutSlot={signOutSlot}
         lastSyncUnit={lastSyncUnit}
+        lastSyncAwal={lastSyncAwal}
         collapsed={collapsed}
         openGroups={openGroups}
         mobileOpen={mobileOpen}
