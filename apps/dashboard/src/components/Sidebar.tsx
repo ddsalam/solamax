@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AgoLive } from "@/components/AgoLive";
 import { NavIcon, type IconName } from "@/components/NavIcon";
-import { ago } from "@/lib/format";
 
 /**
  * Navigasi tunggal: rail kiri ber-grup yang bisa diringkas (desktop) dan
@@ -104,6 +104,7 @@ export function Sidebar({
   roleLabel,
   lastSync,
   lastSyncUnit,
+  lastSyncAwal,
   signOutSlot,
 }: {
   unitCode?: string;
@@ -120,6 +121,8 @@ export function Sidebar({
   lastSync: string | null;
   /** Unit dengan sinkron TERLAMA — disebut namanya, lihat komentar di bawah. */
   lastSyncUnit: string | null;
+  /** Teks "N mnt lalu" hasil hitung SERVER — render awal aman-hidrasi AgoLive. */
+  lastSyncAwal: string | null;
   /** Tombol Keluar (server action). Hanya tampil ≥769px — di mobile ia tetap
    *  di topbar, sehingga perilaku ≤768px tak berubah sama sekali. */
   signOutSlot: React.ReactNode;
@@ -217,9 +220,16 @@ export function Sidebar({
             tercatat sejak insiden Bakau. Bunyinya disamakan dengan Laporan
             Harian: sebut unitnya. */}
         <span className="fs15 t-tertiary side-label">
-          {lastSync
-            ? `Sinkron terlama: ${lastSyncUnit ?? "—"}, ${ago(lastSync)}`
-            : "Ada unit yang belum pernah tersinkron"}
+          {lastSync && lastSyncAwal ? (
+            <>
+              Sinkron terlama: {lastSyncUnit ?? "—"},{" "}
+              {/* MENUA SENDIRI: tanpa ini teks membeku di antara refresh server —
+                  dan sejak kadensi analisa 300 dtk (PR #164) jeda itu 5 menit. */}
+              <AgoLive iso={lastSync} awal={lastSyncAwal} />
+            </>
+          ) : (
+            "Ada unit yang belum pernah tersinkron"
+          )}
         </span>
         <div className="foot-actions">{signOutSlot}</div>
       </div>
