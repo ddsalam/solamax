@@ -376,6 +376,16 @@ body { background: var(--neutral-50); }
 .tbl-scroll .cols-saldo { min-width: 460px; }  /* "Rp 17.523.383.796" nowrap */
 .tbl-scroll .cols-rank { min-width: 920px; }   /* .rank-omzet nowrap + .rank-name 2 baris */
 .tbl-scroll .cols-net { min-width: 780px; }    /* .rank-input flex (dot + teks) */
+/* Lantai berikut menutup PUTUS DI TENGAH KATA — efek samping lantai track nol
+   yang tak terlihat oleh E1 (daftar track) maupun E2 (luapan): teks tidak
+   terpotong, ia membungkus di tengah kata ("Penerima|an", "655.|328").
+   Nilai = kata terpanjang per kolom ÷ porsi fr-nya + gap + padding, diukur pada
+   data hidup; angka TIDAK BOLEH pecah sama sekali, teks boleh pecah di "-" atau
+   "/" (peluang putus alami). */
+.tbl-scroll .cols-suspect, .tbl-scroll .cols-anom { min-width: 420px; }
+.tbl-scroll .cols-target { min-width: 700px; }
+.tbl-scroll .cols-usulan { min-width: 780px; }
+.tbl-scroll .cols-usulan-list { min-width: 590px; }
 /* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
    kelihatan; tanpa ini ada target keyboard yang tak terlihat sedang difokus. */
 .do-warn { border-radius: var(--radius-sm); }
@@ -1052,8 +1062,13 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
    konstan (≥ min-content terlebar yang pernah terukur: Produk 72px, TOTAL 96/63px)
    sehingga tetap data-independent SEKALIGUS terbaca; melebihi `.harian-min*`
    berarti kartu menggeser mendatar — memang perilaku yang dirancang. */
-.cols-harian { grid-template-columns: minmax(84px, 1.5fr) repeat(var(--ncols, 7), minmax(74px, 1fr)) minmax(84px, 1.15fr); }
-.cols-harian2 { grid-template-columns: minmax(84px, 1.5fr) repeat(var(--ncols, 14), minmax(62px, 1fr)) minmax(96px, 1.1fr) minmax(64px, 0.9fr); }
+/* Lantai dinaikkan lagi setelah sapuan kata-terputus: nama unit ("Adisucipto"
+   76px) dan angka ("138.434" 63px) tak muat di lantai lama 74/62px, dan sel
+   sticky Produk kehilangan 10px lagi ke padding-nya sendiri ("Pertamina" 73px
+   dalam 84−10). Kedua tabel ini memang sudah menggeser mendatar, jadi menaikkan
+   lantai hanya menambah panjang geseran — tidak menyembunyikan apa pun. */
+.cols-harian { grid-template-columns: minmax(116px, 1.5fr) repeat(var(--ncols, 7), minmax(84px, 1fr)) minmax(106px, 1.15fr); }
+.cols-harian2 { grid-template-columns: minmax(116px, 1.5fr) repeat(var(--ncols, 14), minmax(70px, 1fr)) minmax(96px, 1.1fr) minmax(70px, 0.9fr); }
 .harian-scroll { overflow-x: auto; }
 .harian-min > * { min-width: 720px; }
 .harian-min-wide > * { min-width: 1040px; }

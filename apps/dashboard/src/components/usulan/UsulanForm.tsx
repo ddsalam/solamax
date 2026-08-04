@@ -121,7 +121,7 @@ export function UsulanForm({
   };
 
   return (
-    <div className="card tbl-card mt4">
+    <div className="card tbl-card mt4 tbl-scroll">
       <div className="grid-head cols-usulan">
         <span>Produk</span>
         <span className="right">Sisa Stock awal (KL)</span>

@@ -425,14 +425,21 @@ export default async function LaporanPage({
                 workbook 2026
               </span>
             </div>
-            <div className="card tbl-card mt4">
+            <div className="card tbl-card mt4 tbl-scroll">
               <div className="grid-head cols-target">
                 <span>Produk</span>
                 <span className="right">Penjualan Kumulatif</span>
                 <span className="right">Rata-rata/hari</span>
                 <span className="right">Penerimaan</span>
                 <span className="right">Alokasi/bln</span>
-                <span className="right">(Kekurangan)/Kelebihan</span>
+                {/* `<wbr>` = peluang putus di garis miring. Tanpa ini token 22
+                    karakter ini memaksa lantai lebar tabel ke ~1058px (terukur)
+                    hanya demi satu kata kepala — dan tetap putus di tengah kata
+                    ("(Kekurangan)/K|elebihan") saat kartunya lebih sempit. */}
+                <span className="right">
+                  (Kekurangan)/<wbr />
+                  Kelebihan
+                </span>
               </div>
               {target.rows.map((p) => (
                 <div key={p.ckdbbm} className="grid-row cols-target">
@@ -559,7 +566,7 @@ export default async function LaporanPage({
               </div>
             </div>
             {DOMAIN.do && (
-              <div className="card tbl-card">
+              <div className="card tbl-card tbl-scroll">
                 <div className="lap-cardhead">
                   <div className="text-h6 t-brand">Alokasi Penerimaan Tidak Sesuai</div>
                 </div>
