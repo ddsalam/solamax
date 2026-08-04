@@ -287,30 +287,41 @@ body { background: var(--neutral-50); }
 .grid-row.clickable:hover { background: var(--neutral-50); }
 .grid-row.expanded { background: var(--neutral-50); }
 .grid-total { background: var(--neutral-50); padding-top: 14px; padding-bottom: 14px; }
+/* Tiap .grid-head/.grid-row/.grid-total adalah grid TERPISAH — tidak ada tabel
+   induk yang menyatukan kolomnya. `Nfr` = `minmax(auto, Nfr)`, jadi min-content
+   sebuah sel bisa melebarkan track HANYA di barisnya sendiri → kolom bergeser
+   mengikuti data (header ≠ baris ≠ TOTAL). Semua track pecahan di bawah memakai
+   `minmax(0, Nfr)` supaya lebarnya rasio murni dan identik di setiap baris.
+   Konsekuensinya minimum-auto tak lagi menahan luapan, maka penahannya dipindah
+   ke `overflow-wrap` di sel: teks memutus kata sebagai upaya terakhir, bukan
+   membobol kartu (.tbl-card overflow:hidden = angka terpotong senyap). */
+.grid-head > *, .grid-row > *, .grid-total > * { min-width: 0; overflow-wrap: break-word; }
 /* kolom per tabel (persis spec) */
-.cols-rank { grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 0.9fr 0.9fr 1.3fr 32px; }
+.cols-rank { grid-template-columns: 56px minmax(0, 1.7fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr) 32px; }
 /* Produk · Sales · Gain/Losses · Tera · Omzet (5 kolom; %Mix dihapus). */
-.cols-sales { grid-template-columns: 1.6fr 1.1fr 1.2fr 1fr 1.4fr; }
-.cols-glkum { grid-template-columns: 1.4fr 1fr 0.8fr; padding-top: 10px; padding-bottom: 10px; }
-.cols-target { grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; }
-.cols-do { grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-do.lite { grid-template-columns: 1.3fr 1fr; }
-/* Segmen Sisa DO (berjalan vs macet >30 hr) — sub-baris di bawah angka Sisa. */
-.do-seg { display: block; white-space: nowrap; }
-.cols-anom { grid-template-columns: 1.4fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-suspect { grid-template-columns: 1.7fr 1fr 1.1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-stock { grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; }
-.cols-stock.lite { grid-template-columns: 1.3fr 1fr 0.9fr; }
-.cols-harga { grid-template-columns: 1.3fr 1fr 1fr 1fr 0.7fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-harga.lite { grid-template-columns: 1.3fr 1fr; }
-.cols-keluar { grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; }
-.cols-net { grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
+.cols-sales { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.4fr); }
+.cols-glkum { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr); padding-top: 10px; padding-bottom: 10px; }
+.cols-target { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); }
+.cols-do { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-do.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+/* Segmen Sisa DO (berjalan vs macet >30 hr) — sub-baris di bawah angka Sisa.
+   TIDAK boleh `nowrap`: sebagai isi sel ia ikut menentukan min-content track,
+   sehingga baris ber-peringatan dulu menghitung kolomnya sendiri. */
+.do-seg { display: block; white-space: normal; }
+.cols-anom { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-suspect { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-stock { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.1fr); }
+.cols-stock.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr); }
+.cols-harga { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-harga.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.cols-keluar { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); }
+.cols-net { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
 /* Saldo Piutang/Hutang — label · nominal (2 kolom). */
-.cols-saldo { grid-template-columns: 1.7fr 1fr; padding-top: 12px; padding-bottom: 12px; }
+.cols-saldo { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); padding-top: 12px; padding-bottom: 12px; }
 /* Usulan SO — Produk · Sisa Stock awal · Ketahanan · Sisa DO awal · 3 input. */
-.cols-usulan { grid-template-columns: 1.2fr 1fr 0.85fr 1fr 1.05fr 1.15fr 1.1fr; align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.cols-usulan { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.15fr) minmax(0, 1.1fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
 /* Daftar usulan — Tanggal · Penerimaan · Permintaan · Usulan · Status · Tersimpan. */
-.cols-usulan-list { grid-template-columns: 1fr 1.2fr 1.2fr 1.2fr 0.9fr 1.3fr; }
+.cols-usulan-list { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.3fr); }
 
 /* Input numerik dalam sel grid Usulan (no-print: dicetak sbg teks angka). */
 .usulan-incell { display: flex; justify-content: flex-end; }
@@ -571,7 +582,7 @@ body { background: var(--neutral-50); }
 /* Board — tabel evaluasi per cabang */
 .eval-scroll { overflow-x: auto; }
 .eval-labels { padding: var(--space-3) var(--space-6) 0; }
-.cols-eval { grid-template-columns: 1.2fr 1fr 1.2fr 1.2fr 1fr 1.2fr; min-width: 720px; }
+.cols-eval { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr); min-width: 720px; }
 .eval-unit-head { display: flex; align-items: baseline; gap: 10px; padding: var(--space-3) var(--space-6) var(--space-2); background: var(--neutral-50, var(--neutral-100)); border-top: 1px solid var(--color-border-hairline); min-width: 720px; }
 
 /* Board — tren mengikuti filter */
@@ -964,8 +975,16 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 /* ===== Laporan Harian Total (grup direksi) ===== */
 /* Matriks produk × unit: jumlah kolom unit MENGIKUTI scope caller (pengawas
    1-unit → 1 kolom), lewat --ncols yang di-set di server. */
-.cols-harian { grid-template-columns: 1.5fr repeat(var(--ncols, 7), minmax(74px, 1fr)) 1.15fr; }
-.cols-harian2 { grid-template-columns: 1.5fr repeat(var(--ncols, 14), minmax(62px, 1fr)) 1.1fr 0.9fr; }
+/* Syaratnya bukan "lantai nol" melainkan "lantai yang TIDAK bergantung isi sel" —
+   itulah yang membuat tiap .grid-* menghitung track identik. Di dua tabel ini
+   `minmax(0, …)` justru salah: track unit punya lantai px, jadi seluruh sisa
+   lebar habis di sana dan track pecahan runtuh (terukur: Produk 11px, TOTAL 8px
+   & 7px) — kolom sticky Produk hilang. Karena itu Produk/TOTAL memakai lantai px
+   konstan (≥ min-content terlebar yang pernah terukur: Produk 72px, TOTAL 96/63px)
+   sehingga tetap data-independent SEKALIGUS terbaca; melebihi `.harian-min*`
+   berarti kartu menggeser mendatar — memang perilaku yang dirancang. */
+.cols-harian { grid-template-columns: minmax(84px, 1.5fr) repeat(var(--ncols, 7), minmax(74px, 1fr)) minmax(84px, 1.15fr); }
+.cols-harian2 { grid-template-columns: minmax(84px, 1.5fr) repeat(var(--ncols, 14), minmax(62px, 1fr)) minmax(96px, 1.1fr) minmax(64px, 0.9fr); }
 .harian-scroll { overflow-x: auto; }
 .harian-min > * { min-width: 720px; }
 .harian-min-wide > * { min-width: 1040px; }
