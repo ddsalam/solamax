@@ -28,7 +28,6 @@ import {
   DO_STALE_DAYS,
   getSalesByProduct,
   getShiftInfo,
-  getSaldoPelanggan,
   getPelangganForDate,
   getEdcForDate,
   getDepositForDate,
@@ -36,6 +35,7 @@ import {
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
+import { getSaldoPelangganCached } from "@/lib/saldo-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +88,9 @@ export default async function LaporanPage({
     getShiftInfo(unit.unit_id, date),
     getCorrections(unit.unit_id, date),
     getCashForDate(unit.unit_id, date),
-    getSaldoPelanggan(unit.unit_id, date),
+    // Query TERBERAT halaman ini (terukur 104 dtk di KB) — lewat cache; lihat
+    // saldo-cache.ts. Nilai identik, hanya kapan ia menyentuh DB yang berubah.
+    getSaldoPelangganCached(unit.unit_id, date, today),
     getPelangganForDate(unit.unit_id, date),
     getEdcForDate(unit.unit_id, date),
     getDepositForDate(unit.unit_id, date),
