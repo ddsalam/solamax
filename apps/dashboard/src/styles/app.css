@@ -322,6 +322,29 @@ body { background: var(--neutral-50); }
    Token global TIDAK disentuh — override ini terbatas pada sub-baris DO. */
 .do-note .text-caption { font-weight: 400; }
 .do-sisa-warn { font-weight: 600; }
+
+/* Layar sempit: cols-do tetap 5 kolom sampai serapat apa pun. Di 375px tiap
+   kolom angka tinggal 46px — tak ada yang terpotong (lantai track nol +
+   break-word), tetapi "Penebusan DO" pecah 3 baris dan angka ribuan ikut pecah
+   baris: terbaca, tidak terpakai.
+
+   SENGAJA tanpa media query. Lebar kartu ini TIDAK ditentukan viewport melainkan
+   sidebar + slot `.lap-two`: terukur 487px di 1440, 306px di 1024, 503px di 768,
+   342px di 375 — jadi ambang berbasis viewport pasti salah (breakpoint 700px
+   sempat meleset di 768px yang kartunya justru cuma 503px). Lantai lebar tabel
+   yang menentukan sendiri kapan perlu digeser: ≥480px tabel tetap serapat
+   desktop hari ini, di bawah itu KARTUNYA yang digeser mendatar — pola sama
+   dengan `.harian-scroll`.
+
+   `overflow-x: auto` aman di sini: kartu DO hanya berisi span teks — tak ada
+   dropdown/popover yang bisa terkliping (beda dari kartu ber-filter), dan
+   `overflow-y` tetap `hidden` warisan `.tbl-card`. Kepala & kaki kartu tidak
+   ikut lantai lebar supaya tetap terbaca tanpa menggeser; varian `.lite`
+   (2 kolom) muat di mana pun, jadi dikecualikan. */
+.do-scroll { overflow-x: auto; }
+.do-scroll .grid-head.cols-do:not(.lite),
+.do-scroll .grid-row.cols-do:not(.lite),
+.do-scroll .grid-total.cols-do:not(.lite) { min-width: 480px; }
 /* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
    kelihatan; tanpa ini ada target keyboard yang tak terlihat sedang difokus. */
 .do-warn { border-radius: var(--radius-sm); }
