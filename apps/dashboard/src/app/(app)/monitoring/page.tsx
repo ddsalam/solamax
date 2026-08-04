@@ -48,7 +48,7 @@ export default async function JaringanPage() {
 
   return (
     <div>
-      <div className="card tbl-card mt6">
+      <div className="card tbl-card mt6 tbl-scroll">
         <div className="grid-head cols-net">
           <span>SPBU</span>
           <span>Sinkron</span>

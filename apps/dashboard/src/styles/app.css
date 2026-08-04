@@ -345,6 +345,19 @@ body { background: var(--neutral-50); }
 .do-scroll .grid-head.cols-do:not(.lite),
 .do-scroll .grid-row.cols-do:not(.lite),
 .do-scroll .grid-total.cols-do:not(.lite) { min-width: 480px; }
+
+/* Pola yang sama untuk tabel yang punya sel SENGAJA `nowrap` (rupiah) atau sel
+   flex yang tak boleh dipampatkan. Setelah lantai track jadi nol, sel-sel itulah
+   satu-satunya yang masih bisa meluap — `overflow-wrap` tak menolong karena
+   `white-space: nowrap` memang melarang membungkus, dan memecah "Rp 502.328.134"
+   jadi dua baris bukan perbaikan untuk pembaca angka. Jadi tabelnya yang diberi
+   lantai lebar; kartunya digeser. Lantai = lebar saat sel terlebar berhenti
+   meluap, diukur pada data hidup (7 unit). */
+.tbl-scroll { overflow-x: auto; }
+.tbl-scroll .cols-sales { min-width: 720px; }  /* Omzet "Rp 502.328.134" nowrap */
+.tbl-scroll .cols-saldo { min-width: 460px; }  /* "Rp 17.523.383.796" nowrap */
+.tbl-scroll .cols-rank { min-width: 920px; }   /* .rank-omzet nowrap + .rank-name 2 baris */
+.tbl-scroll .cols-net { min-width: 780px; }    /* .rank-input flex (dot + teks) */
 /* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
    kelihatan; tanpa ini ada target keyboard yang tak terlihat sedang difokus. */
 .do-warn { border-radius: var(--radius-sm); }

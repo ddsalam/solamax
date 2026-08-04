@@ -281,7 +281,7 @@ export default async function LaporanPage({
             </span>
           )}
         </div>
-        <div className="card tbl-card mt4">
+        <div className="card tbl-card mt4 tbl-scroll">
           <div className="grid-head cols-sales">
             <span>Produk</span>
             <span className="right">Sales (L)</span>
@@ -337,7 +337,7 @@ export default async function LaporanPage({
           </div>
 
           {hasSaldo && (
-            <div className="card tbl-card mt4">
+            <div className="card tbl-card mt4 tbl-scroll">
               {saldoRows.map((s) => (
                 <div key={s.label} className="grid-row cols-saldo">
                   <span className="text-caption w600">{s.label}</span>

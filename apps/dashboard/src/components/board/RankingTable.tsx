@@ -41,7 +41,7 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
   const [open, setOpen] = useState<string | null>(null);
 
   return (
-    <div className="card tbl-card mt5">
+    <div className="card tbl-card mt5 tbl-scroll">
       <div className="grid-head cols-rank">
         <span>#</span>
         <span>SPBU</span>
