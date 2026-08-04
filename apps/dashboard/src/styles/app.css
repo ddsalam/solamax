@@ -287,30 +287,120 @@ body { background: var(--neutral-50); }
 .grid-row.clickable:hover { background: var(--neutral-50); }
 .grid-row.expanded { background: var(--neutral-50); }
 .grid-total { background: var(--neutral-50); padding-top: 14px; padding-bottom: 14px; }
+/* Tiap .grid-head/.grid-row/.grid-total adalah grid TERPISAH — tidak ada tabel
+   induk yang menyatukan kolomnya. `Nfr` = `minmax(auto, Nfr)`, jadi min-content
+   sebuah sel bisa melebarkan track HANYA di barisnya sendiri → kolom bergeser
+   mengikuti data (header ≠ baris ≠ TOTAL). Semua track pecahan di bawah memakai
+   `minmax(0, Nfr)` supaya lebarnya rasio murni dan identik di setiap baris.
+   Konsekuensinya minimum-auto tak lagi menahan luapan, maka penahannya dipindah
+   ke `overflow-wrap` di sel: teks memutus kata sebagai upaya terakhir, bukan
+   membobol kartu (.tbl-card overflow:hidden = angka terpotong senyap). */
+.grid-head > *, .grid-row > *, .grid-total > * { min-width: 0; overflow-wrap: break-word; }
 /* kolom per tabel (persis spec) */
-.cols-rank { grid-template-columns: 56px 1.7fr 1.1fr 1fr 0.9fr 0.9fr 0.9fr 1.3fr 32px; }
+.cols-rank { grid-template-columns: 56px minmax(0, 1.7fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr) 32px; }
 /* Produk · Sales · Gain/Losses · Tera · Omzet (5 kolom; %Mix dihapus). */
-.cols-sales { grid-template-columns: 1.6fr 1.1fr 1.2fr 1fr 1.4fr; }
-.cols-glkum { grid-template-columns: 1.4fr 1fr 0.8fr; padding-top: 10px; padding-bottom: 10px; }
-.cols-target { grid-template-columns: 1.3fr 1.1fr 1fr 1fr 1fr 1.2fr; }
-.cols-do { grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-do.lite { grid-template-columns: 1.3fr 1fr; }
-/* Segmen Sisa DO (berjalan vs macet >30 hr) — sub-baris di bawah angka Sisa. */
-.do-seg { display: block; white-space: nowrap; }
-.cols-anom { grid-template-columns: 1.4fr 1fr 1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-suspect { grid-template-columns: 1.7fr 1fr 1.1fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-stock { grid-template-columns: 1.3fr 1fr 0.9fr 1fr 1.1fr 1.1fr 1.1fr; }
-.cols-stock.lite { grid-template-columns: 1.3fr 1fr 0.9fr; }
-.cols-harga { grid-template-columns: 1.3fr 1fr 1fr 1fr 0.7fr; padding-top: 11px; padding-bottom: 11px; }
-.cols-harga.lite { grid-template-columns: 1.3fr 1fr; }
-.cols-keluar { grid-template-columns: 1.8fr 1fr 1fr 1fr 1.1fr; }
-.cols-net { grid-template-columns: 1.6fr 1fr 1fr 1.2fr 1.2fr 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
+.cols-sales { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.4fr); }
+.cols-glkum { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr); padding-top: 10px; padding-bottom: 10px; }
+.cols-target { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); }
+.cols-do { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-do.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+/* Segmen Sisa DO (berjalan vs macet >30 hr). Sekarang tinggal DI LUAR sel, pada
+   baris grid `1 / -1` (.do-note), jadi ia tidak lagi ikut menentukan lebar kolom
+   mana pun. TIDAK boleh `nowrap`: selebar apa pun tabelnya teks harus boleh
+   membungkus, sebab lantai track kini nol. */
+.do-seg { display: block; white-space: normal; }
+.do-note {
+  grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-end;
+  gap: 2px; margin-top: 5px; text-align: right;
+}
+/* Hierarki datum-vs-catatan kaki. `--text-caption-size` = 16px dengan weight 500,
+   jadi catatan kaki tadinya justru LEBIH tebal daripada angka yang ia terangkan
+   (16px/400) dan sewarna — satu blok oranye tanpa hierarki. Menipiskan/memudarkan
+   caption bukan pilihan: lantai audiens direksi = ≥16px dan ≥4.5:1, sedangkan
+   --color-warning #B45309 sudah pas 4.7:1. Maka hierarki dibalik dari sisi datum:
+   caption turun ke weight normal, angkanya yang dinaikkan (lihat .do-sisa-warn).
+   Token global TIDAK disentuh — override ini terbatas pada sub-baris DO. */
+.do-note .text-caption { font-weight: 400; }
+.do-sisa-warn { font-weight: 600; }
+
+/* Layar sempit: cols-do tetap 5 kolom sampai serapat apa pun. Di 375px tiap
+   kolom angka tinggal 46px — tak ada yang terpotong (lantai track nol +
+   break-word), tetapi "Penebusan DO" pecah 3 baris dan angka ribuan ikut pecah
+   baris: terbaca, tidak terpakai.
+
+   SENGAJA tanpa media query. Lebar kartu ini TIDAK ditentukan viewport melainkan
+   sidebar + slot `.lap-two`: terukur 487px di 1440, 306px di 1024, 503px di 768,
+   342px di 375 — jadi ambang berbasis viewport pasti salah (breakpoint 700px
+   sempat meleset di 768px yang kartunya justru cuma 503px). Lantai lebar tabel
+   yang menentukan sendiri kapan perlu digeser: ≥480px tabel tetap serapat
+   desktop hari ini, di bawah itu KARTUNYA yang digeser mendatar — pola sama
+   dengan `.harian-scroll`.
+
+   `overflow-x: auto` aman di sini: kartu DO hanya berisi span teks — tak ada
+   dropdown/popover yang bisa terkliping (beda dari kartu ber-filter), dan
+   `overflow-y` tetap `hidden` warisan `.tbl-card`. Kepala & kaki kartu tidak
+   ikut lantai lebar supaya tetap terbaca tanpa menggeser; varian `.lite`
+   (2 kolom) muat di mana pun, jadi dikecualikan. */
+/* Lantai 560px = lebar terkecil yang membuat kata terpanjang di kepala tabel muat
+   utuh. Terukur: "Penerimaan" butuh 85px sedangkan trackganya cuma 74px, jadi
+   `overflow-wrap` memutusnya di tengah kata ("Penerima/an", "Penebusa/n DO") —
+   tidak terpotong, tetapi tidak layak dibaca. Kolom angka karena itu wajib ≥85px:
+   85 × 5,3fr + 4 gap + padding ≈ 546 → dipakai 552 (560 menyisakan geser 1px
+   karena slot `.lap-two` rata terukur 559px).
+   Baris `.lap-two` ini dibuat rata (1fr 1fr, lihat .lap-two-even) supaya di 1440
+   kartu DO dapat 560px dan TIDAK perlu digeser sama sekali di desktop. */
+.do-scroll { overflow-x: auto; }
+.do-scroll .grid-head.cols-do:not(.lite),
+.do-scroll .grid-row.cols-do:not(.lite),
+.do-scroll .grid-total.cols-do:not(.lite) { min-width: 552px; }
+/* Default `.lap-two` (1fr 1.3fr) menyisakan 487px untuk kartu DO di 1440 — di
+   bawah lantai di atas. Khusus baris DO ↔ Alokasi dibuat rata; panel Alokasi
+   turun 633→560px dan tetap muat (terverifikasi: nol sel meluap). */
+/* Spesifisitas ganda disengaja: `.lap-two` didefinisikan JAUH di bawah blok ini,
+   jadi dengan spesifisitas sama ia yang menang. WAJIB dibatasi ≥901px — tanpa
+   itu ia juga mengalahkan aturan runtuh `@media (max-width:900px)` dan dua kartu
+   tetap berdampingan di ponsel (terukur: kartu 162px di 375px). */
+@media (min-width: 901px) {
+  .lap-two.lap-two-even { grid-template-columns: 1fr 1fr; }
+}
+
+/* Pola yang sama untuk tabel yang punya sel SENGAJA `nowrap` (rupiah) atau sel
+   flex yang tak boleh dipampatkan. Setelah lantai track jadi nol, sel-sel itulah
+   satu-satunya yang masih bisa meluap — `overflow-wrap` tak menolong karena
+   `white-space: nowrap` memang melarang membungkus, dan memecah "Rp 502.328.134"
+   jadi dua baris bukan perbaikan untuk pembaca angka. Jadi tabelnya yang diberi
+   lantai lebar; kartunya digeser. Lantai = lebar saat sel terlebar berhenti
+   meluap, diukur pada data hidup (7 unit). */
+.tbl-scroll { overflow-x: auto; }
+.tbl-scroll .cols-sales { min-width: 720px; }  /* Omzet "Rp 502.328.134" nowrap */
+.tbl-scroll .cols-saldo { min-width: 460px; }  /* "Rp 17.523.383.796" nowrap */
+.tbl-scroll .cols-rank { min-width: 920px; }   /* .rank-omzet nowrap + .rank-name 2 baris */
+.tbl-scroll .cols-net { min-width: 780px; }    /* .rank-input flex (dot + teks) */
+/* Lantai berikut menutup PUTUS DI TENGAH KATA — efek samping lantai track nol
+   yang tak terlihat oleh E1 (daftar track) maupun E2 (luapan): teks tidak
+   terpotong, ia membungkus di tengah kata ("Penerima|an", "655.|328").
+   Nilai = kata terpanjang per kolom ÷ porsi fr-nya + gap + padding, diukur pada
+   data hidup; angka TIDAK BOLEH pecah sama sekali, teks boleh pecah di "-" atau
+   "/" (peluang putus alami). */
+.tbl-scroll .cols-suspect, .tbl-scroll .cols-anom { min-width: 420px; }
+.tbl-scroll .cols-target { min-width: 700px; }
+.tbl-scroll .cols-usulan { min-width: 780px; }
+.tbl-scroll .cols-usulan-list { min-width: 590px; }
+/* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
+   kelihatan; tanpa ini ada target keyboard yang tak terlihat sedang difokus. */
+.do-warn { border-radius: var(--radius-sm); }
+.do-warn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.cols-anom { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-suspect { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.1fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-harga { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr); padding-top: 11px; padding-bottom: 11px; }
+.cols-harga.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
+.cols-net { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
 /* Saldo Piutang/Hutang — label · nominal (2 kolom). */
-.cols-saldo { grid-template-columns: 1.7fr 1fr; padding-top: 12px; padding-bottom: 12px; }
+.cols-saldo { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); padding-top: 12px; padding-bottom: 12px; }
 /* Usulan SO — Produk · Sisa Stock awal · Ketahanan · Sisa DO awal · 3 input. */
-.cols-usulan { grid-template-columns: 1.2fr 1fr 0.85fr 1fr 1.05fr 1.15fr 1.1fr; align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.cols-usulan { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.15fr) minmax(0, 1.1fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
 /* Daftar usulan — Tanggal · Penerimaan · Permintaan · Usulan · Status · Tersimpan. */
-.cols-usulan-list { grid-template-columns: 1fr 1.2fr 1.2fr 1.2fr 0.9fr 1.3fr; }
+.cols-usulan-list { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.3fr); }
 
 /* Input numerik dalam sel grid Usulan (no-print: dicetak sbg teks angka). */
 .usulan-incell { display: flex; justify-content: flex-end; }
@@ -571,7 +661,7 @@ body { background: var(--neutral-50); }
 /* Board — tabel evaluasi per cabang */
 .eval-scroll { overflow-x: auto; }
 .eval-labels { padding: var(--space-3) var(--space-6) 0; }
-.cols-eval { grid-template-columns: 1.2fr 1fr 1.2fr 1.2fr 1fr 1.2fr; min-width: 720px; }
+.cols-eval { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr); min-width: 720px; }
 .eval-unit-head { display: flex; align-items: baseline; gap: 10px; padding: var(--space-3) var(--space-6) var(--space-2); background: var(--neutral-50, var(--neutral-100)); border-top: 1px solid var(--color-border-hairline); min-width: 720px; }
 
 /* Board — tren mengikuti filter */
@@ -964,8 +1054,21 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 /* ===== Laporan Harian Total (grup direksi) ===== */
 /* Matriks produk × unit: jumlah kolom unit MENGIKUTI scope caller (pengawas
    1-unit → 1 kolom), lewat --ncols yang di-set di server. */
-.cols-harian { grid-template-columns: 1.5fr repeat(var(--ncols, 7), minmax(74px, 1fr)) 1.15fr; }
-.cols-harian2 { grid-template-columns: 1.5fr repeat(var(--ncols, 14), minmax(62px, 1fr)) 1.1fr 0.9fr; }
+/* Syaratnya bukan "lantai nol" melainkan "lantai yang TIDAK bergantung isi sel" —
+   itulah yang membuat tiap .grid-* menghitung track identik. Di dua tabel ini
+   `minmax(0, …)` justru salah: track unit punya lantai px, jadi seluruh sisa
+   lebar habis di sana dan track pecahan runtuh (terukur: Produk 11px, TOTAL 8px
+   & 7px) — kolom sticky Produk hilang. Karena itu Produk/TOTAL memakai lantai px
+   konstan (≥ min-content terlebar yang pernah terukur: Produk 72px, TOTAL 96/63px)
+   sehingga tetap data-independent SEKALIGUS terbaca; melebihi `.harian-min*`
+   berarti kartu menggeser mendatar — memang perilaku yang dirancang. */
+/* Lantai dinaikkan lagi setelah sapuan kata-terputus: nama unit ("Adisucipto"
+   76px) dan angka ("138.434" 63px) tak muat di lantai lama 74/62px, dan sel
+   sticky Produk kehilangan 10px lagi ke padding-nya sendiri ("Pertamina" 73px
+   dalam 84−10). Kedua tabel ini memang sudah menggeser mendatar, jadi menaikkan
+   lantai hanya menambah panjang geseran — tidak menyembunyikan apa pun. */
+.cols-harian { grid-template-columns: minmax(116px, 1.5fr) repeat(var(--ncols, 7), minmax(84px, 1fr)) minmax(106px, 1.15fr); }
+.cols-harian2 { grid-template-columns: minmax(116px, 1.5fr) repeat(var(--ncols, 14), minmax(70px, 1fr)) minmax(96px, 1.1fr) minmax(70px, 0.9fr); }
 .harian-scroll { overflow-x: auto; }
 .harian-min > * { min-width: 720px; }
 .harian-min-wide > * { min-width: 1040px; }

@@ -281,7 +281,7 @@ export default async function LaporanPage({
             </span>
           )}
         </div>
-        <div className="card tbl-card mt4">
+        <div className="card tbl-card mt4 tbl-scroll">
           <div className="grid-head cols-sales">
             <span>Produk</span>
             <span className="right">Sales (L)</span>
@@ -337,7 +337,7 @@ export default async function LaporanPage({
           </div>
 
           {hasSaldo && (
-            <div className="card tbl-card mt4">
+            <div className="card tbl-card mt4 tbl-scroll">
               {saldoRows.map((s) => (
                 <div key={s.label} className="grid-row cols-saldo">
                   <span className="text-caption w600">{s.label}</span>
@@ -425,14 +425,21 @@ export default async function LaporanPage({
                 workbook 2026
               </span>
             </div>
-            <div className="card tbl-card mt4">
+            <div className="card tbl-card mt4 tbl-scroll">
               <div className="grid-head cols-target">
                 <span>Produk</span>
                 <span className="right">Penjualan Kumulatif</span>
                 <span className="right">Rata-rata/hari</span>
                 <span className="right">Penerimaan</span>
                 <span className="right">Alokasi/bln</span>
-                <span className="right">(Kekurangan)/Kelebihan</span>
+                {/* `<wbr>` = peluang putus di garis miring. Tanpa ini token 22
+                    karakter ini memaksa lantai lebar tabel ke ~1058px (terukur)
+                    hanya demi satu kata kepala — dan tetap putus di tengah kata
+                    ("(Kekurangan)/K|elebihan") saat kartunya lebih sempit. */}
+                <span className="right">
+                  (Kekurangan)/<wbr />
+                  Kelebihan
+                </span>
               </div>
               {target.rows.map((p) => (
                 <div key={p.ckdbbm} className="grid-row cols-target">
@@ -465,8 +472,8 @@ export default async function LaporanPage({
           </div>
 
           {/* 8 + 15 · DO Harian — running-balance outstanding DO (live); panel alokasi di-gate */}
-          <div className={DOMAIN.do ? "lap-two mt10" : "mt10"}>
-            <div className="card tbl-card">
+          <div className={DOMAIN.do ? "lap-two lap-two-even mt10" : "mt10"}>
+            <div className="card tbl-card do-scroll">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Laporan DO Harian</div>
               </div>
@@ -482,23 +489,48 @@ export default async function LaporanPage({
                   <span className="fs16 w600">
                     {d.label}
                     {DOMAIN.do && d.recon !== 0 && (
-                      <span
-                        className="t-warning"
-                        title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
-                      >
-                        {" "}⚠
-                      </span>
+                      <>
+                        {" "}
+                        {/* `title=` saja tidak terjangkau sentuh/keyboard dan tidak
+                            dibacakan konsisten oleh pembaca layar. Makna dipikul
+                            `aria-label`; `tabIndex` membuatnya bisa di-Tab sehingga
+                            nama itu benar-benar diumumkan. `title` dipertahankan
+                            untuk pengguna tetikus. */}
+                        <span
+                          role="img"
+                          tabIndex={0}
+                          className="t-warning do-warn"
+                          aria-label={`Peringatan ${d.label}: alur DO hari itu tak terserap penuh ke SO-nya — selisih ${fmtL(Math.abs(d.alurSelisih))}. Rinci di panel Alokasi Penerimaan Tidak Sesuai.`}
+                          title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
+                        >
+                          ⚠
+                        </span>
+                      </>
                     )}
                   </span>
                   {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.doAwal)}</span>}
                   <span className="right fs16 t-secondary num">{fmtL(d.penerimaan)}</span>
                   {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.penebusan)}</span>}
                   {DOMAIN.do && (
-                    <span className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}`}>
+                    <span
+                      className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}${
+                        d.sisaMacet > 0 || d.recon !== 0 ? " do-sisa-warn" : ""
+                      }`}
+                    >
                       {fmtL(d.sisa)}
+                    </span>
+                  )}
+                  {/* Sub-baris = baris grid sendiri (1 / -1), BUKAN isi sel Sisa DO.
+                      Di dalam sel ia ikut menentukan min-content track ke-5; di luar
+                      sel ia tak menyentuh penentuan kolom sama sekali. Diberi label
+                      kolomnya sendiri karena teks selebar tabel tak lagi punya ikatan
+                      visual ke kolom mana pun. */}
+                  {DOMAIN.do && (d.sisaMacet > 0 || (d.recon !== 0 && alurSelisihNote(d.alurSelisih))) && (
+                    <span className="do-note">
                       {d.sisaMacet > 0 && (
                         <span className="do-seg text-caption t-warning">
-                          {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
+                          Sisa DO: {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;
+                          {DO_STALE_DAYS} hr
                         </span>
                       )}
                       {d.recon !== 0 && alurSelisihNote(d.alurSelisih) && (
@@ -516,13 +548,14 @@ export default async function LaporanPage({
                 <span className="right w700 num lap-totnum">{fmtL(doTotal.penerimaan)}</span>
                 {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.penebusan)}</span>}
                 {DOMAIN.do && (
-                  <span className="right w700 num lap-totnum">
-                    {fmtL(doTotal.sisa)}
-                    {doTotal.sisaMacet > 0 && (
-                      <span className="do-seg text-caption t-warning">
-                        {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠ {fmtL(doTotal.sisaMacet)} macet
-                      </span>
-                    )}
+                  <span className="right w700 num lap-totnum">{fmtL(doTotal.sisa)}</span>
+                )}
+                {DOMAIN.do && doTotal.sisaMacet > 0 && (
+                  <span className="do-note">
+                    <span className="do-seg text-caption t-warning">
+                      Sisa DO: {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠{" "}
+                      {fmtL(doTotal.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
+                    </span>
                   </span>
                 )}
               </div>
@@ -533,7 +566,7 @@ export default async function LaporanPage({
               </div>
             </div>
             {DOMAIN.do && (
-              <div className="card tbl-card">
+              <div className="card tbl-card tbl-scroll">
                 <div className="lap-cardhead">
                   <div className="text-h6 t-brand">Alokasi Penerimaan Tidak Sesuai</div>
                 </div>

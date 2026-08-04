@@ -228,7 +228,7 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
     const sisaSub: Content[] = [];
     if (r.sisaMacet > 0)
       sisaSub.push({
-        text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet`,
+        text: `${fmtL(r.sisaBerjalan)} berjalan · ${fmtL(r.sisaMacet)} macet >${staleDays} hr`,
         alignment: "right", fontSize: 7, color: PDF.warning,
       });
     const alurNote = r.recon !== 0 ? alurSelisihNote(r.alurSelisih) : null;

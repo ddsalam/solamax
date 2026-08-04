@@ -49,7 +49,7 @@ export default async function UsulanListPage({
         </div>
       </div>
 
-      <div className="card tbl-card mt8">
+      <div className="card tbl-card mt8 tbl-scroll">
         <div className="grid-head cols-usulan-list">
           <span>Tanggal</span>
           <span className="right">Total Penerimaan Hari (KL)</span>
