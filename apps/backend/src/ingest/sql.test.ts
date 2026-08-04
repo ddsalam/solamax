@@ -164,3 +164,73 @@ describe("buildReplace", () => {
     expect(() => buildReplace(TABLE_CONFIG.edc!, 1, [])).toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// E — DO UPDATE dilewati bila baris tak berubah (skipUnchanged)
+// ---------------------------------------------------------------------------
+describe("skipUnchanged — jangan tulis ulang baris yang sama", () => {
+  /** Kolom yang benar-benar di-SET oleh buildUpsert, dibaca dari SQL-nya. */
+  function setCols(sql: string): string[] {
+    const m = sql.match(/DO UPDATE SET (.*?)(?: WHERE |$)/);
+    return [...(m?.[1] ?? "").matchAll(/"([^"]+)" = EXCLUDED/g)].map((x) => x[1]!);
+  }
+  /** Kolom yang muncul di sisi kiri predikat IS DISTINCT FROM. */
+  function guardCols(sql: string): string[] {
+    const m = sql.match(/ WHERE \((.*?)\) IS DISTINCT FROM/);
+    return [...(m?.[1] ?? "").matchAll(/\."([^"]+)"/g)].map((x) => x[1]!);
+  }
+
+  const row = {
+    ckdbppiut: "P1", dtgl: "2026-08-04", ckdplg: "PLG1", vcref: null,
+    vcket: null, njumlah: 1000, sjnsbp: 1, sbatal: 0,
+  };
+
+  it("PREDIKAT MENCAKUP SEMUA KOLOM YANG DI-SET — inilah pagar korektnessnya", () => {
+    // Kolom yang di-SET tapi tak ikut dijaga = perubahan nyata pada kolom itu
+    // DIAM-DIAM berhenti mendarat di mirror. Kegagalan senyap, bukan error.
+    for (const key of ["bppiut", "bphut", "deposit", "terra_resmi"]) {
+      const cfg = TABLE_CONFIG[key]!;
+      const { sql } = buildUpsert(cfg, 4, [
+        Object.fromEntries(cfg.columns.map((c) => [c, null])),
+      ]);
+      expect(guardCols(sql), `${key}: predikat ≠ kolom yang di-SET`).toEqual(setCols(sql));
+      expect(guardCols(sql).length, `${key}: predikat kosong`).toBeGreaterThan(0);
+      // ingested_at DI LUAR predikat — kalau ikut, tiap baris selalu "berbeda".
+      expect(guardCols(sql)).not.toContain("ingested_at");
+      expect(sql).toContain(`"ingested_at" = now()`);
+    }
+  });
+
+  it("memakai IS DISTINCT FROM, bukan <> (kolom NULLABLE)", () => {
+    // `NULL <> NULL` → NULL → WHERE tak pernah benar → baris ber-NULL berhenti
+    // diperbarui SELAMANYA. Kolom vcref/vcket memang sering NULL.
+    const { sql } = buildUpsert(TABLE_CONFIG.bppiut!, 4, [row]);
+    expect(sql).toContain("IS DISTINCT FROM");
+    expect(sql).not.toMatch(/WHERE \([^)]*\) <>/);
+  });
+
+  it("tabel TANPA flag tetap seperti semula (blast radius terbatas)", () => {
+    for (const key of ["sales_detail", "delivery", "opname", "product"]) {
+      const cfg = TABLE_CONFIG[key];
+      if (!cfg || cfg.conflict.length === 0) continue;
+      const { sql } = buildUpsert(cfg, 4, [
+        Object.fromEntries(cfg.columns.map((c) => [c, null])),
+      ]);
+      expect(sql, `${key} tak boleh ikut terpengaruh`).not.toContain("IS DISTINCT FROM");
+    }
+  });
+
+  it("detektornya sendiri bisa MERAH (kontrol non-vakum)", () => {
+    // Tanpa ini, regex yang meleset menghasilkan dua array kosong yang "sama".
+    const bocor =
+      'DO UPDATE SET "a" = EXCLUDED."a", "b" = EXCLUDED."b", "ingested_at" = now()' +
+      ' WHERE ("t"."a") IS DISTINCT FROM (EXCLUDED."a")';
+    expect(setCols(bocor)).toEqual(["a", "b"]);
+    expect(guardCols(bocor)).toEqual(["a"]); // "b" hilang → beda → MERAH
+    expect(guardCols(bocor)).not.toEqual(setCols(bocor));
+    const utuh =
+      'DO UPDATE SET "a" = EXCLUDED."a", "b" = EXCLUDED."b"' +
+      ' WHERE ("t"."a", "t"."b") IS DISTINCT FROM (EXCLUDED."a", EXCLUDED."b")';
+    expect(guardCols(utuh)).toEqual(setCols(utuh));
+  });
+});

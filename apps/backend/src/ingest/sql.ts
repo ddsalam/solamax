@@ -86,6 +86,35 @@ function collapseByConflict(
   return [...byKey.values()];
 }
 
+/**
+ * Klausa `WHERE` untuk `DO UPDATE` pada tabel ber-`skipUnchanged`: hanya tulis
+ * ulang baris yang benar-benar berubah.
+ *
+ * `IS DISTINCT FROM` (bukan `<>`) karena hampir semua kolom mirror NULLABLE:
+ * `NULL <> NULL` menghasilkan NULL → WHERE tak pernah benar → baris ber-NULL
+ * BERHENTI diperbarui selamanya. `IS DISTINCT FROM` memperlakukan NULL sebagai
+ * nilai yang bisa dibandingkan, jadi NULL→nilai, nilai→NULL, dan NULL→NULL
+ * semuanya terputuskan benar.
+ *
+ * Bentuk row-wise `(a, b) IS DISTINCT FROM (c, d)` dipakai supaya predikatnya
+ * DITURUNKAN dari daftar kolom yang sama dengan `SET` — bukan daftar kedua yang
+ * bisa menyimpang diam-diam. Kolom yang terlewat = perubahan nyata berhenti
+ * mendarat, dan itu kegagalan SENYAP; `sql.test.ts` mengunci kesamaan kedua
+ * daftar itu.
+ *
+ * `ingested_at` sengaja di luar predikat: ia selalu `now()`, jadi menyertakannya
+ * membuat setiap baris selalu "berbeda" dan meniadakan seluruh mekanismenya.
+ */
+export function skipUnchangedClause(
+  cfg: TableConfig,
+  updateCols: readonly string[],
+): string {
+  if (!cfg.skipUnchanged || updateCols.length === 0) return "";
+  const lhs = updateCols.map((c) => `"${cfg.table}"."${c}"`).join(", ");
+  const rhs = updateCols.map((c) => `EXCLUDED."${c}"`).join(", ");
+  return ` WHERE (${lhs}) IS DISTINCT FROM (${rhs})`;
+}
+
 export function buildUpsert(
   cfg: TableConfig,
   unitId: number,
@@ -105,7 +134,7 @@ export function buildUpsert(
     `VALUES ${tuples.join(",")} ` +
     `ON CONFLICT (${conflictCols.map((c) => `"${c}"`).join(",")}) ` +
     (setClauses.length > 0
-      ? `DO UPDATE SET ${setClauses.join(", ")}`
+      ? `DO UPDATE SET ${setClauses.join(", ")}${skipUnchangedClause(cfg, updateCols)}`
       : `DO NOTHING`);
 
   return { sql, params };
