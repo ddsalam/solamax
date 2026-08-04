@@ -465,7 +465,7 @@ export default async function LaporanPage({
           </div>
 
           {/* 8 + 15 · DO Harian — running-balance outstanding DO (live); panel alokasi di-gate */}
-          <div className={DOMAIN.do ? "lap-two mt10" : "mt10"}>
+          <div className={DOMAIN.do ? "lap-two lap-two-even mt10" : "mt10"}>
             <div className="card tbl-card do-scroll">
               <div className="lap-cardhead">
                 <div className="text-h6 t-brand">Laporan DO Harian</div>

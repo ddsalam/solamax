@@ -341,10 +341,28 @@ body { background: var(--neutral-50); }
    `overflow-y` tetap `hidden` warisan `.tbl-card`. Kepala & kaki kartu tidak
    ikut lantai lebar supaya tetap terbaca tanpa menggeser; varian `.lite`
    (2 kolom) muat di mana pun, jadi dikecualikan. */
+/* Lantai 560px = lebar terkecil yang membuat kata terpanjang di kepala tabel muat
+   utuh. Terukur: "Penerimaan" butuh 85px sedangkan trackganya cuma 74px, jadi
+   `overflow-wrap` memutusnya di tengah kata ("Penerima/an", "Penebusa/n DO") —
+   tidak terpotong, tetapi tidak layak dibaca. Kolom angka karena itu wajib ≥85px:
+   85 × 5,3fr + 4 gap + padding ≈ 546 → dipakai 552 (560 menyisakan geser 1px
+   karena slot `.lap-two` rata terukur 559px).
+   Baris `.lap-two` ini dibuat rata (1fr 1fr, lihat .lap-two-even) supaya di 1440
+   kartu DO dapat 560px dan TIDAK perlu digeser sama sekali di desktop. */
 .do-scroll { overflow-x: auto; }
 .do-scroll .grid-head.cols-do:not(.lite),
 .do-scroll .grid-row.cols-do:not(.lite),
-.do-scroll .grid-total.cols-do:not(.lite) { min-width: 480px; }
+.do-scroll .grid-total.cols-do:not(.lite) { min-width: 552px; }
+/* Default `.lap-two` (1fr 1.3fr) menyisakan 487px untuk kartu DO di 1440 — di
+   bawah lantai di atas. Khusus baris DO ↔ Alokasi dibuat rata; panel Alokasi
+   turun 633→560px dan tetap muat (terverifikasi: nol sel meluap). */
+/* Spesifisitas ganda disengaja: `.lap-two` didefinisikan JAUH di bawah blok ini,
+   jadi dengan spesifisitas sama ia yang menang. WAJIB dibatasi ≥901px — tanpa
+   itu ia juga mengalahkan aturan runtuh `@media (max-width:900px)` dan dua kartu
+   tetap berdampingan di ponsel (terukur: kartu 162px di 375px). */
+@media (min-width: 901px) {
+  .lap-two.lap-two-even { grid-template-columns: 1fr 1fr; }
+}
 
 /* Pola yang sama untuk tabel yang punya sel SENGAJA `nowrap` (rupiah) atau sel
    flex yang tak boleh dipampatkan. Setelah lantai track jadi nol, sel-sel itulah
