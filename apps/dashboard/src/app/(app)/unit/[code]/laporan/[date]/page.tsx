@@ -496,9 +496,19 @@ export default async function LaporanPage({
                   {DOMAIN.do && (
                     <span className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}`}>
                       {fmtL(d.sisa)}
+                    </span>
+                  )}
+                  {/* Sub-baris = baris grid sendiri (1 / -1), BUKAN isi sel Sisa DO.
+                      Di dalam sel ia ikut menentukan min-content track ke-5; di luar
+                      sel ia tak menyentuh penentuan kolom sama sekali. Diberi label
+                      kolomnya sendiri karena teks selebar tabel tak lagi punya ikatan
+                      visual ke kolom mana pun. */}
+                  {DOMAIN.do && (d.sisaMacet > 0 || (d.recon !== 0 && alurSelisihNote(d.alurSelisih))) && (
+                    <span className="do-note">
                       {d.sisaMacet > 0 && (
                         <span className="do-seg text-caption t-warning">
-                          {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
+                          Sisa DO: {fmtL(d.sisaBerjalan)} berjalan · ⚠ {fmtL(d.sisaMacet)} macet &gt;
+                          {DO_STALE_DAYS} hr
                         </span>
                       )}
                       {d.recon !== 0 && alurSelisihNote(d.alurSelisih) && (
@@ -516,13 +526,14 @@ export default async function LaporanPage({
                 <span className="right w700 num lap-totnum">{fmtL(doTotal.penerimaan)}</span>
                 {DOMAIN.do && <span className="right w700 num lap-totnum">{fmtL(doTotal.penebusan)}</span>}
                 {DOMAIN.do && (
-                  <span className="right w700 num lap-totnum">
-                    {fmtL(doTotal.sisa)}
-                    {doTotal.sisaMacet > 0 && (
-                      <span className="do-seg text-caption t-warning">
-                        {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠ {fmtL(doTotal.sisaMacet)} macet
-                      </span>
-                    )}
+                  <span className="right w700 num lap-totnum">{fmtL(doTotal.sisa)}</span>
+                )}
+                {DOMAIN.do && doTotal.sisaMacet > 0 && (
+                  <span className="do-note">
+                    <span className="do-seg text-caption t-warning">
+                      Sisa DO: {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠{" "}
+                      {fmtL(doTotal.sisaMacet)} macet
+                    </span>
                   </span>
                 )}
               </div>
