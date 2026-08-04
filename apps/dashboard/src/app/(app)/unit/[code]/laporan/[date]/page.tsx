@@ -532,7 +532,7 @@ export default async function LaporanPage({
                   <span className="do-note">
                     <span className="do-seg text-caption t-warning">
                       Sisa DO: {fmtL(doTotal.sisa - doTotal.sisaMacet)} berjalan · ⚠{" "}
-                      {fmtL(doTotal.sisaMacet)} macet
+                      {fmtL(doTotal.sisaMacet)} macet &gt;{DO_STALE_DAYS} hr
                     </span>
                   </span>
                 )}
