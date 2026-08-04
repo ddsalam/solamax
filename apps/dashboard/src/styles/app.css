@@ -351,11 +351,8 @@ body { background: var(--neutral-50); }
 .do-warn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .cols-anom { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
 .cols-suspect { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.1fr); padding-top: 11px; padding-bottom: 11px; }
-.cols-stock { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.1fr); }
-.cols-stock.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr); }
 .cols-harga { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr); padding-top: 11px; padding-bottom: 11px; }
 .cols-harga.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
-.cols-keluar { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); }
 .cols-net { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 32px; align-items: center; padding-top: 14px; padding-bottom: 14px; }
 /* Saldo Piutang/Hutang — label · nominal (2 kolom). */
 .cols-saldo { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); padding-top: 12px; padding-bottom: 12px; }
