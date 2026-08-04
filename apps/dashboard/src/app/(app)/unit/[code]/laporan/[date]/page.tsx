@@ -505,7 +505,11 @@ export default async function LaporanPage({
                   <span className="right fs16 t-secondary num">{fmtL(d.penerimaan)}</span>
                   {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.penebusan)}</span>}
                   {DOMAIN.do && (
-                    <span className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}`}>
+                    <span
+                      className={`right fs16 num ${d.recon !== 0 ? "t-warning" : "t-secondary"}${
+                        d.sisaMacet > 0 || d.recon !== 0 ? " do-sisa-warn" : ""
+                      }`}
+                    >
                       {fmtL(d.sisa)}
                     </span>
                   )}

@@ -313,6 +313,15 @@ body { background: var(--neutral-50); }
   grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-end;
   gap: 2px; margin-top: 5px; text-align: right;
 }
+/* Hierarki datum-vs-catatan kaki. `--text-caption-size` = 16px dengan weight 500,
+   jadi catatan kaki tadinya justru LEBIH tebal daripada angka yang ia terangkan
+   (16px/400) dan sewarna — satu blok oranye tanpa hierarki. Menipiskan/memudarkan
+   caption bukan pilihan: lantai audiens direksi = ≥16px dan ≥4.5:1, sedangkan
+   --color-warning #B45309 sudah pas 4.7:1. Maka hierarki dibalik dari sisi datum:
+   caption turun ke weight normal, angkanya yang dinaikkan (lihat .do-sisa-warn).
+   Token global TIDAK disentuh — override ini terbatas pada sub-baris DO. */
+.do-note .text-caption { font-weight: 400; }
+.do-sisa-warn { font-weight: 600; }
 /* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
    kelihatan; tanpa ini ada target keyboard yang tak terlihat sedang difokus. */
 .do-warn { border-radius: var(--radius-sm); }
