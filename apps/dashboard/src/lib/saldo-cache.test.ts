@@ -25,7 +25,7 @@ describe("cakupan cache saldo", () => {
     expect(saldoRevalidateSeconds("2012-07-31", today)).toBe(SALDO_HIST_REVALIDATE_S);
   });
 
-  it("hari berjalan & H−1 hanya TTL pendek", () => {
+  it("hari berjalan & H−1 memakai TTL pendek, BUKAN 24 jam", () => {
     // Inilah pagarnya: 24 jam di sini = saldo hari ini basi sehari penuh di
     // laporan operasional — regresi KOREKTNESS, bukan sekadar angka lawas.
     expect(saldoRevalidateSeconds(today, today)).toBe(SALDO_LIVE_REVALIDATE_S);
@@ -35,6 +35,14 @@ describe("cakupan cache saldo", () => {
   it("batasnya tepat di H−2, tidak bergeser satu hari", () => {
     expect(saldoRevalidateSeconds("2026-08-03", today)).toBe(SALDO_HIST_REVALIDATE_S);
     expect(saldoRevalidateSeconds("2026-08-04", today)).toBe(SALDO_LIVE_REVALIDATE_S);
+  });
+
+  it("TTL hari berjalan tetap jauh di bawah awetan historis", () => {
+    // Menaikkannya ke 15 menit sah; menyamakannya dengan 24 jam tidak.
+    expect(SALDO_LIVE_REVALIDATE_S).toBeLessThan(SALDO_HIST_REVALIDATE_S / 10);
+    // Dan harus lebih panjang dari biaya mengisinya (~104 dtk terukur), kalau
+    // tidak, cache-nya tak pernah sempat menolong.
+    expect(SALDO_LIVE_REVALIDATE_S).toBeGreaterThan(104);
   });
 
   it("tanggal masa depan tidak pernah diperlakukan historis", () => {
