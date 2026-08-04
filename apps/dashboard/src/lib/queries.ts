@@ -652,8 +652,10 @@ export interface DoHarianRow {
  *   Sisa DO(produk,D) = Σ atas (CNOSO,produk) GREATEST(0, ΣNVOLUME(tebus,≤D) − ΣNVOLDO(terima,≤D))
  *   DO Awal(D) = Sisa(D−1).
  * Clamp ≥0 per-SO menyelesaikan orphan (tebus=0), over-receipt, & mismatch
- * atribusi-tanggal secara struktural → TANPA δ-seed. Join `trim(cnoso)` (char(20)
- * di-pad) + `trim(ckdbbm)`. Kolom Penebusan/Penerimaan = alur harian apa adanya;
+ * atribusi-tanggal secara struktural → TANPA δ-seed. Join `lower(trim(cnoso))`
+ * (char(20) di-pad; CASE-INSENSITIVE seperti EasyMax — nomor SO teks bebas yang
+ * diketik beda huruf tetap satu SO, lihat cnoso-keys.test.ts) + `trim(ckdbbm)`.
+ * Kolom Penebusan/Penerimaan = alur harian apa adanya;
  * pada hari anomali bisa tak rekonsiliasi dgn Sisa (selisih = sinyal anomali,
  * lihat getDoAnomalies). Murni SELECT, ter-scope `ScopedUnitId`.
  */
@@ -664,7 +666,7 @@ export async function getDoHarian(
   return qScoped<DoHarianRow>(
     unit,
     `WITH red AS (
-       SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm,
+       SELECT lower(trim(th.cnoso)) AS cnoso, trim(td.ckdbbm) AS bbm,
               sum(td.nvolume) FILTER (WHERE th.dtgltbs <= $2::date) AS v_d,
               sum(td.nvolume) FILTER (WHERE th.dtgltbs <  $2::date) AS v_p,
               max(th.dtgltbs) AS lastd
@@ -676,7 +678,7 @@ export async function getDoHarian(
        GROUP BY 1, 2
      ),
      rec AS (
-       SELECT trim(t.cnoso) AS cnoso, trim(t.ckdbbm) AS bbm,
+       SELECT lower(trim(t.cnoso)) AS cnoso, trim(t.ckdbbm) AS bbm,
               sum(t.nvoldo) FILTER (WHERE COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) <= $2::date) AS v_d,
               sum(t.nvoldo) FILTER (WHERE COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) <  $2::date) AS v_p
        FROM delivery t
@@ -759,13 +761,13 @@ export async function getDoAnomalies(
   return qScoped<DoAnomalyRow>(
     unit,
     `WITH red AS (
-       SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm, sum(td.nvolume) AS v
+       SELECT lower(trim(th.cnoso)) AS cnoso, trim(td.ckdbbm) AS bbm, sum(td.nvolume) AS v
        FROM tebus_header th JOIN tebus_detail td ON td.unit_id = th.unit_id AND td.ckdtbs = th.ckdtbs
        WHERE th.unit_id = $1 AND COALESCE(th.sbatal,0) = 0 AND abs(COALESCE(td.nvolume,0)) <= ${GARBAGE_STOCK_L}
          AND th.cnoso IS NOT NULL AND th.dtgltbs <= $2::date GROUP BY 1, 2
      ),
      rec AS (
-       SELECT trim(t.cnoso) AS cnoso, trim(t.ckdbbm) AS bbm, sum(t.nvoldo) AS v
+       SELECT lower(trim(t.cnoso)) AS cnoso, trim(t.ckdbbm) AS bbm, sum(t.nvoldo) AS v
        FROM delivery t
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0 AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
          AND t.cnoso IS NOT NULL AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) <= $2::date GROUP BY 1, 2
@@ -810,7 +812,13 @@ export const DO_STALE_DAYS = 30;
 /**
  * Daftar SO ber-outstanding **macet** (ditebus > `DO_STALE_DAYS` hari lalu, BBM
  * belum tuntas diterima per (CNOSO,produk)) — kandidat **salah input produk/volume
- * di EasyMax** (mis. tebus 80rb Pertamax tapi fisik masuk tangki lain). Inilah yang
+ * di EasyMax** (mis. tebus 80rb Pertamax tapi fisik masuk tangki lain). KUNCI-nya
+ * `lower(trim(cnoso))` (case-insensitive, seperti EasyMax), tapi yang DIRENDER ke
+ * layar & PDF adalah `min(trim(cnoso))` — ejaan sumbernya apa adanya. `lower()`
+ * polos akan me-recase ribuan nomor SO sehat (1.029 nilai ber-huruf-besar di KB
+ * saja, mis. "170626 Ditlantas"). `min()` deterministik: collation DB ini
+ * (en_US.UTF8) deterministic, jadi urutannya total — dan pada grup yang casing-nya
+ * seragam ia mengembalikan persis satu-satunya ejaan yang ada. Inilah yang
  * menyetir "phantom outstanding" di Sisa per-SO; ditampilkan sbg daftar-kerja
  * koreksi-sumber untuk owner. Setelah diralat di POS, per-SO bersih sendiri (tanpa
  * ubah kode). Ter-scope; murni SELECT.
@@ -822,19 +830,20 @@ export async function getDoSuspectSO(
   return qScoped<DoSuspectSO>(
     unit,
     `WITH red AS (
-       SELECT trim(th.cnoso) AS cnoso, trim(td.ckdbbm) AS bbm,
+       SELECT lower(trim(th.cnoso)) AS cnoso, min(trim(th.cnoso)) AS cnoso_disp,
+              trim(td.ckdbbm) AS bbm,
               sum(td.nvolume) AS v, max(th.dtgltbs) AS lastd
        FROM tebus_header th JOIN tebus_detail td ON td.unit_id = th.unit_id AND td.ckdtbs = th.ckdtbs
        WHERE th.unit_id = $1 AND COALESCE(th.sbatal,0) = 0 AND abs(COALESCE(td.nvolume,0)) <= ${GARBAGE_STOCK_L}
-         AND th.cnoso IS NOT NULL AND th.dtgltbs <= $2::date GROUP BY 1, 2
+         AND th.cnoso IS NOT NULL AND th.dtgltbs <= $2::date GROUP BY 1, 3
      ),
      rec AS (
-       SELECT trim(t.cnoso) AS cnoso, trim(t.ckdbbm) AS bbm, sum(t.nvoldo) AS v
+       SELECT lower(trim(t.cnoso)) AS cnoso, trim(t.ckdbbm) AS bbm, sum(t.nvoldo) AS v
        FROM delivery t
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0 AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
          AND t.cnoso IS NOT NULL AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) <= $2::date GROUP BY 1, 2
      )
-     SELECT red.cnoso, red.bbm AS ckdbbm, COALESCE(max(p.vcnmbbm), red.bbm) AS nama,
+     SELECT red.cnoso_disp AS cnoso, red.bbm AS ckdbbm, COALESCE(max(p.vcnmbbm), red.bbm) AS nama,
             red.v::float8 AS ditebus, COALESCE(rec.v,0)::float8 AS diterima,
             (red.v - COALESCE(rec.v,0))::float8 AS outstanding,
             to_char(red.lastd,'YYYY-MM-DD') AS sejak,
@@ -843,7 +852,7 @@ export async function getDoSuspectSO(
      FROM red LEFT JOIN rec ON rec.cnoso = red.cnoso AND rec.bbm = red.bbm
      LEFT JOIN product p ON p.unit_id = $1 AND trim(p.ckdbbm) = red.bbm
      WHERE red.v - COALESCE(rec.v,0) > 0 AND red.lastd < ($2::date - ${DO_STALE_DAYS})
-     GROUP BY red.cnoso, red.bbm, red.v, rec.v, red.lastd
+     GROUP BY red.cnoso_disp, red.bbm, red.v, rec.v, red.lastd
      ORDER BY aktif DESC, outstanding DESC, red.lastd ASC
      LIMIT 50`,
     [unit, date],
