@@ -285,6 +285,15 @@ body { background: var(--neutral-50); }
 .grid-row { border-bottom: 1px solid var(--color-border-hairline); padding-top: 13px; padding-bottom: 13px; }
 .grid-row.clickable { cursor: pointer; transition: background var(--duration-fast) var(--ease-out); align-items: center; }
 .grid-row.clickable:hover { background: var(--neutral-50); }
+/* Baris grid yang bisa difokus membentang penuh sampai tepi dalam kartu, dan
+   cincin `:focus-visible` global (ds/base.css: outline 3px, offset 2px) digambar
+   DI LUAR kotaknya. Akibatnya baris TERAKHIR kehilangan seluruh cincin bawahnya —
+   terpotong `.tbl-card { overflow: hidden }`, yang tidak boleh dihapus karena
+   dialah yang memangkas isi mengikuti sudut membulat kartu. Karena itu cincinnya
+   dibalik ke DALAM. `outline-offset` tidak menggambar apa pun tanpa `outline`,
+   jadi aman dipasang tanpa `:focus-visible` — dan justru membuatnya bisa diukur
+   tanpa perlu jendela benar-benar terfokus. */
+.grid-row.clickable { outline-offset: -3px; }
 .grid-row.expanded { background: var(--neutral-50); }
 .grid-total { background: var(--neutral-50); padding-top: 14px; padding-bottom: 14px; }
 /* Tiap .grid-head/.grid-row/.grid-total adalah grid TERPISAH — tidak ada tabel
