@@ -482,12 +482,23 @@ export default async function LaporanPage({
                   <span className="fs16 w600">
                     {d.label}
                     {DOMAIN.do && d.recon !== 0 && (
-                      <span
-                        className="t-warning"
-                        title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
-                      >
-                        {" "}⚠
-                      </span>
+                      <>
+                        {" "}
+                        {/* `title=` saja tidak terjangkau sentuh/keyboard dan tidak
+                            dibacakan konsisten oleh pembaca layar. Makna dipikul
+                            `aria-label`; `tabIndex` membuatnya bisa di-Tab sehingga
+                            nama itu benar-benar diumumkan. `title` dipertahankan
+                            untuk pengguna tetikus. */}
+                        <span
+                          role="img"
+                          tabIndex={0}
+                          className="t-warning do-warn"
+                          aria-label={`Peringatan ${d.label}: alur DO hari itu tak terserap penuh ke SO-nya — selisih ${fmtL(Math.abs(d.alurSelisih))}. Rinci di panel Alokasi Penerimaan Tidak Sesuai.`}
+                          title={`Sisa = DO Awal + Penebusan − Penerimaan ${d.alurSelisih >= 0 ? "+" : "−"} ${fmtL(Math.abs(d.alurSelisih))} yang tak terserap ke SO-nya — rinci di panel Alokasi Penerimaan Tidak Sesuai`}
+                        >
+                          ⚠
+                        </span>
+                      </>
                     )}
                   </span>
                   {DOMAIN.do && <span className="right fs16 t-secondary num">{fmtL(d.doAwal)}</span>}
