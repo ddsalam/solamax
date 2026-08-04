@@ -800,7 +800,7 @@ const TEBUS: DateDomain = {
       }
       if (r.CKDBBM !== null && r.CKDBBM !== undefined) {
         const ckdbbm = str(r.CKDBBM);
-        const key = `${ckdtbs} ${ckdbbm ?? ""}`;
+        const key = `${ckdtbs}\0${ckdbbm ?? ""}`;
         const vol = num(r.NVOLUME);
         const ex = details.get(key);
         if (ex) {
