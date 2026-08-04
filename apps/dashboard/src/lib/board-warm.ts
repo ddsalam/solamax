@@ -11,7 +11,7 @@
  * (off-peak 02:00–05:00 WIB) → cache memuat angka pasca-koreksi.
  */
 import { timingSafeEqual } from "node:crypto";
-import { resolveBoardPeriod, type BoardPeriodKey, type DateRange } from "./periods";
+import { addDays, resolveBoardPeriod, type BoardPeriodKey, type DateRange } from "./periods";
 
 const WARM_PRESETS: BoardPeriodKey[] = ["today", "7d", "30d", "bulan"];
 
@@ -26,6 +26,16 @@ export function boardWarmPlan(today: string, now?: Date): DateRange[] {
     }
   }
   return [...seen.values()];
+}
+
+/**
+ * Tanggal yang di-pre-warm untuk cache Saldo Piutang/Hutang (saldo-cache.ts).
+ * WAJIB memuat hari berjalan — kalau hanya historis, render pertama tiap pagi
+ * tetap menanggung biaya penuh (terukur 104 dtk di KB). H−2/H−3 ikut karena
+ * itulah tanggal yang benar-benar menikmati awetan 24 jam.
+ */
+export function saldoWarmDates(today: string): string[] {
+  return [0, -1, -2, -3].map((d) => addDays(today, d));
 }
 
 /**
