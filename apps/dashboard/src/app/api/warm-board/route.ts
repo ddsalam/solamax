@@ -15,7 +15,8 @@
  */
 import { q } from "@/lib/db";
 import { getDailyGlWindow } from "@/lib/gl-window";
-import { boardWarmPlan, isWarmAuthorized } from "@/lib/board-warm";
+import { getSaldoPelangganCached } from "@/lib/saldo-cache";
+import { boardWarmPlan, isWarmAuthorized, saldoWarmDates } from "@/lib/board-warm";
 import { todayWib } from "@/lib/periods";
 import type { ScopedUnitId } from "@/lib/scope-rule";
 
@@ -33,10 +34,18 @@ export async function POST(req: Request): Promise<Response> {
   );
   const plan = boardWarmPlan(today);
 
+  const saldoDates = saldoWarmDates(today);
+
   let calls = 0;
   for (const u of units) {
     for (const w of plan) {
       await getDailyGlWindow(u.unit_id as ScopedUnitId, w.from, w.to);
+      calls += 1;
+    }
+    // Saldo Piutang/Hutang — query TERBERAT halaman Laporan (104 dtk terukur di
+    // KB). Tanpa pre-warm, render pertama tiap pagi menanggung penuh.
+    for (const d of saldoDates) {
+      await getSaldoPelangganCached(u.unit_id as ScopedUnitId, d, today);
       calls += 1;
     }
   }
@@ -47,6 +56,7 @@ export async function POST(req: Request): Promise<Response> {
       today,
       units: units.length,
       windows: plan.length,
+      saldoDates: saldoDates.length,
       calls,
       ms: Date.now() - t0,
     }),

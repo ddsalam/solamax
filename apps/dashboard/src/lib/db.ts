@@ -21,11 +21,23 @@ function makePool(): Pool {
   }
   return new Pool({
     connectionString: url,
-    // Cloud SQL f1-micro: max_connections=25, superuser_reserved=3 → 22 usable.
-    // 2 instance dashboard × 5 = 10, + backend ingest (connection_limit=3 × 2 = 6)
-    // + cadangan admin/migrasi ⇒ tetap < 22. JANGAN naikkan tanpa hitung ulang.
-    max: 5,
-    // Lepas koneksi idle balik ke cap 25 (jangan tahan slot saat sepi).
+    // BUDGET KONEKSI — dihitung ulang 2026-08-05 saat tier sudah db-g1-small.
+    // Angka lama di sini (f1-micro, max_connections=25 → 22 usable) sudah GUGUR
+    // premisnya sejak instance di-bump; `max: 5` dipasang untuk tier itu dan tak
+    // pernah ditinjau lagi. Diukur langsung di DB pilot:
+    //   max_connections=50, superuser_reserved_connections=3 → 47 terpakai.
+    //   dashboard  maxScale 2 × max 10          = 20
+    //   backend    maxScale 2 × conn_limit 3    =  6
+    //   Cloud SQL admin/agent (terukur)         =  4
+    //                                      total 30 ≤ 47  (sisa 17)
+    // Alasan naik dari 5: render Laporan menembakkan 17 query paralel; dengan 5
+    // slot, dua query panjang mengunci 2 di antaranya dan sisanya antre ±9,5 dtk
+    // — tepat di bibir connectionTimeoutMillis di bawah → "timeout exceeded when
+    // trying to connect" dan halaman jatuh ke error boundary. Dengan 10 slot
+    // antreannya turun ke ±2 dtk. Dijaga `db-budget.test.ts`; JANGAN naikkan
+    // tanpa hitung ulang di sana.
+    max: 10,
+    // Lepas koneksi idle balik ke cap (jangan tahan slot saat sepi).
     idleTimeoutMillis: 30_000,
     // GAGAL CEPAT saat pool jenuh: tunggu maks 10 dtk dapat koneksi, lalu error —
     // bukan antre tak-hingga (default 0). Inilah pemutus rantai "latency menanjak
