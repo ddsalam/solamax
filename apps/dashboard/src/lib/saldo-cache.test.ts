@@ -40,9 +40,9 @@ describe("cakupan cache saldo", () => {
   it("TTL hari berjalan tetap jauh di bawah awetan historis", () => {
     // Menaikkannya ke 15 menit sah; menyamakannya dengan 24 jam tidak.
     expect(SALDO_LIVE_REVALIDATE_S).toBeLessThan(SALDO_HIST_REVALIDATE_S / 10);
-    // Dan harus lebih panjang dari biaya mengisinya (~104 dtk terukur), kalau
-    // tidak, cache-nya tak pernah sempat menolong.
-    expect(SALDO_LIVE_REVALIDATE_S).toBeGreaterThan(104);
+    // Dan harus lebih panjang dari biaya mengisinya — sesudah reclaim query itu
+    // 1,47 dtk, jadi 120 dtk kembali memenuhi syarat yang sama.
+    expect(SALDO_LIVE_REVALIDATE_S).toBeGreaterThan(60);
   });
 
   it("tanggal masa depan tidak pernah diperlakukan historis", () => {

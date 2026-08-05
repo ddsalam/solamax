@@ -35,36 +35,27 @@ import type { ScopedUnitId } from "./scope-rule";
 /** Revalidate tanggal historis — selaras cadence koreksi back-dated agent. */
 export const SALDO_HIST_REVALIDATE_S = 86_400;
 /**
- * TTL hari berjalan & H−1 — **SEMENTARA 15 menit**.
+ * TTL hari berjalan & H−1 — kembali ke 120 dtk (preseden anomalies.ts).
  *
- * Semula 120 dtk (preseden anomalies.ts). Angka itu dipinjam dari feed board
- * yang query-nya MURAH; di sini ia dipasang di atas query 104 dtk, jadi TTL-nya
- * lebih pendek daripada biaya mengisinya dan jalur hari-berjalan nyaris tak
- * terbantu. TERUKUR pada build pilot (revisi 00078, hostname berlabel):
+ * Sempat dinaikkan SEMENTARA ke 15 menit (PR #179) karena TTL-nya lebih pendek
+ * daripada biaya mengisinya: `getSaldoPelanggan` 104 dtk, dan `unstable_cache`
+ * MEMBLOKIR saat kedaluwarsa (terukur di build pilot: jeda >120 dtk membayar
+ * penuh lagi). Kedua syarat pengembalian yang ditulis di sana kini terpenuhi:
  *
- *   18:45:46  123,1 dtk   ← isi cache
- *   18:47:52   17,3 dtk   ← ±110 dtk sesudahnya, MASIH di dalam TTL → hit
- *   18:48:56    7,7 dtk
- *   18:53:23  125,5 dtk   ← >120 dtk sesudah isi terakhir → BAYAR PENUH LAGI
+ *   (a) UPSERT ingest memakai `IS DISTINCT FROM` — full-sync berhenti menulis
+ *       ulang seluruh ledger (PR #182);
+ *   (b) `bppiut`/`bphut` di-reclaim (VACUUM FULL 2026-08-05).
  *
- * Baris terakhir itu buktinya: `unstable_cache` **MEMBLOKIR saat kedaluwarsa**,
- * bukan menyajikan stale sambil revalidate di latar. Jadi tiap jeda > TTL
- * membayar penuh.
+ * Terukur berpasangan rapat di jendela yang sama, DB pilot:
+ *   T0 sebelum reclaim  15,7 dtk   (dan 17,5 dtk sejam sebelumnya)
+ *   T2 sesudah reclaim   1,47 dtk  (ulang: 1,41)  → 10,7× lebih cepat
+ * Nilai query identik di ketiganya; hanya durasinya yang berubah.
  *
- * Aman dinaikkan karena saldo dihitung **brought-forward** (`dtgl < tanggal`,
- * queries.ts) — transaksi hari ini TIDAK mengubahnya; ia hanya bergerak oleh
- * koreksi back-dated atau baris H−1 yang menyusul.
- *
- * SYARAT PENGEMBALIAN: kembalikan ke 120 dtk setelah (a) UPSERT ingest memakai
- * `IS DISTINCT FROM` sehingga full-sync berhenti menulis ulang seluruh ledger,
- * dan (b) `bppiut` di-reclaim sekali (pg_repack) sehingga tabelnya muat di RAM.
- * Setelah itu query-nya murah dan TTL panjang tak lagi perlu.
- *
- * TIDAK dikompensasi dengan pre-warm agresif (keputusan owner): menembakkan
- * query 104 dtk tiap 10 menit membebani instance yang justru sedang diringankan.
- * Satu render lambat per jendela 15 menit adalah harga yang diterima sadar.
+ * Dengan query 1,47 dtk, TTL 120 dtk kembali LEBIH PANJANG daripada biaya
+ * mengisinya — alasan menaikkannya hilang, dan awetan pendek lebih baik untuk
+ * angka hari berjalan.
  */
-export const SALDO_LIVE_REVALIDATE_S = 900;
+export const SALDO_LIVE_REVALIDATE_S = 120;
 
 /**
  * Berapa lama hasil untuk `date` boleh diawetkan, relatif ke `today`. MURNI
