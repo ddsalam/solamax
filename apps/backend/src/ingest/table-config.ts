@@ -34,6 +34,31 @@ export interface TableConfig {
    * (defense-in-depth); agent idealnya sudah meng-agregat di sumber.
    */
   sumOnConflict?: readonly string[];
+  /**
+   * Lewati UPDATE bila SEMUA kolom non-key identik dengan yang sudah tersimpan
+   * (`DO UPDATE … WHERE (…) IS DISTINCT FROM (EXCLUDED.…)`).
+   *
+   * Untuk domain FULL-SYNC, tiap cadence meng-UPSERT SELURUH ledger. Postgres
+   * tak punya update in-place: tiap UPDATE membuat tuple baru dan menandai yang
+   * lama mati, jadi menulis ulang baris yang isinya sama persis tetap
+   * menggandakan tabel. Terukur 2026-08-05 di pilot — autovacuum sudah jalan
+   * ratusan kali dan TETAP kalah:
+   *
+   *     bppiut       2.786.477 hidup / 7.942.202 mati = 74,0%  · 2134 MB
+   *     bphut          531.044 hidup / 2.081.686 mati = 79,7%  ·  477 MB
+   *     deposit         12.444 hidup /   951.133 mati = 98,7%  ·  132 MB
+   *     terra_resmi     10.127 hidup /   762.102 mati = 98,7%  ·  104 MB
+   *     delivery        80.067 hidup /       695 mati =  0,9%  ·   25 MB  ← inkremental
+   *
+   * ⚠️ BAHAYANYA KOREKTNESS, BUKAN PERFORMA: predikat WAJIB mencakup SEMUA
+   * kolom yang di-SET. Kolom yang terlewat = perubahan nyata pada kolom itu
+   * DIAM-DIAM berhenti mendarat di mirror — jauh lebih buruk daripada tabel
+   * gembung. `ingested_at` sengaja DI LUAR predikat (ia selalu now(); kalau ikut,
+   * tiap baris selalu "berbeda" dan seluruh mekanismenya tak berguna) — tapi ia
+   * juga berhenti di-refresh untuk baris yang tak berubah, dan itu memang
+   * diinginkan: `ingested_at` jadi "kapan baris ini terakhir BERUBAH".
+   */
+  skipUnchanged?: boolean;
 }
 
 export const TABLE_CONFIG: Record<string, TableConfig> = {
@@ -126,6 +151,8 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     columns: ["ckddepo", "dtgl", "ckdplg", "ntotal", "nsaldo", "sbatal", "vcket"],
     conflict: ["ckddepo"],
     hasIngestedAt: true,
+    // Full-sync tiap cadence + material (12.444 baris hidup tapi 951.133 mati (98,7%)) → lihat skipUnchanged.
+    skipUnchanged: true,
   },
   // card: master EDC, UPSERT by (unit_id, ckdcard).
   card: {
@@ -219,6 +246,8 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     ],
     conflict: ["ckdterra", "ckdnozzle"],
     hasIngestedAt: true,
+    // Full-sync tiap cadence + material (10.127 baris hidup tapi 762.102 mati (98,7%)) → lihat skipUnchanged.
+    skipUnchanged: true,
     // Jaring multi-pour (defensif; EasyMax sudah konsolidasi per sesi×nozzle).
     sumOnConflict: ["nvolume", "ntotal"],
   },
@@ -230,12 +259,16 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     columns: ["ckdbppiut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
     conflict: ["ckdbppiut"],
     hasIngestedAt: true,
+    // Full-sync tiap cadence + material (ledger piutang, 2134 MB / 74% bangkai) → lihat skipUnchanged.
+    skipUnchanged: true,
   },
   bphut: {
     table: "bphut",
     columns: ["ckdbphut", "dtgl", "ckdplg", "vcref", "vcket", "njumlah", "sjnsbp", "sbatal"],
     conflict: ["ckdbphut"],
     hasIngestedAt: true,
+    // Full-sync tiap cadence + material (ledger hutang, 477 MB / 79,7% bangkai) → lihat skipUnchanged.
+    skipUnchanged: true,
   },
   // pelanggan_master: master AR (tm_plg). SJENIS = diskriminator Lokal/Online.
   pelanggan_master: {
