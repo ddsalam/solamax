@@ -8,7 +8,7 @@ kedua, dan arc kedua membuka arc ketiga.
 |---|---|---|
 | 1. CNOSO case-insensitive | ✅ live di pilot, terverifikasi di browser | #175 → #176 |
 | 2. Kapasitas halaman Laporan | ✅ live di pilot | #177 → #178, #179 |
-| 3. Bloat `bppiut` (E + reclaim) | ⏳ belum dikerjakan | — |
+| 3. Bloat `bppiut` (E + reclaim) | ✅ live di pilot · 3085 → 674 MB | #182 → #183 |
 
 ---
 
@@ -107,7 +107,12 @@ ke 15 menit, ditandai SEMENTARA.
 
 ---
 
-## Arc 3 — akar sesungguhnya: `bppiut` 70% bangkai (BELUM dikerjakan)
+## Arc 3 — akar sesungguhnya: `bppiut` 70% bangkai
+
+> Rencana di bawah ditulis SEBELUM dikerjakan; hasilnya ada di bagian
+> "Arc 2 lanjutan" di akhir dokumen. Dua hal dalam rencana ini ternyata
+> KELIRU dan dikoreksi di sana: pg_repack tak bisa dipakai (FORCE RLS), dan
+> `VACUUM FULL` yang ditolak di sini justru jadi jalannya.
 
 ```
 bppiut  2.729.100 hidup / 6.646.023 mati = 70,9% · 1897 MB · autovacuum 402×
@@ -258,3 +263,146 @@ Kelas yang sama patut dicurigai di mana pun ada angka yang lahir dari insiden:
   cacat promosi.
 - **Integration test ber-gate `SCOPE_LIVE_DB=1` tidak jalan di CI.** Penjaga
   sisi-CI untuk Arc 1 adalah pemindai sumber, bukan test angkanya.
+
+---
+
+# Arc 2 lanjutan — E + reclaim, hasil terukur (2026-08-05)
+
+## Hasil
+
+```
+tabel          sebelum      sesudah     rasio    byte/baris (delivery=192)
+bppiut        2337 MB      564 MB       4,1×     696 → 159
+bphut          510 MB      105 MB       4,9×     852 → 159
+deposit        133 MB     2656 kB      51×     9.737 → 126
+terra_resmi    105 MB     1968 kB      53×     9.420 → 123
+────────────────────────────────────────────────────────────
+total         3085 MB      674 MB       4,6×  ·  2,4 GB dibebaskan
+DB total      4046 MB     1869 MB
+```
+
+`getSaldoPelanggan` (berpasangan rapat, jendela sama): **T0 15,7 dtk → T2 1,47 dtk**
+(ulang 1,41). Nilai query identik di ketiga pengukuran.
+
+## Prediksi ter-registrasi — tiga baris, tak satu pun disunting
+
+Metrik vonis: **`pg_total_relation_size`** (heap + indeks), karena itulah basis
+angka 1897 MB yang ditulis di prediksi asli.
+
+| baris | isi | hasil | vonis |
+|---|---|---|---|
+| **ASLI** | 1897 → 500–650 MB · `n_dead_tup` < 50.000 · 104 → 8–25 dtk | 2337 → **564 MB** · 0,9% bebas · **1,47 dtk** | **TEPAT** — 564 MB di dalam pita, meski basisnya bergeser 1897→2337 |
+| **TURUNAN** | 2100–2300 MB | 564 MB | **SALAH TELAK** (4×) |
+| **KOREKSI** | turunan cacat: menghitung fraksi hidup dari TUPLE padahal yang menentukan RUANG | `pct_mati` 0,0% berdampingan `pct_bebas` 76,9% | **TERBUKTI** |
+
+**Prediksi asli selamat justru karena larangan menyunting.** Kalau revisi di
+tengah jalan diizinkan, angka yang hampir tepat akan diganti angka yang salah
+empat kali lipat.
+
+## Dua vonis yang harus dipisahkan
+
+- **Durasi query**: pita 8–25 dtk sudah tercapai **PRA-reclaim** (17,5 dan 15,7
+  dtk) — oleh pool 5→10 + cache, bukan oleh reclaim. Angka 104 dtk yang
+  mendasari seluruh arc adalah artefak instance dingin berebut pool 5.
+- **Ukuran penyimpanan**: di sinilah tesis bloat berdiri, dan ia berdiri —
+  4,6× keseluruhan.
+
+Reclaim tetap menyumbang 10,7× di atas pita. Dua masalah yang dikira satu
+ternyata memang dua, dan keduanya nyata.
+
+## pg_repack + FORCE RLS = salinan tersaring SENYAP
+
+**Tidak ada di dokumentasi pg_repack mana pun. Di Cloud SQL ini tak terhindarkan.**
+
+pg_repack menyalin baris lewat `INSERT INTO repack.table_<oid> SELECT … FROM <tabel>`
+sebagai role penyambung. Kalau tabelnya `FORCE ROW LEVEL SECURITY` dan role itu
+tak punya `BYPASSRLS`, salinannya **tersaring policy**. Policy `unit_scope` di
+sini membaca GUC `app.unit_ids`; tanpa konteks →
+`unit_id = ANY(array kosong)` → SALAH untuk setiap baris → **nol baris tersalin**,
+lalu tabel lama ditukar keluar.
+
+Gagalnya **tanpa galat**: exit 0, `INFO: repacking table`, tabel menyusut — dan kosong.
+
+Di Cloud SQL semua role `rolbypassrls = f` (`postgres`, `ingest`, `dashboard_app`,
+`dashboard_ro`, `cloudsqlsuperuser`), dan `ALTER ROLE … SET app.unit_ids` ditolak
+bahkan sebagai `postgres` — parameter kustom di level role menuntut superuser sejati.
+
+**`VACUUM FULL` kebal**: ia menulis ulang heap di lapisan penyimpanan, bukan lewat
+perencana query, jadi RLS tidak berlaku. Harganya ACCESS EXCLUSIVE.
+
+Durasi terukur (data hidup, bukan ukuran gembung): `bphut` 78 MB → **12,1 dtk** ·
+`bppiut` 403 MB → **74,8 dtk**. Ekstrapolasi dari yang kecil ke yang besar tepat.
+
+### Daftar GRANT minimal pg_repack di Cloud SQL — tumbuh dari galat nyata
+
+```sql
+GRANT USAGE   ON SCHEMA repack TO <role>;              -- repack.version(), create_index_type()
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA repack TO <role>;
+GRANT SELECT  ON ALL TABLES    IN SCHEMA repack TO <role>;
+GRANT CREATE  ON SCHEMA repack TO <role>;              -- CREATE TYPE repack.pk_<oid>
+-- role = PEMILIK TABEL (`ingest`), bukan pemilik schema (`postgres`)
+-- flag  = --no-superuser-check WAJIB (nol role ber-rolsuper di Cloud SQL)
+```
+
+**Daftar ini tidak pernah terbukti lengkap** — `CREATE TABLE repack.table_<oid>`
+dan `log_<oid>` tak pernah sempat dieksekusi karena RLS menghentikan jalurnya
+lebih dulu. Dicatat sebagai daftar yang masih tumbuh, bukan yang final.
+
+## Pelajaran tambahan arc ini
+
+### 8. Kondisi yang membuat "hijau" tak berarti apa-apa
+
+Dry-run pg_repack hijau (exit 0) memvalidasi versi, koneksi, dan flag — lalu
+berhenti **tepat sebelum** satu-satunya hal yang belum teruji: DDL. Kami berdua
+membacanya sebagai "jalur terbukti"; yang terbukti hanya bahwa klien bisa bicara
+dengan server.
+
+Ini kebalikan dari gerbang-mustahil-hijau: di sana pemeriksaan terlalu sulit
+hijau sehingga MERAH tak bermakna; di sini terlalu mudah hijau sehingga HIJAU-nya
+yang tak bermakna. Dua sisi dari kesalahan yang sama — **memilih pemeriksaan
+berdasarkan apa yang mudah dijalankan, bukan berdasarkan apa yang membedakan dua
+kemungkinan.**
+
+Aturannya: **kalau sebuah langkah tak bisa divalidasi tanpa menjalankannya,
+jalankan versi terkecilnya lebih dulu.** Canary menangkap dua kesalahan
+konfigurasi berturut-turut dengan total biaya 1,9 detik, nol kerusakan dua kali.
+
+Dan saat tabel murah habis, penggantinya bukan canary yang lebih besar melainkan
+**pra-terbang read-only**: `count(*)` sebagai role repack mengembalikan **0** —
+jawaban yang sama dengan repack sungguhan, tanpa menyalin satu baris pun. Itu
+yang menyelamatkan `bppiut` 2,76 juta baris.
+
+### 9. Salah-baca yang meloloskan canary
+
+Canary `terra_resmi` tampak "utuh 10.128 baris" — dan saya menamai pemulihannya
+*settling*. Yang sebenarnya terjadi: tabel dikosongkan total, lalu **diisi ulang
+oleh full-sync berikutnya**. Ia lolos karena saya mengukurnya terlambat.
+`deposit` tertangkap hanya karena diukur lebih cepat, saat unit 1/2/4 belum
+menyinkron ulang.
+
+Pelajarannya: **verifikasi harus SEGERA setelah operasi, sebelum mekanisme
+pemulihan otomatis menutupi kerusakannya.** Jaring pengaman yang menyembuhkan
+diri membuat kegagalan tak terlihat, bukan tak ada.
+
+Dan bentuk kehilangannya yang membongkarnya: unit hilang **utuh per unit**, bukan
+terpotong acak. Pola kehilangan yang selaras dengan sumbu keamanan = curigai
+penyaringan, bukan korupsi.
+
+### 10. Ambang alarm yang berimpit dengan nilai harapan
+
+Tripwire unit 7 dipasang di 12:30Z sementara slot terhitungnya juga 12:30Z.
+Alarmnya berbunyi; unit 7 mendarat 71 detik kemudian. Prediksinya benar, alarmnya
+salah dirancang: **ambang = nilai-harapan berbunyi ~separuh waktu pada sistem
+sehat**, lalu diabaikan saat berbunyi sungguhan. Ambang yang benar =
+nilai-harapan + margin.
+
+### 11. Tiga kali gerbang mustahil dalam satu sesi — sebagai pola
+
+- Langkah 0: "nol proses ber-cwd di repo" — VS Code selalu menahan dua.
+- Sisi 2: `max(ingested_at)` maju — padahal E membuatnya menua **by design**.
+- G3: "nol baris berubah berarti E bocor" — padahal sumber yang sepi juga nol.
+
+Ketiganya lahir dari merumuskan gerbang sebelum memahami perilaku normal sistem
+yang diukur. Obatnya: rumuskan gerbang dari **apa yang membedakan sehat dari
+sakit**, dan sebelum memakainya tanyakan **"kalau semuanya baik-baik saja, bisakah
+ini hijau?"** — pasangan dari "kalau rusak, bisakah ini merah?".
