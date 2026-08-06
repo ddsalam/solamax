@@ -203,3 +203,96 @@ Langkah `Health check` tidak menutup celah ini: ia `curl` URL layanan, yang meny
   `can_approve=true` — itu gerbang owner.
 - Re-run dihentikan setelah percobaan ke-3: selama pin bertahan, deploy sukses pun tak
   membuat fix menyajikan, jadi re-run berikutnya tak membuka apa pun.
+
+
+## 2026-08-07 00:05–00:40 WIB — fix TERBUKTI live; backfill 5 dari 7 unit; **BERHENTI pada P5 unit 7**
+
+### P3 HIJAU — baris pemicu sembuh sendiri, tanpa satu pun tulisan manual
+`bppiut PP2022100101473` (unit 1): `73867616.45999999` → **`73867616.46`**, ter-ingest
+**00:05:20 WIB** pada sync penuh `piutang` unit 1 (`sync_state.last_run_at` 00:06:08).
+Persis seperti yang dipra-registrasikan: domain `mode:"full"` menulis ulang sendiri.
+
+### P2 HIJAU — dengan kontrol yang memisahkannya dari "nol data"
+Laju penulisan `sales_detail` per jendela 15 menit:
+
+| jendela WIB | baris ditulis | baris ber-artefak |
+| --- | ---: | ---: |
+| 06 Agu 23:15 | 66 | 12 |
+| 06 Agu 23:30 | 1.032 | 68 |
+| 06 Agu 23:45 | 2.454 | **259** |
+| 07 Agu 00:00 | **1.056** | **0** |
+
+Data terus mengalir sementara produksi artefak jatuh ke nol persis — keduanya diukur pada
+baris yang sama, jadi tak bisa tertukar. **P1 tertutup**: laju kenaikan berhenti.
+
+Efek samping yang menguntungkan: seluruh kelas `fullsync` (bppiut/bphut/terra_resmi/
+real_tank/deposit) **sembuh sendiri 34 → 0** tanpa backfill, dan baris di dalam jendela
+rescan ikut bersih sendiri (243.859 → 243.456 sebelum backfill dimulai).
+
+### Kontrol dipertajam sebelum menulis (dan satu salah-baca yang tertangkap)
+Pengukur pertama menghitung **baris**, sedangkan T0 menghitung **sel per kolom** — beda
+satuan, dan sempat terbaca seperti penurunan 42.000 yang tak pernah terjadi. Diperbaiki ke
+satuan sel sebelum dipakai.
+
+Kontrol "unit lain tak bergerak" tidak bisa memakai total apa adanya: baris di dalam jendela
+rescan **sembuh sendiri terus-menerus**, jadi total unit lain memang menyusut → MERAH palsu.
+Kontrol dipersempit ke **baris bertanggal < 2026-06-01**, di luar semua jendela rescan
+(sales/cash/tebus 7 hari, edc 5, pelanggan 3, unit 3 resync bulanan) — baris yang **hanya**
+bisa berubah oleh backfill. Diverifikasi tidak vakum: tiap unit punya isi (terkecil unit 3 = 74).
+
+### Hasil per unit (urutan pra-registrasi 3 → 6 → 5 → 2 → 7)
+
+| unit | sel ditulis ulang | AFTER | kontrol unit-lain | P5 |
+| ---: | ---: | ---: | --- | --- |
+| 3 | 156 | 0 | ✓ enam unit identik | ✓ identik (5.023 B) |
+| 6 | 13.540 | 0 | ✓ | ✓ identik (14.980 B) |
+| 5 | 43.767 | 0 | ✓ | ✓ identik (8.047 B) |
+| 2 | 37.437 | 0 | ✓ | ✓ identik (16.073 B) |
+| 7 | 44.724 | 0 | ✓ | ❌ **BERGERAK** |
+
+**Unit 1 dan 4 TIDAK dijalankan** — berhenti sesuai aturan.
+
+### ❌ P5 unit 7 MERAH — temuan yang mengoreksi analisis awal
+
+Satu nilai bergerak di bagian `pelanggan`:
+`"liter": 151.48999999999998` → `"liter": 151.49` (selisih 2,84 × 10⁻¹⁴).
+
+**Sebabnya mengoreksi klaim "jalur baca kebal karena `::float8`".** Klaim itu benar untuk
+nilai TUNGGAL, tapi `getPelangganForDate` melakukan `COALESCE(sum(u.liter),0)::float8`
+([queries.ts:1119](../apps/dashboard/src/lib/queries.ts#L1119)) — cast terjadi **sesudah
+`sum()`**. Galat per-baris terakumulasi lebih dulu dalam aritmetika numeric yang eksak, lalu
+jatuh ke double yang berbeda dari double nilai bersihnya. Jadi **agregat memang bisa
+bergeser**, walau tiap nilai tunggalnya tidak.
+
+**Arah pergeserannya menuju nilai BENAR** (…98 → 151,49): backfill membuat agregat lebih
+tepat, bukan merusaknya.
+
+**Tidak bisa mencapai layar.** `fmtL`/`idn` membulatkan saat render; diuji pada presisi
+0,1,2,3,4,6 desimal — teksnya **identik di semuanya** ("151", "151,5", "151,49", …). Jadi
+P5 sebagaimana diimplementasikan **lebih ketat** daripada "angka yang tampil": ia
+membandingkan keluaran query sebelum pemformatan, dan justru karena itu ia menangkap
+pergeseran 10⁻¹⁴ yang tak akan pernah terlihat pengguna.
+
+Keempat unit sebelumnya lolos karena agregat pada tanggal sampelnya kebetulan jatuh ke
+double yang sama — bukan karena pergeseran ini mustahil di sana.
+
+### Status data saat berhenti
+
+| unit | sel windowed tersisa |
+| ---: | ---: |
+| 1 | 46.805 |
+| 2 | 0 |
+| 3 | 0 |
+| 4 | 56.923 |
+| 5 | 0 |
+| 6 | 0 |
+| 7 | 0 |
+| **total** | **103.728** |
+
+Kelas `fullsync` 0 di semua unit. Backfill unit 7 sudah **COMMIT** sebelum P5 dijalankan;
+tidak di-rollback karena perubahannya menuju nilai benar dan tak terlihat di layar —
+membatalkannya justru mengembalikan artefak.
+
+### Menunggu keputusan owner
+Lanjut ke unit 1 dan 4, atau tidak. Rekomendasi: **lanjut** — P5 MERAH ini menandai batas
+yang lebih halus dari yang diantisipasi, bukan kerusakan.
