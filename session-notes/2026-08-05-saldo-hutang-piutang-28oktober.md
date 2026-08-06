@@ -683,7 +683,176 @@ Obat yang sama untuk keduanya, dan sudah masuk runbook gold-check:
 | --- | --- | --- |
 | **Format GUC `app.unit_ids`** — literal array `'{1,…,7}'` di-split pada koma lalu disaring regex `^-?[0-9]+$`, sehingga token pertama (`{1`) & terakhir (`7}`) gugur | unit **pertama dan terakhir** tampak **kosong**; 0 baris, **bukan error** — identik dgn "tidak ada data" | kasus kontrol: IB mustahil kosong. Format benar = daftar polos (`7`) |
 | **Frasa seksi muncul ulang** di baris `TOTAL SALDO …` dan blok `Summary` → parser substring **me-reset akumulator** | berkas IB terbaca **0 baris di semua seksi**; mudah disimpulkan "layout IB beda" | buka strukturnya, bukan menebak; lalu pasang TOTAL + Summary sbg cek silang. (Baris JUDUL laporan juga berawalan `DAFTAR SALDO` → sempat bikin seksi hantu `null`) |
+| **`information_schema` disaring privilege** — `dashboard_ro` tak punya akses schema `app`, jadi `information_schema.tables` mengembalikan **nol baris** untuk `app` | terbaca seperti "schema `app` tidak punya tabel" — persis saat menjawab "apakah ada angka saldo yang tersimpan?", di mana nol = jawaban yang **menyenangkan** dan karenanya paling berbahaya | kontrol: `public` → 26 tabel (menyalak). Lalu baca `pg_class`/`pg_namespace` yang **tidak** disaring privilege → 11 tabel `app` muncul |
 | **Timeout test 5 dtk** pada invarian yang menyentuh DB 8× | test MERAH; sangat mudah dijual sebagai temuan data | invarian itu benar **secara aljabar** — mustahil gagal karena nilai. Baca pesan gagalnya, jangan hanya warnanya |
 
-Ketiganya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari kebenaran**, dan
+**TIGA dari empat jebakan di atas menghasilkan NOL TANPA ERROR** — GUC salah format, parser
+yang ter-reset, dan `information_schema` yang disaring privilege. Tiga instans **pola yang sama
+dalam satu sesi**, di tiga lapis alat yang berbeda (DB, parser berkas, katalog DB). Itu bukan
+kebetulan; itu frekuensi dasarnya. Aturan praktisnya:
+
+> **Nol tak pernah menjadi jawaban sampai ada kasus kontrol yang membuktikan query-nya bisa
+> mengembalikan bukan-nol.**
+
+Yang keempat (timeout) adalah cerminnya: **merah tanpa cacat**. Arahnya berlawanan, keluarganya
+sama — dan berbahaya justru ketika nol/merah itu **jawaban yang kita harapkan**. Dalam sesi ini
+"schema `app` kosong" adalah kabar baik (berarti tak ada angka lama tersimpan), dan itulah momen
+paling mudah berhenti bertanya.
+
+Keempatnya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari kebenaran**, dan
 hanya kasus kontrol yang memisahkannya.
+
+
+## 21. Jebakan PKCE dua-host — TERBUKTI, bukan lagi dugaan
+
+Awalnya dicatat sebagai pengamatan ("dua host satu layanan, alurnya jalan"). **Naik status jadi
+mode gagal nyata dengan bukti log** pada hari yang sama.
+
+Masuk lewat URL otomatis Cloud Run `solamax-dashboard-rlsstg-wn6i64kvza-et.a.run.app` **GAGAL**:
+
+```
+[auth][error] InvalidCheck: pkceCodeVerifier value could not be parsed
+```
+
+Sebabnya `AUTH_URL` menunjuk host lain
+(`solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app`), sehingga **cookie PKCE di-set
+di satu host lalu callback dibaca di host yang berbeda**. Masuk lewat host `AUTH_URL` **berhasil**.
+
+Yang membuatnya mahal bila terulang: pesan gagalnya berbicara tentang **parsing verifier**, bukan
+tentang konfigurasi host — jadi ia mengarahkan pembacanya ke kode auth, bukan ke penyebabnya.
+
+### ⚠️ KHUSUS TIER TESTING — jangan digeneralisasi ke pilot
+
+Konfigurasi auth kedua tier **berbeda BENTUK, bukan sekadar berbeda nilai**:
+
+| | `-rlsstg` (testing) | `-staging` (pilot) |
+| --- | --- | --- |
+| `AUTH_URL` | **dipatok** ke satu host Cloud Run | **tidak dipatok** |
+| `AUTH_TRUST_HOST` | — | **`true`** |
+| domain | dua host Cloud Run | **domain kustom `solamax.solagroup.co`** |
+
+Karena pilot memakai `AUTH_TRUST_HOST=true` tanpa `AUTH_URL` yang dipatok, dan berdomain kustom,
+**bentuk kegagalan ini tidak ada di sana**. Ditulis sebagai satu mode gagal umum, catatan ini akan
+mengirim orang berikutnya mengejar hantu di pilot — persis kesalahan yang membuat sesi ini mahal
+(§19). Jadi: **temuan ini milik tier testing.** Kalau login pilot bermasalah, penyebabnya
+kemungkinan besar bukan ini, dan diagnosanya mulai dari nol.
+
+---
+
+## 22. Status akhir sesi (2026-08-06)
+
+PR [#187](https://github.com/ddsalam/solamax/pull/187) **ter-merge ke `staging`**. Ketiga workflow
+sukses: CI `pnpm check` (44 dtk), deploy backend (3m08s), deploy dashboard (3m14s).
+
+Revisi yang serve di tier **testing**:
+- dashboard `solamax-dashboard-rlsstg-00039-lgz` (100% traffic)
+- backend `solamax-ingest-rlsstg-00011-zw8`
+
+**`main` tidak disentuh** — pilot (`-staging`) masih menjalankan kode lama. Promosi ke pilot adalah
+keputusan terpisah yang belum diambil, dan menunggu dua hal di sisi owner: verifikasi tampilan
+dua-kolom di `-rlsstg`, dan keputusan apakah penerima cetakan PDF perlu diberitahu lebih dulu
+(usulan: satu kalimat yang menyebut **Hutang Lokal** — baris dengan pergeseran persentase terbesar,
+12,3% di 28 Oktober / 5,9% di IB karena basisnya kecil — dan bahwa **angka lama = kolom "Awal hari"**).
+
+Di luar cakupan dan tetap terbuka sebagai tugas terpisah milik owner: artefak float
+`PP2022100101473` (`73867616.45999999`, jalur `num()` JS → JSON → `numeric`).
+
+
+## 23. CELAH YANG DIKETAHUI — tier testing tak bisa memvalidasi UI berbasis data
+
+Ditemukan 2026-08-06 saat hendak memverifikasi tata letak dua-kolom di `-rlsstg`.
+
+**DB tier testing (`solamax-pg-rlsstg`) sintetis dan kosong** untuk domain saldo. Akibatnya
+`hasSaldo` bernilai false dan **seluruh blok "Saldo Hutang/Piutang & Recap Harian" tidak dirender
+sama sekali**. Diperiksa pada dua tanggal (2026-08-04 dan 2026-07-15): nol penjualan, nol ledger,
+blok Saldo absen.
+
+Konsekuensi yang harus diingat, karena berlaku umum:
+
+> **CI hijau + deploy sukses di `-rlsstg` TIDAK berarti tampilannya pernah dilihat.**
+> Untuk setiap perubahan UI yang render-nya bergantung pada ada-tidaknya data, tier testing
+> memberi sinyal **kosong** — dan kosong di sini, sekali lagi, tak bisa dibedakan dari "aman".
+> (Ini instans keempat dari pola §20 — kali ini di lapis lingkungan, bukan query.)
+
+Ini **struktural**, bukan insiden: akan berulang pada setiap perubahan tampilan berbasis data.
+Untuk perubahan ini, owner memilih **promosi ke pilot lalu verifikasi di sana dengan data asli**,
+secara sadar menerima urutan terbalik — dan mengamankannya dengan **jalur mundur yang disiapkan
+sebelum promosi** (revisi rollback direkam + perintah traffic-split siap salin-tempel di badan
+PR #188).
+
+Opsi yang sempat dipertimbangkan, dicatat agar keputusan berikutnya tidak mulai dari nol:
+
+| opsi | isi | catatan |
+| --- | --- | --- |
+| **Seed DB testing** | isi `solamax-pg-rlsstg` dengan fixture saldo (bppiut/bphut/pelanggan_master) untuk ≥1 unit & beberapa tanggal | menutup celah untuk semua perubahan UI berikutnya; biayanya membuat & merawat fixture yang realistis (termasuk kasus pecahan ½ & bucket bertitik) |
+| **Dev lokal → DB pilot read-only** | jalankan dashboard lokal dgn `DATABASE_URL` role `dashboard_ro` via cloud-sql-proxy | data asli, nol risiko tulis; tapi butuh login OAuth dan tak cocok dijalankan agen — verifikasi tetap manual oleh owner |
+| **Terima & mitigasi** (dipilih kali ini) | promosi ke pilot + rollback siap sebelum promosi | murah dan cepat pulih, tapi angka salah bisa sempat terlihat direksi |
+
+**Bukan pekerjaan PR ini.** Dicatat sebagai celah yang diketahui beserta pilihannya.
+
+
+## 24. HASIL VERIFIKASI VISUAL DI PILOT (2026-08-06) — keadaan akhir
+
+Promosi ke pilot selesai: dashboard `solamax-dashboard-staging-00080-vdp` → **`00081-nvg`**.
+Verifikasi dilakukan owner **di pilot dengan data asli** — satu-satunya tempat yang bisa (§23).
+
+### ✅ Hijau
+
+Blok render dengan sub-judul *"saldo awal & akhir hari per tanggal bisnis"* dan dua kolom berlabel
+**Awal hari** / **Akhir hari** — tidak bisa salah baca.
+
+**28 Oktober · 2026-08-04**
+
+| baris | Awal hari | Akhir hari |
+| --- | ---: | ---: |
+| Piutang Pelanggan Lokal | Rp 12.117.420.938 | Rp 12.239.715.239 |
+| Piutang Pelanggan Online | Rp 10.796.518 | Rp 10.796.518 |
+| Hutang Pelanggan Lokal | (Rp 140.919.652) | (Rp 123.526.169) |
+
+Kolom **Awal hari** = oracle 03-08 persis di ketiga baris; **Akhir hari** = oracle 04-08 persis,
+kecuali Piutang Lokal +604.500 — **koreksi ledger yang sudah terdokumentasi** (§7/§5 pra-registrasi),
+bukan cacat. Footer aplikasi mengonfirmasinya sendiri: *"⟳ = angka pernah dikoreksi (90 revisi hari
+ini)"*.
+
+**Imam Bonjol · 2026-08-04** — Hutang: Awal `(Rp 734.439.355)`, Akhir `(Rp 751.284.145)`; magnitudo
+cocok oracle IB 03-08 & 04-08 persis.
+
+### 🔴 Satu temuan — tanda Hutang tidak terbedakan
+
+Kedua unit menampilkan Hutang **dalam kurung**, padahal 28 Oktober **+123.526.169 (positif)** dan
+IB **−751.284.145 (negatif)**. Untuk 28 Oktober, tanda di layar **berbeda dari EasyMax**.
+
+**Bukan regresi**: flag `danger: true` di `laporan-model.ts` sudah ada sebelum perubahan sesi ini;
+ia hanya menjadi terlihat saat dua unit bertanda berlawanan akhirnya diperiksa berdampingan.
+Keputusan owner: **jangan rollback, perbaiki di PR susulan** — dampaknya kosmetik-tapi-menyesatkan,
+bukan angka yang salah hitung.
+
+Ditangani di PR susulan (branch `claude/saldo-tanda-hutang`): prediksi disegel lebih dulu, query
+dijalankan → **nilai tersimpan terbukti BENAR** (28 Okt `+123526169`, IB `−751284145`), cacat murni
+di lapis tampilan; diperbaiki dengan satu formatter bersama `rpParen()`/`isNegative()` untuk layar
+**dan** PDF, dikunci 5 mutasi merah.
+
+### Pelajaran yang menutup lingkaran §23
+
+Celah tier testing **terbukti mahal dalam satu putaran**: cacat ini mustahil terlihat di `-rlsstg`
+(blok Saldo tak dirender), dan hanya muncul ketika **dua unit dengan tanda berlawanan** dilihat
+berdampingan. Bahkan pilot pun tak cukup kalau hanya satu unit diperiksa — IB sendirian tampak
+benar, 28 Oktober sendirian tampak masuk akal.
+
+> **Cacat yang butuh DUA kasus berlawanan untuk terlihat tidak akan pernah muncul dari satu
+> sampel** — sekeras apa pun sampel itu diperiksa.
+
+Itu sebabnya test perbaikannya memuat kedua tanda dalam satu berkas, bukan satu kasus per berkas.
+
+## 25. Status penutup sesi
+
+| item | status |
+| --- | --- |
+| PR #187 → `staging` | ✅ merged, CD `-rlsstg` sukses |
+| PR #188 → `main` (promosi pilot) | ✅ merged, pilot `solamax-dashboard-staging-00081-nvg` |
+| Verifikasi visual pilot | ✅ dilakukan owner; 1 temuan (tanda Hutang) |
+| PR #189 tanda Hutang → `staging` | terbuka, CI hijau |
+| PR docs-only (berkas ini) | terbuka |
+| Artefak float `PP2022100101473` | tugas terpisah owner — **di luar cakupan** |
+| `migration.sql` 0013 | final, tidak dibuka lagi |
+| Seed DB testing (§23) | opsi tercatat, **belum diputuskan** |
