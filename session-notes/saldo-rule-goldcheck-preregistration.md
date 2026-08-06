@@ -216,3 +216,79 @@ planner beralih ke **hash join**. Semantik identik — `lokal` = "cocok ke maste
 
 Rasio **0,89×** — bentuk baru **lebih cepat dari yang lama** meski menghasilkan dua
 kali lipat angka. ✅ P4.1 terpenuhi. Optimasi 104 dtk → 1,47 dtk tidak dikorbankan.
+
+---
+
+# BAGIAN II — Imam Bonjol (unit 1), oracle setara
+
+Disegel **2026-08-06**, sebelum satu pun query IB dijalankan. Append-only.
+
+## 8. Kelayakan masukan & verifikasi oracle
+
+Oracle: **"DAFTAR SALDO HUTANG PIUTANG" IB**, 1–5 Agustus 2026 — laporan **sejenis** dengan
+yang dipakai di 28 Oktober (inilah perbaikan metode yang membubarkan kebingungan lama).
+
+Diparse ulang sendiri; tiap sel dikonfirmasi **tiga sumber independen di dalam berkas**:
+Σ(DEBET−KREDIT) per baris · baris `TOTAL SALDO …` · blok `Summary`. **Ketiganya cocok di
+kelima belas sel.** Jumlah baris: Piutang Lokal 136 · Online 1 · Hutang 191 = **328**, sama
+dengan yang disebut owner.
+
+Jebakan parser yang tertangkap (dicatat karena akan terulang): frasa seksi **muncul lagi** di
+baris `TOTAL SALDO …` dan di blok `Summary`, sehingga parser 28 Oktober — yang mencocokkan
+substring — **me-reset akumulator jadi kosong** dan melaporkan **0 baris di semua seksi**.
+Nol yang terlihat seperti "berkas kosong". Ketahuan hanya karena mustahil IB nol.
+Perbaikan: header seksi = baris ber-awalan `DAFTAR SALDO` **dan** cocok ke salah satu nama
+seksi (baris JUDUL laporan juga berawalan `DAFTAR SALDO` — itu pun sempat menciptakan seksi
+hantu `null`).
+
+`sync_state` IB untuk `piutang`/`hutang`/`pelanggan` terisi & mutakhir → masukan layak.
+
+## 9. PREDIKSI — IB, 15 sel (batas AKHIR hari)
+
+| tanggal | Piutang Lokal | Piutang Online | Hutang Lokal |
+| --- | ---: | ---: | ---: |
+| 2026-08-01 | 35.377.538.927 | 1.200.000 | −770.002.380 |
+| 2026-08-02 | 35.476.850.395 | 1.200.000 | −735.869.634 |
+| 2026-08-03 | 35.563.341.030 | 1.200.000 | −734.439.355 |
+| 2026-08-04 | 35.687.985.717 | 1.200.000 | −751.284.145 |
+| 2026-08-05 | 35.770.675.661 | 1.200.000 | −707.071.775 |
+
+**Prediksi utama (P9.0): kelima belas sel EKSAK, tanpa penyesuaian apa pun.** Yakni: formula
+IB sudah benar sejak awal dan **tidak ada data yang hilang** — "kehilangan 19,7 miliar" itu
+artefak membandingkan ke laporan berjenis lain.
+
+Prediksi turunan:
+
+- **P9.1** — `bppiut` SJENIS{1,5} @27-Jun = 31.933.056.622; oracle @01-Agu = 35.377.538.927.
+  Selisih 3.444.482.305 ÷ 35 hari ≈ **98,4 juta/hari**, dan delta harian teramati 01→05 Agu
+  ≈ 99,3 / 86,5 / 124,6 / 82,7 juta. Laju tersirat dan teramati **harus tetap sejalan**;
+  kalau 15 sel eksak, ini otomatis terpenuhi.
+- **P9.2 — kredit Online.** IB Online punya kredit (10.505.841 − 9.305.841 = 1.200.000),
+  sedangkan 28 Oktober kreditnya nol. Jalur `sjnsbp=2` pada bucket Online **belum pernah
+  tereksekusi** oleh test mana pun. Prediksi: ia benar, dan Online IB mendarat 1.200.000.
+  MERAH bila Online IB keluar **10.505.841** → tanda kredit diabaikan pada bucket Online.
+- **P9.3 — pecahan ½ rupiah.** Hutang IB memuat 4 pelanggan bernilai `,5`
+  (`PLG2067` −653.265,5 · `PLG2068` −6.622.022,5 · `PLG2069` −21.516.390,5 ·
+  `PLG2249` +4.100.949,5); totalnya `51.732.360.497,5 − 52.502.362.877,5` = **−770.002.380
+  bulat** (pecahannya saling meniadakan). Prediksi: hasil **bulat eksak**, nol selisih.
+  MERAH bila muncul ±0,5 atau ±1 → dan bila itu terjadi, **wajib dibuktikan** benign lewat
+  kontrol (bandingkan `numeric` vs `float8` di jalur yang sama), bukan disebut "pembulatan"
+  karena kecil.
+- **P9.4 — aturan bertitik tegak tanpa penyesuaian.** Piutang Lokal IB: 136 pelanggan,
+  **0 bertitik**. Online: 1 pelanggan, **1 bertitik** (`18.999.0010`). Hutang: 191, **0
+  bertitik**. Prediksi: syarat "tanpa titik" pada Lokal tak memindahkan rupiah di IB, dan
+  Online IB murni ditentukan format kode.
+- **P9.5 — tanda Hutang.** IB **negatif** (−770 juta), 28 Oktober **positif** (+149 juta).
+  Formula yang sama harus menghasilkan keduanya tanpa perlakuan khusus; tanda mengikuti data.
+  MERAH bila IB keluar positif → ada pembalikan tanda yang tak semestinya.
+
+### Risiko yang sudah diketahui sebelum dijalankan
+
+Sama seperti sel ke-9 di 28 Oktober: ledger bisa **bergerak setelah oracle diekspor**
+(koreksi back-dated). Bila ada sel meleset, **pemeriksaan pertama** bukan menyalahkan aturan
+melainkan: (i) apakah aturan LAMA pun mengembalikan angka baru itu, dan (ii) apa kata
+`ingested_at`. Baru setelah keduanya bersih, meleset = cacat aturan.
+
+## 10. HASIL — IB 15 sel
+
+> Belum dijalankan saat prediksi disegel.
