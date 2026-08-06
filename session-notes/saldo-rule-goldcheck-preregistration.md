@@ -92,14 +92,127 @@ Prediksi ini **boleh salah**; justru itu gunanya. Yang tidak boleh adalah tidak 
 
 ## 5. HASIL — 28 Oktober, 9 sel
 
-> Menunggu ADC (`gcloud auth application-default login`) dipulihkan owner.
-> Belum dijalankan per 2026-08-06.
+Dijalankan 2026-08-06 12:33–12:37 WIB, ADC dipulihkan owner. Dieksekusi lewat
+`saldo.oracle.integration.test.ts` (implementasi SEBENARNYA, bukan salinan SQL).
+
+**8 dari 9 sel EKSAK terhadap prediksi. 1 sel meleset — dan melesetnya BENAR.**
+
+| tanggal | baris | prediksi | hasil | putusan |
+| --- | --- | ---: | ---: | --- |
+| 02-08 | Lokal / Online / Hutang | 12.033.038.039 / 10.796.518 / 149.332.330 | idem | ✅ EKSAK |
+| 03-08 | Lokal / Online / Hutang | 12.117.420.938 / 10.796.518 / 140.919.652 | idem | ✅ EKSAK |
+| 04-08 | Online / Hutang | 10.796.518 / 123.526.169 | idem | ✅ EKSAK |
+| 04-08 | **Piutang Lokal** | 12.239.110.739 | **12.239.715.239** | ⚠️ **+604.500** |
+
+### Sel ke-9: ledger bergerak setelah oracle diekspor — bukan aturan yang salah
+
+Kontrol yang memutuskannya: **aturan LAMA pun kini mengembalikan 12.239.715.239**
+untuk 04-08 (pagi ini ia mengembalikan 12.239.110.739). Jadi yang berubah adalah
+DATA, bukan aturan.
+
+Jejak audit dari kolom `ingested_at` — pukul **2026-08-06 02:23 UTC (09:23 WIB)**
+pengawas 28 Oktober mengoreksi posting ber-tanggal 04-08. EasyMax mencatatnya
+sebagai batal-dan-posting-ulang: 5 posting asli + 5 baris pembalik di-`SBATAL=1`,
+lalu 5 posting pengganti dipasang. Empat pelanggan nilainya sama; **PLG0831 naik
+30.081.000 → 30.685.500 = +604.500**.
+
+Rekonstruksi keadaan ledger saat oracle dicetak:
+
+```
+saldo sekarang       12.239.715.239
+− 5 posting pengganti     63.097.363
++ 5 posting asli          62.492.863
+= rekonstruksi       12.239.110.739
+  oracle             12.239.110.739
+  selisih                         0   ← nol rupiah
+```
+
+→ **Aturannya benar; berkas oracle yang mendahului koreksi.** Prediksi P2.1, P2.2,
+P2.3 semuanya ✅ (Lokal tak berubah oleh syarat "tanpa titik"; awal(D) ≡ akhir(D−1);
+Online naik tepat 36.084).
+
+Kontrol yang ikut menyalak: test "oracle digeser satu hari HARUS gagal" ✅ merah
+sebagaimana mestinya; guard "KOREKSI nyata di ledger, bukan faktor pengepas"
+menuntut kesepuluh baris ber-ID itu benar-benar ada dengan status & selisih yang
+disebut — mengarang angka koreksi akan gagal di situ.
 
 ## 6. HASIL — armada 7 unit
 
-> Menunggu ADC.
+Dijalankan 2026-08-06, `dtgl <= 2026-08-04`, ketujuh unit sekaligus.
+
+### Dampak per unit
+
+| unit | nama | Lokal lama | Lokal baru | Online lama | Online baru | Δ Online |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Imam Bonjol | 35.687.985.717 | **sama** | 1.200.000 | 1.200.000 | — |
+| 2 | Bakau | 1.598.414.685 | **sama** | 2.333.677 | 2.333.677 | — |
+| 3 | Adisucipto | 332.136.624 | **sama** | 0 | 0 | — |
+| 4 | Bundaran Kotabaru | 33.400.960.680 | **sama** | 19.034.234 | 19.734.274 | **+700.040** |
+| 5 | Batu Layang | 4.187.751.063 | **sama** | 0 | 0 | — |
+| 6 | Korek | 17.768.651.736 | **sama** | 450.000 | 450.000 | — |
+| 7 | 28 Oktober | 12.239.715.239 | **sama** | 10.760.434 | 10.796.518 | **+36.084** |
+
+**Piutang Lokal tidak berubah di satu unit pun.** Piutang Online berubah di dua unit.
+
+🔎 **Kotabaru terkena defek yang SAMA** — penyebabnya `21.999.0014` HERWIN, SJENIS 4,
+bertitik: **kode pelanggan yang persis sama** dengan di 28 Oktober. Jadi perbaikan ini
+bukan kalibrasi ke satu sampel; ia memperbaiki dua unit lewat satu akar yang sama.
+Kotabaru selama ini juga kurang 700.040 setiap hari.
+
+### Jawaban tiga pertanyaan
+
+- **(a) `bphut` memuat pelanggan bertitik?** → **TIDAK, nol di ketujuh unit.**
+  Prediksi ✅ **BENAR**. Kontrol menyalak (pelanggan non-bertitik di `bphut`:
+  188/13/2/74/12/2/33 per unit 1–7). → Hutang memang **tanpa** filter; syarat
+  `SJENIS {2,3}` + non-bertitik **tidak perlu ditambahkan**, dan tidak ditambahkan.
+
+- **(b) Ada pelanggan BERTITIK ber-SJENIS {1,5} yang BERSALDO?** → **TIDAK ADA,
+  nol di ketujuh unit.**
+  ❌ **PREDIKSI SAYA SALAH.** Saya memperkirakan "ADA di setidaknya satu unit selain
+  28 Oktober". Ternyata di seluruh armada, master bertitik ber-SJENIS {1,5} (EVAN,
+  HERWIN, HENDRA SALAM, SALAM GROUP, SALAM ONLINE) semuanya bersaldo **nol**.
+  Konsekuensinya justru melegakan: syarat "tanpa titik" pada Lokal **tidak memindahkan
+  rupiah satu pun** di unit mana pun — ia murni pagar terhadap masa depan. Tidak ada
+  perubahan angka yang perlu dimintakan oracle pembanding.
+
+- **(c) "Titik = online" berlaku di semua unit?** → **Ya; dan tak ada format ketiga.**
+  Prediksi ✅ **BENAR**. Klasifikasi kode master per unit — `PLG####` vs bertitik vs
+  **lainnya**: unit 1 = 2959/14/**0**, unit 2 = 616/13/**0**, unit 3 = 5/0/**0**,
+  unit 4 = 1190/14/**0**, unit 5 = 531/6/**0**, unit 6 = 190/1/**0**, unit 7 = 839/13/**0**.
+  Kolom "lainnya" **nol di mana-mana** → diskriminatornya memang biner. Unit 3
+  (Adisucipto) tak punya pelanggan bertitik sama sekali — sesuai prediksi, itu bukan
+  kegagalan aturan, hanya unit tanpa bisnis online.
 
 ## 7. HASIL — biaya query
 
-> Menunggu ADC. Angka pembanding bentuk LAMA yang sudah terukur (unit 7, DB pilot,
-> 3× berurutan): **1.185 / 1.124 / 1.064 ms**.
+❌ **P4.1 sempat MERAH, lalu diperbaiki sampai HIJAU.** Dicatat apa adanya karena
+inilah gunanya ambang ditulis di muka.
+
+Bentuk CTE yang pertama diimplementasikan, diukur di **unit 4** (927.170 baris
+`bppiut` — terberat di armada, sesuai prediksi P4.2 ✅ **BENAR**), interleaved 4×:
+
+| | run 1 | run 2 | run 3 | run 4 | median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LAMA (3 angka, 1 batas) | 1.399 | 1.404 | 1.346 | 1.344 | **1.375 ms** |
+| CTE v1 (6 angka, 2 batas) | 1.952 | 2.024 | 2.097 | 2.189 | **2.060 ms** |
+
+Rasio **1,50×** — melewati ambang 1,3× yang disegel. Varian alternatif "enam
+subquery terpisah" lebih buruk lagi (2.663–6.967 ms).
+
+`EXPLAIN (ANALYZE)` menunjukkan penyebabnya, dan itu bukan materialisasi CTE:
+planner memilih **merge join** dan **menyortir 343.769 baris — 1.798 ms sendirian**.
+Bentuk lama lolos dari sortir itu karena `sjenis IN (1,5)` pada INNER JOIN memangkas
+sisi master lebih dulu.
+
+Perbaikannya: **prafilter sisi master di dalam subquery join** (`WHERE unit_id = $1
+AND sjenis IN (1,5)`), sehingga sisi kanan menyusut dari 1.204 baris jadi puluhan dan
+planner beralih ke **hash join**. Semantik identik — `lokal` = "cocok ke master
+{1,5}" — dan Online tetap tak bergantung pada master.
+
+| | run 1 | run 2 | run 3 | run 4 | median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| LAMA (3 angka, 1 batas) | 1.355 | 1.372 | 1.323 | 1.306 | **1.339 ms** |
+| **BARU final (6 angka, 2 batas)** | 1.180 | 1.266 | 1.207 | 1.188 | **1.198 ms** |
+
+Rasio **0,89×** — bentuk baru **lebih cepat dari yang lama** meski menghasilkan dua
+kali lipat angka. ✅ P4.1 terpenuhi. Optimasi 104 dtk → 1,47 dtk tidak dikorbankan.

@@ -448,7 +448,25 @@ keputusan owner, bukan konsekuensi otomatis. Tak ada migrasi ditulis.
 - **GERBANG A — SELESAI.** Tabel 9 sel di §2, arah selisih tercatat, tiap hipotesis diputus.
 - **GERBANG B — SELESAI.** Akar Online = SJENIS dipakai sebagai proksi format kode (D3, §7a).
   Akar Piutang & Hutang Lokal = beda definisi awal/akhir hari, bukan kerusakan data.
-- **GERBANG C — kode SELESAI, bukti DB TERTUNDA.** Implementasi + test + mutasi merah semua
+- **GERBANG C — SELESAI & TERBUKTI DI DB (2026-08-06).** 8/9 sel eksak; sel ke-9
+  (04-08 Piutang Lokal) meleset +604.500 dan **melesetnya benar** — ledger dikoreksi
+  pengawas pukul 09:23 WIB setelah oracle diekspor; rekonstruksi mendarat di oracle
+  dengan selisih **nol rupiah**. Aturan LAMA pun mengembalikan angka baru itu, jadi
+  yang berubah data, bukan aturan. Biaya query **turun** jadi 0,89× dari bentuk lama
+  (setelah satu putaran perbaikan: bentuk CTE pertama sempat 1,50× = MERAH terhadap
+  ambang yang disegel, sebabnya sortir 343.769 baris pada merge join; diperbaiki
+  dengan prafilter sisi master → hash join). Rincian di
+  `saldo-rule-goldcheck-preregistration.md` §5–§7.
+- **GERBANG D — SELESAI.** Ketujuh unit diperiksa: Piutang Lokal **tidak berubah di
+  satu unit pun**; Piutang Online berubah di **dua** unit — 28 Oktober (+36.084) dan
+  **Bundaran Kotabaru (+700.040)**, keduanya oleh pelanggan berkode **sama**
+  `21.999.0014` HERWIN (SJENIS 4, bertitik). Satu akar, dua unit → bukan kalibrasi ke
+  sampel. Tiga pertanyaan armada terjawab: (a) nol pelanggan bertitik di `bphut` di
+  semua unit → hutang benar tanpa filter; (b) nol pelanggan bertitik ber-SJENIS {1,5}
+  yang bersaldo → syarat "tanpa titik" tak memindahkan rupiah mana pun (**prediksi
+  saya SALAH di sini**, tercatat di pra-registrasi); (c) tak ada format kode ketiga
+  di unit mana pun.
+- ~~**GERBANG C — kode SELESAI, bukti DB TERTUNDA.**~~ Implementasi + test + mutasi merah semua
   beres dan `pnpm check` hijau. **Pembuktian 9 sel di DB dan verifikasi 7 unit belum bisa
   dijalankan**: kredensial ADC (`gcloud auth application-default login`) kedaluwarsa di tengah
   sesi dan butuh login interaktif owner. Prediksinya sudah **disegel lebih dulu** di

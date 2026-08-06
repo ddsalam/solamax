@@ -76,7 +76,7 @@ describe("getSaldoPelanggan — batas tanggal", () => {
     // Batas akhir hari sudah dijamin oleh CTE (`dtgl <= $2`); menambahkan predikat
     // lagi di subselect "akhir" adalah cara paling mudah menyelundupkan `<`.
     const sql = await saldoSql();
-    expect(sql).toContain("SELECT sum(v) FROM piut WHERE NOT dotted AND sjenis IN (1,5))");
+    expect(sql).toContain("SELECT sum(v) FROM piut WHERE lokal AND NOT dotted)");
     expect(sql).toContain("SELECT sum(v) FROM piut WHERE dotted)");
     expect(sql).toContain("SELECT sum(v) FROM hut)");
   });
@@ -90,9 +90,15 @@ describe("getSaldoPelanggan — bucket Lokal vs Online", () => {
   // memuat polanya. Kedua batas wajib dijaga terpisah.
   it("Lokal = SJENIS {1,5} DAN kode TANPA titik — di KEDUA batas", async () => {
     const sql = await saldoSql();
-    expect(sql.match(/NOT dotted AND sjenis IN \(1,5\)/g)).toHaveLength(2);
-    // Tak boleh ada `sjenis IN (1,5)` yang tidak didampingi `NOT dotted`.
-    expect(sql.match(/sjenis IN \(1,5\)/g)).toHaveLength(2);
+    // `lokal` = baris yang cocok ke master ber-SJENIS {1,5} (prafilter di join).
+    expect(sql.match(/WHERE lokal AND NOT dotted/g)).toHaveLength(2);
+    // SJENIS hanya boleh muncul SEKALI, yaitu sbg prafilter sisi master.
+    expect(sql.match(/sjenis IN \(1,5\)/g)).toHaveLength(1);
+    expect(sql).toMatch(
+      /FROM public\.pelanggan_master\s+WHERE unit_id = \$1 AND sjenis IN \(1,5\)/,
+    );
+    // `lokal` HARUS berasal dari kecocokan master, bukan konstanta.
+    expect(sql).toContain("(m.ckdplg IS NOT NULL) AS lokal");
   });
 
   it("Online = kode BERTITIK, TANPA filter SJENIS — di KEDUA batas", async () => {
@@ -128,8 +134,9 @@ describe("getSaldoPelanggan — pagar struktural", () => {
     // INNER JOIN akan membuang pelanggan bertitik yang belum ada di master —
     // hilang senyap dari Online, tanpa jejak apa pun.
     const sql = await saldoSql();
-    expect(sql).toContain("LEFT JOIN public.pelanggan_master");
-    expect(sql).not.toMatch(/(?<!LEFT )JOIN public\.pelanggan_master/);
+    expect(sql).toMatch(/LEFT JOIN \(SELECT unit_id, ckdplg FROM public\.pelanggan_master/);
+    expect(sql).not.toMatch(/(?<!LEFT )JOIN \(?SELECT unit_id, ckdplg FROM public\.pelanggan_master/);
+    expect(sql).not.toContain("INNER JOIN");
   });
 
   it("non-batal + ter-scope unit di kedua tabel", async () => {

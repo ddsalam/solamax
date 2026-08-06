@@ -1306,13 +1306,21 @@ export async function getSaldoPelanggan(
     unit,
     // LEFT JOIN (bukan INNER): baris Online tak boleh bergantung pada ada-tidaknya
     // master. PK master (unit_id, ckdplg) menjamin join tak menggandakan baris.
+    //
+    // BIAYA — sisi master di-prafilter `sjenis IN (1,5)` DI DALAM subquery, bukan
+    // disaring belakangan. Bukan kosmetik: dengan master utuh (1.204 baris di unit
+    // terberat) planner memilih merge join dan **menyortir 343.769 baris — 1.798 ms
+    // sendirian**. Diperkecil lebih dulu (puluhan baris) ia memilih hash join dan
+    // sortir itu lenyap: 2.096 ms → 1.208 ms, yakni LEBIH CEPAT dari bentuk lama
+    // (1.323 ms) meski menghasilkan dua kali lipat angka. Diukur di unit 4.
     `WITH piut AS (
        SELECT b.dtgl,
               b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS v,
               COALESCE(position('.' in trim(b.ckdplg)) > 0, false) AS dotted,
-              m.sjenis
+              (m.ckdplg IS NOT NULL) AS lokal
          FROM public.bppiut b
-         LEFT JOIN public.pelanggan_master m
+         LEFT JOIN (SELECT unit_id, ckdplg FROM public.pelanggan_master
+                     WHERE unit_id = $1 AND sjenis IN (1,5)) m
            ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
         WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0 AND b.dtgl <= $2::date
      ), hut AS (
@@ -1323,10 +1331,10 @@ export async function getSaldoPelanggan(
      )
      SELECT
        COALESCE((SELECT sum(v) FROM piut
-                  WHERE NOT dotted AND sjenis IN (1,5) AND dtgl < $2::date),0)::float8
+                  WHERE lokal AND NOT dotted AND dtgl < $2::date),0)::float8
          AS "awalPiutangLokal",
        COALESCE((SELECT sum(v) FROM piut
-                  WHERE NOT dotted AND sjenis IN (1,5)),0)::float8
+                  WHERE lokal AND NOT dotted),0)::float8
          AS "akhirPiutangLokal",
        COALESCE((SELECT sum(v) FROM piut
                   WHERE dotted AND dtgl < $2::date),0)::float8
