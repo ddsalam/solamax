@@ -944,8 +944,34 @@ export async function runProbe8(conn: EasyMaxConnection): Promise<void> {
   out("==========================================================");
 }
 
-/** Oracle Saldo (Nominal Rp) dari PDF "Laporan Penjualan Harian" IB — utk dicocokkan. */
-const SALDO_EXPECTED: Record<string, { piutangLokal: string; piutangOnline: string; hutangLokal: string }> = {
+/**
+ * ⛔ DIPENSIUNKAN 2026-08-06 — JANGAN PAKAI SEBAGAI ORACLE SALDO. ⛔
+ *
+ * Angka ini berasal dari PDF **"Laporan Penjualan Harian"** IB (Juni 2026). Laporan
+ * itu memakai saldo **AWAL hari**, sedangkan blok Saldo di dashboard diverifikasi
+ * terhadap **"DAFTAR SALDO HUTANG PIUTANG"** yang memakai saldo **AKHIR hari**.
+ * Dua laporan, dua definisi — dan kesetaraannya TIDAK PERNAH dibuktikan.
+ *
+ * Akibatnya nyata dan mahal: komentar "formula terkunci … EKSAK 27-Jun" pada
+ * migration 0013 benar **terhadap laporan yang salah**, lalu memunculkan hantu
+ * "IB kehilangan 19,7 miliar" yang menghabiskan tiga putaran query untuk sesuatu
+ * yang tidak pernah ada. Setelah owner mengekspor laporan yang SETARA untuk IB
+ * (1–5 Agustus 2026), kelima belas selnya mendarat **EKSAK** tanpa penyesuaian:
+ * formulanya benar sejak awal dan tak ada data yang hilang.
+ *
+ * Bentuk umum pelajarannya: *pemeriksaan yang lulus terhadap pembanding yang keliru
+ * terbaca persis seperti pemeriksaan yang benar.*
+ *
+ * Oracle saldo yang SAH sekarang hidup di
+ * `apps/dashboard/src/lib/saldo.oracle.integration.test.ts` (dua unit, 24 sel,
+ * dijalankan terhadap implementasi sebenarnya). Konstanta di bawah hanya disimpan
+ * sebagai catatan sejarah probe ronde 11–13; jangan dijadikan acuan benar/salah.
+ * Bukti & metode: session-notes/2026-08-05-saldo-hutang-piutang-28oktober.md.
+ */
+const SALDO_EXPECTED_LPH_DEPRECATED: Record<
+  string,
+  { piutangLokal: string; piutangOnline: string; hutangLokal: string }
+> = {
   "2026-06-17": { piutangLokal: "50.835.447.684", piutangOnline: "1.200.000", hutangLokal: "(711.193.196)" },
   "2026-06-18": { piutangLokal: "50.904.293.353", piutangOnline: "1.200.000", hutangLokal: "(671.925.313)" },
   "2026-06-19": { piutangLokal: "50.904.293.353", piutangOnline: "1.200.000", hutangLokal: "(671.925.313)" },
@@ -980,10 +1006,10 @@ export async function runProbe11(
   out("FASE 1 PROBE RONDE 11 (READ-ONLY) — SALDO Piutang/Hutang · unit 6478111");
   out("tanggal: " + dates.join(", "));
   out("==========================================================");
-  out("\nTarget oracle Saldo (Nominal Rp) — PDF Laporan Penjualan Harian IB:");
+  out("\n⛔ ACUAN DIPENSIUNKAN (Laporan Penjualan Harian = saldo AWAL hari) — konteks historis saja:");
   out("  tgl | Piutang Lokal | Piutang Online | Hutang Lokal");
   for (const d of dates) {
-    const e = SALDO_EXPECTED[d];
+    const e = SALDO_EXPECTED_LPH_DEPRECATED[d];
     if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
   }
 
@@ -1096,9 +1122,12 @@ export async function runProbe12(
   out("FASE 1 PROBE RONDE 12 (READ-ONLY, KOREKSI) — SALDO · unit 6478111");
   out("tanggal: " + dates.join(", "));
   out("==========================================================");
-  out("\nTarget oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
+  out("\n⛔ ACUAN DIPENSIUNKAN — dari \"Laporan Penjualan Harian\" (saldo AWAL hari),");
+  out("   BUKAN \"Daftar Saldo Hutang Piutang\" (saldo AKHIR hari) yang dipakai verifikasi.");
+  out("   Hanya konteks historis; jangan dipakai menilai benar/salah.");
+  out("Target oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
   for (const d of dates) {
-    const e = SALDO_EXPECTED[d];
+    const e = SALDO_EXPECTED_LPH_DEPRECATED[d];
     if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
   }
 
@@ -1203,9 +1232,12 @@ export async function runProbe13(
   out("FASE 1 PROBE RONDE 13 (READ-ONLY, DECISIVE) — SALDO · unit 6478111");
   out("tanggal: " + dates.join(", "));
   out("==========================================================");
-  out("\nTarget oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
+  out("\n⛔ ACUAN DIPENSIUNKAN — dari \"Laporan Penjualan Harian\" (saldo AWAL hari),");
+  out("   BUKAN \"Daftar Saldo Hutang Piutang\" (saldo AKHIR hari) yang dipakai verifikasi.");
+  out("   Hanya konteks historis; jangan dipakai menilai benar/salah.");
+  out("Target oracle (Rp): Piutang Lokal | Online | Hutang Lokal");
   for (const d of dates) {
-    const e = SALDO_EXPECTED[d];
+    const e = SALDO_EXPECTED_LPH_DEPRECATED[d];
     if (e) out(`  ${d} | ${e.piutangLokal} | ${e.piutangOnline} | ${e.hutangLokal}`);
   }
 

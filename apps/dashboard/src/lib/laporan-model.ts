@@ -123,7 +123,7 @@ export interface LaporanModel {
   recap: {
     hasRecap: boolean;
     hasSaldo: boolean;
-    saldoRows: { label: string; val: number; danger?: boolean }[];
+    saldoRows: { label: string; awal: number; akhir: number; danger?: boolean }[];
     recapBoxes: { label: string; val: number; note: string }[];
   };
   glMonthly: {
@@ -385,13 +385,28 @@ export function buildLaporanModel(
       note: "disetor ke bank (pengawas)",
     },
   ];
+  // Dua batas berdampingan: EasyMax "Laporan Penjualan Harian" memakai saldo AWAL
+  // hari, "Daftar Saldo Hutang Piutang" memakai saldo AKHIR hari. Keduanya sah —
+  // pengawas mencocokkan ke laporan yang kebetulan ia pegang.
   const saldoRows = [
-    { label: "Saldo Piutang Pelanggan Lokal", val: saldo.piutangLokal },
-    { label: "Saldo Piutang Pelanggan Online", val: saldo.piutangOnline },
-    { label: "Saldo Hutang Pelanggan Lokal", val: saldo.hutangLokal, danger: true },
+    {
+      label: "Saldo Piutang Pelanggan Lokal",
+      awal: saldo.awal.piutangLokal,
+      akhir: saldo.akhir.piutangLokal,
+    },
+    {
+      label: "Saldo Piutang Pelanggan Online",
+      awal: saldo.awal.piutangOnline,
+      akhir: saldo.akhir.piutangOnline,
+    },
+    {
+      label: "Saldo Hutang Pelanggan Lokal",
+      awal: saldo.awal.hutangLokal,
+      akhir: saldo.akhir.hutangLokal,
+      danger: true,
+    },
   ];
-  const hasSaldo =
-    saldo.piutangLokal !== 0 || saldo.piutangOnline !== 0 || saldo.hutangLokal !== 0;
+  const hasSaldo = saldoRows.some((r) => r.awal !== 0 || r.akhir !== 0);
   const hasRecap = hasSaldo || recapBoxes.some((b) => b.val !== 0);
 
   // ── G/L kumulatif bulanan (rows) ──

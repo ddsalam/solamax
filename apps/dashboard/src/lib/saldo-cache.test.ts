@@ -11,10 +11,10 @@ import {
   shouldBypassEmptySaldo,
 } from "./saldo-cache";
 
+/** Saldo dgn nilai sama di kedua batas (awal & akhir) — cukup utk uji cache. */
 const S = (a: number, b: number, c: number) => ({
-  piutangLokal: a,
-  piutangOnline: b,
-  hutangLokal: c,
+  awal: { piutangLokal: a, piutangOnline: b, hutangLokal: c },
+  akhir: { piutangLokal: a, piutangOnline: b, hutangLokal: c },
 });
 
 describe("cakupan cache saldo", () => {
@@ -59,6 +59,17 @@ describe("jebakan nol-semua (kembaran D13 gl-window)", () => {
     expect(shouldBypassEmptySaldo(S(1, 0, 0))).toBe(false);
     expect(shouldBypassEmptySaldo(S(0, -5, 0))).toBe(false);
     expect(shouldBypassEmptySaldo(S(0, 0, -1))).toBe(false);
+  });
+
+  // Hari pertama sebuah unit punya piutang: saldo AWAL masih nol, saldo AKHIR
+  // sudah terisi. Memeriksa satu batas saja akan membuang hasil yang sah ini.
+  it("cukup SATU batas yang terisi — awal nol + akhir terisi tetap layak cache", () => {
+    expect(
+      shouldBypassEmptySaldo({
+        awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+        akhir: { piutangLokal: 12_033_038_039, piutangOnline: 0, hutangLokal: 0 },
+      }),
+    ).toBe(false);
   });
 
   it("cache hit non-nol dipakai apa adanya — `fresh` tak pernah dipanggil", async () => {

@@ -15,7 +15,10 @@ const raw = {
   shift: { shifts: 3, last_dtgljam: null },
   corrections: 2,
   cash: [],
-  saldo: { piutangLokal: 5000, piutangOnline: 0, hutangLokal: 0 },
+  saldo: {
+    awal: { piutangLokal: 5000, piutangOnline: 0, hutangLokal: 0 },
+    akhir: { piutangLokal: 6000, piutangOnline: 0, hutangLokal: 0 },
+  },
   recapPelanggan: [],
   recapEdc: [],
   recapDeposit: [],

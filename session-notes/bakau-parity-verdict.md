@@ -37,11 +37,25 @@ mechanisms, 3 need acceptance-time verification.
    `DTGLJAM>watermark` sync would permanently skip them; only the shift-agnostic business-date
    `SALES_RESYNC` + one-time inception sweep catch them.
    ▸ Backfill correctness depends on business-date sweep to inception, not just incremental. [8]
-3. **tm_plg SJENIS mix unhandled by saldo rule** (MEDIUM). Distribution 1=9, 2=9, 3=13,
-   **4=575 (dominant)**, 5=23. Dashboard RECAP saldo classifies Lokal{1,5}/Online{3};
-   SJENIS 2 and 4 fall in neither bucket.
-   ▸ Acceptance: verify whether SJENIS 2/4 customers carry tr_bppiut/tr_bphut balances the
-     RECAP block would omit/misclassify; adjust classification if so. [7]
+3. ~~**tm_plg SJENIS mix unhandled by saldo rule** (MEDIUM)~~ — **CLOSED 2026-08-06.**
+   Distribution 1=9, 2=9, 3=13, **4=575 (dominant)**, 5=23. Dashboard RECAP saldo classified
+   Lokal{1,5}/Online{3}; SJENIS 2 and 4 fell in neither bucket.
+   ▸ **Verdict: the rule was wrong because it used ONE axis where EasyMax uses TWO.**
+     Bucket membership is decided by **code format** (dotted `NN.999.NNNN` = Online) — *not*
+     by SJENIS. The two axes are independent, which is why no single-axis rule could ever be
+     right. Proven against the EasyMax "DAFTAR SALDO HUTANG PIUTANG" report for unit 28 Oktober,
+     2–4 Aug 2026 (9/9 cells exact):
+     - **SJENIS 4 non-dotted** is *deliberately* outside the report — 737 customers, ±74,45 bn
+       at unit 7, **zero of them printed**. Excluding them was correct all along.
+     - **SJENIS 4 dotted** belongs in Online — `21.999.0014` HERWIN, Rp36.084. The old
+       `sjenis = 3` filter dropped it, understating Piutang Online by exactly that amount
+       **every single day** in production.
+     - **SJENIS 2** carries no `tr_bppiut` balance; it appears only in the hutang book, which
+       takes no SJENIS filter at all (verified: zero `bphut` customers with non-zero balance
+       are absent from the report's 34 rows).
+     Fixed rule now lives in `getSaldoPelanggan` (apps/dashboard/src/lib/queries.ts) and is
+     locked by `queries.saldo.test.ts` + `saldo.oracle.integration.test.ts`.
+     Full evidence: `session-notes/2026-08-05-saldo-hutang-piutang-28oktober.md`. [7]
 
 ## Other notes
 - **Backfill scope**: one-time catch-up-to-inception must reach ~2015-08 (~4,000 days) — far
