@@ -18,6 +18,37 @@ const COLUMN_CAST: Record<string, string> = {
   perk_map: "jsonb",
 };
 
+/**
+ * Kolom `numeric` mirror (skema Prisma `@db.Decimal`) — nilainya dikirim sebagai
+ * **string** + cast `::numeric`, TIDAK sebagai JS `number`.
+ *
+ * Sebabnya (dibuktikan 2026-08-06, bukan penalaran): Prisma merender parameter
+ * JS `number` ke **16 angka penting**, bukan shortest-roundtrip. Untuk nilai yang
+ * galat double-nya melewati setengah-ulp di angka ke-16, yang mendarat di Postgres
+ * bukan lagi desimal aslinya:
+ *
+ *     73867616.46     → 73867616.45999999    (bppiut PP2022100101473, unit 1)
+ *     67.26           → 67.26000000000001    (pola sales_detail.nvolume)
+ *     99213863301.15  → 99213863301.14999    (pola cash_header.ntotal)
+ *
+ * Sapuan mirror menemukan ±243.800 sel semacam ini di 7 unit (deviasi total
+ * 0,0000746 — tak material, tapi kotor & terus diproduksi tiap sync).
+ * Bukan Postgres (`73867616.46::float8::numeric` bersih) dan bukan `num()` di
+ * agent (`JSON.stringify` shortest-roundtrip). `String(v)` memakai
+ * shortest-roundtrip → memulihkan desimal sumber apa adanya.
+ *
+ * Berkunci NAMA kolom seperti COLUMN_CAST; diverifikasi lawan `information_schema`:
+ * 0 nama kolom yang numeric di satu tabel tapi bertipe lain di tabel lain.
+ * Detail: `session-notes/2026-08-06-artefak-float-numeric-ingest.md`.
+ */
+const NUMERIC_COLUMNS: ReadonlySet<string> = new Set([
+  "nstandawal", "nstandakhir", "nvolume", "nhargajual", "nsubtotal",
+  "ntotal", "njumlah", "nsaldo", "nharga", "nhrgjual",
+  "nstockbk", "nstockop", "nvolselisih", "nvoldo", "nvolreal",
+  "liter", "total",
+  "nkapasitas", "ntinggi", "nsuhu", "ntinggiair", "nvolumeair",
+]);
+
 /** Bangun klausa VALUES terparam (unit_id + kolom cfg) + daftar params. */
 function buildValues(
   cfg: TableConfig,
@@ -34,8 +65,10 @@ function buildValues(
     for (const c of cfg.columns) {
       let v = row[c] ?? null;
       if (v !== null && typeof v === "object") v = JSON.stringify(v);
+      const cast = COLUMN_CAST[c] ?? (NUMERIC_COLUMNS.has(c) ? "numeric" : undefined);
+      // Kolom numeric: kirim teks (shortest-roundtrip) — lihat NUMERIC_COLUMNS.
+      if (cast === "numeric" && typeof v === "number") v = String(v);
       params.push(v);
-      const cast = COLUMN_CAST[c];
       ph.push(cast ? `$${params.length}::${cast}` : `$${params.length}`);
     }
     tuples.push(`(${ph.join(",")})`);
