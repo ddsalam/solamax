@@ -145,4 +145,61 @@ Dua perangkap yang sudah ditutup di alat itu:
 
 # HASIL (append-only — ditambahkan setelah tiap langkah)
 
-_(belum ada langkah tulis yang dijalankan)_
+## 2026-08-06 22:34–23:20 WIB — promosi ke pilot GAGAL MENDARAT; backfill TETAP TERKUNCI
+
+**Nol langkah tulis dijalankan.** DB live tak tersentuh sama sekali.
+
+PR promosi #194 di-merge owner (`06c8475`, 15:34:31Z). Pipeline `Deploy backend` dijalankan
+tiga kali; tak satu pun menempatkan image fix pada traffic:
+
+| percobaan | migrate-pilot | deploy-pilot | sebab |
+| ---: | --- | --- | --- |
+| 1 | **failure** | skipped | GitHub Actions gagal di *Prepare all required actions* (`Service Unavailable` → `Internal Server Error`) — **sebelum** `prisma-migrate` jalan |
+| 2 | success | **failure** | tukar token WIF gagal: `Unable to retrieve Identity Pool subject token … reset reason: overflow` — `gcloud run deploy` tak pernah dieksekusi |
+| 3 | success | **cancelled** | job menunggu 15 menit (16:01:32Z→16:16:32Z) tanpa satu langkah pun berjalan |
+
+Percobaan 1 diverifikasi tidak menyentuh DB dengan **kontrol dua arah**: pencarian jejak
+`prisma migrate|migration|cloud-sql-proxy|Applying migration` di log = **0**, sementara
+kontrol positif (`workload_identity_provider`) = **1** → log-nya memang terbaca, dan memang
+tak ada aktivitas migrasi.
+
+### Temuan yang membatalkan prasyarat: CD hijau ≠ image baru menyajikan
+
+`solamax-ingest-staging` traffic-nya **dipatok ke nama revisi**
+(`{'percent': 100, 'revisionName': 'solamax-ingest-staging-00031-tk9'}`), bukan
+`latestRevision`. Pada service yang dipatok, `gcloud run deploy --image` polos membuat revisi
+baru lalu **membiarkan traffic** — dan mencetak baris yang terbaca seperti sukses:
+
+> `Service [solamax-ingest-staging] revision [solamax-ingest-staging-00031-tk9] has been deployed and is serving 100 percent of traffic.`
+
+padahal revisi yang ia buat adalah `-00032-mcl`. Label `serving.knative.dev/route` hanya
+menempel di `-00031-tk9`.
+
+**Kontrol yang membedakan**: `solamax-dashboard-staging` memakai `latestRevision: True` dan
+sehat (revisi terbaru `-00082-ww5` serve). Dua layanan, satu desain CD — hanya yang dipatok
+yang terkena. Jadi cacatnya di **state layanan**, bukan di YAML.
+
+**Umur kebasian**, dari digest image yang ber-tag commit:
+- serve sekarang: `-00031-tk9` = tag `1e6d069` = **PR #183, 5 Agu 16:17 WIB**;
+- dibuat tapi mandek: `-00032-mcl` = tag `e2268fb` = **PR #188, 6 Agu 17:57 WIB** — promosi
+  yang tampak hijau tapi tak pernah mendarat.
+
+Langkah `Health check` tidak menutup celah ini: ia `curl` URL layanan, yang menyajikan revisi
+**lama** — hijau justru karena revisi lama sehat.
+
+### Status prediksi
+
+- **P1** (sebelum fix live hitungan masih naik) — konsisten: 243.829 (21:50) → **243.859**
+  (22:30). Belum ditutup; jalur tulis lama masih serve.
+- **P2, P3, P4, P5** — **belum bisa diuji**. P3 adalah prasyarat backfill dan tak mungkin
+  terpenuhi selama traffic terpatok di revisi pra-fix.
+
+### Yang TIDAK dilakukan, dan alasannya
+
+- Tidak memindahkan traffic dan tidak melepas pin: keduanya perubahan pada **pilot LIVE**,
+  dan pin itu bisa jadi sisa rollback yang masih disengaja — melepasnya berisiko
+  mengembalikan sesuatu yang sengaja ditahan.
+- Tidak menekan approve environment `pilot` meski `gh` di mesin ini melaporkan
+  `can_approve=true` — itu gerbang owner.
+- Re-run dihentikan setelah percobaan ke-3: selama pin bertahan, deploy sukses pun tak
+  membuat fix menyajikan, jadi re-run berikutnya tak membuka apa pun.
