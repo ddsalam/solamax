@@ -112,6 +112,37 @@ unit berikutnya.
 
 ---
 
+# Tambahan pra-registrasi — tanggal uji P5 (dikunci 2026-08-06 22:43 WIB, sebelum langkah tulis)
+
+Tanggal P5 tidak boleh dipilih sembarang: kalau tanggalnya **tidak memuat sel artefak**,
+backfill tak mengubah apa pun di sana dan "angka tidak bergerak" jadi benar secara hampa.
+Karena itu tiap unit memakai tanggal dengan **sel artefak terbanyak** dalam jendela
+1 Jun–20 Jul 2026 (cukup lama untuk berada di luar jendela rescan harian, sehingga
+pergeseran yang muncul berasal dari backfill, bukan dari sync yang sedang berjalan).
+
+| unit | tanggal P5 | sel artefak pada tanggal itu | sumber |
+| ---: | --- | ---: | --- |
+| 1 | 2026-06-24 | 24 | `sales_detail` |
+| 2 | 2026-06-11 | 18 | `sales_detail` |
+| 3 | **2026-05-01** | 6 | `edc` — unit 3 **nol** artefak `sales_detail`, jadi tanggal ala unit lain akan vakum |
+| 4 | 2026-06-21 | 23 | `sales_detail` |
+| 5 | 2026-06-09 | 22 | `sales_detail` |
+| 6 | 2026-06-10 | 10 | `sales_detail` |
+| 7 | 2026-06-05 | 16 | `sales_detail` |
+
+Alat: `apps/dashboard/p5-snapshot.mts` (probe untracked) memanggil **fungsi query dashboard
+yang asli** (`getSalesByProduct`, `getDailyGlByProduct`, `getSaldoPelanggan`, dst.), bukan SQL
+tiruan — supaya yang diuji benar-benar jalur baca halaman. Keluarannya JSON terurut tetap,
+dibandingkan byte-per-byte sebelum vs sesudah.
+
+Dua perangkap yang sudah ditutup di alat itu:
+- tiga fungsi menerima `(from, to)`, bukan `date`; dipanggil dengan satu tanggal ia
+  mengembalikan larik **kosong tanpa error** — dan dua snapshot kosong cocok sempurna;
+- karena itu ada **pagar anti-vakum**: bila `sales` atau `gl` kosong, skrip keluar dengan
+  kode 2 dan menolak dipakai sebagai bukti.
+
+---
+
 # HASIL (append-only — ditambahkan setelah tiap langkah)
 
 _(belum ada langkah tulis yang dijalankan)_
