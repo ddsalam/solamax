@@ -403,4 +403,47 @@ flag `danger: true` yang menandai *baris liabilitas*, bukan *nilai negatif*. Fla
 
 ## 14. HASIL
 
-> Belum dijalankan saat prediksi disegel.
+Dijalankan 2026-08-06 lewat `getSaldoPelanggan` sendiri (bukan salinan SQL), DB pilot:
+
+```
+unit 7 28 Oktober   AWAL=140919652    AKHIR=123526169     ← POSITIF
+unit 1 Imam Bonjol  AWAL=-734439355   AKHIR=-751284145    ← NEGATIF
+```
+
+### ✅ PREDIKSI (a) TERKONFIRMASI — nilai tersimpan BENAR, cacat murni di TAMPILAN
+
+Kedua angka persis seperti yang diprediksi, dan persis EasyMax. Tanda mengikuti data:
+28 Oktober positif, IB negatif. Konvensi tanda di query **tidak** bermasalah — (b) gugur.
+
+Cacatnya ada di dua tempat yang memakai pola sama:
+- `page.tsx:356` — `s.danger ? \`(${rp(Math.abs(v))})\` : rp(v)`
+- `export/laporan-doc.ts:133` — pola identik
+
+`Math.abs()` **tanpa syarat**, dipicu flag `danger` yang menandai *baris liabilitas*, bukan
+*nilai negatif*. Jadi saldo positif 28 Oktober tercetak `(Rp 123.526.169)` — tak terbedakan
+dari saldo IB yang benar-benar negatif, dan bertanda **berbeda dari EasyMax**.
+
+Bukti bahwa ini **bukan regresi sesi ini**: flag `danger: true` sudah ada di `laporan-model.ts`
+sebelum perubahan apa pun di sesi ini; ia hanya menjadi **terlihat** setelah dua unit dengan
+tanda berlawanan diperiksa berdampingan di pilot. Tier testing tak bisa memunculkannya (blok
+Saldo tak dirender sama sekali di sana — lihat §23 catatan sesi).
+
+### Perbaikan
+
+Satu formatter bersama di `format.ts` — `rpParen()` (kurung ditentukan **tanda**) + `isNegative()`
+(perlakuan merah/tebal mengikuti **tanda**, bukan baris) — dipakai **layar dan PDF**, sehingga
+keduanya tak bisa menyimpang lagi. Codebase sudah memakai konvensi sign-driven di tempat lain
+(`HarianCharts.tsx:104`, `harian-doc.ts:416`); blok saldo adalah satu-satunya yang menyimpang.
+
+### Batere mutasi — 5 dari 5 MERAH (baseline 16 lulus)
+
+| mutasi | hasil |
+| --- | --- |
+| **REGRESI ASLI**: `abs()` tanpa syarat di formatter | 🔴 5 gagal |
+| kurung dibuang seluruhnya | 🔴 2 gagal |
+| `isNegative` selalu true (merah tanpa syarat) | 🔴 2 gagal |
+| PDF kembali pakai flag baris, bukan tanda | 🔴 1 gagal |
+| PDF cetak `abs()` tanpa syarat | 🔴 2 gagal |
+
+Test memuat **kedua tanda dalam satu berkas** (28 Oktober positif + IB negatif) dan satu
+assertion yang menjadi inti bug lama: `rpParen(+x)` **tidak boleh sama dengan** `rpParen(−x)`.
