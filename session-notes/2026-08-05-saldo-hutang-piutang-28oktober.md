@@ -721,9 +721,21 @@ di satu host lalu callback dibaca di host yang berbeda**. Masuk lewat host `AUTH
 Yang membuatnya mahal bila terulang: pesan gagalnya berbicara tentang **parsing verifier**, bukan
 tentang konfigurasi host — jadi ia mengarahkan pembacanya ke kode auth, bukan ke penyebabnya.
 
-**Pilot punya bentuk dua-host yang sama.** Bukan tugas sekarang; tidak ada tindakan diambil. Tapi
-bila login pilot bertingkah, mulai dari sini — dan periksa **host mana yang dipakai masuk**
-sebelum apa pun yang lain.
+### ⚠️ KHUSUS TIER TESTING — jangan digeneralisasi ke pilot
+
+Konfigurasi auth kedua tier **berbeda BENTUK, bukan sekadar berbeda nilai**:
+
+| | `-rlsstg` (testing) | `-staging` (pilot) |
+| --- | --- | --- |
+| `AUTH_URL` | **dipatok** ke satu host Cloud Run | **tidak dipatok** |
+| `AUTH_TRUST_HOST` | — | **`true`** |
+| domain | dua host Cloud Run | **domain kustom `solamax.solagroup.co`** |
+
+Karena pilot memakai `AUTH_TRUST_HOST=true` tanpa `AUTH_URL` yang dipatok, dan berdomain kustom,
+**bentuk kegagalan ini tidak ada di sana**. Ditulis sebagai satu mode gagal umum, catatan ini akan
+mengirim orang berikutnya mengejar hantu di pilot — persis kesalahan yang membuat sesi ini mahal
+(§19). Jadi: **temuan ini milik tier testing.** Kalau login pilot bermasalah, penyebabnya
+kemungkinan besar bukan ini, dan diagnosanya mulai dari nol.
 
 ---
 
@@ -777,3 +789,70 @@ Opsi yang sempat dipertimbangkan, dicatat agar keputusan berikutnya tidak mulai 
 | **Terima & mitigasi** (dipilih kali ini) | promosi ke pilot + rollback siap sebelum promosi | murah dan cepat pulih, tapi angka salah bisa sempat terlihat direksi |
 
 **Bukan pekerjaan PR ini.** Dicatat sebagai celah yang diketahui beserta pilihannya.
+
+
+## 24. HASIL VERIFIKASI VISUAL DI PILOT (2026-08-06) — keadaan akhir
+
+Promosi ke pilot selesai: dashboard `solamax-dashboard-staging-00080-vdp` → **`00081-nvg`**.
+Verifikasi dilakukan owner **di pilot dengan data asli** — satu-satunya tempat yang bisa (§23).
+
+### ✅ Hijau
+
+Blok render dengan sub-judul *"saldo awal & akhir hari per tanggal bisnis"* dan dua kolom berlabel
+**Awal hari** / **Akhir hari** — tidak bisa salah baca.
+
+**28 Oktober · 2026-08-04**
+
+| baris | Awal hari | Akhir hari |
+| --- | ---: | ---: |
+| Piutang Pelanggan Lokal | Rp 12.117.420.938 | Rp 12.239.715.239 |
+| Piutang Pelanggan Online | Rp 10.796.518 | Rp 10.796.518 |
+| Hutang Pelanggan Lokal | (Rp 140.919.652) | (Rp 123.526.169) |
+
+Kolom **Awal hari** = oracle 03-08 persis di ketiga baris; **Akhir hari** = oracle 04-08 persis,
+kecuali Piutang Lokal +604.500 — **koreksi ledger yang sudah terdokumentasi** (§7/§5 pra-registrasi),
+bukan cacat. Footer aplikasi mengonfirmasinya sendiri: *"⟳ = angka pernah dikoreksi (90 revisi hari
+ini)"*.
+
+**Imam Bonjol · 2026-08-04** — Hutang: Awal `(Rp 734.439.355)`, Akhir `(Rp 751.284.145)`; magnitudo
+cocok oracle IB 03-08 & 04-08 persis.
+
+### 🔴 Satu temuan — tanda Hutang tidak terbedakan
+
+Kedua unit menampilkan Hutang **dalam kurung**, padahal 28 Oktober **+123.526.169 (positif)** dan
+IB **−751.284.145 (negatif)**. Untuk 28 Oktober, tanda di layar **berbeda dari EasyMax**.
+
+**Bukan regresi**: flag `danger: true` di `laporan-model.ts` sudah ada sebelum perubahan sesi ini;
+ia hanya menjadi terlihat saat dua unit bertanda berlawanan akhirnya diperiksa berdampingan.
+Keputusan owner: **jangan rollback, perbaiki di PR susulan** — dampaknya kosmetik-tapi-menyesatkan,
+bukan angka yang salah hitung.
+
+Ditangani di PR susulan (branch `claude/saldo-tanda-hutang`): prediksi disegel lebih dulu, query
+dijalankan → **nilai tersimpan terbukti BENAR** (28 Okt `+123526169`, IB `−751284145`), cacat murni
+di lapis tampilan; diperbaiki dengan satu formatter bersama `rpParen()`/`isNegative()` untuk layar
+**dan** PDF, dikunci 5 mutasi merah.
+
+### Pelajaran yang menutup lingkaran §23
+
+Celah tier testing **terbukti mahal dalam satu putaran**: cacat ini mustahil terlihat di `-rlsstg`
+(blok Saldo tak dirender), dan hanya muncul ketika **dua unit dengan tanda berlawanan** dilihat
+berdampingan. Bahkan pilot pun tak cukup kalau hanya satu unit diperiksa — IB sendirian tampak
+benar, 28 Oktober sendirian tampak masuk akal.
+
+> **Cacat yang butuh DUA kasus berlawanan untuk terlihat tidak akan pernah muncul dari satu
+> sampel** — sekeras apa pun sampel itu diperiksa.
+
+Itu sebabnya test perbaikannya memuat kedua tanda dalam satu berkas, bukan satu kasus per berkas.
+
+## 25. Status penutup sesi
+
+| item | status |
+| --- | --- |
+| PR #187 → `staging` | ✅ merged, CD `-rlsstg` sukses |
+| PR #188 → `main` (promosi pilot) | ✅ merged, pilot `solamax-dashboard-staging-00081-nvg` |
+| Verifikasi visual pilot | ✅ dilakukan owner; 1 temuan (tanda Hutang) |
+| PR #189 tanda Hutang → `staging` | terbuka, CI hijau |
+| PR docs-only (berkas ini) | terbuka |
+| Artefak float `PP2022100101473` | tugas terpisah owner — **di luar cakupan** |
+| `migration.sql` 0013 | final, tidak dibuka lagi |
+| Seed DB testing (§23) | opsi tercatat, **belum diputuskan** |
