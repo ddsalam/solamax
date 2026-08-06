@@ -703,17 +703,27 @@ Keempatnya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari ke
 hanya kasus kontrol yang memisahkannya.
 
 
-## 21. Pengamatan lingkungan — dicatat, TANPA tindakan
+## 21. Jebakan PKCE dua-host — TERBUKTI, bukan lagi dugaan
 
-**Dua host untuk satu layanan `-rlsstg`.** OAuth memakai `redirect_uri` ber-host
-`solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app`, sementara URL layanan yang
-dikembalikan Cloud Run adalah `solamax-dashboard-rlsstg-wn6i64kvza-et.a.run.app`. Keduanya
-menunjuk layanan yang sama dan alur login **jalan**.
+Awalnya dicatat sebagai pengamatan ("dua host satu layanan, alurnya jalan"). **Naik status jadi
+mode gagal nyata dengan bukti log** pada hari yang sama.
 
-Dicatat karena bentuk "dua host satu layanan" pernah menggigit di tempat lain lewat **cookie PKCE
-yang tertulis di host berbeda dari host yang membacanya** — gejalanya login gagal dengan pesan
-state/verifier tak cocok, bukan pesan konfigurasi. Bukan tugas sekarang, tidak ada tindakan yang
-diambil; kalau suatu saat login `-rlsstg` bertingkah, mulai dari sini.
+Masuk lewat URL otomatis Cloud Run `solamax-dashboard-rlsstg-wn6i64kvza-et.a.run.app` **GAGAL**:
+
+```
+[auth][error] InvalidCheck: pkceCodeVerifier value could not be parsed
+```
+
+Sebabnya `AUTH_URL` menunjuk host lain
+(`solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app`), sehingga **cookie PKCE di-set
+di satu host lalu callback dibaca di host yang berbeda**. Masuk lewat host `AUTH_URL` **berhasil**.
+
+Yang membuatnya mahal bila terulang: pesan gagalnya berbicara tentang **parsing verifier**, bukan
+tentang konfigurasi host — jadi ia mengarahkan pembacanya ke kode auth, bukan ke penyebabnya.
+
+**Pilot punya bentuk dua-host yang sama.** Bukan tugas sekarang; tidak ada tindakan diambil. Tapi
+bila login pilot bertingkah, mulai dari sini — dan periksa **host mana yang dipakai masuk**
+sebelum apa pun yang lain.
 
 ---
 
@@ -734,3 +744,36 @@ dua-kolom di `-rlsstg`, dan keputusan apakah penerima cetakan PDF perlu diberita
 
 Di luar cakupan dan tetap terbuka sebagai tugas terpisah milik owner: artefak float
 `PP2022100101473` (`73867616.45999999`, jalur `num()` JS → JSON → `numeric`).
+
+
+## 23. CELAH YANG DIKETAHUI — tier testing tak bisa memvalidasi UI berbasis data
+
+Ditemukan 2026-08-06 saat hendak memverifikasi tata letak dua-kolom di `-rlsstg`.
+
+**DB tier testing (`solamax-pg-rlsstg`) sintetis dan kosong** untuk domain saldo. Akibatnya
+`hasSaldo` bernilai false dan **seluruh blok "Saldo Hutang/Piutang & Recap Harian" tidak dirender
+sama sekali**. Diperiksa pada dua tanggal (2026-08-04 dan 2026-07-15): nol penjualan, nol ledger,
+blok Saldo absen.
+
+Konsekuensi yang harus diingat, karena berlaku umum:
+
+> **CI hijau + deploy sukses di `-rlsstg` TIDAK berarti tampilannya pernah dilihat.**
+> Untuk setiap perubahan UI yang render-nya bergantung pada ada-tidaknya data, tier testing
+> memberi sinyal **kosong** — dan kosong di sini, sekali lagi, tak bisa dibedakan dari "aman".
+> (Ini instans keempat dari pola §20 — kali ini di lapis lingkungan, bukan query.)
+
+Ini **struktural**, bukan insiden: akan berulang pada setiap perubahan tampilan berbasis data.
+Untuk perubahan ini, owner memilih **promosi ke pilot lalu verifikasi di sana dengan data asli**,
+secara sadar menerima urutan terbalik — dan mengamankannya dengan **jalur mundur yang disiapkan
+sebelum promosi** (revisi rollback direkam + perintah traffic-split siap salin-tempel di badan
+PR #188).
+
+Opsi yang sempat dipertimbangkan, dicatat agar keputusan berikutnya tidak mulai dari nol:
+
+| opsi | isi | catatan |
+| --- | --- | --- |
+| **Seed DB testing** | isi `solamax-pg-rlsstg` dengan fixture saldo (bppiut/bphut/pelanggan_master) untuk ≥1 unit & beberapa tanggal | menutup celah untuk semua perubahan UI berikutnya; biayanya membuat & merawat fixture yang realistis (termasuk kasus pecahan ½ & bucket bertitik) |
+| **Dev lokal → DB pilot read-only** | jalankan dashboard lokal dgn `DATABASE_URL` role `dashboard_ro` via cloud-sql-proxy | data asli, nol risiko tulis; tapi butuh login OAuth dan tak cocok dijalankan agen — verifikasi tetap manual oleh owner |
+| **Terima & mitigasi** (dipilih kali ini) | promosi ke pilot + rollback siap sebelum promosi | murah dan cepat pulih, tapi angka salah bisa sempat terlihat direksi |
+
+**Bukan pekerjaan PR ini.** Dicatat sebagai celah yang diketahui beserta pilihannya.
