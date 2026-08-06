@@ -360,3 +360,67 @@ bisa lagi mengotorinya.
 
 Tak ada yang perlu diperbaiki dari sapuan ini — dan itu ditulis sebagai **temuan**, bukan
 sebagai ketiadaan pemeriksaan.
+
+
+## 2026-08-07 ~01:00 WIB — promosi guard ke `main`: prediksi TERKONFIRMASI sebagian, deploy TIDAK jalan
+
+### Pra-registrasi (ditulis di badan PR #197 sebelum merge)
+Dugaan awal owner: perubahan di `.github/workflows` **tidak** memicu deploy apa pun.
+**Dugaan itu dikoreksi sebelum merge**, dari isi path filter — masing-masing workflow
+memfilter **berkas dirinya sendiri**:
+- `deploy-backend.yml` memfilter `".github/workflows/deploy-backend.yml"` + `"apps/backend/**"`;
+- `deploy-dashboard.yml` memfilter `".github/workflows/deploy-dashboard.yml"`.
+
+Prediksi tertulis: **kedua workflow akan terpicu**.
+
+### Yang benar-benar terjadi
+
+**Di `staging` (commit `4b32856`, merge #195+#196): prediksi TERKONFIRMASI.** Set berkas yang
+sama memicu **ketiganya** — `CI`, `Deploy backend`, **dan** `Deploy dashboard`. Perubahan
+berkas workflow memang memicu workflow-nya sendiri.
+
+**Di `main` (commit `a2c4604`, merge #197): TIDAK BISA DINILAI.** Commit itu punya **0
+check-run** — bukan hanya deploy, **`CI` pun tidak jalan**, padahal `CI` ber-trigger
+`push: branches: ["**"]` tanpa path filter. Workflow tak pernah di-dispatch sama sekali.
+Prediksinya tidak terbantah; **eksperimennya yang tidak berjalan**.
+
+Kontrol yang membedakan keduanya: Actions **aktif** (`enabled=true`, `allowed_actions=all`)
+dan run lain di repo tetap muncul pada jam yang sama. Jadi ini bukan Actions mati untuk repo,
+melainkan push `main` yang tak menghasilkan dispatch.
+
+### Guard: belum teruji di jalur produksi — dan itu dinyatakan, bukan disamarkan
+
+Satu-satunya kesempatan guard berjalan malam ini adalah `Deploy dashboard` → `deploy-test` di
+`staging`. Ia **gagal di langkah SEBELUMNYA** (`gcloud run deploy`) dengan
+`Unable to retrieve Identity Pool subject token … reset reason: overflow` — kegagalan WIF yang
+sama seperti percobaan-percobaan sebelumnya. Guard **di-skip, bukan gagal**: ia tidak
+misfire, ia tidak pernah dieksekusi.
+
+Jadi: **guard sudah mendarat di `main`, tapi belum pernah berjalan pada deploy nyata.**
+Pembuktiannya menunggu deploy pilot berikutnya yang benar-benar jalan.
+
+### Dampak ke pilot: NOL
+Tidak ada deploy yang terjadi, jadi tak ada yang berubah. Diverifikasi dari state:
+`solamax-ingest-staging` = `-00033-zv9` (`latestRevision: True`), image
+`sha256:99deed0c…` — **fix numeric tetap yang menyajikan**. `solamax-dashboard-staging` =
+`-00082-ww5` (`latestRevision: True`).
+
+### Celah path filter (dicatat, tidak diperbaiki)
+Filter `deploy-backend` menyebut `".github/actions/prisma-migrate/**"` tapi **tidak**
+`".github/actions/verify-serving-revision/**"`. Suntingan yang hanya menyentuh guard baru tak
+akan memicu deploy mana pun. Tak berbahaya hari ini; daftarnya sekadar tak lengkap terhadap
+action yang dipakainya.
+
+---
+
+## Kalimat yang merangkum dua sesi ini
+
+> **Pemeriksaan yang bisa membantah pembuatnya lebih berharga daripada pembuat yang berhati-hati.**
+
+Klaim "jalur baca kebal karena `::float8`" dibuat dengan hati-hati dan benar untuk apa yang
+diperiksa: nilai tunggal. Yang tak diperiksa adalah cast yang berpindah ke belakang `sum()`.
+P5 menemukannya bukan karena penulisnya lebih teliti pada percobaan kedua, melainkan karena
+ia membandingkan **keluaran nyata sebelum dan sesudah**, bukan menanyakan ulang keyakinan
+penulisnya. Semua kontrol di berkas ini dirancang dengan sifat itu: satuan yang salah,
+baseline yang basi, snapshot yang vakum, dan pesan `gcloud` yang menyesatkan semuanya
+tertangkap oleh pemeriksaan yang bisa berbunyi MERAH terhadap yang membuatnya.
