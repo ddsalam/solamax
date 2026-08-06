@@ -922,3 +922,56 @@ dan keputusannya milik owner.
 terhadap EasyMax. Yang terakhir tetap butuh oracle nyata + `saldo.oracle.integration.test.ts`
 terhadap DB pilot. Seed bukan pengganti gold-check; ia hanya menutup celah "tampilan tak pernah
 dilihat".
+
+
+## 27. KEADAAN AKHIR — terverifikasi di pilot (2026-08-06)
+
+### Revisi final
+
+| layanan | revisi | catatan |
+| --- | --- | --- |
+| `solamax-dashboard-staging` (**pilot**) | **`00082-ww5`** | `deploy-pilot` ✅ |
+| `solamax-ingest-staging` (**pilot**) | `00031-tk9` — **tidak berubah** | lihat di bawah |
+
+**`migrate-pilot` tidak berjalan pada promosi terakhir (#191) — dan itu BENAR.** Workflow backend
+ber-path-filter `apps/backend/**`, `packages/shared/**`, `pnpm-lock.yaml`; #191 hanya menyentuh 5
+berkas dashboard + 2 catatan sesi, jadi ia memang tidak terpicu. Konsisten dengan klaim "nol migrasi
+baru" di badan PR.
+
+Yang membuktikan itu **bukan** kerusakan senyap: pada promosi sebelumnya (#188, yang memang menyentuh
+backend) `migrate-pilot` **berjalan dan sukses**. Jadi jalurnya hidup. "Tidak jalan" ≠ "rusak" —
+tapi keduanya terlihat sama sampai ada pembanding yang menyalak. (Kembali ke §20: nol/absen tak
+pernah jadi jawaban tanpa kontrol.)
+
+### Verifikasi tanda — kedua unit BERDAMPINGAN
+
+Diperiksa owner di `solamax.solagroup.co`, revisi `00082-ww5`, tanggal bisnis 2026-08-04:
+
+| unit · baris Hutang | Awal hari | Akhir hari | EasyMax | putusan |
+| --- | ---: | ---: | --- | --- |
+| **28 Oktober** | `Rp 140.919.652` | `Rp 123.526.169` | positif | ✅ **tanpa** kurung |
+| **Imam Bonjol** | `(Rp 734.439.355)` | `(Rp 751.284.145)` | negatif | ✅ **dengan** kurung |
+
+Dua posisi ekonomi berlawanan kini **terbedakan di layar**, dan tandanya sejalan dengan EasyMax di
+kedua arah. Sebelum #189 keduanya tampil identik — dan hanya terlihat karena diperiksa berdampingan,
+persis seperti yang dirumuskan di §24.
+
+### ⚠️ BATAS YANG HARUS TERCATAT JUJUR: PDF struktural, BUKAN visual
+
+**Yang diverifikasi owner adalah LAYAR. Ekspor PDF belum pernah dilihat.**
+
+Keyakinan pada PDF bertumpu pada **bentuk perbaikannya**, bukan pada pengamatan:
+- satu formatter bersama (`rpParen()` + `isNegative()` di `format.ts`) dipakai **layar dan**
+  `export/laporan-doc.ts` — keduanya memanggil kode yang sama, jadi tak bisa menyimpang;
+- test e2e menelusuri `docDefinition` yang benar-benar dibangun dan memeriksa teks **serta**
+  warna/tebal sel Hutang, memuat **kedua tanda dalam satu berkas**, dengan kontrol
+  `cells.length > 0` agar "tidak ketemu" tak lolos sebagai hijau;
+- batere mutasi 5/5 merah, termasuk regresi aslinya persis.
+
+Itu jaminan **struktural**, dan untuk kelas cacat ini lebih kuat daripada sekali melihat — sekali
+melihat tidak mencegah divergensi besok. **Tetapi struktural ≠ terlihat.**
+
+Ditulis begitu dengan sengaja: menutupnya dengan "PDF konsisten" akan terbaca seolah sudah dilihat,
+dan itu **persis kelas kesalahan yang membuat sesi ini mahal** — klaim yang benar terhadap sesuatu
+yang tak pernah diperiksa. Kalau suatu saat PDF perlu dipercaya sebagai *terlihat*, ia harus dibuka
+dan dilihat.
