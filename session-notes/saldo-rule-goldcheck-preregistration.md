@@ -359,3 +359,48 @@ Test "awal(D) ≡ akhir(D−1)" IB sempat MERAH — ternyata **timeout 5 dtk**, 
 5 tanggal → 8 query DB live @~0,9 dtk. Invarian itu benar secara aljabar dan tidak mungkin
 gagal karena nilai. Timeout dinaikkan ke 60 dtk; sesudahnya hijau. Dicatat karena "merah"
 yang sebabnya waktu sangat mudah disalahartikan sebagai cacat data.
+
+---
+
+# BAGIAN III — Tanda Hutang di tampilan (temuan verifikasi pilot)
+
+Disegel **2026-08-06**, **sebelum** query verifikasi dijalankan. Append-only.
+
+## 11. Gejala
+
+Pilot menampilkan Hutang Lokal **dalam kurung di kedua unit**, padahal EasyMax:
+28 Oktober `+123.526.169` (**positif**) · Imam Bonjol `−751.284.145` (**negatif**).
+Dua posisi ekonomi berlawanan, satu tampilan identik.
+
+## 12. PREDIKSI — sebelum query
+
+**Prediksi: (a) — nilai TERSIMPAN sudah benar; cacatnya murni di lapis TAMPILAN.**
+
+Yakni `getSaldoPelanggan(unit, '2026-08-04').akhir.hutangLokal` akan mengembalikan:
+
+| unit | prediksi nilai |
+| --- | ---: |
+| 7 · 28 Oktober | **+123.526.169** (positif) |
+| 1 · Imam Bonjol | **−751.284.145** (negatif) |
+
+**Dasar prediksi (bukan tebakan):** `saldo.oracle.integration.test.ts` sudah memuat test
+*"tanda Hutang mengikuti data: IB negatif, 28 Oktober positif"* dengan assertion
+`toBeLessThan(0)` / `toBeGreaterThan(0)`, dan test itu **LULUS** terhadap DB pilot pada
+2026-08-06. Kalau nilai tersimpannya terbalik, test itu mustahil hijau.
+
+Terdakwanya: `page.tsx` dan `export/laporan-doc.ts` sama-sama memakai
+`s.danger ? \`(${rp(Math.abs(v))})\` : rp(v)` — `Math.abs()` **tanpa syarat** + kurung, dipicu
+flag `danger: true` yang menandai *baris liabilitas*, bukan *nilai negatif*. Flag itu sudah ada
+**sebelum** perubahan sesi ini; ia hanya jadi terlihat setelah dua unit diperiksa berdampingan.
+
+## 13. Yang membuat prediksi ini MERAH
+
+- **(b)** salah satu nilai bertanda terbalik → konvensi tanda di **query** salah untuk satu arah.
+  Itu jauh lebih dalam daripada kurung, dan berarti test tanda di atas **palsu hijau** (mis. karena
+  keduanya kebetulan sepihak). Kalau ini yang terjadi: **berhenti, jangan sentuh formatter**, dan
+  laporkan sebagai temuan tersendiri.
+- Kedua nilai positif, atau kedua negatif → sama seperti (b): tanda tidak mengikuti data.
+
+## 14. HASIL
+
+> Belum dijalankan saat prediksi disegel.
