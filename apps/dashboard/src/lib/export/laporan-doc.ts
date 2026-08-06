@@ -125,20 +125,20 @@ function recapSection(m: LaporanModel): Content[] {
   if (!m.recap.hasRecap) return [];
   const out: Content[] = [sectionHeading("Saldo Hutang/Piutang & Recap Harian")];
   if (m.recap.hasSaldo) {
-    const body: TableCell[][] = [[th("Keterangan"), th("Nilai (Rp)", "right")]];
+    const body: TableCell[][] = [
+      [th("Keterangan"), th("Awal hari (Rp)", "right"), th("Akhir hari (Rp)", "right")],
+    ];
     for (const s of m.recap.saldoRows) {
-      body.push([
-        { text: s.label },
-        {
-          text: s.danger ? `(${rp(Math.abs(s.val))})` : rp(s.val),
-          alignment: "right",
-          noWrap: true,
-          color: s.danger ? PDF.danger : PDF.textPrimary,
-          bold: s.danger,
-        },
-      ]);
+      const cell = (v: number): TableCell => ({
+        text: s.danger ? `(${rp(Math.abs(v))})` : rp(v),
+        alignment: "right",
+        noWrap: true,
+        color: s.danger ? PDF.danger : PDF.textPrimary,
+        bold: s.danger,
+      });
+      body.push([{ text: s.label }, cell(s.awal), cell(s.akhir)]);
     }
-    out.push(table(["*", 150], body, true));
+    out.push(table(["*", 110, 110], body, true));
   }
   const rb: TableCell[][] = [[th("Recap"), th("Nilai (Rp)", "right"), th("Catatan")]];
   for (const b of m.recap.recapBoxes) {

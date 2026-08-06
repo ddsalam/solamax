@@ -185,9 +185,36 @@
 - Gold-check `--probe10` **dengan tanggal eksplisit** (default beku Juni 2026!) ≥5 hari
   terakhir — cocok ke rupiah per seksi; domain dorman dijelaskan dgn bukti sumber, bukan
   di-skip. Karakterisasi: `CKDNOZZLE` collision (kode tabrakan = fold senyap), varian nama
-  produk per kode, `SJENIS` vs aturan RECAP terkunci (Lokal{1,5}/Online{3} piutang; hutang
-  TANPA filter — flag-only, `queries.ts:1175/1181` bukan milik onboarding), produk master
-  dorman yang tak terklasifikasi (pola "PLK" AS).
+  produk per kode, produk master dorman yang tak terklasifikasi (pola "PLK" AS).
+- **Blok SALDO Hutang/Piutang — WAJIB, jangan dilewati.** Permukaan ini **tidak pernah**
+  masuk gold-check unit mana pun sebelum 2026-08-06, dan itulah sebabnya 28 Oktober lolos
+  ke produksi dengan Piutang Online salah **setiap hari**. Minta ekspor EasyMax **"DAFTAR
+  SALDO HUTANG PIUTANG"** ≥3 tanggal berurutan, cocokkan **9 sel** (3 baris × 3 tanggal)
+  ke kolom **Akhir hari** di Laporan Operasional. Aturan terbukti (28 Oktober, 2–4 Ags 2026):
+
+  | baris | aturan |
+  | --- | --- |
+  | Piutang Lokal | `bppiut`, `SJENIS ∈ {1,5}` **DAN** kode **tanpa** titik, `dtgl <= tanggal` |
+  | Piutang Online | `bppiut`, kode **bertitik**, **TANPA** filter SJENIS, `dtgl <= tanggal` |
+  | Hutang Lokal | seluruh `bphut`, `dtgl <= tanggal`, dinegatifkan |
+
+  Semua dengan `COALESCE(sbatal,0)=0`. Diskriminator Lokal/Online = **format kode**, bukan
+  SJENIS — dua sumbu terpisah (lihat D3 di `bakau-parity-verdict.md`).
+
+  **Kontrol wajib** (tanpa ini, "cocok" tak membuktikan apa pun):
+  1. **Kontrol GUC** — satu query tanpa `SET LOCAL app.unit_ids` harus **0 baris**. Format
+     GUC = daftar polos (`7`), BUKAN literal array (`{7}`): policy mem-split pada koma lalu
+     menyaring regex, sehingga `{1,…,7}` **membuang senyap unit pertama & terakhir** — nol
+     yang terlihat persis seperti "tidak ada data". Jebakan ini nyata; lihat catatan sesi.
+  2. **Kontrol pelanggan bertitik** — daftar semua master berkode bertitik + saldonya. Yang
+     bersaldo ≠ 0 harus **persis** sama dengan daftar seksi Online di laporan.
+  3. **Kontrol SJENIS 4 non-bertitik** — hitung berapa pelanggan & berapa rupiah yang
+     dikecualikan (±74 mrd / 737 pelanggan di unit 7). Mereka **memang harus** nol dicetak;
+     kalau ada yang muncul di laporan, aturan ini tidak berlaku di unit itu.
+  4. **Kontrol geser-satu-hari** — **Awal hari** hari D harus ≡ **Akhir hari** hari D−1.
+     Kalau kedua kolom identik, batas tanggalnya salah pasang.
+
+  Catat prediksi di pra-registrasi (append-only) SEBELUM menjalankan, seperti seksi lain.
 - Visual pass owner: viewer tenant lama byte-identical; viewer unit baru = PT benar, nol
   kebocoran nama PT lain.
 

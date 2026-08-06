@@ -73,7 +73,9 @@ export function saldoRevalidateSeconds(date: string, today: string): number {
  * benar-benar nol hanya membayar query lambat — bukan angka salah.
  */
 export function shouldBypassEmptySaldo(s: SaldoPelanggan): boolean {
-  return s.piutangLokal === 0 && s.piutangOnline === 0 && s.hutangLokal === 0;
+  return [s.awal, s.akhir].every(
+    (t) => t.piutangLokal === 0 && t.piutangOnline === 0 && t.hutangLokal === 0,
+  );
 }
 
 /** Ambil dari cache; nol-semua → ulang segar (lihat shouldBypassEmptySaldo). */

@@ -334,20 +334,28 @@ export default async function LaporanPage({
           <div className="section-h">
             <div className="text-h5 t-brand">Saldo Hutang/Piutang &amp; Recap Harian</div>
             <span className="fs16 t-tertiary">
-              saldo dibawa per tanggal bisnis · angka recap dari Rincian Penjualan
+              saldo awal &amp; akhir hari per tanggal bisnis · angka recap dari Rincian Penjualan
             </span>
           </div>
 
           {hasSaldo && (
             <div className="card tbl-card mt4 tbl-scroll">
+              <div className="grid-row cols-saldo2">
+                <span className="text-caption w600 t-tertiary">&nbsp;</span>
+                <span className="right fs15 t-tertiary">Awal hari</span>
+                <span className="right fs15 t-tertiary">Akhir hari</span>
+              </div>
               {saldoRows.map((s) => (
-                <div key={s.label} className="grid-row cols-saldo">
+                <div key={s.label} className="grid-row cols-saldo2">
                   <span className="text-caption w600">{s.label}</span>
-                  <span
-                    className={`right fs16 num nowrap ${s.danger ? "t-danger w700" : "t-primary"}`}
-                  >
-                    {s.danger ? `(${rp(Math.abs(s.val))})` : rp(s.val)}
-                  </span>
+                  {([s.awal, s.akhir] as const).map((v, i) => (
+                    <span
+                      key={i}
+                      className={`right fs16 num nowrap ${s.danger ? "t-danger w700" : "t-primary"}`}
+                    >
+                      {s.danger ? `(${rp(Math.abs(v))})` : rp(v)}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
