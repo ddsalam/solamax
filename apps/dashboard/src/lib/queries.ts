@@ -1252,50 +1252,135 @@ export interface ManualEntryRow {
   urut: number;
 }
 
-export interface SaldoPelanggan {
-  /** Saldo Piutang Pelanggan Lokal (SJENIS 1,5) — as-of (dtgl < tanggal bisnis). */
+/** Tiga baris saldo pada satu batas tanggal. */
+export interface SaldoTrio {
+  /** Piutang Pelanggan Lokal — SJENIS {1,5} DAN kode tanpa titik. */
   piutangLokal: number;
-  /** Saldo Piutang Pelanggan Online (SJENIS 3). */
+  /** Piutang Pelanggan Online — kode BERTITIK, tanpa filter SJENIS. */
   piutangOnline: number;
-  /** Saldo Hutang Pelanggan Lokal — liabilitas (≤0; ditampilkan merah). */
+  /** Hutang Pelanggan Lokal — seluruh `bphut`, dinegatifkan (liabilitas). */
   hutangLokal: number;
 }
 
+export interface SaldoPelanggan {
+  /** Saldo AWAL hari (dtgl < tanggal) — sejajar EasyMax "Laporan Penjualan Harian". */
+  awal: SaldoTrio;
+  /** Saldo AKHIR hari (dtgl <= tanggal) — sejajar EasyMax "Daftar Saldo Hutang Piutang". */
+  akhir: SaldoTrio;
+}
+
 /**
- * Saldo Piutang/Hutang Pelanggan as-of tanggal bisnis (blok RECAP). Formula
- * TERKUNCI vs oracle (probe ronde 11-13, EKSAK 27-Jun); "as-of" = saldo dibawa
- * (dtgl < tanggal). Piutang dari `bppiut` (SJNSBP 1=debet/+, 2=kredit/−), split
- * via `pelanggan_master.sjenis`: Lokal {1,5}, Online {3}, SJENIS 4 DIKECUALIKAN
- * (dorman). Hutang dari `bphut` (SJNSBP 2=+, 1=−), dinegatifkan. Murni SELECT,
- * ter-scope `ScopedUnitId`. trim() kedua sisi join (char(12) vs varchar(12)).
+ * Saldo Piutang/Hutang Pelanggan (blok RECAP) — mengembalikan DUA batas sekaligus:
+ * `awal` (dtgl < tanggal) dan `akhir` (dtgl <= tanggal). EasyMax punya dua laporan
+ * dengan definisi berbeda — "Laporan Penjualan Harian" memakai saldo awal, "Daftar
+ * Saldo Hutang Piutang" memakai saldo akhir — jadi keduanya disajikan berlabel,
+ * bukan dipilih salah satu. Lihat session-notes/2026-08-05-saldo-hutang-piutang-28oktober.md.
+ *
+ * ⛔ KOMENTAR DI `0013_recap_saldo_tables/migration.sql:5-8` SUDAH TIDAK BERLAKU.
+ * Ia menyatakan `dtgl<tanggal`, `Online = SJENIS 3`, dan "EKSAK 27-Jun" — ketiganya
+ * keliru, dan klaim "EKSAK" itu benar hanya terhadap **laporan yang salah** ("Laporan
+ * Penjualan Harian"). Berkas migrasinya sengaja TIDAK disunting (checksum
+ * `prisma migrate deploy` = pipeline CD berhenti); koreksi lengkapnya ada di
+ * `CORRECTION.md` di direktori migrasi yang sama. **Fungsi INI-lah sumber kebenaran.**
+ *
+ * ✅ ORACLE YANG SAH hanya **"DAFTAR SALDO HUTANG PIUTANG"** — jangan pernah memverifikasi
+ * blok ini terhadap "Laporan Penjualan Harian". Mencampur keduanya adalah akar sesi
+ * 2026-08-05/06: memunculkan hantu "IB kurang 19,7 miliar" yang tak pernah ada.
+ * Dikunci `queries.saldo.test.ts` (CI tiap commit) + `saldo.oracle.integration.test.ts`
+ * (DB-live, `SALDO_LIVE_DB=1`; 24 sel di 2 unit).
+ *
+ * Bucket (terbukti vs oracle 28 Oktober 2–4 Ags 2026 [9/9] & Imam Bonjol 1–5 Ags 2026 [15/15]):
+ *   - Piutang Lokal  = `bppiut`, SJENIS {1,5} DAN kode TANPA titik
+ *   - Piutang Online = `bppiut`, kode BERTITIK (`NN.999.NNNN`), **tanpa** filter SJENIS
+ *   - Hutang Lokal   = seluruh `bphut`, dinegatifkan
+ *
+ * Diskriminator Lokal/Online adalah FORMAT KODE, bukan SJENIS — dua sumbu terpisah.
+ * SJENIS 4 tanpa titik memang sengaja di luar laporan (pelanggan dorman/umum,
+ * ±74 mrd di unit 7); SJENIS 4 BERTITIK masuk lewat Online (mis. 21.999.0014).
+ * Memakai SJENIS sebagai proksi format kode = bug lama yang menghilangkan HERWIN.
+ *
+ * SJNSBP: piutang 1=debet(+)/2=kredit(−); hutang 2=(+)/1=(−) lalu dinegatifkan.
+ * Satu pemindaian per tabel (CTE) menghasilkan keempat/kedua angka — lebih sedikit
+ * scan daripada bentuk lama yang memindai `bppiut` dua kali. Murni SELECT, ter-scope
+ * `ScopedUnitId`. trim() kedua sisi join (char(12) vs varchar(12)).
  */
 export async function getSaldoPelanggan(
   unit: ScopedUnitId,
   date: string,
 ): Promise<SaldoPelanggan> {
-  const rows = await qScoped<SaldoPelanggan>(
+  const rows = await qScoped<{
+    awalPiutangLokal: number;
+    akhirPiutangLokal: number;
+    awalPiutangOnline: number;
+    akhirPiutangOnline: number;
+    awalHutangLokal: number;
+    akhirHutangLokal: number;
+  }>(
     unit,
-    `SELECT
-       COALESCE((SELECT sum(b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END)
-                 FROM public.bppiut b
-                 JOIN public.pelanggan_master m
-                   ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
-                 WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0
-                   AND b.dtgl < $2::date AND m.sjenis IN (1,5)),0)::float8 AS "piutangLokal",
-       COALESCE((SELECT sum(b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END)
-                 FROM public.bppiut b
-                 JOIN public.pelanggan_master m
-                   ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
-                 WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0
-                   AND b.dtgl < $2::date AND m.sjenis = 3),0)::float8 AS "piutangOnline",
-       (-COALESCE((SELECT sum(h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END)
-                  FROM public.bphut h
-                  WHERE h.unit_id = $1 AND COALESCE(h.sbatal,0) = 0
-                    AND h.dtgl < $2::date),0))::float8 AS "hutangLokal"`,
+    // LEFT JOIN (bukan INNER): baris Online tak boleh bergantung pada ada-tidaknya
+    // master. PK master (unit_id, ckdplg) menjamin join tak menggandakan baris.
+    //
+    // BIAYA — sisi master di-prafilter `sjenis IN (1,5)` DI DALAM subquery, bukan
+    // disaring belakangan. Bukan kosmetik: dengan master utuh (1.204 baris di unit
+    // terberat) planner memilih merge join dan **menyortir 343.769 baris — 1.798 ms
+    // sendirian**. Diperkecil lebih dulu (puluhan baris) ia memilih hash join dan
+    // sortir itu lenyap: 2.096 ms → 1.208 ms, yakni LEBIH CEPAT dari bentuk lama
+    // (1.323 ms) meski menghasilkan dua kali lipat angka. Diukur di unit 4.
+    `WITH piut AS (
+       SELECT b.dtgl,
+              b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS v,
+              COALESCE(position('.' in trim(b.ckdplg)) > 0, false) AS dotted,
+              (m.ckdplg IS NOT NULL) AS lokal
+         FROM public.bppiut b
+         LEFT JOIN (SELECT unit_id, ckdplg FROM public.pelanggan_master
+                     WHERE unit_id = $1 AND sjenis IN (1,5)) m
+           ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
+        WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0 AND b.dtgl <= $2::date
+     ), hut AS (
+       SELECT h.dtgl,
+              h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS v
+         FROM public.bphut h
+        WHERE h.unit_id = $1 AND COALESCE(h.sbatal,0) = 0 AND h.dtgl <= $2::date
+     )
+     SELECT
+       COALESCE((SELECT sum(v) FROM piut
+                  WHERE lokal AND NOT dotted AND dtgl < $2::date),0)::float8
+         AS "awalPiutangLokal",
+       COALESCE((SELECT sum(v) FROM piut
+                  WHERE lokal AND NOT dotted),0)::float8
+         AS "akhirPiutangLokal",
+       COALESCE((SELECT sum(v) FROM piut
+                  WHERE dotted AND dtgl < $2::date),0)::float8
+         AS "awalPiutangOnline",
+       COALESCE((SELECT sum(v) FROM piut WHERE dotted),0)::float8
+         AS "akhirPiutangOnline",
+       (-COALESCE((SELECT sum(v) FROM hut WHERE dtgl < $2::date),0))::float8
+         AS "awalHutangLokal",
+       (-COALESCE((SELECT sum(v) FROM hut),0))::float8
+         AS "akhirHutangLokal"`,
     [unit, date],
   );
-  return rows[0] ?? { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 };
+  const r = rows[0];
+  if (!r) return { awal: EMPTY_SALDO_TRIO, akhir: EMPTY_SALDO_TRIO };
+  return {
+    awal: {
+      piutangLokal: r.awalPiutangLokal,
+      piutangOnline: r.awalPiutangOnline,
+      hutangLokal: r.awalHutangLokal,
+    },
+    akhir: {
+      piutangLokal: r.akhirPiutangLokal,
+      piutangOnline: r.akhirPiutangOnline,
+      hutangLokal: r.akhirHutangLokal,
+    },
+  };
 }
+
+const EMPTY_SALDO_TRIO: SaldoTrio = {
+  piutangLokal: 0,
+  piutangOnline: 0,
+  hutangLokal: 0,
+};
 
 /** Seksi 4 (pendapatan_lain) & 6 (pengeluaran) — input pengawas, non-void. */
 export async function getManualEntries(
