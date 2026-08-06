@@ -296,3 +296,67 @@ membatalkannya justru mengembalikan artefak.
 ### Menunggu keputusan owner
 Lanjut ke unit 1 dan 4, atau tidak. Rekomendasi: **lanjut** — P5 MERAH ini menandai batas
 yang lebih halus dari yang diantisipasi, bukan kerusakan.
+
+
+## 2026-08-07 00:40–01:10 WIB — TUNTAS 7/7 unit + sapuan penutup
+
+### Penyesuaian sebelum melanjutkan (unit 1 & 4)
+P5-merah kelas agregat sudah dikarakterisasi → **dicatat, bukan menghentikan**. Tiga kondisi
+berhenti tetap ditegakkan MESIN lewat `p5-analyze.mjs`: pergeseran yang **mencapai teks
+render** (diuji pada presisi 0/1/2/3/4/6), pergeseran yang **menjauh dari desimal bersih**,
+dan **kontrol unit-lain bergerak**. Analyzer diuji bisa merah pada kedua kondisi pertama
+(kasus sintetis) dan mereproduksi kasus unit 7 sebagai "dicatat, exit 0".
+
+Satu jebakan tertangkap sebelum menyesatkan: baseline kontrol **belum ter-update** karena
+unit 7 keluar sebelum langkah penulisan baseline. Dibiarkan, unit 7 akan terbaca "bergerak"
+(43.461 → 0) dan menghentikan unit 1 secara palsu. Baseline disinkronkan ke kenyataan, dan
+sinkronisasi itu sendiri jadi bukti: **hanya unit 7** yang berubah, unit 1 (45.315) dan 4
+(55.335) tak bergeser sedikit pun oleh backfill unit 7.
+
+### Hasil dua unit terakhir
+
+| unit | sel ditulis ulang | AFTER | kontrol unit-lain | P5 |
+| ---: | ---: | ---: | --- | --- |
+| 1 | 46.805 | 0 | ✓ enam unit identik | ✓ nol nilai bergerak |
+| 4 | 56.923 | 0 | ✓ enam unit identik | ✓ nol nilai bergerak |
+
+### Verifikasi penutup — P4 HIJAU
+
+Sapuan penuh **36 kolom numeric × 7 unit** (query yang sama yang menghasilkan T0 = 243.859)
+kini mengembalikan **0 kolom×unit ber-sisa**. Kelas `windowed` 0, kelas `fullsync` 0.
+
+**Total ditulis ulang: 243.352 sel** (3: 156 · 6: 13.540 · 5: 43.767 · 2: 37.437 · 7: 44.724
+· 1: 46.805 · 4: 56.923). Selisih dari T0 (243.859) = 507 sel yang **sembuh sendiri** sebelum
+gilirannya tiba — 34 dari domain `fullsync`, sisanya dari baris di dalam jendela rescan.
+
+### Sapuan penutup: cast SESUDAH agregasi
+
+**11 titik** `sum(...)::float8` di [`queries.ts`](../apps/dashboard/src/lib/queries.ts):
+`:328 :493 :502 :512 :701 :707 :712 :782 :1454 :1455 :1456`.
+
+**(a) Mencapai teks yang tampil?** Tidak. Bukti bukan penalaran: 7 pasang snapshot P5
+sebelum/sesudah atas fungsi query ASLI — dari seluruhnya hanya **satu** nilai bergerak
+(unit 7, 2,84 × 10⁻¹⁴), dan teks render-nya identik pada presisi 0/1/2/3/4/6.
+
+**(b) Masuk ke perbandingan ambang / eksak-nol?** Ya, dan inilah kelas yang penting:
+- [`queries.ts:786`](../apps/dashboard/src/lib/queries.ts#L786) `HAVING sum(j.orphan) <> 0 OR sum(j.over_r) <> 0`
+- [`:693-694`](../apps/dashboard/src/lib/queries.ts#L693) & [`:778`](../apps/dashboard/src/lib/queries.ts#L778) `GREATEST(0, ΣA − ΣB)` (Sisa DO)
+- [`:345`](../apps/dashboard/src/lib/queries.ts#L345) `op = 0 AND prv > 1000 AND nxt > 1000`
+- [`:576`](../apps/dashboard/src/lib/queries.ts#L576) `COALESCE(nvolselisih,0) <> 0`
+
+**Kelas ini sekarang TERTUTUP secara struktural, bukan kebetulan.** Kolom yang memberi makan
+perbandingan itu (`tebus_detail.nvolume`, `delivery.nvoldo`, `opname.nvolselisih/nstockop`,
+`sales_detail.nvolume`) kini **0 baris berskala > 2**, dan aritmetika `numeric` Postgres
+**eksak desimal** — jumlah dan selisih nilai 2-desimal juga eksak, jadi epsilon tak bisa
+lahir. `::float8` terjadi SESUDAH perbandingan, jadi tak mengumpan balik.
+
+Diuji langsung pada perhitungan Sisa DO yang sebenarnya di 7 unit: **nol** nilai epsilon
+(bukan-nol tapi < 0,001). Tidak vakum — ada 16/90/12/10/339/890/12 nilai bukan-nol per unit,
+dan yang **terkecil** pun 544 L (over-receipt) serta 948 L (outstanding).
+
+Inilah yang dimaksud "mengubah kebetulan bersih jadi tidak mungkin kotor": sebelum malam ini
+kedua kolom Sisa DO kebetulan bersih; sekarang seluruh kolom bersih **dan** jalur tulis tak
+bisa lagi mengotorinya.
+
+Tak ada yang perlu diperbaiki dari sapuan ini — dan itu ditulis sebagai **temuan**, bukan
+sebagai ketiadaan pemeriksaan.
