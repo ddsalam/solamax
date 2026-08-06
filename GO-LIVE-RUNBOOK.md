@@ -249,6 +249,21 @@ maju ✔ · B1 dashboard ter-deploy + auth aktif ✔ · review akhir Anda.
 **Rollback**
 - Cloud Run menyimpan revisi: `gcloud run services update-traffic <svc> --to-revisions=<rev-baik>=100`
   mengembalikan instan ke revisi sebelumnya.
+- ⚠️ **WAJIB: setelah pulih, kembalikan ke `--to-latest`.**
+  `--to-revisions` **memasang pin** pada nama revisi. Selama pin terpasang,
+  `gcloud run deploy` berikutnya **membuat revisi baru tapi TIDAK memindahkan traffic** —
+  dan mencetak baris yang menyebut revisi **lama** "is serving 100 percent of traffic"
+  dengan **exit code 0**, sehingga CD berwarna hijau untuk deploy yang tidak pernah mendarat.
+  Insiden nyata 2026-08-05→07: pin tertinggal ~30 jam, pilot menyajikan image PR #183
+  sementara PR #188 mandek di revisi tanpa route.
+  ```bash
+  gcloud run services update-traffic <svc> --region <region> --to-latest   # lepas pin setelah rollback selesai
+  ```
+- Verifikasi rollback **dari state, bukan dari pesan gcloud**:
+  ```bash
+  gcloud run services describe <svc> --region <region> \
+    --format="value(status.traffic[0].revisionName, spec.traffic)"
+  ```
 - Domain mapping bisa dicabut; agent dikembalikan ke `baseUrl` staging via config.
 - DB: tak ada migrasi merusak; bila perlu, Cloud SQL automated backup (PITR) tersedia.
 
