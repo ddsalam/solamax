@@ -103,10 +103,16 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --update-labels rls-aware=${RLS_AWARE}
-      - name: Report serving revision
-        run: |
-          gcloud run services describe ${SERVICE} --region=${REGION} \
-            --format="value(status.latestReadyRevisionName, status.url)"
+      # Menggantikan "Report serving revision" yang lama: langkah itu mencetak
+      # status.latestReadyRevisionName — revisi yang SIAP, bukan yang MENYAJIKAN.
+      # Pada service ber-traffic terpatok keduanya berbeda, dan yang dicetak justru
+      # yang menenangkan. Guard ini membandingkan nama revisi dan bisa MERAH.
+      - uses: ./.github/actions/verify-serving-revision
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+      - name: Report URL
+        run: gcloud run services describe ${SERVICE} --region=${REGION} --format="value(status.url)"
 
   # ── TIER PILOT (main → -staging = PILOT LIVE): gated Environment `pilot`
   #    (required reviewer). Klik approve = satu-satunya jalan ke pilot. ──
@@ -131,7 +137,13 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --update-labels rls-aware=${RLS_AWARE}
-      - name: Report serving revision
-        run: |
-          gcloud run services describe ${SERVICE} --region=${REGION} \
-            --format="value(status.latestReadyRevisionName, status.url)"
+      # Menggantikan "Report serving revision" yang lama: langkah itu mencetak
+      # status.latestReadyRevisionName — revisi yang SIAP, bukan yang MENYAJIKAN.
+      # Pada service ber-traffic terpatok keduanya berbeda, dan yang dicetak justru
+      # yang menenangkan. Guard ini membandingkan nama revisi dan bisa MERAH.
+      - uses: ./.github/actions/verify-serving-revision
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+      - name: Report URL
+        run: gcloud run services describe ${SERVICE} --region=${REGION} --format="value(status.url)"

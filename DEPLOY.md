@@ -46,6 +46,35 @@ migrasi via composite action [`prisma-migrate`](.github/actions/prisma-migrate/a
 3. Klik approve (reviewer: ddsalam). Backend: `prisma migrate deploy` ke DB live harus
    **lulus penuh sebelum** revisi baru menerima traffic. Dashboard: deploy image-only.
 
+## ⚠️ Rollback memasang PIN — dan pin menelan deploy berikutnya secara senyap
+
+`gcloud run services update-traffic <svc> --to-revisions=<rev>=100` (bentuk rollback yang
+dipakai runbook) **memasang pin** pada nama revisi: `spec.traffic` berubah dari
+`latestRevision: true` menjadi `revisionName: <rev>`.
+
+Selama pin terpasang, `gcloud run deploy` **tetap membuat revisi baru tapi tidak
+memindahkan traffic**, keluar dengan **exit code 0**, dan mencetak:
+
+```
+Service [<svc>] revision [<REVISI-LAMA>] has been deployed and is serving 100 percent of traffic.
+```
+
+Kalimat itu menyebut revisi **lama**. Benar secara harfiah, menyesatkan secara total — dan
+ia berada persis di baris yang dibaca sebagai konfirmasi. Job CD ikut hijau.
+
+**Aturan:** setiap rollback WAJIB diakhiri `--to-latest` begitu pemulihan selesai, dan
+verifikasi selalu dari state:
+
+```bash
+gcloud run services update-traffic <svc> --region asia-southeast2 --to-latest
+gcloud run services describe <svc> --region asia-southeast2 --format="value(status.traffic[0].revisionName, spec.traffic)"
+```
+
+Riwayat: pin tertinggal pada `solamax-ingest-staging` ~30 jam (5–7 Agu 2026). Pilot
+menyajikan image PR #183 sementara promosi PR #188 tampak hijau tapi mandek di revisi
+tanpa route. Ditemukan saat promosi fix artefak numeric; lihat
+[`session-notes/numeric-artifacts-backfill-preregistration.md`](session-notes/numeric-artifacts-backfill-preregistration.md).
+
 ## Kalau migrasi gagal (halt-semantics)
 
 Pipeline **berhenti**; job deploy tidak pernah jalan; revisi lama tetap melayani; tidak
