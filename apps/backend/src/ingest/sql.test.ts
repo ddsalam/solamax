@@ -11,13 +11,14 @@ describe("buildUpsert", () => {
     expect(sql).toContain(
       'INSERT INTO "cash_detail" ("unit_id","ckdkb","ckdperk","njumlah")',
     );
-    expect(sql).toContain("VALUES ($1,$2,$3,$4),($5,$6,$7,$8)");
+    // njumlah = kolom numeric → param TEKS + cast ::numeric (lihat NUMERIC_COLUMNS)
+    expect(sql).toContain("VALUES ($1,$2,$3,$4::numeric),($5,$6,$7,$8::numeric)");
     expect(sql).toContain('ON CONFLICT ("unit_id","ckdkb","ckdperk")');
     expect(sql).toContain('"njumlah" = EXCLUDED."njumlah"');
     expect(sql).toContain('"ingested_at" = now()');
     // ckdkb/ckdperk = bagian conflict → TIDAK di-update
     expect(sql).not.toContain('"ckdkb" = EXCLUDED');
-    expect(params).toEqual([1, "K1", "5101", 50000, 1, "K1", "5102", 7000]);
+    expect(params).toEqual([1, "K1", "5101", "50000", 1, "K1", "5102", "7000"]);
   });
 
   it("tebus_detail: dtgltbs ber-cast ::date; sumOnConflict menjumlah dup key (cegah 21000)", () => {
@@ -32,10 +33,38 @@ describe("buildUpsert", () => {
       { ckdtbs: "T1", ckdbbm: "BB-08", nvolume: 8000 },
     ]);
     // 2 tuple (BB-03 ter-merge), bukan 3 → tak ada dup conflict-key.
-    expect(det.sql).toContain("VALUES ($1,$2,$3,$4),($5,$6,$7,$8)");
+    expect(det.sql).toContain("VALUES ($1,$2,$3,$4::numeric),($5,$6,$7,$8::numeric)");
     expect(det.sql).not.toContain("$9");
-    expect(det.params).toEqual([1, "T1", "BB-03", 40000, 1, "T1", "BB-08", 8000]);
+    // sumOnConflict tetap menjumlah sbg number SEBELUM di-teks-kan (32000+8000).
+    expect(det.params).toEqual([1, "T1", "BB-03", "40000", 1, "T1", "BB-08", "8000"]);
     expect(det.sql).toContain('ON CONFLICT ("unit_id","ckdtbs","ckdbbm")');
+  });
+
+  it("kolom numeric dikirim sbg TEKS ber-cast ::numeric — pagar artefak floating-point", () => {
+    // Prisma merender parameter JS `number` ke 16 ANGKA PENTING, bukan
+    // shortest-roundtrip: `73867616.46` mendarat sbg `73867616.45999999` di
+    // kolom numeric (terbukti di Postgres nyata 2026-08-06; ±243.800 sel mirror
+    // 7 unit terkena). `String(v)` shortest-roundtrip memulihkan desimal sumber.
+    // Kalau seseorang mengembalikan param numeric jadi `number`, tes ini MERAH.
+    const { sql, params } = buildUpsert(TABLE_CONFIG.bppiut!, 1, [
+      {
+        ckdbppiut: "PP2022100101473", dtgl: "2022-10-01", ckdplg: "PLG2235",
+        vcref: null, vcket: null, njumlah: 73867616.46, sjnsbp: 1, sbatal: 0,
+      },
+    ]);
+    expect(params).toContain("73867616.46");
+    expect(params).not.toContain(73867616.46);
+    expect(sql).toMatch(/\$7::numeric/); // njumlah = kolom ke-6 cfg + unit_id
+    // Kolom non-numeric TIDAK ikut di-teks-kan (sjnsbp/sbatal tetap int).
+    expect(params).toContain(1);
+    expect(params).toContain(0);
+    // Nilai bulat & pecahan 2-desimal lain juga lewat sbg teks apa adanya.
+    const { params: p2 } = buildUpsert(TABLE_CONFIG.sales_detail!, 1, [
+      { ckdjualbbm: "J1", nvolume: 67.26, nsubtotal: 90098.4, nhargajual: 1000 },
+    ]);
+    expect(p2).toContain("67.26");
+    expect(p2).toContain("90098.4");
+    expect(p2).toContain("1000");
   });
 
   it("terra_resmi: ON CONFLICT (unit_id,ckdterra,ckdnozzle) + cast date/timestamptz + sumOnConflict", () => {
@@ -57,8 +86,8 @@ describe("buildUpsert", () => {
     expect(u.sql).toContain("::timestamptz"); // dtgljam
     // dua baris ter-merge → SATU tuple (13 param), nvolume 42 / ntotal 420000.
     expect(u.params).toHaveLength(13);
-    expect(u.params[7]).toBe(42); // nvolume
-    expect(u.params[9]).toBe(420000); // ntotal
+    expect(u.params[7]).toBe("42"); // nvolume (numeric → teks + ::numeric)
+    expect(u.params[9]).toBe("420000"); // ntotal
     // kolom natural-key TIDAK di-update; nilai di-refresh.
     expect(u.sql).not.toContain('"ckdterra" = EXCLUDED');
     expect(u.sql).toContain('"nvolume" = EXCLUDED."nvolume"');
@@ -147,8 +176,8 @@ describe("buildReplace", () => {
     const tuples = (ins!.sql.match(/\(\$\d/g) ?? []).length;
     expect(tuples).toBe(1);
     // keep-last (= EXCLUDED): baris terakhir menang (liter 99, jenis 7).
-    expect(ins!.params).toContain(99);
-    expect(ins!.params).toContain(7);
+    expect(ins!.params).toContain("99"); // liter = numeric → teks
+    expect(ins!.params).toContain(7); // jenis = int → tetap number
   });
 
   it("pelanggan_sale: REPLACE polos — TANPA ON CONFLICT (conflict kosong)", () => {
