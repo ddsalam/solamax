@@ -856,3 +856,69 @@ Itu sebabnya test perbaikannya memuat kedua tanda dalam satu berkas, bukan satu 
 | Artefak float `PP2022100101473` | tugas terpisah owner — **di luar cakupan** |
 | `migration.sql` 0013 | final, tidak dibuka lagi |
 | Seed DB testing (§23) | opsi tercatat, **belum diputuskan** |
+
+
+## 26. USULAN (belum dikerjakan) — fixture minimal untuk tier testing
+
+Ditulis atas permintaan owner sebagai **usulan bentuk**, bukan implementasi. Menjawab §23: seed
+adalah satu-satunya opsi yang membuat `-rlsstg` mampu menangkap kelas cacat yang **sudah lolos dua
+kali** — blok yang tak dirender (kosong), dan tanda yang tak terbedakan.
+
+### Prinsip: fixture dirancang dari MODE GAGAL, bukan dari "data yang realistis"
+
+Data realistis tidak akan menangkap apa pun di sini. Kedua cacat butuh **pasangan yang berlawanan**
+hadir bersamaan (§24). Jadi fixture-nya sengaja kecil dan sengaja ekstrem.
+
+**Dua unit sintetis** — dua unit, bukan satu, adalah inti usulan ini:
+
+| unit | Hutang | Piutang Online | pecahan | tujuan |
+| --- | --- | --- | --- | --- |
+| `TEST-A` | **POSITIF** | pelanggan **bertitik** ber-`SJENIS 4` | bulat | meniru 28 Oktober |
+| `TEST-B` | **NEGATIF** | pelanggan bertitik ber-`SJENIS 3` + baris **kredit** | **½ rupiah** | meniru Imam Bonjol |
+
+**Isi minimal per unit** (~20 baris total, bukan ribuan):
+
+- `pelanggan_master`: 1 × `SJENIS 1`, 1 × `SJENIS 5`, 1 × `SJENIS 4` **non**-bertitik (harus
+  dikecualikan), 1 × bertitik `SJENIS 3`, 1 × bertitik `SJENIS 4` (harus **masuk** Online),
+  1 × `SJENIS 2` hanya di buku hutang.
+- `bppiut`: debet **dan** kredit (`sjnsbp` 1 & 2) untuk tiap bucket; ≥1 baris `sbatal=1` bernilai
+  besar yang **harus** terbuang.
+- `bphut`: nilai yang menghasilkan total **positif** di A dan **negatif** di B; di B, empat baris
+  ber-pecahan `,5` yang **saling meniadakan** sehingga totalnya bulat.
+- **Dua tanggal berurutan** dengan mutasi di antaranya — tanpa ini, kolom *Awal hari* dan
+  *Akhir hari* identik dan pergeseran batas tanggal tak teruji.
+
+### Yang membuat fixture ini bisa MERAH
+
+| cacat | tertangkap oleh |
+| --- | --- |
+| blok tak dirender (`hasSaldo` false) | ada saldo ≠ 0 → blok wajib muncul |
+| tanda tak terbedakan | A positif vs B negatif, dirender berdampingan |
+| `SJENIS` dipakai sbg proksi format kode | bertitik-`SJENIS 4` wajib masuk Online; non-bertitik-`SJENIS 4` wajib keluar |
+| kredit diabaikan | bucket Online B punya kredit |
+| pecahan hilang / dibulatkan | empat baris `,5` di B |
+| batas tanggal tertukar | dua tanggal dgn mutasi |
+| `sbatal` diabaikan | baris `sbatal=1` bernilai besar |
+
+### Pagar yang WAJIB, bukan opsional
+
+Seed ini **menulis ke DB**. Karena `-staging` (pilot LIVE) dan `-rlsstg` (testing) hanya beda
+sufiks — jebakan nama yang sudah tercatat — skripnya harus **menolak jalan** kecuali targetnya
+terbukti DB testing:
+
+1. Tegaskan **`system_identifier`** (atau nama instance) DB testing sebelum satu pun `INSERT` —
+   pelajaran Batu Layang, dan satu-satunya guard yang tak bisa ditipu oleh salah-ketik host.
+2. Pakai `unit_id` di rentang khusus test (mis. ≥ 900) supaya tak pernah bertabrakan dgn unit nyata.
+3. Idempoten (UPSERT by PK), aman dijalankan tiap deploy.
+4. Jalan **sesudah** `migrate-test`, **sebelum** `deploy-test`.
+
+### Biaya vs manfaat
+
+Kecil (~20 baris seed + satu skrip ber-guard) dibanding dua putaran yang sudah hilang. Tapi ia
+**menambah jalur tulis ke DB di CD** — permukaan yang selama ini nol. Karena itu ini **usulan**,
+dan keputusannya milik owner.
+
+**Batasnya jujur:** fixture menangkap cacat *render* dan *format*, **bukan** kebenaran angka
+terhadap EasyMax. Yang terakhir tetap butuh oracle nyata + `saldo.oracle.integration.test.ts`
+terhadap DB pilot. Seed bukan pengganti gold-check; ia hanya menutup celah "tampilan tak pernah
+dilihat".
