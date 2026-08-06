@@ -133,6 +133,13 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --update-labels rls-aware=${RLS_AWARE}
+      # WAJIB mendahului health check: `curl $URL/health` menguji revisi yang SEDANG
+      # menyajikan — yang bisa saja revisi LAMA — jadi tanpa guard ini ia hijau justru
+      # karena revisi lama sehat.
+      - uses: ./.github/actions/verify-serving-revision
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
       - name: Health check
         run: |
           URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')
@@ -190,6 +197,13 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --update-labels rls-aware=${RLS_AWARE}
+      # Insiden 2026-08-05→07 terjadi PERSIS di sini: traffic pilot ter-pin, deploy
+      # membuat revisi baru tanpa memindahkan traffic, exit 0, job hijau, ~30 jam
+      # menyajikan image lama. Guard ini yang menutupnya.
+      - uses: ./.github/actions/verify-serving-revision
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
       - name: Health check
         run: |
           URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')

@@ -175,3 +175,50 @@ yang salah).
 **Tindak lanjut disarankan:** tutup celah ini dengan job CD backend yang mencerminkan
 pola dashboard (Environment `staging` terproteksi + required reviewer), agar deploy
 backend berikutnya lewat pipeline ber-approval, bukan manual.
+
+- **2026-08-07 — fix artefak floating-point numeric (PR #193 → promosi #194).** CD backend
+  pilot gagal **empat kali berturut-turut**, semuanya di sisi GitHub/Google dan **tak satu pun
+  menyentuh kode**: (1) `Failed to resolve action download info` — `Service Unavailable` lalu
+  `Internal Server Error`, gagal sebelum `prisma-migrate` sempat jalan; (2) tukar token WIF
+  `Unable to retrieve Identity Pool subject token … reset reason: overflow`, `gcloud run deploy`
+  tak pernah dieksekusi; (3) & (4) job `deploy-pilot` **tidak pernah mendapat runner** — cancelled
+  tepat pada 15:01 menit dengan `runner_name` kosong (`cancel-in-progress: false`, jadi bukan
+  concurrency).
+
+  **Urutan runbook TETAP terpenuhi**: `migrate-pilot` sudah **sukses lewat CD** pada percobaan
+  ke-2 (migrasi lulus sebelum image serve; nol migrasi baru pada promosi ini).
+
+  **Image yang dipakai = artefak `build` CD, BUKAN build lokal** —
+  `…/solamax-ingest-staging@sha256:99deed0ca21ba33a4a5a6414b7624b5aca977967726990730e0bb44151961235`,
+  ber-tag `06c8475f64e3dd85c5959f843d19d847bdb9cb4e` (HEAD `main`). Jadi tak ada risiko drift
+  sumber: yang di-deploy manual persis artefak yang akan di-deploy pipeline.
+
+  **Dieksekusi oleh owner (ddsalam)** dari mesinnya, atas instruksi eksplisit; agen berhenti di
+  batas izin (lihat catatan batas operasional di bawah). Perintahnya `gcloud run deploy` image-only
+  + `--update-labels rls-aware=1`, lalu `update-traffic --to-latest`.
+
+  **Temuan yang lebih besar dari deploy-nya sendiri:** service ini traffic-nya **dipatok**
+  (`revisionName: solamax-ingest-staging-00031-tk9`) — sisa rollback yang tak pernah dilepas.
+  Selama pin terpasang, `gcloud run deploy` membuat revisi baru **tanpa memindahkan traffic**,
+  exit code 0, sambil mencetak baris yang menyebut revisi **lama** "is serving 100 percent of
+  traffic". Akibatnya promosi PR #188 (6 Agu 17:57 WIB) tampak hijau tapi **tidak pernah
+  mendarat**; pilot menyajikan image PR #183 (5 Agu) selama ~30 jam. Kontrol pembeda:
+  `solamax-dashboard-staging` memakai `latestRevision: True` dan sehat.
+
+  **Urutan sengaja dibalik dari instruksi awal** (deploy dulu, baru lepas pin): saat itu revisi
+  terbaru adalah `-00032-mcl` (image #188), sehingga `--to-latest` lebih dulu akan memindahkan
+  traffic ke revisi yang tak dipilih siapa pun — berisiko tertinggal di sana kalau deploy gagal
+  untuk kelima kalinya. Hasilnya traffic melompat langsung `-00031-tk9` → `-00033-zv9`;
+  `-00032-mcl` tak pernah menyajikan satu request pun.
+
+  **Verifikasi akhir dari state, bukan dari pesan gcloud**: `spec.traffic` = `latestRevision: true`;
+  `status.traffic[0].revisionName` = `solamax-ingest-staging-00033-zv9`; digest revisi yang serve
+  = `sha256:99deed0c…`; label `rls-aware=1` terjaga; `serving.knative.dev/route` pindah ke revisi
+  baru. Bukti fungsional di data: produksi artefak baru pada `sales_detail` jatuh dari 259 baris
+  (jendela 23:45) ke **0** (jendela 00:00) sementara 1.056 baris tetap ditulis pada jendela yang
+  sama — kontrol yang memisahkan "nol artefak" dari "nol data".
+
+  **Tindak lanjut:** (a) aturan `--to-latest` setelah rollback sudah ditambahkan ke
+  [`DEPLOY.md`](../../DEPLOY.md) dan [`GO-LIVE-RUNBOOK.md`](../../GO-LIVE-RUNBOOK.md);
+  (b) guard CD yang membandingkan **nama revisi** (bukan exit code) sedang disiapkan sebagai PR
+  terpisah ke `staging`.

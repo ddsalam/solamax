@@ -1,0 +1,69 @@
+name: Verifikasi revisi yang MENYAJIKAN traffic
+description: >
+  Menegakkan bahwa revisi yang baru dibuat benar-benar MENYAJIKAN 100% traffic —
+  bukan sekadar berhasil dibuat.
+
+  Kenapa ini ada: `gcloud run deploy` pada service yang traffic-nya DIPATOK
+  (`spec.traffic.revisionName`, sisa `update-traffic --to-revisions`) tetap membuat
+  revisi baru, TIDAK memindahkan traffic, keluar dengan **exit code 0**, dan mencetak
+
+      Service [X] revision [REVISI-LAMA] has been deployed and is serving 100 percent of traffic.
+
+  Kalimat itu menyebut revisi LAMA. Benar secara harfiah, menyesatkan secara total,
+  dan berada persis di baris yang dibaca sebagai konfirmasi — sehingga job CD hijau
+  untuk deploy yang tidak pernah mendarat. Insiden nyata 2026-08-05→07: pin tertinggal
+  ~30 jam; pilot menyajikan image PR #183 sementara promosi PR #188 tampak hijau tapi
+  mandek di revisi tanpa route.
+
+  Karena itu guard ini membandingkan NAMA REVISI, bukan exit code: `gcloud` memang
+  keluar 0, dan memang berkata benar.
+
+inputs:
+  service:
+    description: "Nama Cloud Run service yang baru di-deploy"
+    required: true
+  region:
+    description: "Region Cloud Run"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Revisi terbaru == revisi yang menyajikan traffic
+      shell: bash
+      run: |
+        set -euo pipefail
+        SVC='${{ inputs.service }}'
+        REG='${{ inputs.region }}'
+
+        LATEST=$(gcloud run services describe "$SVC" --region="$REG" \
+          --format='value(status.latestCreatedRevisionName)')
+        SERVING=$(gcloud run services describe "$SVC" --region="$REG" \
+          --format='value(status.traffic[0].revisionName)')
+        PERCENT=$(gcloud run services describe "$SVC" --region="$REG" \
+          --format='value(status.traffic[0].percent)')
+        SPEC=$(gcloud run services describe "$SVC" --region="$REG" \
+          --format='value(spec.traffic)')
+
+        echo "revisi terbaru dibuat : ${LATEST:-<kosong>}"
+        echo "revisi menyajikan     : ${SERVING:-<kosong>}"
+        echo "persen traffic        : ${PERCENT:-<kosong>}"
+        echo "spec.traffic          : ${SPEC:-<kosong>}"
+
+        # Nilai kosong = pemeriksaan yang tak bisa merah. Tolak, jangan lolos diam-diam.
+        if [ -z "$LATEST" ] || [ -z "$SERVING" ] || [ -z "$PERCENT" ]; then
+          echo "::error::Tidak bisa membaca state traffic $SVC — guard tak bisa menyimpulkan apa pun, jadi gagal (bukan lolos)."
+          exit 1
+        fi
+
+        if [ "$LATEST" != "$SERVING" ]; then
+          echo "::error::DEPLOY TIDAK MENDARAT. Revisi $LATEST dibuat, tapi $SERVING yang menyajikan traffic — traffic kemungkinan DIPATOK (spec.traffic: $SPEC). Lepas pin lalu deploy ulang: gcloud run services update-traffic $SVC --region $REG --to-latest"
+          exit 1
+        fi
+
+        if [ "$PERCENT" != "100" ]; then
+          echo "::error::Revisi $SERVING hanya menerima ${PERCENT}% traffic (split belum tuntas)."
+          exit 1
+        fi
+
+        echo "OK: $SERVING menyajikan 100% traffic."
