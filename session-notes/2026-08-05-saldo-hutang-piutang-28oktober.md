@@ -856,3 +856,122 @@ Itu sebabnya test perbaikannya memuat kedua tanda dalam satu berkas, bukan satu 
 | Artefak float `PP2022100101473` | tugas terpisah owner — **di luar cakupan** |
 | `migration.sql` 0013 | final, tidak dibuka lagi |
 | Seed DB testing (§23) | opsi tercatat, **belum diputuskan** |
+
+
+## 26. USULAN (belum dikerjakan) — fixture minimal untuk tier testing
+
+Ditulis atas permintaan owner sebagai **usulan bentuk**, bukan implementasi. Menjawab §23: seed
+adalah satu-satunya opsi yang membuat `-rlsstg` mampu menangkap kelas cacat yang **sudah lolos dua
+kali** — blok yang tak dirender (kosong), dan tanda yang tak terbedakan.
+
+### Prinsip: fixture dirancang dari MODE GAGAL, bukan dari "data yang realistis"
+
+Data realistis tidak akan menangkap apa pun di sini. Kedua cacat butuh **pasangan yang berlawanan**
+hadir bersamaan (§24). Jadi fixture-nya sengaja kecil dan sengaja ekstrem.
+
+**Dua unit sintetis** — dua unit, bukan satu, adalah inti usulan ini:
+
+| unit | Hutang | Piutang Online | pecahan | tujuan |
+| --- | --- | --- | --- | --- |
+| `TEST-A` | **POSITIF** | pelanggan **bertitik** ber-`SJENIS 4` | bulat | meniru 28 Oktober |
+| `TEST-B` | **NEGATIF** | pelanggan bertitik ber-`SJENIS 3` + baris **kredit** | **½ rupiah** | meniru Imam Bonjol |
+
+**Isi minimal per unit** (~20 baris total, bukan ribuan):
+
+- `pelanggan_master`: 1 × `SJENIS 1`, 1 × `SJENIS 5`, 1 × `SJENIS 4` **non**-bertitik (harus
+  dikecualikan), 1 × bertitik `SJENIS 3`, 1 × bertitik `SJENIS 4` (harus **masuk** Online),
+  1 × `SJENIS 2` hanya di buku hutang.
+- `bppiut`: debet **dan** kredit (`sjnsbp` 1 & 2) untuk tiap bucket; ≥1 baris `sbatal=1` bernilai
+  besar yang **harus** terbuang.
+- `bphut`: nilai yang menghasilkan total **positif** di A dan **negatif** di B; di B, empat baris
+  ber-pecahan `,5` yang **saling meniadakan** sehingga totalnya bulat.
+- **Dua tanggal berurutan** dengan mutasi di antaranya — tanpa ini, kolom *Awal hari* dan
+  *Akhir hari* identik dan pergeseran batas tanggal tak teruji.
+
+### Yang membuat fixture ini bisa MERAH
+
+| cacat | tertangkap oleh |
+| --- | --- |
+| blok tak dirender (`hasSaldo` false) | ada saldo ≠ 0 → blok wajib muncul |
+| tanda tak terbedakan | A positif vs B negatif, dirender berdampingan |
+| `SJENIS` dipakai sbg proksi format kode | bertitik-`SJENIS 4` wajib masuk Online; non-bertitik-`SJENIS 4` wajib keluar |
+| kredit diabaikan | bucket Online B punya kredit |
+| pecahan hilang / dibulatkan | empat baris `,5` di B |
+| batas tanggal tertukar | dua tanggal dgn mutasi |
+| `sbatal` diabaikan | baris `sbatal=1` bernilai besar |
+
+### Pagar yang WAJIB, bukan opsional
+
+Seed ini **menulis ke DB**. Karena `-staging` (pilot LIVE) dan `-rlsstg` (testing) hanya beda
+sufiks — jebakan nama yang sudah tercatat — skripnya harus **menolak jalan** kecuali targetnya
+terbukti DB testing:
+
+1. Tegaskan **`system_identifier`** (atau nama instance) DB testing sebelum satu pun `INSERT` —
+   pelajaran Batu Layang, dan satu-satunya guard yang tak bisa ditipu oleh salah-ketik host.
+2. Pakai `unit_id` di rentang khusus test (mis. ≥ 900) supaya tak pernah bertabrakan dgn unit nyata.
+3. Idempoten (UPSERT by PK), aman dijalankan tiap deploy.
+4. Jalan **sesudah** `migrate-test`, **sebelum** `deploy-test`.
+
+### Biaya vs manfaat
+
+Kecil (~20 baris seed + satu skrip ber-guard) dibanding dua putaran yang sudah hilang. Tapi ia
+**menambah jalur tulis ke DB di CD** — permukaan yang selama ini nol. Karena itu ini **usulan**,
+dan keputusannya milik owner.
+
+**Batasnya jujur:** fixture menangkap cacat *render* dan *format*, **bukan** kebenaran angka
+terhadap EasyMax. Yang terakhir tetap butuh oracle nyata + `saldo.oracle.integration.test.ts`
+terhadap DB pilot. Seed bukan pengganti gold-check; ia hanya menutup celah "tampilan tak pernah
+dilihat".
+
+
+## 27. KEADAAN AKHIR — terverifikasi di pilot (2026-08-06)
+
+### Revisi final
+
+| layanan | revisi | catatan |
+| --- | --- | --- |
+| `solamax-dashboard-staging` (**pilot**) | **`00082-ww5`** | `deploy-pilot` ✅ |
+| `solamax-ingest-staging` (**pilot**) | `00031-tk9` — **tidak berubah** | lihat di bawah |
+
+**`migrate-pilot` tidak berjalan pada promosi terakhir (#191) — dan itu BENAR.** Workflow backend
+ber-path-filter `apps/backend/**`, `packages/shared/**`, `pnpm-lock.yaml`; #191 hanya menyentuh 5
+berkas dashboard + 2 catatan sesi, jadi ia memang tidak terpicu. Konsisten dengan klaim "nol migrasi
+baru" di badan PR.
+
+Yang membuktikan itu **bukan** kerusakan senyap: pada promosi sebelumnya (#188, yang memang menyentuh
+backend) `migrate-pilot` **berjalan dan sukses**. Jadi jalurnya hidup. "Tidak jalan" ≠ "rusak" —
+tapi keduanya terlihat sama sampai ada pembanding yang menyalak. (Kembali ke §20: nol/absen tak
+pernah jadi jawaban tanpa kontrol.)
+
+### Verifikasi tanda — kedua unit BERDAMPINGAN
+
+Diperiksa owner di `solamax.solagroup.co`, revisi `00082-ww5`, tanggal bisnis 2026-08-04:
+
+| unit · baris Hutang | Awal hari | Akhir hari | EasyMax | putusan |
+| --- | ---: | ---: | --- | --- |
+| **28 Oktober** | `Rp 140.919.652` | `Rp 123.526.169` | positif | ✅ **tanpa** kurung |
+| **Imam Bonjol** | `(Rp 734.439.355)` | `(Rp 751.284.145)` | negatif | ✅ **dengan** kurung |
+
+Dua posisi ekonomi berlawanan kini **terbedakan di layar**, dan tandanya sejalan dengan EasyMax di
+kedua arah. Sebelum #189 keduanya tampil identik — dan hanya terlihat karena diperiksa berdampingan,
+persis seperti yang dirumuskan di §24.
+
+### ⚠️ BATAS YANG HARUS TERCATAT JUJUR: PDF struktural, BUKAN visual
+
+**Yang diverifikasi owner adalah LAYAR. Ekspor PDF belum pernah dilihat.**
+
+Keyakinan pada PDF bertumpu pada **bentuk perbaikannya**, bukan pada pengamatan:
+- satu formatter bersama (`rpParen()` + `isNegative()` di `format.ts`) dipakai **layar dan**
+  `export/laporan-doc.ts` — keduanya memanggil kode yang sama, jadi tak bisa menyimpang;
+- test e2e menelusuri `docDefinition` yang benar-benar dibangun dan memeriksa teks **serta**
+  warna/tebal sel Hutang, memuat **kedua tanda dalam satu berkas**, dengan kontrol
+  `cells.length > 0` agar "tidak ketemu" tak lolos sebagai hijau;
+- batere mutasi 5/5 merah, termasuk regresi aslinya persis.
+
+Itu jaminan **struktural**, dan untuk kelas cacat ini lebih kuat daripada sekali melihat — sekali
+melihat tidak mencegah divergensi besok. **Tetapi struktural ≠ terlihat.**
+
+Ditulis begitu dengan sengaja: menutupnya dengan "PDF konsisten" akan terbaca seolah sudah dilihat,
+dan itu **persis kelas kesalahan yang membuat sesi ini mahal** — klaim yang benar terhadap sesuatu
+yang tak pernah diperiksa. Kalau suatu saat PDF perlu dipercaya sebagai *terlihat*, ia harus dibuka
+dan dilihat.
