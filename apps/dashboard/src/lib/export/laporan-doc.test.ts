@@ -102,3 +102,79 @@ describe("buildLaporanDocDefinition", () => {
     expect(doc.info?.author).toBe("SolaMax");
   });
 });
+
+/**
+ * TANDA Hutang di PDF — jalur ekspor harus sepakat dgn layar (keduanya `rpParen`).
+ * Skenario memakai angka asli 2026-08-04: 28 Oktober hutang POSITIF
+ * (+123.526.169), Imam Bonjol NEGATIF (−751.284.145). Bug 2026-08-06 mencetak
+ * keduanya dalam kurung — tak terbedakan, dan salah satunya bertanda beda dari
+ * EasyMax.
+ */
+describe("PDF: tanda Hutang mengikuti nilai, bukan flag baris", () => {
+  const withHutang = (v: number) =>
+    buildLaporanModel(
+      {
+        ...raw,
+        saldo: {
+          awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: v },
+          akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: v },
+        },
+      } as unknown as LaporanRaw,
+      {
+        unitCode: "63781002",
+        date: "2026-08-04",
+        today: "2026-08-06",
+        mi: { month: 8, year: 2026, dayOfMonth: 4, daysInMonth: 31 },
+        detail: true,
+      },
+    );
+
+  /** Sel-sel baris "Saldo Hutang Pelanggan Lokal" dari docDefinition. */
+  const hutangCells = (v: number) => {
+    const doc = buildLaporanDocDefinition({
+      model: withHutang(v),
+      meta,
+      config: DEFAULT_EXPORT_CONFIG,
+    });
+    const cells: { text: string; color?: string; bold?: boolean }[] = [];
+    const walk = (n: unknown): void => {
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (!n || typeof n !== "object") return;
+      const t = n as ContentTable & { text?: unknown };
+      if (t.table?.body) {
+        for (const row of t.table.body) {
+          const first = row[0] as { text?: string } | undefined;
+          if (typeof first?.text === "string" && first.text.includes("Hutang Pelanggan Lokal")) {
+            for (const c of row.slice(1)) cells.push(c as { text: string; color?: string; bold?: boolean });
+          }
+        }
+      }
+      Object.values(n as Record<string, unknown>).forEach(walk);
+    };
+    walk(doc.content);
+    return cells;
+  };
+
+  it("hutang NEGATIF (Imam Bonjol) → kurung, merah, tebal", () => {
+    const cells = hutangCells(-751_284_145);
+    expect(cells.length).toBeGreaterThan(0); // kontrol: barisnya memang ketemu
+    for (const c of cells) {
+      expect(c.text).toBe("(Rp 751.284.145)");
+      expect(c.bold).toBe(true);
+    }
+  });
+
+  it("hutang POSITIF (28 Oktober) → TANPA kurung, tidak merah/tebal", () => {
+    const cells = hutangCells(123_526_169);
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) {
+      expect(c.text).toBe("Rp 123.526.169");
+      expect(c.text).not.toContain("(");
+      expect(c.bold).toBeFalsy();
+    }
+  });
+
+  it("kedua tanda menghasilkan teks BERBEDA (inti bug lama)", () => {
+    expect(hutangCells(123_526_169)[0]!.text).not.toBe(hutangCells(-123_526_169)[0]!.text);
+  });
+});

@@ -12,7 +12,7 @@ import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
-import { fmtL, idn, parenNeg, pct, rp, signed } from "@/lib/format";
+import { fmtL, idn, isNegative, parenNeg, pct, rp, rpParen, signed } from "@/lib/format";
 import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
 
 export interface LaporanDocMeta {
@@ -129,13 +129,18 @@ function recapSection(m: LaporanModel): Content[] {
       [th("Keterangan"), th("Awal hari (Rp)", "right"), th("Akhir hari (Rp)", "right")],
     ];
     for (const s of m.recap.saldoRows) {
-      const cell = (v: number): TableCell => ({
-        text: s.danger ? `(${rp(Math.abs(v))})` : rp(v),
-        alignment: "right",
-        noWrap: true,
-        color: s.danger ? PDF.danger : PDF.textPrimary,
-        bold: s.danger,
-      });
+      // Jalur ekspor memakai formatter yang SAMA dengan layar (`rpParen`) supaya
+      // PDF & layar tak bisa menyimpang — termasuk soal tanda.
+      const cell = (v: number): TableCell => {
+        const neg = s.danger && isNegative(v);
+        return {
+          text: s.danger ? rpParen(v) : rp(v),
+          alignment: "right",
+          noWrap: true,
+          color: neg ? PDF.danger : PDF.textPrimary,
+          bold: neg,
+        };
+      };
       body.push([{ text: s.label }, cell(s.awal), cell(s.akhir)]);
     }
     out.push(table(["*", 110, 110], body, true));
