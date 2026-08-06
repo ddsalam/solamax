@@ -39,6 +39,32 @@ export function parenNeg(n: number, suffix = " L"): string {
   return n < 0 ? `(${idn(Math.abs(n))}${suffix})` : `+${idn(n)}${suffix}`;
 }
 
+/**
+ * Rupiah gaya akuntansi: NEGATIF dalam kurung, POSITIF apa adanya.
+ *
+ * Dipakai baris saldo yang tandanya BISA DUA ARAH — mis. "Saldo Hutang Pelanggan
+ * Lokal", yang di EasyMax bernilai **+123.526.169 di 28 Oktober** tetapi
+ * **−751.284.145 di Imam Bonjol**. Keduanya sah dan berlawanan arah ekonominya.
+ *
+ * ⚠️ Kurung WAJIB ditentukan oleh TANDA NILAI, bukan oleh flag "ini baris
+ * liabilitas". Bug produksi 2026-08-06: layar & PDF memakai
+ * `danger ? '(' + rp(Math.abs(v)) + ')' : rp(v)` — `Math.abs()` tanpa syarat —
+ * sehingga saldo 28 Oktober yang POSITIF tercetak `(Rp 123.526.169)`, tak
+ * terbedakan dari saldo IB yang benar-benar negatif. Dua posisi ekonomi
+ * berlawanan, satu tampilan identik; dan salah satunya bertanda berbeda dari
+ * EasyMax, tepat di baris yang direkonsiliasi pengawas.
+ *
+ * Satu fungsi dipakai bersama layar dan ekspor PDF supaya keduanya tak bisa
+ * menyimpang. Dijaga `format.test.ts` + mutasi.
+ */
+export function rpParen(n: number): string {
+  const v = Math.round(n) || 0; // normalkan -0 → 0
+  return v < 0 ? `(${rp(Math.abs(v))})` : rp(v);
+}
+
+/** Nilai ini perlu perlakuan visual "negatif" (merah/tebal)? Tanda, bukan baris. */
+export const isNegative = (n: number): boolean => (Math.round(n) || 0) < 0;
+
 const WIB = "Asia/Pontianak";
 
 /** "Kamis, 11 Juni 2026" dari "YYYY-MM-DD". */

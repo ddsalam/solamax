@@ -359,3 +359,91 @@ Test "awal(D) ≡ akhir(D−1)" IB sempat MERAH — ternyata **timeout 5 dtk**, 
 5 tanggal → 8 query DB live @~0,9 dtk. Invarian itu benar secara aljabar dan tidak mungkin
 gagal karena nilai. Timeout dinaikkan ke 60 dtk; sesudahnya hijau. Dicatat karena "merah"
 yang sebabnya waktu sangat mudah disalahartikan sebagai cacat data.
+
+---
+
+# BAGIAN III — Tanda Hutang di tampilan (temuan verifikasi pilot)
+
+Disegel **2026-08-06**, **sebelum** query verifikasi dijalankan. Append-only.
+
+## 11. Gejala
+
+Pilot menampilkan Hutang Lokal **dalam kurung di kedua unit**, padahal EasyMax:
+28 Oktober `+123.526.169` (**positif**) · Imam Bonjol `−751.284.145` (**negatif**).
+Dua posisi ekonomi berlawanan, satu tampilan identik.
+
+## 12. PREDIKSI — sebelum query
+
+**Prediksi: (a) — nilai TERSIMPAN sudah benar; cacatnya murni di lapis TAMPILAN.**
+
+Yakni `getSaldoPelanggan(unit, '2026-08-04').akhir.hutangLokal` akan mengembalikan:
+
+| unit | prediksi nilai |
+| --- | ---: |
+| 7 · 28 Oktober | **+123.526.169** (positif) |
+| 1 · Imam Bonjol | **−751.284.145** (negatif) |
+
+**Dasar prediksi (bukan tebakan):** `saldo.oracle.integration.test.ts` sudah memuat test
+*"tanda Hutang mengikuti data: IB negatif, 28 Oktober positif"* dengan assertion
+`toBeLessThan(0)` / `toBeGreaterThan(0)`, dan test itu **LULUS** terhadap DB pilot pada
+2026-08-06. Kalau nilai tersimpannya terbalik, test itu mustahil hijau.
+
+Terdakwanya: `page.tsx` dan `export/laporan-doc.ts` sama-sama memakai
+`s.danger ? \`(${rp(Math.abs(v))})\` : rp(v)` — `Math.abs()` **tanpa syarat** + kurung, dipicu
+flag `danger: true` yang menandai *baris liabilitas*, bukan *nilai negatif*. Flag itu sudah ada
+**sebelum** perubahan sesi ini; ia hanya jadi terlihat setelah dua unit diperiksa berdampingan.
+
+## 13. Yang membuat prediksi ini MERAH
+
+- **(b)** salah satu nilai bertanda terbalik → konvensi tanda di **query** salah untuk satu arah.
+  Itu jauh lebih dalam daripada kurung, dan berarti test tanda di atas **palsu hijau** (mis. karena
+  keduanya kebetulan sepihak). Kalau ini yang terjadi: **berhenti, jangan sentuh formatter**, dan
+  laporkan sebagai temuan tersendiri.
+- Kedua nilai positif, atau kedua negatif → sama seperti (b): tanda tidak mengikuti data.
+
+## 14. HASIL
+
+Dijalankan 2026-08-06 lewat `getSaldoPelanggan` sendiri (bukan salinan SQL), DB pilot:
+
+```
+unit 7 28 Oktober   AWAL=140919652    AKHIR=123526169     ← POSITIF
+unit 1 Imam Bonjol  AWAL=-734439355   AKHIR=-751284145    ← NEGATIF
+```
+
+### ✅ PREDIKSI (a) TERKONFIRMASI — nilai tersimpan BENAR, cacat murni di TAMPILAN
+
+Kedua angka persis seperti yang diprediksi, dan persis EasyMax. Tanda mengikuti data:
+28 Oktober positif, IB negatif. Konvensi tanda di query **tidak** bermasalah — (b) gugur.
+
+Cacatnya ada di dua tempat yang memakai pola sama:
+- `page.tsx:356` — `s.danger ? \`(${rp(Math.abs(v))})\` : rp(v)`
+- `export/laporan-doc.ts:133` — pola identik
+
+`Math.abs()` **tanpa syarat**, dipicu flag `danger` yang menandai *baris liabilitas*, bukan
+*nilai negatif*. Jadi saldo positif 28 Oktober tercetak `(Rp 123.526.169)` — tak terbedakan
+dari saldo IB yang benar-benar negatif, dan bertanda **berbeda dari EasyMax**.
+
+Bukti bahwa ini **bukan regresi sesi ini**: flag `danger: true` sudah ada di `laporan-model.ts`
+sebelum perubahan apa pun di sesi ini; ia hanya menjadi **terlihat** setelah dua unit dengan
+tanda berlawanan diperiksa berdampingan di pilot. Tier testing tak bisa memunculkannya (blok
+Saldo tak dirender sama sekali di sana — lihat §23 catatan sesi).
+
+### Perbaikan
+
+Satu formatter bersama di `format.ts` — `rpParen()` (kurung ditentukan **tanda**) + `isNegative()`
+(perlakuan merah/tebal mengikuti **tanda**, bukan baris) — dipakai **layar dan PDF**, sehingga
+keduanya tak bisa menyimpang lagi. Codebase sudah memakai konvensi sign-driven di tempat lain
+(`HarianCharts.tsx:104`, `harian-doc.ts:416`); blok saldo adalah satu-satunya yang menyimpang.
+
+### Batere mutasi — 5 dari 5 MERAH (baseline 16 lulus)
+
+| mutasi | hasil |
+| --- | --- |
+| **REGRESI ASLI**: `abs()` tanpa syarat di formatter | 🔴 5 gagal |
+| kurung dibuang seluruhnya | 🔴 2 gagal |
+| `isNegative` selalu true (merah tanpa syarat) | 🔴 2 gagal |
+| PDF kembali pakai flag baris, bukan tanda | 🔴 1 gagal |
+| PDF cetak `abs()` tanpa syarat | 🔴 2 gagal |
+
+Test memuat **kedua tanda dalam satu berkas** (28 Oktober positif + IB negatif) dan satu
+assertion yang menjadi inti bug lama: `rpParen(+x)` **tidak boleh sama dengan** `rpParen(−x)`.

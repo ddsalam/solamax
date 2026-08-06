@@ -4,18 +4,7 @@ import { LaporanExport } from "@/components/laporan/LaporanExport";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { unitDotted } from "@/lib/config";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
-import {
-  dateLong,
-  dateShort,
-  fmtL,
-  idn,
-  parenNeg,
-  pct,
-  rp,
-  rpShort,
-  signed,
-  timeWib,
-} from "@/lib/format";
+import { dateLong, dateShort, fmtL, idn, isNegative, parenNeg, pct, rp, rpParen, rpShort, signed, timeWib } from "@/lib/format";
 import { monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
   getCashForDate,
@@ -351,9 +340,14 @@ export default async function LaporanPage({
                   {([s.awal, s.akhir] as const).map((v, i) => (
                     <span
                       key={i}
-                      className={`right fs16 num nowrap ${s.danger ? "t-danger w700" : "t-primary"}`}
+                      // Merah/tebal mengikuti TANDA NILAI, bukan flag baris: saldo
+                      // Hutang bisa positif (28 Oktober) atau negatif (IB), dan
+                      // keduanya harus terbedakan di layar.
+                      className={`right fs16 num nowrap ${
+                        s.danger && isNegative(v) ? "t-danger w700" : "t-primary"
+                      }`}
                     >
-                      {s.danger ? `(${rp(Math.abs(v))})` : rp(v)}
+                      {s.danger ? rpParen(v) : rp(v)}
                     </span>
                   ))}
                 </div>
