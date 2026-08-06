@@ -683,7 +683,54 @@ Obat yang sama untuk keduanya, dan sudah masuk runbook gold-check:
 | --- | --- | --- |
 | **Format GUC `app.unit_ids`** — literal array `'{1,…,7}'` di-split pada koma lalu disaring regex `^-?[0-9]+$`, sehingga token pertama (`{1`) & terakhir (`7}`) gugur | unit **pertama dan terakhir** tampak **kosong**; 0 baris, **bukan error** — identik dgn "tidak ada data" | kasus kontrol: IB mustahil kosong. Format benar = daftar polos (`7`) |
 | **Frasa seksi muncul ulang** di baris `TOTAL SALDO …` dan blok `Summary` → parser substring **me-reset akumulator** | berkas IB terbaca **0 baris di semua seksi**; mudah disimpulkan "layout IB beda" | buka strukturnya, bukan menebak; lalu pasang TOTAL + Summary sbg cek silang. (Baris JUDUL laporan juga berawalan `DAFTAR SALDO` → sempat bikin seksi hantu `null`) |
+| **`information_schema` disaring privilege** — `dashboard_ro` tak punya akses schema `app`, jadi `information_schema.tables` mengembalikan **nol baris** untuk `app` | terbaca seperti "schema `app` tidak punya tabel" — persis saat menjawab "apakah ada angka saldo yang tersimpan?", di mana nol = jawaban yang **menyenangkan** dan karenanya paling berbahaya | kontrol: `public` → 26 tabel (menyalak). Lalu baca `pg_class`/`pg_namespace` yang **tidak** disaring privilege → 11 tabel `app` muncul |
 | **Timeout test 5 dtk** pada invarian yang menyentuh DB 8× | test MERAH; sangat mudah dijual sebagai temuan data | invarian itu benar **secara aljabar** — mustahil gagal karena nilai. Baca pesan gagalnya, jangan hanya warnanya |
 
-Ketiganya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari kebenaran**, dan
+**TIGA dari empat jebakan di atas menghasilkan NOL TANPA ERROR** — GUC salah format, parser
+yang ter-reset, dan `information_schema` yang disaring privilege. Tiga instans **pola yang sama
+dalam satu sesi**, di tiga lapis alat yang berbeda (DB, parser berkas, katalog DB). Itu bukan
+kebetulan; itu frekuensi dasarnya. Aturan praktisnya:
+
+> **Nol tak pernah menjadi jawaban sampai ada kasus kontrol yang membuktikan query-nya bisa
+> mengembalikan bukan-nol.**
+
+Yang keempat (timeout) adalah cerminnya: **merah tanpa cacat**. Arahnya berlawanan, keluarganya
+sama — dan berbahaya justru ketika nol/merah itu **jawaban yang kita harapkan**. Dalam sesi ini
+"schema `app` kosong" adalah kabar baik (berarti tak ada angka lama tersimpan), dan itulah momen
+paling mudah berhenti bertanya.
+
+Keempatnya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari kebenaran**, dan
 hanya kasus kontrol yang memisahkannya.
+
+
+## 21. Pengamatan lingkungan — dicatat, TANPA tindakan
+
+**Dua host untuk satu layanan `-rlsstg`.** OAuth memakai `redirect_uri` ber-host
+`solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app`, sementara URL layanan yang
+dikembalikan Cloud Run adalah `solamax-dashboard-rlsstg-wn6i64kvza-et.a.run.app`. Keduanya
+menunjuk layanan yang sama dan alur login **jalan**.
+
+Dicatat karena bentuk "dua host satu layanan" pernah menggigit di tempat lain lewat **cookie PKCE
+yang tertulis di host berbeda dari host yang membacanya** — gejalanya login gagal dengan pesan
+state/verifier tak cocok, bukan pesan konfigurasi. Bukan tugas sekarang, tidak ada tindakan yang
+diambil; kalau suatu saat login `-rlsstg` bertingkah, mulai dari sini.
+
+---
+
+## 22. Status akhir sesi (2026-08-06)
+
+PR [#187](https://github.com/ddsalam/solamax/pull/187) **ter-merge ke `staging`**. Ketiga workflow
+sukses: CI `pnpm check` (44 dtk), deploy backend (3m08s), deploy dashboard (3m14s).
+
+Revisi yang serve di tier **testing**:
+- dashboard `solamax-dashboard-rlsstg-00039-lgz` (100% traffic)
+- backend `solamax-ingest-rlsstg-00011-zw8`
+
+**`main` tidak disentuh** — pilot (`-staging`) masih menjalankan kode lama. Promosi ke pilot adalah
+keputusan terpisah yang belum diambil, dan menunggu dua hal di sisi owner: verifikasi tampilan
+dua-kolom di `-rlsstg`, dan keputusan apakah penerima cetakan PDF perlu diberitahu lebih dulu
+(usulan: satu kalimat yang menyebut **Hutang Lokal** — baris dengan pergeseran persentase terbesar,
+12,3% di 28 Oktober / 5,9% di IB karena basisnya kecil — dan bahwa **angka lama = kolom "Awal hari"**).
+
+Di luar cakupan dan tetap terbuka sebagai tugas terpisah milik owner: artefak float
+`PP2022100101473` (`73867616.45999999`, jalur `num()` JS → JSON → `numeric`).
