@@ -1276,7 +1276,20 @@ export interface SaldoPelanggan {
  * Saldo Hutang Piutang" memakai saldo akhir — jadi keduanya disajikan berlabel,
  * bukan dipilih salah satu. Lihat session-notes/2026-08-05-saldo-hutang-piutang-28oktober.md.
  *
- * Bucket (terbukti vs oracle 28 Oktober 2–4 Ags 2026, 9/9 sel eksak):
+ * ⛔ KOMENTAR DI `0013_recap_saldo_tables/migration.sql:5-8` SUDAH TIDAK BERLAKU.
+ * Ia menyatakan `dtgl<tanggal`, `Online = SJENIS 3`, dan "EKSAK 27-Jun" — ketiganya
+ * keliru, dan klaim "EKSAK" itu benar hanya terhadap **laporan yang salah** ("Laporan
+ * Penjualan Harian"). Berkas migrasinya sengaja TIDAK disunting (checksum
+ * `prisma migrate deploy` = pipeline CD berhenti); koreksi lengkapnya ada di
+ * `CORRECTION.md` di direktori migrasi yang sama. **Fungsi INI-lah sumber kebenaran.**
+ *
+ * ✅ ORACLE YANG SAH hanya **"DAFTAR SALDO HUTANG PIUTANG"** — jangan pernah memverifikasi
+ * blok ini terhadap "Laporan Penjualan Harian". Mencampur keduanya adalah akar sesi
+ * 2026-08-05/06: memunculkan hantu "IB kurang 19,7 miliar" yang tak pernah ada.
+ * Dikunci `queries.saldo.test.ts` (CI tiap commit) + `saldo.oracle.integration.test.ts`
+ * (DB-live, `SALDO_LIVE_DB=1`; 24 sel di 2 unit).
+ *
+ * Bucket (terbukti vs oracle 28 Oktober 2–4 Ags 2026 [9/9] & Imam Bonjol 1–5 Ags 2026 [15/15]):
  *   - Piutang Lokal  = `bppiut`, SJENIS {1,5} DAN kode TANPA titik
  *   - Piutang Online = `bppiut`, kode BERTITIK (`NN.999.NNNN`), **tanpa** filter SJENIS
  *   - Hutang Lokal   = seluruh `bphut`, dinegatifkan

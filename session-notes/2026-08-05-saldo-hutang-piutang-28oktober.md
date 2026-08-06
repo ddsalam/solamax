@@ -584,3 +584,106 @@ Keputusan ini milik owner, jadi kedua jalannya disiapkan:
 - **(B) bila owner tetap ingin berkasnya disunting** — sunting boleh, tapi **harus disertai**
   pembaruan checksum tersimpan di **kedua** DB (`solamax-pg` dan `solamax-pg-rlsstg`), sebagai
   langkah tulis yang disetujui terpisah. Tanpa itu, pipeline berhenti pada deploy berikutnya.
+
+
+---
+
+# BAGIAN IV — Ringkasan yang bisa dipakai ulang
+
+## 15. Ketiga aturan + bukti aritmetiknya
+
+| baris | aturan | 28 Oktober | Imam Bonjol |
+| --- | --- | ---: | ---: |
+| Piutang Lokal | `bppiut`, `SJENIS ∈ {1,5}` **DAN** kode tanpa titik | **49** pelanggan | **136** pelanggan |
+| Piutang Online | `bppiut`, kode **bertitik**, **tanpa** filter SJENIS | **4** | **1** |
+| Hutang Lokal | seluruh `bphut`, dinegatifkan | **34** | **191** |
+| | **total baris laporan** | **87** | **328** |
+
+Semua `COALESCE(sbatal,0)=0`, dua batas (`<` awal hari, `<=` akhir hari).
+
+**Aritmetika yang menutupnya — 28 Oktober, 02 Ags:**
+```
+Piutang Lokal  134.812.082.058 − 122.779.044.019 = 12.033.038.039 ✓
+Piutang Online      10.796.518 −             0   =      10.796.518 ✓
+   = 3.951.595 + 300.000 + 6.508.839 + 36.084   (empat pelanggan bertitik)
+Hutang Lokal    56.159.023.882 −  56.009.691.552 =     149.332.330 ✓
+```
+
+**Imam Bonjol, 01 Ags:**
+```
+Piutang Lokal  118.183.449.515 −  82.805.910.588 = 35.377.538.927 ✓
+Piutang Online      10.505.841 −       9.305.841 =      1.200.000 ✓   ← jalur KREDIT
+Hutang Lokal    51.732.360.497,5 − 52.502.362.877,5 =  −770.002.380 ✓ ← pecahan ½ & tanda negatif
+```
+
+Σ(D−K) per baris ≡ baris `TOTAL SALDO …` ≡ blok `Summary` di dalam berkas — tiga sumber
+independen, cocok di **kedua puluh empat** sel.
+
+## 16. Hipotesis yang GUGUR — dan kenapa (sama berharganya dgn yang bertahan)
+
+| hipotesis | putusan | bukti yang menjatuhkannya |
+| --- | --- | --- |
+| **H3 case-sensitivity ala CNOSO** (`trim()` tanpa `lower()` membuang baris) | **GUGUR** | Anti-join `bppiut` ⟂ `pelanggan_master` = **0 baris di ketujuh unit**; kontrol menyalak (58.943…168.627 baris saat predikatnya dilepas) |
+| **H4 ledger Postgres ≠ MySQL** (hard-delete, backfill bolong, lubang outage 05-08) | **GUGUR** | Rekonsiliasi per-pelanggan 261 titik (28 Okt) + 1.640 titik (IB) → **nol** ketidakcocokan nilai. Full-sync `SELECT … FROM tr_bppiut` tanpa `WHERE`, urut terlama dulu → run yang putus kehilangan baris **terbaru**, bukan terlama |
+| **H5 semantik `sbatal` berbeda** | **GUGUR** | Total dgn `sbatal=0` mendarat eksak; IB `sbatal=1` bernet **Rp0** (339.532 baris) |
+| **H8 `bphut` perlu difilter** (`SJENIS {2,3}` / non-bertitik) | **GUGUR** | Pelanggan `bphut` bersaldo yang tak ada di oracle = **0** (kedua unit). SJENIS di buku hutang justru bercampur — IB {2: 22, 3: 166} → filter SJENIS **salah** |
+| **H7 konvensi tanda hutang dibalik** | **GUGUR** | Formula sama menghasilkan 28 Okt **+**149 jt dan IB **−**770 jt; tanda mengikuti data |
+| **"IB kehilangan 19,7 miliar"** | **GUGUR — tak pernah ada** | Oracle setara ("Daftar Saldo Hutang Piutang" IB) → **15/15 eksak** tanpa penyesuaian |
+| **Buku tagihan `tr_htagihan`** sumber piutang IB | **GUGUR** | PACK-6: seluruh-faktur − seluruh-pembayaran = 21.264.348.386 (+1,59 mrd); faktur-belum-lunas − pembayarannya = 22.854.043.870 (+3,18 mrd). Tak ada potongan yang mendarat, di dua tanggal kontrol. Disimpan: **`NLASTSALDO` = sisa per faktur** |
+| **DB `emax2`** memuat ledger tandingan | **GUGUR** | Isinya hanya `globall` + `tangki`; `emax2.tr_bppiut` tidak ada |
+| **H6 cache menyajikan angka basi** | **tak terbukti & tak relevan** | Seluruh pengukuran diambil langsung dari DB, melewati cache |
+
+**Yang BERTAHAN:** H1 (batas tanggal — beda definisi, bukan cacat) dan H2 (bucket — SJENIS
+dipakai sebagai proksi format kode).
+
+## 17. Prediksi saya yang MELESET
+
+Di pra-registrasi §3(b) saya menulis: *"ADA pelanggan bertitik ber-SJENIS {1,5} yang bersaldo,
+di setidaknya satu unit selain 28 Oktober."*
+
+**Salah.** Nol di **ketujuh** unit. Konsekuensinya melegakan — syarat "tanpa titik" pada Lokal
+tidak memindahkan rupiah mana pun, ia murni pagar terhadap masa depan — tapi prediksinya tetap
+meleset dan dicatat apa adanya, bukan disunting menjadi benar.
+
+## 18. PENCABUTAN tertulis
+
+Dua pernyataan saya sendiri, dicabut:
+
+1. ~~"Piutang Lokal Imam Bonjol understated ±19,7 miliar terhadap laporan EasyMax-nya sendiri"~~
+   → **SALAH.** 15/15 sel eksak terhadap oracle setara. Tak ada data yang hilang.
+2. ~~"IB tidak bisa dipakai sebagai kasus kontrol untuk Piutang Lokal"~~
+   → **DICABUT.** IB kembali sah, dan kini kontrol **terkuat** yang dimiliki armada.
+
+Keduanya ditetapkan atas bukti yang saat itu memang mengarah ke sana; keduanya dicabut atas
+bukti yang lebih baik. Pencabutannya ditulis setegas penetapannya.
+
+## 19. SATU pola, dua arah — bukan dua anekdot
+
+Sesi ini memuat dua peristiwa yang tampak berlawanan. Keduanya **pola yang sama**:
+
+> **Pembanding yang tidak layak dibandingkan menghasilkan sinyal yang tidak bisa dibedakan
+> dari kebenaran.**
+
+| arah | peristiwa | tampak seperti | sebenarnya |
+| --- | --- | --- | --- |
+| **lulus palsu** | komentar 0013 "EKSAK 27-Jun" vs *Laporan Penjualan Harian* | formula terverifikasi | benar terhadap **laporan yang salah** → melahirkan hantu 19,7 miliar |
+| **gagal palsu** | sel ke-9 28 Oktober, +604.500 vs berkas oracle 05-Agu | cacat aturan | oracle **sudah basi**; ledger dikoreksi 06-Agu 09:23 WIB |
+
+Obat yang sama untuk keduanya, dan sudah masuk runbook gold-check:
+
+1. Sebut **nama laporan** oracle secara eksplisit — bukan "laporan EasyMax".
+2. Bandingkan **tanggal ekspor oracle** dengan `ingested_at` sebelum menyimpulkan selisih.
+3. Saat selisih muncul, uji dulu apakah aturan **LAMA** pun menghasilkannya. Kalau ya →
+   yang berubah **data**, bukan rumus.
+4. Saat kecocokan muncul, tanyakan apakah pembandingnya memang mengukur hal yang sama.
+
+## 20. Jebakan alat yang nyata (ketiganya menghasilkan sinyal palsu tanpa error)
+
+| jebakan | gejalanya | yang menyelamatkan |
+| --- | --- | --- |
+| **Format GUC `app.unit_ids`** — literal array `'{1,…,7}'` di-split pada koma lalu disaring regex `^-?[0-9]+$`, sehingga token pertama (`{1`) & terakhir (`7}`) gugur | unit **pertama dan terakhir** tampak **kosong**; 0 baris, **bukan error** — identik dgn "tidak ada data" | kasus kontrol: IB mustahil kosong. Format benar = daftar polos (`7`) |
+| **Frasa seksi muncul ulang** di baris `TOTAL SALDO …` dan blok `Summary` → parser substring **me-reset akumulator** | berkas IB terbaca **0 baris di semua seksi**; mudah disimpulkan "layout IB beda" | buka strukturnya, bukan menebak; lalu pasang TOTAL + Summary sbg cek silang. (Baris JUDUL laporan juga berawalan `DAFTAR SALDO` → sempat bikin seksi hantu `null`) |
+| **Timeout test 5 dtk** pada invarian yang menyentuh DB 8× | test MERAH; sangat mudah dijual sebagai temuan data | invarian itu benar **secara aljabar** — mustahil gagal karena nilai. Baca pesan gagalnya, jangan hanya warnanya |
+
+Ketiganya satu keluarga dengan §19: **sinyal yang tidak bisa dibedakan dari kebenaran**, dan
+hanya kasus kontrol yang memisahkannya.
