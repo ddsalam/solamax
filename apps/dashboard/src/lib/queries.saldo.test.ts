@@ -115,6 +115,27 @@ describe("getSaldoPelanggan — bucket Lokal vs Online", () => {
     expect(sql).not.toContain("LIKE 'PLG");
   });
 
+  // Ditambahkan setelah batere mutasi menemukan lubang: menghapus lengan KREDIT
+  // (`WHEN 2 THEN -1`) LOLOS dari seluruh test bentuk. Padahal itu persis mode
+  // gagal yang diuji di Imam Bonjol — bucket Online IB punya kredit 9.305.841;
+  // tanpa lengan itu Online IB jadi 10.505.841, bukan 1.200.000. Test DB-live
+  // menangkapnya, tapi ia TIDAK jalan di CI → di sini harus ada pagarnya.
+  it("tanda SJNSBP lengkap: debet DAN kredit, di kedua buku", async () => {
+    const sql = await saldoSql();
+    // piutang: 1 = debet (+), 2 = kredit (−)
+    expect(sql).toContain("CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END");
+    // hutang: 2 = (+), 1 = (−) — lalu keseluruhannya dinegatifkan
+    expect(sql).toContain("CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END");
+  });
+
+  // Juga temuan batere mutasi: menghapus tanda minus di depan agregat hutang
+  // lolos dari semua test lain — padahal itu MEMBALIK tanda liabilitas yang
+  // tampil (IB −770 juta jadi +770 juta). Kedua batas wajib dinegatifkan.
+  it("Hutang dinegatifkan di KEDUA batas", async () => {
+    const sql = await saldoSql();
+    expect(sql.match(/\(-COALESCE\(\(SELECT sum\(v\) FROM hut/g)).toHaveLength(2);
+  });
+
   it("Hutang = SELURUH bphut, tanpa filter SJENIS maupun format kode", async () => {
     const sql = await saldoSql();
     // HANYA badan CTE `hut` — dari "hut AS (" sampai ") SELECT" penutupnya.

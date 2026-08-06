@@ -484,3 +484,103 @@ keputusan owner, bukan konsekuensi otomatis. Tak ada migrasi ditulis.
 2. Perbaikan apa pun harus diuji atas **ketujuh unit**, dan IB kini bukan kontrol bersih (§5).
 3. Query saldo baru turun 104 dtk → 1,47 dtk; setiap perubahan predikat `dtgl` mengubah
    selektivitas indeks → **wajib ukur ulang** sebelum/sesudah.
+
+
+---
+
+# BAGIAN III — Imam Bonjol: hantunya bubar (2026-08-06)
+
+## 10. PENCABUTAN status IB — tertulis, sebagaimana pencabutan sebelumnya
+
+Di §5 catatan ini saya menulis bahwa **Piutang Lokal IB understated ±19,7 miliar** dan bahwa
+**IB tidak lagi layak jadi kasus kontrol**. Kedua pernyataan itu **DICABUT**.
+
+Buktinya berbalik, dan pencabutannya harus setegas penetapannya:
+
+- Owner mengekspor **"Daftar Saldo Hutang Piutang" IB** 1–5 Agustus 2026 — laporan **sejenis**
+  dengan yang dipakai memeriksa 28 Oktober.
+- Terhadap oracle setara itu, **15 dari 15 sel EKSAK**, tanpa penyesuaian apa pun.
+- Rekonsiliasi per-pelanggan: **1.640 titik data, nol ketidakcocokan**.
+
+→ **Tidak ada data IB yang hilang. Formulanya benar sejak awal.** Angka 19,7 miliar adalah
+artefak membandingkan ke **"Laporan Penjualan Harian"** (saldo AWAL hari) — laporan berjenis
+lain yang kesetaraannya tak pernah dibuktikan.
+
+→ **IB kembali menjadi kasus kontrol yang sah untuk Piutang Lokal**, dan kini ia kasus kontrol
+yang lebih kuat daripada sebelumnya: ia menguji dua jalur yang 28 Oktober tak bisa uji —
+**kredit pada bucket Online** dan **pecahan ½ rupiah**.
+
+Buku tagihan (`tr_htagihan`/`tr_dtagihan`/`tr_byrtagih`) **GUGUR** sebagai hipotesis: PACK-6
+menunjukkan seluruh-faktur − seluruh-pembayaran = 21.264.348.386 (+1,59 mrd dari target) dan
+faktur-belum-lunas − pembayarannya = 22.854.043.870 (+3,18 mrd). Satu temuan struktural tetap
+disimpan: **`NLASTSALDO` = sisa per faktur** (22.998.111.024 − 144.067.154 = 22.854.043.870).
+Tidak ada domain ingest baru yang perlu ditambahkan.
+
+## 11. Yang IB uji dan 28 Oktober tidak
+
+| jalur | 28 Oktober | Imam Bonjol |
+| --- | --- | --- |
+| kredit pada bucket **Online** | tak ada (kredit nol) | **ADA** — 10.505.841 − 9.305.841 = 1.200.000 |
+| **pecahan ½ rupiah** | tak ada (bulat semua) | **ADA** — 4 pelanggan hutang, total tetap bulat |
+| **tanda** Hutang | positif (+149 jt) | **negatif** (−770 jt) |
+| SJENIS 2 di buku hutang | 2 pelanggan | **22 pelanggan** |
+
+Ketiganya kini terkunci test. Tanpa IB, tiga jalur ini tak pernah tereksekusi sama sekali.
+
+## 12. PELAJARAN METODE — layak disimpan di luar sesi ini
+
+Sesi ini menghabiskan tiga putaran query mengejar "kehilangan data 19,7 miliar" yang
+**tidak pernah ada**. Penyebabnya satu: **oracle-nya tidak pernah diverifikasi setara dengan
+laporan yang dipakai memeriksa.** Komentar `migration.sql` menyatakan formula "terkunci
+EKSAK" — dan klaim itu **benar, terhadap laporan yang salah**.
+
+Bentuk umumnya:
+
+> **Pemeriksaan yang LULUS terhadap pembanding yang keliru terbaca persis seperti pemeriksaan
+> yang benar.**
+
+Yang membubarkannya bukan query yang lebih pintar, melainkan **meminta pembanding yang
+setara** — tersedia sejak awal dengan biaya satu ekspor.
+
+Kembarannya muncul di sesi yang sama, di sel ke-9 (28 Oktober, +604.500):
+
+> **Pemeriksaan yang GAGAL terhadap pembanding yang sudah basi terbaca persis seperti cacat.**
+
+Kedua arah butuh obat yang sama: **periksa dulu apakah pembandingnya masih layak
+dibandingkan** — sebelum menyalahkan kode, dan sebelum mempercayai kecocokan.
+
+Turunan praktisnya, sudah dimasukkan ke runbook gold-check:
+1. Sebut **nama laporan** oracle secara eksplisit, bukan "laporan EasyMax".
+2. Cek tanggal ekspor vs `ingested_at` sebelum menyimpulkan selisih.
+3. Saat selisih muncul, uji dulu apakah aturan **lama** pun menghasilkannya.
+
+## 13. Empat item penutup
+
+| # | item | status |
+| --- | --- | --- |
+| 1 | Pensiunkan `SALDO_EXPECTED` (probe.ts) | ✅ diganti nama jadi `SALDO_EXPECTED_LPH_DEPRECATED` + banner ⛔ di komentar DAN di keluaran probe |
+| 2 | Komentar formula terkunci di `0013/migration.sql:5-8` | ⚠️ **berkas SQL sengaja tidak disunting** — checksum Prisma; koreksi lengkap di `CORRECTION.md` sebelahnya (lihat §14) |
+| 3 | Tutup D3 (`bakau-parity-verdict.md`) | ✅ ditutup dgn jawaban dua-sumbu; diperkuat data IB (SJENIS 2 muncul di buku hutang, 22 pelanggan) |
+| 4 | Runbook gold-check | ✅ blok Saldo WAJIB + 5 kontrol + **instruksi tegas memakai "Daftar Saldo Hutang Piutang", bukan "Laporan Penjualan Harian"** + prosedur "periksa pembanding dulu" |
+
+## 14. Kenapa `migration.sql` tetap tidak disunting — sekarang dengan bukti
+
+Bukan keengganan; ada invarian yang bisa diukur. Prisma menyimpan checksum tiap migrasi yang
+sudah dijalankan, dan `prisma migrate deploy` memvalidasinya. Diperiksa langsung di DB pilot:
+
+```
+_prisma_migrations.checksum (0013) = f8f28d862dccae5205ac4bf75de8886ff6f570febc730126235c7ede741d0593
+sha256 apps/backend/.../0013_recap_saldo_tables/migration.sql
+                                  = f8f28d862dccae5205ac4bf75de8886ff6f570febc730126235c7ede741d0593
+```
+
+**Identik.** Mengubah satu karakter pun membuat keduanya berbeda, dan CD menjalankan
+`migrate deploy` **sebelum** serve di kedua tier — artinya deploy berikutnya berhenti, demi
+perubahan yang murni dokumentatif.
+
+Keputusan ini milik owner, jadi kedua jalannya disiapkan:
+- **(A) sekarang** — `migration.sql` utuh; koreksi lengkap di `CORRECTION.md` di direktori yang
+  sama (Prisma hanya membaca `migration.sql`), plus komentar penuh di `getSaldoPelanggan`.
+- **(B) bila owner tetap ingin berkasnya disunting** — sunting boleh, tapi **harus disertai**
+  pembaruan checksum tersimpan di **kedua** DB (`solamax-pg` dan `solamax-pg-rlsstg`), sebagai
+  langkah tulis yang disetujui terpisah. Tanpa itu, pipeline berhenti pada deploy berikutnya.

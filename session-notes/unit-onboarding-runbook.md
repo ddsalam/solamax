@@ -188,9 +188,20 @@
   produk per kode, produk master dorman yang tak terklasifikasi (pola "PLK" AS).
 - **Blok SALDO Hutang/Piutang — WAJIB, jangan dilewati.** Permukaan ini **tidak pernah**
   masuk gold-check unit mana pun sebelum 2026-08-06, dan itulah sebabnya 28 Oktober lolos
-  ke produksi dengan Piutang Online salah **setiap hari**. Minta ekspor EasyMax **"DAFTAR
-  SALDO HUTANG PIUTANG"** ≥3 tanggal berurutan, cocokkan **9 sel** (3 baris × 3 tanggal)
-  ke kolom **Akhir hari** di Laporan Operasional. Aturan terbukti (28 Oktober, 2–4 Ags 2026):
+  ke produksi dengan Piutang Online salah **setiap hari**.
+
+  🔴 **ORACLE-nya HARUS "DAFTAR SALDO HUTANG PIUTANG" — BUKAN "Laporan Penjualan Harian".**
+  Ini bukan detail administratif; ini kesalahan yang paling mahal di sesi 2026-08-05/06.
+  Kedua laporan memakai **definisi berbeda**: "Laporan Penjualan Harian" menampilkan saldo
+  **AWAL hari**, "Daftar Saldo Hutang Piutang" menampilkan saldo **AKHIR hari**. Mencocokkan
+  ke laporan yang keliru menghasilkan kecocokan yang terlihat sempurna (komentar migrasi 0013
+  sempat mengklaim "EKSAK") sekaligus memunculkan hantu selisih 19,7 miliar di IB yang tidak
+  pernah ada. Kalau yang tersedia hanya Laporan Penjualan Harian, **minta yang benar** —
+  ekspornya murah. Acuan lama di `probe.ts` sudah dipensiunkan; jangan dihidupkan lagi.
+
+  Minta ekspor **"DAFTAR SALDO HUTANG PIUTANG"** ≥3 tanggal berurutan, cocokkan **9 sel**
+  (3 baris × 3 tanggal) ke kolom **Akhir hari** di Laporan Operasional. Aturan terbukti di
+  **dua** unit — 28 Oktober (2–4 Ags 2026) dan Imam Bonjol (1–5 Ags 2026), 24 sel:
 
   | baris | aturan |
   | --- | --- |
@@ -213,6 +224,17 @@
      kalau ada yang muncul di laporan, aturan ini tidak berlaku di unit itu.
   4. **Kontrol geser-satu-hari** — **Awal hari** hari D harus ≡ **Akhir hari** hari D−1.
      Kalau kedua kolom identik, batas tanggalnya salah pasang.
+  5. **Kontrol parser berkas** — jumlahkan sendiri baris per seksi, lalu cocokkan ke baris
+     `TOTAL SALDO …` **dan** blok `Summary` di dalam berkas. Tiga sumber harus sepakat.
+     Jebakannya nyata: frasa seksi **muncul lagi** di baris TOTAL dan di Summary, sehingga
+     parser yang mencocokkan substring me-**reset** akumulatornya dan melaporkan **0 baris**
+     di semua seksi — nol yang terbaca seperti "berkas kosong".
+
+  **Kalau ada sel meleset, periksa dua hal ini SEBELUM menyalahkan aturan:**
+  (i) apakah aturan **lama** pun mengembalikan angka baru itu — kalau ya, yang berubah DATA,
+  bukan rumus; (ii) apa kata `ingested_at` — ledger bisa dikoreksi pengawas **setelah** oracle
+  diekspor (di 28 Oktober: batal-dan-posting-ulang, +604.500, terdeteksi persis begitu).
+  Baru setelah keduanya bersih, meleset = cacat aturan.
 
   Catat prediksi di pra-registrasi (append-only) SEBELUM menjalankan, seperti seksi lain.
 - Visual pass owner: viewer tenant lama byte-identical; viewer unit baru = PT benar, nol

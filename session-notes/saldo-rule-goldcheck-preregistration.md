@@ -291,4 +291,71 @@ melainkan: (i) apakah aturan LAMA pun mengembalikan angka baru itu, dan (ii) apa
 
 ## 10. HASIL — IB 15 sel
 
-> Belum dijalankan saat prediksi disegel.
+Dijalankan 2026-08-06, via `saldo.oracle.integration.test.ts` (implementasi sebenarnya).
+
+### ✅ P9.0 TERKONFIRMASI — 15 dari 15 sel EKSAK, tanpa penyesuaian apa pun
+
+| tanggal | Piutang Lokal | Piutang Online | Hutang Lokal |
+| --- | ---: | ---: | ---: |
+| 2026-08-01 | 35.377.538.927 ✅ | 1.200.000 ✅ | −770.002.380 ✅ |
+| 2026-08-02 | 35.476.850.395 ✅ | 1.200.000 ✅ | −735.869.634 ✅ |
+| 2026-08-03 | 35.563.341.030 ✅ | 1.200.000 ✅ | −734.439.355 ✅ |
+| 2026-08-04 | 35.687.985.717 ✅ | 1.200.000 ✅ | −751.284.145 ✅ |
+| 2026-08-05 | 35.770.675.661 ✅ | 1.200.000 ✅ | −707.071.775 ✅ |
+
+**"IB kehilangan 19,7 miliar" tidak pernah ada.** Formulanya benar sejak awal; yang salah
+adalah pembandingnya. Tak satu pun baris data hilang, dan tak ada perbaikan yang diperlukan
+untuk IB.
+
+### Rekonsiliasi per-pelanggan — 1.640 titik data, NOL ketidakcocokan
+
+328 pelanggan × 5 tanggal, tiap seksi, toleransi 0,001:
+
+| seksi | n oracle | cocok EKSAK | beda | SJENIS di PG | bertitik |
+| --- | ---: | ---: | ---: | --- | --- |
+| Piutang Lokal | 136 | 136 | **0** | {5: 36, 1: 23} + 77 bersaldo nol | 0 |
+| Piutang Online | 1 | 1 | **0** | {3: 1} | **1** |
+| Hutang Lokal | 191 | 191 | **0** | {2: 22, 3: 166} | 0 |
+
+Arah sebaliknya: `bphut` bersaldo yang **tak** ada di oracle = **0**. `bppiut` bersaldo yang
+tak ada di oracle = **747** — pelanggan SJENIS 4 non-bertitik yang memang sengaja di luar
+laporan, sama persis dengan pola 28 Oktober.
+
+Catat: **SJENIS 2 muncul di buku hutang** (22 pelanggan). Ini menguatkan bahwa hutang memang
+**tanpa** filter SJENIS, dan sekaligus menutup sisa keraguan item D3.
+
+### Prediksi turunan
+
+- **P9.1 ✅** — otomatis terpenuhi karena 15 sel eksak; laju ≈98 juta/hari cocok.
+- **P9.2 ✅ KREDIT Online tereksekusi.** Online IB: debet 10.505.841 − kredit 9.305.841 =
+  1.200.000. Jalur `sjnsbp=2` pada bucket Online — yang **tak pernah tersentuh** di 28
+  Oktober (kreditnya nol) — terbukti benar. Kontrol dipasang: kalau kredit diabaikan,
+  hasilnya 10.505.841; test menuntut **bukan** angka itu.
+- **P9.3 ✅ pecahan ½ rupiah eksak.** Keempatnya cocok ke sen: `PLG2067` −653.265,5 ·
+  `PLG2068` −6.622.022,5 · `PLG2069` −21.516.390,5 · `PLG2249` +4.100.949,5; total
+  **−770.002.380 bulat** (pecahan saling meniadakan), identik antara `numeric` dan `float8`.
+  Kontrol ikut dipasang: test menegaskan keempat nilai itu memang **bukan** bilangan bulat,
+  supaya "cocok" tak bisa dicapai oleh pembulatan diam-diam.
+- **P9.4 ✅** — Lokal 136 pelanggan, 0 bertitik; Online 1 pelanggan, 1 bertitik; Hutang 191,
+  0 bertitik. Aturan tegak tanpa penyesuaian di unit kedua.
+- **P9.5 ✅** — Hutang IB **negatif**, 28 Oktober **positif**, dari formula yang sama.
+
+### Temuan sampingan: satu baris ber-residu float (bukan cacat tampilan)
+
+Jumlah `numeric` Piutang Lokal IB keluar `35.377.538.927,00000001`. Sumbernya **satu baris**:
+`PP2022100101473` (2022-10-01, `PLG2235`) dengan `njumlah = 73867616.45999999` — jelas
+artefak float ganda dari jalur agent (`num(r.NJUMLAH)` JS → JSON → `numeric`), bukan nilai
+EasyMax. Nilai aslinya hampir pasti `73.867.616,46`.
+
+**Tidak berdampak pada angka tampil**: jalur asli meng-`cast ::float8`, dan residu 1e-8 jauh
+di bawah resolusi double pada magnitudo 3,5e10 → hasilnya `35377538927` bulat, eksak sama
+dengan oracle (dibuktikan, bukan diasumsikan). Kontrol: 28 Oktober punya **0** baris semacam
+itu. Dicatat sebagai isu kesetiaan data ingest tersendiri — kelas "float JS masuk numeric" —
+bukan bagian dari perbaikan ini.
+
+### Kegagalan test yang menyamar sebagai temuan
+
+Test "awal(D) ≡ akhir(D−1)" IB sempat MERAH — ternyata **timeout 5 dtk**, bukan angka:
+5 tanggal → 8 query DB live @~0,9 dtk. Invarian itu benar secara aljabar dan tidak mungkin
+gagal karena nilai. Timeout dinaikkan ke 60 dtk; sesudahnya hijau. Dicatat karena "merah"
+yang sebabnya waktu sangat mudah disalahartikan sebagai cacat data.
