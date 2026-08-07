@@ -16,6 +16,9 @@ const manual = (id: string, keterangan: string, amount: number) => ({
 // A=10.000.000 · B=100.000 · C=200.000 · D=300.000 → E=9.400.000
 const raw = (over: Partial<RincianRaw> = {}): RincianRaw =>
   ({
+    // Konteks vonis: hari LENGKAP & sudah lewat tempo → cabang setoran aktif.
+    // Tes yang menguji gerbang shift meng-override `konteks` secara eksplisit.
+    konteks: { shifts: 3, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-05" },
     prod: [{ nama: "PERTALITE", vol: 1000, omzet: 10_000_000 }],
     terra: [{ nama: "PERTALITE", ckdbbm: "P", liter: 10, rp: 100_000 }],
     pelanggan: [{ nama: "PT MAJU", ckdplg: "PLG1", liter: 20, rp: 200_000 }],
@@ -118,6 +121,33 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     expect(i.note?.tone).toBe("warn");
     // selisih = 24.809.563 − 20.000.000
     expect(i.note?.text).toBe("Setoran kurang dari uang tunai (selisih Rp 4.809.563)");
+  });
+
+  it("PERMUKAAN RINCIAN: 2 dari 3 shift → TIDAK menulis 'MELEBIHI' (Korek 2026-08-07)", () => {
+    // Regresi yang ditemukan owner di papan HIDUP: halaman Ketaatan sembuh,
+    // halaman Rincian — lembar cetak yang DITANDATANGANI — masih menuduh.
+    const m = buildRincianModel(
+      raw({
+        konteks: { shifts: 2, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-05" },
+        pendapatanLain: [manual("p1", "X", 15_489_700)],
+        pengeluaran: [manual("g1", "Y", 80_137)],
+        setoranTunai: [manual("s1", "SETOR BANK", 100_000_000)], // I jauh di atas H
+      }),
+    );
+    const i = sum(m, "I");
+    expect(m.verdict.kode).toBe("tak_terhitung");
+    expect(i.note?.text ?? "").not.toContain("MELEBIHI");
+    expect(i.note?.text ?? "").toContain("belum lengkap");
+    // KONTROL: hari yang SAMA dengan 3 shift memang menuduh — jadi gerbangnyalah
+    // yang mengubah hasil, bukan kebetulan.
+    const lengkap = buildRincianModel(
+      raw({
+        pendapatanLain: [manual("p1", "X", 15_489_700)],
+        pengeluaran: [manual("g1", "Y", 80_137)],
+        setoranTunai: [manual("s1", "SETOR BANK", 100_000_000)],
+      }),
+    );
+    expect(sum(lengkap, "I").note?.text ?? "").toContain("MELEBIHI");
   });
 
   it("tanpa setoran → I null & tanpa note (baris/indikator disembunyikan)", () => {
