@@ -120,7 +120,7 @@ pengawas membuka URL unit lain = ditolak di server, bukan cuma disembunyikan.
 component/route handler** lewat `getAuthContext()` + scope (middleware hanya gerbang auth).
 
 **d. Pertahanan berlapis (opsi hardening, ditunda):** Postgres **RLS** per `tenant_id`
-(set `app.current_tenant` per request) sebagai jaring kedua bila ada bug app-layer. Tidak
+(set `app.current_tenant` per request) sebagai jaring kedua untuk SATU kelas bug app-layer: query yang LUPA men-scope (fail-closed → nol baris). Ia BUKAN jaring untuk scope yang SALAH — `qScoped()` menurunkan GUC dari argumennya, jadi scope keliru melebarkan RLS juga; itu dijaga brand `ScopedUnitId` di lapis tipe. Dikoreksi 2026-08-07. Tidak
 wajib untuk pilot; dicatat sebagai peningkatan.
 
 ---

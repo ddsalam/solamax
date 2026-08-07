@@ -85,7 +85,9 @@ then grants).
 
 ## F4 — scope of the backstop (known limitation, deferred)
 
-The RLS backstop protects per-unit **data** rows. It deliberately EXCLUDES the authorization/
+⚠️ **What this layer actually guards (corrected 2026-08-07):** RLS protects against queries that FORGET to scope (no `app.unit_ids` context → fail-closed, zero rows). It does NOT protect against a caller passing the WRONG scope — `qScoped()` derives the GUC from its first argument, so a widened scope widens RLS too. The guard against wrong-scope is the `ScopedUnitId` brand, entirely in the type layer.
+
+The RLS layer protects per-unit **data** rows. It deliberately EXCLUDES the authorization/
 identity tables `public.unit`, `app.user_unit`, `app.membership`, `app.users` (topology +
 membership) and `app.accounts` (OAuth tokens) — `dashboard_app` can read those, because auth
 resolution needs them before any unit context exists. So a compromised `dashboard_app`
