@@ -93,12 +93,22 @@ Nol kuning, nol merah. Itu pembenaran terkuat untuk perubahan ini dan **tidak ad
 di laporan Fase 0 saya** — kelewatan saya.
 
 Reproduksi saya (2026-08-07 13:46 WIB, kode produksi, DB pilot) memberi **91 hijau
-+ 7 merah**, bukan 98 hijau. Selisihnya BUKAN kontradiksi: ketujuh merah itu tepat
-kolom **hari berjalan 2026-08-07**, yang pada pukul 13:46 masih `0 shift / 0 opname`
-di ketujuh unit (EasyMax menulis `sales_header` saat shift TUTUP). Rekaman owner
-hampir pasti diambil ketika "hari ini" masih 2026-08-06 — hari yang sudah punya
-3 shift penuh. Untuk **91 sel yang sudah settle, klaim owner terkonfirmasi bulat:
-91/91 hijau = nol sinyal dalam 13 hari.**
++ 7 merah**, bukan 98 hijau. Ketujuh merah itu tepat kolom **hari berjalan
+2026-08-07**, yang pada pukul 13:46 masih `0 shift / 0 opname` di ketujuh unit
+(EasyMax menulis `sales_header` saat shift TUTUP).
+
+⚠️ **KOREKSI PENJELASAN (owner, 2026-08-07).** Saya menduga rekaman owner diambil
+ketika "hari ini" masih 2026-08-06. **Salah** — rekamannya juga 08-07, label harinya
+sampai `07`. Yang sebenarnya terjadi: ketujuh sel hari berjalan dirender **bergaris
+putus** (`.hm-cell.today`, outline dashed) dan **terhitung hijau saat dibaca mata**.
+Jadi angkanya 91, penjelasan saya tentang KENAPA keliru. Dicatat karena tebakan yang
+kebetulan mendarat di angka benar tetap tebakan.
+
+Ini juga temuan desain kecil: sel merah bergaris putus **tidak terbaca sebagai merah**
+oleh pembaca manusia. Relevan untuk verifikasi visual Fase 3.
+
+Untuk **91 sel yang sudah settle, klaim owner terkonfirmasi bulat: 91/91 hijau =
+nol sinyal dalam 13 hari.**
 
 ### 3. Sel yang berubah warna di bawah aturan BARU — jawabannya BUKAN nol
 
@@ -144,3 +154,44 @@ Badge sudah menunjukkan **"9+"** sekarang. Menambah 0–1 item merah **tidak aka
 terlihat**. Peringatan saya di PR #202 benar secara mekanis tapi tak berarti secara
 praktis: anomali administrasi baru TIDAK akan tampak di badge. Badge yang mentok
 9+ adalah isu tersendiri — diusulkan, tidak dikerjakan.
+
+
+---
+
+## PRA-REGISTRASI LANTAI ADOPSI — dikunci 2026-08-07 SEBELUM menulis kode
+
+Konteks: PR #203 sudah di-merge 13:51 WIB dan ter-deploy ke pilot. 47 sel merah
+terkonfirmasi owner di papan live. Ini perbaikan PRODUKSI HIDUP, bukan pra-rilis.
+Papan dilihat **21 pengguna yang semuanya sudah pernah login**, termasuk pengawas
+tiap unit DAN direksi — orang yang dituduh papan itu bisa melihatnya sekarang.
+
+Keputusan owner: lantai adopsi = **tanggal BEKU di config**, bukan `min()` hidup.
+Alasan: `min()` hidup membuat masa lalu bisa berubah sendiri — satu entri
+bertanggal mundur menurunkan lantai dan mengubah sederet hari netral jadi merah
+surut. Indikator yang riwayatnya bergerak akan berhenti dipercaya.
+
+### Prediksi (dikunci sebelum pengukuran)
+
+Jendela pembanding **TETAP**: 91 sel settle `2026-07-25 … 2026-08-06`, 7 unit.
+
+| # | Prediksi |
+| --- | --- |
+| L1 | sel MERAH: **47 → 8** (7 Adisucipto pasca-adopsi + 1 IB `kurang_setor`) |
+| L2 | sel KUNING: **tetap 6** — lantai tak boleh menyentuh satu pun `lebih_setor` |
+| L3 | sel `pra_adopsi` (netral bernama): **39** |
+| L4 | Bakau 2026-08-06 `lebih_setor` **+3.362.265** → TETAP tertangkap |
+| L5 | IB 2026-08-03 `kurang_setor` **−476.993** → TETAP tertangkap |
+| L6 | total sel hijau: 38 → **38** (tak berubah; merah/kuning yang jadi netral) |
+
+**Kalau L4 atau L5 gugur, lantainya SALAH dan lebih buruk daripada tidak ada.**
+
+### Tiga syarat mengikat (owner)
+
+1. **Non-adopsi harus tetap terlihat.** Unit tanpa tanggal adopsi TIDAK boleh jadi
+   sederet sel netral yang diam — itu kegagalan indikator kas lama terbalik: dulu
+   selalu merah dan tak bisa diselesaikan, sekarang selalu netral dan tak bisa
+   memburuk. Status tersendiri yang menyuarakan dirinya.
+2. **Unit tak terdaftar di config harus GAGAL NYARING.** Cabang default tak boleh
+   "netral" atau "hijau" — keduanya berbohong.
+3. **Sel pra-adopsi harus TERBACA** — state netral bernama + penjelasan, bukan
+   kosong tanpa keterangan (yang akan dibaca sebagai bug).
