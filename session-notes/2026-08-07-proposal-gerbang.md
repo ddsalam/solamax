@@ -444,3 +444,129 @@ pada mutasi pertama.
 `getZeroClosingEvents` juga ditambahkan; asersi kebocorannya **hampa** karena
 fixture tak menaruh kejadian opname-nol — **saya menyebutnya, bukan
 menyamarkannya**. Yang tetap bermakna di sana: `unit_id` tak pernah di luar scope.
+
+---
+
+# G1 — GERBANGNYA TIDAK PERNAH BERJALAN SAAT SAYA LAPORKAN SELESAI
+
+## Apa yang terjadi
+
+`sqlcheck` **merah di #217** — bukan karena SQL, tapi:
+
+```
+PERMISSION_DENIED: secretmanager.versions.access
+SA gh-deploy-dashboard@… tak boleh membaca solamax-db-url-dashboard-rlsstg
+```
+
+Ia **mati sebelum menyentuh satu query pun**. Saya membuktikan K1 bisa merah dan
+bisa hijau **di mesin saya**, memasang workflow-nya, lalu berhenti tepat sebelum
+langkah yang menentukan: **menonton ia berjalan di pipeline.**
+
+Gerbang ini ada justru karena `pnpm check` tak bisa melihat sesuatu — dan ia
+mendarat dalam keadaan **tak bisa melihat apa pun juga**.
+
+**Pelajaran yang lebih tajam dari "seharusnya saya cek":** ketika menambahkan
+langkah CI yang membaca secret, **memverifikasi bahwa runner BOLEH membaca
+secret itu adalah bagian dari MEMBANGUN langkahnya**, bukan pemeriksaan
+sesudahnya. Prasyarat yang tak diverifikasi adalah bentuk lain dari klaim yang
+tak diperiksa — kelas yang sama dengan koreksi L6 dan klaim frekuensi.
+
+## Perbaikan yang dijalankan owner (dicatat supaya bukan misteri)
+
+```bash
+gcloud secrets add-iam-policy-binding solamax-db-url-dashboard-rlsstg \
+  --member=serviceAccount:gh-deploy-dashboard@solamax.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+```
+
+**Kontrol owner:** secret PILOT tidak ikut terbuka. **Saya verifikasi ulang:**
+
+| secret | isi | gh-deploy-dashboard |
+| --- | --- | --- |
+| `solamax-db-url-dashboard-rlsstg` | dashboard_app @ DB **test** | accessor ← **grant hari ini** |
+| `solamax-dashboard-db-url-staging` | dashboard_app @ DB **PILOT** | **TIDAK** ✅ kontrol berlaku |
+| `solamax-db-url-staging` | ingest @ DB **PILOT** | accessor (**pra-ada**) |
+| `solamax-db-url-ingest-rlsstg` | ingest @ DB test | accessor (pra-ada) |
+
+⚠️ **Saya nyaris melaporkan dua baris terakhir sebagai over-grant.** Ternyata
+**bukan**: `vars.DEPLOY_SA` adalah **SATU** SA yang dipakai `deploy-backend.yml`
+**dan** `deploy-dashboard.yml`, dan jalur backend memang butuh
+`solamax-db-url-staging` untuk `prisma migrate deploy` ke DB pilot.
+
+**Jebakan penamaan untuk sesi berikutnya:** SA-nya bernama
+**`gh-deploy-dashboard`** tapi ia men-deploy **KEDUA** aplikasi. Menalar
+kewenangannya dari namanya akan salah. Yang menyelamatkan saya: membaca
+`service_account:` di kedua workflow, bukan menyimpulkan dari nama.
+
+## Status sekarang — terverifikasi, bukan diterima begitu saja
+
+`gh run view` atas 4 run terakhir `Deploy dashboard`:
+
+| run | conclusion | sqlcheck |
+| --- | --- | --- |
+| staging | failure | **failure** ← PERMISSION_DENIED |
+| staging | failure | **failure** ← PERMISSION_DENIED |
+| staging | success | **success** ← hijau PERTAMA KALI |
+| main | success | **success** ← ikut hijau di jalur promosi |
+
+Dan gerbangnya **memang menahan**: `needs: [build, sqlcheck]` membuat deploy
+tidak jalan selama sqlcheck merah. Itu bekerja persis seperti dirancang — yang
+gagal adalah saya menyatakannya selesai sebelum menyaksikannya.
+
+---
+
+# USULAN — apakah `sqlcheck` masuk `required_status_checks.contexts`?
+
+**Keadaan sekarang:** `contexts: ["check"]` di `staging` dan `main`.
+`enforce_admins=true`, `strict=false`.
+
+## Fakta yang menentukan jawabannya
+
+`deploy-dashboard.yml` dipicu **`push: branches: [staging, main]`** dengan
+**`paths:`** filter, dan **TANPA `pull_request`** (terverifikasi: 0 kemunculan).
+
+Konsekuensinya keras: **`sqlcheck` tidak pernah berjalan pada sebuah PR.**
+Menambahkannya ke required contexts **sekarang** akan membuat GitHub menunggu
+selamanya konteks yang tak pernah dilaporkan — **setiap merge deadlock**, bukan
+"lebih ketat". Itu bukan opini; itu cara required contexts bekerja.
+
+## Tiga opsi
+
+| | opsi | efek | biaya |
+| --- | --- | --- | --- |
+| **A** | **biarkan di luar required contexts** | deploy TETAP ter-gate keras oleh `needs: [build, sqlcheck]` | merge bisa jalan dgn sqlcheck merah → kode ber-SQL rusak bisa duduk di `main`, tak ter-deploy |
+| **B** | tambah pemicu `pull_request` **lalu** masukkan ke required contexts | sqlcheck jadi pemblokir merge | gerbang ber-DB jadi pemblokir merge; PR docs-only tak melaporkan konteks (ada `paths:`) → **deadlock lagi**, kecuali dipasang pola "skip job selalu-jalan" |
+| **C** | B + hapus `paths:` filter | konteks selalu dilaporkan | tiap PR docs menyalakan proxy + 36 query ke `-rlsstg`; kontensi & waktu siklus naik untuk PR yang tak menyentuh SQL |
+
+## Sisi sebaliknya, dijawab jujur
+
+Kekhawatiran yang saya sendiri pakai untuk menolak K2 **berlaku di sini juga**:
+`sqlcheck` bergantung lingkungan — IAM, cloud-sql-proxy, jaringan, ketersediaan
+`-rlsstg`. **Dua dari empat run pertamanya gagal karena IAM, bukan karena SQL.**
+Kalau ia wajib untuk merge, kegagalan seperti itu **memblokir segalanya**,
+termasuk PR dokumentasi dan perbaikan darurat — dan gerbang yang memblokir
+perbaikan darurat adalah gerbang yang **dimatikan orang**.
+
+Rasio bukti-awalnya buruk: **50% kegagalan awalnya bukan tentang SQL.**
+
+## Rekomendasi: **A**, dan alasannya bukan kemalasan
+
+1. **Deploy sudah ter-gate KERAS.** `needs: [build, sqlcheck]` sudah membuktikan
+   dirinya di #217: sqlcheck merah → deploy tidak jalan. "Penasihat" hanya
+   berlaku untuk **merge**, tidak untuk **deploy**.
+2. **Yang salah di #217 bukan status penasihat** — melainkan bahwa sqlcheck
+   **belum pernah berjalan sekali pun**. Menjadikannya required tidak akan
+   menangkap itu; konteks yang tak pernah dilaporkan justru deadlock. Obat untuk
+   kelas itu adalah **memverifikasi langkah CI baru benar-benar berjalan sebelum
+   menyatakannya selesai** — proses, bukan setelan.
+3. **Risiko sisa A dapat diterima dan sudah sesuai filosofi repo**: kode ber-SQL
+   rusak bisa duduk di `main` tanpa ter-deploy, sama seperti migrasi gagal =
+   pipeline HALT sementara revisi lama tetap melayani. Perbaikan = maju, bukan
+   rollback.
+
+**Kalau nanti dipilih B**, prasyaratnya (jangan dilewati, ini yang barusan
+menggigit): tambahkan `pull_request` **dan** pola skip-job selalu-jalan supaya
+PR di luar `paths:` tetap melaporkan konteks — **lalu tonton ia berjalan hijau
+DAN merah sekali** sebelum memasukkannya ke required contexts.
+
+**Tidak dikerjakan. Menunggu pilihan owner.**
