@@ -339,3 +339,208 @@ seperti kolom lain (diukur owner, tak perlu diukur ulang). Ia hanya TERLIHAT
 seperti serpihan karena gayanya pucat. **Sel berukuran penuh yang terbaca sebagai
 ruang kosong** — memperkuat kekhawatiran legibilitas. Masuk pemeriksaan mata
 bersama tiga varian netral lainnya.
+
+---
+
+## FASE 3 — pengukuran render (diukur OWNER, jalur jaringan nyata)
+
+Bukan proxy dari Mac ke asia-southeast2 — ini yang benar-benar dialami pengawas.
+Halaman ini RSC streaming, jadi angka bermaknanya `responseEnd`, bukan TTFB
+(TTFB 50–70 ms dan menyesatkan).
+
+    muat 1 (dingin) 6.592 ms · 2.468 · 2.026 · 1.713 · 1.685 (plateau)
+
+| | Prediksi terkunci | Terukur | |
+| --- | --- | --- | --- |
+| P6 hangat | 1,2–2,0 dtk | **1,69–1,71 dtk** | ✅ di dalam pita |
+| P7 dingin | 3,0–5,0 dtk | **6,59 dtk** | ❌ meleset ~32% di atas plafon (n=1) |
+
+### P4/P5 — HANGUS, jendela tertutup oleh promosi
+
+**Bukan "belum diukur" — tidak akan pernah diukur.** Keduanya mengukur render
+indikator **LAMA**, dan kode itu meninggalkan pilot pukul 15:39 WIB saat promosi.
+Konsekuensi yang bisa diramalkan dari keputusan "perbaiki cepat, jangan rollback"
+— bukan kelalaian. Dihapus dari daftar tugas: pengukuran yang tak akan pernah
+datang harus berhenti muncul sebagai pekerjaan tertunda.
+
+## ANATOMI 6,6 DETIK "DINGIN" — diukur, bukan diduga
+
+Ketiga tersangka diukur TERPISAH terhadap DB pilot (kode produksi):
+
+| Komponen | Di mana | Terukur (3 kali) |
+| --- | --- | ---: |
+| A · `getSyncByUnit` | layout `(app)` | 183 / 173 / 141 ms |
+| B · `buildAnomalies` **tak ber-cache** | layout `(app)`, badge sidebar | **7.741 / 5.384 / 5.594 ms** |
+| C · 2 query × 7 unit | halaman Ketaatan sendiri | 1.852 / 1.679 / 1.665 ms |
+
+Rekonstruksi: hangat ≈ A + C ≈ **1,8 dtk** (owner: 1,69–1,71) · dingin ≈ A + B + C
+≈ **7,2 dtk** (owner: 6,59). Angka saya sedikit lebih tinggi karena mengandung RTT
+proxy dari Mac; selisihnya kecil, jadi **tak ada suku besar yang tak terjelaskan.**
+
+### Ketiga tersangka, dihakimi
+
+1. **Cloud Run dingin — BUKAN penyebabnya.** `minScale=1` (terverifikasi
+   `gcloud run services describe`): selalu ada instance hidup. `maxScale=2`,
+   `startup-cpu-boost=true`. Sisa yang tak terjelaskan setelah B+C hampir nol,
+   jadi suku kontainer kecil.
+2. **Cache kedaluwarsa — INI penyebabnya.** `getAnomalies` ber-`unstable_cache`
+   TTL **120 detik** (`ANOMALIES_TTL_S`). Halaman Ketaatan sendiri **tidak**
+   memakai cache apa pun (`force-dynamic`).
+3. **Query DB dingin — bukan.** C stabil 1,67–1,85 dtk; B stabil 5,4–5,6 dtk
+   setelah muat pertama. Tak ada efek cache-DB yang besar.
+
+### ⛔ KLAIM FREKUENSI SAYA DIBANTAH OLEH DATA PRODUKSI
+
+**Yang saya tulis pertama:** `/monitoring/ketaatan` realtime → AutoRefresh 60 dtk,
+TTL anomali 120 dtk → "~5 detik tersendat setiap dua menit, selamanya, untuk
+siapa pun yang tab-nya terbuka".
+
+**Itu ARITMETIKA TTL, bukan pengamatan — dan pengamatan membantahnya.** Owner
+memuat halaman setelah jeda jauh lebih lama dari 120 dtk dan mendapat 1.713 ms
+(hangat). Pola yang sama dengan koreksi L6: kesimpulan yang terdengar kuat,
+dibangun di atas satu angka yang tak diperiksa asal-usulnya.
+
+Dua cacat, keduanya milik saya:
+1. **Sampel 6,59 dtk diambil tak lama setelah deploy 15:39** — itu permintaan
+   PERTAMA ke revisi baru, jadi **dingin-DEPLOY, bukan dingin-CACHE**. Saya
+   memakai angka owner tanpa memeriksa asal dinginnya.
+2. **21 pengguna × AutoRefresh** → satu tab siapa pun yang terbuka menjaga cache
+   hangat; TTL tak pernah sempat habis selama ada aktivitas.
+
+### KEBERSIHAN DATA — pengamat dikeluarkan dari pengamatan
+
+Trafik pengukuran owner ada di log dan dikenali dari query param
+(`?s=1..4`, `?t=cold`, `?r=1..2`, `?m=`): **13 permintaan**, dibuang sebelum
+menghitung apa pun tentang perilaku pengguna. Kali ini tak mengubah kesimpulan;
+analisis yang memasukkan pengamatnya sendiri terkontaminasi sejak awal.
+
+### DENOMINATOR SAYA SALAH — dan itu mengubah kesimpulan, bukan cuma angkanya
+
+Filter saya: `resource.type="cloud_run_revision"`, service
+`solamax-dashboard-staging`, `httpRequest.status=200`, membuang
+`/(brand|_next|api)/` dan berkas statis. Cakupannya **SELURUH halaman `(app)`**,
+bukan `/monitoring/ketaatan` saja.
+
+Cacatnya: filter itu **memasukkan prefetch RSC** (`?_rsc=`), yang murah dan bukan
+render sungguhan.
+
+| | n | median |
+| --- | ---: | ---: |
+| prefetch RSC (`?_rsc=`) | **987** | 0,058 dtk |
+| **dokumen penuh (render sungguhan)** | **201** | 0,644 dtk |
+| di antaranya `/monitoring/ketaatan` | **7** | — |
+
+Jadi rasio "2,34%" dihitung atas denominator yang **diencerkan ~5×** oleh
+prefetch. Angka yang benar:
+
+**21 dari 201 render dokumen ≥ 4 dtk = 10,4%** (bukan 2,34%).
+
+Laju trafik: **4,2 dokumen/jam** selama 47,5 jam — cocok dengan hitungan owner
+(~5/jam), dan **`/monitoring/ketaatan` cuma 7 render dalam 47,5 jam (0,1/jam)**.
+
+⛔ **Konsekuensi yang lebih penting dari rasionya:** 7 render dalam dua hari
+berarti **TIDAK ADA orang yang tab-nya tertinggal terbuka di halaman ini**.
+Premis saya "tersendat bagi siapa pun yang membiarkan tab terbuka" bukan cuma tak
+terbukti — pola trafiknya menunjukkan **kebalikannya**.
+
+### MEKANISMENYA MELEKAT PADA INSTANCE, BUKAN PADA CACHE
+
+Dugaan `stale-while-revalidate` saya **dicabut** — tak diperlukan. `labels.instanceId`
+menjelaskan seluruh polanya, dan bisa ditunjukkan alih-alih dikira-kira.
+
+**17 dari 21 render dokumen lambat terjadi dalam 120 detik setelah instance-nya
+LAHIR atau BANGUN dari idle panjang.** Sisanya menyusul pada instance yang sama
+di menit-menit berikutnya. Render lambat datang **berkelompok pada satu instance**,
+bukan tersebar acak menurut jam.
+
+Kontrol yang diperketat (hanya dokumen penuh): render <2 dtk setelah idle >15
+menit ada **6** — tapi empat di antaranya `/login` dan `/icon.svg` (tak menarik
+data sama sekali) dan dua sisanya halaman hub `/` (1,70 dan 1,50 dtk). Jadi idle
+panjang **tidak otomatis** berarti lambat; yang mahal adalah **halaman berat di
+instance yang belum panas**.
+
+Catatan kejujuran: instance yang baru lahir juga punya cache KOSONG, jadi pada
+permintaan pertama kedua penjelasan **berimpit** dan data ini tak bisa
+memisahkannya. Tapi kasus "idle lalu lambat" **tak terjelaskan oleh cache sama
+sekali** (cache-nya masih terisi), sementara identitas instance menjelaskan
+keduanya — dan ia **teramati**, bukan disimpulkan.
+
+### KOREKSI: klaster 18:48 BUKAN kontensi pool
+
+Atribusi saya sebelumnya ("beberapa render serentak berebut pool `max: 10`)
+**salah dan tanpa bukti**. Keempatnya ada di **satu instance …378083** yang
+baru lahir:
+
+| waktu WIB | latensi | umur instance |
+| --- | ---: | --- |
+| 18:48:19 | **14,37 dtk** | permintaan **PERTAMA** |
+| 18:48:20 | 4,91 dtk | +0,8 dtk |
+| 18:48:20 | 13,73 dtk | +0,8 dtk |
+| 18:48:25 | 8,99 dtk | +5,8 dtk |
+
+Deploy #208 selesai 11:46:59Z; keempatnya 80–146 detik sesudahnya. Permintaan
+owner 55 detik kemudian **di instance yang sama: 1,616 dtk**. Itu cold start,
+titik.
+
+### Ringkasan jujur — P7 DITUTUP
+
+- **Biaya per-miss 5,4–7,7 dtk** — terukur langsung, tetap sah.
+- **Frekuensi: 10,4% render dokumen ≥4 dtk**, terkonsentrasi pada instance yang
+  baru lahir/bangun. **Bukan tiap 120 detik**; TTL cache tidak menjelaskan apa pun.
+- **Trafik `/monitoring/ketaatan` 0,1 render/jam** — tak ada tab yang ditinggal
+  terbuka.
+
+### Konsekuensi untuk prioritas
+
+Dengan mekanisme = **cold start / instance idle** dan trafik ~5 render/jam,
+obatnya **bukan lagi soal cache**. Yang relevan: `minScale`, CPU-always-on, dan
+**ukuran kerja yang dilakukan di jalur kritis layout**.
+
+**"Keluarkan badge dari jalur kritis" tetap paling menyerang akar — dan
+argumennya kini LEBIH KUAT dari yang saya pakai sebelumnya:** ia mengecilkan
+biaya *cold start* untuk **SEMUA** halaman `(app)`, bukan sekadar menghindari
+satu cache miss di satu halaman. Tidak dikerjakan; dicatat.
+
+### Pre-warm 06:00 WIB — TIDAK bisa dipakai ulang, dan sebabnya bukan plumbing
+
+`/api/warm-board` + `board-warm.ts` mengisi `getDailyGlWindow` (TTL **24 jam**)
+dan cache saldo. Mekanismenya cocok — panggil fungsi ber-cache dengan key
+identik. **Tapi TTL anomali 120 DETIK.** Pre-warm sekali sehari akan menghangatkan
+cache selama dua menit lalu dingin lagi. Ketidakcocokannya **TTL, bukan pipa**;
+memasang pre-warm di sini akan jadi teater.
+
+### Usulan — BELUM dikerjakan, menunggu keputusan owner
+
+Diurutkan dari yang paling menyerang akar:
+
+1. **Keluarkan badge dari jalur kritis layout** (Suspense/streaming): shell tayang
+   segera, badge menyusul. Menyembuhkan SEMUA halaman `(app)`, bukan cuma ini.
+2. **Murahkan `buildAnomalies`**: loop unit SERIAL × 8 query paralel = 56 query.
+   `getAdminDays` sudah membuktikan pola multi-unit satu-query bisa (7→1). Komentar
+   `ANOMALIES_TTL_S` menolak ini pada 2026-07-24 karena berarti menulis ulang
+   `getDailyGlByProduct`; itu **masih** alasan yang sah.
+3. ~~**Naikkan TTL** (120 → 600 dtk)~~ — **DICORET**. Mekanismenya cold start /
+   instance idle, bukan kedaluwarsa cache; menaikkan TTL tak menyentuh apa pun.
+4. **Pertanyakan badge-nya sendiri.** Ia mentok "9+" dan tak bisa menampilkan
+   sinyal baru. Kalau tampilannya diperbaiki dulu, biaya 5,4 dtk mungkin sedang
+   dibayar untuk sesuatu yang bentuknya salah sejak awal.
+
+---
+
+## PENILAIAN VARIAN SEL — LULUS (dikerjakan owner, jangan diulang)
+
+Diuji pada **1456px** dan **1034px** (lebar tempat owner dulu salah baca):
+
+- `pra-adopsi` = isian pucat rata, border **bertitik**
+- `belum diisi · belum tempo` = **berarsir diagonal**, border putus-putus
+- sel berwarna di kolom hari ini tampil **tegas** (Korek 07 oranye jelas)
+
+**Arsiran itu obatnya.** Objektif: `danger` dan `danger today` menghasilkan isian
+merah **IDENTIK** (`rgb(185,28,28)`) — `today` tak lagi mengencerkan warna.
+**Mode kegagalan lama (sel merah terbaca hijau) TERTUTUP.**
+
+### Batas yang diketahui (arsip, bukan tugas)
+
+Kedua isian netral hanya beda **~2% luminansi** (`rgb(239,239,239)` vs
+`rgb(245,245,247)`); **seluruh pembedanya bertumpu pada gaya border dan tekstur**.
+Aman di desktop; **belum diuji di ponsel atau di bawah silau**.
