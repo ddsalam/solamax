@@ -570,3 +570,99 @@ PR di luar `paths:` tetap melaporkan konteks — **lalu tonton ia berjalan hijau
 DAN merah sekali** sebelum memasukkannya ke required contexts.
 
 **Tidak dikerjakan. Menunggu pilihan owner.**
+
+---
+
+# BATAS GERBANG K1 — ditulis eksplisit sebelum ada yang salah membacanya
+
+## `sqlcheck` di #217 tampak membantah, sebenarnya menguatkan
+
+`sqlcheck` **muncul** di daftar cek #217 — dan itu tampak membantah klaim "ia tak
+pernah berjalan pada PR". **Kasus khusus, bukan tandingan:** head #217 adalah
+**`staging`**, dan push ke `staging` memang memicu workflow-nya. Pada **PR fitur
+normal** (head = `claude/…`) branch filter `[staging, main]` menutupnya, jadi
+konteksnya **tak pernah dilaporkan**.
+
+Orang berikutnya yang melihat sqlcheck di sebuah PR promosi bisa menyimpulkan
+sebaliknya. Ia tidak sebaliknya.
+
+## ⛔ `main` BISA memuat commit ber-SQL rusak
+
+`sqlcheck` hanya berjalan pada **push ke `staging`/`main`** — artinya SQL rusak
+tertangkap **SESUDAH merge dan SEBELUM deploy**. Konsekuensinya harus dibaca
+lurus:
+
+> **"SQL sudah ter-gate" ≠ "main tak mungkin memuat SQL rusak".**
+> Yang dijamin: **deploy tidak jalan** (`needs: [build, sqlcheck]`).
+> Yang TIDAK dijamin: commit-nya tak mendarat di `main`.
+
+**Jalan pulih: revert PR-nya.** Revisi lama tetap melayani sementara itu — pola
+yang sama dengan migrasi gagal = pipeline HALT.
+
+## Cakupan: apa yang K1 jaga, dan apa yang TIDAK
+
+`paths:` pemicu `deploy-dashboard.yml`:
+
+| dipicu | tidak dipicu |
+| --- | --- |
+| `apps/dashboard/**` (tempat `queries.ts`) | **`apps/backend/**`** |
+| `packages/shared/**` | segala hal di luar daftar kiri |
+| `pnpm-lock.yaml` | |
+| `.github/workflows/deploy-dashboard.yml` | |
+
+**Perubahan SQL di `apps/backend/**` TIDAK memicu K1.** Terverifikasi:
+`deploy-backend.yml` **tidak punya** job sejenis, dan SQL ingest
+(`apps/backend/src/ingest/sql.ts`) karenanya **tak dijaga gerbang eksekusi-SQL
+mana pun** — `ingest.idempotency.test.ts` juga di-skip di CI.
+
+Ini **celah yang diketahui**, dicatat sebagai fakta, bukan diusulkan sebagai
+pekerjaan. K1 menjaga **query BACA dashboard**. Titik.
+
+## Bentuk kesalahan yang nyaris saya buat (bukan cuma faktanya)
+
+Saya hampir melaporkan `solamax-db-url-staging` sebagai over-grant karena SA-nya
+bernama `gh-deploy-dashboard` dan secret itu milik jalur **backend**.
+
+**Bentuk kesalahannya, dan itu yang layak dibawa keluar:**
+
+> **Identitas ditentukan oleh apa yang MEREFERENSIKANNYA, bukan oleh namanya.**
+
+Satu SA bernama `gh-deploy-dashboard` men-deploy **dua** aplikasi karena
+`vars.DEPLOY_SA` dipakai `deploy-backend.yml` **dan** `deploy-dashboard.yml`.
+Auditor berikutnya akan tertipu persis di titik yang sama. Yang menyelamatkan:
+membaca `service_account:` di kedua workflow.
+
+## Prasyarat opsi B — DIKUNCI owner, jangan dibayar dua kali
+
+Kalau nanti `sqlcheck` dijadikan required context: pasang `pull_request` **+**
+pola skip-job selalu-jalan, **lalu TONTON ia hijau DAN merah sekali**, baru
+masukkan ke required contexts. Itu persis kesalahan yang baru saja dibayar.
+
+---
+
+# KOREK 2026-08-07 — LAPORAN ANTARA (belum settle)
+
+Belum bisa final: pukul **21:52 WIB** baru **2 dari 3 shift** masuk.
+
+| waktu | shift | A | H | I | I − H |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 13:46 | **0** | 0 | 3.587.200 | 359.447.000 | **+355.859.800** |
+| 21:52 | **2** | 294.217.252,50 | 273.988.977,50 | 359.447.000 | **+85.458.022,50** |
+
+**76% selisihnya sudah menutup** seiring data masuk — persis arah yang diramalkan
+cabang `tak_terhitung`: angka Rp 355,9 juta itu **artefak ingest**, bukan temuan.
+
+## Prediksi DIKUNCI sebelum pengukuran final (08-08)
+
+Dua shift memberi rata-rata **147,1 juta** omzet/shift. Kalau shift 3 menyumbang
+100–150 juta, H final ≈ **374–424 juta** terhadap I = 359,4 juta.
+
+| # | Prediksi |
+| --- | --- |
+| K1 | Korek 2026-08-07 berakhir **`kurang_setor`** (MERAH), bukan `lebih_setor` |
+| K2 | I − H final di rentang **−15 juta … −65 juta** |
+| K3 | Nilai Rp 355,9 juta **tidak** muncul di angka final mana pun |
+
+⚠️ Prediksi ini bisa **salah semuanya** — shift 3 bisa jauh lebih kecil, atau
+setoran bisa ditambah pengawas. Dilaporkan apa adanya besok, **termasuk kalau
+selisihnya ternyata nyata**.
