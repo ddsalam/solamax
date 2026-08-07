@@ -424,3 +424,104 @@ ia membandingkan **keluaran nyata sebelum dan sesudah**, bukan menanyakan ulang 
 penulisnya. Semua kontrol di berkas ini dirancang dengan sifat itu: satuan yang salah,
 baseline yang basi, snapshot yang vakum, dan pesan `gcloud` yang menyesatkan semuanya
 tertangkap oleh pemeriksaan yang bisa berbunyi MERAH terhadap yang membuatnya.
+
+
+## 2026-08-07 ~02:00 WIB — PRA-REGISTRASI uji integrasi guard di tier testing
+
+Ditulis **sebelum** `workflow_dispatch` dijalankan. Guard sudah lolos 5/5 uji merah (logika),
+tapi **belum pernah berjalan pada keluaran `gcloud` sungguhan** — satu-satunya kesempatan
+sebelumnya gagal di langkah sebelumnya, jadi guard di-skip, bukan misfire. Uji ini menutup
+celah itu di `-rlsstg`, **nol risiko pilot**.
+
+### 1. State sebelum (diverifikasi, bukan diingat)
+
+| layanan | serve | spec.traffic | latestCreated |
+| --- | --- | --- | --- |
+| `solamax-ingest-rlsstg` (testing) | `-00012-fxr` | `latestRevision: True` | `-00012-fxr` |
+| `solamax-ingest-staging` (**pilot**) | `-00033-zv9` | `latestRevision: True` | — |
+| `solamax-dashboard-staging` (**pilot**) | `-00082-ww5` | `latestRevision: True` | — |
+
+`staging` HEAD = `0f64b00`.
+
+Catatan: `-rlsstg` **tidak** dipatok, jadi kondisi pemicu MERAH guard memang tak ada di sana.
+Yang diuji di sini adalah **integrasinya** — apakah ia membaca field yang benar dari `gcloud`
+sungguhan dan lolos pada deploy yang sehat.
+
+### 2. Yang diharapkan guard CETAK saat lolos
+
+```
+revisi terbaru dibuat : solamax-ingest-rlsstg-000NN-xxx   (revisi BARU, bukan -00012-fxr)
+revisi menyajikan     : solamax-ingest-rlsstg-000NN-xxx   (sama persis dgn baris di atas)
+persen traffic        : 100
+spec.traffic          : {'latestRevision': True, 'percent': 100}
+OK: solamax-ingest-rlsstg-000NN-xxx menyajikan 100% traffic.
+```
+
+### 3. Yang diharapkan TIDAK berubah
+- `solamax-ingest-staging` tetap `-00033-zv9`, `latestRevision: True`;
+- `solamax-dashboard-staging` tetap `-00082-ww5`, `latestRevision: True`;
+- job `migrate-pilot` & `deploy-pilot` **skipped** (`if: github.ref == 'refs/heads/main'`) —
+  isolasi pilot bersifat struktural, bukan kehati-hatian.
+
+### 4. Apa yang dihitung MERAH
+- **Guard gagal pada deploy yang sehat** = false positive. Guard yang menyala palsu akan
+  diabaikan orang, lalu berhenti melindungi. **Dilaporkan, tidak ditambal cepat.**
+- Guard **lolos tanpa pernah dieksekusi** (mis. langkah sebelumnya gagal lagi) — itu bukan
+  bukti; statusnya tetap "belum teruji", bukan "hijau".
+- Revisi pilot mana pun bergerak.
+
+
+## 2026-08-07 ~02:05 WIB — HASIL uji integrasi guard di `-rlsstg`: LULUS
+
+`workflow_dispatch` `deploy-backend.yml` @ `staging` (`0f64b00`), run
+[31139792467](https://github.com/ddsalam/solamax/actions/runs/31139792467) → **success**.
+
+### Isolasi pilot: struktural, terbukti
+`ci` ✓ · `build` ✓ · `migrate-test` ✓ · `deploy-test` ✓ · **`migrate-pilot` skipped** ·
+**`deploy-pilot` skipped** (`if: github.ref == 'refs/heads/main'`).
+
+### Guard DIEKSEKUSI — bukan di-skip
+Langkah 6 `./.github/actions/verify-serving-revision` = **completed/success** (bandingkan
+percobaan sebelumnya: langkah 5 gagal → guard **skipped**, yang bukan bukti apa pun).
+
+Keluarannya, cocok **kata per kata** dengan yang dipra-registrasikan sebelum dispatch:
+
+```
+revisi terbaru dibuat : solamax-ingest-rlsstg-00013-g8n
+revisi menyajikan     : solamax-ingest-rlsstg-00013-g8n
+persen traffic        : 100
+spec.traffic          : {'latestRevision': True, 'percent': 100}
+OK: solamax-ingest-rlsstg-00013-g8n menyajikan 100% traffic.
+```
+
+### Kontras yang muncul di run yang sama — dan ia menjelaskan kenapa guard-nya berbentuk begini
+
+Pada run **sehat** ini, `gcloud` mencetak:
+
+> `Service [solamax-ingest-rlsstg] revision [solamax-ingest-rlsstg-00013-g8n] has been deployed and is serving 100 percent of traffic.`
+
+Menyebut revisi **BARU**. Kalimat yang **sama persis** pada pilot yang ter-pin menyebut revisi
+**LAMA** (`-00031-tk9`, sementara yang dibuat `-00033-zv9`). Jadi kebenaran kalimat itu
+bergantung pada **state layanan**, bukan pada berhasil-tidaknya deploy — dan itulah alasan
+guard membandingkan **nama revisi**, bukan membaca kalimatnya atau memeriksa exit code.
+
+### Verifikasi dari state, bukan dari pesan
+
+| layanan | serve | spec.traffic | vs pra-registrasi |
+| --- | --- | --- | --- |
+| `solamax-ingest-rlsstg` | `-00013-g8n` (**baru**, dari `-00012-fxr`) | `latestRevision: True` | ✓ sesuai |
+| `solamax-ingest-staging` (**pilot**) | `-00033-zv9` | `latestRevision: True` | ✓ **tak bergerak** |
+| `solamax-dashboard-staging` (**pilot**) | `-00082-ww5` | `latestRevision: True` | ✓ **tak bergerak** |
+
+### Status guard sesudah uji ini
+
+- **Logika**: teruji 5/5 uji merah (termasuk skenario insiden ter-pin & state tak terbaca).
+- **Integrasi dgn `gcloud` sungguhan**: **teruji** — membaca field yang benar, lolos pada
+  deploy sehat, nol false positive.
+- **Belum teruji**: menyala MERAH pada deploy nyata yang gagal mendarat. Kondisi itu butuh
+  service ter-pin, dan tak ada satu pun yang ter-pin sekarang — **itu justru hasil yang
+  diinginkan**. Dicatat sebagai batas, bukan sebagai celah yang harus dibuat-buat.
+
+Promosi guard ke `main` (#197) tetap **tak ter-dispatch**; tak ada yang menunggu di sana —
+diff `06c8475` → `a2c4604` nol berkas runtime. Perubahan backend berikutnya menutupnya secara
+alami, kali ini dengan guard yang integrasinya sudah terbukti.
