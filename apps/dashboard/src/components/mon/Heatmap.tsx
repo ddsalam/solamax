@@ -18,7 +18,7 @@ export interface HmCell {
    * sebagai bug, jadi tiap jenis wajib bisa dibedakan mata + punya nama di
    * panel detail.
    */
-  pendingKind?: "tempo-kosong" | "tempo-terisi" | "pra-adopsi";
+  pendingKind?: "tempo" | "pra-adopsi";
   modules: HmModule[];
 }
 
