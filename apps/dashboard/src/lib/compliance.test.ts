@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  adminStatus,
   ageText,
-  cashStatus,
   isSelisihAbnormal,
   opnameStatus,
   salesStatus,
+  SETORAN_TOLERANSI_RP,
+  setoranStatus,
   staleness,
+  type AdminHari,
 } from "./compliance";
+import { uangTunai } from "./rekon";
 
 describe("status modul", () => {
   it("penjualan: 3 shift hijau, 1-2 kuning, 0 merah", () => {
@@ -23,9 +27,166 @@ describe("status modul", () => {
     expect(opnameStatus(2, 0)).toBe("green"); // total tak diketahui → ada = hijau
   });
 
-  it("kas biner", () => {
-    expect(cashStatus(5)).toBe("green");
-    expect(cashStatus(0)).toBe("red");
+});
+
+/**
+ * Angka fixture di bawah adalah unit-hari NYATA dari DB pilot (snapshot
+ * 2026-08-07 12:49 WIB), bukan karangan — supaya tesnya menguji aritmetika yang
+ * benar-benar terjadi di SPBU, bukan aritmetika yang nyaman.
+ */
+describe("setoranStatus — toleransi Rp 1.000 (kuantum slip setoran)", () => {
+  it("pembulatan ke ribuan terdekat BUKAN pelanggaran (IB 2026-07-24)", () => {
+    // H berpecahan, I bulat ribuan: selisih +747. Ini pola 82 dari 95 hari.
+    expect(setoranStatus(545_494_253.0, 545_495_000)).toBe("selaras");
+  });
+
+  it("pembulatan ke BAWAH juga selaras (IB 2026-07-31, −67)", () => {
+    // Aturan lama `I ≥ H` memerahkan hari ini secara palsu. 10 dari 95 hari.
+    expect(setoranStatus(429_606_067.0, 429_606_000)).toBe("selaras");
+  });
+
+  it("kelebihan setor nyata = kuning, bukan hijau (28 Oktober 2026-08-04, +605.048)", () => {
+    // Aturan lama `I ≥ H` menghijaukan ini. 8 dari 95 hari lolos diam-diam.
+    expect(setoranStatus(291_635_952.0, 292_241_000)).toBe("lebih_setor");
+  });
+
+  it("kelebihan setor besar tetap kuning (IB 2026-07-28, +1.622.495,50)", () => {
+    expect(setoranStatus(524_378_504.5, 526_001_000)).toBe("lebih_setor");
+  });
+
+  it("kekurangan setor nyata = merah (IB 2026-07-16, −805.289,52)", () => {
+    expect(setoranStatus(343_322_289.52, 342_517_000)).toBe("kurang_setor");
+  });
+
+  it("batas toleransi tegas di KEDUA sisi", () => {
+    const h = 100_000_000;
+    expect(setoranStatus(h, h + SETORAN_TOLERANSI_RP)).toBe("selaras");
+    expect(setoranStatus(h, h - SETORAN_TOLERANSI_RP)).toBe("selaras");
+    expect(setoranStatus(h, h + SETORAN_TOLERANSI_RP + 0.01)).toBe("lebih_setor");
+    expect(setoranStatus(h, h - SETORAN_TOLERANSI_RP - 0.01)).toBe("kurang_setor");
+  });
+
+  it("kesamaan EKSAK tak pernah disyaratkan (0 dari 95 hari memenuhinya)", () => {
+    // Kalau aturannya `i === h`, baris ini merah. H selalu berpecahan.
+    expect(setoranStatus(480_195_426.5, 480_196_000)).toBe("selaras");
+  });
+});
+
+describe("adminStatus", () => {
+  const hari = (o: Partial<AdminHari> = {}): AdminHari => ({
+    nPendapatanLain: 1,
+    nPengeluaran: 4,
+    nSetoran: 1,
+    h: 100_000_000,
+    i: 100_000_000,
+    shifts: 3,
+    ...o,
+  });
+  // "hari ini" = 2026-08-07; jatuh tempo akhir D+1.
+  const today = "2026-08-07";
+  const lewatTempo = "2026-08-05"; // D+2 → sudah jatuh tempo
+  const kemarin = "2026-08-06"; // D+1 → belum jatuh tempo
+
+  it("MERAH: hari lewat tempo tanpa satu pun baris = belum diisi", () => {
+    const v = adminStatus(hari({ nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("belum_diisi");
+    expect(v.tone).toBe("red");
+    expect(v.terisi).toBe(false);
+  });
+
+  it("MERAH: hari ber-atestasi & ada penjualan tapi setoran nihil (IB 2026-06-21, pola FG·)", () => {
+    const v = adminStatus(hari({ nSetoran: 0, i: null }), { businessDate: lewatTempo, today });
+    expect(v.kode).toBe("setoran_kosong");
+    expect(v.tone).toBe("red");
+  });
+
+  it("MERAH: kurang setor di luar toleransi", () => {
+    const v = adminStatus(hari({ h: 343_322_289.52, i: 342_517_000 }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("kurang_setor");
+    expect(v.tone).toBe("red");
+  });
+
+  it("KUNING: lebih setor di luar toleransi (keputusan Gate 1 — bukan hijau)", () => {
+    const v = adminStatus(hari({ h: 291_635_952.0, i: 292_241_000 }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("lebih_setor");
+    expect(v.tone).toBe("yellow");
+  });
+
+  it("HIJAU: lengkap & selaras", () => {
+    const v = adminStatus(hari({ h: 545_494_253.0, i: 545_495_000 }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("selaras");
+    expect(v.tone).toBe("green");
+  });
+
+  it("NIHIL ≠ belum diisi: seksi kosong di hari ber-atestasi tidak memerahkan", () => {
+    // Bakau 2026-07-19 (pola ·GI): pendapatan_lain nol baris, tetap dinilai
+    // dari sumbu setoran. Ini BATAS yang diketahui (4,1% hari), bukan kelalaian.
+    const v = adminStatus(hari({ nPendapatanLain: 0 }), { businessDate: lewatTempo, today });
+    expect(v.kode).toBe("selaras");
+    expect(v.tone).toBe("green");
+  });
+
+  it("NETRAL: penjualan belum ter-ingest → tak terhitung, bukan temuan Rp 355 juta", () => {
+    // Korek 2026-08-07 NYATA: shifts=0, H = F−G = 3.587.200, I = 359.447.000.
+    // Tanpa cabang ini, I−H = +355.859.800 akan tampil sebagai kelebihan setor.
+    const h = uangTunai({ A: 0, B: 0, C: 0, D: 0, F: 4_205_200, G: 618_000 });
+    expect(h).toBe(3_587_200);
+    const v = adminStatus(hari({ shifts: 0, h, i: 359_447_000 }), {
+      businessDate: lewatTempo, // sekalipun sudah lewat tempo
+      today,
+    });
+    expect(v.kode).toBe("tak_terhitung");
+    expect(v.tone).toBe("pending");
+    expect(setoranStatus(h, 359_447_000)).toBe("lebih_setor"); // kontrol: tanpa gerbang, ia MENYALA
+  });
+
+  it("NETRAL: hari berjalan & D+1 tak pernah merah, tapi terbaca terisi/kosong", () => {
+    for (const bd of [today, kemarin]) {
+      const kosong = adminStatus(
+        hari({ nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null }),
+        { businessDate: bd, today },
+      );
+      expect(kosong.tone).toBe("pending");
+      expect(kosong.kode).toBe("belum_tempo_kosong");
+      expect(kosong.terisi).toBe(false);
+
+      const terisi = adminStatus(hari({ nSetoran: 0, i: null }), { businessDate: bd, today });
+      expect(terisi.tone).toBe("pending");
+      expect(terisi.kode).toBe("belum_tempo_terisi");
+      expect(terisi.terisi).toBe(true); // sinyal real-time: siapa sudah mengisi
+    }
+  });
+
+  it("D+2 adalah hari pertama yang bisa merah (batas jatuh tempo)", () => {
+    const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
+    expect(adminStatus(hari(kosong), { businessDate: "2026-08-06", today }).tone).toBe("pending");
+    expect(adminStatus(hari(kosong), { businessDate: "2026-08-05", today }).tone).toBe("red");
+  });
+});
+
+describe("rekon — sumber tunggal H", () => {
+  it("H = E + F − G, cocok dengan angka Rincian nyata (IB 2026-07-24)", () => {
+    const h = uangTunai({
+      A: 738_164_896.0,
+      B: 0,
+      C: 75_528_943,
+      D: 130_374_047,
+      F: 14_619_600,
+      G: 1_387_253,
+    });
+    expect(h).toBeCloseTo(545_494_253.0, 2);
   });
 });
 

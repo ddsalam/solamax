@@ -1,8 +1,16 @@
 import { Heatmap, type HmRow } from "@/components/mon/Heatmap";
-import { cashStatus, opnameStatus, salesStatus, type Status } from "@/lib/compliance";
-import { ago } from "@/lib/format";
+import {
+  adminStatus,
+  opnameStatus,
+  salesStatus,
+  SETORAN_TOLERANSI_RP,
+  type AdminVerdict,
+  type Status,
+} from "@/lib/compliance";
+import { rp } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
-import { getComplianceMatrix, getLastInputs, getTankCount } from "@/lib/queries";
+import { getComplianceMatrix, getTankCount } from "@/lib/queries";
+import { uangTunai } from "@/lib/rekon";
 import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +22,53 @@ const TONE: Record<Status, "success" | "warning" | "danger"> = {
   red: "danger",
 };
 
-/** Agregat sel = modul terburuk hari itu (kas dipisah jadi strip dorman). */
-function aggregate(sales: Status, opname: Status): "success" | "warning" | "danger" {
-  if (sales === "red" && opname === "red") return "danger";
-  if (sales === "green" && opname === "green") return "success";
-  return "warning";
+/** Nada sel modul: `pending` = netral (belum jatuh tempo / tak bisa dinilai). */
+function modTone(t: Status | "pending"): "success" | "warning" | "danger" | "pending" {
+  return t === "pending" ? "pending" : TONE[t];
+}
+
+/**
+ * Agregat sel = modul terburuk hari itu. Perilaku sales/opname DIPERTAHANKAN
+ * persis seperti sebelumnya; administrasi ditumpangkan di atasnya sehingga
+ * hari yang seksinya kosong BISA memerahkan sel — itu inti indikator ini.
+ * `pending` tidak pernah memperburuk (hari berjalan tak dihukum).
+ */
+function aggregate(
+  sales: Status,
+  opname: Status,
+  admin: Status | "pending",
+): "success" | "warning" | "danger" {
+  const base: "success" | "warning" | "danger" =
+    sales === "red" && opname === "red"
+      ? "danger"
+      : sales === "green" && opname === "green"
+        ? "success"
+        : "warning";
+  if (admin === "red") return "danger";
+  if (admin === "yellow" && base === "success") return "warning";
+  return base;
+}
+
+/** Catatan manusiawi per verdict — menyebut ANGKA, bukan cuma warna. */
+function adminNote(v: AdminVerdict, h: number, i: number | null): string {
+  switch (v.kode) {
+    case "selaras":
+      return `setoran selaras (±${rp(SETORAN_TOLERANSI_RP)})`;
+    case "lebih_setor":
+      return `setoran MELEBIHI uang tunai ${rp((i ?? 0) - h)}`;
+    case "kurang_setor":
+      return `setoran kurang ${rp(h - (i ?? 0))}`;
+    case "setoran_kosong":
+      return "pendapatan/pengeluaran terisi, SETORAN belum diisi";
+    case "belum_diisi":
+      return "belum diisi — lewat jatuh tempo (akhir H+1)";
+    case "tak_terhitung":
+      return "penjualan belum masuk — setoran belum bisa dinilai";
+    case "belum_tempo_terisi":
+      return "sudah diisi · belum jatuh tempo";
+    case "belum_tempo_kosong":
+      return "belum diisi · belum jatuh tempo (akhir H+1)";
+  }
 }
 
 export default async function KetaatanPage() {
@@ -26,17 +76,13 @@ export default async function KetaatanPage() {
   const units = scope.units;
   const today = todayWib();
 
-  let kasStrip = "MODUL KAS — BELUM ADA DATA";
   const rows: HmRow[] = await Promise.all(
     units.map(async (u) => {
-      const [matrix, tanks, last] = await Promise.all([
+      // 2 query/unit. `getLastInputs` dilepas bersama strip kas dorman.
+      const [matrix, tanks] = await Promise.all([
         getComplianceMatrix(u.unit_id, DAYS),
         getTankCount(u.unit_id),
-        getLastInputs(u.unit_id),
       ]);
-      if (last.cash) {
-        kasStrip = `DORMAN — TERAKHIR INPUT ${last.cash} (${ago(last.cash).replace(" lalu", "").toUpperCase()}) · SEMUA UNIT`;
-      }
       const asc = [...matrix].reverse();
       return {
         code: u.code,
@@ -44,17 +90,39 @@ export default async function KetaatanPage() {
         cells: asc.map((d) => {
           const s = salesStatus(d.shifts);
           const o = opnameStatus(d.tanks, tanks);
+          // H dari SUMBER TUNGGAL (lib/rekon.ts) — bukan dihitung ulang di SQL.
+          const h = uangTunai({
+            A: d.compA,
+            B: d.compB,
+            C: d.compC,
+            D: d.compD,
+            F: d.compF,
+            G: d.compG,
+          });
+          const v = adminStatus(
+            {
+              nPendapatanLain: d.nPendapatanLain,
+              nPengeluaran: d.nPengeluaran,
+              nSetoran: d.nSetoran,
+              h,
+              i: d.setoran,
+              shifts: d.shifts,
+            },
+            { businessDate: d.d, today },
+          );
           return {
             d: d.d,
-            tone: aggregate(s, o),
+            tone: aggregate(s, o, v.tone),
             isToday: d.d === today,
+            pending: v.tone === "pending",
+            pendingFilled: v.tone === "pending" && v.terisi,
             modules: [
               { name: "Penjualan", tone: TONE[s], note: `${d.shifts}/3 shift` },
               { name: "Opname stok", tone: TONE[o], note: `${d.tanks}/${tanks} tangki` },
               {
-                name: "Kas",
-                tone: TONE[cashStatus(d.cash_rows)],
-                note: d.cash_rows > 0 ? `${d.cash_rows} nota` : "kosong (dorman)",
+                name: "Administrasi",
+                tone: modTone(v.tone),
+                note: `${d.nPendapatanLain}/${d.nPengeluaran}/${d.nSetoran} baris · ${adminNote(v, h, d.setoran)}`,
               },
             ],
           };
@@ -84,12 +152,24 @@ export default async function KetaatanPage() {
             <span className="hm-legend danger" />
             <span className="fs15 t-tertiary">kosong</span>
           </span>
+          <span className="hm-legenditem">
+            <span className="hm-legend pending filled" />
+            <span className="fs15 t-tertiary">belum tempo · terisi</span>
+          </span>
+          <span className="hm-legenditem">
+            <span className="hm-legend pending" />
+            <span className="fs15 t-tertiary">belum tempo · kosong</span>
+          </span>
         </span>
       </div>
-      <Heatmap rows={rows} dayLabels={dayLabels} kasStrip={kasStrip} />
+      <Heatmap rows={rows} dayLabels={dayLabels} />
       <div className="fs15 t-tertiary mt3">
-        Sel hari berjalan diberi garis putus — belum final sampai shift 3 tutup. Modul dorman
-        (Kas) dirender sebagai strip dengan umur, bukan deretan sel kosong.
+        Administrasi = pengisian Rincian Penjualan oleh pengawas (Pendapatan Lain,
+        Pengeluaran, Setoran Bank). Setoran dinilai SELARAS bila |I − H| ≤{" "}
+        {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
+        kesamaan eksak dengan uang tunai tak pernah terjadi. Jatuh tempo akhir H+1: dua
+        kolom terkanan belum dinilai, tapi tetap membedakan yang sudah diisi dari yang
+        belum. Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
       </div>
     </div>
   );

@@ -1012,7 +1012,18 @@ export interface ComplianceDay {
   d: string;
   shifts: number;
   tanks: number;
-  cash_rows: number;
+  /** Komponen MENTAH rekon — H diturunkan `uangTunai()` (lib/rekon.ts), bukan di SQL. */
+  compA: number;
+  compB: number;
+  compC: number;
+  compD: number;
+  compF: number;
+  compG: number;
+  /** Σ setoran; null bila tak ada baris (bedakan dari nol rupiah). */
+  setoran: number | null;
+  nPendapatanLain: number;
+  nPengeluaran: number;
+  nSetoran: number;
 }
 
 export async function getComplianceMatrix(
@@ -1025,17 +1036,145 @@ export async function getComplianceMatrix(
        SELECT generate_series(
          (now() AT TIME ZONE '${TZ}')::date - ($2::int - 1),
          (now() AT TIME ZONE '${TZ}')::date, interval '1 day')::date AS d
-     )
-     SELECT to_char(d,'YYYY-MM-DD') AS d,
+     ),
+     rentang AS (SELECT min(d) AS d0, max(d) AS d1 FROM hari),
+     -- Komponen A–D & F/G/I untuk ketaatan ADMINISTRASI. Semua berkunci tanggal
+     -- DATAR (dtgljual / business_date) → satu GROUP BY per sumber, TANPA
+     -- sub-query berkorelasi per hari. Halaman ini sudah dua kali menjatuhkan
+     -- pool (PR #31, #160): pola 7 unit × 14 hari × N query dilarang.
+     a AS (SELECT h.dtgljual AS d, sum(COALESCE(sd.nsubtotal,0)) AS v
+             FROM sales_detail sd
+             JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
+            WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+            GROUP BY 1),
+     b AS (SELECT t.business_date AS d, sum(COALESCE(t.ntotal,0)) AS v
+             FROM terra_resmi t
+            WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0)=0
+              AND t.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+            GROUP BY 1),
+     c AS (SELECT d, sum(v) AS v FROM (
+             SELECT ps.business_date AS d, COALESCE(ps.total,0) AS v FROM pelanggan_sale ps
+              WHERE ps.unit_id = $1 AND COALESCE(ps.sbatal,0)=0
+                AND ps.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+             UNION ALL
+             SELECT vs.business_date, COALESCE(vs.total,0) FROM voucher_sale vs
+              WHERE vs.unit_id = $1 AND COALESCE(vs.sbatal,0)=0
+                AND vs.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+           ) u GROUP BY 1),
+     dd AS (SELECT e.business_date AS d, sum(COALESCE(e.total,0)) AS v
+              FROM edc e
+             WHERE e.unit_id = $1 AND e.ckdkartu IS NOT NULL AND trim(e.ckdkartu) <> ''
+               AND e.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+             GROUP BY 1),
+     m AS (SELECT business_date AS d,
+             sum(amount) FILTER (WHERE section='pendapatan_lain') AS f,
+             sum(amount) FILTER (WHERE section='pengeluaran')     AS g,
+             sum(amount) FILTER (WHERE section='setoran_tunai')   AS i,
+             (count(*) FILTER (WHERE section='pendapatan_lain'))::int AS nf,
+             (count(*) FILTER (WHERE section='pengeluaran'))::int     AS ng,
+             (count(*) FILTER (WHERE section='setoran_tunai'))::int   AS ni
+             FROM app.manual_entry
+            WHERE unit_id = $1 AND NOT void
+              AND business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
+            GROUP BY 1)
+     SELECT to_char(hari.d,'YYYY-MM-DD') AS d,
        (SELECT count(DISTINCT h.nshift)::int FROM sales_header h
          WHERE h.unit_id = $1 AND h.dtgljual = hari.d) AS shifts,
        (SELECT count(DISTINCT o.ckdtangki)::int FROM opname o
          WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0)=0
            AND COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date) = hari.d) AS tanks,
-       (SELECT count(*)::int FROM cash_header c
-         WHERE c.unit_id = $1 AND COALESCE(c.sbatal,0)=0 AND c.dtgl = hari.d) AS cash_rows
-     FROM hari ORDER BY d DESC`,
+       -- Komponen MENTAH. H SENGAJA tidak dihitung di SQL: satu-satunya sumber
+       -- formula H = E + F − G adalah uangTunai() di lib/rekon.ts.
+       COALESCE(a.v,0)::float8 AS "compA",
+       COALESCE(b.v,0)::float8 AS "compB",
+       COALESCE(c.v,0)::float8 AS "compC",
+       COALESCE(dd.v,0)::float8 AS "compD",
+       COALESCE(m.f,0)::float8 AS "compF",
+       COALESCE(m.g,0)::float8 AS "compG",
+       m.i::float8 AS "setoran",
+       COALESCE(m.nf,0) AS "nPendapatanLain",
+       COALESCE(m.ng,0) AS "nPengeluaran",
+       COALESCE(m.ni,0) AS "nSetoran"
+     FROM hari
+     LEFT JOIN a  ON a.d  = hari.d
+     LEFT JOIN b  ON b.d  = hari.d
+     LEFT JOIN c  ON c.d  = hari.d
+     LEFT JOIN dd ON dd.d = hari.d
+     LEFT JOIN m  ON m.d  = hari.d
+     ORDER BY hari.d DESC`,
     [unit, days],
+  );
+}
+
+export interface AdminDayRow extends Omit<ComplianceDay, "tanks"> {
+  unit_id: number;
+}
+
+/**
+ * Komponen ketaatan administrasi untuk BANYAK unit sekaligus — SATU query,
+ * di luar loop per-unit (pola sama `getZeroClosingEvents`), supaya feed anomali
+ * tidak menambah fan-out. Mengembalikan komponen MENTAH; keputusan status
+ * dibuat `adminStatus()` di lib/compliance.ts — aturannya satu, di TS.
+ */
+export async function getAdminDays(
+  unitIds: ScopedUnitId[],
+  from: string,
+  to: string,
+): Promise<AdminDayRow[]> {
+  if (unitIds.length === 0) return [];
+  return qScoped<AdminDayRow>(
+    unitIds,
+    `WITH unit_hari AS (
+       SELECT u.unit_id, g::date AS d
+         FROM unnest($1::int[]) AS u(unit_id)
+         CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS g
+     ),
+     a AS (SELECT sd.unit_id, h.dtgljual AS d, sum(COALESCE(sd.nsubtotal,0)) AS v,
+                  count(DISTINCT h.nshift)::int AS shifts
+             FROM sales_detail sd
+             JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
+            WHERE sd.unit_id = ANY($1::int[]) AND h.dtgljual BETWEEN $2::date AND $3::date
+            GROUP BY 1,2),
+     b AS (SELECT unit_id, business_date AS d, sum(COALESCE(ntotal,0)) AS v FROM terra_resmi
+            WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
+              AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2),
+     c AS (SELECT unit_id, d, sum(v) AS v FROM (
+             SELECT unit_id, business_date AS d, COALESCE(total,0) AS v FROM pelanggan_sale
+              WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
+                AND business_date BETWEEN $2::date AND $3::date
+             UNION ALL
+             SELECT unit_id, business_date, COALESCE(total,0) FROM voucher_sale
+              WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
+                AND business_date BETWEEN $2::date AND $3::date) u GROUP BY 1,2),
+     dd AS (SELECT unit_id, business_date AS d, sum(COALESCE(total,0)) AS v FROM edc
+             WHERE unit_id = ANY($1::int[]) AND ckdkartu IS NOT NULL AND trim(ckdkartu) <> ''
+               AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2),
+     m AS (SELECT unit_id, business_date AS d,
+             sum(amount) FILTER (WHERE section='pendapatan_lain') AS f,
+             sum(amount) FILTER (WHERE section='pengeluaran')     AS g,
+             sum(amount) FILTER (WHERE section='setoran_tunai')   AS i,
+             (count(*) FILTER (WHERE section='pendapatan_lain'))::int AS nf,
+             (count(*) FILTER (WHERE section='pengeluaran'))::int     AS ng,
+             (count(*) FILTER (WHERE section='setoran_tunai'))::int   AS ni
+             FROM app.manual_entry
+            WHERE unit_id = ANY($1::int[]) AND NOT void
+              AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2)
+     SELECT uh.unit_id, to_char(uh.d,'YYYY-MM-DD') AS d,
+            COALESCE(a.shifts,0) AS shifts,
+            COALESCE(a.v,0)::float8 AS "compA", COALESCE(b.v,0)::float8 AS "compB",
+            COALESCE(c.v,0)::float8 AS "compC", COALESCE(dd.v,0)::float8 AS "compD",
+            COALESCE(m.f,0)::float8 AS "compF", COALESCE(m.g,0)::float8 AS "compG",
+            m.i::float8 AS "setoran",
+            COALESCE(m.nf,0) AS "nPendapatanLain", COALESCE(m.ng,0) AS "nPengeluaran",
+            COALESCE(m.ni,0) AS "nSetoran"
+       FROM unit_hari uh
+       LEFT JOIN a  ON a.unit_id=uh.unit_id  AND a.d=uh.d
+       LEFT JOIN b  ON b.unit_id=uh.unit_id  AND b.d=uh.d
+       LEFT JOIN c  ON c.unit_id=uh.unit_id  AND c.d=uh.d
+       LEFT JOIN dd ON dd.unit_id=uh.unit_id AND dd.d=uh.d
+       LEFT JOIN m  ON m.unit_id=uh.unit_id  AND m.d=uh.d
+      ORDER BY uh.unit_id, uh.d`,
+    [unitIds, from, to],
   );
 }
 
@@ -1048,11 +1187,16 @@ export async function getTankCount(unit: ScopedUnitId): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
+/**
+ * ⚠️ Tanpa pemanggil PRODUKSI sejak 2026-08-07 (field `cash` + anomali kas
+ * dorman dihapus; terverifikasi grep — `staleness()`/`STALE_HOURS` juga hanya
+ * dipakai tes). Dipertahankan atas permintaan owner, bukan karena ada yang
+ * memakainya. Jangan asumsikan ia sedang menjaga sesuatu.
+ */
 export interface LastInputs {
   sales: string | null;
   opname: string | null;
   delivery: string | null;
-  cash: string | null;
 }
 
 export async function getLastInputs(unit: ScopedUnitId): Promise<LastInputs> {
@@ -1061,11 +1205,10 @@ export async function getLastInputs(unit: ScopedUnitId): Promise<LastInputs> {
     `SELECT
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM sales_detail WHERE unit_id=$1) AS sales,
        (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM opname WHERE unit_id=$1) AS opname,
-       (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM delivery WHERE unit_id=$1) AS delivery,
-       (SELECT to_char(max(dtgl),'YYYY-MM-DD') FROM cash_header WHERE unit_id=$1) AS cash`,
+       (SELECT to_char(max(dtgljam) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM delivery WHERE unit_id=$1) AS delivery`,
     [unit],
   );
-  return rows[0] ?? { sales: null, opname: null, delivery: null, cash: null };
+  return rows[0] ?? { sales: null, opname: null, delivery: null };
 }
 
 export interface CashRow {

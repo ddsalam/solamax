@@ -344,10 +344,10 @@ export function buildLaporanModel(
   const checks: AlarmCheck[] = [
     dailyLoss(),
     monthlyLoss,
-    na("Setoran Bank Sesuai", "Domain setoran"),
+    na("Setoran Bank Sesuai", "belum terhubung — lihat Ketaatan Administrasi"),
     targetCheck(),
     na("Pencatatan DO Sesuai", "Domain DO"),
-    na("Pengeluaran Sudah Disahkan", "modul kas dorman"),
+    na("Pengeluaran Sudah Disahkan", "belum terhubung — lihat Ketaatan Administrasi"),
     na("Harga Beli/Jual Benar", "master harga beli"),
     na("Saldo Hutang/Piutang Pelanggan Sesuai", "Domain deposit"),
     na("DO Untuk Penerimaan Besok Cukup", "Domain DO"),

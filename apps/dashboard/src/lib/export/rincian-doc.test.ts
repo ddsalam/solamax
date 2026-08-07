@@ -177,3 +177,35 @@ describe("buildRincianDocDefinition", () => {
     expect(doc.info?.author).toBe("SolaMax");
   });
 });
+
+/**
+ * DITAMBAHKAN 2026-08-07. Sebelum ini TIDAK ADA tes yang mengunci angka/catatan
+ * PDF terhadap `buildRincianModel` — seluruh suite di atas memakai `RincianModel`
+ * yang dirakit tangan, sehingga pergeseran di model tak akan terdeteksi di sini.
+ * Tes ini menutup sambungannya: model NYATA → definisi dokumen PDF.
+ */
+describe("rantai model → PDF (angka & catatan setoran tak bergeser)", () => {
+  it("H dan catatan setoran dari buildRincianModel muncul apa adanya di PDF", async () => {
+    const { buildRincianModel } = await import("@/lib/rincian-model");
+    const m0 = (id: string, ket: string, amount: number) => ({ id, keterangan: ket, amount, urut: 0 });
+    const real = buildRincianModel({
+      prod: [{ ckdbbm: "P", nama: "Pertalite", vol: 1000, omzet: 10_000_000, harga: 10_000 }],
+      terra: [],
+      pelanggan: [],
+      edc: [],
+      edcBlank: { rp: 0, n: 0 },
+      deposit: [],
+      pendapatanLain: [m0("f1", "X", 500_000)],
+      pengeluaran: [m0("g1", "Y", 137)],
+      setoranTunai: [m0("s1", "SETOR BANK", 10_500_000)], // +137 dari H → dalam toleransi
+    } as Parameters<typeof buildRincianModel>[0]);
+
+    // H = 10.000.000 + 500.000 − 137 = 10.499.863
+    expect(real.summary.find((s) => s.l === "H")?.val).toBe("Rp 10.499.863");
+
+    const doc = buildRincianDocDefinition({ model: real, meta, config: DEFAULT_EXPORT_CONFIG });
+    const json = JSON.stringify(doc.content);
+    expect(json).toContain("Rp 10.499.863");
+    expect(json).toContain("Setoran selaras dengan uang tunai");
+  });
+});

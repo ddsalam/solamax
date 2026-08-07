@@ -560,12 +560,16 @@ body { background: var(--neutral-50); }
 .hm-cell.success { background: var(--color-success); border-color: var(--color-success); }
 .hm-cell.warning { background: var(--color-warning); border-color: var(--color-warning); }
 .hm-cell.danger { background: var(--color-danger); border-color: var(--color-danger); }
+.hm-cell.pending { background: repeating-linear-gradient(135deg, var(--color-bg-secondary) 0 4px, transparent 4px 8px); border-color: var(--color-border-hairline); }
+.hm-cell.pending.filled { background: var(--color-success-bg); border-color: var(--color-success-border); }
 .hm-cell.today { outline: 2px dashed var(--neutral-400); outline-offset: 1px; }
-.hm-strip { height: 30px; border-radius: 6px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); display: flex; align-items: center; justify-content: center; }
 .hm-legend { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
 .hm-legend.success { background: var(--color-success); }
 .hm-legend.warning { background: var(--color-warning); }
 .hm-legend.danger { background: var(--color-danger); }
+.hm-legend.pending { background: repeating-linear-gradient(135deg, var(--color-bg-secondary) 0 3px, transparent 3px 6px); border: 1px solid var(--color-border-hairline); }
+.hm-legend.pending.filled { background: var(--color-success-bg); border: 1px solid var(--color-success-border); }
+.hm-mod.pending { background: var(--color-bg-secondary); }
 .hm-mod { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; border-radius: var(--radius-md); }
 .hm-mod.success { background: var(--color-success-bg); border: 1px solid var(--color-success-border); }
 .hm-mod.warning { background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); }
@@ -759,8 +763,6 @@ span.trend-swatch.trend-s5 { background: var(--neutral-500, #64748b); }
 .denah-note { margin-left: auto; }
 .nz-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .hm-rowname { overflow: hidden; text-overflow: ellipsis; }
-.hm-kasrow { display: grid; grid-template-columns: 130px 1fr; gap: 5px; align-items: center; padding-top: var(--space-3); border-top: 1px solid var(--color-border-hairline); }
-.hm-striptext { font-size: 13px; font-weight: 700; color: var(--color-danger); letter-spacing: 0.04em; }
 .hm-close { margin-left: auto; }
 .hm-mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
 .hm-modnote { margin-left: auto; }
