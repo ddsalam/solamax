@@ -339,3 +339,89 @@ seperti kolom lain (diukur owner, tak perlu diukur ulang). Ia hanya TERLIHAT
 seperti serpihan karena gayanya pucat. **Sel berukuran penuh yang terbaca sebagai
 ruang kosong** — memperkuat kekhawatiran legibilitas. Masuk pemeriksaan mata
 bersama tiga varian netral lainnya.
+
+---
+
+## FASE 3 — pengukuran render (diukur OWNER, jalur jaringan nyata)
+
+Bukan proxy dari Mac ke asia-southeast2 — ini yang benar-benar dialami pengawas.
+Halaman ini RSC streaming, jadi angka bermaknanya `responseEnd`, bukan TTFB
+(TTFB 50–70 ms dan menyesatkan).
+
+    muat 1 (dingin) 6.592 ms · 2.468 · 2.026 · 1.713 · 1.685 (plateau)
+
+| | Prediksi terkunci | Terukur | |
+| --- | --- | --- | --- |
+| P6 hangat | 1,2–2,0 dtk | **1,69–1,71 dtk** | ✅ di dalam pita |
+| P7 dingin | 3,0–5,0 dtk | **6,59 dtk** | ❌ meleset ~32% di atas plafon (n=1) |
+
+### P4/P5 — HANGUS, jendela tertutup oleh promosi
+
+**Bukan "belum diukur" — tidak akan pernah diukur.** Keduanya mengukur render
+indikator **LAMA**, dan kode itu meninggalkan pilot pukul 15:39 WIB saat promosi.
+Konsekuensi yang bisa diramalkan dari keputusan "perbaiki cepat, jangan rollback"
+— bukan kelalaian. Dihapus dari daftar tugas: pengukuran yang tak akan pernah
+datang harus berhenti muncul sebagai pekerjaan tertunda.
+
+## ANATOMI 6,6 DETIK "DINGIN" — diukur, bukan diduga
+
+Ketiga tersangka diukur TERPISAH terhadap DB pilot (kode produksi):
+
+| Komponen | Di mana | Terukur (3 kali) |
+| --- | --- | ---: |
+| A · `getSyncByUnit` | layout `(app)` | 183 / 173 / 141 ms |
+| B · `buildAnomalies` **tak ber-cache** | layout `(app)`, badge sidebar | **7.741 / 5.384 / 5.594 ms** |
+| C · 2 query × 7 unit | halaman Ketaatan sendiri | 1.852 / 1.679 / 1.665 ms |
+
+Rekonstruksi: hangat ≈ A + C ≈ **1,8 dtk** (owner: 1,69–1,71) · dingin ≈ A + B + C
+≈ **7,2 dtk** (owner: 6,59). Angka saya sedikit lebih tinggi karena mengandung RTT
+proxy dari Mac; selisihnya kecil, jadi **tak ada suku besar yang tak terjelaskan.**
+
+### Ketiga tersangka, dihakimi
+
+1. **Cloud Run dingin — BUKAN penyebabnya.** `minScale=1` (terverifikasi
+   `gcloud run services describe`): selalu ada instance hidup. `maxScale=2`,
+   `startup-cpu-boost=true`. Sisa yang tak terjelaskan setelah B+C hampir nol,
+   jadi suku kontainer kecil.
+2. **Cache kedaluwarsa — INI penyebabnya.** `getAnomalies` ber-`unstable_cache`
+   TTL **120 detik** (`ANOMALIES_TTL_S`). Halaman Ketaatan sendiri **tidak**
+   memakai cache apa pun (`force-dynamic`).
+3. **Query DB dingin — bukan.** C stabil 1,67–1,85 dtk; B stabil 5,4–5,6 dtk
+   setelah muat pertama. Tak ada efek cache-DB yang besar.
+
+### Yang mengubah artinya: "dingin" BUKAN sekali sehari
+
+`/monitoring/ketaatan` terklasifikasi **realtime** → `AutoRefresh` **60 detik**
+(`refresh-cadence.ts`). TTL anomali **120 detik**. Jadi tab yang dibiarkan terbuka
+menyeberangi batas TTL **setiap 120 detik** dan menanggung ~5,4 dtk lagi.
+
+**Bukan "muat pertama hari itu lambat" — melainkan ~5 detik tersendat setiap dua
+menit, selamanya, untuk siapa pun yang tab-nya terbuka.**
+
+Dan biaya itu dibayar untuk **badge sidebar**, yang owner sudah konfirmasi
+**mentok di "9+"** — sehingga anomali administrasi baru pun tak terlihat di sana.
+5,4 detik per 120 detik untuk angka yang tak bisa berubah tampilannya.
+
+### Pre-warm 06:00 WIB — TIDAK bisa dipakai ulang, dan sebabnya bukan plumbing
+
+`/api/warm-board` + `board-warm.ts` mengisi `getDailyGlWindow` (TTL **24 jam**)
+dan cache saldo. Mekanismenya cocok — panggil fungsi ber-cache dengan key
+identik. **Tapi TTL anomali 120 DETIK.** Pre-warm sekali sehari akan menghangatkan
+cache selama dua menit lalu dingin lagi. Ketidakcocokannya **TTL, bukan pipa**;
+memasang pre-warm di sini akan jadi teater.
+
+### Usulan — BELUM dikerjakan, menunggu keputusan owner
+
+Diurutkan dari yang paling menyerang akar:
+
+1. **Keluarkan badge dari jalur kritis layout** (Suspense/streaming): shell tayang
+   segera, badge menyusul. Menyembuhkan SEMUA halaman `(app)`, bukan cuma ini.
+2. **Murahkan `buildAnomalies`**: loop unit SERIAL × 8 query paralel = 56 query.
+   `getAdminDays` sudah membuktikan pola multi-unit satu-query bisa (7→1). Komentar
+   `ANOMALIES_TTL_S` menolak ini pada 2026-07-24 karena berarti menulis ulang
+   `getDailyGlByProduct`; itu **masih** alasan yang sah.
+3. **Naikkan TTL** (120 → 600 dtk): termurah, menurunkan frekuensi 5×, tapi
+   membuat badge lebih basi dan **tidak** menyembuhkan tersendatnya.
+4. **Pertanyakan badge-nya sendiri.** Ia mentok "9+" dan tak bisa menampilkan
+   sinyal baru. Kalau tampilannya diperbaiki dulu, biaya 5,4 dtk mungkin sedang
+   dibayar untuk sesuatu yang bentuknya salah sejak awal.
