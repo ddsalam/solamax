@@ -444,3 +444,225 @@ pada mutasi pertama.
 `getZeroClosingEvents` juga ditambahkan; asersi kebocorannya **hampa** karena
 fixture tak menaruh kejadian opname-nol — **saya menyebutnya, bukan
 menyamarkannya**. Yang tetap bermakna di sana: `unit_id` tak pernah di luar scope.
+
+---
+
+# G1 — GERBANGNYA TIDAK PERNAH BERJALAN SAAT SAYA LAPORKAN SELESAI
+
+## Apa yang terjadi
+
+`sqlcheck` **merah di #217** — bukan karena SQL, tapi:
+
+```
+PERMISSION_DENIED: secretmanager.versions.access
+SA gh-deploy-dashboard@… tak boleh membaca solamax-db-url-dashboard-rlsstg
+```
+
+Ia **mati sebelum menyentuh satu query pun**. Saya membuktikan K1 bisa merah dan
+bisa hijau **di mesin saya**, memasang workflow-nya, lalu berhenti tepat sebelum
+langkah yang menentukan: **menonton ia berjalan di pipeline.**
+
+Gerbang ini ada justru karena `pnpm check` tak bisa melihat sesuatu — dan ia
+mendarat dalam keadaan **tak bisa melihat apa pun juga**.
+
+**Pelajaran yang lebih tajam dari "seharusnya saya cek":** ketika menambahkan
+langkah CI yang membaca secret, **memverifikasi bahwa runner BOLEH membaca
+secret itu adalah bagian dari MEMBANGUN langkahnya**, bukan pemeriksaan
+sesudahnya. Prasyarat yang tak diverifikasi adalah bentuk lain dari klaim yang
+tak diperiksa — kelas yang sama dengan koreksi L6 dan klaim frekuensi.
+
+## Perbaikan yang dijalankan owner (dicatat supaya bukan misteri)
+
+```bash
+gcloud secrets add-iam-policy-binding solamax-db-url-dashboard-rlsstg \
+  --member=serviceAccount:gh-deploy-dashboard@solamax.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+```
+
+**Kontrol owner:** secret PILOT tidak ikut terbuka. **Saya verifikasi ulang:**
+
+| secret | isi | gh-deploy-dashboard |
+| --- | --- | --- |
+| `solamax-db-url-dashboard-rlsstg` | dashboard_app @ DB **test** | accessor ← **grant hari ini** |
+| `solamax-dashboard-db-url-staging` | dashboard_app @ DB **PILOT** | **TIDAK** ✅ kontrol berlaku |
+| `solamax-db-url-staging` | ingest @ DB **PILOT** | accessor (**pra-ada**) |
+| `solamax-db-url-ingest-rlsstg` | ingest @ DB test | accessor (pra-ada) |
+
+⚠️ **Saya nyaris melaporkan dua baris terakhir sebagai over-grant.** Ternyata
+**bukan**: `vars.DEPLOY_SA` adalah **SATU** SA yang dipakai `deploy-backend.yml`
+**dan** `deploy-dashboard.yml`, dan jalur backend memang butuh
+`solamax-db-url-staging` untuk `prisma migrate deploy` ke DB pilot.
+
+**Jebakan penamaan untuk sesi berikutnya:** SA-nya bernama
+**`gh-deploy-dashboard`** tapi ia men-deploy **KEDUA** aplikasi. Menalar
+kewenangannya dari namanya akan salah. Yang menyelamatkan saya: membaca
+`service_account:` di kedua workflow, bukan menyimpulkan dari nama.
+
+## Status sekarang — terverifikasi, bukan diterima begitu saja
+
+`gh run view` atas 4 run terakhir `Deploy dashboard`:
+
+| run | conclusion | sqlcheck |
+| --- | --- | --- |
+| staging | failure | **failure** ← PERMISSION_DENIED |
+| staging | failure | **failure** ← PERMISSION_DENIED |
+| staging | success | **success** ← hijau PERTAMA KALI |
+| main | success | **success** ← ikut hijau di jalur promosi |
+
+Dan gerbangnya **memang menahan**: `needs: [build, sqlcheck]` membuat deploy
+tidak jalan selama sqlcheck merah. Itu bekerja persis seperti dirancang — yang
+gagal adalah saya menyatakannya selesai sebelum menyaksikannya.
+
+---
+
+# USULAN — apakah `sqlcheck` masuk `required_status_checks.contexts`?
+
+**Keadaan sekarang:** `contexts: ["check"]` di `staging` dan `main`.
+`enforce_admins=true`, `strict=false`.
+
+## Fakta yang menentukan jawabannya
+
+`deploy-dashboard.yml` dipicu **`push: branches: [staging, main]`** dengan
+**`paths:`** filter, dan **TANPA `pull_request`** (terverifikasi: 0 kemunculan).
+
+Konsekuensinya keras: **`sqlcheck` tidak pernah berjalan pada sebuah PR.**
+Menambahkannya ke required contexts **sekarang** akan membuat GitHub menunggu
+selamanya konteks yang tak pernah dilaporkan — **setiap merge deadlock**, bukan
+"lebih ketat". Itu bukan opini; itu cara required contexts bekerja.
+
+## Tiga opsi
+
+| | opsi | efek | biaya |
+| --- | --- | --- | --- |
+| **A** | **biarkan di luar required contexts** | deploy TETAP ter-gate keras oleh `needs: [build, sqlcheck]` | merge bisa jalan dgn sqlcheck merah → kode ber-SQL rusak bisa duduk di `main`, tak ter-deploy |
+| **B** | tambah pemicu `pull_request` **lalu** masukkan ke required contexts | sqlcheck jadi pemblokir merge | gerbang ber-DB jadi pemblokir merge; PR docs-only tak melaporkan konteks (ada `paths:`) → **deadlock lagi**, kecuali dipasang pola "skip job selalu-jalan" |
+| **C** | B + hapus `paths:` filter | konteks selalu dilaporkan | tiap PR docs menyalakan proxy + 36 query ke `-rlsstg`; kontensi & waktu siklus naik untuk PR yang tak menyentuh SQL |
+
+## Sisi sebaliknya, dijawab jujur
+
+Kekhawatiran yang saya sendiri pakai untuk menolak K2 **berlaku di sini juga**:
+`sqlcheck` bergantung lingkungan — IAM, cloud-sql-proxy, jaringan, ketersediaan
+`-rlsstg`. **Dua dari empat run pertamanya gagal karena IAM, bukan karena SQL.**
+Kalau ia wajib untuk merge, kegagalan seperti itu **memblokir segalanya**,
+termasuk PR dokumentasi dan perbaikan darurat — dan gerbang yang memblokir
+perbaikan darurat adalah gerbang yang **dimatikan orang**.
+
+Rasio bukti-awalnya buruk: **50% kegagalan awalnya bukan tentang SQL.**
+
+## Rekomendasi: **A**, dan alasannya bukan kemalasan
+
+1. **Deploy sudah ter-gate KERAS.** `needs: [build, sqlcheck]` sudah membuktikan
+   dirinya di #217: sqlcheck merah → deploy tidak jalan. "Penasihat" hanya
+   berlaku untuk **merge**, tidak untuk **deploy**.
+2. **Yang salah di #217 bukan status penasihat** — melainkan bahwa sqlcheck
+   **belum pernah berjalan sekali pun**. Menjadikannya required tidak akan
+   menangkap itu; konteks yang tak pernah dilaporkan justru deadlock. Obat untuk
+   kelas itu adalah **memverifikasi langkah CI baru benar-benar berjalan sebelum
+   menyatakannya selesai** — proses, bukan setelan.
+3. **Risiko sisa A dapat diterima dan sudah sesuai filosofi repo**: kode ber-SQL
+   rusak bisa duduk di `main` tanpa ter-deploy, sama seperti migrasi gagal =
+   pipeline HALT sementara revisi lama tetap melayani. Perbaikan = maju, bukan
+   rollback.
+
+**Kalau nanti dipilih B**, prasyaratnya (jangan dilewati, ini yang barusan
+menggigit): tambahkan `pull_request` **dan** pola skip-job selalu-jalan supaya
+PR di luar `paths:` tetap melaporkan konteks — **lalu tonton ia berjalan hijau
+DAN merah sekali** sebelum memasukkannya ke required contexts.
+
+**Tidak dikerjakan. Menunggu pilihan owner.**
+
+---
+
+# BATAS GERBANG K1 — ditulis eksplisit sebelum ada yang salah membacanya
+
+## `sqlcheck` di #217 tampak membantah, sebenarnya menguatkan
+
+`sqlcheck` **muncul** di daftar cek #217 — dan itu tampak membantah klaim "ia tak
+pernah berjalan pada PR". **Kasus khusus, bukan tandingan:** head #217 adalah
+**`staging`**, dan push ke `staging` memang memicu workflow-nya. Pada **PR fitur
+normal** (head = `claude/…`) branch filter `[staging, main]` menutupnya, jadi
+konteksnya **tak pernah dilaporkan**.
+
+Orang berikutnya yang melihat sqlcheck di sebuah PR promosi bisa menyimpulkan
+sebaliknya. Ia tidak sebaliknya.
+
+## ⛔ `main` BISA memuat commit ber-SQL rusak
+
+`sqlcheck` hanya berjalan pada **push ke `staging`/`main`** — artinya SQL rusak
+tertangkap **SESUDAH merge dan SEBELUM deploy**. Konsekuensinya harus dibaca
+lurus:
+
+> **"SQL sudah ter-gate" ≠ "main tak mungkin memuat SQL rusak".**
+> Yang dijamin: **deploy tidak jalan** (`needs: [build, sqlcheck]`).
+> Yang TIDAK dijamin: commit-nya tak mendarat di `main`.
+
+**Jalan pulih: revert PR-nya.** Revisi lama tetap melayani sementara itu — pola
+yang sama dengan migrasi gagal = pipeline HALT.
+
+## Cakupan: apa yang K1 jaga, dan apa yang TIDAK
+
+`paths:` pemicu `deploy-dashboard.yml`:
+
+| dipicu | tidak dipicu |
+| --- | --- |
+| `apps/dashboard/**` (tempat `queries.ts`) | **`apps/backend/**`** |
+| `packages/shared/**` | segala hal di luar daftar kiri |
+| `pnpm-lock.yaml` | |
+| `.github/workflows/deploy-dashboard.yml` | |
+
+**Perubahan SQL di `apps/backend/**` TIDAK memicu K1.** Terverifikasi:
+`deploy-backend.yml` **tidak punya** job sejenis, dan SQL ingest
+(`apps/backend/src/ingest/sql.ts`) karenanya **tak dijaga gerbang eksekusi-SQL
+mana pun** — `ingest.idempotency.test.ts` juga di-skip di CI.
+
+Ini **celah yang diketahui**, dicatat sebagai fakta, bukan diusulkan sebagai
+pekerjaan. K1 menjaga **query BACA dashboard**. Titik.
+
+## Bentuk kesalahan yang nyaris saya buat (bukan cuma faktanya)
+
+Saya hampir melaporkan `solamax-db-url-staging` sebagai over-grant karena SA-nya
+bernama `gh-deploy-dashboard` dan secret itu milik jalur **backend**.
+
+**Bentuk kesalahannya, dan itu yang layak dibawa keluar:**
+
+> **Identitas ditentukan oleh apa yang MEREFERENSIKANNYA, bukan oleh namanya.**
+
+Satu SA bernama `gh-deploy-dashboard` men-deploy **dua** aplikasi karena
+`vars.DEPLOY_SA` dipakai `deploy-backend.yml` **dan** `deploy-dashboard.yml`.
+Auditor berikutnya akan tertipu persis di titik yang sama. Yang menyelamatkan:
+membaca `service_account:` di kedua workflow.
+
+## Prasyarat opsi B — DIKUNCI owner, jangan dibayar dua kali
+
+Kalau nanti `sqlcheck` dijadikan required context: pasang `pull_request` **+**
+pola skip-job selalu-jalan, **lalu TONTON ia hijau DAN merah sekali**, baru
+masukkan ke required contexts. Itu persis kesalahan yang baru saja dibayar.
+
+---
+
+# KOREK 2026-08-07 — LAPORAN ANTARA (belum settle)
+
+Belum bisa final: pukul **21:52 WIB** baru **2 dari 3 shift** masuk.
+
+| waktu | shift | A | H | I | I − H |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 13:46 | **0** | 0 | 3.587.200 | 359.447.000 | **+355.859.800** |
+| 21:52 | **2** | 294.217.252,50 | 273.988.977,50 | 359.447.000 | **+85.458.022,50** |
+
+**76% selisihnya sudah menutup** seiring data masuk — persis arah yang diramalkan
+cabang `tak_terhitung`: angka Rp 355,9 juta itu **artefak ingest**, bukan temuan.
+
+## Prediksi DIKUNCI sebelum pengukuran final (08-08)
+
+Dua shift memberi rata-rata **147,1 juta** omzet/shift. Kalau shift 3 menyumbang
+100–150 juta, H final ≈ **374–424 juta** terhadap I = 359,4 juta.
+
+| # | Prediksi |
+| --- | --- |
+| K1 | Korek 2026-08-07 berakhir **`kurang_setor`** (MERAH), bukan `lebih_setor` |
+| K2 | I − H final di rentang **−15 juta … −65 juta** |
+| K3 | Nilai Rp 355,9 juta **tidak** muncul di angka final mana pun |
+
+⚠️ Prediksi ini bisa **salah semuanya** — shift 3 bisa jauh lebih kecil, atau
+setoran bisa ditambah pengawas. Dilaporkan apa adanya besok, **termasuk kalau
+selisihnya ternyata nyata**.
