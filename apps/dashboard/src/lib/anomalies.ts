@@ -24,6 +24,7 @@ import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
 import { adminStatus, fmtRp, SETORAN_TOLERANSI_RP } from "./compliance";
+import { adopsiRincian } from "./config";
 import { uangTunai } from "./rekon";
 import {
   aggregateClosingGl,
@@ -89,12 +90,16 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
    * satu tempat. Jendela 7 hari seperti item lain di feed ini.
    */
   const namaUnit = new Map(units.map((u) => [u.unit_id as number, unitDotted(u.code)]));
+  const kodeUnit = new Map(units.map((u) => [u.unit_id as number, u.code]));
+  // Kondisi tingkat-UNIT (bukan tingkat-hari): satu item per unit, bukan 7×.
+  const unitLevel = new Map<number, "belum_adopsi" | "config_hilang">();
   for (const r of await getAdminDays(unitIds, addDays(today, -6), today)) {
     const h = uangTunai({
       A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG,
     });
     const v = adminStatus(
       {
+        adopsi: adopsiRincian(kodeUnit.get(r.unit_id) ?? ""),
         nPendapatanLain: r.nPendapatanLain,
         nPengeluaran: r.nPengeluaran,
         nSetoran: r.nSetoran,
@@ -104,7 +109,13 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       },
       { businessDate: r.d, today },
     );
+    // Pra-adopsi & belum-tempo: tak ada yang bisa ditindaklanjuti hari itu.
     if (v.tone === "pending" || v.kode === "selaras") continue;
+    // Dua kondisi ini milik UNIT, bukan hari — kumpulkan, terbitkan sekali.
+    if (v.kode === "belum_adopsi" || v.kode === "config_hilang") {
+      unitLevel.set(r.unit_id, v.kode);
+      continue;
+    }
     const unitTag = namaUnit.get(r.unit_id) ?? String(r.unit_id);
     const href = `/unit/${units.find((u) => u.unit_id === r.unit_id)?.code}/rincian/${r.d}`;
     const selisih = r.setoran !== null ? Math.abs(r.setoran - h) : 0;
@@ -334,6 +345,34 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       });
     }
 
+  }
+
+  // Kondisi tingkat-unit: SATU item per unit (bukan satu per hari dalam jendela).
+  for (const [unitId, kode] of unitLevel) {
+    const unitTag = namaUnit.get(unitId) ?? String(unitId);
+    items.push(
+      kode === "config_hilang"
+        ? {
+            tone: "danger",
+            tier: "major",
+            sev: Number.MAX_SAFE_INTEGER - 1,
+            dateIso: today,
+            title: "Unit belum terdaftar di lantai adopsi Rincian (config)",
+            unit: unitTag,
+            desc: `Kode unit tidak ada di ADOPSI_RINCIAN (lib/config.ts), jadi indikator Ketaatan Administrasi TIDAK BISA DIPERCAYA untuk unit ini — bukan berarti pengawasnya patuh. Perlu satu baris config.`,
+            time: "sampai didaftarkan",
+          }
+        : {
+            tone: "warning",
+            tier: "major",
+            sev: 0,
+            dateIso: today,
+            title: "Unit belum memakai panel Rincian sama sekali",
+            unit: unitTag,
+            desc: "Pendapatan Lain / Pengeluaran / Setoran Bank belum pernah diisi di unit ini. Bukan pelanggaran per-hari, tapi tak ada satu pun hari yang bisa dinilai sampai panelnya mulai dipakai.",
+            time: "sampai panel dipakai",
+          },
+    );
   }
 
   // Urut: tone (danger→warning→info) → major sebelum minor → sev terbesar dulu.

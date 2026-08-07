@@ -74,6 +74,9 @@ describe("setoranStatus — toleransi Rp 1.000 (kuantum slip setoran)", () => {
 
 describe("adminStatus", () => {
   const hari = (o: Partial<AdminHari> = {}): AdminHari => ({
+    // Lantai adopsi jauh di masa lalu → tidak mengganggu cabang lain kecuali
+    // kasus yang memang mengujinya.
+    adopsi: "2020-01-01",
     nPendapatanLain: 1,
     nPengeluaran: 4,
     nSetoran: 1,
@@ -167,6 +170,89 @@ describe("adminStatus", () => {
       expect(terisi.kode).toBe("belum_tempo_terisi");
       expect(terisi.terisi).toBe(true); // sinyal real-time: siapa sudah mengisi
     }
+  });
+
+  // === LANTAI ADOPSI (2026-08-07) — tiga syarat mengikat owner ==============
+
+  it("PRA-ADOPSI: hari sebelum lantai TIDAK merah, dan punya NAMA sendiri", () => {
+    // Bundaran Kotabaru mengadopsi 2026-08-02. 2026-07-28 tak boleh dinilai.
+    const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
+    const v = adminStatus(hari({ ...kosong, adopsi: "2026-08-02" }), {
+      businessDate: "2026-07-28",
+      today,
+    });
+    expect(v.kode).toBe("pra_adopsi"); // BERNAMA — bukan sekadar "pending"
+    expect(v.tone).toBe("pending");
+    // KONTROL: hari yang SAMA tanpa lantai memang merah — jadi lantainya yang
+    // mengubah hasil, bukan kebetulan.
+    expect(
+      adminStatus(hari({ ...kosong, adopsi: "2020-01-01" }), {
+        businessDate: "2026-07-28",
+        today,
+      }).kode,
+    ).toBe("belum_diisi");
+  });
+
+  it("LANTAI TEPAT: hari PADA tanggal adopsi sudah dinilai (batas inklusif)", () => {
+    const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
+    expect(
+      adminStatus(hari({ ...kosong, adopsi: "2026-08-02" }), {
+        businessDate: "2026-08-01",
+        today,
+      }).kode,
+    ).toBe("pra_adopsi");
+    expect(
+      adminStatus(hari({ ...kosong, adopsi: "2026-08-02" }), {
+        businessDate: "2026-08-02",
+        today,
+      }).kode,
+    ).toBe("belum_diisi");
+  });
+
+  it("SYARAT 1 — NON-ADOPSI TETAP TERLIHAT: adopsi null = kuning, bukan diam", () => {
+    // Unit terdaftar tapi belum pernah memakai panel. Kalau ini netral, unit
+    // yang tak pernah mengadopsi jadi PERMANEN tak terlihat — kegagalan alarm
+    // kas lama, terbalik arahnya.
+    const v = adminStatus(hari({ adopsi: null }), { businessDate: lewatTempo, today });
+    expect(v.kode).toBe("belum_adopsi");
+    expect(v.tone).toBe("yellow");
+    expect(v.tone).not.toBe("pending");
+    expect(v.tone).not.toBe("green");
+  });
+
+  it("SYARAT 2 — UNIT TAK TERDAFTAR GAGAL NYARING: undefined = MERAH", () => {
+    // Cabang default TIDAK BOLEH netral/hijau — keduanya berbohong tentang unit
+    // yang lantainya tak diketahui.
+    const v = adminStatus(hari({ adopsi: undefined }), { businessDate: lewatTempo, today });
+    expect(v.kode).toBe("config_hilang");
+    expect(v.tone).toBe("red");
+  });
+
+  it("SYARAT 2 — bahkan hari yang SEMPURNA tetap merah bila unit tak terdaftar", () => {
+    // Kasus paling menggoda untuk "diam-diam hijau": semua terisi & selaras.
+    const v = adminStatus(
+      hari({ adopsi: undefined, h: 545_494_253.0, i: 545_495_000 }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("config_hilang");
+    expect(v.tone).toBe("red");
+  });
+
+  it("lantai TIDAK menelan temuan asli pasca-adopsi (L4/L5 pra-registrasi)", () => {
+    // Bakau adopsi 2026-07-08; temuan 2026-08-06 lebih setor +3.362.265.
+    expect(
+      adminStatus(hari({ adopsi: "2026-07-08", h: 100_000_000, i: 103_362_265 }), {
+        businessDate: "2026-08-06",
+        today: "2026-08-08",
+      }).kode,
+    ).toBe("lebih_setor");
+    // IB adopsi 2026-06-21; temuan 2026-08-03 kurang setor −476.993.
+    expect(
+      adminStatus(hari({ adopsi: "2026-06-21", h: 539_143_993.5, i: 538_667_000 }), {
+        businessDate: "2026-08-03",
+        today,
+      }).kode,
+    ).toBe("kurang_setor");
   });
 
   it("D+2 adalah hari pertama yang bisa merah (batas jatuh tempo)", () => {

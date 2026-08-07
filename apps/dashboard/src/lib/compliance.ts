@@ -44,6 +44,9 @@ export function opnameStatus(tanks: number, totalTanks: number): Status {
 export const SETORAN_TOLERANSI_RP = 1000;
 
 export type AdminKode =
+  | "config_hilang" // unit tak terdaftar di ADOPSI_RINCIAN → indikator tak bisa dipercaya
+  | "belum_adopsi" // unit terdaftar tapi belum memakai panel Rincian sama sekali
+  | "pra_adopsi" // hari mendahului lantai adopsi unit — bukan kelalaian
   | "selaras" // I ≈ H dalam toleransi
   | "lebih_setor" // I − H > toleransi
   | "kurang_setor" // H − I > toleransi
@@ -62,6 +65,14 @@ export interface AdminVerdict {
 }
 
 export interface AdminHari {
+  /**
+   * Lantai adopsi unit dari `adopsiRincian(code)`. TIGA nilai yang BERBEDA:
+   *   string    → nilai hari sejak tanggal ini
+   *   null      → terdaftar, belum pernah memakai panel  → `belum_adopsi`
+   *   undefined → TIDAK terdaftar di config              → `config_hilang` (MERAH)
+   * Sengaja tanpa default: `undefined` harus gagal nyaring, bukan diam.
+   */
+  adopsi: string | null | undefined;
   nPendapatanLain: number;
   nPengeluaran: number;
   nSetoran: number;
@@ -111,6 +122,29 @@ export function adminStatus(
 ): AdminVerdict {
   const terisi = d.nPendapatanLain + d.nPengeluaran + d.nSetoran > 0;
   const belumTempo = dayGap(opts.businessDate, opts.today) <= 1;
+
+  // --- LANTAI ADOPSI (2026-08-07) -----------------------------------------
+  // Didahulukan dari SEMUA cabang lain: sebelum unit memakai panel Rincian,
+  // "belum diisi" bukan pernyataan tentang pengawas. Terukur di papan pilot
+  // live: 39 dari 47 sel merah mendahului entri manual pertama unitnya.
+  //
+  // Ketiga cabang di bawah SENGAJA tak ada yang "diam":
+  //   · config_hilang → MERAH. Unit tak terdaftar = lantainya tak diketahui =
+  //     indikator tak bisa dipercaya untuk unit itu. "Netral" atau "hijau" akan
+  //     BERBOHONG, dan bohongnya tak terlihat sampai ada yang curiga.
+  //   · belum_adopsi  → KUNING, dan tetap kuning tiap hari sampai unit memakai
+  //     panel. Berbeda dari alarm kas lama yang tak bisa diselesaikan: ini
+  //     PUNYA jalan keluar (mulai pakai panelnya).
+  //   · pra_adopsi    → netral BERNAMA + berpenjelasan, bukan sel kosong diam.
+  if (d.adopsi === undefined) {
+    return { kode: "config_hilang", tone: "red", terisi };
+  }
+  if (d.adopsi === null) {
+    return { kode: "belum_adopsi", tone: "yellow", terisi };
+  }
+  if (opts.businessDate < d.adopsi) {
+    return { kode: "pra_adopsi", tone: "pending", terisi };
+  }
 
   if (!terisi) {
     return belumTempo
