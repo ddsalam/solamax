@@ -4,7 +4,7 @@
  * (ScopedUnitId) di server; fungsi ini murni (tanpa I/O) → angka PDF identik
  * dengan angka layar (rekon ke rupiah). Formatter id-ID/WIB dari lib/format.
  */
-import { SETORAN_TOLERANSI_RP, setoranStatus } from "@/lib/compliance";
+import { adminStatus, SETORAN_TOLERANSI_RP, type AdminVerdict } from "@/lib/compliance";
 import { classifyProduct } from "@/lib/config";
 import { idn, rp } from "@/lib/format";
 import type * as Q from "@/lib/queries";
@@ -48,9 +48,37 @@ export interface RincianModel {
   /** Ke-7 section (termasuk yang kosong) — konsumen memfilter sesuai kebutuhan. */
   sections: Section[];
   summary: SummaryRow[];
+  /** Vonis dari `adminStatus` — SATU pembuat vonis, dipakai bersama Ketaatan. */
+  verdict: AdminVerdict;
+}
+
+/**
+ * Konteks VONIS — wajib, bukan opsional.
+ *
+ * ⚠️ KENAPA ADA (2026-08-07): pagi ini kami menyatukan RUMUS H ke `lib/rekon.ts`
+ * dan menyatakan "sumber tunggal tercapai". Yang berduplikat ternyata bukan
+ * rumusnya melainkan VONISNYA: `adminStatus` mendapat gerbang `shifts <
+ * SHIFT_TARGET`, sementara berkas ini menghitung verdict setorannya SENDIRI dan
+ * tak pernah menerima `shifts`. Akibatnya halaman Ketaatan sembuh sementara
+ * halaman Rincian — LEMBAR CETAK YANG DITANDATANGANI PENGAWAS — masih menulis
+ * "⚠ Setoran MELEBIHI uang tunai (selisih Rp 89.189.622)" untuk Korek 2026-08-07
+ * pada hari yang baru 2 dari 3 shift-nya masuk.
+ *
+ * Menyatukan INPUT tidak menyatukan KEPUTUSAN. Field ini WAJIB supaya membangun
+ * model Rincian tanpa menyediakan fakta yang dibutuhkan untuk menilainya adalah
+ * error type-check, bukan lubang senyap.
+ */
+export interface RincianKonteks {
+  /** Shift penjualan ter-ingest hari itu (`getShiftInfo`). */
+  shifts: number;
+  /** Lantai adopsi unit (`adopsiRincian(code)`) — 3 nilai berbeda, lihat config. */
+  adopsi: string | null | undefined;
+  businessDate: string;
+  today: string;
 }
 
 export interface RincianRaw {
+  konteks: RincianKonteks;
   prod: ProdRow[];
   terra: TerraRow[];
   pelanggan: PelRow[];
@@ -86,7 +114,21 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
   const E = penjualanTunai({ A, B, C, D }); // Penjualan Tunai
   const H = uangTunai({ A, B, C, D, F, G }); // Uang Tunai
   const I = setoranTunai.length > 0 ? setoranTunai.reduce((s, r) => s + r.amount, 0) : null;
-  const setoranKode = I !== null ? setoranStatus(H, I) : null;
+
+  // VONIS TUNGGAL — `adminStatus`, aturan yang sama persis dengan halaman
+  // Ketaatan dan feed anomali. Berkas ini TIDAK lagi memutuskan sendiri.
+  const verdict = adminStatus(
+    {
+      adopsi: raw.konteks.adopsi,
+      nPendapatanLain: pendapatanLain.length,
+      nPengeluaran: pengeluaran.length,
+      nSetoran: setoranTunai.length,
+      h: H,
+      i: I,
+      shifts: raw.konteks.shifts,
+    },
+    { businessDate: raw.konteks.businessDate, today: raw.konteks.today },
+  );
 
   const sections: Section[] = [
     {
@@ -206,19 +248,27 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       label: "Setoran Tunai",
       val: I !== null ? rp(I) : null,
       em: true,
-      // Toleransi Rp 1.000 = kuantum slip setoran (lihat SETORAN_TOLERANSI_RP).
-      // Aturan lama `I ≥ H` menghasilkan 10 peringatan palsu per 95 hari (semata
-      // pembulatan ke bawah) DAN menghijaukan 8 kelebihan setor nyata.
+      // Catatan DITURUNKAN dari `verdict`, bukan dihitung ulang. Kalau vonisnya
+      // bukan salah satu dari tiga kode setoran (mis. `tak_terhitung` karena H
+      // masih dirakit), TIDAK ADA catatan yang muncul — persis seperti sel
+      // Ketaatan yang jadi netral.
       note:
-        I === null || setoranKode === null
+        I === null
           ? undefined
-          : setoranKode === "selaras"
+          : verdict.kode === "selaras"
             ? { tone: "ok", text: `Setoran selaras dengan uang tunai (±${rp(SETORAN_TOLERANSI_RP)})` }
-            : setoranKode === "lebih_setor"
+            : verdict.kode === "lebih_setor"
               ? { tone: "warn", text: `Setoran MELEBIHI uang tunai (selisih ${rp(I - H)})` }
-              : { tone: "warn", text: `Setoran kurang dari uang tunai (selisih ${rp(H - I)})` },
+              : verdict.kode === "kurang_setor"
+                ? { tone: "warn", text: `Setoran kurang dari uang tunai (selisih ${rp(H - I)})` }
+                : verdict.kode === "tak_terhitung"
+                  ? {
+                      tone: "warn",
+                      text: "Penjualan hari ini belum lengkap — setoran belum dibandingkan dengan uang tunai",
+                    }
+                  : undefined,
     },
   ];
 
-  return { sections, summary };
+  return { sections, summary, verdict };
 }

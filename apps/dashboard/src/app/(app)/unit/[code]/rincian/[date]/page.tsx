@@ -8,7 +8,7 @@ import {
 } from "@/components/rincian/ManualEntryForm";
 import { RincianExport } from "@/components/rincian/RincianExport";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
-import { UNIT_DISPLAY, unitDotted } from "@/lib/config";
+import { adopsiRincian, UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
@@ -17,6 +17,7 @@ import {
   getEdcBlankCard,
   getEdcForDate,
   getManualEntries,
+  getShiftInfo,
   getPelangganForDate,
   getSalesByProduct,
   getTerraResmiForDate,
@@ -47,7 +48,10 @@ export default async function RincianPage({
   // baris nyata, ia muncul kembali otomatis (filter di bawah = "has rows").
   const hideEmpty = searchParams.kosong !== "tampil";
 
-  const [prod, terra, pelanggan, edc, edcBlank, deposit, pendapatanLain, pengeluaran, setoranTunai] =
+  const [
+    prod, terra, pelanggan, edc, edcBlank, deposit,
+    pendapatanLain, pengeluaran, setoranTunai, shiftInfo,
+  ] =
     await Promise.all([
       getSalesByProduct(unit.unit_id, date, date),
       getTerraResmiForDate(unit.unit_id, date),
@@ -58,11 +62,20 @@ export default async function RincianPage({
       getManualEntries(unit.unit_id, date, "pendapatan_lain"),
       getManualEntries(unit.unit_id, date, "pengeluaran"),
       getManualEntries(unit.unit_id, date, "setoran_tunai"),
+      // Vonis I-vs-H butuh `shifts`: selama penjualan belum lengkap, H masih
+      // dirakit dan membandingkannya dengan setoran memunculkan selisih semu.
+      getShiftInfo(unit.unit_id, date),
     ]);
 
   // SUMBER TUNGGAL: model dipakai render layar (di bawah) DAN ekspor PDF →
   // angka identik (rekon ke rupiah). Data sudah ber-scope (ScopedUnitId).
   const model = buildRincianModel({
+    konteks: {
+      shifts: shiftInfo.shifts,
+      adopsi: adopsiRincian(unit.code),
+      businessDate: date,
+      today: todayWib(),
+    },
     prod,
     terra,
     pelanggan,

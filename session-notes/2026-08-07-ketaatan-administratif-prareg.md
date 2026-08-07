@@ -649,3 +649,145 @@ Catatan untuk penilaian besok: pukul **22:15** nilainya masih **+89.189.622**
 (I − H). Agar prediksi saya benar, **shift 3 harus menambah >100 juta ke H**.
 **Kalau meleset, dilaporkan melesetnya — pitanya TIDAK dilebarkan setelah
 melihat hasil.**
+
+---
+
+## DISTRIBUSI SHIFT — DATA, bukan kesimpulan
+
+Klaim "nol sel settle punya 1–2 shift" adalah **seluruh argumen keamanan** gerbang
+`shifts < SHIFT_TARGET`: ia yang membedakan "membungkam artefak" dari "membungkam
+temuan". Owner mencoba memeriksanya dari papan hidup dan **tidak berhasil** membuka
+panel detail per-sel — jadi sejauh itu ia klaim saya sendirian. Diterbitkan sebagai
+tabel supaya bisa diperiksa ulang tanpa akses DB.
+
+**91 sel settle, `2026-07-25` … `2026-08-06`, 7 unit:**
+
+| jumlah shift | sel | % |
+| ---: | ---: | ---: |
+| 0 | **0** | 0,0 |
+| 1 | **0** | 0,0 |
+| 2 | **0** | 0,0 |
+| **3** | **91** | **100,0** |
+
+Per unit (13 sel masing-masing) — kalau ada yang menyimpang ia terlihat di sini:
+
+| unit | sel | 0 | 1 | 2 | ≥3 | maks |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 28 Oktober | 13 | 0 | 0 | 0 | 13 | 3 |
+| Adisucipto | 13 | 0 | 0 | 0 | 13 | 3 |
+| Bakau | 13 | 0 | 0 | 0 | 13 | 3 |
+| Batu Layang | 13 | 0 | 0 | 0 | 13 | 3 |
+| Bundaran Kotabaru | 13 | 0 | 0 | 0 | 13 | 3 |
+| Imam Bonjol | 13 | 0 | 0 | 0 | 13 | 3 |
+| Korek | 13 | 0 | 0 | 0 | 13 | 3 |
+
+**Maks = 3 di semua unit** — jadi tak ada hari ber-4-shift yang bisa menyembunyikan
+hari ber-2-shift dalam agregat.
+
+---
+
+## EKOR C/D — PENGUKURAN PERTAMA SAYA GAGAL, DAN KENAPA
+
+Pertanyaan owner: setelah shift ke-3 tutup, berapa lama C dan D masih bergerak?
+
+### Percobaan 1 — `ingested_at`: CONFOUNDED, jangan dipakai
+
+| komponen | n | p50 | p90 | maks |
+| --- | ---: | ---: | ---: | ---: |
+| C (pelanggan+voucher) | 210 | 7.347,8 mnt | 23.654,7 | 31.898,1 |
+| D (edc) | 210 | 7.347,9 mnt | 23.655,4 | 31.901,2 |
+
+Median "ekor" 5 hari itu **tidak masuk akal**, dan C vs D beda **0,1 menit** — dua
+tabel berbeda mustahil berhenti bergerak sedekat itu secara kebetulan. Itu tanda
+**satu sebab bersama**.
+
+Kontrol yang membongkarnya:
+
+```
+max(ingested_at) pelanggan_sale, unit 1, 30 hari terakhir:
+  08-07 03:37:21  dibagi 7 TANGGAL BISNIS berbeda
+  08-07 03:37:53  dibagi 7
+  08-07 03:38:26  dibagi 6
+  08-07 03:36:49  dibagi 5
+```
+
+Tujuh tanggal bisnis berbeda berbagi stempel **detik yang sama** = **sapuan tier-2
+full-history agent** (`apps/agent/src/config.ts:99`) menulis ulang baris secara
+batch. `ingested_at` mengukur **kapan baris terakhir DITULIS ULANG**, bukan **kapan
+nilainya berubah**. Upsert menulis ulang nilai yang identik.
+
+⚠️ **Berlaku umum:** setiap pengukuran masa-depan yang bersandar pada `ingested_at`
+di tabel mirror akan terkonfound cara yang sama.
+
+### Percobaan 2 — NILAI vs baseline nyata: terbatas tapi sah
+
+Membandingkan H hari SETTLE terhadap angka yang **sudah saya catat** di sesi ini:
+
+| unit-hari | dicatat | jam | diukur ulang 22:31 | bergerak? |
+| --- | ---: | --- | ---: | --- |
+| Bakau 2026-08-06 | I−H **+3.362.265** | ~14:44 | **+3.362.264,50** | **tidak** |
+| IB 2026-08-03 | H **539.143.993,50** | ~12:50 | **539.143.993,50** | **tidak** |
+| 28 Oktober 2026-08-04 | H **291.635.952,00** | ~12:49 | **291.635.952,00** | **tidak** |
+
+**Tiga unit-hari settle, 8–10 jam terpisah, identik sampai rupiah** (selisih 0,50
+pada Bakau adalah pembulatan laporan saya, bukan pergerakan data).
+
+### Yang BELUM terjawab, dan saya tidak berpura-pura sebaliknya
+
+Jendela kritisnya adalah **jam-jam tepat setelah shift ke-3 tutup** — dan untuk itu
+**tak ada baseline** yang saya punya. Ketiga hari di atas sudah lama settle saat
+saya catat pertama kali. Yang saya tahu bergerak: Korek 2026-08-07 (hari BERJALAN,
+2 shift) C tumbuh **+3.981.641 dalam 23 menit**.
+
+Jadi: **hari yang sudah lama settle stabil; jendela segera-setelah-tutup belum
+terukur.** Kalau ekornya menit, gerbang shift sudah cukup. Kalau jam, gerbangnya
+perlu bersandar pada sesuatu selain jumlah shift.
+
+**Yang akan menjawabnya** (BELUM dikerjakan, menunggu owner): rekam `sum(C)` dan
+`sum(D)` per (unit, tanggal) setiap ~15 menit selama satu malam penuh melewati
+tutup shift ke-3, lalu laporkan kapan nilainya berhenti berubah. Read-only, satu
+tabel scratch, satu malam. **Itu satu-satunya cara mendapat baseline pada jendela
+yang benar** — dan ia harus mengukur NILAI, bukan `ingested_at`.
+
+---
+
+## ⛔ KOREKSI SEBELUM ARSIP — gerbang shift menutup SEPARUH permukaan
+
+Catatan di atas menggambarkan gerbang `shifts < SHIFT_TARGET` sebagai "membungkam
+artefak". **Itu benar untuk halaman Ketaatan, dan SALAH untuk halaman Rincian.**
+Owner memeriksa layar setelah deploy pilot:
+
+- Papan Ketaatan **sembuh** — Korek 08-07 `warning today` → `pending tempo today`,
+  ketujuh sel hari berjalan seragam netral, distribusi sel settle **tidak
+  bergeser sedikit pun** (8 danger / 39 pra-adopsi / 38 success / 6 warning,
+  identik sebelum & sesudah). "Nol sel settle terpengaruh" **terverifikasi
+  independen** — bukan lagi klaim saya sendirian.
+- Halaman Rincian **TIDAK sembuh**: masih menulis
+  **"⚠ Setoran MELEBIHI uang tunai (selisih Rp 89.189.622)"**.
+
+### Sebabnya: DUA pembuat vonis, gerbang dipasang di satu
+
+| | gerbang `shifts` |
+| --- | --- |
+| `compliance.ts::adminStatus` | ✅ dapat |
+| `rincian-model.ts` | ❌ menghitung verdict SENDIRI; `RincianRaw` tak menerima `shifts` |
+
+Pagi ini kami menyatukan **RUMUS H** ke `lib/rekon.ts` dan menyatakan sumber
+tunggal tercapai. Yang berduplikat ternyata **VONISNYA**.
+
+> **Menyatukan INPUT tidak menyatukan KEPUTUSAN.**
+
+Dan permukaan yang terlewat adalah yang **lebih terlihat**: lembar cetak yang
+**ditandatangani pengawas**, bukan heatmap internal.
+
+### Ini juga ujian pertama G4, dan G4 benar
+
+Owner **menahan #223** karena catatannya akan mengarsipkan klaim pada siklus yang
+sama ia diasersikan — persis yang G4 larang. Tanpa penahanan itu, arsip akan
+memuat "gerbang membungkam artefak" tanpa syarat, dan pembaca berikutnya akan
+menalar dari klaim yang hanya benar separuh.
+
+**Perbaikannya di PR terpisah** (vonis diangkat ke `adminStatus`, `RincianRaw.
+konteks` dibuat wajib sehingga omisi = error type-check). Kedua pengukuran di
+bawah — distribusi shift 91/91 dan pembongkaran `ingested_at` sebagai confound —
+**tidak terpengaruh dan tidak diubah**.
