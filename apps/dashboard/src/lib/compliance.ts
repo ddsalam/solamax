@@ -142,6 +142,9 @@ export function adminStatus(
   if (d.adopsi === null) {
     return { kode: "belum_adopsi", tone: "yellow", terisi };
   }
+  // `<` bukan `<=`: HARI ADOPSI ITU SENDIRI SUDAH DINILAI. Itu keputusan yang
+  // ditimbang, bukan kebetulan — alasan kedua sisinya ada di ADOPSI_RINCIAN
+  // (lib/config.ts). Kasus nyata yang terkena: IB 2026-06-21.
   if (opts.businessDate < d.adopsi) {
     return { kode: "pra_adopsi", tone: "pending", terisi };
   }
