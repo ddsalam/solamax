@@ -69,3 +69,78 @@ tidak sepenuhnya setara. Angka yang mengikat = pengukuran pasca-deploy staging.
 harus membungkus: `(count(*) FILTER (…))::int`). `pnpm check` **hijau penuh**
 dengan bug ini di dalamnya, karena tak satu pun unit test menyentuh DB. Halaman
 Ketaatan akan 500 di staging. Ditemukan `ketaatan-live.integration.test.ts`.
+
+---
+
+## KOREKSI & BASELINE — dari rekaman produksi owner (2026-08-07, pra-promosi)
+
+### 1. Koreksi klaim yang lebih kuat dari buktinya
+
+Saya menulis "Board dan halaman Ketaatan **hari ini sudah** menceritakan dua cerita
+berbeda". **Itu overclaim.** Owner memuat `/monitoring/ketaatan` produksi tiga kali
+berturut-turut; ketiganya menghasilkan `2017-08-24` — minimum yang benar, identik
+dengan hitungan `anomalies.ts`. Divergensinya **mungkin secara konstruksi, TIDAK
+teramati pada n=3**.
+
+Yang salah **tanpa syarat** dan tetap berdiri: tanggal itu milik **Bundaran
+Kotabaru**, tapi strip melabelinya **"SEMUA UNIT"**. Label salah adalah fakta;
+non-determinisme adalah risiko yang belum terwujud.
+
+### 2. BASELINE PRA-PERUBAHAN — indikator lama tidak pernah bersinyal
+
+Rekaman owner: heatmap produksi **7 unit × 14 hari = 98 sel, SEMUANYA HIJAU**.
+Nol kuning, nol merah. Itu pembenaran terkuat untuk perubahan ini dan **tidak ada
+di laporan Fase 0 saya** — kelewatan saya.
+
+Reproduksi saya (2026-08-07 13:46 WIB, kode produksi, DB pilot) memberi **91 hijau
++ 7 merah**, bukan 98 hijau. Selisihnya BUKAN kontradiksi: ketujuh merah itu tepat
+kolom **hari berjalan 2026-08-07**, yang pada pukul 13:46 masih `0 shift / 0 opname`
+di ketujuh unit (EasyMax menulis `sales_header` saat shift TUTUP). Rekaman owner
+hampir pasti diambil ketika "hari ini" masih 2026-08-06 — hari yang sudah punya
+3 shift penuh. Untuk **91 sel yang sudah settle, klaim owner terkonfirmasi bulat:
+91/91 hijau = nol sinyal dalam 13 hari.**
+
+### 3. Sel yang berubah warna di bawah aturan BARU — jawabannya BUKAN nol
+
+Atas 91 sel settle yang sama:
+
+| | LAMA | BARU |
+| --- | ---: | ---: |
+| hijau | **91** | 38 |
+| kuning | 0 | 6 |
+| merah | 0 | **47** |
+
+**53 dari 91 sel (58%) berubah warna.** Rincian: 46 `belum_diisi`, 6 `lebih_setor`
+(termasuk Bakau 2026-08-06 **+3.362.265** yang belum pernah terlihat), 1
+`kurang_setor` (IB 2026-08-03 **−476.993**). Indikator baru bersinyal; ia tidak
+mengganti buta dengan buta.
+
+### 4. ⚠️ TAPI — 83% merahnya adalah PRA-ADOPSI, bukan kelalaian
+
+Tanggal pemakaian pertama `app.manual_entry` per unit:
+
+| Unit | Entri pertama | Sel merah | Pra-adopsi? |
+| --- | --- | ---: | --- |
+| Imam Bonjol | 2026-06-21 | 1 | tidak (kurang setor nyata) |
+| Bakau | 2026-07-08 | 0 | — |
+| Adisucipto | 2026-07-16 | 7 | **tidak** — celah asli pasca-adopsi |
+| Bundaran Kotabaru | 2026-08-02 | 8 | **ya, semua** |
+| Batu Layang | 2026-08-03 | 9 | **ya, semua** |
+| Korek | 2026-08-06 | 12 | **ya, semua** |
+| 28 Oktober | 2026-08-04 | 10 | **ya, semua** |
+
+**39 dari 47 sel merah (83%) mendahului entri manual PERTAMA unit itu.** Bukan
+pengawas lalai — fiturnya memang belum dipakai di sana. Tanpa penanganan, papan
+pilot menyala merah pada hari promosi karena alasan yang bukan pelanggaran; itu
+penyakit "melatih orang mengabaikan alarm" yang SAMA, cuma bentuk baru.
+
+Usulan (BELUM dikerjakan, menunggu keputusan owner): **lantai adopsi** — jangan
+nilai hari sebelum `min(business_date)` unit ybs. Efeknya pada data sekarang:
+47 → **8 sel merah** (7 Adisucipto + 1 IB), semuanya celah asli.
+
+### 5. Badge sidebar — premis kami berdua meleset
+
+Badge sudah menunjukkan **"9+"** sekarang. Menambah 0–1 item merah **tidak akan
+terlihat**. Peringatan saya di PR #202 benar secara mekanis tapi tak berarti secara
+praktis: anomali administrasi baru TIDAK akan tampak di badge. Badge yang mentok
+9+ adalah isu tersendiri — diusulkan, tidak dikerjakan.
