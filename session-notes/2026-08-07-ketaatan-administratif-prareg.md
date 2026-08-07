@@ -544,3 +544,108 @@ merah **IDENTIK** (`rgb(185,28,28)`) — `today` tak lagi mengencerkan warna.
 Kedua isian netral hanya beda **~2% luminansi** (`rgb(239,239,239)` vs
 `rgb(245,245,247)`); **seluruh pembedanya bertumpu pada gaya border dan tekstur**.
 Aman di desktop; **belum diuji di ponsel atau di bawah silau**.
+
+---
+
+## REKONSILIASI KOREK — replika saya TIDAK menyimpang; datanya bergerak (ketiga kali)
+
+Owner membaca layar Rincian beberapa menit setelah pembacaan saya dan mendapat
+H berbeda ~Rp 3,98 juta. Dua kemungkinan, dan bedanya besar: **data bergerak
+lagi**, atau **replika query saya menyimpang dari model produksi**.
+
+**Eksperimen penentu:** jalankan KEDUA model PRODUKSI (`getAdminDays` — dipakai
+Ketaatan & feed anomali — dan `buildRincianModel` — dipakai layar Rincian & PDF)
+berturut-turut dalam satu snapshot, lalu bandingkan.
+
+```
+SNAP 2026-08-07 22:15:22 → 22:15:23 WIB
+ADMIN   A=294.467.294,5  B=0  C=17.999.091  D=9.798.025  F=4.205.200  G=618.000
+ADMIN   H=270.257.378,5
+RINCIAN H=Rp 270.257.379
+DELTA H = 0
+```
+
+**Kedua model produksi identik.** Replika saya tidak menyimpang.
+
+Yang bergerak, terkuantifikasi:
+
+| waktu | A | C | H |
+| --- | ---: | ---: | ---: |
+| 21:52 (saya) | 294.217.252,50 | 14.017.450 | 273.988.977,50 |
+| ~22:0x (layar owner) | 294.217.253 | — | 270.007.337 |
+| 22:15 (produksi ×2) | 294.467.294,50 | 17.999.091 | 270.257.378,50 |
+
+Selisih owner-vs-saya **3.981.640,50**; pertumbuhan C **3.981.641,00**. Beda
+**Rp 0,50** — artefak pembulatan `rp()` di layar. **Cocok.** Sisanya (250.042)
+adalah pertumbuhan A.
+
+`pelanggan_sale`/`voucher_sale` punya watermark sendiri, jadi C bertambah tanpa
+menunggu shift tutup. **Pelajaran yang saya bayar untuk kedua kalinya:** angka
+dari populasi yang sedang bergerak harus **dibekukan snapshot-nya** sebelum
+dilaporkan — sama seperti episode n=95/96/97.
+
+---
+
+## GERBANG SHIFT — perbaikan pagi menutup KASUS, bukan KELASNYA
+
+Bukti hidupnya ada di papan: Korek 2026-08-07 pukul 22:15, **2 dari 3 shift**,
+menulis **"⚠ Setoran MELEBIHI uang tunai Rp 89.189.622"**. Penyebabnya IDENTIK
+dengan artefak Rp 355,9 juta pukul 13:46 — ingest parsial — hanya lebih kecil
+karena lebih banyak data sudah masuk. `tak_terhitung` tak menangkapnya karena ia
+hanya menguji `shifts <= 0`: begitu shift PERTAMA tutup, hari itu dinilai seolah
+lengkap.
+
+Saya menemukan kasus nol-shift dan menutup kasus nol-shift. **Kelasnya adalah
+"H masih dirakit".**
+
+### Keputusan owner, dilaksanakan
+
+`shifts <= 0` → **`shifts < SHIFT_TARGET`** dengan `SHIFT_TARGET = 3` — angka
+yang **sudah** dipakai `salesStatus`, kini satu konstanta bersama, jadi tak ada
+asumsi baru yang diperkenalkan.
+
+"Hari yang sudah diisi dinilai SEKETIKA" **TETAP UTUH** untuk hari yang datanya
+lengkap. Yang ditahan hanya perbandingan I-vs-H selama H masih dirakit — itu
+bukan pengecualian terhadap aturan, itu **prasyarat aturannya bisa bermakna**.
+
+### Dampak pada riwayat: NOL
+
+| | |
+| --- | ---: |
+| sel settle (2026-07-25…08-06) | 91 |
+| dinilai SEBELUM perubahan | 91 |
+| dinilai SESUDAH perubahan | **91** |
+| sel yang berubah kode | **0** |
+| sel settle dengan 1–2 shift | **0** |
+
+Setiap hari yang sudah settle punya 3 shift, jadi gerbang ini **membungkam
+artefak tanpa membungkam satu pun temuan nyata**. Bakau 08-06 dan IB 08-03 tetap
+tertangkap.
+
+### Sinyal "penjualan belum lengkap" tidak hilang
+
+`salesStatus` tetap **kuning** untuk 1–2 shift dan **merah** untuk 0 — modul
+Penjualan di sel yang sama tetap bersuara. `getZeroClosingEvents` tak menyentuh
+`shifts` sama sekali → tak terdampak.
+
+### Uji mutasi — tiga arah
+
+| mutasi | hasil |
+| --- | --- |
+| kembali ke `shifts <= 0` (kasus saja) | **MERAH** — Korek 2-shift lolos jadi `lebih_setor` |
+| gerbang dilebarkan `shifts < 4` | **MERAH** — hari LENGKAP ikut ditahan, aturan lumpuh |
+| `SHIFT_TARGET` dipisah dari `salesStatus` | **MERAH** — dua ambang tak diizinkan |
+
+Fixture bernama **`KOREK_08_07`** memakai angka nyata snapshot 22:15:22, dengan
+kontrol eksplisit `setoranStatus(h, I) === "lebih_setor"` — membuktikan
+gerbangnyalah yang mengubah hasil, bukan kebetulan.
+
+### Prediksi Korek TETAP BERLAKU — tidak dilebarkan
+
+Dikunci sebelum pengukuran final: **`kurang_setor`**, I − H antara **−15 juta**
+dan **−65 juta**, dan Rp 355,9 juta tak muncul di angka final.
+
+Catatan untuk penilaian besok: pukul **22:15** nilainya masih **+89.189.622**
+(I − H). Agar prediksi saya benar, **shift 3 harus menambah >100 juta ke H**.
+**Kalau meleset, dilaporkan melesetnya — pitanya TIDAK dilebarkan setelah
+melihat hasil.**
