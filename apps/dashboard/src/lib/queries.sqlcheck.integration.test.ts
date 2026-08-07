@@ -32,13 +32,20 @@ import type { ScopedUnitId } from "./scope-rule";
 const LIVE = process.env.SQLCHECK_DB === "1" && !!process.env.DATABASE_URL;
 const d = LIVE ? describe : describe.skip;
 
-const Q = await import("./queries");
+/**
+ * ⚠️ Import SENGAJA MALAS (di dalam tes), bukan top-level. `./queries` menarik
+ * `./db`, yang MELEMPAR saat `DATABASE_URL` tak ada — dan di CI biasa memang tak
+ * ada. Import top-level membuat berkas ini gagal saat COLLECT, sehingga
+ * `describe.skip` tak sempat menolong: `pnpm check` jadi MERAH untuk semua
+ * orang. Tertangkap `pnpm check` sendiri sebelum di-commit.
+ */
+type QMod = typeof import("./queries");
 const U = 30000 as unknown as ScopedUnitId; // sentinel: TIDAK ADA, && muat di SMALLINT (unit_id smallint)
 const D = "2026-07-01";
 const SEC: ManualSection = "pengeluaran";
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
-const CASES: Array<[string, () => Promise<unknown>]> = [
+const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
   ["getSyncByUnit", () => Q.getSyncByUnit([U])],
   ["getSalesByProduct", () => Q.getSalesByProduct(U, D, D)],
   ["getDailySalesByProduct", () => Q.getDailySalesByProduct([U], D, D)],
@@ -77,6 +84,9 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getUsulanSoList", () => Q.getUsulanSoList(U, 10)],
 ];
 
+/** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */
+const NAMES = makeCases({} as QMod).map(([n]) => n);
+
 d("K1 · setiap query bisa dieksekusi Postgres (gerbang deploy)", () => {
   afterAll(async () => {
     const { pool } = await import("./db");
@@ -92,16 +102,19 @@ d("K1 · setiap query bisa dieksekusi Postgres (gerbang deploy)", () => {
    * dan tak ada tes yang menyalak. Guard yang benar membandingkan dengan
    * SUMBER KEBENARAN di luar dirinya.
    */
-  it("mencakup SETIAP fungsi query yang diekspor (diturunkan, bukan hardcoded)", () => {
+  it("mencakup SETIAP fungsi query yang diekspor (diturunkan, bukan hardcoded)", async () => {
+    const Q = await import("./queries");
     const exported = Object.keys(Q)
       .filter((k) => k.startsWith("get") && typeof (Q as Record<string, unknown>)[k] === "function")
       .sort();
-    const covered = CASES.map(([n]) => n).sort();
+    const covered = [...NAMES].sort();
     expect(exported.filter((n) => !covered.includes(n)), "query tak tercakup K1").toEqual([]);
   });
 
-  for (const [name, call] of CASES) {
+  for (const name of NAMES) {
     it(`${name} dieksekusi tanpa error Postgres`, async () => {
+      const Q = await import("./queries");
+      const call = makeCases(Q).find(([n]) => n === name)![1];
       await expect(call(), `${name}: SQL ditolak Postgres`).resolves.toBeDefined();
     }, 30_000);
   }
