@@ -209,3 +209,131 @@ lebih mahal daripada tak ada catatan**, karena ia dipercaya.
 | **G4** | tunda-satu-siklus + verifikasi arsip pasca-merge | #209 salah ~40 menit | sangat rendah |
 
 **Tidak ada yang dikerjakan sampai owner memilih.**
+
+---
+
+# HASIL PELAKSANAAN (2026-08-07) — owner memilih KEEMPATNYA
+
+## G3 · PENGUKURAN SAJA — obatnya belum dipilih
+
+Owner benar bahwa kesimpulan saya terlalu luas. `maxScale=2` berarti armada tak
+pernah bisa lebih dari dua instance, jadi 12 kelahiran memang **mustahil** dari
+ledakan trafik. Saya menggabung "lahir atau bangun" jadi satu kategori, dan
+penggabungan itulah yang membuat kesimpulannya terlalu kuat.
+
+### 12 kelahiran instance, digolongkan
+
+| golongan | kelahiran | render lambat dlm 120 dtk |
+| --- | ---: | ---: |
+| PASCA-DEPLOY (≤5 mnt sejak revisi dibuat) | **6/12 (50%)** | 6 |
+| NAIK-SKALA 1→2 (instance lain aktif) | **4/12 (33%)** | **0** |
+| DAUR-ULANG (instance baru, bukan deploy) | **2/12 (17%)** | 1 |
+
+### 21 render dokumen lambat, digolongkan menurut SEBAB
+
+| sebab | n | porsi | disembuhkan oleh |
+| --- | ---: | ---: | --- |
+| **BANGUN-DARI-IDLE** (instance hidup, idle ≥120 dtk) | **8** | 38,1% | CPU-always-on |
+| **PASCA-DEPLOY** | **6** | 28,6% | warm-up sebelum traffic |
+| **SUSULAN** (instance sudah panas, mengekor render lambat lain) | **6** | 28,6% | apa pun yang menyembuhkan pemimpinnya |
+| DAUR-ULANG instance baru | **1** | 4,8% | — |
+| **NAIK-SKALA 1→2** | **0** | **0%** | `minScale=2` |
+
+⚠️ **`minScale=2` menyembuhkan 0 dari 21 render lambat di jendela ini.** Keempat
+kelahiran naik-skala memang terjadi, tapi instance-instance itu hanya menerima
+**1–2 permintaan masing-masing** (kemungkinan probe/prefetch), jadi tak satu pun
+render dokumen lambat bisa diatribusikan padanya. **Itu pengamatan bersampel
+kecil, bukan bukti bahwa naik-skala tak pernah menyakiti.**
+
+Catatan tambahan: sebagian "SUSULAN" adalah pasangan permintaan pada **detik yang
+sama** (mis. 08-06 22:29:11 → 5,64 dan 5,21 dtk). Dengan `concurrency=8` di atas
+**1 vCPU**, dua render berat serentak berebut CPU di dalam SATU instance. Itu
+mekanisme keempat — bukan pool, bukan cache, bukan cold start.
+
+**Obat tidak dipilih. Menunggu owner.**
+
+## G1 · K1 dikerjakan — dan DIBUKTIKAN BISA MERAH
+
+| | dengan bug `count(*)::int FILTER` terpasang |
+| --- | --- |
+| `pnpm typecheck` | **0 error** |
+| unit test (scope-wiring + compliance) | **70 lolos** |
+| job `ci` | **HIJAU** |
+| **gerbang K1** | **MERAH — tepat 2 query**, `syntax error at or near "FILTER"` |
+
+Dikembalikan → **37/37 hijau, 6,05 detik** untuk 36 query.
+
+Dua kontrol saya sendiri gagal lebih dulu dan menyelamatkan pembuktiannya:
+`ENOENT /cloudsql/…` (secret memakai socket unix; param `host` harus dibuang)
+dan `value "30000"… out of range for smallint` (sentinel awal 424242 melampaui
+`unit_id smallint`). **Kontrol-1 "pohon bersih harus hijau" yang menangkap
+keduanya** — tanpa itu saya akan melaporkan merah yang sebabnya salah.
+
+Kredensial dari **Secret Manager lewat WIF**, bukan GitHub secret: repo ini punya
+**nol repo-secret** (`actions/secrets` → `total_count: 0`), jadi
+`${{ secrets.… }}` akan mendarat **kosong dan diam**.
+
+### Temuan sampingan: guard kelengkapan yang tidak menjaga kelengkapan
+
+`queries.scope-wiring.test.ts` memakai `expect(CASES.length).toBe(34)` — itu
+membandingkan daftar **dengan dirinya sendiri**: menangkap penghapusan, **buta
+terhadap kelalaian**. Terbukti: **`getAdminDays`** (saya tambahkan sesi ini) dan
+**`getZeroClosingEvents`** — keduanya `qScoped`/RLS — tak pernah tercakup, dan
+tak satu tes pun menyalak. Padahal itu tes **isolasi multi-tenant**.
+
+K1 menurunkan cakupannya dari **ekspor modul**, jadi kelas lubang ini tertutup
+di sana. Guard lama sengaja tidak saya sentuh (di luar lingkup; dilaporkan).
+
+## G2 · Dikerjakan — dan gerbangnya DILIHAT MENOLAK
+
+Commit kosong yang sama, didorong langsung ke `staging`:
+
+| | hasil |
+| --- | --- |
+| **sebelum** (`enforce_admins:false`) | `9d3137f..0ed5967 staging -> staging` — **BERHASIL**, pelanggaran hanya dicatat "Bypassed" |
+| **sesudah** (`enforce_admins:true`) | `GH006: Protected branch update failed` — **DITOLAK** |
+
+`enforce_admins` kini **`true` di `staging` DAN `main`**.
+
+Temuan penegakan yang tidak konsisten: `allow_force_pushes:false` **menggigit
+admin** (`Cannot force-push to this branch`) sementara `required_status_checks`
+**tidak** — keduanya di branch yang sama. Satu setelan menghormati admin, satu
+lagi mengecualikannya.
+
+⚠️ **Jejak yang tersisa & TIDAK saya bersihkan**: commit kosong `0ed5967` dari
+kontrol pra-gerbang ada di `staging`. Menghapusnya butuh **melemahkan sementara
+proteksi yang baru saja terbukti bekerja** — force-push ditolak. Commit itu
+**nol perubahan berkas** dan pesannya menjelaskan dirinya. Saya memilih
+meninggalkan jejak jujur daripada melonggarkan gerbang demi kerapian.
+
+### `strict: true` — SAYA MEMBANTAH, jangan dinyalakan
+
+Owner meminta saya membantah kalau gesekannya melebihi manfaatnya. **Melebihi.**
+
+- **Manfaatnya nyaris nol di sini.** CI berjalan pada event `pull_request`
+  ([`ci.yml`](../.github/workflows/ci.yml)), dan GitHub menjalankan event itu
+  terhadap **merge-preview** (`refs/pull/N/merge`) — bukan terhadap ujung branch.
+  Jadi cek hijau **sudah** mencerminkan hasil merge. Itulah yang dijanjikan
+  `strict`, dan sudah didapat.
+- **Gesekannya nyata dan berulang.** Kadens repo ini belasan PR dalam sehari,
+  sering dengan PR dokumentasi paralel. `strict:true` memaksa **setiap** branch
+  di-rebase tiap kali base bergerak — termasuk PR docs yang tak mungkin
+  berkonflik secara semantik.
+- **Yang akan terjadi:** ia dimatikan dalam seminggu, dan kita kehilangan
+  kebiasaan mempercayai gerbang. Itu biaya yang lebih mahal dari manfaatnya.
+
+**Rekomendasi: `enforce_admins` saja (sudah menyala). `strict` biarkan `false`.**
+
+## G4 · Diberlakukan sekarang, mulai dari rantai ini sendiri
+
+[`scripts/verify-archive.sh`](../scripts/verify-archive.sh) membaca berkas
+**hasil merge dari `origin`** dan memastikan penanda retraksi benar-benar ada.
+
+**Pemakaian pertamanya langsung MERAH** — saya mencari `DICABUT`, padahal yang
+ter-merge `DICORET`. Klaim saya berasal dari ingatan, bukan dari berkas. Itu
+persis kegagalan yang skrip ini ada untuk menangkapnya, dan ia menangkapnya pada
+percobaan pertama. Setelah diperbaiki: **4/4 penanda terverifikasi ADA**.
+
+Bagian **tunda-satu-siklus** belum dimekaniskan (ia aturan waktu, bukan skrip);
+pembenaran empirisnya tetap: di sesi ini klaim frekuensi dan koreksi L6
+sama-sama bertahan **tepat satu putaran** sebelum dibantah.
