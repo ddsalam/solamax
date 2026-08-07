@@ -255,6 +255,49 @@ describe("adminStatus", () => {
     ).toBe("kurang_setor");
   });
 
+  // === UMPAN BALIK SEKETIKA (keputusan owner 2026-08-07, dari papan live) ====
+  // Jatuh tempo H+1 HANYA melindungi hari yang BELUM diisi. Begitu pengawas
+  // mengisi, hari itu dinilai SEKETIKA — termasuk bisa MERAH. Itu justru nilai
+  // "real-time" yang dikejar papan ini: menahan umpan balik sampai lusa akan
+  // membunuh manfaatnya. Dulu ini efek samping tak tertulis dari urutan cabang;
+  // sekarang keputusan yang dijaga tes.
+  it("BELUM jatuh tempo + setoran KURANG → tetap MERAH seketika", () => {
+    const v = adminStatus(hari({ h: 343_322_289.52, i: 342_517_000 }), {
+      businessDate: kemarin, // D+1 — belum jatuh tempo
+      today,
+    });
+    expect(v.kode).toBe("kurang_setor");
+    expect(v.tone).toBe("red");
+    expect(v.tone).not.toBe("pending"); // TIDAK ditahan
+  });
+
+  it("BELUM jatuh tempo + setoran LEBIH → kuning seketika", () => {
+    const v = adminStatus(hari({ h: 291_635_952.0, i: 292_241_000 }), {
+      businessDate: kemarin,
+      today,
+    });
+    expect(v.kode).toBe("lebih_setor");
+    expect(v.tone).toBe("yellow");
+  });
+
+  it("BELUM jatuh tempo + selaras → HIJAU seketika (bukan netral)", () => {
+    // Inilah yang menggantikan varian legenda "belum tempo · terisi": hari yang
+    // sudah diisi meninggalkan keadaan netral sama sekali, jadi "siapa sudah
+    // mengisi hari ini" terbaca dari sel yang BUKAN arsir.
+    const v = adminStatus(hari({ h: 545_494_253.0, i: 545_495_000 }), {
+      businessDate: kemarin,
+      today,
+    });
+    expect(v.kode).toBe("selaras");
+    expect(v.tone).toBe("green");
+  });
+
+  it("hanya hari KOSONG yang ditahan sampai jatuh tempo", () => {
+    const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
+    expect(adminStatus(hari(kosong), { businessDate: kemarin, today }).tone).toBe("pending");
+    expect(adminStatus(hari(kosong), { businessDate: lewatTempo, today }).tone).toBe("red");
+  });
+
   it("D+2 adalah hari pertama yang bisa merah (batas jatuh tempo)", () => {
     const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
     expect(adminStatus(hari(kosong), { businessDate: "2026-08-06", today }).tone).toBe("pending");

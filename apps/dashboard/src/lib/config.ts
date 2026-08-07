@@ -155,6 +155,27 @@ export function unitLabel(code: string, fallbackName?: string): string {
  * Tanggal di bawah = `min(business_date)` app.manual_entry per unit, dibaca
  * sekali dari DB pilot 2026-08-07 lalu DIBEKUKAN. Jangan "menyegarkan" nilainya
  * dari DB — itu mengembalikan masalah yang justru dihindari pembekuan ini.
+ *
+ * ── KEPUTUSAN, BUKAN KEBETULAN ────────────────────────────────────────────
+ * Lantai = tanggal entri PERTAMA unit, dan HARI ITU SENDIRI IKUT DINILAI
+ * (perbandingan `businessDate < adopsi`, bukan `<=`).
+ *
+ * Konsekuensi nyata: Imam Bonjol 2026-06-21 — hari pertama IB memakai panel,
+ * diisi Pendapatan Lain & Pengeluaran tapi TANPA setoran — dinilai MERAH
+ * (`setoran_kosong`). Catatan akurasi: tanggal itu JATUH DI LUAR jendela 14 hari
+ * yang berjalan sekarang, jadi ia BUKAN salah satu dari 8 sel merah terukur
+ * (8 = 7 Adisucipto + 1 IB `kurang_setor` 2026-08-03). Ia akan menyala merah
+ * pada jendela mana pun yang memuatnya.
+ *
+ * Dua sisi yang sudah ditimbang (owner, 2026-08-07):
+ *   PRO  hari itu panelnya memang dipakai, dan setoran memang tidak dicatat —
+ *        memaafkannya berarti melubangi hari yang datanya justru ada.
+ *   KONTRA hari pertama seseorang memakai fitur baru adalah hari BELAJAR,
+ *        bukan hari lalai; menghukumnya menghukum orang yang baru mulai patuh.
+ *
+ * Dipilih: TETAP DINILAI. Kalau nanti diubah jadi memaafkan hari pertama,
+ * ubah `<` menjadi `<=` di adminStatus() — dan sadari itu memaafkan SATU hari
+ * per unit selamanya, bukan cuma saat onboarding.
  */
 export const ADOPSI_RINCIAN: Record<string, string | null> = {
   "6478111": "2026-06-21", // Imam Bonjol

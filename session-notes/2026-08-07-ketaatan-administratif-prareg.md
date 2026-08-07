@@ -205,7 +205,7 @@ Jendela pembanding **TETAP**: 91 sel settle `2026-07-25 … 2026-08-06`, 7 unit.
 | L3 | `pra_adopsi` **39** | **39** | ✅ **tepat** |
 | L4 | Bakau 08-06 `lebih_setor` +3.362.265 tertangkap | `lebih_setor`, I−H = **+3.362.265** | ✅ |
 | L5 | IB 08-03 `kurang_setor` −476.993 tertangkap | `kurang_setor`, I−H = **−476.993** | ✅ |
-| L6 | hijau **38**, tak berubah | **37**, tak berubah | ⚠️ **substansi benar, angka meleset 1** |
+| L6 | hijau **38**, tak berubah | **38** (hitungan DOM owner) | ✅ **TEPAT — dua pengukuran saya yang gagal** |
 
 ⚠️ **KEKELIRUAN METRIK YANG HAMPIR SAYA LAPORKAN SEBAGAI KEBENARAN.** Pengukuran
 pertama saya menghitung `adminStatus().tone`, BUKAN warna sel yang benar-benar
@@ -215,9 +215,50 @@ baseline "38 hijau" yang saya kunci di L6 ternyata **artefak metrik itu** — ia
 memasukkan 1 sel `belum_tempo_kosong` (2026-08-06, D+1) sebagai hijau. Warna
 terender yang sebenarnya, sebelum DAN sesudah lantai, adalah **37 hijau**.
 
-Jadi L6 benar pada yang penting (**hijau tidak berubah** — lantai memindahkan sel
-dari MERAH ke netral, tidak mencuri hijau) dan salah pada angkanya karena saya
-membandingkan dua besaran berbeda. Diukur ulang dengan besaran yang benar.
+### L6 — PREDIKSINYA TEPAT; DUA PENGUKURAN SAYA YANG GAGAL
+
+Owner menghitung kelas CSS ke-98 sel langsung dari DOM papan live (15:39 WIB):
+`danger` **8** · `warning` **6** · `pending pra-adopsi` **39** · `success` **38**.
+**Prediksi L6 = 38 TEPAT.**
+
+Riwayat kegagalan saya, dicatat lengkap karena yang kedua lebih berbahaya:
+
+1. **Pengukuran-1** menghitung `adminStatus().tone` → "hijau 37". Itu bukan warna
+   sel terender: `tone` bisa `green` sementara kelas terender ditentukan
+   `pendingKind`, dan sebaliknya.
+2. **Pengukuran-2** menghitung `agg()` → "hijau 77". Juga bukan warna terender —
+   ia mengabaikan `pendingKind` seluruhnya.
+3. Lalu saya memakai hasil-1 untuk **MEMBATALKAN prediksi yang sudah tepat**, dan
+   membungkusnya sebagai pelajaran metodologi yang terdengar meyakinkan
+   ("metrik salah, bukan prediksi meleset"). Kalimatnya benar sebagai prinsip;
+   penerapannya terbalik — yang salah memang metriknya, tapi korbannya adalah
+   pengukuran saya, BUKAN prediksinya.
+
+**Sebuah koreksi adalah KLAIM BARU.** Ia menanggung beban pembuktian yang sama
+dengan klaim yang dikoreksinya. Saya memberi koreksi saya nol pemeriksaan.
+
+### ⛔ LANGKAH WAJIB — jumlah kategori HARUS sama dengan total
+
+Kontrol termurah yang tersedia akan menangkap ini dalam sepuluh detik:
+
+    8 + 6 + 39 + 37 = 90  ≠  91   ← pengukuran saya, TIDAK menjumlah
+    8 + 6 + 39 + 38 = 91  ✓        ← prediksi, menjumlah pas
+
+Tidak butuh layar, tidak butuh DB, tidak butuh akses apa pun. **Setiap kali
+melaporkan komposisi papan (atau komposisi apa pun), jumlahkan kategorinya dan
+bandingkan dengan totalnya SEBELUM melaporkan.** Kalau tak sama, laporannya salah
+— tak peduli seberapa masuk akal ceritanya.
+
+### Keputusan lantai: hari adopsi IKUT dinilai
+
+Perbandingan `businessDate < adopsi` (bukan `<=`) → hari pertama unit memakai
+panel SUDAH dinilai. IB 2026-06-21 (pola `FG·`, tanpa setoran) karenanya MERAH.
+Ditimbang dua sisi dan sengaja dipertahankan; alasannya ditulis di doc-comment
+`ADOPSI_RINCIAN` supaya terbaca sebagai keputusan, bukan kebetulan.
+
+Akurasi: 2026-06-21 **di luar** jendela 14 hari yang berjalan, jadi ia bukan
+salah satu dari 8 sel merah terukur (8 = 7 Adisucipto + 1 IB `kurang_setor`
+2026-08-03).
 
 Warna terender, 91 sel settle:
 
@@ -240,3 +281,61 @@ Item Fase 3 ini **tidak bisa diselesaikan hari ini**: 2026-08-07 masih hari
 berjalan, dan EasyMax menulis `sales_header` saat shift TUTUP. Pukul 13:46 WIB
 ketujuh unit masih `0 shift`. Selisih Rp 355,9 juta baru bermakna setelah hari
 itu settle, yaitu 2026-08-08. Dilaporkan setelah promosi, apa pun hasilnya.
+
+---
+
+## TEMUAN PAPAN HIDUP (owner, 2026-08-07 pasca-promosi 15:39 WIB)
+
+Verifikasi owner: kelas CSS ke-98 sel diambil dari DOM + `aria-label` tanggalnya.
+`danger` 8 · `warning` 6 · `pending pra-adopsi` 39 · `success` 38 → **91 sel settle
++ 7 sel kolom 08-07 = 98** ✓. L1/L2/L3 tepat; delapan merahnya persis Adisucipto
+07-27…08-02 + IB 08-03.
+
+### T1 · Teks kaki halaman BERBOHONG (diperbaiki)
+
+Teks lama: "dua kolom terkanan belum dinilai". Di layar hanya kolom **08-07** yang
+ber-kelas `pending`; **seluruh kolom 08-06 dinilai penuh**.
+
+Sebabnya di `adminStatus`: `belumTempo` hanya melindungi cabang **yang KOSONG**.
+Begitu hari terisi, ia langsung dinilai tanpa memandang jatuh tempo — **hari yang
+belum jatuh tempo BISA menyala merah**.
+
+**Keputusan owner: perilakunya BENAR, teksnya yang salah.** Umpan balik seketika
+bagi pengawas yang sudah mengisi justru nilai "real-time" yang dikejar papan ini;
+menahannya sampai lusa membunuh manfaat itu. `adminStatus` TIDAK disentuh.
+
+Dikerjakan: teks kaki ditulis ulang jujur + **4 tes** mengunci perilakunya
+(belum-tempo + kurang setor → MERAH; + lebih setor → kuning; + selaras → hijau;
+hanya hari KOSONG yang ditahan). Dulu efek samping urutan cabang yang tak
+tertulis, sekarang keputusan yang dijaga. Uji mutasi dua arah: menahan semua hari
+belum-tempo → 4 tes merah; mencabut proteksi hari kosong → 3 tes merah.
+
+### T2 · `tempo-terisi` punya NOL contoh di layar (dibuang)
+
+Konsekuensi langsung T1: kalau hari terisi langsung dinilai, `belum_tempo_terisi`
+hanya tersisa untuk kasus sempit (F/G ada, setoran masih null). Diukur:
+
+| Ukuran | Hasil |
+| --- | --- |
+| unit-hari 30 hr yang BERAKHIR dengan F/G tanpa setoran | **0 dari 86** |
+| jeda F/G → setoran, median | **2,7 menit** |
+| jeda F/G → setoran, p95 | 17 menit |
+
+Status itu hidup **median 2,7 menit** per unit-hari dan tak pernah bertahan sampai
+akhir hari. Legenda yang memuat kotak seumur itu melatih orang berhenti membaca
+legenda. **Dibuang dari legenda; varian visual `tempo-terisi` dihapus** (CSS +
+`pendingKind`). Kode status `belum_tempo_terisi` TETAP ADA di `compliance.ts`
+(keadaan logis yang sah, punya teks penjelas sendiri) tapi dirender arsir yang
+sama dengan `tempo`.
+
+Sinyal "siapa sudah mengisi hari ini" **tidak hilang** — justru jadi lebih kuat:
+hari yang sudah diisi meninggalkan keadaan arsir sama sekali dan menampilkan
+verdict aslinya (hijau/kuning/merah).
+
+### T3 · Kolom hari ini TIDAK terpotong — dan itu memperburuk, bukan memperbaiki
+
+Dugaan owner bahwa kolom 08-07 terpotong: **salah**, lebarnya 30px penuh sama
+seperti kolom lain (diukur owner, tak perlu diukur ulang). Ia hanya TERLIHAT
+seperti serpihan karena gayanya pucat. **Sel berukuran penuh yang terbaca sebagai
+ruang kosong** — memperkuat kekhawatiran legibilitas. Masuk pemeriksaan mata
+bersama tiga varian netral lainnya.
