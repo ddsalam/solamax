@@ -65,7 +65,7 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     expect(sum(m, "H").formula).toBe("H = E + F − G");
   });
 
-  it("I ≥ H → indikator ok 'Setoran menutup uang tunai'", () => {
+  it("I ≈ H dalam toleransi → indikator ok 'selaras'", () => {
     const m = buildRincianModel(
       raw({
         pendapatanLain: [manual("p1", "X", 15_489_700)],
@@ -75,7 +75,35 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     );
     const i = sum(m, "I");
     expect(i.val).toBe("Rp 24.809.563");
-    expect(i.note).toEqual({ tone: "ok", text: "Setoran menutup uang tunai (I ≥ H)" });
+    expect(i.note).toEqual({
+      tone: "ok",
+      text: "Setoran selaras dengan uang tunai (±Rp 1.000)",
+    });
+  });
+
+  it("pembulatan ke ribuan tetap ok (H berpecahan, I bulat)", () => {
+    // Pola 82 dari 95 hari pilot. Aturan lama `I ≥ H` memerahkan separuhnya.
+    const m = buildRincianModel(
+      raw({
+        pendapatanLain: [manual("p1", "X", 15_489_700)],
+        pengeluaran: [manual("g1", "Y", 80_137)],
+        setoranTunai: [manual("s1", "SETOR BANK", 24_809_000)], // −563 dari H
+      }),
+    );
+    expect(sum(m, "I").note?.tone).toBe("ok");
+  });
+
+  it("I > H di luar toleransi → warn 'MELEBIHI' (dulu hijau diam-diam)", () => {
+    const m = buildRincianModel(
+      raw({
+        pendapatanLain: [manual("p1", "X", 15_489_700)],
+        pengeluaran: [manual("g1", "Y", 80_137)],
+        setoranTunai: [manual("s1", "SETOR BANK", 25_000_000)], // +190.437 dari H
+      }),
+    );
+    const i = sum(m, "I");
+    expect(i.note?.tone).toBe("warn");
+    expect(i.note?.text).toBe("Setoran MELEBIHI uang tunai (selisih Rp 190.437)");
   });
 
   it("I < H → warn dengan selisih H − I", () => {
@@ -89,7 +117,7 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     const i = sum(m, "I");
     expect(i.note?.tone).toBe("warn");
     // selisih = 24.809.563 − 20.000.000
-    expect(i.note?.text).toBe("Setoran kurang dari uang tunai (I < H, selisih Rp 4.809.563)");
+    expect(i.note?.text).toBe("Setoran kurang dari uang tunai (selisih Rp 4.809.563)");
   });
 
   it("tanpa setoran → I null & tanpa note (baris/indikator disembunyikan)", () => {

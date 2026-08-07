@@ -4,9 +4,11 @@
  * (ScopedUnitId) di server; fungsi ini murni (tanpa I/O) → angka PDF identik
  * dengan angka layar (rekon ke rupiah). Formatter id-ID/WIB dari lib/format.
  */
+import { SETORAN_TOLERANSI_RP, setoranStatus } from "@/lib/compliance";
 import { classifyProduct } from "@/lib/config";
 import { idn, rp } from "@/lib/format";
 import type * as Q from "@/lib/queries";
+import { penjualanTunai, uangTunai } from "@/lib/rekon";
 
 type ProdRow = Awaited<ReturnType<typeof Q.getSalesByProduct>>[number];
 type TerraRow = Awaited<ReturnType<typeof Q.getTerraResmiForDate>>[number];
@@ -79,10 +81,12 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
   const depTotal = deposit.reduce((s, r) => s + r.rp, 0);
   const F = pendapatanLain.reduce((s, r) => s + r.amount, 0);
   const G = pengeluaran.reduce((s, r) => s + r.amount, 0);
-  const E = A - (B + C + D); // Penjualan Tunai
-  const H = E + F - G; // Uang Tunai
+  // E & H dari lib/rekon.ts — SUMBER TUNGGAL, dipakai bersama indikator Ketaatan
+  // Administrasi. Jangan tulis ulang formulanya di sini.
+  const E = penjualanTunai({ A, B, C, D }); // Penjualan Tunai
+  const H = uangTunai({ A, B, C, D, F, G }); // Uang Tunai
   const I = setoranTunai.length > 0 ? setoranTunai.reduce((s, r) => s + r.amount, 0) : null;
-  const setoranOk = I !== null && I >= H;
+  const setoranKode = I !== null ? setoranStatus(H, I) : null;
 
   const sections: Section[] = [
     {
@@ -202,12 +206,17 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       label: "Setoran Tunai",
       val: I !== null ? rp(I) : null,
       em: true,
+      // Toleransi Rp 1.000 = kuantum slip setoran (lihat SETORAN_TOLERANSI_RP).
+      // Aturan lama `I ≥ H` menghasilkan 10 peringatan palsu per 95 hari (semata
+      // pembulatan ke bawah) DAN menghijaukan 8 kelebihan setor nyata.
       note:
-        I === null
+        I === null || setoranKode === null
           ? undefined
-          : setoranOk
-            ? { tone: "ok", text: "Setoran menutup uang tunai (I ≥ H)" }
-            : { tone: "warn", text: `Setoran kurang dari uang tunai (I < H, selisih ${rp(H - I)})` },
+          : setoranKode === "selaras"
+            ? { tone: "ok", text: `Setoran selaras dengan uang tunai (±${rp(SETORAN_TOLERANSI_RP)})` }
+            : setoranKode === "lebih_setor"
+              ? { tone: "warn", text: `Setoran MELEBIHI uang tunai (selisih ${rp(I - H)})` }
+              : { tone: "warn", text: `Setoran kurang dari uang tunai (selisih ${rp(H - I)})` },
     },
   ];
 

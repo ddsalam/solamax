@@ -4,7 +4,7 @@ import { useState } from "react";
 
 export interface HmModule {
   name: string;
-  tone: "success" | "warning" | "danger";
+  tone: "success" | "warning" | "danger" | "pending";
   note: string;
 }
 
@@ -12,6 +12,10 @@ export interface HmCell {
   d: string; // YYYY-MM-DD
   tone: "success" | "warning" | "danger";
   isToday: boolean;
+  /** Belum jatuh tempo (akhir H+1) atau tak bisa dinilai — jangan dihukum. */
+  pending: boolean;
+  /** Pending TAPI pengawas sudah mengisi — sinyal real-time "siapa sudah". */
+  pendingFilled: boolean;
   modules: HmModule[];
 }
 
@@ -22,15 +26,7 @@ export interface HmRow {
 }
 
 /** 4c · Heatmap ketaatan unit × hari; klik sel → panel modul yang bolong. */
-export function Heatmap({
-  rows,
-  dayLabels,
-  kasStrip,
-}: {
-  rows: HmRow[];
-  dayLabels: string[];
-  kasStrip: string;
-}) {
+export function Heatmap({ rows, dayLabels }: { rows: HmRow[]; dayLabels: string[] }) {
   const [sel, setSel] = useState<{ row: HmRow; cell: HmCell } | null>(null);
 
   return (
@@ -52,18 +48,12 @@ export function Heatmap({
                 key={c.d}
                 type="button"
                 aria-label={`${r.name} ${c.d}`}
-                className={`hm-cell ${c.tone}${c.isToday ? " today" : ""}`}
+                className={`hm-cell ${c.pending ? `pending${c.pendingFilled ? " filled" : ""}` : c.tone}${c.isToday ? " today" : ""}`}
                 onClick={() => setSel({ row: r, cell: c })}
               />
             ))}
           </div>
         ))}
-        <div className="hm-kasrow mt4">
-          <span className="fs15 w700 t-danger">Kas / Pengeluaran</span>
-          <div className="hm-strip">
-            <span className="hm-striptext">{kasStrip}</span>
-          </div>
-        </div>
       </div>
 
       {sel && (
@@ -81,7 +71,9 @@ export function Heatmap({
             {sel.cell.modules.map((m) => (
               <div key={m.name} className={`hm-mod ${m.tone}`}>
                 <span className={`dot ${m.tone}`} />
-                <span className={`fs15 w600 t-${m.tone === "success" ? "success" : m.tone}`}>
+                <span
+                  className={`fs15 w600 t-${m.tone === "success" ? "success" : m.tone === "pending" ? "tertiary" : m.tone}`}
+                >
                   {m.name}
                 </span>
                 <span className="hm-modnote fs15 t-tertiary">{m.note}</span>

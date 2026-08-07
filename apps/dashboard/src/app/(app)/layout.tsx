@@ -54,7 +54,9 @@ export default async function AppShellLayout({
     // scope. Samakan dengan Laporan Harian: sebut unitnya.
     const worstId = worstSyncUnitId(scope.unitIds, sync);
     lastSyncUnit = scope.units.find((u) => u.unit_id === worstId)?.name ?? null;
-    // Badge = danger MAYOR & non-standing (kas-dorman permanen tak dihitung).
+    // Badge = danger MAYOR & non-standing. Sejak 2026-08-07 tak ada lagi item
+    // `standing` yang diproduksi (anomali kas dorman dihapus), tapi filternya
+    // DIPERTAHANKAN: kontraknya masih berlaku untuk item berdiri di masa depan.
     alertCount = (await getAnomalies(scope.units)).filter(
       (a) => a.tone === "danger" && a.tier === "major" && !a.standing,
     ).length;
