@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { adminStatus, SETORAN_TOLERANSI_RP } from "./compliance";
+import { adopsiRincian } from "./config";
 import { uangTunai } from "./rekon";
 import type { ScopedUnitId } from "./scope-rule";
 
@@ -34,8 +35,16 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
     await pool.end();
   });
 
+  /** Kode unit dari DB (bukan hardcode) → lantai adopsi dari config produksi. */
+  const kodeUnit = async (unitId: number): Promise<string> => {
+    const { q } = await import("./db");
+    const rows = await q<{ code: string }>("SELECT code FROM unit WHERE unit_id = $1", [unitId]);
+    return rows[0]!.code;
+  };
+
   const ambil = async (unit: number, tanggal: string) => {
     const { getAdminDays } = await import("./queries");
+    const adopsi = adopsiRincian(await kodeUnit(unit));
     const rows = await getAdminDays([U(unit)], tanggal, tanggal);
     const r = rows[0];
     if (!r) throw new Error(`tak ada baris untuk unit ${unit} ${tanggal}`);
@@ -43,6 +52,7 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
     // "today" jauh di depan → semua tanggal uji sudah lewat jatuh tempo.
     const v = adminStatus(
       {
+        adopsi,
         nPendapatanLain: r.nPendapatanLain,
         nPengeluaran: r.nPengeluaran,
         nSetoran: r.nSetoran,
@@ -80,6 +90,13 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
 
   it("MERAH: ada unit-hari lewat tempo yang benar-benar KOSONG (seksi tak diisi)", async () => {
     const { getAdminDays } = await import("./queries");
+    const { q } = await import("./db");
+    const kode = new Map(
+      (await q<{ unit_id: number; code: string }>("SELECT unit_id, code FROM unit")).map((u) => [
+        u.unit_id,
+        u.code,
+      ]),
+    );
     const rows = await getAdminDays(
       [U(1), U(2), U(3), U(4), U(5), U(6), U(7)],
       "2026-07-01",
@@ -94,6 +111,7 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
           r,
           v: adminStatus(
             {
+              adopsi: adopsiRincian(kode.get(r.unit_id) ?? ""),
               nPendapatanLain: r.nPendapatanLain,
               nPengeluaran: r.nPengeluaran,
               nSetoran: r.nSetoran,

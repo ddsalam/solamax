@@ -12,10 +12,13 @@ export interface HmCell {
   d: string; // YYYY-MM-DD
   tone: "success" | "warning" | "danger";
   isToday: boolean;
-  /** Belum jatuh tempo (akhir H+1) atau tak bisa dinilai — jangan dihukum. */
-  pending: boolean;
-  /** Pending TAPI pengawas sudah mengisi — sinyal real-time "siapa sudah". */
-  pendingFilled: boolean;
+  /**
+   * Jenis sel netral. `undefined` = sel dinilai normal (tone berlaku).
+   * Ketiganya punya tampilan BERBEDA: kekosongan tanpa keterangan akan dibaca
+   * sebagai bug, jadi tiap jenis wajib bisa dibedakan mata + punya nama di
+   * panel detail.
+   */
+  pendingKind?: "tempo-kosong" | "tempo-terisi" | "pra-adopsi";
   modules: HmModule[];
 }
 
@@ -48,7 +51,7 @@ export function Heatmap({ rows, dayLabels }: { rows: HmRow[]; dayLabels: string[
                 key={c.d}
                 type="button"
                 aria-label={`${r.name} ${c.d}`}
-                className={`hm-cell ${c.pending ? `pending${c.pendingFilled ? " filled" : ""}` : c.tone}${c.isToday ? " today" : ""}`}
+                className={`hm-cell ${c.pendingKind ? `pending ${c.pendingKind}` : c.tone}${c.isToday ? " today" : ""}`}
                 onClick={() => setSel({ row: r, cell: c })}
               />
             ))}

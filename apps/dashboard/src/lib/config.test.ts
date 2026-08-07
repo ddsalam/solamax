@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  ptLabelForUnits,
-  targetBauran,
-  targetVolumePerDay,
-  TARGET_BAURAN,
-  TARGET_VOLUME_PER_DAY,
-  UNIT_DISPLAY,
-} from "./config";
+import { ADOPSI_RINCIAN, TARGET_BAURAN, TARGET_VOLUME_PER_DAY, UNIT_DISPLAY, adopsiRincian, ptLabelForUnits, targetBauran, targetVolumePerDay } from "./config";
 
 describe("ptLabelForUnits (label PT multi-tenant)", () => {
   it("satu PT unik → nama PT itu (identik hardcode lama utk unit tenant lama)", () => {
@@ -419,6 +412,36 @@ describe("entri 28 Oktober 63781002 (workbook 2026 baris 28, tenant BARU PT Sola
       const gasoil = (v["DEXLITE"]! + v["PERTAMINA DEX"]!) / v["SOLAR"]!;
       expect(targetBauran("63781002", "gasoline", m)).toBe(Math.round(gasoline * 1e4) / 1e4);
       expect(targetBauran("63781002", "gasoil", m)).toBe(Math.round(gasoil * 1e4) / 1e4);
+    }
+  });
+});
+
+describe("ADOPSI_RINCIAN — lantai adopsi panel Rincian", () => {
+  it("SETIAP unit di UNIT_DISPLAY punya entri lantai (kunci hilang = MERAH di papan)", () => {
+    // Tanpa guard ini, unit baru yang didaftarkan di UNIT_DISPLAY tapi terlupa
+    // di ADOPSI_RINCIAN baru ketahuan lewat sederet sel merah di produksi.
+    const kurang = Object.keys(UNIT_DISPLAY).filter(
+      (code) => adopsiRincian(code) === undefined,
+    );
+    expect(kurang).toEqual([]);
+    // KONTROL: himpunan kosong tak boleh lolos sebagai sukses.
+    expect(Object.keys(UNIT_DISPLAY).length).toBeGreaterThan(0);
+  });
+
+  it("adopsiRincian membedakan TIGA keadaan (null ≠ undefined)", () => {
+    expect(adopsiRincian("6478111")).toBe("2026-06-21");
+    expect(adopsiRincian("kode-yang-tidak-ada")).toBeUndefined();
+    // `null` (terdaftar, belum adopsi) HARUS bisa dinyatakan & dibedakan.
+    const contoh: Record<string, string | null> = { X: null };
+    expect(Object.prototype.hasOwnProperty.call(contoh, "X")).toBe(true);
+    expect(contoh["X"]).toBeNull();
+  });
+
+  it("tiap tanggal lantai berformat ISO & masuk akal", () => {
+    for (const [code, d] of Object.entries(ADOPSI_RINCIAN)) {
+      if (d === null) continue;
+      expect(d, code).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(d >= "2026-01-01", code).toBe(true);
     }
   });
 });
