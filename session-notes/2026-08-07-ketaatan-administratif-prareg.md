@@ -407,57 +407,99 @@ Dua cacat, keduanya milik saya:
 2. **21 pengguna × AutoRefresh** → satu tab siapa pun yang terbuka menjaga cache
    hangat; TTL tak pernah sempat habis selama ada aktivitas.
 
-### Frekuensi SEBENARNYA — dari log permintaan Cloud Run
+### KEBERSIHAN DATA — pengamat dikeluarkan dari pengamatan
 
-`httpRequest.latency` untuk render halaman (aset statis dibuang), **n = 1.196**
-permintaan, 2026-08-05 19:40 → 2026-08-07 18:56 WIB (±47 jam):
+Trafik pengukuran owner ada di log dan dikenali dari query param
+(`?s=1..4`, `?t=cold`, `?r=1..2`, `?m=`): **13 permintaan**, dibuang sebelum
+menghitung apa pun tentang perilaku pengguna. Kali ini tak mengubah kesimpulan;
+analisis yang memasukkan pengamatnya sendiri terkontaminasi sejak awal.
 
-| | jumlah | porsi |
+### DENOMINATOR SAYA SALAH — dan itu mengubah kesimpulan, bukan cuma angkanya
+
+Filter saya: `resource.type="cloud_run_revision"`, service
+`solamax-dashboard-staging`, `httpRequest.status=200`, membuang
+`/(brand|_next|api)/` dan berkas statis. Cakupannya **SELURUH halaman `(app)`**,
+bukan `/monitoring/ketaatan` saja.
+
+Cacatnya: filter itu **memasukkan prefetch RSC** (`?_rsc=`), yang murah dan bukan
+render sungguhan.
+
+| | n | median |
 | --- | ---: | ---: |
-| ≥ 4 dtk | **28** | **2,34%** |
-| 2–4 dtk | 93 | 7,78% |
-| < 2 dtk | 1.075 | 89,9% |
+| prefetch RSC (`?_rsc=`) | **987** | 0,058 dtk |
+| **dokumen penuh (render sungguhan)** | **201** | 0,644 dtk |
+| di antaranya `/monitoring/ketaatan` | **7** | — |
 
-**Latensi vs lama jeda sebelum permintaan** — ini yang mematikan model TTL saya:
+Jadi rasio "2,34%" dihitung atas denominator yang **diencerkan ~5×** oleh
+prefetch. Angka yang benar:
 
-| jeda sebelum permintaan | n | median | p90 | ≥4 dtk |
-| --- | ---: | ---: | ---: | ---: |
-| < 2 mnt (di dalam TTL) | 1.032 | 0,06 dtk | 1,30 | 13 |
-| **2–5 mnt (SUDAH lewat TTL)** | **81** | **1,46 dtk** | 2,34 | **1** |
-| 5–15 mnt | 57 | 1,72 dtk | 2,46 | 3 |
-| 15–60 mnt | 14 | 3,34 dtk | 6,92 | **6 (43%)** |
-| > 60 mnt | 11 | 2,90 dtk | 7,22 | **5 (45%)** |
+**21 dari 201 render dokumen ≥ 4 dtk = 10,4%** (bukan 2,34%).
 
-Kalau TTL 120 dtk adalah kedaluwarsa KERAS, ke-81 permintaan setelah jeda 2–5
-menit harus ~6 dtk. Mediannya **1,46 dtk** dan hanya SATU yang ≥4 dtk.
-**Menyeberangi TTL tidak dengan sendirinya membayar 5 detik.**
+Laju trafik: **4,2 dokumen/jam** selama 47,5 jam — cocok dengan hitungan owner
+(~5/jam), dan **`/monitoring/ketaatan` cuma 7 render dalam 47,5 jam (0,1/jam)**.
 
-Yang benar-benar berkorelasi adalah **diam panjang (≥15 menit)**: di situ 43–45%
-permintaan ≥4 dtk. Mekanismenya belum saya buktikan — dugaan paling sesuai adalah
-`unstable_cache` ber-perilaku *stale-while-revalidate* (nilai basi disajikan
-seketika, revalidasi di latar) sehingga yang benar-benar mahal hanyalah cache yang
-**kosong sama sekali**: revisi baru, instance baru, atau eviction setelah idle
-panjang. **Itu dugaan berdasar perilaku, bukan mekanisme yang saya verifikasi.**
+⛔ **Konsekuensi yang lebih penting dari rasionya:** 7 render dalam dua hari
+berarti **TIDAK ADA orang yang tab-nya tertinggal terbuka di halaman ini**.
+Premis saya "tersendat bagi siapa pun yang membiarkan tab terbuka" bukan cuma tak
+terbukti — pola trafiknya menunjukkan **kebalikannya**.
 
-**Pengawas pukul 07.00 — n=2, TIDAK KONKLUSIF:**
-2026-08-06 07:33 (jeda 384 mnt) → **0,01 dtk**; 2026-08-07 07:27 (jeda 151 mnt)
-→ **2,90 dtk**. Skenario "orang pertama tiap pagi menanggung 6 detik" **tidak
-terkonfirmasi**. Jam yang benar-benar nol permintaan: **02, 05, 06, 20 WIB**.
+### MEKANISMENYA MELEKAT PADA INSTANCE, BUKAN PADA CACHE
 
-### Ringkasan jujur
+Dugaan `stale-while-revalidate` saya **dicabut** — tak diperlukan. `labels.instanceId`
+menjelaskan seluruh polanya, dan bisa ditunjukkan alih-alih dikira-kira.
 
-- **Biaya per-miss: 5,4–7,7 dtk** — terukur langsung, kokoh.
-- **Seberapa sering miss terjadi: 2,34% permintaan ≥4 dtk**, terkonsentrasi
-  setelah diam ≥15 menit. **Bukan tiap 120 detik.**
-- Mekanisme pastinya **belum diketahui**; butuh instrumentasi hit/miss
-  `getAnomalies` untuk memastikannya, bukan penalaran TTL lagi.
+**17 dari 21 render dokumen lambat terjadi dalam 120 detik setelah instance-nya
+LAHIR atau BANGUN dari idle panjang.** Sisanya menyusul pada instance yang sama
+di menit-menit berikutnya. Render lambat datang **berkelompok pada satu instance**,
+bukan tersebar acak menurut jam.
 
-### ⚠️ Mode kegagalan LAIN yang muncul di data (bukan cache)
+Kontrol yang diperketat (hanya dokumen penuh): render <2 dtk setelah idle >15
+menit ada **6** — tapi empat di antaranya `/login` dan `/icon.svg` (tak menarik
+data sama sekali) dan dua sisanya halaman hub `/` (1,70 dan 1,50 dtk). Jadi idle
+panjang **tidak otomatis** berarti lambat; yang mahal adalah **halaman berat di
+instance yang belum panas**.
 
-2026-08-07 18:48:19–18:48:25 WIB, empat permintaan `/monitoring/ketaatan` nyaris
-bersamaan: **14,37 · 13,73 · 8,99 · 4,91 dtk**. Jeda sebelumnya < 2 menit — cache
-hangat. Ini **kontensi**, bukan cache: beberapa render serentak berebut pool
-`max: 10`. Layak jadi penyelidikan tersendiri; tidak dikerjakan sekarang.
+Catatan kejujuran: instance yang baru lahir juga punya cache KOSONG, jadi pada
+permintaan pertama kedua penjelasan **berimpit** dan data ini tak bisa
+memisahkannya. Tapi kasus "idle lalu lambat" **tak terjelaskan oleh cache sama
+sekali** (cache-nya masih terisi), sementara identitas instance menjelaskan
+keduanya — dan ia **teramati**, bukan disimpulkan.
+
+### KOREKSI: klaster 18:48 BUKAN kontensi pool
+
+Atribusi saya sebelumnya ("beberapa render serentak berebut pool `max: 10`)
+**salah dan tanpa bukti**. Keempatnya ada di **satu instance …378083** yang
+baru lahir:
+
+| waktu WIB | latensi | umur instance |
+| --- | ---: | --- |
+| 18:48:19 | **14,37 dtk** | permintaan **PERTAMA** |
+| 18:48:20 | 4,91 dtk | +0,8 dtk |
+| 18:48:20 | 13,73 dtk | +0,8 dtk |
+| 18:48:25 | 8,99 dtk | +5,8 dtk |
+
+Deploy #208 selesai 11:46:59Z; keempatnya 80–146 detik sesudahnya. Permintaan
+owner 55 detik kemudian **di instance yang sama: 1,616 dtk**. Itu cold start,
+titik.
+
+### Ringkasan jujur — P7 DITUTUP
+
+- **Biaya per-miss 5,4–7,7 dtk** — terukur langsung, tetap sah.
+- **Frekuensi: 10,4% render dokumen ≥4 dtk**, terkonsentrasi pada instance yang
+  baru lahir/bangun. **Bukan tiap 120 detik**; TTL cache tidak menjelaskan apa pun.
+- **Trafik `/monitoring/ketaatan` 0,1 render/jam** — tak ada tab yang ditinggal
+  terbuka.
+
+### Konsekuensi untuk prioritas
+
+Dengan mekanisme = **cold start / instance idle** dan trafik ~5 render/jam,
+obatnya **bukan lagi soal cache**. Yang relevan: `minScale`, CPU-always-on, dan
+**ukuran kerja yang dilakukan di jalur kritis layout**.
+
+**"Keluarkan badge dari jalur kritis" tetap paling menyerang akar — dan
+argumennya kini LEBIH KUAT dari yang saya pakai sebelumnya:** ia mengecilkan
+biaya *cold start* untuk **SEMUA** halaman `(app)`, bukan sekadar menghindari
+satu cache miss di satu halaman. Tidak dikerjakan; dicatat.
 
 ### Pre-warm 06:00 WIB — TIDAK bisa dipakai ulang, dan sebabnya bukan plumbing
 
@@ -477,9 +519,8 @@ Diurutkan dari yang paling menyerang akar:
    `getAdminDays` sudah membuktikan pola multi-unit satu-query bisa (7→1). Komentar
    `ANOMALIES_TTL_S` menolak ini pada 2026-07-24 karena berarti menulis ulang
    `getDailyGlByProduct`; itu **masih** alasan yang sah.
-3. **Naikkan TTL** (120 → 600 dtk): termurah — TAPI karena menyeberangi TTL
-   terbukti TIDAK dengan sendirinya membayar 5 detik, dasar manfaatnya kini
-   goyah. Jangan kerjakan sebelum mekanismenya dipastikan.
+3. ~~**Naikkan TTL** (120 → 600 dtk)~~ — **DICORET**. Mekanismenya cold start /
+   instance idle, bukan kedaluwarsa cache; menaikkan TTL tak menyentuh apa pun.
 4. **Pertanyakan badge-nya sendiri.** Ia mentok "9+" dan tak bisa menampilkan
    sinyal baru. Kalau tampilannya diperbaiki dulu, biaya 5,4 dtk mungkin sedang
    dibayar untuk sesuatu yang bentuknya salah sejak awal.
