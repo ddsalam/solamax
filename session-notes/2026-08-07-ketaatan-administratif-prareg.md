@@ -205,7 +205,7 @@ Jendela pembanding **TETAP**: 91 sel settle `2026-07-25 … 2026-08-06`, 7 unit.
 | L3 | `pra_adopsi` **39** | **39** | ✅ **tepat** |
 | L4 | Bakau 08-06 `lebih_setor` +3.362.265 tertangkap | `lebih_setor`, I−H = **+3.362.265** | ✅ |
 | L5 | IB 08-03 `kurang_setor` −476.993 tertangkap | `kurang_setor`, I−H = **−476.993** | ✅ |
-| L6 | hijau **38**, tak berubah | **37**, tak berubah | ⚠️ **substansi benar, angka meleset 1** |
+| L6 | hijau **38**, tak berubah | **37**, tak berubah | ⚠️ **METRIK SALAH, bukan prediksi meleset** |
 
 ⚠️ **KEKELIRUAN METRIK YANG HAMPIR SAYA LAPORKAN SEBAGAI KEBENARAN.** Pengukuran
 pertama saya menghitung `adminStatus().tone`, BUKAN warna sel yang benar-benar
@@ -215,9 +215,28 @@ baseline "38 hijau" yang saya kunci di L6 ternyata **artefak metrik itu** — ia
 memasukkan 1 sel `belum_tempo_kosong` (2026-08-06, D+1) sebagai hijau. Warna
 terender yang sebenarnya, sebelum DAN sesudah lantai, adalah **37 hijau**.
 
-Jadi L6 benar pada yang penting (**hijau tidak berubah** — lantai memindahkan sel
-dari MERAH ke netral, tidak mencuri hijau) dan salah pada angkanya karena saya
-membandingkan dua besaran berbeda. Diukur ulang dengan besaran yang benar.
+**Cara mencatatnya penting, dan catatan pertama saya salah.** Saya menulis "L6
+meleset 1". Keliru: baseline **38 TIDAK PERNAH NYATA**. Itu bukan pengukuran yang
+meleset, melainkan pengukuran dengan **PENGGARIS YANG SALAH** — dan angka
+sebenarnya, **37, tidak berubah sebelum maupun sesudah lantai**.
+
+Bedanya bukan semantik:
+  · "prediksi meleset" mengundang orang menyesuaikan **ATURANNYA**;
+  · "metrik salah"     mengundang orang memperbaiki **ALAT UKURNYA**.
+Yang kedua yang benar di sini. Tak ada aturan yang perlu disesuaikan; yang perlu
+diperbaiki adalah kebiasaan saya mengukur `tone` padahal yang dilihat orang
+adalah kelas CSS terender.
+
+### Keputusan lantai: hari adopsi IKUT dinilai
+
+Perbandingan `businessDate < adopsi` (bukan `<=`) → hari pertama unit memakai
+panel SUDAH dinilai. IB 2026-06-21 (pola `FG·`, tanpa setoran) karenanya MERAH.
+Ditimbang dua sisi dan sengaja dipertahankan; alasannya ditulis di doc-comment
+`ADOPSI_RINCIAN` supaya terbaca sebagai keputusan, bukan kebetulan.
+
+Akurasi: 2026-06-21 **di luar** jendela 14 hari yang berjalan, jadi ia bukan
+salah satu dari 8 sel merah terukur (8 = 7 Adisucipto + 1 IB `kurang_setor`
+2026-08-03).
 
 Warna terender, 91 sel settle:
 
