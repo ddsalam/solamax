@@ -64,7 +64,7 @@ function adminNote(v: AdminVerdict, h: number, i: number | null): string {
     case "belum_diisi":
       return "belum diisi — lewat jatuh tempo (akhir H+1)";
     case "tak_terhitung":
-      return "penjualan belum masuk — setoran belum bisa dinilai";
+      return "penjualan belum lengkap — setoran belum bisa dinilai";
     case "belum_tempo_terisi":
       return "sudah diisi · belum jatuh tempo";
     case "belum_tempo_kosong":
@@ -181,9 +181,12 @@ export default async function KetaatanPage() {
         {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
         kesamaan eksak dengan uang tunai tak pernah terjadi.{" "}
         <strong>Hari yang sudah diisi dinilai SEKETIKA</strong> — termasuk bisa langsung
-        merah bila setorannya tak selaras, tanpa menunggu jatuh tempo. Yang ditahan sampai
-        akhir H+1 hanyalah hari yang <strong>belum diisi</strong> (sel berarsir), supaya
-        pengawas tak dihukum karena hari yang memang belum waktunya. Sel bertitik-titik =
+        merah bila setorannya tak selaras, tanpa menunggu jatuh tempo,{" "}
+        <strong>selama ketiga shift-nya sudah masuk</strong>. Selama penjualan belum
+        lengkap, uang tunai (H) masih dirakit dan setoran belum dibandingkan dengannya —
+        membandingkannya lebih awal memunculkan selisih semu yang besar. Yang ditahan
+        sampai akhir H+1 hanyalah hari yang <strong>belum diisi</strong> (sel berarsir),
+        supaya pengawas tak dihukum karena hari yang memang belum waktunya. Sel bertitik-titik =
         sebelum unit ybs memakai panel Rincian (lantai adopsi beku di config) — bukan
         kelalaian pengawas. Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
       </div>

@@ -6,6 +6,7 @@ import {
   opnameStatus,
   salesStatus,
   SETORAN_TOLERANSI_RP,
+  SHIFT_TARGET,
   setoranStatus,
   staleness,
   type AdminHari,
@@ -296,6 +297,66 @@ describe("adminStatus", () => {
     const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
     expect(adminStatus(hari(kosong), { businessDate: kemarin, today }).tone).toBe("pending");
     expect(adminStatus(hari(kosong), { businessDate: lewatTempo, today }).tone).toBe("red");
+  });
+
+  // === H MASIH DIRAKIT (2026-08-07) — kelas, bukan kasus ====================
+
+  /** KOREK 2026-08-07 — kasus NYATA, angka NYATA, snapshot 22:15:22 WIB. */
+  const KOREK_08_07 = {
+    A: 294_467_294.5, B: 0, C: 17_999_091, D: 9_798_025, F: 4_205_200, G: 618_000,
+    I: 359_447_000, shiftsSaatItu: 2,
+  } as const;
+
+  it("KOREK 2026-08-07 (2 dari 3 shift): TIDAK BOLEH `lebih_setor`", () => {
+    const h = uangTunai(KOREK_08_07);
+    expect(h).toBeCloseTo(270_257_378.5, 2); // cocok layar Rincian produksi
+    // KONTROL: tanpa gerbang, aturan setoran MENYALA — jadi gerbangnyalah yang
+    // mengubah hasil, bukan kebetulan.
+    expect(setoranStatus(h, KOREK_08_07.I)).toBe("lebih_setor");
+    const v = adminStatus(hari({ h, i: KOREK_08_07.I, shifts: KOREK_08_07.shiftsSaatItu }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("tak_terhitung");
+    expect(v.tone).toBe("pending");
+  });
+
+  it("hari 3-shift dengan I >> H TETAP `lebih_setor` (aturan tak dilemahkan)", () => {
+    const h = uangTunai(KOREK_08_07);
+    const v = adminStatus(hari({ h, i: KOREK_08_07.I, shifts: SHIFT_TARGET }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("lebih_setor");
+    expect(v.tone).toBe("yellow");
+  });
+
+  it("batas SHIFT_TARGET tegas: di bawahnya ditahan, tepat di atasnya dinilai", () => {
+    const h = 100_000_000;
+    for (let n = 0; n < SHIFT_TARGET; n++) {
+      expect(
+        adminStatus(hari({ h, i: 200_000_000, shifts: n }), { businessDate: lewatTempo, today }).kode,
+        `shifts=${n} seharusnya ditahan`,
+      ).toBe("tak_terhitung");
+    }
+    expect(
+      adminStatus(hari({ h, i: 200_000_000, shifts: SHIFT_TARGET }), { businessDate: lewatTempo, today }).kode,
+    ).toBe("lebih_setor");
+  });
+
+  it("sinyal 'penjualan belum lengkap' TIDAK hilang — salesStatus tetap bersuara", () => {
+    expect(salesStatus(2)).toBe("yellow");
+    expect(salesStatus(0)).toBe("red");
+    expect(salesStatus(SHIFT_TARGET)).toBe("green");
+  });
+
+  it("hari LENGKAP tetap dinilai SEKETIKA walau belum jatuh tempo", () => {
+    const v = adminStatus(hari({ h: 343_322_289.52, i: 342_517_000, shifts: SHIFT_TARGET }), {
+      businessDate: kemarin,
+      today,
+    });
+    expect(v.kode).toBe("kurang_setor");
+    expect(v.tone).toBe("red");
   });
 
   it("D+2 adalah hari pertama yang bisa merah (batas jatuh tempo)", () => {
