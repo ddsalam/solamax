@@ -52,6 +52,7 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
         "public.sales_detail",
         "public.sales_header",
         "public.product",
+        "public.opname",
         "public.real_tank",
         "public.nozzle",
         "public.sync_state",
@@ -107,6 +108,21 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
            ($1, 'JB-UA', 'N01', 1, 100, 1000000, 'BB-02', '${D} 08:00+07'),
            ($1, 'JB-UA', 'N01', 2,  50,  500000, 'BB-02', '${D} 09:00+07'),
            ($2, 'JB-UB', 'N01', 1, 200, 2000000, 'BB-07', '${D} 08:00+07')`,
+        [UA, UB],
+      );
+      // Kejadian OPNAME-NOL untuk getZeroClosingEvents: op=0 diapit prev>1.000
+      // dan next>1.000, TANPA delivery keesokan harinya. Nilai prev DIBEDAKAN
+      // per unit (UA 5.000 / UB 7.000) supaya kebocoran terbaca dari angkanya,
+      // bukan cuma dari unit_id.
+      await c.query(
+        `INSERT INTO public.opname
+           (unit_id, ckdopnbbm, ckdtangki, ckdbbm, dtaglopn, nstockbk, nstockop, dtgljam, sbatal) VALUES
+           ($1,'OP-A1','T-01','BB-02','2026-06-30', 5000, 5000, '2026-06-30 22:00+07', 0),
+           ($1,'OP-A2','T-01','BB-02','${D}',       4800,    0, '${D} 22:00+07',       0),
+           ($1,'OP-A3','T-01','BB-02','2026-07-02', 4600, 4600, '2026-07-02 22:00+07', 0),
+           ($2,'OP-B1','T-01','BB-07','2026-06-30', 7000, 7000, '2026-06-30 22:00+07', 0),
+           ($2,'OP-B2','T-01','BB-07','${D}',       6800,    0, '${D} 22:00+07',       0),
+           ($2,'OP-B3','T-01','BB-07','2026-07-02', 6600, 6600, '2026-07-02 22:00+07', 0)`,
         [UA, UB],
       );
       await c.query(
@@ -197,4 +213,110 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
     expect((await Q.getUsulanSoList(U(UA), 100)).length).toBe(2);
     expect((await Q.getUsulanSoList(U(UB), 100)).length).toBe(1);
   });
+
+  // ===========================================================================
+  // ISOLASI QUERY MULTI-UNIT (2026-08-07) — LUBANG YANG BARU DITEMUKAN.
+  //
+  // `getAdminDays` (ditambahkan sesi ini, HIDUP DI PRODUKSI) dan
+  // `getZeroClosingEvents` keduanya qScoped/multi-unit tapi TIDAK PERNAH diuji
+  // isolasi tenant. Keduanya lolos karena guard kelengkapan di
+  // queries.scope-wiring.test.ts membandingkan `CASES.length` dengan angka
+  // hardcoded — menangkap penghapusan, BUTA terhadap kelalaian.
+  //
+  // Pada platform enam tenant tempat RLS adalah gerbang keras satu-satunya,
+  // "ia memanggil qScoped" BUKAN bukti. Yang dituntut di bawah: ia terbukti
+  // TIDAK BOCOR, termasuk saat `unitIds` sengaja diisi unit di luar scope.
+  // ===========================================================================
+
+  it("getAdminDays: scope satu unit → NOL baris berdata milik unit lain", async () => {
+    const a = await Q.getAdminDays([U(UA)], D, D);
+    const b = await Q.getAdminDays([U(UB)], D, D);
+
+    // KONTROL ANTI-HAMPA: kalau kedua sisi kosong, asersi "tak bocor" jadi
+    // benar secara vakum. Fixture menaruh omzet di KEDUA unit, jadi ini WAJIB
+    // menyalak sebelum asersi kebocoran berarti apa-apa.
+    const dataA = a.filter((r) => r.compA > 0);
+    const dataB = b.filter((r) => r.compA > 0);
+    expect(dataA.length, "fixture unit A tak terbaca — asersi kebocoran jadi hampa").toBeGreaterThan(0);
+    expect(dataB.length, "fixture unit B tak terbaca — asersi kebocoran jadi hampa").toBeGreaterThan(0);
+
+    // Isolasi: tak satu pun baris BERDATA milik unit lain.
+    expect(dataA.every((r) => r.unit_id === UA)).toBe(true);
+    expect(dataB.every((r) => r.unit_id === UB)).toBe(true);
+    // Diskriminasi nilai: omzet UA (1.500.000) ≠ UB (2.000.000) → kalau bocor,
+    // angkanya sendiri yang membongkar.
+    expect(dataA[0]!.compA).toBe(1_500_000);
+    expect(dataB[0]!.compA).toBe(2_000_000);
+    expect(dataA.some((r) => r.compA === 2_000_000)).toBe(false);
+  });
+
+  it("unitIds DILEBARKAN: GUC mengikuti argumen → yang menjaga adalah TIPE, bukan RLS", async () => {
+    // ⚠️ KOREKSI PREMIS SAYA SENDIRI (2026-08-07). Versi pertama tes ini
+    // menuntut data UB NOL saat `getAdminDays([UA, UB])` dipanggil, dan ia
+    // GAGAL — benar-benar gagal, bukan flaky. Sebabnya premis saya salah:
+    // `getAdminDays` menyerahkan array yang SAMA ke GUC `app.unit_ids` DAN ke
+    // parameter SQL. Array yang dilebarkan karenanya melebarkan RLS juga.
+    //
+    // Jadi skenario "pemanggil ber-scope UA menyodorkan [UA, UB]" TIDAK BISA
+    // dicegah oleh RLS lewat fungsi ini — yang mencegahnya adalah `ScopedUnitId`
+    // ber-brand, yang HANYA bisa dicetak `getDataScope()`. Menuliskan tes yang
+    // menuntut RLS melakukan pekerjaan tipe akan memberi rasa aman yang palsu.
+    //
+    // Yang diuji di sini: fungsinya memang mengembalikan PERSIS unit yang
+    // diminta — tak lebih. Backstop RLS-nya diuji terpisah di bawah, dengan
+    // GUC yang SENGAJA lebih sempit dari parameter.
+    const luas = await Q.getAdminDays([U(UA), U(UB)], D, D);
+    expect([...new Set(luas.map((r) => r.unit_id))].sort()).toEqual([UA, UB]);
+    expect(luas.some((r) => r.unit_id === UA && r.compA === 1_500_000)).toBe(true);
+    expect(luas.some((r) => r.unit_id === UB && r.compA === 2_000_000)).toBe(true);
+  });
+
+  it("BACKSTOP RLS: GUC lebih SEMPIT dari parameter → data unit luar TETAP nol", async () => {
+    // Inilah gerbang keras yang sesungguhnya. Probe SQL langsung (bukan fungsi
+    // produksi) supaya GUC dan parameter bisa DIBUAT BERBEDA — sesuatu yang
+    // `getAdminDays` sengaja tak izinkan. Tabel yang diprobe = tabel yang
+    // dibaca getAdminDays.
+    const { qScoped } = await import("./db");
+    type Row = { unit_id: number; total: string };
+    const rows = await qScoped<Row>(
+      [UA], // GUC: HANYA unit A
+      `SELECT sd.unit_id, COALESCE(sum(sd.nsubtotal),0)::text AS total
+         FROM public.sales_detail sd
+        WHERE sd.unit_id = ANY($1::int[])
+        GROUP BY sd.unit_id ORDER BY sd.unit_id`,
+      [[UA, UB]], // parameter: MEMINTA A dan B
+    );
+    // KONTROL ANTI-HAMPA: unit A harus terbaca, kalau tidak asersi di bawah hampa.
+    expect(rows.some((r) => r.unit_id === UA), "kontrol: UA harus terbaca").toBe(true);
+    // Gerbangnya: B diminta parameter, DITOLAK RLS.
+    expect(rows.some((r) => r.unit_id === UB), "unit B bocor menembus GUC yang sempit").toBe(false);
+  });
+
+  it("getZeroClosingEvents: kejadian NYATA, ter-scope, tanpa kebocoran", async () => {
+    // ⚠️ Versi pertama tes ini HAMPA: fixture tak punya kejadian opname-nol,
+    // jadi `every()` atas array kosong bernilai true dan hijaunya berarti
+    // "tak ada yang diperiksa" — kelas cacat yang SAMA dengan guard
+    // `.toBe(34)`. Menyebutnya di badan PR tidak menetralkan efeknya; yang
+    // tersisa di repo tetap hijau yang menyesatkan. Fixture kini berisi.
+    const W = ["2026-06-30", "2026-07-02"] as const;
+    const a = await Q.getZeroClosingEvents([U(UA)], W[0], W[1]);
+    const b = await Q.getZeroClosingEvents([U(UB)], W[0], W[1]);
+
+    // KONTROL ANTI-HAMPA: kejadiannya harus benar-benar terdeteksi.
+    expect(a.length, "fixture opname-nol UA tak terdeteksi — asersi jadi hampa").toBe(1);
+    expect(b.length, "fixture opname-nol UB tak terdeteksi — asersi jadi hampa").toBe(1);
+
+    // Isolasi + diskriminasi NILAI: prev UA 5.000 vs UB 7.000.
+    expect(a[0]!.unit_id).toBe(UA);
+    expect(a[0]!.prev).toBe(5000);
+    expect(b[0]!.unit_id).toBe(UB);
+    expect(b[0]!.prev).toBe(7000);
+    expect(a.some((r) => r.prev === 7000), "nilai UB bocor ke hasil UA").toBe(false);
+    expect(b.some((r) => r.prev === 5000), "nilai UA bocor ke hasil UB").toBe(false);
+
+    // Multi-unit sah: direksi ber-scope keduanya melihat dua-duanya, tak lebih.
+    const luas = await Q.getZeroClosingEvents([U(UA), U(UB)], W[0], W[1]);
+    expect(luas.map((r) => r.unit_id).sort()).toEqual([UA, UB]);
+  });
+
 });

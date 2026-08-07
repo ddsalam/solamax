@@ -78,11 +78,72 @@ jobs:
       - id: meta
         run: echo "image=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
+  # ── GERBANG K1 (proposal G1, 2026-08-07): "SQL ini bisa DIEKSEKUSI" ──────────
+  #
+  #    KENAPA ADA: `count(*)::int FILTER (…)` — sintaks Postgres tidak valid —
+  #    lolos typecheck (SQL cuma string), lolos 517 unit test (tak satu pun
+  #    menyentuh DB), dan lolos job `ci` di atas HIJAU PENUH. Lalu 500 di
+  #    produksi. Terbukti ulang 2026-08-07: dengan bug terpasang, `ci` hijau
+  #    (0 error typecheck, 70 tes lolos) sementara gerbang ini MERAH pada tepat
+  #    2 query yang membawanya.
+  #
+  #    SASARAN `solamax-pg-rlsstg` — BUKAN DB pilot. Karena itu "kalau DB pilot
+  #    sedang sibuk" tak pernah jadi pertanyaan: pilot tidak disentuh. Unit
+  #    sentinel 30000 tak ada → RLS 0 baris; yang diuji eksekusinya, bukan isinya.
+  #
+  #    ⛔ HANYA K1. Tes yang menuntut DATA tertentu (K2, `*-live.integration`)
+  #       SENGAJA tidak di sini: ia bergantung angka yang diedit pengawas, jadi
+  #       sebagai gerbang ia akan gagal karena sebab yang benar lalu dimatikan
+  #       orang dalam sebulan. K2 tetap kanari.
+  sqlcheck:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: solamax
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - name: Cloud SQL Proxy → solamax-pg-rlsstg
+        run: |
+          curl -sSLo cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.2/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy solamax:asia-southeast2:solamax-pg-rlsstg --port 5432 &
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null && break; sleep 1; done
+      # Kredensial dari SECRET MANAGER lewat WIF — BUKAN GitHub Actions secret.
+      # Repo ini sengaja punya NOL repo-secret (`actions/secrets` = 0); semua
+      # kredensial hidup di Secret Manager (CLAUDE.md aturan tak-bisa-dinegosiasi
+      # №3). Memakai `${{ secrets.… }}` di sini akan mendarat KOSONG dan diam.
+      - name: K1 — setiap query dieksekusi Postgres
+        run: |
+          SQLCHECK_RAW="$(gcloud secrets versions access latest \
+            --secret=solamax-db-url-dashboard-rlsstg --project=solamax)"
+          # Secret itu dipakai Cloud Run lewat SOCKET unix; di runner lewat TCP
+          # proxy → buang param `host`, arahkan ke 127.0.0.1.
+          DATABASE_URL="$(SQLCHECK_RAW="$SQLCHECK_RAW" node -e '
+            const u = new URL(process.env.SQLCHECK_RAW.trim());
+            u.searchParams.delete("host"); u.hostname="127.0.0.1"; u.port="5432";
+            process.stdout.write(u.toString());')"
+          export DATABASE_URL SQLCHECK_DB=1
+          pnpm --filter @solamax/dashboard exec vitest run src/lib/queries.sqlcheck.integration.test.ts
+
   # ── TIER TESTING (staging → rlsstg): otomatis, tanpa reviewer. Environment
   #    `testing` dipakai untuk riwayat deployment + branch-policy (hanya staging). ──
   deploy-test:
     if: github.ref == 'refs/heads/staging'
-    needs: build
+    needs: [build, sqlcheck]
     runs-on: ubuntu-latest
     environment: testing
     env:
@@ -118,7 +179,7 @@ jobs:
   #    (required reviewer). Klik approve = satu-satunya jalan ke pilot. ──
   deploy-pilot:
     if: github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, sqlcheck]
     runs-on: ubuntu-latest
     environment: pilot
     env:

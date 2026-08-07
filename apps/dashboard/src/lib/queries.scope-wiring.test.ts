@@ -54,12 +54,35 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getManualEntries", () => Q.getManualEntries(U, D, "pengeluaran")],
   ["getUsulanSo", () => Q.getUsulanSo(U, D)],
   ["getUsulanSoList", () => Q.getUsulanSoList(U, 10)],
+  // Ditambahkan 2026-08-07 setelah guard di bawah diperbaiki: keduanya qScoped
+  // multi-unit dan SELAMA INI TAK TERCAKUP di tes isolasi ini.
+  ["getZeroClosingEvents", () => Q.getZeroClosingEvents([U], D, D)],
+  ["getAdminDays", () => Q.getAdminDays([U], D, D)],
 ];
 
 describe("scope-wiring: every converted query passes its authorized unit to qScoped", () => {
-  it("covers ALL converted per-unit functions (guards against silent drift)", () => {
-    // If someone adds a converted query but forgets a case here, this count trips.
-    expect(CASES.length).toBe(34);
+  /**
+   * Cakupan DITURUNKAN dari ekspor modul, bukan dari angka hardcoded.
+   *
+   * ⚠️ RIWAYAT (2026-08-07): guard ini dulu berbunyi `expect(CASES.length)
+   * .toBe(34)` — ia membandingkan daftar DENGAN DIRINYA SENDIRI. Itu menangkap
+   * PENGHAPUSAN tapi BUTA terhadap KELALAIAN, dan kelalaian justru arah
+   * bahayanya. Dua query qScoped multi-unit lolos karenanya:
+   * `getZeroClosingEvents` dan `getAdminDays` — yang kedua HIDUP DI PRODUKSI
+   * dan tak pernah diuji isolasi tenant sama sekali, pada platform enam tenant
+   * tempat RLS adalah gerbang keras satu-satunya.
+   *
+   * Angka hardcoded yang menjaga kelengkapan adalah kontradiksi. Bandingkan
+   * dengan SUMBER KEBENARAN di luar daftar ini: ekspor modulnya sendiri.
+   */
+  it("covers ALL exported query functions (derived from module exports)", () => {
+    const exported = Object.keys(Q)
+      .filter((k) => k.startsWith("get") && typeof (Q as Record<string, unknown>)[k] === "function")
+      .sort();
+    const covered = CASES.map(([n]) => n).sort();
+    expect(exported.filter((n) => !covered.includes(n)), "query tanpa uji scope-wiring").toEqual([]);
+    // Kontrol anti-hampa: daftar ekspor tak boleh kosong (mis. mock salah jalan).
+    expect(exported.length).toBeGreaterThan(30);
   });
 
   for (const [name, call] of CASES) {
