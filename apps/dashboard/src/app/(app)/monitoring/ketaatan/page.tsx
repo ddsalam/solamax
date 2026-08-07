@@ -127,9 +127,7 @@ export default async function KetaatanPage() {
                 ? undefined
                 : v.kode === "pra_adopsi"
                   ? ("pra-adopsi" as const)
-                  : v.terisi
-                    ? ("tempo-terisi" as const)
-                    : ("tempo-kosong" as const),
+                  : ("tempo" as const),
             modules: [
               { name: "Penjualan", tone: TONE[s], note: `${d.shifts}/3 shift` },
               { name: "Opname stok", tone: TONE[o], note: `${d.tanks}/${tanks} tangki` },
@@ -167,12 +165,8 @@ export default async function KetaatanPage() {
             <span className="fs15 t-tertiary">kosong</span>
           </span>
           <span className="hm-legenditem">
-            <span className="hm-legend pending filled" />
-            <span className="fs15 t-tertiary">belum tempo · terisi</span>
-          </span>
-          <span className="hm-legenditem">
             <span className="hm-legend pending" />
-            <span className="fs15 t-tertiary">belum tempo · kosong</span>
+            <span className="fs15 t-tertiary">belum diisi · belum tempo</span>
           </span>
           <span className="hm-legenditem">
             <span className="hm-legend pending pra" />
@@ -185,11 +179,13 @@ export default async function KetaatanPage() {
         Administrasi = pengisian Rincian Penjualan oleh pengawas (Pendapatan Lain,
         Pengeluaran, Setoran Bank). Setoran dinilai SELARAS bila |I − H| ≤{" "}
         {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
-        kesamaan eksak dengan uang tunai tak pernah terjadi. Jatuh tempo akhir H+1: dua
-        kolom terkanan belum dinilai, tapi tetap membedakan yang sudah diisi dari yang
-        belum. Sel bertitik-titik = sebelum unit ybs memakai panel Rincian (lantai adopsi
-        beku di config) — bukan kelalaian pengawas. Modul kas EasyMax dihapus 2026-08-07
-        — dorman di ketujuh unit.
+        kesamaan eksak dengan uang tunai tak pernah terjadi.{" "}
+        <strong>Hari yang sudah diisi dinilai SEKETIKA</strong> — termasuk bisa langsung
+        merah bila setorannya tak selaras, tanpa menunggu jatuh tempo. Yang ditahan sampai
+        akhir H+1 hanyalah hari yang <strong>belum diisi</strong> (sel berarsir), supaya
+        pengawas tak dihukum karena hari yang memang belum waktunya. Sel bertitik-titik =
+        sebelum unit ybs memakai panel Rincian (lantai adopsi beku di config) — bukan
+        kelalaian pengawas. Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
       </div>
     </div>
   );
