@@ -748,3 +748,46 @@ perlu bersandar pada sesuatu selain jumlah shift.
 tutup shift ke-3, lalu laporkan kapan nilainya berhenti berubah. Read-only, satu
 tabel scratch, satu malam. **Itu satu-satunya cara mendapat baseline pada jendela
 yang benar** — dan ia harus mengukur NILAI, bukan `ingested_at`.
+
+---
+
+## ⛔ KOREKSI SEBELUM ARSIP — gerbang shift menutup SEPARUH permukaan
+
+Catatan di atas menggambarkan gerbang `shifts < SHIFT_TARGET` sebagai "membungkam
+artefak". **Itu benar untuk halaman Ketaatan, dan SALAH untuk halaman Rincian.**
+Owner memeriksa layar setelah deploy pilot:
+
+- Papan Ketaatan **sembuh** — Korek 08-07 `warning today` → `pending tempo today`,
+  ketujuh sel hari berjalan seragam netral, distribusi sel settle **tidak
+  bergeser sedikit pun** (8 danger / 39 pra-adopsi / 38 success / 6 warning,
+  identik sebelum & sesudah). "Nol sel settle terpengaruh" **terverifikasi
+  independen** — bukan lagi klaim saya sendirian.
+- Halaman Rincian **TIDAK sembuh**: masih menulis
+  **"⚠ Setoran MELEBIHI uang tunai (selisih Rp 89.189.622)"**.
+
+### Sebabnya: DUA pembuat vonis, gerbang dipasang di satu
+
+| | gerbang `shifts` |
+| --- | --- |
+| `compliance.ts::adminStatus` | ✅ dapat |
+| `rincian-model.ts` | ❌ menghitung verdict SENDIRI; `RincianRaw` tak menerima `shifts` |
+
+Pagi ini kami menyatukan **RUMUS H** ke `lib/rekon.ts` dan menyatakan sumber
+tunggal tercapai. Yang berduplikat ternyata **VONISNYA**.
+
+> **Menyatukan INPUT tidak menyatukan KEPUTUSAN.**
+
+Dan permukaan yang terlewat adalah yang **lebih terlihat**: lembar cetak yang
+**ditandatangani pengawas**, bukan heatmap internal.
+
+### Ini juga ujian pertama G4, dan G4 benar
+
+Owner **menahan #223** karena catatannya akan mengarsipkan klaim pada siklus yang
+sama ia diasersikan — persis yang G4 larang. Tanpa penahanan itu, arsip akan
+memuat "gerbang membungkam artefak" tanpa syarat, dan pembaca berikutnya akan
+menalar dari klaim yang hanya benar separuh.
+
+**Perbaikannya di PR terpisah** (vonis diangkat ke `adminStatus`, `RincianRaw.
+konteks` dibuat wajib sehingga omisi = error type-check). Kedua pengukuran di
+bawah — distribusi shift 91/91 dan pembongkaran `ingested_at` sebagai confound —
+**tidak terpengaruh dan tidak diubah**.
