@@ -7,6 +7,7 @@ import {
   type AdminVerdict,
   type Status,
 } from "@/lib/compliance";
+import { adopsiRincian } from "@/lib/config";
 import { rp } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
 import { getComplianceMatrix, getTankCount } from "@/lib/queries";
@@ -68,6 +69,12 @@ function adminNote(v: AdminVerdict, h: number, i: number | null): string {
       return "sudah diisi · belum jatuh tempo";
     case "belum_tempo_kosong":
       return "belum diisi · belum jatuh tempo (akhir H+1)";
+    case "pra_adopsi":
+      return "sebelum unit ini memakai panel Rincian — tidak dinilai";
+    case "belum_adopsi":
+      return "unit ini BELUM memakai panel Rincian sama sekali";
+    case "config_hilang":
+      return "unit belum terdaftar di ADOPSI_RINCIAN (config) — indikator tak bisa dipercaya untuk unit ini";
   }
 }
 
@@ -101,6 +108,7 @@ export default async function KetaatanPage() {
           });
           const v = adminStatus(
             {
+              adopsi: adopsiRincian(u.code),
               nPendapatanLain: d.nPendapatanLain,
               nPengeluaran: d.nPengeluaran,
               nSetoran: d.nSetoran,
@@ -114,8 +122,14 @@ export default async function KetaatanPage() {
             d: d.d,
             tone: aggregate(s, o, v.tone),
             isToday: d.d === today,
-            pending: v.tone === "pending",
-            pendingFilled: v.tone === "pending" && v.terisi,
+            pendingKind:
+              v.tone !== "pending"
+                ? undefined
+                : v.kode === "pra_adopsi"
+                  ? ("pra-adopsi" as const)
+                  : v.terisi
+                    ? ("tempo-terisi" as const)
+                    : ("tempo-kosong" as const),
             modules: [
               { name: "Penjualan", tone: TONE[s], note: `${d.shifts}/3 shift` },
               { name: "Opname stok", tone: TONE[o], note: `${d.tanks}/${tanks} tangki` },
@@ -160,6 +174,10 @@ export default async function KetaatanPage() {
             <span className="hm-legend pending" />
             <span className="fs15 t-tertiary">belum tempo · kosong</span>
           </span>
+          <span className="hm-legenditem">
+            <span className="hm-legend pending pra" />
+            <span className="fs15 t-tertiary">pra-adopsi panel</span>
+          </span>
         </span>
       </div>
       <Heatmap rows={rows} dayLabels={dayLabels} />
@@ -169,7 +187,9 @@ export default async function KetaatanPage() {
         {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
         kesamaan eksak dengan uang tunai tak pernah terjadi. Jatuh tempo akhir H+1: dua
         kolom terkanan belum dinilai, tapi tetap membedakan yang sudah diisi dari yang
-        belum. Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
+        belum. Sel bertitik-titik = sebelum unit ybs memakai panel Rincian (lantai adopsi
+        beku di config) — bukan kelalaian pengawas. Modul kas EasyMax dihapus 2026-08-07
+        — dorman di ketujuh unit.
       </div>
     </div>
   );

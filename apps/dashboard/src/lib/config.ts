@@ -131,6 +131,51 @@ export function unitLabel(code: string, fallbackName?: string): string {
   return fallbackName ? `${code} — ${fallbackName}` : code;
 }
 
+/**
+ * LANTAI ADOPSI panel Rincian per unit — tanggal bisnis PERTAMA yang boleh
+ * dinilai indikator Ketaatan Administrasi. Hari sebelum tanggal ini bukan
+ * kelalaian pengawas: panelnya memang belum dipakai di unit itu.
+ *
+ * ⚠️ SENGAJA BEKU DI KODE, bukan `min(business_date)` hidup dari DB.
+ * `min()` hidup membuat MASA LALU BISA BERUBAH SENDIRI: satu entri bertanggal
+ * mundur menurunkan lantai dan mengubah sederet hari netral jadi merah surut.
+ * Indikator yang riwayatnya bergerak akan berhenti dipercaya — persis penyakit
+ * yang sedang diperbaiki. Biaya "menambah unit = satu baris kode" DITERIMA
+ * (keputusan owner 2026-08-07).
+ *
+ * Nilai yang mungkin:
+ *   "YYYY-MM-DD" → unit mengadopsi panel pada tanggal itu
+ *   null         → unit TERDAFTAR tapi TERKONFIRMASI belum memakai panel sama
+ *                  sekali. BUKAN "abaikan": menghasilkan status `belum_adopsi`
+ *                  yang menyuarakan dirinya (lihat adminStatus).
+ *   tak ada key  → unit BELUM DIDAFTARKAN. Bukan default diam — menghasilkan
+ *                  `config_hilang` yang menyala MERAH, karena indikator ini
+ *                  tak bisa dipercaya untuk unit yang lantainya tak diketahui.
+ *
+ * Tanggal di bawah = `min(business_date)` app.manual_entry per unit, dibaca
+ * sekali dari DB pilot 2026-08-07 lalu DIBEKUKAN. Jangan "menyegarkan" nilainya
+ * dari DB — itu mengembalikan masalah yang justru dihindari pembekuan ini.
+ */
+export const ADOPSI_RINCIAN: Record<string, string | null> = {
+  "6478111": "2026-06-21", // Imam Bonjol
+  "6378301": "2026-07-08", // Bakau
+  "6478101": "2026-07-16", // Adisucipto
+  "6478106": "2026-08-02", // Bundaran Kotabaru
+  "6478201": "2026-08-03", // Batu Layang
+  "6478311": "2026-08-06", // Korek
+  "63781002": "2026-08-04", // 28 Oktober
+};
+
+/**
+ * Lantai adopsi unit. `undefined` = TIDAK terdaftar (bukan "tidak ada lantai") —
+ * pemanggil WAJIB membedakannya dari `null`. Sengaja tidak ber-default.
+ */
+export function adopsiRincian(code: string): string | null | undefined {
+  return Object.prototype.hasOwnProperty.call(ADOPSI_RINCIAN, code)
+    ? ADOPSI_RINCIAN[code]
+    : undefined;
+}
+
 export function unitDotted(code: string): string {
   return UNIT_DISPLAY[code]?.dotted ?? code;
 }

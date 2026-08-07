@@ -195,3 +195,48 @@ Jendela pembanding **TETAP**: 91 sel settle `2026-07-25 … 2026-08-06`, 7 unit.
    "netral" atau "hijau" — keduanya berbohong.
 3. **Sel pra-adopsi harus TERBACA** — state netral bernama + penjelasan, bukan
    kosong tanpa keterangan (yang akan dibaca sebagai bug).
+
+### HASIL LANTAI ADOPSI — diukur setelah kode ditulis (jendela TETAP 91 sel)
+
+| # | Prediksi | Terukur | Verdict |
+| --- | --- | --- | --- |
+| L1 | merah 47 → **8** | **8** (7 `belum_diisi` Adisucipto + 1 `kurang_setor` IB) | ✅ **tepat** |
+| L2 | kuning tetap **6** | **6** | ✅ **tepat** |
+| L3 | `pra_adopsi` **39** | **39** | ✅ **tepat** |
+| L4 | Bakau 08-06 `lebih_setor` +3.362.265 tertangkap | `lebih_setor`, I−H = **+3.362.265** | ✅ |
+| L5 | IB 08-03 `kurang_setor` −476.993 tertangkap | `kurang_setor`, I−H = **−476.993** | ✅ |
+| L6 | hijau **38**, tak berubah | **37**, tak berubah | ⚠️ **substansi benar, angka meleset 1** |
+
+⚠️ **KEKELIRUAN METRIK YANG HAMPIR SAYA LAPORKAN SEBAGAI KEBENARAN.** Pengukuran
+pertama saya menghitung `adminStatus().tone`, BUKAN warna sel yang benar-benar
+dirender. Keduanya berbeda: sel `pending` mengambil `tone` dasar dari sales/opname
+(→ `success`) tetapi dirender lewat `pendingKind` sebagai kelas `pending`. Angka
+baseline "38 hijau" yang saya kunci di L6 ternyata **artefak metrik itu** — ia
+memasukkan 1 sel `belum_tempo_kosong` (2026-08-06, D+1) sebagai hijau. Warna
+terender yang sebenarnya, sebelum DAN sesudah lantai, adalah **37 hijau**.
+
+Jadi L6 benar pada yang penting (**hijau tidak berubah** — lantai memindahkan sel
+dari MERAH ke netral, tidak mencuri hijau) dan salah pada angkanya karena saya
+membandingkan dua besaran berbeda. Diukur ulang dengan besaran yang benar.
+
+Warna terender, 91 sel settle:
+
+| | sebelum lantai | sesudah lantai |
+| --- | ---: | ---: |
+| merah | **47** | **8** |
+| kuning | 6 | 6 |
+| hijau | 37 | 37 |
+| netral | 1 (`belum_tempo`) | **40** (1 tempo + 39 `pra_adopsi`) |
+
+### Uji mutasi lantai adopsi — 7 titik, semuanya bisa MERAH
+
+`config_hilang`→netral · `config_hilang`→hijau · `belum_adopsi`→netral diam ·
+lantai dimatikan · batas lantai digeser (`<` → `<=`) · lantai dilebarkan sampai
+menelan L4/L5 · satu unit dihapus dari `ADOPSI_RINCIAN`. Pohon bersih hijau.
+
+### Korek 2026-08-07 — belum bisa diukur, dan kenapa
+
+Item Fase 3 ini **tidak bisa diselesaikan hari ini**: 2026-08-07 masih hari
+berjalan, dan EasyMax menulis `sales_header` saat shift TUTUP. Pukul 13:46 WIB
+ketujuh unit masih `0 shift`. Selisih Rp 355,9 juta baru bermakna setelah hari
+itu settle, yaitu 2026-08-08. Dilaporkan setelah promosi, apa pun hasilnya.
