@@ -337,3 +337,110 @@ percobaan pertama. Setelah diperbaiki: **4/4 penanda terverifikasi ADA**.
 Bagian **tunda-satu-siklus** belum dimekaniskan (ia aturan waktu, bukan skrip);
 pembenaran empirisnya tetap: di sesi ini klaim frekuensi dan koreksi L6
 sama-sama bertahan **tepat satu putaran** sebelum dibantah.
+
+---
+
+# CATATAN SUSULAN (owner, 2026-08-07)
+
+## `strict: true` — batas yang diketahui dari bantahan saya
+
+Bantahan saya diterima, **dengan satu sisa yang harus dicatat sebagai batas,
+bukan sebagai masalah yang tak ada**:
+
+CI pada event `pull_request` memang diuji terhadap **merge-preview**, jadi
+sebagian besar manfaat `strict` sudah didapat. **Tapi preview itu dihitung saat
+event TERAKHIR pada PR, bukan saat merge.** Kalau base bergerak SESUDAH push
+terakhir — dan hari ini base bergerak belasan kali — cek hijau berasal dari
+merge-preview yang **basi**. Kecil, tapi **bukan nol**.
+
+Konsekuensi praktis: makin lama sebuah PR menganggur setelah hijau, makin lemah
+arti hijaunya. Mitigasi tanpa `strict`: untuk PR yang menyentuh KODE dan sudah
+lama hijau, dorong commit kosong / re-run CI sebelum merge.
+
+## Commit `0ed5967` — SENGAJA ditinggal
+
+Commit kosong dari kontrol pra-gerbang G2 **tetap di `staging`** dan ikut ke
+`main` lewat #213. **Itu keputusan, bukan kelalaian:**
+
+- Menghapusnya menuntut **melubangi gerbang yang baru terbukti bekerja**
+  (force-push ditolak; satu-satunya jalan = melonggarkan proteksi sementara).
+- Commit itu **nol perubahan berkas**; ia tak memicu deploy (path filter).
+- Harga "riwayat rapi" < harga "gerbang dilonggarkan, walau semenit".
+
+⚠️ Pesan commit-nya berbunyi **"akan dihapus"** — itu **kini tidak benar**.
+Pembaca berikutnya: ia tinggal permanen; catatan ini yang berlaku, bukan pesan
+commit-nya.
+
+## Temuan tentang GITHUB, bukan tentang repo ini
+
+Pada branch yang SAMA, dengan `enforce_admins: false`:
+
+| setelan | menggigit admin? |
+| --- | --- |
+| `allow_force_pushes: false` | **YA** — `remote: Cannot force-push to this branch` |
+| `required_status_checks` | **TIDAK** — push lolos, dicatat "Bypassed rule violations" |
+
+Jadi `enforce_admins` **tidak** menggerbangi semua proteksi secara seragam:
+sebagian ditegakkan tanpa memandang admin, sebagian dikecualikan. Konsekuensinya
+umum, di luar proyek ini: **"branch saya terproteksi" bukan pernyataan yang
+bermakna** — tiap proteksi harus diuji sendiri-sendiri terhadap peran yang
+sebenarnya dipakai orang.
+
+---
+
+# ISOLASI TENANT `getAdminDays` — temuan terpenting hari ini
+
+## Yang sebenarnya terjadi
+
+`getAdminDays` adalah query **multi-unit**, **hidup di produksi** sejak
+2026-08-07 15:39, dan **belum pernah** diuji isolasi tenant — pada platform
+**enam tenant** tempat RLS adalah gerbang keras satu-satunya. Ia lolos karena
+guard kelengkapan membandingkan `CASES.length` dengan **angka hardcoded**.
+`getZeroClosingEvents` lolos dengan cara yang sama, lebih lama.
+
+**Aritmetika yang sama yang menangkap L6 juga menangkap ini:** `queries.ts`
+mengekspor **36** fungsi, guard dikunci ke **34**. Selisih tepat 2.
+
+## Apakah ada ekspor LAIN yang lolos? — TIDAK
+
+Sapuan `exported − covered` atas `lib/queries.ts`: **tepat dua**
+(`getAdminDays`, `getZeroClosingEvents`), keduanya kini tercakup. Guard
+ber-angka-hardcoded bentuk sejenis di tempat lain: **tidak ada** — kemunculan
+`.length).toBe(N)` lain adalah asersi jumlah baris per-permukaan yang memang
+disengaja, bukan guard kelengkapan.
+
+## ⚠️ KOREKSI PREMIS SAYA SENDIRI — tes pertama saya GAGAL, dan benar gagal
+
+Versi pertama tes menuntut: `getAdminDays([UA, UB])` dari pemanggil ber-scope UA
+harus mengembalikan data UB **nol**. **Ia gagal** (`omzet UB bocor: expected
+2000000 to be +0`).
+
+**Premis saya yang salah, bukan kodenya.** `getAdminDays` menyerahkan array yang
+SAMA ke GUC `app.unit_ids` **dan** ke parameter SQL — array yang dilebarkan
+melebarkan RLS juga. Jadi skenario "menyodorkan unit di luar scope" **tak bisa
+dicegah RLS lewat fungsi ini**; yang mencegahnya adalah **`ScopedUnitId`
+ber-brand**, yang hanya bisa dicetak `getDataScope()`.
+
+Menuliskan tes yang menuntut RLS melakukan pekerjaan TIPE akan memberi **rasa
+aman palsu** — hijau yang berarti hal yang berbeda dari yang dibaca orang.
+
+## Yang akhirnya diuji, dan dibuktikan bisa MERAH
+
+| tes | mutasi | hasil |
+| --- | --- | --- |
+| `getAdminDays` scope satu unit → nol baris berdata unit lain | `qScoped` → `q` polos (tanpa konteks RLS) | **MERAH** lewat kontrol anti-hampa: *"fixture unit A tak terbaca — asersi kebocoran jadi hampa"* |
+| **BACKSTOP RLS**: GUC lebih SEMPIT dari parameter → unit luar tetap nol | GUC dilebarkan diam-diam ke `[UA,UB]` | **MERAH**: *"unit B bocor menembus GUC yang sempit"* |
+| guard cakupan diturunkan dari ekspor | hapus `getAdminDays` dari `CASES` | **MERAH**, menyebut namanya |
+| ↳ **kontrol**: guard LAMA (angka hardcoded) atas kelalaian yang SAMA | idem | **HIJAU** — buktinya ia memang buta |
+
+Backstop RLS memakai **probe SQL langsung** (bukan fungsi produksi) supaya GUC
+dan parameter bisa **dibuat berbeda** — sesuatu yang `getAdminDays` sengaja tak
+izinkan. Itulah satu-satunya cara menguji gerbang kerasnya secara terpisah.
+
+**Kontrol anti-hampa dipasang di tiap asersi kebocoran**: kalau fixture tak
+terbaca, "tak ada baris asing" benar secara vakum. Kontrol itulah yang menyalak
+pada mutasi pertama.
+
+`getZeroClosingEvents` juga ditambahkan; asersi kebocorannya **hampa** karena
+fixture tak menaruh kejadian opname-nol — **saya menyebutnya, bukan
+menyamarkannya**. Yang tetap bermakna di sana: `unit_id` tak pernah di luar scope.
