@@ -52,6 +52,7 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
         "public.sales_detail",
         "public.sales_header",
         "public.product",
+        "public.opname",
         "public.real_tank",
         "public.nozzle",
         "public.sync_state",
@@ -107,6 +108,21 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
            ($1, 'JB-UA', 'N01', 1, 100, 1000000, 'BB-02', '${D} 08:00+07'),
            ($1, 'JB-UA', 'N01', 2,  50,  500000, 'BB-02', '${D} 09:00+07'),
            ($2, 'JB-UB', 'N01', 1, 200, 2000000, 'BB-07', '${D} 08:00+07')`,
+        [UA, UB],
+      );
+      // Kejadian OPNAME-NOL untuk getZeroClosingEvents: op=0 diapit prev>1.000
+      // dan next>1.000, TANPA delivery keesokan harinya. Nilai prev DIBEDAKAN
+      // per unit (UA 5.000 / UB 7.000) supaya kebocoran terbaca dari angkanya,
+      // bukan cuma dari unit_id.
+      await c.query(
+        `INSERT INTO public.opname
+           (unit_id, ckdopnbbm, ckdtangki, ckdbbm, dtaglopn, nstockbk, nstockop, dtgljam, sbatal) VALUES
+           ($1,'OP-A1','T-01','BB-02','2026-06-30', 5000, 5000, '2026-06-30 22:00+07', 0),
+           ($1,'OP-A2','T-01','BB-02','${D}',       4800,    0, '${D} 22:00+07',       0),
+           ($1,'OP-A3','T-01','BB-02','2026-07-02', 4600, 4600, '2026-07-02 22:00+07', 0),
+           ($2,'OP-B1','T-01','BB-07','2026-06-30', 7000, 7000, '2026-06-30 22:00+07', 0),
+           ($2,'OP-B2','T-01','BB-07','${D}',       6800,    0, '${D} 22:00+07',       0),
+           ($2,'OP-B3','T-01','BB-07','2026-07-02', 6600, 6600, '2026-07-02 22:00+07', 0)`,
         [UA, UB],
       );
       await c.query(
@@ -276,15 +292,31 @@ d("full-app under RLS (dashboard_app, self-seeded fictitious 2-unit)", () => {
     expect(rows.some((r) => r.unit_id === UB), "unit B bocor menembus GUC yang sempit").toBe(false);
   });
 
-  it("getZeroClosingEvents: scope satu unit → tak pernah memuat unit lain", async () => {
-    const a = await Q.getZeroClosingEvents([U(UA)], D, D);
-    const b = await Q.getZeroClosingEvents([U(UB)], D, D);
-    const luas = await Q.getZeroClosingEvents([U(UA), U(UB)], D, D);
-    // Fixture tak menaruh kejadian opname-nol, jadi ketiganya boleh kosong —
-    // ASERSI KEBOCORAN DI SINI HAMPA dan saya menyebutnya, bukan menyamarkannya.
-    // Yang tetap bermakna: unit_id yang muncul TAK PERNAH di luar scope.
-    expect(a.every((r) => r.unit_id === UA)).toBe(true);
-    expect(b.every((r) => r.unit_id === UB)).toBe(true);
-    expect(luas.every((r) => r.unit_id === UA || r.unit_id === UB)).toBe(true);
+  it("getZeroClosingEvents: kejadian NYATA, ter-scope, tanpa kebocoran", async () => {
+    // ⚠️ Versi pertama tes ini HAMPA: fixture tak punya kejadian opname-nol,
+    // jadi `every()` atas array kosong bernilai true dan hijaunya berarti
+    // "tak ada yang diperiksa" — kelas cacat yang SAMA dengan guard
+    // `.toBe(34)`. Menyebutnya di badan PR tidak menetralkan efeknya; yang
+    // tersisa di repo tetap hijau yang menyesatkan. Fixture kini berisi.
+    const W = ["2026-06-30", "2026-07-02"] as const;
+    const a = await Q.getZeroClosingEvents([U(UA)], W[0], W[1]);
+    const b = await Q.getZeroClosingEvents([U(UB)], W[0], W[1]);
+
+    // KONTROL ANTI-HAMPA: kejadiannya harus benar-benar terdeteksi.
+    expect(a.length, "fixture opname-nol UA tak terdeteksi — asersi jadi hampa").toBe(1);
+    expect(b.length, "fixture opname-nol UB tak terdeteksi — asersi jadi hampa").toBe(1);
+
+    // Isolasi + diskriminasi NILAI: prev UA 5.000 vs UB 7.000.
+    expect(a[0]!.unit_id).toBe(UA);
+    expect(a[0]!.prev).toBe(5000);
+    expect(b[0]!.unit_id).toBe(UB);
+    expect(b[0]!.prev).toBe(7000);
+    expect(a.some((r) => r.prev === 7000), "nilai UB bocor ke hasil UA").toBe(false);
+    expect(b.some((r) => r.prev === 5000), "nilai UA bocor ke hasil UB").toBe(false);
+
+    // Multi-unit sah: direksi ber-scope keduanya melihat dua-duanya, tak lebih.
+    const luas = await Q.getZeroClosingEvents([U(UA), U(UB)], W[0], W[1]);
+    expect(luas.map((r) => r.unit_id).sort()).toEqual([UA, UB]);
   });
+
 });
