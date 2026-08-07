@@ -1,17 +1,21 @@
 /**
  * Pembangun feed "Anomali & exception" (Board + badge sidebar Ketaatan) dari
- * data nyata. Lima jenis spec: losses abnormal, kas dorman (permanen),
- * shift belum input, stok kritis, koreksi totalisator. Urut: paling perlu
- * tindakan dulu (danger → warning → info).
+ * data nyata: losses abnormal, ketaatan administrasi (setoran tak selaras /
+ * hari belum diisi lewat tempo), shift belum input, stok kritis, koreksi
+ * totalisator. Urut: paling perlu tindakan dulu (danger → warning → info).
+ *
+ * Anomali "kas dorman" DIHAPUS 2026-08-07: ketujuh unit nol nota dalam 30 hari,
+ * jadi ia danger permanen (sev=MAX_SAFE_INTEGER, standing) yang tak pernah bisa
+ * diselesaikan — alarm yang tak bisa dimatikan adalah alarm yang diabaikan.
  */
 import { unstable_cache } from "next/cache";
 import {
+  getAdminDays,
   getAvgDailySales,
   getClosingOpname,
   getCorrections,
   getDailyGlByProduct,
   getDeliveryShortfalls,
-  getLastInputs,
   getShiftInfo,
   getTankStocks,
   getZeroClosingEvents,
@@ -19,6 +23,8 @@ import {
 import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
+import { adminStatus, fmtRp, SETORAN_TOLERANSI_RP } from "./compliance";
+import { uangTunai } from "./rekon";
 import {
   aggregateClosingGl,
   enduranceDays,
@@ -43,7 +49,11 @@ export interface AnomalyItem {
   time: string;
   /** link "Buka laporan →" */
   href?: string;
-  /** Flag permanen/berdiri (mis. kas dorman) — tetap di feed, tak dihitung badge. */
+  /**
+   * Flag permanen/berdiri — tetap di feed, tak dihitung badge. Tak ada lagi
+   * produsennya sejak anomali kas dorman dihapus (2026-08-07); dipertahankan
+   * karena `layout.tsx` masih menyaringnya dan kontraknya tetap berlaku.
+   */
   standing?: boolean;
 }
 
@@ -58,7 +68,6 @@ const lossTier = (absL: number, ratio: number | null): "major" | "minor" =>
 export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]> {
   const today = todayWib();
   const items: AnomalyItem[] = [];
-  let kasOldest: { date: string } | null = null;
 
   /**
    * Penutup opname bernilai NOL (keputusan owner D2, 2026-07-24). SATU query
@@ -72,6 +81,68 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
    * mengencerkan sinyal yang justru harus dipercaya.
    */
   const unitIds = units.map((u) => u.unit_id);
+
+  /**
+   * Ketaatan ADMINISTRASI (menggantikan anomali kas dorman). SATU query
+   * multi-unit di luar loop — tak menambah fan-out per unit. Keputusan status
+   * memakai `adminStatus()` yang sama dengan halaman Ketaatan: satu aturan,
+   * satu tempat. Jendela 7 hari seperti item lain di feed ini.
+   */
+  const namaUnit = new Map(units.map((u) => [u.unit_id as number, unitDotted(u.code)]));
+  for (const r of await getAdminDays(unitIds, addDays(today, -6), today)) {
+    const h = uangTunai({
+      A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG,
+    });
+    const v = adminStatus(
+      {
+        nPendapatanLain: r.nPendapatanLain,
+        nPengeluaran: r.nPengeluaran,
+        nSetoran: r.nSetoran,
+        h,
+        i: r.setoran,
+        shifts: r.shifts,
+      },
+      { businessDate: r.d, today },
+    );
+    if (v.tone === "pending" || v.kode === "selaras") continue;
+    const unitTag = namaUnit.get(r.unit_id) ?? String(r.unit_id);
+    const href = `/unit/${units.find((u) => u.unit_id === r.unit_id)?.code}/rincian/${r.d}`;
+    const selisih = r.setoran !== null ? Math.abs(r.setoran - h) : 0;
+    if (v.kode === "belum_diisi" || v.kode === "setoran_kosong") {
+      items.push({
+        tone: "danger",
+        tier: "major",
+        sev: h,
+        dateIso: r.d,
+        title:
+          v.kode === "belum_diisi"
+            ? "Rincian Penjualan belum diisi — lewat jatuh tempo"
+            : "Setoran bank belum diisi — lewat jatuh tempo",
+        unit: unitTag,
+        desc:
+          v.kode === "belum_diisi"
+            ? `Tidak ada satu pun baris Pendapatan Lain / Pengeluaran / Setoran untuk hari ini. Uang tunai seharusnya ${fmtRp(h)}. Jatuh tempo akhir H+1 sudah lewat.`
+            : `Pendapatan Lain (${r.nPendapatanLain}) & Pengeluaran (${r.nPengeluaran}) terisi, tapi SETORAN BANK nihil. Uang tunai ${fmtRp(h)} tak terpertanggungjawabkan.`,
+        time: r.d,
+        href,
+      });
+    } else {
+      items.push({
+        tone: v.kode === "kurang_setor" ? "danger" : "warning",
+        tier: "major",
+        sev: selisih,
+        dateIso: r.d,
+        title:
+          v.kode === "kurang_setor"
+            ? `Setoran bank KURANG ${fmtRp(selisih)} dari uang tunai`
+            : `Setoran bank MELEBIHI uang tunai ${fmtRp(selisih)}`,
+        unit: unitTag,
+        desc: `Uang tunai H = ${fmtRp(h)}, setoran I = ${fmtRp(r.setoran ?? 0)}. Selisih di luar toleransi ${fmtRp(SETORAN_TOLERANSI_RP)} (pembulatan slip setoran), jadi ini bukan artefak pembulatan.`,
+        time: r.d,
+        href,
+      });
+    }
+  }
   const byUnitZero = new Map<number, Awaited<ReturnType<typeof getZeroClosingEvents>>>();
   for (const z of await getZeroClosingEvents(unitIds, addDays(today, -6), today)) {
     const list = byUnitZero.get(z.unit_id) ?? [];
@@ -103,9 +174,11 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       getDeliveryShortfalls(u.unit_id, addDays(today, -6), today, 10),
       getShiftInfo(u.unit_id, today),
     ]);
-    const [corrections, last, tanks, avg] = await Promise.all([
+    // getLastInputs DILEPAS 2026-08-07 bersama anomali kas dorman: `last` hanya
+    // pernah dipakai untuk `last.cash` (terverifikasi grep). Satu query per unit
+    // lebih sedikit di feed.
+    const [corrections, tanks, avg] = await Promise.all([
       getCorrections(u.unit_id, today),
-      getLastInputs(u.unit_id),
       getTankStocks(u.unit_id),
       getAvgDailySales(u.unit_id, addDays(today, -7), addDays(today, -1)),
     ]);
@@ -261,27 +334,6 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
       });
     }
 
-    if (last.cash && (!kasOldest || last.cash < kasOldest.date)) {
-      kasOldest = { date: last.cash };
-    }
-  }
-
-  // Kas dorman — flag permanen, tidak bisa di-dismiss (spec): selalu puncak danger.
-  if (kasOldest) {
-    const age = ago(kasOldest.date);
-    if (age.includes("TAHUN") || age.includes("hari")) {
-      items.push({
-        tone: "danger",
-        tier: "major",
-        sev: Number.MAX_SAFE_INTEGER, // selalu di atas — sinyal pengawasan paling penting
-        dateIso: kasOldest.date,
-        title: `Modul Kas/Pengeluaran dorman — terakhir input ${kasOldest.date} (${age})`,
-        unit: "Semua unit",
-        desc: "Flag permanen, tidak bisa di-dismiss. Pengeluaran & setoran tidak terkontrol lewat sistem sejak input terakhir.",
-        time: "tetap",
-        standing: true,
-      });
-    }
   }
 
   // Urut: tone (danger→warning→info) → major sebelum minor → sev terbesar dulu.

@@ -51,7 +51,7 @@ export default async function HubPage() {
         {
           tag: "Realtime",
           title: "Ketaatan administrasi",
-          desc: "Heatmap kepatuhan input penjualan, opname & kas per hari.",
+          desc: "Heatmap kepatuhan input penjualan, opname & administrasi (pendapatan lain, pengeluaran, setoran bank) per hari.",
           ctx: `Semua unit dalam akses Anda (${scope.units.length}) · 14 hari terakhir`,
           href: "/monitoring/ketaatan",
         },

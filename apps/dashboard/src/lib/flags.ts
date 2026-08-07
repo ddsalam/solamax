@@ -12,8 +12,12 @@ export const DOMAIN = {
   tera: true, // nozzle-test / kolom Tera + komponen Penjualan_BERSIH G/L (domain `tera` LIVE)
   pelanggan: false, // deposit & piutang pelanggan (C)
   edc: false, // settlement EDC (D)
+  // ⚠️ BASI sejak 2026-08-07: datanya LIVE di ketujuh unit (app.manual_entry).
+  // SENGAJA tidak dibalik ke `true` — itu akan memunculkan EmptyPanel
+  // "Pendapatan Lain-Lain" baru di laporan/[date]/page.tsx:686-690, perubahan
+  // render yang di luar cakupan PR ini. Balikkan bersama panel aslinya.
   pendapatanLain: false, // pendapatan lain-lain (F)
-  setoran: false, // setoran bank (I)
+  setoran: true, // setoran bank (I) — LIVE di 7 unit via app.manual_entry (2026-08-07)
   do: true, // DO Harian (penebusan tr_htebus/tr_dtebus + running-balance) — LIVE
 
   hargaBeli: false, // harga beli & margin (master harga beli)
