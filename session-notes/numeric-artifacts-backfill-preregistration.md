@@ -424,3 +424,48 @@ ia membandingkan **keluaran nyata sebelum dan sesudah**, bukan menanyakan ulang 
 penulisnya. Semua kontrol di berkas ini dirancang dengan sifat itu: satuan yang salah,
 baseline yang basi, snapshot yang vakum, dan pesan `gcloud` yang menyesatkan semuanya
 tertangkap oleh pemeriksaan yang bisa berbunyi MERAH terhadap yang membuatnya.
+
+
+## 2026-08-07 ~02:00 WIB — PRA-REGISTRASI uji integrasi guard di tier testing
+
+Ditulis **sebelum** `workflow_dispatch` dijalankan. Guard sudah lolos 5/5 uji merah (logika),
+tapi **belum pernah berjalan pada keluaran `gcloud` sungguhan** — satu-satunya kesempatan
+sebelumnya gagal di langkah sebelumnya, jadi guard di-skip, bukan misfire. Uji ini menutup
+celah itu di `-rlsstg`, **nol risiko pilot**.
+
+### 1. State sebelum (diverifikasi, bukan diingat)
+
+| layanan | serve | spec.traffic | latestCreated |
+| --- | --- | --- | --- |
+| `solamax-ingest-rlsstg` (testing) | `-00012-fxr` | `latestRevision: True` | `-00012-fxr` |
+| `solamax-ingest-staging` (**pilot**) | `-00033-zv9` | `latestRevision: True` | — |
+| `solamax-dashboard-staging` (**pilot**) | `-00082-ww5` | `latestRevision: True` | — |
+
+`staging` HEAD = `0f64b00`.
+
+Catatan: `-rlsstg` **tidak** dipatok, jadi kondisi pemicu MERAH guard memang tak ada di sana.
+Yang diuji di sini adalah **integrasinya** — apakah ia membaca field yang benar dari `gcloud`
+sungguhan dan lolos pada deploy yang sehat.
+
+### 2. Yang diharapkan guard CETAK saat lolos
+
+```
+revisi terbaru dibuat : solamax-ingest-rlsstg-000NN-xxx   (revisi BARU, bukan -00012-fxr)
+revisi menyajikan     : solamax-ingest-rlsstg-000NN-xxx   (sama persis dgn baris di atas)
+persen traffic        : 100
+spec.traffic          : {'latestRevision': True, 'percent': 100}
+OK: solamax-ingest-rlsstg-000NN-xxx menyajikan 100% traffic.
+```
+
+### 3. Yang diharapkan TIDAK berubah
+- `solamax-ingest-staging` tetap `-00033-zv9`, `latestRevision: True`;
+- `solamax-dashboard-staging` tetap `-00082-ww5`, `latestRevision: True`;
+- job `migrate-pilot` & `deploy-pilot` **skipped** (`if: github.ref == 'refs/heads/main'`) —
+  isolasi pilot bersifat struktural, bukan kehati-hatian.
+
+### 4. Apa yang dihitung MERAH
+- **Guard gagal pada deploy yang sehat** = false positive. Guard yang menyala palsu akan
+  diabaikan orang, lalu berhenti melindungi. **Dilaporkan, tidak ditambal cepat.**
+- Guard **lolos tanpa pernah dieksekusi** (mis. langkah sebelumnya gagal lagi) — itu bukan
+  bukti; statusnya tetap "belum teruji", bukan "hijau".
+- Revisi pilot mana pun bergerak.
