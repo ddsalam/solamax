@@ -1235,10 +1235,17 @@ Bukan aturan yang akan dimatikan orang karena ramai.
 ### Bentuk yang berulang, dicatat supaya berhenti berulang
 
 > **Backtest atas keadaan AKHIR tidak bisa mengukur alarm yang menyala pada
-> keadaan ANTARA.** Kalau yang diukur adalah kesalahan yang bisa DIKOREKSI,
-> koreksinya menghapus buktinya — dan hasilnya nol yang menyenangkan.
-> Ukur dari jejak audit, dengan `created_at`/`voided_at`, dalam satuan **waktu**,
-> bukan dalam satuan **hari yang berakhir salah**.
+> keadaan ANTARA — BILA objek ukurnya bisa DIKOREKSI.** Koreksinya menghapus
+> buktinya, dan hasilnya nol yang menyenangkan. Ukur dari jejak audit, dengan
+> `created_at`/`voided_at`, dalam satuan **waktu**, bukan dalam satuan **hari
+> yang berakhir salah**.
+>
+> ⚠️ **SYARATNYA PENTING — jangan pakai aturan ini berlebihan.** Kalau objek
+> ukurnya TIDAK bisa dikoreksi (mis. omzet `sales_detail`, opname yang sudah
+> final, tanggal adopsi yang beku), **keadaan akhir MEMANG jawabannya** dan
+> backtest biasa sepenuhnya sah. Yang membatalkannya hanya kombinasi
+> *"bisa dikoreksi" × "alarm menyala pada keadaan antara"*. Tanpa syarat itu,
+> orang akan berhenti memakai backtest yang benar.
 
 Ini **ketiga kalinya** bentuk yang sama muncul dalam dua hari: query frekuensi
 pertama · query frekuensi kedua (menjumlahkan void + hidup) · uji sunyi ini.
@@ -1248,3 +1255,48 @@ pertama · query frekuensi kedua (menjumlahkan void + hidup) · uji sunyi ini.
 Karena keadaan akhir bersih, **"hijau di produksi" tidak akan pernah membuktikan
 aturan ini bekerja.** Fixture bernama dengan angka historis memikul **seluruh**
 bebannya. Jangan simpulkan sebaliknya dari papan yang tenang.
+
+---
+
+## ⛔ PEREKAM GAGAL SENYAP 12 JAM — dan lognya berbohong dengan cara yang halus
+
+Perekam berjalan, tapi **tidak menulis apa pun dari 11:17 sampai 23:16 WIB**.
+Dua jalan launchd (16:28 dan 23:16) menghasilkan **nol baris**.
+
+**Dua sebab, dan yang kedua lebih penting:**
+
+1. **Gap tidur.** `launchd StartInterval` **tidak menyusul** interval yang
+   terlewat saat Mac tidur — ia menembak sekali saat bangun. Jejaknya di log:
+   `11:17 → 16:28 → 23:16` (gap 5 jam & 7 jam, bukan 15 menit).
+
+2. **Error ditelan, dan log-nya menyamarkan kegagalan.** Query memakai
+   `2>/dev/null`, dan baris log mencetak **TOTAL** (`baris=126`) tanpa syarat —
+   jadi jalan **gagal** dan jalan **sukses** menghasilkan baris log yang **bentuknya
+   sama**. Perbedaannya hanya angka yang tak berubah, dan angka yang tak berubah
+   tidak menarik perhatian siapa pun.
+
+> **Log yang mencetak KEADAAN, bukan PERUBAHAN, membuat kegagalan terlihat seperti
+> keberhasilan.** Cetak delta; kalau deltanya nol, katakan GAGAL dengan kata itu.
+
+**Diperbaiki:** stderr psql ke `rekam.err` (tidak ditelan) · log mencetak
+`delta=N total=N` + kata **GAGAL** saat delta nol · proxy di-restart lalu query
+diulang sekali bila delta nol.
+
+**Batas kejujuran:** cabang retry `DELTA=0` **TIDAK terbukti** — pada uji
+mematikan proxy, penjaga proxy di awal skrip sudah memulihkannya lebih dulu
+sehingga cabang itu tak pernah dimasuki. Yang terbukti adalah **hasilnya**
+(mematikan proxy tidak merusak jalan), bukan cabang retry-nya.
+
+**Mitigasi gap tidur:** `caffeinate -s -t 13200` (berbatas waktu, kedaluwarsa
+sendiri ~03:10 WIB) supaya jendela penentu lewat tengah malam **tertangkap**.
+Ini mengubah perilaku daya mesin owner untuk beberapa jam — disebutkan, bukan
+didiamkan.
+
+**Ini kali KEDUA perekam gagal, dengan bentuk berbeda:** yang pertama hilang
+karena penyimpanan session-scoped; yang kedua berjalan tapi tak menulis. Aturan
+"lewati batas sekali dan lihat ia masih hidup" **membuktikan satu penyeberangan**
+— dan itu tidak sama dengan membuktikan ia **terus** hidup.
+
+> **Menyeberangi batas SEKALI membuktikan ia bisa; ia tidak membuktikan ia akan
+> TERUS.** Untuk sesuatu yang harus hidup berjam-jam, periksa juga bahwa jalan
+> ke-N menghasilkan DATA, bukan cuma bahwa jalan ke-1 berhasil.
