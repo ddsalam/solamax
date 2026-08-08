@@ -1017,6 +1017,10 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .manual-recon.ok .manual-recon-text { color: var(--color-success); }
 .manual-recon.warn { background: var(--color-danger-bg); }
 .manual-recon.warn .manual-recon-text { color: var(--color-danger); }
+/* `info` = NETRAL. Keadaan yang teksnya berkata "belum bisa dinilai" TIDAK boleh
+   memakai latar/warna danger — penanda harus sepakat dengan isinya. */
+.manual-recon.info { background: var(--color-bg-secondary); }
+.manual-recon.info .manual-recon-text { color: var(--color-text-secondary); }
 .manual-recon-nums { margin-left: auto; color: var(--color-text-secondary); }
 
 .manual-grid {
