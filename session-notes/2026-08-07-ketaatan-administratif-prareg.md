@@ -1028,3 +1028,108 @@ C punya watermark sendiri — temuan yang memicu seluruh pertanyaan ekor C/D.
 Bukti bahwa ini bukan kesialan: C+D bertumbuh **23,5 juta setelah shift lengkap**
 — besaran yang, kalau ada di model saya, akan menggeser pita prediksi ke arah
 yang benar.
+
+---
+
+# 2026-08-08 — JANGAN NILAI I-vs-H PADA HARI BERJALAN
+
+Owner **meninjau ulang keputusannya sendiri** dari 2026-08-07. Waktu itu ia
+memilih gerbang `shifts >= 3` dan MENOLAK "jangan nilai hari ini" — tanpa tahu
+C/D masih tumbuh SETELAH shift tutup.
+
+## Bukti yang mengubahnya — DUA pengamat, jendela berbeda, angka IDENTIK
+
+Korek 2026-08-07, **3 dari 3 shift**, A **tidak bergerak sama sekali**:
+
+| pengamat | jam | H |
+| --- | --- | ---: |
+| saya | 09:55 | 355.569.871,50 |
+| **owner** | (pagi) | **355.569.872** |
+| saya | 10:13 | 332.052.949,50 |
+| **owner** | (barusan) | **332.052.950** |
+
+**Turun 23.516.922** — angka yang sama dari dua pengamat terpisah. Temuan ini
+berdiri di atas **dua kaki**, bukan satu.
+
+Konsekuensi untuk kami **berdua**: angka "final" yang saya laporkan dan yang
+owner konfirmasi pagi tadi **diambil di jendela yang masih bergerak**. Konfirmasi
+owner mengesahkan **pengukurannya**, bukan **kefinalannya**.
+
+## Tiga hal yang berjalan bersama
+
+**1 · Gerbang hari-berjalan.** `dayGap(businessDate, today) === 0` → kode baru
+`hari_berjalan`, netral, tak dinilai pada sumbu I-vs-H sama sekali. Hari kemarin
+dan sebelumnya **tetap dinilai seketika** — biayanya nyaris nol karena jatuh
+tempo memang akhir H+1.
+
+**2 · Gerbang `shifts >= 3` DIPERTAHANKAN, dan didokumentasikan ULANG.** Ia kini
+menjaga kasus **BERBEDA**: **hari LAMPAU yang shift-nya tak pernah masuk** (agent
+mati / sync gagal). H hari itu dirakit dari data yang tak akan pernah lengkap,
+dan membandingkannya dengan setoran akan menuduh pengawas atas kegagalan
+**pipeline**. Alasannya ditulis **di dalam kode**, bukan di catatan sesi —
+gerbang yang dipertahankan tanpa alasan tertulis akan dihapus orang berikutnya
+sebagai peninggalan.
+
+**3 · Dampak pada 91 sel settle: NOL.** Diukur, bukan disetujui:
+
+```
+DAMPAK2 sel=91  sel_bertanggal_hari_ini=0  kode_hari_berjalan=0
+  belum_diisi=7 · kurang_setor=2 · lebih_setor=6 · pra_adopsi=39 · selaras=37
+```
+
+Prediksi owner ("nol berubah, semuanya sudah lewat hari") **terbukti**.
+
+⚠️ Catatan: distribusinya bergeser satu sel dari pengukuran kemarin
+(`belum_tempo_kosong` 1 → 0, `kurang_setor` 1 → 2). Itu **data yang bergerak**
+(satu unit-hari 08-06 terisi sejak kemarin), **bukan** efek gerbang ini — gerbang
+ini menyentuh nol sel.
+
+### Uji mutasi — dua arah
+
+| mutasi | hasil |
+| --- | --- |
+| gerbang hari-ini dihapus | **MERAH** — `expected 'lebih_setor' to be 'hari_berjalan'` |
+| gerbang dilebarkan ke `<= 1` (kemarin ikut ditahan) | **MERAH** — `expected 'hari_berjalan' to be 'kurang_setor'` |
+
+Arah kedua penting: ia menjaga agar gerbangnya **tidak menelan hari kemarin**,
+yang justru kasus bergunanya.
+
+Satu tes lama **gagal dengan benar** saat perilaku berubah (`belum_tempo_terisi`
+→ `hari_berjalan` untuk hari ini) dan diperbarui menyebutkan alasannya.
+
+## Jejak audit vs argumen pembulatan
+
+Owner: argumen pembulatan menunjukkan angka itu **COCOK** untuk 08-06; jejak
+audit menunjukkan **URUTAN pengetikannya** (08-07 pukul 10:28, lalu 08-06 pukul
+10:43). Yang kedua **lebih sulit dibantah** — kecocokan bisa kebetulan, urutan
+tidak.
+
+## TUJUAN pengukuran ekor C/D BERUBAH
+
+Bukan lagi "kapan hari ini boleh dinilai" — itu sudah dijawab dengan **tidak**
+menilainya. Pertanyaannya kini:
+
+> **Apakah akhir H+1 sudah cukup lambat?**
+
+Kalau C/D masih bergerak setelah lewat tengah malam, gerbang **jatuh tempo** kita
+juga menilai terlalu dini. Perekam `.measure/` yang sudah terbukti tahan
+lintas-batas sedang mengumpulkan datanya sekarang.
+
+## Bentuk-bentuk yang dicatat hari ini
+
+1. **Sebelum bersandar pada sesuatu yang harus hidup melewati batas, lewati batas
+   itu sekali dan lihat ia masih hidup.** Terbukti dua kali: gerbang K1 (tak
+   pernah berjalan) dan perekam pertama (tak pernah dibuktikan bertahan). Uji
+   lintas-batas perekam kedua **langsung menemukan** `node` tak ada di PATH
+   launchd.
+2. **Temuan yang belum dipindahkan ke dalam MODEL yang kita pakai untuk meramal
+   belum benar-benar dimiliki.** Saya menemukan watermark C, lalu meramal seolah
+   shift 3 hanya menambah A.
+3. **Pengetahuan sebelumnya sebagai KONTROL atas query sendiri.** Dua pengukuran
+   frekuensi saya mengembalikan 0, dan dua-duanya bug saya — tertangkap hanya
+   karena saya TAHU satu kasus ada, sehingga 0 mustahil.
+4. **Saat sebuah angka mencurigakan karena SAMA PERSIS dengan angka lain, hari
+   sebelumnya adalah tempat pertama yang dilihat.**
+5. **Sebuah draf yang dibangun di atas snapshot harus diperiksa ulang sebelum
+   diserahkan** — owner nyaris mengirim teguran atas kesalahan yang sudah
+   dibereskan pengawas sendiri.
