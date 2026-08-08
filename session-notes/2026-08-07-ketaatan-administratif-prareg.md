@@ -1186,3 +1186,65 @@ melaporkan kesalahan yang sudah selesai sendiri.
 **tidak bisa** diverifikasi pada data produksi — fixture bernama dengan angka
 historis (`359.447.000` dua kali) yang memikul seluruh bebannya, dengan kontrol
 hari yang `I`-nya identik **tapi** `H`-nya cocok (tak boleh menyala).
+
+---
+
+## ⛔ KOREKSI: uji sunyi "0 dari 83" MENGUKUR HAL YANG SALAH
+
+Owner benar, dan **saya sudah menemukan bentuk ini kemarin lalu mengulanginya.**
+
+Aturan salin-setoran menyala pada **keadaan ANTARA** — entri salah yang hidup
+sampai dikoreksi. Uji sunyi saya berjalan pada **keadaan AKHIR**, yaitu setelah
+semua koreksi. **Kasus Korek adalah buktinya langsung:** ia **tak terlihat** di
+backtest baris-hidup, padahal ia akan menyala **sepuluh jam**.
+
+Persis kegagalan query frekuensi pertama saya kemarin (0 karena koreksi pengawas
+menghapus buktinya) — **kejadian yang sama, pertanyaan berbeda.**
+
+> **"0 dari 83" bukan volume alarm; ia BATAS BAWAH volume alarm.**
+
+### Pengukuran yang benar: JAM-ALARM dari jejak audit
+
+Merekonstruksi garis waktu tiap NILAI setoran dari `created_at`/`voided_at`
+(**termasuk baris ter-void**), lalu menghitung jam saat (a) `I(D) == I(D−1)`
+dengan **kedua nilai hidup bersamaan** dan (b) `D` sudah lewat tengah malam.
+
+| | |
+| --- | ---: |
+| jendela pengamatan | 40 hari × 7 unit = **960 jam kalender** |
+| baris setoran diperiksa (incl. void) | **113** |
+| **JAM-ALARM (a ∧ b)** | **10,19 jam** |
+| **kejadian** | **1** — Korek 2026-08-07, Rp 359.447.000 |
+| porsi waktu ber-alarm | **1,06%** |
+
+**Cek-silang yang menyenangkan:** rekonstruksi temporal ini menghasilkan
+**10,19 jam** — dan hitungan tangan dari dua stempel waktu memberi **10 j 11 m**.
+Dua metode independen, angka yang sama.
+
+**(a ∧ b) adalah BATAS ATAS**; syarat (c) `|I − H| > toleransi` hanya
+**mengurangi**. Jadi volume alarm sebenarnya berada di antara:
+
+```
+   0 jam  ≤  volume alarm  ≤  10,19 jam   (per 40 hari, 7 unit)
+   ^ backtest keadaan-akhir      ^ jejak audit (a ∧ b)
+```
+
+**Kesimpulan: aturannya SUNYI.** Satu kejadian, ~10 jam, 1,06% waktu kalender.
+Bukan aturan yang akan dimatikan orang karena ramai.
+
+### Bentuk yang berulang, dicatat supaya berhenti berulang
+
+> **Backtest atas keadaan AKHIR tidak bisa mengukur alarm yang menyala pada
+> keadaan ANTARA.** Kalau yang diukur adalah kesalahan yang bisa DIKOREKSI,
+> koreksinya menghapus buktinya — dan hasilnya nol yang menyenangkan.
+> Ukur dari jejak audit, dengan `created_at`/`voided_at`, dalam satuan **waktu**,
+> bukan dalam satuan **hari yang berakhir salah**.
+
+Ini **ketiga kalinya** bentuk yang sama muncul dalam dua hari: query frekuensi
+pertama · query frekuensi kedua (menjumlahkan void + hidup) · uji sunyi ini.
+
+### Konsekuensi yang tetap berlaku
+
+Karena keadaan akhir bersih, **"hijau di produksi" tidak akan pernah membuktikan
+aturan ini bekerja.** Fixture bernama dengan angka historis memikul **seluruh**
+bebannya. Jangan simpulkan sebaliknya dari papan yang tenang.
