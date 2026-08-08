@@ -1300,3 +1300,123 @@ karena penyimpanan session-scoped; yang kedua berjalan tapi tak menulis. Aturan
 > **Menyeberangi batas SEKALI membuktikan ia bisa; ia tidak membuktikan ia akan
 > TERUS.** Untuk sesuatu yang harus hidup berjam-jam, periksa juga bahwa jalan
 > ke-N menghasilkan DATA, bukan cuma bahwa jalan ke-1 berhasil.
+
+---
+
+# 2026-08-09 DINI HARI — KURVA LINTAS TENGAH MALAM
+
+## 1 · KONTROL LEBIH DULU — dan satu perlu dipilah, bukan diabaikan
+
+| tanggal bisnis | pipeline `A/C/D` | manual `F/G/I` |
+| --- | --- | --- |
+| **2026-08-06** | **DIAM ✓** | diam |
+| **2026-08-07** | **DIAM ✓** | **bergerak — unit 4** |
+
+Kontrol 08-07 **bergerak**, tapi **hanya di `F/G/I`**: unit 4 (Bundaran Kotabaru)
+`F 0 → 14.501.400`, `G 0 → 659.000`, `I null → 386.904.000`. Itu **entri pengawas
+mengisi Rincian H+1** — perilaku yang memang diharapkan, **bukan** ekor pipeline.
+
+Komponen yang ekornya sedang diukur — `A`, `C`, `D` — **diam sempurna di kedua
+tanggal kontrol**. **Pembacaan sah.** Kalau `A/C/D` yang bergerak, kalimat ini
+akan berbunyi lain.
+
+## 2 · Kurva bd=2026-08-08 melintasi tengah malam — dan kenapa ia BELUM menjawab
+
+Agregat 7 unit (Rp juta):
+
+| jam WIB | Σshift | A | C | D | ΔC | ΔD |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 08-08 11:17 | 0 | 0,0 | 0,0 | 0,0 | | |
+| *(lubang 12 jam — perekam gagal senyap)* | | | | | | |
+| 08-08 23:28 | 14 | 2.414,3 | 347,6 | 261,1 | +347,61 | +261,14 |
+| 08-08 23:46 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| **08-09 00:01** | 14 | 2.414,3 | 347,6 | 261,1 | **+0,00** | **+0,00** |
+| 08-09 00:16 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| 08-09 00:31 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| 08-09 00:46 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+
+⛔ **JANGAN baca ini sebagai "asumsi H+1 terverifikasi".** Dua alasan:
+
+1. **Harinya BELUM LENGKAP.** Σshift = **14 dari 21** — **ketujuh unit** persis
+   `2 dari 3 shift`. Shift ketiga **belum mendarat di mana pun**. Kurva rata pada
+   hari yang masih menunggu sepertiga datanya **tidak** membuktikan perakitan
+   selesai; ia membuktikan **pipeline sedang diam pada 78 menit itu**.
+2. **Jendelanya cuma 78 menit** (23:28 → 00:46, 5 titik), dan **lubang 12 jam**
+   akibat perekam gagal-senyap menghapus resolusi intraday persis di tempat yang
+   paling dibutuhkan.
+
+**Pertanyaan tengah malam BELUM terjawab oleh perekam.** Ia akan terjawab pagi
+ini begitu shift ke-3 mendarat — datanya sedang dikumpulkan.
+
+## 3 · (a) dan (b) — TERPISAH, dan keduanya bersandar pada pengamatan 08-07
+
+Keduanya berdiri di atas pengamatan **manual** bd=2026-08-07, **bukan** kurva di
+atas: masih bergerak pukul **10:13** (H −23,5 jt, `A` diam), lalu **beku** sejak
+snapshot perekam pertama **10:16** — jadi ia berhenti dirakit antara **10:13 dan
+10:16 pada H+1**, sekitar **sepuluh jam** lewat tengah malamnya sendiri.
+
+### (a) ✅ Jatuh tempo akhir H+1 AMAN — margin ~13,7 jam
+
+Perakitan selesai ~10:16 pada H+1; jatuh tempo 23:59 pada H+1. **Asumsi H+1
+bertahan.** Ini menutup pertanyaan yang menggantung dua hari. *(n = 1 hari,
+1 unit — bukan hukum alam.)*
+
+### (b) ⛔ Gerbang "jangan nilai hari ini" TIDAK CUKUP
+
+Papan menilai **kemarin sejak 00:00**, sementara kemarin masih dirakit sampai
+**~10:16**. Ada jendela **~10 jam tiap pagi** ketika hari kemarin dinilai dengan
+`H` belum lengkap — dan **peringatan palsu Korek yang owner lihat 09:55 jatuh
+persis di dalamnya**.
+
+Ini **ketiga kalinya** pola yang sama berulang pada gerbang yang sama: nol-shift
+ditutup → shift-parsial → hari-berjalan, dan **tiap kali kelasnya lebih luas dari
+kasusnya**.
+
+## 4 · Pertanyaan yang lebih baik: APA yang menandakan H selesai dirakit?
+
+**Jawabannya: TIDAK ADA sinyal yang bisa diamati hari ini.** Bukan pendapat —
+`public.sync_state` per unit × domain:
+
+| domain | punya `last_watermark`? | komponen |
+| --- | --- | --- |
+| `sales` | **6 dari 7 unit** | A |
+| `opname` · `delivery` · `tera` | 7 dari 7 | — |
+| **`pelanggan`** | **0 dari 7** | **C** |
+| **`edc`** | **0 dari 7** | **D** |
+| `terra_resmi` | 0 dari 6 | B |
+| `deposit` · `piutang` · `hutang` · `tebus` · `cash` · `realtank` · `masters` | 0 | — |
+
+**Tepat komponen yang bergerak — C (`pelanggan`) dan D (`edc`) — tidak merekam
+watermark sama sekali.** Yang ada hanya `last_run_at`, dan itu berkata **"agent
+baru saja jalan"**, bukan **"tanggal bisnis D sudah lengkap"**. Bahkan `sales`
+hanya 6 dari 7 unit.
+
+Konsekuensinya untuk gerbang keempat, **tanpa mengusulkan apa pun** (kurvanya
+belum ada, dan angkanya yang memutuskan bentuknya):
+
+- **Gerbang berbasis kelengkapan TIDAK BISA dibangun hari ini** — sinyalnya tak
+  ada di DB.
+- Membuatnya ada = mengubah **agent** (`apps/agent`) supaya merekam watermark
+  untuk `pelanggan`/`edc` — di luar indikator ini.
+- Kalau tidak, gerbang berbasis **waktu** menjadi **pilihan sadar dengan batas
+  tertulis** — bukan tebakan keempat.
+
+## 5 · Cabang `DELTA=0` — DIHAPUS, bukan digantung
+
+Dua percobaan memicunya, dua-duanya gagal: (i) mematikan proxy — penjaga di awal
+skrip memulihkannya lebih dulu; (ii) proses tiruan ber-argv cocok — `pgrep` tak
+mencocokinya, penjaga memulihkannya lagi.
+
+Menerapkan aturan §4 yang baru ditulis: **buktikan ia menyala, atau hapus.**
+**Dihapus** — dan diganti sesuatu yang **lebih baik dari cabang langka**:
+
+> Penjaga `pgrep` ("ada proses bernama proxy") diganti **prasyarat port**
+> ("apakah 127.0.0.1:5433 MENJAWAB") yang dijalankan **SETIAP kali**.
+
+Itu justru menutup skenario yang cabang tadi tuju — **proxy hidup tapi BASI**
+setelah sleep/wake tetap cocok `pgrep` sementara portnya mati, dan itu penyebab
+paling mungkin dari 12 jam gagal-senyap. **Diuji:** proxy dimatikan → port mati →
+prasyarat memulihkan → `delta=21`.
+
+> **Mengubah cabang penanganan-error yang langka menjadi PRASYARAT yang selalu
+> dijalankan membuatnya teruji terus-menerus, bukan sekali seumur hidup.**
