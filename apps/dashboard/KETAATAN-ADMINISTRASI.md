@@ -213,3 +213,57 @@ batal.
   `2026-07-25 … 2026-08-06` × 7 unit** — sebut jendelanya saat melaporkan, karena
   jumlah selnya bergerak seiring waktu. Prediksi tanpa pengukuran
   sudah dua kali salah di sini, termasuk yang tandanya terbalik.
+
+---
+
+## 7 · Aturan kerja yang berlaku di luar berkas ini
+
+Lahir dari kegagalan nyata di proyek ini. Ditulis sebagai **instruksi**, bukan
+cerita — supaya bisa dipakai orang lain pada masalah lain.
+
+### Log harus mencetak PERUBAHAN, bukan KEADAAN
+
+> **Log yang mencetak KEADAAN, bukan PERUBAHAN, membuat kegagalan terlihat
+> seperti keberhasilan.**
+
+Sebuah perekam mencetak `baris=126` tiap jalan. Saat query-nya mulai gagal, ia
+tetap mencetak `baris=126` — bentuk barisnya **identik** dengan jalan sukses, dan
+satu-satunya bedanya adalah angka yang **tidak berubah**. Ia gagal senyap 12 jam.
+
+**Cara memakainya:** cetak **delta**; kalau deltanya nol pada operasi yang
+seharusnya menghasilkan sesuatu, cetak kata **GAGAL**. Jangan pernah kirim stderr
+ke `/dev/null` pada langkah yang hasilnya kamu percayai. Ini keluarga yang sama
+dengan penanda-yang-tak-cocok-isinya di §4.
+
+### Instrumen tidak boleh lebih rapuh dari fenomenanya
+
+Perekam ekor C/D gagal **tiga kali dengan tiga bentuk berbeda**: hilang
+(penyimpanan session-scoped) · berjalan tanpa menulis (error tertelan) · gap
+tidur laptop. Fenomena yang diukurnya — pergerakan C/D — jauh lebih stabil.
+
+> **Instrumen yang lebih rapuh dari fenomenanya tidak sedang mengukur apa pun.**
+
+**Kalau pengukuran periodik seperti ini dibutuhkan LAGI, jangan taruh di laptop
+yang tidur.** Polanya sudah ada di repo: **Cloud Scheduler → endpoint
+ber-shared-secret**, persis [`/api/warm-board`](src/app/api/warm-board/route.ts)
+(constant-time secret, 401 tanpa kredensial, 204 tanpa body). Itu berjalan di
+infrastruktur yang memang dirancang tidak tidur. *(Catatan, bukan pekerjaan —
+belum diminta dan belum diusulkan resmi.)*
+
+### Menyeberang sekali ≠ terus hidup
+
+> **Menyeberangi batas SEKALI membuktikan ia BISA; ia tidak membuktikan ia akan
+> TERUS.** Untuk sesuatu yang harus hidup berjam-jam, periksa juga bahwa jalan
+> ke-N menghasilkan **data**, bukan cuma bahwa jalan ke-1 berhasil.
+
+### Kode penanganan-error yang tak pernah dijalankan adalah beban
+
+Ia memberi rasa aman yang tak ditopang apa pun — tema yang sama dengan gerbang
+yang tak pernah berjalan dan guard yang menegaskan angkanya sendiri.
+**Buktikan ia menyala, atau hapus.** Jangan tinggalkan menggantung.
+
+### Backtest keadaan AKHIR — dan syaratnya
+
+Lihat §5. Ringkas: ia tak bisa mengukur alarm yang menyala pada keadaan
+**antara**, **bila** objek ukurnya bisa **dikoreksi**. Kalau objeknya tak bisa
+dikoreksi, keadaan akhir memang jawabannya dan backtest biasa sah.
