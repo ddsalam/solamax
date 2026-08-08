@@ -791,3 +791,135 @@ menalar dari klaim yang hanya benar separuh.
 konteks` dibuat wajib sehingga omisi = error type-check). Kedua pengukuran di
 bawah — distribusi shift 91/91 dan pembongkaran `ingested_at` sebagai confound —
 **tidak terpengaruh dan tidak diubah**.
+
+---
+
+# PAGI 2026-08-08 — PEREKAM HILANG, dan itu yang harus dibaca lebih dulu
+
+## ⛔ Rekaman semalam TIDAK ADA
+
+Direktori scratchpad **kosong** pukul 09:53 WIB: skrip perekam, JSONL, dan
+seluruh perkakas hilang; prosesnya tak berjalan. `/private/tmp` dibersihkan dan
+proses latar ikut mati. **Nol snapshot bertahan** dari 32 yang dijadwalkan.
+
+**Kesalahan saya, dan bentuknya:** saya menaruh pengukuran yang HARUS hidup
+melewati sesi di penyimpanan yang **didokumentasikan sebagai session-specific**,
+lalu menjalankan prosesnya di latar sesi itu.
+
+> **Pengukuran yang harus hidup melewati sesi tak boleh tinggal di penyimpanan
+> yang lingkupnya sesi.**
+
+Pilihan yang benar: worktree repo (ber-gitignore) atau `launchd`. Saya memilih
+tempat yang nyaman, bukan tempat yang tahan.
+
+**Akibatnya:** ekor C/D **tetap tak terukur** pada jendela yang penting.
+Jendelanya lewat dan tak kembali malam itu.
+
+## Yang MASIH bisa diselamatkan — dan kontrolnya HOLD
+
+Nilai baseline 23:40:47 tercatat di percakapan, jadi ada dua titik untuk
+`2026-08-06` (kontrol) dan tiga untuk Korek.
+
+**KONTROL `2026-08-06` (Korek), 23:40:47 → 09:55 (10 jam 15 mnt):**
+
+| | 23:40:47 | 09:55 | bergerak? |
+| --- | ---: | ---: | --- |
+| A | 417.328.912,0 | 417.328.912,0 | **tidak** |
+| C | 44.348.243 | 44.348.243 | **tidak** |
+| D | 17.121.002 | 17.121.002 | **tidak** |
+
+**Kontrol DIAM.** Hari yang sudah settle tidak bergerak selama 10¼ jam — jadi
+pergerakan pada 08-07 memang milik hari itu, bukan derau global. Itu satu-satunya
+bagian rencana semalam yang selamat, dan ia tetap bermakna.
+
+**Resolusi yang HILANG:** dengan 3 titik (22:15 · 23:40 · 09:55) saya hanya tahu
+C bergerak **di suatu tempat dalam jendela 10 jam** bersama mendaratnya shift 3.
+Pertanyaan "berapa lama setelah shift ke-3 tutup" **tetap tak terjawab**, dan
+saya tidak akan menyajikan bound 10 jam sebagai jawabannya.
+
+---
+
+# KOREK 2026-08-07 FINAL — prediksi saya MELESET
+
+Pukul **09:55 WIB**, shift **3/3**, hari sudah settle:
+
+| | 23:40 (2 shift) | **09:55 FINAL (3 shift)** | delta |
+| --- | ---: | ---: | ---: |
+| A | 294.467.294,50 | **395.471.252,50** | +101.003.958 |
+| C | 17.999.091 | **31.691.356** | +13.692.265 |
+| D | 9.798.025 | **11.797.225** | +1.999.200 |
+| **H** | 273.988.977,50 | **355.569.871,50** | +81.580.894 |
+| I | 359.447.000 | **359.447.000** | 0 |
+| **I − H** | +85.458.022,50 | **+3.877.128,50** | — |
+
+**Vonis final: `lebih_setor` (KUNING).**
+
+## Penilaian prediksi terkunci — apa adanya
+
+| # | Prediksi | Hasil | |
+| --- | --- | --- | --- |
+| K1 | berakhir **`kurang_setor` (MERAH)** | **`lebih_setor` (KUNING)** | ❌ **SALAH** |
+| K2 | I − H antara **−15 jt … −65 jt** | **+3.877.128,50** | ❌ **SALAH — tanda pun terbalik** |
+| K3 | Rp 355,9 juta tak muncul di angka final | tak muncul (H final 355,57 jt ≠ 355,86 jt) | ✅ benar |
+
+**Pitanya TIDAK saya lebarkan.** K1 dan K2 gagal telak.
+
+### Kenapa saya salah — dan ini menyakitkan karena saya sendiri yang menemukannya
+
+Saya memodelkan shift 3 hanya menambah **A**: rata-rata 147,1 jt/shift → H naik
+~100–150 jt → H final 374–424 jt. Shift 3 memang menambah **101,0 juta** ke A —
+**tepat di dalam** pita tebakan saya.
+
+Yang saya lupakan: **C dan D ikut tumbuh bersama shift 3, dan keduanya
+MENGURANGI H.** C +13,7 jt dan D +2,0 jt = **15,7 juta terpotong**. Jadi
+H = 294,5 + 101,0 − 15,7 ≈ **355,6**, bukan ~380.
+
+Dan **saya sudah menemukan sendiri, beberapa jam sebelumnya**, bahwa C bergerak
+dengan watermark-nya sendiri — temuan yang memicu seluruh pertanyaan ekor C/D.
+**Saya meramal memakai model yang saya sendiri sudah buktikan tidak lengkap.**
+
+Itu bukan "pita terlalu sempit". Itu memakai pengetahuan lama setelah punya
+pengetahuan baru — kelas yang sama dengan koreksi L6 dan aritmetika TTL.
+
+### Angka yang layak diperhatikan owner
+
+Selisih final **+3.877.128,50** adalah **kelebihan setor NYATA** pada hari yang
+sudah lengkap — bukan artefak. Ia lolos toleransi Rp 1.000 lebih dari 3.800×.
+Setoran Korek `359.447.000` **identik** dengan setoran 2026-08-06 (yang di sana
+`selaras`, I−H = +133). **Dua hari berturut-turut dengan nilai setoran yang sama
+persis** layak diperiksa manusia — saya tidak menyimpulkan apa pun darinya.
+
+---
+
+# U3 — temuan owner MEMBESAR, bukan mengecil
+
+Owner melaporkan glyph ⚠ dan menyebut tidak berhasil mengisolasi warnanya, serta
+lebih suka temuannya diperkecil oleh bukti. **Buktinya justru memperbesarnya.**
+
+`SummaryRow.note.tone` hanya punya **dua** nilai (`ok | warn`), dan **setiap**
+non-ok dirender sebagai bahaya di **empat** tempat:
+
+| permukaan | penanda |
+| --- | --- |
+| layar Rincian (baris summary) | `t-danger` (**#B91C1C merah**) + `dot danger` + **⚠** |
+| **PDF bertanda tangan** | `color: PDF.danger` + **⚠** |
+| kartu Setoran Tunai (`manual-recon`) | latar `--color-danger-bg` + teks danger + `dot danger` + **⚠** |
+| tipe `ManualRecon` | kanal `ok\|warn` yang sama |
+
+Jadi bukan glyph saja: **warna, titik, latar, dan glyph — empat penanda, semuanya
+berkata "masalah"** — untuk keadaan yang teksnya berkata "belum bisa dinilai".
+Dan itu ikut tercetak di lembar yang ditandatangani.
+
+**Akar:** kanal dua-nilai dipaksa membawa fakta tiga-nilai — bentuk yang sama
+dengan `.toBe(34)` dan `enforce_admins`.
+
+**Perbaikan:** tambah nada **`info`** (netral) ke union; `tak_terhitung` →
+`info`; render netral di keempat permukaan (`t-tertiary` / `PDF.textMuted` /
+`.manual-recon.info` / `dot muted`, glyph `·`). Dijaga tes yang **dibuktikan
+merah**: mengembalikan nada ke `warn` → `expected 'warn' to be 'info'`.
+
+**Sapuan state `pending` lain:** `pra_adopsi`, `belum_tempo_*`, `belum_adopsi`,
+`config_hilang` **tidak menghasilkan note sama sekali** di Rincian (→ `undefined`),
+jadi tak ada ketidakcocokan di sana. Di halaman Ketaatan, `modTone` sudah
+memetakan `pending` ke kelas netral. **Ketidakcocokannya terbatas pada satu
+keadaan, di empat permukaan render.**

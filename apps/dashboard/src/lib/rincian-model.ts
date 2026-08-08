@@ -41,7 +41,14 @@ export interface SummaryRow {
   formula?: string;
   val: string | null;
   em?: boolean;
-  note?: { tone: "ok" | "warn"; text: string };
+  /**
+   * `info` = NETRAL (bukan kabar buruk). Ditambahkan 2026-08-08: kanalnya dulu
+   * hanya `ok | warn`, dan SETIAP non-ok dirender merah-danger + titik merah +
+   * glyph ⚠ — di layar DAN di PDF bertanda tangan. Jadi catatan yang berbunyi
+   * "belum bisa dinilai" tampil dengan tiga penanda yang semuanya berkata
+   * "masalah". Kanal dua-nilai dipaksa membawa fakta tiga-nilai.
+   */
+  note?: { tone: "ok" | "warn" | "info"; text: string };
 }
 
 export interface RincianModel {
@@ -263,7 +270,7 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
                 ? { tone: "warn", text: `Setoran kurang dari uang tunai (selisih ${rp(H - I)})` }
                 : verdict.kode === "tak_terhitung"
                   ? {
-                      tone: "warn",
+                      tone: "info",
                       text: "Penjualan hari ini belum lengkap — setoran belum dibandingkan dengan uang tunai",
                     }
                   : undefined,
