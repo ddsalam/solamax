@@ -923,3 +923,213 @@ merah**: mengembalikan nada ke `warn` → `expected 'warn' to be 'info'`.
 jadi tak ada ketidakcocokan di sana. Di halaman Ketaatan, `modTone` sudah
 memetakan `pending` ke kelas netral. **Ketidakcocokannya terbatas pada satu
 keadaan, di empat permukaan render.**
+
+---
+
+# 2026-08-08 PAGI — TIGA KOREKSI, dan yang terbesar datang tak sengaja
+
+## 1. Interpretasi saya DIBALIK owner, lalu jejak audit memperkayanya lagi
+
+Owner membuka Korek **2026-08-06** dan menemukan bahwa `359.447.000` adalah
+pembulatan ke ribuan dari H hari **08-06** (`359.446.867`, meleset Rp 133) —
+jadi selisih Rp 3,88 juta di 08-07 **bukan kelebihan setor**, melainkan **angka
+kemarin yang tersalin**.
+
+**Jejak auditnya mengubah urutannya:**
+
+| tanggal bisnis | jumlah | dibuat | dibatalkan |
+| --- | ---: | --- | --- |
+| 2026-08-07 | 359.447.000 | **08-07 10:28** | **08-08 10:11** |
+| 2026-08-06 | 359.447.000 | **08-07 10:43** | — |
+| 2026-08-07 | **332.053.000** | 08-08 10:11 | — |
+
+Entri **08-07 dibuat LEBIH DULU** (10:28), baru 15 menit kemudian entri 08-06
+(10:43) dengan angka yang sama. Jadi bukan "kemarin tersalin ke hari ini" secara
+kronologis — nilainya **milik** 08-06 (pembulatannya cocok di sana) tapi
+**diketik ke 08-07 lebih dulu**. Pengawas **sudah mengoreksinya sendiri**
+pukul 08-08 10:11.
+
+> **Bentuk yang layak dibawa:** saat sebuah angka mencurigakan karena SAMA PERSIS
+> dengan angka lain, **hari sebelumnya adalah tempat pertama yang dilihat.**
+
+## 2. ⛔ EKOR C/D TERLIHAT — dan `shifts >= 3` TIDAK CUKUP
+
+Ini datang tak sengaja, dan ia lebih penting dari yang saya cari.
+
+Korek **2026-08-07**, **3 dari 3 shift sejak sebelum 09:55**:
+
+| jam | shift | A | H | I | I − H |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 09:55 | 3 | 395.471.252,50 | **355.569.871,50** | 359.447.000 | +3.877.128,50 |
+| 10:13 | 3 | 395.471.252,50 | **332.052.949,50** | 332.053.000 | **+50,50** |
+
+**A tidak bergerak. H turun 23.516.922 dalam 18 MENIT** — seluruhnya dari
+pertumbuhan C+D (43.488.581 → 67.005.503).
+
+**Konsekuensi untuk gerbang yang kami kirim semalam:** `shifts >= SHIFT_TARGET`
+menutup artefak BESAR (nol/sebagian shift), tapi **tidak menjamin H sudah
+berhenti dirakit**. Hari dengan 3 shift penuh masih bisa bergeser 23 juta.
+Gerbangnya benar dan perlu — **tapi tidak cukup**, dan sekarang ada bukti langsung
+alih-alih dugaan.
+
+⚠️ Ini juga berarti angka "FINAL" yang saya pakai menilai prediksi Korek
+**diukur pada jendela yang masih bergerak**. Vonis Korek 08-07 sekarang
+**`selaras` (+50,50)**, bukan `lebih_setor`. Prediksi K1/K2 tetap **MELESET**
+(saya menebak `kurang_setor`, −15…−65 jt), tapi saya salah menyebut angka 09:55
+sebagai final. **Hari itu belum terbukti settle**; penilaian akhir menunggu
+rekaman yang berjalan sekarang.
+
+## 3. Frekuensi salin-setoran — dan DUA pengukuran saya yang gagal lebih dulu
+
+Prasyarat owner: berapa sering setoran identik berturut-turut muncul?
+
+- **Percobaan 1** — hanya baris hidup → **0**. Salah: koreksi pengawas
+  **menghapus buktinya**; mengukur data-entry error dari baris yang sudah
+  dikoreksi selalu menghitung kurang.
+- **Percobaan 2** — termasuk baris void, tapi **dijumlahkan** per hari → **0**.
+  Salah lagi: menjumlahkan baris void + hidup menghasilkan 691,5 juta, bukan
+  359.447.000.
+- **Percobaan 3** — bandingkan **tiap NILAI yang pernah dimasukkan**, termasuk
+  void, per hari berurutan → **1 pasangan dalam 40 hari × 7 unit**, dan ia
+  **persis kasus Korek 08-06/08-07**.
+
+**Nol keluaran dua kali berturut-turut, dan dua-duanya bug saya** — kontrolnya
+adalah bahwa saya TAHU satu kasus ada, jadi 0 mustahil.
+
+**Basis keputusan aturan:** 1 kejadian / 40 hari / 7 unit = **sangat sunyi**.
+Deteksi tersendiri tidak akan bising. Aturannya layak dibangun.
+
+## 4. Perekam sekarang TAHAN — dan uji lintas-batasnya langsung menggigit
+
+Dipindahkan ke `.measure/` di worktree repo (ber-gitignore), dijadwalkan
+**launchd** tiap 15 menit, bukan proses latar sesi.
+
+**Uji lintas-batas dijalankan SEBELUM bersandar padanya**, dan ia **menangkap
+kegagalan nyata**: jalan pertama dari launchd **gagal** —
+`command not found: node` (launchd memberi PATH minimal). Log menunjukkan
+`baris=21` tak bertambah. Setelah PATH dipasang eksplisit, jalan berikutnya dari
+launchd menulis **`baris=42`** — 21 baris baru, dari proses yang **tidak saya
+panggil**.
+
+> **Bentuk yang sudah dibayar dua kali hari ini:** sebelum bersandar pada sesuatu
+> yang harus hidup melewati batas, **lewati batas itu sekali dan lihat ia masih
+> hidup.** Gerbang K1 dinyatakan terpasang tanpa pernah berjalan; perekam
+> pertama dinyatakan berjalan tanpa pernah dibuktikan bertahan.
+
+## 5. Bentuk dari prediksi yang meleset
+
+Bukan "pitanya terlalu sempit". Saya meramal shift 3 dengan model yang hanya
+menambah **A**, padahal **beberapa jam sebelumnya saya sendiri menemukan** bahwa
+C punya watermark sendiri — temuan yang memicu seluruh pertanyaan ekor C/D.
+
+> **Temuan yang belum dipindahkan ke dalam MODEL yang kita pakai untuk meramal
+> belum benar-benar dimiliki.**
+
+Bukti bahwa ini bukan kesialan: C+D bertumbuh **23,5 juta setelah shift lengkap**
+— besaran yang, kalau ada di model saya, akan menggeser pita prediksi ke arah
+yang benar.
+
+---
+
+# 2026-08-08 — JANGAN NILAI I-vs-H PADA HARI BERJALAN
+
+Owner **meninjau ulang keputusannya sendiri** dari 2026-08-07. Waktu itu ia
+memilih gerbang `shifts >= 3` dan MENOLAK "jangan nilai hari ini" — tanpa tahu
+C/D masih tumbuh SETELAH shift tutup.
+
+## Bukti yang mengubahnya — DUA pengamat, jendela berbeda, angka IDENTIK
+
+Korek 2026-08-07, **3 dari 3 shift**, A **tidak bergerak sama sekali**:
+
+| pengamat | jam | H |
+| --- | --- | ---: |
+| saya | 09:55 | 355.569.871,50 |
+| **owner** | (pagi) | **355.569.872** |
+| saya | 10:13 | 332.052.949,50 |
+| **owner** | (barusan) | **332.052.950** |
+
+**Turun 23.516.922** — angka yang sama dari dua pengamat terpisah. Temuan ini
+berdiri di atas **dua kaki**, bukan satu.
+
+Konsekuensi untuk kami **berdua**: angka "final" yang saya laporkan dan yang
+owner konfirmasi pagi tadi **diambil di jendela yang masih bergerak**. Konfirmasi
+owner mengesahkan **pengukurannya**, bukan **kefinalannya**.
+
+## Tiga hal yang berjalan bersama
+
+**1 · Gerbang hari-berjalan.** `dayGap(businessDate, today) === 0` → kode baru
+`hari_berjalan`, netral, tak dinilai pada sumbu I-vs-H sama sekali. Hari kemarin
+dan sebelumnya **tetap dinilai seketika** — biayanya nyaris nol karena jatuh
+tempo memang akhir H+1.
+
+**2 · Gerbang `shifts >= 3` DIPERTAHANKAN, dan didokumentasikan ULANG.** Ia kini
+menjaga kasus **BERBEDA**: **hari LAMPAU yang shift-nya tak pernah masuk** (agent
+mati / sync gagal). H hari itu dirakit dari data yang tak akan pernah lengkap,
+dan membandingkannya dengan setoran akan menuduh pengawas atas kegagalan
+**pipeline**. Alasannya ditulis **di dalam kode**, bukan di catatan sesi —
+gerbang yang dipertahankan tanpa alasan tertulis akan dihapus orang berikutnya
+sebagai peninggalan.
+
+**3 · Dampak pada 91 sel settle: NOL.** Diukur, bukan disetujui:
+
+```
+DAMPAK2 sel=91  sel_bertanggal_hari_ini=0  kode_hari_berjalan=0
+  belum_diisi=7 · kurang_setor=2 · lebih_setor=6 · pra_adopsi=39 · selaras=37
+```
+
+Prediksi owner ("nol berubah, semuanya sudah lewat hari") **terbukti**.
+
+⚠️ Catatan: distribusinya bergeser satu sel dari pengukuran kemarin
+(`belum_tempo_kosong` 1 → 0, `kurang_setor` 1 → 2). Itu **data yang bergerak**
+(satu unit-hari 08-06 terisi sejak kemarin), **bukan** efek gerbang ini — gerbang
+ini menyentuh nol sel.
+
+### Uji mutasi — dua arah
+
+| mutasi | hasil |
+| --- | --- |
+| gerbang hari-ini dihapus | **MERAH** — `expected 'lebih_setor' to be 'hari_berjalan'` |
+| gerbang dilebarkan ke `<= 1` (kemarin ikut ditahan) | **MERAH** — `expected 'hari_berjalan' to be 'kurang_setor'` |
+
+Arah kedua penting: ia menjaga agar gerbangnya **tidak menelan hari kemarin**,
+yang justru kasus bergunanya.
+
+Satu tes lama **gagal dengan benar** saat perilaku berubah (`belum_tempo_terisi`
+→ `hari_berjalan` untuk hari ini) dan diperbarui menyebutkan alasannya.
+
+## Jejak audit vs argumen pembulatan
+
+Owner: argumen pembulatan menunjukkan angka itu **COCOK** untuk 08-06; jejak
+audit menunjukkan **URUTAN pengetikannya** (08-07 pukul 10:28, lalu 08-06 pukul
+10:43). Yang kedua **lebih sulit dibantah** — kecocokan bisa kebetulan, urutan
+tidak.
+
+## TUJUAN pengukuran ekor C/D BERUBAH
+
+Bukan lagi "kapan hari ini boleh dinilai" — itu sudah dijawab dengan **tidak**
+menilainya. Pertanyaannya kini:
+
+> **Apakah akhir H+1 sudah cukup lambat?**
+
+Kalau C/D masih bergerak setelah lewat tengah malam, gerbang **jatuh tempo** kita
+juga menilai terlalu dini. Perekam `.measure/` yang sudah terbukti tahan
+lintas-batas sedang mengumpulkan datanya sekarang.
+
+## Bentuk-bentuk yang dicatat hari ini
+
+1. **Sebelum bersandar pada sesuatu yang harus hidup melewati batas, lewati batas
+   itu sekali dan lihat ia masih hidup.** Terbukti dua kali: gerbang K1 (tak
+   pernah berjalan) dan perekam pertama (tak pernah dibuktikan bertahan). Uji
+   lintas-batas perekam kedua **langsung menemukan** `node` tak ada di PATH
+   launchd.
+2. **Temuan yang belum dipindahkan ke dalam MODEL yang kita pakai untuk meramal
+   belum benar-benar dimiliki.** Saya menemukan watermark C, lalu meramal seolah
+   shift 3 hanya menambah A.
+3. **Pengetahuan sebelumnya sebagai KONTROL atas query sendiri.** Dua pengukuran
+   frekuensi saya mengembalikan 0, dan dua-duanya bug saya — tertangkap hanya
+   karena saya TAHU satu kasus ada, sehingga 0 mustahil.
+4. **Saat sebuah angka mencurigakan karena SAMA PERSIS dengan angka lain, hari
+   sebelumnya adalah tempat pertama yang dilihat.**
+5. **Sebuah draf yang dibangun di atas snapshot harus diperiksa ulang sebelum
+   diserahkan** — owner nyaris mengirim teguran atas kesalahan yang sudah
+   dibereskan pengawas sendiri.

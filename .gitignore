@@ -36,3 +36,4 @@ solamax-agent-bundle.zip
 
 # TS incremental build cache
 *.tsbuildinfo
+.measure/

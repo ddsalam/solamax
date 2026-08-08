@@ -60,7 +60,8 @@ export type AdminKode =
   | "kurang_setor" // H − I > toleransi
   | "setoran_kosong" // hari ber-atestasi & ada penjualan, tapi setoran nihil
   | "belum_diisi" // lewat jatuh tempo, nol baris di ketiga seksi
-  | "tak_terhitung" // penjualan belum ter-ingest → H tak bermakna
+  | "hari_berjalan" // tanggal HARI INI — H masih dirakit, tak dinilai sama sekali
+  | "tak_terhitung" // hari LAMPAU yang shift-nya tak pernah masuk (agent gagal)
   | "belum_tempo_terisi" // belum jatuh tempo, sudah diisi
   | "belum_tempo_kosong"; // belum jatuh tempo, belum diisi
 
@@ -163,9 +164,42 @@ export function adminStatus(
       : { kode: "belum_diisi", tone: "red", terisi: false };
   }
 
+  // ── HARI BERJALAN: JANGAN NILAI I-vs-H SAMA SEKALI (owner, 2026-08-08) ──
+  //
+  // Owner MENINJAU ULANG keputusannya sendiri dari 2026-08-07. Waktu itu ia
+  // memilih gerbang `shifts >= SHIFT_TARGET` dan MENOLAK "jangan nilai hari ini"
+  // — tanpa tahu C/D masih tumbuh SETELAH shift tutup. Sekarang ada buktinya,
+  // dari DUA pengamat terpisah pada jendela berbeda:
+  //
+  //   Korek 2026-08-07, 3 dari 3 shift, A TIDAK bergerak sama sekali:
+  //     09:55  H = 355.569.871,50
+  //     10:13  H = 332.052.949,50     ← turun 23.516.922 dalam 18 MENIT
+  //   Seluruhnya dari pertumbuhan C+D (pelanggan_sale/voucher_sale/edc punya
+  //   watermark sendiri, tak menunggu shift tutup).
+  //
+  // Biayanya nyaris nol: jatuh tempo memang akhir H+1, jadi hari kemarin dan
+  // sebelumnya TETAP dinilai seketika — dan itu kasus yang berguna.
+  if (dayGap(opts.businessDate, opts.today) === 0) {
+    return { kode: "hari_berjalan", tone: "pending", terisi };
+  }
+
   // H MASIH DIRAKIT → sumbu I-vs-H belum bermakna.
   //
-  // ⚠️ DIPERLUAS 2026-08-07 dari `shifts <= 0` menjadi `shifts < SHIFT_TARGET`.
+  // ⚠️ APA YANG GERBANG INI JAGA SEKARANG (didokumentasikan ulang 2026-08-08).
+  // Sejak gerbang HARI BERJALAN di atas dipasang, gerbang ini TIDAK lagi menjaga
+  // "hari ini yang datanya belum lengkap" — itu sudah ditangani lebih awal.
+  // Yang ia jaga kini adalah kasus BERBEDA dan tetap nyata:
+  //
+  //   HARI LAMPAU yang shift-nya TAK PERNAH MASUK — agent mati, sync gagal,
+  //   atau ingest tersendat. H hari itu dirakit dari data yang tak akan pernah
+  //   lengkap, dan membandingkannya dengan setoran akan menuduh pengawas atas
+  //   kegagalan PIPELINE.
+  //
+  // JANGAN HAPUS sebagai peninggalan. Gerbang yang dipertahankan tanpa alasan
+  // tertulis akan dihapus orang berikutnya — itu sebabnya alasannya ditulis di
+  // sini, bukan di catatan sesi.
+  //
+  // Riwayat: diperluas 2026-08-07 dari `shifts <= 0` menjadi `shifts < SHIFT_TARGET`.
   // Versi pertama hanya menutup KASUS (nol shift), bukan KELASNYA ("H masih
   // dirakit"). Buktinya muncul di papan HIDUP beberapa jam kemudian: Korek
   // 2026-08-07 pukul 22:15 dengan 2 dari 3 shift menampilkan
