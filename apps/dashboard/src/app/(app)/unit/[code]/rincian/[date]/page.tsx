@@ -226,9 +226,25 @@ export default async function RincianPage({
                   <span className={`fs16 t-primary${s.em ? " w700" : ""}`}>{s.label}</span>
                   {s.formula && <span className="fs15 t-tertiary mono">{s.formula}</span>}
                   {s.note && (
-                    <span className={`fs15 w600 ${s.note.tone === "ok" ? "t-success" : "t-danger"}`}>
-                      <span className={`dot ${s.note.tone === "ok" ? "success" : "danger"}`} />{" "}
-                      {s.note.tone === "ok" ? "✓ " : "⚠ "}
+                    <span
+                      className={`fs15 w600 ${
+                        s.note.tone === "ok"
+                          ? "t-success"
+                          : s.note.tone === "info"
+                            ? "t-tertiary"
+                            : "t-danger"
+                      }`}
+                    >
+                      <span
+                        className={`dot ${
+                          s.note.tone === "ok"
+                            ? "success"
+                            : s.note.tone === "info"
+                              ? "muted"
+                              : "danger"
+                        }`}
+                      />{" "}
+                      {s.note.tone === "ok" ? "✓ " : s.note.tone === "info" ? "· " : "⚠ "}
                       {s.note.text}
                     </span>
                   )}

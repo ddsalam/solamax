@@ -66,7 +66,7 @@ export function ManualPanel({ children }: { children: React.ReactNode }) {
 /** Status rekonsiliasi I-vs-H (string SIAP-TAMPIL dari model.summary — tanpa
  *  hitung ulang formula di client). tone "warn" = I < H (merah, per spec). */
 export interface ManualRecon {
-  tone: "ok" | "warn";
+  tone: "ok" | "warn" | "info";
   text: string;
   iVal: string;
   hVal: string;
@@ -121,9 +121,13 @@ export function ManualSectionView(p: ManualSectionViewProps) {
 
       {p.recon && (
         <div className={`manual-recon ${p.recon.tone}`} role="status">
-          <span className={`dot ${p.recon.tone === "ok" ? "success" : "danger"}`} />
+          <span
+            className={`dot ${
+              p.recon.tone === "ok" ? "success" : p.recon.tone === "info" ? "muted" : "danger"
+            }`}
+          />
           <span className="fs15 w600 manual-recon-text">
-            {p.recon.tone === "ok" ? "✓ " : "⚠ "}
+            {p.recon.tone === "ok" ? "✓ " : p.recon.tone === "info" ? "· " : "⚠ "}
             {p.recon.text}
           </span>
           <span className="fs15 num nowrap manual-recon-nums">

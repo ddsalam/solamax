@@ -121,9 +121,14 @@ function summaryTable(summary: SummaryRow[]): Content {
     if (s.formula) label.push({ text: s.formula, fontSize: 7.5, color: PDF.textMuted });
     if (s.note) {
       label.push({
-        text: pdfText(`${s.note.tone === "ok" ? "✓ " : "⚠ "}${s.note.text}`),
+        // `info` = netral: glyph & warna TIDAK boleh berkata "masalah" untuk
+        // keadaan yang teksnya berkata "belum bisa dinilai".
+        text: pdfText(
+          `${s.note.tone === "ok" ? "✓ " : s.note.tone === "info" ? "· " : "⚠ "}${s.note.text}`,
+        ),
         fontSize: 7.5,
-        color: s.note.tone === "ok" ? PDF.success : PDF.danger,
+        color:
+          s.note.tone === "ok" ? PDF.success : s.note.tone === "info" ? PDF.textMuted : PDF.danger,
       });
     }
     const emFill = s.em ? PDF.zebra : undefined;

@@ -138,6 +138,10 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     expect(m.verdict.kode).toBe("tak_terhitung");
     expect(i.note?.text ?? "").not.toContain("MELEBIHI");
     expect(i.note?.text ?? "").toContain("belum lengkap");
+    // U3 — PENANDA HARUS SEPAKAT DENGAN ISINYA. Kanal `note.tone` dulu hanya
+    // `ok|warn`, jadi keadaan netral ini dirender merah-danger + titik merah +
+    // glyph ⚠, di layar DAN di PDF bertanda tangan. Nada `info` = netral.
+    expect(i.note?.tone, "keadaan 'belum bisa dinilai' tak boleh bernada warn").toBe("info");
     // KONTROL: hari yang SAMA dengan 3 shift memang menuduh — jadi gerbangnyalah
     // yang mengubah hasil, bukan kebetulan.
     const lengkap = buildRincianModel(
