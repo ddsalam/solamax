@@ -63,8 +63,10 @@ function adminNote(v: AdminVerdict, h: number, i: number | null): string {
       return "pendapatan/pengeluaran terisi, SETORAN belum diisi";
     case "belum_diisi":
       return "belum diisi — lewat jatuh tempo (akhir H+1)";
+    case "hari_berjalan":
+      return "hari berjalan — uang tunai masih dirakit, setoran belum dinilai";
     case "tak_terhitung":
-      return "penjualan belum lengkap — setoran belum bisa dinilai";
+      return "penjualan hari itu tak pernah lengkap — setoran tak bisa dinilai";
     case "belum_tempo_terisi":
       return "sudah diisi · belum jatuh tempo";
     case "belum_tempo_kosong":
@@ -180,11 +182,12 @@ export default async function KetaatanPage() {
         Pengeluaran, Setoran Bank). Setoran dinilai SELARAS bila |I − H| ≤{" "}
         {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
         kesamaan eksak dengan uang tunai tak pernah terjadi.{" "}
-        <strong>Hari yang sudah diisi dinilai SEKETIKA</strong> — termasuk bisa langsung
-        merah bila setorannya tak selaras, tanpa menunggu jatuh tempo,{" "}
-        <strong>selama ketiga shift-nya sudah masuk</strong>. Selama penjualan belum
-        lengkap, uang tunai (H) masih dirakit dan setoran belum dibandingkan dengannya —
-        membandingkannya lebih awal memunculkan selisih semu yang besar. Yang ditahan
+        <strong>Tanggal HARI INI tidak dinilai sama sekali</strong> pada sumbu setoran:
+        uang tunai (H) masih dirakit sepanjang hari — komponen pelanggan &amp; EDC punya
+        watermark sendiri dan terbukti masih tumbuh belasan juta bahkan SETELAH ketiga
+        shift tutup. <strong>Hari kemarin dan sebelumnya dinilai SEKETIKA</strong>,
+        termasuk bisa langsung merah bila setorannya tak selaras — biayanya nyaris nol
+        karena jatuh temponya memang akhir H+1. Yang ditahan
         sampai akhir H+1 hanyalah hari yang <strong>belum diisi</strong> (sel berarsir),
         supaya pengawas tak dihukum karena hari yang memang belum waktunya. Sel bertitik-titik =
         sebelum unit ybs memakai panel Rincian (lantai adopsi beku di config) — bukan

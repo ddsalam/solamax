@@ -157,6 +157,7 @@ describe("adminStatus", () => {
   });
 
   it("NETRAL: hari berjalan & D+1 tak pernah merah, tapi terbaca terisi/kosong", () => {
+    // KOSONG: sama untuk hari ini & kemarin.
     for (const bd of [today, kemarin]) {
       const kosong = adminStatus(
         hari({ nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null }),
@@ -165,12 +166,18 @@ describe("adminStatus", () => {
       expect(kosong.tone).toBe("pending");
       expect(kosong.kode).toBe("belum_tempo_kosong");
       expect(kosong.terisi).toBe(false);
-
-      const terisi = adminStatus(hari({ nSetoran: 0, i: null }), { businessDate: bd, today });
-      expect(terisi.tone).toBe("pending");
-      expect(terisi.kode).toBe("belum_tempo_terisi");
-      expect(terisi.terisi).toBe(true); // sinyal real-time: siapa sudah mengisi
     }
+    // TERISI: kodenya BERBEDA sejak gerbang hari-berjalan (2026-08-08).
+    // Hari ini → `hari_berjalan` (H masih dirakit, tak dinilai sama sekali).
+    // Kemarin  → `belum_tempo_terisi` (menunggu jatuh tempo, bukan menunggu data).
+    const iniTerisi = adminStatus(hari({ nSetoran: 0, i: null }), { businessDate: today, today });
+    expect(iniTerisi.kode).toBe("hari_berjalan");
+    expect(iniTerisi.tone).toBe("pending");
+    expect(iniTerisi.terisi).toBe(true); // sinyal real-time: siapa sudah mengisi
+
+    const kmrTerisi = adminStatus(hari({ nSetoran: 0, i: null }), { businessDate: kemarin, today });
+    expect(kmrTerisi.kode).toBe("belum_tempo_terisi");
+    expect(kmrTerisi.terisi).toBe(true);
   });
 
   // === LANTAI ADOPSI (2026-08-07) — tiga syarat mengikat owner ==============
@@ -357,6 +364,50 @@ describe("adminStatus", () => {
     });
     expect(v.kode).toBe("kurang_setor");
     expect(v.tone).toBe("red");
+  });
+
+  // === HARI BERJALAN TIDAK DINILAI (owner meninjau ulang, 2026-08-08) =======
+
+  it("HARI INI: setoran jauh dari H TIDAK dinilai — `hari_berjalan`", () => {
+    // Bukti dua-pengamat: Korek 08-07 dengan 3/3 shift, A tak bergerak, H turun
+    // 23.516.922 dalam 18 menit dari pertumbuhan C+D.
+    const v = adminStatus(hari({ h: 355_569_871.5, i: 359_447_000, shifts: SHIFT_TARGET }), {
+      businessDate: today,
+      today,
+    });
+    expect(v.kode).toBe("hari_berjalan");
+    expect(v.tone).toBe("pending");
+    // KONTROL: tanpa gerbang hari-ini, aturan setoran MENYALA lebih_setor.
+    expect(setoranStatus(355_569_871.5, 359_447_000)).toBe("lebih_setor");
+  });
+
+  it("KEMARIN tetap dinilai SEKETIKA — gerbangnya hanya hari ini", () => {
+    const v = adminStatus(hari({ h: 355_569_871.5, i: 359_447_000, shifts: SHIFT_TARGET }), {
+      businessDate: kemarin,
+      today,
+    });
+    expect(v.kode).toBe("lebih_setor");
+    expect(v.tone).toBe("yellow");
+  });
+
+  it("hari ini KOSONG tetap terbaca 'belum diisi · belum tempo', bukan hari_berjalan", () => {
+    const v = adminStatus(hari({ nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null }), {
+      businessDate: today,
+      today,
+    });
+    expect(v.kode).toBe("belum_tempo_kosong");
+    expect(v.terisi).toBe(false);
+  });
+
+  it("gerbang shift kini menjaga HARI LAMPAU yang shift-nya tak pernah masuk", () => {
+    // Bukan lagi "hari ini belum lengkap" — itu ditangani gerbang hari-berjalan.
+    // Yang tersisa: agent gagal, hari lampau tak pernah punya 3 shift.
+    const v = adminStatus(hari({ shifts: 1, h: 100_000_000, i: 200_000_000 }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("tak_terhitung");
+    expect(v.tone).toBe("pending");
   });
 
   it("D+2 adalah hari pertama yang bisa merah (batas jatuh tempo)", () => {
