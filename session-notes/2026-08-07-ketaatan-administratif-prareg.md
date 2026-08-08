@@ -1133,3 +1133,56 @@ lintas-batas sedang mengumpulkan datanya sekarang.
 5. **Sebuah draf yang dibangun di atas snapshot harus diperiksa ulang sebelum
    diserahkan** — owner nyaris mengirim teguran atas kesalahan yang sudah
    dibereskan pengawas sendiri.
+
+---
+
+# ATURAN SALIN-SETORAN — dua prasyarat DIJAWAB sebelum menulis kodenya
+
+## Jendela keterlihatan pada kasus Korek NYATA: **10 jam 11 menit**
+
+Aturan butuh **tiga** hal benar bersamaan:
+(a) `I(D) == I(D−1)` persis · (b) `D` bukan hari ini · (c) `|I − H| > toleransi`.
+
+| peristiwa | waktu WIB | |
+| --- | --- | --- |
+| entri salah `359.447.000` dibuat di **08-07** | 08-07 **10:28** | (a) belum, pasangannya belum ada |
+| entri `359.447.000` dibuat di **08-06** | 08-07 **10:43** | (a) **terpenuhi** |
+| 08-07 berhenti jadi "hari ini" | 08-08 **00:00** | (b) **terpenuhi** ← **yang mengikat** |
+| pengawas mengoreksi → `332.053.000` | 08-08 **10:11** | (a) **lenyap** |
+
+**Jendela = 00:00 → 10:11 = 10 jam 11 menit.** Hitungan owner benar.
+
+**Syarat (c) terkonfirmasi langsung** di dalam jendela: pukul 09:55 saya mengukur
+H = 355.569.871,50 vs I = 359.447.000 → **|I − H| = 3.877.128,50**, ribuan kali
+di atas toleransi. Jadi jendelanya **bukan nol** — terbukti, bukan disimpulkan.
+
+⚠️ **Batas kejujuran:** saya tak punya nilai H antara 00:00–09:55, jadi saya
+**tidak** bisa membuktikan (c) bertahan **sepanjang** 10 jam itu. Yang terbukti:
+jendelanya **dibatasi atas** 10j11m oleh dua stempel waktu, dan **terkonfirmasi
+tidak nol** oleh satu pengamatan langsung ~16 menit sebelum koreksi.
+
+**Kesimpulan: aturannya berguna dalam bentuk ini.** Ia terlihat sepanjang jam
+kerja pagi, dan **lenyap begitu diperbaiki** — yang memang diinginkan.
+
+## Uji sunyi: **0 nyala dari 83 hari dinilai** (30 hari, 7 unit)
+
+Aturan penuh (a ∧ b ∧ c) atas data hidup saat ini:
+
+| | |
+| --- | ---: |
+| hari yang dinilai (punya hari sebelumnya) | **83** |
+| `I` identik dengan kemarin | **0** |
+| **ATURAN MENYALA** | **0** |
+
+Nol, karena satu-satunya kasus **sudah dikoreksi pengawas**. Itu justru
+memperkuat bentuk aturannya: ia menandai kesalahan yang **masih ada**, dan diam
+untuk yang sudah beres.
+
+**Efek samping yang BENAR dan disengaja:** kesalahan yang dikoreksi pengawas
+**sebelum** jatuh tempo tidak akan pernah jadi alarm. Papan tidak seharusnya
+melaporkan kesalahan yang sudah selesai sendiri.
+
+**Konsekuensi untuk pengujian:** karena data hidup kini bersih, aturan ini
+**tidak bisa** diverifikasi pada data produksi — fixture bernama dengan angka
+historis (`359.447.000` dua kali) yang memikul seluruh bebannya, dengan kontrol
+hari yang `I`-nya identik **tapi** `H`-nya cocok (tak boleh menyala).

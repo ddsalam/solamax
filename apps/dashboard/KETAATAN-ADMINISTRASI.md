@@ -13,9 +13,12 @@ Formula H: [`src/lib/rekon.ts`](src/lib/rekon.ts).
 
 ---
 
-## 1 · Toleransi Rp 1.000 — aritmetika, bukan gaya
+## 1 · Toleransi setoran — aritmetika, bukan gaya
 
-`|I − H| ≤ SETORAN_TOLERANSI_RP` (= 1.000).
+`|I − H| ≤ SETORAN_TOLERANSI_RP`.
+**Nilainya hidup di [`src/lib/compliance.ts`](src/lib/compliance.ts), bukan di sini.**
+Saat ditulis: **1.000**. Kalau angka itu tak lagi cocok dengan konstantanya,
+**konstantanya yang benar** — dan ketidakcocokan ini sengaja terlihat.
 
 **Kenapa bukan kesamaan eksak:** diukur atas 95 hari ber-setoran di 7 unit —
 **95 dari 95** nilai setoran adalah kelipatan **persis** Rp 1.000 (bank menerima
@@ -24,7 +27,7 @@ berpecahan, mis. `…426,50`). Kesamaan eksak karenanya **mustahil secara
 aritmetika**; `i === h` akan memerahkan **100%** hari.
 
 **Kenapa 1.000 dan bukan angka lain:** itu **kuantum slip setoran** — diturunkan
-dari data, bukan dipilih. 82 dari 95 hari jatuh di dalam ±1.000.
+dari data, bukan dipilih. 82 dari 95 hari jatuh di dalam ±`SETORAN_TOLERANSI_RP`.
 
 **Kalau diubah:** menaikkannya menyembunyikan kelebihan/kekurangan setor nyata
 (8 dan 5 kejadian dalam 95 hari). Menurunkannya mengembalikan derau pembulatan.
@@ -76,16 +79,16 @@ menduplikasi yang lain.**
 | gerbang | menjaga | kalau dihapus |
 | --- | --- | --- |
 | **lantai adopsi** | hari **sebelum unit memakai panel** — bukan kelalaian pengawas | 39 dari 47 sel merah kembali muncul sebagai tuduhan palsu |
-| **`shifts < SHIFT_TARGET`** | **hari LAMPAU yang shift-nya TAK PERNAH masuk** (agent mati / sync gagal) — H dirakit dari data yang tak akan pernah lengkap | pengawas dituduh atas kegagalan **pipeline** |
+| **`shifts < SHIFT_TARGET`** (=3 saat ditulis) | **hari LAMPAU yang shift-nya TAK PERNAH masuk** (agent mati / sync gagal) — H dirakit dari data yang tak akan pernah lengkap | pengawas dituduh atas kegagalan **pipeline** |
 | **`hari_berjalan`** (tanggal = hari ini) | **H masih dirakit sepanjang hari** | selisih semu belasan–ratusan juta tampil sebagai temuan |
 
 **Bukti untuk gerbang hari-berjalan** (dua pengamat, jendela berbeda, angka
-identik): Korek 2026-08-07, **3 dari 3 shift**, `A` tidak bergerak sama sekali,
+identik): Korek 2026-08-07, shift penuh (`SHIFT_TARGET`), `A` tidak bergerak sama sekali,
 tapi **H turun 23.516.922 dalam 18 menit** (355.569.872 → 332.052.950) —
 seluruhnya dari pertumbuhan C+D. `pelanggan_sale`/`voucher_sale`/`edc` punya
 **watermark sendiri** dan tidak menunggu shift tutup.
 
-⚠️ **`shifts >= 3` TIDAK berarti H sudah berhenti bergerak.** Itu dua pertanyaan
+⚠️ **`shifts >= SHIFT_TARGET` TIDAK berarti H sudah berhenti bergerak.** Itu dua pertanyaan
 berbeda, dan gerbang shift hanya menjawab yang pertama.
 
 **Hari kemarin dan sebelumnya tetap dinilai SEKETIKA** — itu kasus bergunanya,
@@ -130,12 +133,38 @@ sebaliknya.
 
 Ditulis supaya tak ada yang mengira indikator ini menjaga lebih dari yang ia jaga.
 
-**Atestasi per-hari — blind spot 4,1%.** Hari dengan ≥1 baris di seksi mana pun
+> **Angka di bawah TIDAK hidup di kode** — ia hasil pengukuran bertanggal. Tiap
+> angka disertai cara menjalankannya ulang. **Jalankan ulang, jangan percaya:**
+> data pilot bergerak, dan angka telanjang dalam prosa pada akhirnya berbeda dari
+> isinya. Semua query read-only; `app.unit_ids` di-set lewat `set_config` dalam
+> transaksi (RLS fail-closed tanpa itu).
+
+**Atestasi per-hari — blind spot 4,1%** *(diukur 2026-08-07 12:49 WIB)*. Hari dengan ≥1 baris di seksi mana pun
 dianggap "pengawas sudah mengisi", jadi seksi kosong di hari itu dibaca **NIHIL**,
 bukan terlewat. `app.manual_entry` memang tak bisa membedakan (dua-duanya nol
 baris). Terukur: 5 dari 97 hari parsial (5,2%), satu di antaranya kehilangan
 **setoran** sehingga tetap tertangkap merah → blind spot sejati **4 hari = 4,1%**.
 Menutupnya butuh tombol "Nyatakan NIHIL" + migrasi.
+
+<details><summary>query yang menghasilkan 5,2% / 4,1%</summary>
+
+```sql
+-- hari ber-atestasi yang TIDAK lengkap ketiga seksinya (hari berjalan dibuang)
+WITH pv AS (
+  SELECT unit_id, business_date,
+    count(*) FILTER (WHERE section='pendapatan_lain') > 0 AS f,
+    count(*) FILTER (WHERE section='pengeluaran')     > 0 AS g,
+    count(*) FILTER (WHERE section='setoran_tunai')   > 0 AS i
+  FROM app.manual_entry WHERE NOT void
+    AND business_date < (now() AT TIME ZONE 'Asia/Jakarta')::date
+  GROUP BY 1,2)
+SELECT count(*) AS ber_atestasi,
+       count(*) FILTER (WHERE NOT (f AND g AND i)) AS parsial
+FROM pv;
+```
+Dari hasil itu, kurangi hari yang kehilangan SETORAN (tertangkap merah oleh
+aturan wajib-setoran) → sisanya blind spot sejati.
+</details>
 
 **Gerbang `sqlcheck` TIDAK menjaga `main`.** Ia berjalan pada **push** ke
 `staging`/`main`, bukan pada PR. Artinya SQL rusak tertangkap **sesudah merge,
@@ -145,13 +174,23 @@ terblokir. Pulih = **revert PR**. Cakupannya `apps/dashboard/**` +
 `deploy-backend.yml` tak punya padanan, jadi SQL ingest tak dijaga gerbang
 eksekusi-SQL mana pun.
 
-**Ekor C/D belum terukur tuntas.** Diketahui: C+D masih tumbuh **setelah** ketiga
-shift tutup (23,5 juta dalam 18 menit). **Belum diketahui:** apakah ia berhenti
+**Ekor C/D belum terukur tuntas** *(diamati 2026-08-08, 09:55 → 10:13 WIB, unit
+Korek, tanggal bisnis 2026-08-07)*. Diketahui: C+D masih tumbuh **setelah** shift
+penuh — 23.516.922 dalam 18 menit, dengan `A` tidak bergerak sama sekali. **Belum diketahui:** apakah ia berhenti
 sebelum akhir H+1 — kalau tidak, **gerbang jatuh tempo juga menilai terlalu
 dini**. Sedang diukur oleh `.measure/` (launchd, tiap 15 menit).
 ⚠️ `ingested_at` **tidak bisa** dipakai mengukur ini: sapuan tier-2 agent menulis
 ulang baris secara batch (7 tanggal bisnis berbagi stempel pada **detik** yang
 sama). Ukur **NILAI**, bukan stempel tulis.
+
+<details><summary>cara mengukurnya ulang</summary>
+
+Perekam `.measure/rekam.sh` (dijadwalkan `launchd`, tiap 15 menit) merekam
+`sum(C)`, `sum(D)`, `A`, `shifts`, `I` per unit-hari ke JSONL bertimestamp.
+**Kontrol wajib:** ikutkan satu tanggal yang sudah lama settle — ia HARUS diam.
+Kalau kontrolnya ikut bergerak, yang bergerak bukan "ekor" dan seluruh pembacaan
+batal.
+</details>
 
 **Badge sidebar mentok "9+"** — anomali administrasi baru tidak terlihat di sana.
 
@@ -169,5 +208,8 @@ sama). Ukur **NILAI**, bukan stempel tulis.
   `rls-surfaces.integration.test.ts` (isolasi tenant).
 - **Sebelum mengubah aturan, UKUR dampaknya pada sel yang sudah settle.** Setiap
   perubahan aturan di sini diukur dulu terhadap 91 sel historis — lantai adopsi
-  (47 → 8 merah), gerbang hari-berjalan (0 berubah). Prediksi tanpa pengukuran
+  (47 → 8 merah, diukur 2026-08-07), gerbang hari-berjalan (0 dari 91 berubah,
+  diukur 2026-08-08). Jendela pembanding yang dipakai: **91 sel settle
+  `2026-07-25 … 2026-08-06` × 7 unit** — sebut jendelanya saat melaporkan, karena
+  jumlah selnya bergerak seiring waktu. Prediksi tanpa pengukuran
   sudah dua kali salah di sini, termasuk yang tandanya terbalik.
