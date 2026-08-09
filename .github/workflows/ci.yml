@@ -19,6 +19,17 @@ jobs:
       # sini (di PR: berjalan pada merge-preview) — SEBELUM CD sempat
       # menjalankan `migrate deploy`. Riwayat: tabrakan 0012/0013.
       - run: bash scripts/ci/check-migrations.sh
+      # Penjaga workflow: berkas .github/workflows/ yang tak bisa di-parse
+      # ditolak GitHub sebagai run TERPISAH yang TIDAK muncul di `gh pr checks`.
+      # Dibayar 2026-08-09: gerbang G4 yang baru dipasang tak pernah berjalan
+      # sementara semua check terlihat hijau. Di sini ia berbunyi di tempat yang
+      # memang dilihat orang.
+      - run: bash scripts/ci/check-workflows.sh
+      # Self-test gerbang G4 — EMPAT keadaan termasuk JALUR HIJAU. Versi pertama
+      # gerbang itu hanya pernah dibuktikan MERAH; jalur hijaunya mustahil karena
+      # label pelepasnya belum dibuat. Setengah bukti, dan setengah yang hilang
+      # justru yang menentukan gerbangnya dipakai atau ditinggalkan.
+      - run: bash scripts/ci/check-arsip-g4.selftest.sh
       - uses: pnpm/action-setup@v4
         with:
           version: 9.12.0

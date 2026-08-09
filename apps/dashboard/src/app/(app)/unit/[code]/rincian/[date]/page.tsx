@@ -50,7 +50,8 @@ export default async function RincianPage({
 
   const [
     prod, terra, pelanggan, edc, edcBlank, deposit,
-    pendapatanLain, pengeluaran, setoranTunai, shiftInfo, setoranKemarin,
+    pendapatanLain, pengeluaran, setoranTunai, shiftInfo,
+    fKemarin, gKemarin, iKemarin, fBesok, gBesok, iBesok,
   ] =
     await Promise.all([
       getSalesByProduct(unit.unit_id, date, date),
@@ -65,11 +66,26 @@ export default async function RincianPage({
       // Vonis I-vs-H butuh `shifts`: selama penjualan belum lengkap, H masih
       // dirakit dan membandingkannya dengan setoran memunculkan selisih semu.
       getShiftInfo(unit.unit_id, date),
-      // Setoran hari SEBELUMNYA — bahan aturan salin-setoran. Query yang sudah
-      // ada dipakai ulang (ber-scope, `NOT void`, semantik identik dengan
-      // `getComplianceMatrix`) alih-alih menulis SQL baru untuk satu angka.
+      // Hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA ARAH.
+      // Query yang sudah ada dipakai ulang (ber-scope, `NOT void`, semantik
+      // identik dengan `getComplianceMatrix`) alih-alih menulis SQL baru.
+      // D+1 tetap diambil walau kebetulan hari ini: yang memutuskan
+      // mengabaikannya adalah `adminStatus`, satu tempat — halaman tak boleh
+      // ikut menyimpan aturan itu.
+      getManualEntries(unit.unit_id, addDays(date, -1), "pendapatan_lain"),
+      getManualEntries(unit.unit_id, addDays(date, -1), "pengeluaran"),
       getManualEntries(unit.unit_id, addDays(date, -1), "setoran_tunai"),
+      getManualEntries(unit.unit_id, addDays(date, 1), "pendapatan_lain"),
+      getManualEntries(unit.unit_id, addDays(date, 1), "pengeluaran"),
+      getManualEntries(unit.unit_id, addDays(date, 1), "setoran_tunai"),
     ]);
+
+  /** Tetangga dari baris manual: I null bila tak ada baris (bukan nol rupiah). */
+  const sisi = (f: typeof pendapatanLain, g: typeof pengeluaran, i: typeof setoranTunai) => ({
+    i: i.length > 0 ? i.reduce((s, r) => s + r.amount, 0) : null,
+    f: f.reduce((s, r) => s + r.amount, 0),
+    g: g.reduce((s, r) => s + r.amount, 0),
+  });
 
   // SUMBER TUNGGAL: model dipakai render layar (di bawah) DAN ekspor PDF →
   // angka identik (rekon ke rupiah). Data sudah ber-scope (ScopedUnitId).
@@ -77,13 +93,10 @@ export default async function RincianPage({
     konteks: {
       shifts: shiftInfo.shifts,
       adopsi: adopsiRincian(unit.code),
-      // null (bukan 0) bila kemarin tak punya baris setoran: "tak ada setoran"
-      // bukan "setoran nol", dan aturan salin-setoran tak boleh menyala karena
-      // dua hari sama-sama kosong.
-      iSebelumnya:
-        setoranKemarin.length > 0
-          ? setoranKemarin.reduce((s, r) => s + r.amount, 0)
-          : null,
+      tetangga: {
+        sebelum: sisi(fKemarin, gKemarin, iKemarin),
+        sesudah: sisi(fBesok, gBesok, iBesok),
+      },
       businessDate: date,
       today: todayWib(),
     },
@@ -276,7 +289,7 @@ export default async function RincianPage({
         {/* Input manual (no-print) — Pendapatan Lain & Pengeluaran diisi pengawas.
             Tulis via server action ber-scope; edit = batalkan + tambah. Nomor
             seksi mengikuti model (5/7), bukan huruf summary (F/G). */}
-        <ManualPanel>
+        <ManualPanel isyarat={model.panel}>
           <ManualEntryForm
             code={unit.code}
             date={date}

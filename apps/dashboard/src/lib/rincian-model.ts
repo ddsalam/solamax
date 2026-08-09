@@ -4,9 +4,14 @@
  * (ScopedUnitId) di server; fungsi ini murni (tanpa I/O) → angka PDF identik
  * dengan angka layar (rekon ke rupiah). Formatter id-ID/WIB dari lib/format.
  */
-import { adminStatus, SETORAN_TOLERANSI_RP, type AdminVerdict } from "@/lib/compliance";
+import {
+  adminStatus,
+  SETORAN_TOLERANSI_RP,
+  type AdminVerdict,
+  type TetanggaHari,
+} from "@/lib/compliance";
 import { classifyProduct } from "@/lib/config";
-import { idn, rp } from "@/lib/format";
+import { dateLong, idn, rp } from "@/lib/format";
 import type * as Q from "@/lib/queries";
 import { penjualanTunai, uangTunai } from "@/lib/rekon";
 
@@ -51,12 +56,45 @@ export interface SummaryRow {
   note?: { tone: "ok" | "warn" | "info"; text: string };
 }
 
+/**
+ * Isyarat yang dirender TEPAT DI ATAS kolom input manual.
+ *
+ * ⚠️ KENAPA ADA (2026-08-09). Dua pengawas di dua unit mengetik angka hari lain
+ * ke dalam form tanggal yang salah, tiga sampai lima belas menit sebelum
+ * mengisi tanggal yang benar. Penyelidikan jalur masuk menemukan tiga lapis:
+ * default tanggal = cookie "terakhir dibuka" · tak ada isyarat bahwa hari yang
+ * terbuka SUDAH terisi · tanggalnya hanya ada di kop lembar, seratus baris di
+ * atas kolom input, dan `ManualEntryForm` tak menyebut tanggal sama sekali.
+ *
+ * Keputusan owner: perbaiki ISYARATNYA, JANGAN ubah default-nya. Perilaku
+ * cookie itu dibangun sengaja di arc topbar Juli dan BENAR untuk navigasi;
+ * membatalkannya lewat pintu belakang akan memunculkan lagi bug dropdown
+ * desinkron yang dulu diperbaikinya.
+ */
+export interface PanelIsyarat {
+  /** Tanggal bisnis, dieja panjang — dirender di atas kolom input. */
+  tanggal: string;
+  /**
+   * Hari ini SUDAH punya baris di seksi mana pun. Menimpa hari yang sudah benar
+   * tak boleh terasa sama dengan mengisi hari kosong.
+   */
+  sudahTerisi: boolean;
+  /**
+   * Seksi mana yang sudah terisi + jumlah barisnya; null bila belum ada apa pun.
+   * SENGAJA null saat kosong: peringatan yang selalu menyala akan diabaikan
+   * dalam seminggu, jadi ia harus punya keadaan diam yang benar-benar diam.
+   */
+  rincianTerisi: string | null;
+}
+
 export interface RincianModel {
   /** Ke-7 section (termasuk yang kosong) — konsumen memfilter sesuai kebutuhan. */
   sections: Section[];
   summary: SummaryRow[];
   /** Vonis dari `adminStatus` — SATU pembuat vonis, dipakai bersama Ketaatan. */
   verdict: AdminVerdict;
+  /** Isyarat tanggal + hari-sudah-terisi untuk panel input (layar saja). */
+  panel: PanelIsyarat;
 }
 
 /**
@@ -81,12 +119,11 @@ export interface RincianKonteks {
   /** Lantai adopsi unit (`adopsiRincian(code)`) — 3 nilai berbeda, lihat config. */
   adopsi: string | null | undefined;
   /**
-   * Σ setoran hari SEBELUMNYA (`business_date` − 1) di unit yang sama; null
-   * bila hari itu tak punya baris setoran. Dipakai aturan salin-setoran.
+   * Hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA ARAH.
    * Lembar INI yang ditandatangani pengawas, jadi ia harus memuat peringatan
    * yang sama dengan papan — bukan setengah permukaan saja.
    */
-  iSebelumnya: number | null;
+  tetangga: { sebelum: TetanggaHari | null; sesudah: TetanggaHari | null };
   businessDate: string;
   today: string;
 }
@@ -139,7 +176,9 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       nSetoran: setoranTunai.length,
       h: H,
       i: I,
-      iSebelumnya: raw.konteks.iSebelumnya,
+      f: F,
+      g: G,
+      tetangga: raw.konteks.tetangga,
       shifts: raw.konteks.shifts,
     },
     { businessDate: raw.konteks.businessDate, today: raw.konteks.today },
@@ -273,7 +312,12 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
           : verdict.kode === "setoran_tersalin"
             ? {
                 tone: "warn",
-                text: `Setoran SAMA PERSIS dengan hari sebelumnya (${rp(I)}) dan meleset ${rp(Math.abs(I - H))} dari uang tunai — periksa, kemungkinan angka kemarin terketik ulang`,
+                text:
+                  `Setoran SAMA PERSIS dengan hari tetangga (${rp(I)}) dan meleset ${rp(Math.abs(I - H))} dari uang tunai hari ini` +
+                  (verdict.komponenIkut
+                    ? " · Pendapatan Lain & Pengeluaran juga identik dengan hari itu"
+                    : "") +
+                  " — periksa, kemungkinan angka hari lain terketik di tanggal ini",
               }
             : verdict.kode === "selaras"
             ? { tone: "ok", text: `Setoran selaras dengan uang tunai (±${rp(SETORAN_TOLERANSI_RP)})` }
@@ -290,5 +334,20 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
     },
   ];
 
-  return { sections, summary, verdict };
+  const terisiSeksi = [
+    ["Pendapatan Lain", pendapatanLain.length],
+    ["Pengeluaran", pengeluaran.length],
+    ["Setoran Bank", setoranTunai.length],
+  ].filter(([, n]) => (n as number) > 0);
+
+  const panel: PanelIsyarat = {
+    tanggal: dateLong(raw.konteks.businessDate),
+    sudahTerisi: terisiSeksi.length > 0,
+    rincianTerisi:
+      terisiSeksi.length > 0
+        ? terisiSeksi.map(([nama, n]) => `${nama} (${n} baris)`).join(" · ")
+        : null,
+  };
+
+  return { sections, summary, verdict, panel };
 }

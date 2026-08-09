@@ -1,0 +1,71 @@
+name: G4 arsip
+
+# G4 OTOMATIS (2026-08-09). Aturan G4: temuan yang masuk `session-notes/` tidak
+# di-merge pada siklus yang sama ia diasersikan — ia harus bertahan satu putaran
+# lebih dulu.
+#
+# ⚠️ KENAPA INI ADA. G4 sudah menangkap satu kesalahan nyata (#223) — TAPI
+# karena owner kebetulan menahan PR-nya, bukan karena aturannya berjalan
+# sendiri. Aturan yang menuntut seseorang INGAT menerapkannya belum selesai jadi
+# aturan. Itu kelas yang sama dengan `enforce_admins: false` (gerbang yang bisa
+# dilewati) dan `expect(CASES.length).toBe(34)` (guard yang menegaskan dirinya
+# sendiri). Cek ini yang memaksa keputusannya keluar.
+#
+# ⚠️ KOREKSI 2026-08-09 — versi pertama gerbang ini menuntut label
+# `arsip-siklus-kedua` yang BELUM PERNAH DIBUAT di repo. Ia dibuktikan bisa
+# MERAH lalu dinyatakan "terpasang", padahal jalur hijaunya mustahil. Gerbang
+# yang jalan keluarnya tak ada tak bisa dibedakan dari gerbang tanpa jalan
+# keluar. Sejak sekarang: keputusannya ada di scripts/ci/check-arsip-g4.sh yang
+# di-self-test EMPAT keadaan (termasuk hijau), dan gerbangnya MEMASTIKAN
+# labelnya ada sebelum menuntutnya.
+#
+# ⚠️ BATAS YANG DISEBUT, BUKAN DISEMBUNYIKAN. Cek ini TIDAK membuktikan temuannya
+# sudah bertahan satu putaran. Ia hanya memaksa seseorang MENYATAKANNYA secara
+# eksplisit dan meninggalkan jejak di riwayat PR. Label bisa dipasang refleks.
+# Peningkatannya nyata — dari "berharap ada yang ingat" jadi "putuskan sadar" —
+# dan tidak lebih dari itu. Jangan pakai lolosnya cek ini sebagai bukti apa pun
+# tentang temuannya.
+#
+# Bentuk (c) — ambang JAM umur commit — sengaja DITOLAK: "satu siklus" konsep
+# percakapan, bukan konsep jam; sesi bisa berputar 12+ kali sehari, jadi ambang
+# apa pun akan salah di salah satu arah. Mengukur yang mudah diukur alih-alih
+# yang dimaksud adalah kesalahan yang sudah dibayar sekali (aritmetika TTL).
+
+on:
+  pull_request:
+    # `labeled`/`unlabeled` WAJIB ada: tanpanya, memasang label tidak menjalankan
+    # ulang cek ini dan gerbangnya tak akan pernah bisa berubah jadi hijau tanpa
+    # push kosong. Gerbang yang tak punya jalan keluar akan dimatikan orang.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  # Label adalah sumber daya `issues` — tanpa ini pemeriksaan keberadaan label
+  # gagal dan gerbangnya jatuh ke "label tak ada" untuk alasan yang salah.
+  issues: read
+
+jobs:
+  arsip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Temuan arsip butuh label siklus-kedua
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          export BERUBAH LABEL_ADA
+          BERUBAH=$(git diff --name-only "$BASE...$HEAD" -- 'session-notes/**' || true)
+          # Keberadaan label DIPERIKSA, bukan diasumsikan.
+          if gh api "repos/$REPO/labels/arsip-siklus-kedua" >/dev/null 2>&1; then
+            LABEL_ADA=true
+          else
+            LABEL_ADA=false
+          fi
+          bash scripts/ci/check-arsip-g4.sh

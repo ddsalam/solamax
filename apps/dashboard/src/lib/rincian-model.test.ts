@@ -18,7 +18,13 @@ const raw = (over: Partial<RincianRaw> = {}): RincianRaw =>
   ({
     // Konteks vonis: hari LENGKAP & sudah lewat tempo → cabang setoran aktif.
     // Tes yang menguji gerbang shift meng-override `konteks` secara eksplisit.
-    konteks: { shifts: 3, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-05" },
+    konteks: {
+      shifts: 3,
+      adopsi: "2020-01-01",
+      tetangga: { sebelum: null, sesudah: null },
+      businessDate: "2026-07-01",
+      today: "2026-07-05",
+    },
     prod: [{ nama: "PERTALITE", vol: 1000, omzet: 10_000_000 }],
     terra: [{ nama: "PERTALITE", ckdbbm: "P", liter: 10, rp: 100_000 }],
     pelanggan: [{ nama: "PT MAJU", ckdplg: "PLG1", liter: 20, rp: 200_000 }],
@@ -131,7 +137,7 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
         konteks: {
           shifts: 2,
           adopsi: "2020-01-01",
-          iSebelumnya: null,
+          tetangga: { sebelum: null, sesudah: null },
           businessDate: "2026-07-01",
           today: "2026-07-05",
         },
@@ -165,5 +171,35 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     const i = sum(m, "I");
     expect(i.val).toBeNull();
     expect(i.note).toBeUndefined();
+  });
+});
+
+describe("panel: isyarat tanggal & hari-terisi", () => {
+  it("hari KOSONG → sudahTerisi false, rincianTerisi null (peringatan diam)", () => {
+    const m = buildRincianModel(raw({ pendapatanLain: [], pengeluaran: [], setoranTunai: [] }));
+    expect(m.panel.sudahTerisi).toBe(false);
+    expect(m.panel.rincianTerisi).toBeNull();
+    // KONTROL: tanggalnya tetap ada — panel diam bukan panel kosong.
+    expect(m.panel.tanggal).toContain("2026");
+  });
+
+  it("hanya seksi yang BERISI yang disebut, dengan jumlah barisnya", () => {
+    const m = buildRincianModel(
+      raw({
+        pendapatanLain: [manual("f1", "X", 1_000)],
+        pengeluaran: [],
+        setoranTunai: [manual("s1", "SETOR", 2_000), manual("s2", "SETOR", 3_000)],
+      }),
+    );
+    expect(m.panel.sudahTerisi).toBe(true);
+    expect(m.panel.rincianTerisi).toBe("Pendapatan Lain (1 baris) · Setoran Bank (2 baris)");
+    expect(m.panel.rincianTerisi).not.toContain("Pengeluaran");
+  });
+
+  it("SATU baris di seksi mana pun sudah cukup menyalakannya", () => {
+    const m = buildRincianModel(
+      raw({ pendapatanLain: [], pengeluaran: [manual("g1", "Y", 1)], setoranTunai: [] }),
+    );
+    expect(m.panel.sudahTerisi).toBe(true);
   });
 });
