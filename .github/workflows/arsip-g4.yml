@@ -66,21 +66,19 @@ jobs:
               ;;
           esac
 
-          cat <<'PESAN'
-
-          ❌ G4 — temuan arsip belum dinyatakan bertahan satu putaran.
-
-          PR ini menambah/mengubah berkas di `session-notes/`, dan G4 melarang
-          me-merge temuan pada siklus yang sama ia diasersikan.
-
-          PERBAIKANNYA (owner): pasang label `arsip-siklus-kedua` pada PR ini
-          setelah temuannya bertahan satu putaran. Cek ini jalan ulang sendiri
-          begitu label terpasang — tak perlu push.
-
-          Kalau isinya BUKAN temuan baru (mis. hanya memindahkan berkas,
-          memperbaiki tautan, atau mencatat keputusan yang sudah diverifikasi),
-          label yang sama tetap cara menyatakannya — dan alasannya sebaiknya
-          ditulis di badan PR supaya jejaknya bisa dibaca kemudian.
-
-PESAN
+          echo
+          echo "❌ G4 — temuan arsip belum dinyatakan bertahan satu putaran."
+          echo
+          echo "PR ini menambah/mengubah berkas di session-notes/, dan G4 melarang"
+          echo "me-merge temuan pada siklus yang sama ia diasersikan."
+          echo
+          echo "PERBAIKANNYA (owner): pasang label 'arsip-siklus-kedua' pada PR ini"
+          echo "setelah temuannya bertahan satu putaran. Cek ini jalan ulang sendiri"
+          echo "begitu label terpasang — tak perlu push."
+          echo
+          echo "Kalau isinya BUKAN temuan baru (mis. hanya memindahkan berkas,"
+          echo "memperbaiki tautan, atau mencatat keputusan yang sudah diverifikasi),"
+          echo "label yang sama tetap cara menyatakannya — dan alasannya sebaiknya"
+          echo "ditulis di badan PR supaya jejaknya bisa dibaca kemudian."
+          echo
           exit 1
