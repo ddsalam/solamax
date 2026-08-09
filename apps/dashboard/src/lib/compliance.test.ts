@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   adminStatus,
+  pasangkanSetoranKemarin,
   ageText,
   isSelisihAbnormal,
   opnameStatus,
@@ -73,6 +74,35 @@ describe("setoranStatus — toleransi Rp 1.000 (kuantum slip setoran)", () => {
   });
 });
 
+describe("pasangkanSetoranKemarin — pemasangan D−1 (dipakai papan & feed)", () => {
+  const hariKe = (d: string, setoran: number | null) => ({ d, setoran });
+
+  it("menggeser TEPAT satu: tiap hari mendapat setoran hari sebelumnya", () => {
+    const out = pasangkanSetoranKemarin([
+      hariKe("2026-08-05", 100),
+      hariKe("2026-08-06", 200),
+      hariKe("2026-08-07", 300),
+    ]);
+    // Kalau geserannya salah arah/indeks (mis. `menaik[j + 1]`), baris ini merah.
+    expect(out.map((o) => o.iSebelumnya)).toEqual([null, 100, 200]);
+    expect(out.map((o) => o.hari.d)).toEqual(["2026-08-05", "2026-08-06", "2026-08-07"]);
+  });
+
+  it("hari tanpa setoran memasok null, bukan 0 — dan tak menghentikan deret", () => {
+    const out = pasangkanSetoranKemarin([
+      hariKe("2026-08-05", 100),
+      hariKe("2026-08-06", null),
+      hariKe("2026-08-07", 300),
+    ]);
+    expect(out.map((o) => o.iSebelumnya)).toEqual([null, 100, null]);
+  });
+
+  it("deret kosong & satu elemen tidak melempar", () => {
+    expect(pasangkanSetoranKemarin([])).toEqual([]);
+    expect(pasangkanSetoranKemarin([hariKe("2026-08-07", 5)])[0]?.iSebelumnya).toBeNull();
+  });
+});
+
 describe("adminStatus", () => {
   const hari = (o: Partial<AdminHari> = {}): AdminHari => ({
     // Lantai adopsi jauh di masa lalu → tidak mengganggu cabang lain kecuali
@@ -84,6 +114,9 @@ describe("adminStatus", () => {
     h: 100_000_000,
     i: 100_000_000,
     shifts: 3,
+    // Aturan salin-setoran MATI secara default: tiap tes yang mengujinya harus
+    // menyalakannya sendiri, supaya tak ada tes lain yang berubah artinya.
+    iSebelumnya: null,
     ...o,
   });
   // "hari ini" = 2026-08-07; jatuh tempo akhir D+1.
@@ -304,6 +337,92 @@ describe("adminStatus", () => {
     const kosong = { nPendapatanLain: 0, nPengeluaran: 0, nSetoran: 0, i: null };
     expect(adminStatus(hari(kosong), { businessDate: kemarin, today }).tone).toBe("pending");
     expect(adminStatus(hari(kosong), { businessDate: lewatTempo, today }).tone).toBe("red");
+  });
+
+
+  // === SALIN-SETORAN — angka kemarin diketik ulang ==========================
+  //
+  // Data hidup sudah BERSIH (pengawas mengoreksi kasusnya sendiri), jadi tak ada
+  // baris produksi yang bisa membuktikan aturan ini. Fixture di bawah memikul
+  // SELURUH bebannya — angkanya nyata, dari Korek 2026-08-07.
+
+  /** Korek: Rp 359.447.000 diketik untuk 08-07 DAN 08-06; H 08-07 meleset 3,87 jt. */
+  const SALIN = { H: 355_569_871.5, I: 359_447_000, I_KEMARIN: 359_447_000 } as const;
+
+  it("KASUS ASAL Korek 08-07: I identik kemarin + tak selaras = `setoran_tersalin` MERAH", () => {
+    // KONTROL LEBIH DULU: dengan iSebelumnya null, hari yang SAMA persis hanya
+    // `lebih_setor` kuning. Jadi yang mengubah vonis adalah kesamaan dengan
+    // kemarin — bukan angka lain di fixture ini.
+    const kontrol = adminStatus(hari({ h: SALIN.H, i: SALIN.I, iSebelumnya: null }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(kontrol.kode).toBe("lebih_setor");
+    expect(kontrol.tone).toBe("yellow");
+
+    const v = adminStatus(
+      hari({ h: SALIN.H, i: SALIN.I, iSebelumnya: SALIN.I_KEMARIN }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("setoran_tersalin");
+    expect(v.tone).toBe("red");
+    // Selisih yang dilaporkan owner saat menemukannya.
+    expect(SALIN.I - SALIN.H).toBeCloseTo(3_877_128.5, 2);
+  });
+
+  it("TIDAK menyala bila I identik kemarin TAPI selaras dengan H (kebetulan sah)", () => {
+    // Dua hari bisa saja bersetoran sama dan dua-duanya benar. Menandai itu
+    // akan melatih orang mengabaikan aturannya.
+    const v = adminStatus(
+      hari({ h: 545_494_253.0, i: 545_495_000, iSebelumnya: 545_495_000 }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("selaras");
+    expect(v.tone).toBe("green");
+  });
+
+  it("MERAH juga saat arahnya `kurang_setor` — yang ditandai SEBABNYA, bukan arah", () => {
+    const v = adminStatus(
+      hari({ h: 400_000_000, i: 359_447_000, iSebelumnya: 359_447_000 }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("setoran_tersalin");
+  });
+
+  it("kesamaan harus PERSIS: beda Rp 1 dari kemarin = bukan salinan", () => {
+    const v = adminStatus(
+      hari({ h: SALIN.H, i: SALIN.I, iSebelumnya: SALIN.I_KEMARIN - 1 }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("lebih_setor");
+  });
+
+  it("syarat (b) dipikul URUTAN: hari ini tetap `hari_berjalan`, bukan tersalin", () => {
+    // Ini yang menjaga aturan baru dari artefak C/D yang masih tumbuh. Kalau
+    // blok salin-setoran naik ke atas gerbang `hari_berjalan`, tes ini merah.
+    const v = adminStatus(
+      hari({ h: SALIN.H, i: SALIN.I, iSebelumnya: SALIN.I_KEMARIN }),
+      { businessDate: today, today },
+    );
+    expect(v.kode).toBe("hari_berjalan");
+  });
+
+  it("gerbang `tak_terhitung` tetap mendahului: 2 shift + salinan = pending", () => {
+    const v = adminStatus(
+      hari({ h: SALIN.H, i: SALIN.I, iSebelumnya: SALIN.I_KEMARIN, shifts: 2 }),
+      { businessDate: lewatTempo, today },
+    );
+    expect(v.kode).toBe("tak_terhitung");
+    expect(v.tone).toBe("pending");
+  });
+
+  it("dua hari sama-sama TANPA setoran tidak menyalakan aturan", () => {
+    // null == null tak boleh dibaca "identik". Kasus ini punya vonisnya sendiri.
+    const v = adminStatus(hari({ nSetoran: 0, i: null, iSebelumnya: null }), {
+      businessDate: lewatTempo,
+      today,
+    });
+    expect(v.kode).toBe("setoran_kosong");
   });
 
   // === H MASIH DIRAKIT (2026-08-07) — kelas, bukan kasus ====================

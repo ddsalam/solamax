@@ -58,6 +58,7 @@ export type AdminKode =
   | "selaras" // I ≈ H dalam toleransi
   | "lebih_setor" // I − H > toleransi
   | "kurang_setor" // H − I > toleransi
+  | "setoran_tersalin" // I identik dengan I hari sebelumnya DAN tak selaras dengan H
   | "setoran_kosong" // hari ber-atestasi & ada penjualan, tapi setoran nihil
   | "belum_diisi" // lewat jatuh tempo, nol baris di ketiga seksi
   | "hari_berjalan" // tanggal HARI INI — H masih dirakit, tak dinilai sama sekali
@@ -89,6 +90,16 @@ export interface AdminHari {
   h: number;
   /** Σ setoran; null bila tak ada baris setoran. */
   i: number | null;
+  /**
+   * Σ setoran hari SEBELUMNYA (D−1) untuk unit yang SAMA; null bila hari itu
+   * tak punya baris setoran ATAU berada di luar jendela yang diambil pemanggil.
+   *
+   * WAJIB, bukan opsional — pemanggil yang lupa menyediakannya harus gagal
+   * type-check, bukan diam-diam mematikan aturan salin-setoran. Preseden yang
+   * sama dengan `RincianKonteks`: memberi default akan mengubah bug menjadi
+   * "aturannya kok tak pernah menyala" yang tak terlihat siapa pun.
+   */
+  iSebelumnya: number | null;
   /** Jumlah shift penjualan ter-ingest. 0 = data penjualan belum masuk. */
   shifts: number;
 }
@@ -98,6 +109,31 @@ export function setoranStatus(h: number, i: number): AdminKode {
   const delta = i - h;
   if (Math.abs(delta) <= SETORAN_TOLERANSI_RP) return "selaras";
   return delta > 0 ? "lebih_setor" : "kurang_setor";
+}
+
+/**
+ * Pasangkan tiap hari dengan Σ setoran hari SEBELUMNYA — bahan `iSebelumnya`.
+ *
+ * ⚠️ PRASYARAT: `menaik` harus RAPAT dan MENAIK untuk SATU unit. Kedua query
+ * pemasoknya (`getComplianceMatrix`, `getAdminDays`) memakai `generate_series`,
+ * jadi hari tanpa data tetap hadir sebagai baris nol — tanpa itu "sebelumnya"
+ * akan berarti "baris sebelumnya", yang bisa saja seminggu lalu.
+ *
+ * Ada di sini, bukan di dalam halaman, supaya lolosnya tes adalah jaminan atas
+ * JALUR PRODUKSI dan bukan atas salinan logika — dan supaya salah-geser satu
+ * indeks (`asc[j+1]`) tertangkap tes, bukan tertangkap pengawas.
+ *
+ * Elemen PERTAMA selalu ber-`iSebelumnya: null`. Pemanggil yang ingin sel
+ * terawalnya ikut diperiksa harus mengambil satu hari EKSTRA sebagai benih lalu
+ * membuang elemen pertama dari tampilan.
+ */
+export function pasangkanSetoranKemarin<T extends { setoran: number | null }>(
+  menaik: T[],
+): { hari: T; iSebelumnya: number | null }[] {
+  return menaik.map((hari, j) => ({
+    hari,
+    iSebelumnya: j === 0 ? null : (menaik[j - 1]?.setoran ?? null),
+  }));
 }
 
 /** Selisih hari kalender antara dua tanggal ISO (b − a). */
@@ -223,6 +259,50 @@ export function adminStatus(
   }
 
   const kode = setoranStatus(d.h, d.i);
+
+  // ── SALIN-SETORAN: angka kemarin diketik ulang untuk hari ini ────────────
+  //
+  // Menyala hanya bila TIGA hal benar bersamaan:
+  //   (a) I(D) == I(D−1) PERSIS      ← di sini
+  //   (b) D bukan hari ini            ← dijamin gerbang `hari_berjalan` di ATAS
+  //   (c) |I − H| > toleransi         ← yaitu `kode !== "selaras"`
+  //
+  // ⚠️ (b) DIPIKUL OLEH URUTAN, bukan oleh kondisi di baris ini. Memindahkan
+  // blok ini ke atas gerbang `hari_berjalan` akan menyalakannya pada hari yang
+  // H-nya masih dirakit — persis artefak yang gerbang itu ada untuk mencegah.
+  // Kalau blok ini pindah, syarat (b) harus ditulis eksplisit.
+  //
+  // Kenapa (c): dua hari yang setorannya kebetulan sama TAPI dua-duanya selaras
+  // dengan H-nya masing-masing bukan kesalahan — itu kebetulan yang sah, dan
+  // menandainya akan melatih orang mengabaikan aturannya. Kesalahannya adalah
+  // angka yang sama DAN tak cocok dengan uang tunai hari itu.
+  //
+  // KASUS ASAL (Korek 2026-08-07, ditemukan owner): setoran Rp 359.447.000
+  // diketik untuk 08-07, dan angka yang sama untuk 08-06. Yang 08-07 meleset
+  // Rp 3.877.128,50 dari H. Pengawas mengoreksinya sendiri 08-08 pukul 10:11.
+  //
+  // MERAH, bukan kuning — bahkan ketika arah selisihnya "lebih setor" (yang
+  // sendirian hanya kuning). Kelebihan setor bisa punya sebab sah; angka yang
+  // identik dengan kemarin DAN tak cocok dengan H adalah kekeliruan ENTRI, dan
+  // yang ditandai di sini adalah SEBABNYA, bukan arah selisihnya.
+  //
+  // VOLUME ALARM TERUKUR (jejak audit, 40 hari × 7 unit = 960 jam kalender):
+  // batas ATAS 10,19 jam ber-alarm (1,06% waktu), 1 kejadian. Batas BAWAH 0 —
+  // backtest keadaan-akhir tak melihat apa pun karena koreksi pengawas
+  // menghapus buktinya. Aturan ini SUNYI; ia tak akan dimatikan orang.
+  //
+  // ⛔ KONSEKUENSI UNTUK PENGUJIAN: karena data hidup sudah bersih, "hijau di
+  // produksi" TIDAK akan pernah membuktikan aturan ini bekerja. Fixture di
+  // compliance.test.ts memikul seluruh bebannya. Jangan simpulkan sebaliknya
+  // dari papan yang tenang.
+  // Tanpa penjaga `!== null` tambahan: `d.i` di titik ini sudah menyempit ke
+  // `number` (cabang `d.i === null` pulang di atas), jadi `number === null`
+  // selamanya false. Penjaga itu akan jadi cabang yang TAK BISA dimerahkan tes
+  // mana pun — dan cabang begitu memberi rasa aman yang tak dibayar apa-apa.
+  if (kode !== "selaras" && d.i === d.iSebelumnya) {
+    return { kode: "setoran_tersalin", tone: "red", terisi: true };
+  }
+
   const tone: Status = kode === "selaras" ? "green" : kode === "lebih_setor" ? "yellow" : "red";
   return { kode, tone, terisi: true };
 }

@@ -80,6 +80,13 @@ export interface RincianKonteks {
   shifts: number;
   /** Lantai adopsi unit (`adopsiRincian(code)`) — 3 nilai berbeda, lihat config. */
   adopsi: string | null | undefined;
+  /**
+   * Σ setoran hari SEBELUMNYA (`business_date` − 1) di unit yang sama; null
+   * bila hari itu tak punya baris setoran. Dipakai aturan salin-setoran.
+   * Lembar INI yang ditandatangani pengawas, jadi ia harus memuat peringatan
+   * yang sama dengan papan — bukan setengah permukaan saja.
+   */
+  iSebelumnya: number | null;
   businessDate: string;
   today: string;
 }
@@ -132,6 +139,7 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       nSetoran: setoranTunai.length,
       h: H,
       i: I,
+      iSebelumnya: raw.konteks.iSebelumnya,
       shifts: raw.konteks.shifts,
     },
     { businessDate: raw.konteks.businessDate, today: raw.konteks.today },
@@ -262,7 +270,12 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       note:
         I === null
           ? undefined
-          : verdict.kode === "selaras"
+          : verdict.kode === "setoran_tersalin"
+            ? {
+                tone: "warn",
+                text: `Setoran SAMA PERSIS dengan hari sebelumnya (${rp(I)}) dan meleset ${rp(Math.abs(I - H))} dari uang tunai — periksa, kemungkinan angka kemarin terketik ulang`,
+              }
+            : verdict.kode === "selaras"
             ? { tone: "ok", text: `Setoran selaras dengan uang tunai (±${rp(SETORAN_TOLERANSI_RP)})` }
             : verdict.kode === "lebih_setor"
               ? { tone: "warn", text: `Setoran MELEBIHI uang tunai (selisih ${rp(I - H)})` }

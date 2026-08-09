@@ -9,6 +9,7 @@
  * diselesaikan — alarm yang tak bisa dimatikan adalah alarm yang diabaikan.
  */
 import { unstable_cache } from "next/cache";
+import type { AdminDayRow } from "./queries";
 import {
   getAdminDays,
   getAvgDailySales,
@@ -23,7 +24,7 @@ import {
 import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
-import { adminStatus, fmtRp, SETORAN_TOLERANSI_RP } from "./compliance";
+import { adminStatus, fmtRp, pasangkanSetoranKemarin, SETORAN_TOLERANSI_RP } from "./compliance";
 import { adopsiRincian } from "./config";
 import { uangTunai } from "./rekon";
 import {
@@ -93,7 +94,23 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
   const kodeUnit = new Map(units.map((u) => [u.unit_id as number, u.code]));
   // Kondisi tingkat-UNIT (bukan tingkat-hari): satu item per unit, bukan 7×.
   const unitLevel = new Map<number, "belum_adopsi" | "config_hilang">();
-  for (const r of await getAdminDays(unitIds, addDays(today, -6), today)) {
+  // Satu hari EKSTRA di depan jendela, semata sebagai benih `iSebelumnya` bagi
+  // hari terawal; barisnya sendiri tak pernah diterbitkan sebagai item.
+  const dari = addDays(today, -6);
+  // Dikelompokkan per unit lalu diurutkan SENDIRI menurut tanggal: pemasangan
+  // D−1 tak boleh bergantung pada `ORDER BY` di SQL yang bisa dilepas orang
+  // lain tanpa sadar akibatnya di sini.
+  const perUnit = new Map<number, AdminDayRow[]>();
+  for (const r of await getAdminDays(unitIds, addDays(dari, -1), today)) {
+    const list = perUnit.get(r.unit_id) ?? [];
+    list.push(r);
+    perUnit.set(r.unit_id, list);
+  }
+  const berpasangan = [...perUnit.values()].flatMap((list) =>
+    pasangkanSetoranKemarin([...list].sort((a, b) => a.d.localeCompare(b.d))),
+  );
+  for (const { hari: r, iSebelumnya: iKemarin } of berpasangan) {
+    if (r.d < dari) continue; // baris benih: tugasnya hanya memasok iKemarin
     const h = uangTunai({
       A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG,
     });
@@ -105,6 +122,7 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         nSetoran: r.nSetoran,
         h,
         i: r.setoran,
+        iSebelumnya: iKemarin,
         shifts: r.shifts,
       },
       { businessDate: r.d, today },
@@ -134,6 +152,18 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
           v.kode === "belum_diisi"
             ? `Tidak ada satu pun baris Pendapatan Lain / Pengeluaran / Setoran untuk hari ini. Uang tunai seharusnya ${fmtRp(h)}. Jatuh tempo akhir H+1 sudah lewat.`
             : `Pendapatan Lain (${r.nPendapatanLain}) & Pengeluaran (${r.nPengeluaran}) terisi, tapi SETORAN BANK nihil. Uang tunai ${fmtRp(h)} tak terpertanggungjawabkan.`,
+        time: r.d,
+        href,
+      });
+    } else if (v.kode === "setoran_tersalin") {
+      items.push({
+        tone: "danger",
+        tier: "major",
+        sev: selisih,
+        dateIso: r.d,
+        title: `Setoran bank SAMA PERSIS dengan kemarin — ${fmtRp(r.setoran ?? 0)}`,
+        unit: unitTag,
+        desc: `Nilai setoran hari ini identik dengan hari sebelumnya DAN meleset ${fmtRp(selisih)} dari uang tunai H = ${fmtRp(h)}. Kemungkinan angka kemarin terketik ulang. Bila keduanya memang benar, angka ini akan cocok dengan H — di sini tidak.`,
         time: r.d,
         href,
       });

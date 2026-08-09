@@ -96,6 +96,75 @@ dan biayanya nyaris nol karena jatuh tempo memang akhir H+1.
 
 ---
 
+## 3b · Aturan SALIN-SETORAN — angka kemarin diketik ulang
+
+Ditambahkan 2026-08-09. Berasal dari temuan **owner**, bukan dari papan: setoran
+Korek 2026-08-07 **sama persis** dengan 2026-08-06 — Rp 359.447.000 dua kali —
+dan yang 08-07 meleset **Rp 3.877.128,50** dari uang tunai. Papan waktu itu
+hanya bilang "lebih setor", **kuning**; sebab sesungguhnya (angka kemarin
+terketik ulang) tak tersuarakan sama sekali.
+
+**Menyala hanya bila TIGA hal benar bersamaan:**
+
+| | syarat | ditegakkan di mana |
+| --- | --- | --- |
+| (a) | `I(D)` **sama persis** dengan `I(D−1)` | kondisi di `adminStatus` |
+| (b) | `D` **bukan hari ini** | **URUTAN** — gerbang `hari_berjalan` pulang lebih dulu |
+| (c) | `\|I − H\|` **>** toleransi (`SETORAN_TOLERANSI_RP`) | `kode !== "selaras"` |
+
+⚠️ **(b) dipikul oleh URUTAN, bukan oleh kondisi tertulis.** Memindahkan blok
+ini ke atas gerbang `hari_berjalan` akan menyalakannya pada hari yang H-nya
+masih dirakit — artefak yang justru jadi alasan gerbang itu ada. Kalau blok itu
+pindah, syarat (b) **harus ditulis eksplisit**. Dijaga tes.
+
+**Kenapa (c) wajib:** dua hari yang setorannya kebetulan sama tapi dua-duanya
+**selaras** dengan H masing-masing bukan kesalahan. Menandainya akan melatih
+orang mengabaikan aturannya — kegagalan yang sama dengan alarm kas dorman.
+
+**MERAH, bukan kuning — bahkan saat arahnya "lebih setor"** (yang sendirian
+hanya kuning). Kelebihan setor bisa punya sebab sah; angka **identik dengan
+kemarin DAN tak cocok dengan H** adalah kekeliruan ENTRI. Yang ditandai di sini
+**sebabnya**, bukan arah selisihnya.
+
+### Volume alarm — TERUKUR, bukan ditaksir
+
+| | |
+| --- | ---: |
+| jendela | 40 hari × 7 unit = **960 jam kalender** |
+| **jam-alarm (a ∧ b), dari jejak audit** | **10,19 jam** — batas ATAS |
+| backtest keadaan-akhir | **0** — batas BAWAH |
+| kejadian | **1** |
+| porsi waktu ber-alarm | **1,06%** |
+
+Aturannya **sunyi**. Ia tak akan dimatikan orang karena ramai.
+
+### ⛔ Aturan ini TIDAK BISA diverifikasi di produksi
+
+Keadaan akhir sudah **bersih** — pengawas mengoreksi kasusnya sendiri
+(08-08 pukul 10:11 → Rp 332.053.000). Jadi **"hijau di produksi" tidak akan
+pernah membuktikan aturan ini bekerja**, dan papan yang tenang bukan bukti apa
+pun. **Fixture di `compliance.test.ts` memikul SELURUH bebannya**, memakai angka
+historis yang nyata, dengan kontrol hari yang `I`-nya identik **tapi** H-nya
+cocok (tak boleh menyala).
+
+Pemeriksaan keadaan-akhir atas arsip perekam (14 pasang hari berurutan, 7 unit,
+2026-08-06…08): **0 menyala**. **Kontrolnya tidak vakum** — nilai Rp 359.447.000
+masih ada di arsip pada 08-06 (21 snapshot), sedangkan 08-07 sudah terbaca
+Rp 332.053.000. Jadi pasangan identik memang akan terlihat kalau ada; ia sudah
+diperbaiki. Ini konsisten dengan §7 "backtest keadaan AKHIR — dan syaratnya":
+angka 0 itu **batas bawah**, bukan volume alarm.
+
+### Pemasangan D−1 ada di SATU tempat
+
+`pasangkanSetoranKemarin()` di `compliance.ts`, dipakai halaman Ketaatan **dan**
+feed anomali — bukan disalin ke masing-masing. Prasyaratnya: deret **rapat &
+menaik** per unit (kedua query pemasoknya memakai `generate_series`). Halaman
+Ketaatan mengambil **`DAYS + 1`** hari dan membuang yang tertua dari tampilan:
+tanpa benih itu, sel terkiri tak pernah bisa diperiksa — lubang yang bergeser
+satu hari tiap hari, jadi tak akan pernah ada yang menyadarinya.
+
+---
+
 ## 4 · SATU pembuat vonis
 
 `adminStatus()` adalah **satu-satunya** yang memutuskan I-vs-H.
