@@ -595,3 +595,224 @@ dari absen-karena-hilang — itulah yang kini dijaga di setiap commit.
 
 ### D-14 — Perkakas pemeriksaan mata = tes ber-gerbang, bukan skrip `.mts`
 - **Bukti pemutus**: `tsconfig.include` = `**/*.ts` → `.mts` tak pernah ter-typecheck.
+
+---
+
+# PUTARAN 3 (2026-08-10)
+
+## P3-0 — ORACLE KEDUA: 21 November 2025 (tera 1.000 L) — TERSEGEL SEBELUM QUERY
+
+Berkas `~/Desktop/ArusMinyak/ArusMinyak_IB_21November2025.png` sudah ada saat putaran ini
+dimulai. Transkripsi di bawah ditulis **sebelum** satu pun query tentang tanggal ini
+dijalankan. (Yang sudah diketahui lebih dulu hanyalah `terra_resmi`: 1.000,00 L pada
+Dexlite — itu yang membuat owner memilih tanggal ini. Nilai sel laporannya belum pernah
+dilihat.)
+
+| Bahan Bakar | Awal | Penerimaan | Persediaan | Penjualan | Teori | Fisik | Losses | % |
+|---|---|---|---|---|---|---|---|---|
+| Premium | 0,00 | 0,00 | 0,00 | 0,00 | 0,00 | 0,00 | 0,00 | 0,00 |
+| Pertamax | 21.857,98 | 0,00 | 21.857,98 | 2.228,96 | 19.629,02 | 19.658,07 | 29,05 | 1,30 |
+| Solar | 17.126,28 | 16.000,00 | 33.126,28 | 29.151,78 | 3.974,50 | 4.529,13 | 554,63 | 1,90 |
+| P. Turbo | 5.184,48 | 0,00 | 5.184,48 | 260,80 | 4.923,68 | 4.944,65 | 20,97 | 8,04 |
+| Pertalite | 25.756,15 | 16.000,00 | 41.756,15 | 19.942,27 | 21.813,88 | 22.080,17 | 266,29 | 1,34 |
+| **Dexlite** | 12.901,22 | 8.000,00 | 20.901,22 | **10.142,88** | 10.758,34 | 10.920,69 | 162,35 | 1,46 |
+| Pertamina Dex | 6.348,55 | 8.000,00 | 14.348,55 | 7.176,37 | 7.172,18 | 6.952,36 | -219,82 | -3,06 |
+| **Total** | 89.174,66 | 48.000,00 | 137.174,66 | **69.903,06** | 68.271,60 | 69.085,07 | 813,47 | **1,16** |
+
+### Prediksi yang disegel (sebelum query)
+
+1. **Cabang (b) benar** → `sales_gross` Dexlite 21 Nov 2025 = 10.142,88 + 1.000,00 =
+   **11.142,88**. Kalau ternyata 10.142,88, cabang (b) SALAH dan seluruh section harus
+   ditinjau ulang.
+2. **Deviasi TOTAL berulang, kini 1.563× lebih besar.** Σ kolom Penjualan yang tercetak
+   = 68.903,06, sedangkan TOTAL tercetak 69.903,06 → selisih **tepat 1.000,00** = tera.
+   Mekanisme K-2 (TOTAL Penjualan diambil dari jual KOTOR) berlaku ulang.
+3. **⚠️ KOLOM % KINI IKUT MENYIMPANG — dan itu MEMPERBAIKI pemahaman K-2.**
+   813,47/69.903,06 = 1,1637 → **1,16** (yang dicetak oracle);
+   813,47/68.903,06 = 1,1806 → **1,18** (yang akan dihitung SolaMax).
+   Di 2 Agu kedua penyebut membulat ke 0,29 sehingga kolom % tak bisa membedakan; di
+   sini ia bisa, dan jawabannya: **% TOTAL EasyMax memakai penyebut KOTOR juga.**
+   Jadi baris TOTAL EasyMax = jumlah kolom untuk setiap kolom KECUALI Penjualan (kotor),
+   dan % mewarisi angka kotor itu. → **DUA sel menyimpang** pada tanggal ini, akar sama.
+4. Teori TOTAL = 68.271,60 = Σ kolom Teori; kalau diturunkan dari Persediaan − TOTAL
+   Penjualan hasilnya 67.271,60 (meleset 1.000) → konfirmasi ketiga mekanisme K-2.
+
+## P3-1 🔴 CACAT NYATA yang ditangkap oracle kedua — rumus % SALAH
+
+Oracle 21 Nov 2025 tidak sekadar mengonfirmasi cabang (b); ia **menemukan cacat** yang
+lolos 336 sel selama dua putaran.
+
+**Verifikasi ke DB lebih dulu** (jangan percaya PNG begitu saja): `terra_resmi` Dexlite IB
+21-11-2025 = **1000** tepat (1 baris, tanpa ekor desimal), jual kotor = **11142.88**
+(18 baris), dan Dexlite adalah SATU-SATUNYA produk ber-tera hari itu. Bacaan owner
+terkonfirmasi.
+
+### Enumerasi lengkap: sel mana yang bisa membedakan kotor vs bersih?
+
+Dari **56 sel**, **8** berbeda antara kedua konvensi. Vonis oracle per sel:
+
+| baris | kolom | bersih | kotor | oracle | ikut |
+|---|---|---:|---:|---:|---|
+| DEXLITE | Penjualan | 10.142,88 | 11.142,88 | 10.142,88 | **BERSIH** |
+| DEXLITE | Teori | 10.758,34 | 9.758,34 | 10.758,34 | **BERSIH** |
+| DEXLITE | Losses | 162,35 | 1.162,35 | 162,35 | **BERSIH** |
+| DEXLITE | **%** | 1,60 | 10,43 | **1,46** | **TIDAK KEDUANYA** |
+| TOTAL | **Penjualan** | 68.903,06 | 69.903,06 | **69.903,06** | **KOTOR** |
+| TOTAL | Teori | 68.271,60 | 67.271,60 | 68.271,60 | **BERSIH** |
+| TOTAL | Losses | 813,47 | 1.813,47 | 813,47 | **BERSIH** |
+| TOTAL | **%** | 1,18 | 2,59 | **1,16** | **TIDAK KEDUANYA** |
+
+48 sel yang TIDAK terdiskriminasi: **cocok semua, meleset 0** → tak ada salah lain
+bersembunyi. Ini jawaban §0.5: sel yang berbeda hanya delapan, tiga di antaranya salah
+di implementasi lama, dan **tak ada yang keempat**.
+
+Kedua sel "TIDAK KEDUANYA" bukan misteri: keduanya **Losses BERSIH di atas penyebut
+KOTOR** — 162,35/11.142,88 = 1,46 dan 813,47/69.903,06 = 1,16.
+
+### Aturan lengkap (kini dikodekan)
+
+> EasyMax mengurangkan tera **di kolom**, tidak di **dua turunan**:
+> **TOTAL Penjualan** dan **penyebut %** (per baris maupun TOTAL) memakai jual KOTOR.
+> Semua yang lain — Penjualan, Teori, Losses, per baris maupun di TOTAL — bersih-tera.
+
+Konsekuensi yang diterima owner: tabel **sengaja tidak menjumlah dirinya sendiri** pada
+kolom Penjualan di hari ber-tera → **catatan kaki wajib**, menyebut liter teranya, di
+layar DAN di PDF.
+
+### Uji merah terbersih dari seluruh proyek ini
+
+Bukan mutasi buatan — cacat nyata, oracle nyata. Implementasi LAMA vs oracle 21-11:
+
+```
+ARUS MINYAK vs ORACLE — EKSAK 339 · DEVIASI SAH 1 · ABSEN≡NOL 49 · MISMATCH 3 (total 392)
+2025-11-21 | DEXLITE | %         | oracle 1.46     | render 1.6
+2025-11-21 | TOTAL   | Penjualan | oracle 69903.06 | render 68903.06
+2025-11-21 | TOTAL   | %         | oracle 1.16     | render 1.18
+```
+
+Persis tiga sel yang diprediksi enumerasi. Setelah diperbaiki: **MISMATCH 0**.
+
+### 🎓 PELAJARAN — beri nama: **HIJAU KARENA JENDELANYA BUTA**
+
+Sepupu langsung dari [[bukti-harus-bisa-merah]], dan lebih licin darinya.
+
+336 sel LULUS selama dua putaran dengan rumus % yang salah. Bukan karena penilaiannya
+lemah — penilaiannya justru diperketat di putaran 2 — melainkan karena **rentang datanya
+tak mampu membedakan hipotesis yang benar dari yang salah**. Tera di jendela Agustus
+maksimum 0,64 L; pada besaran itu kedua penyebut membulat ke angka yang sama di
+SETIAP sel. Pemeriksaannya sempurna; yang buta adalah datanya.
+
+Yang menyelamatkan: **kalimat yang ditulis sendiri di K-2** — *"kolom % cocok TAPI bukan
+bukti; 0,286091 vs 0,286095, keduanya tampil 0,29"*. Peringatan itu ditulis sebagai
+kejujuran, lalu owner memakainya sebagai petunjuk untuk memilih tanggal yang bisa
+membedakan. **Mencatat batas daya-beda sebuah pemeriksaan ternyata lebih berharga
+daripada hasil pemeriksaannya.**
+
+Aturan yang dibawa keluar: **saat sebuah pemeriksaan HIJAU, tanyakan "berapa besar
+perbedaan yang MAMPU ia lihat?"** Kalau jawabannya lebih besar dari efek yang sedang
+diuji, hijau itu tidak berarti apa-apa. Cari data yang membuat kedua hipotesis berbeda
+**lebih besar dari presisi tampilan**, atau nyatakan pemeriksaan itu tak berdaya.
+
+## P3-2 — D-5 PENSIUN
+
+Deviasi bernama "TOTAL Penjualan 2 Agu" **dihapus**, bukan disimpan sebagai catatan
+sejarah. Ia lahir dari kesimpulan yang salah: bahwa EasyMax tidak konsisten dengan
+dirinya sendiri. Ternyata itu **definisinya** — TOTAL Penjualan memang kotor. Setelah
+dicerminkan, SolaMax cocok persis dan daftar deviasi KOSONG. Angka Agustus naik dari
+293 EKSAK + 1 deviasi → **294 EKSAK + 0 deviasi**.
+
+Mekanisme deviasi-bernama tetap ada di `arus-minyak.grade.ts` dan tetap diuji — yang
+hilang hanya isinya.
+
+## P3-3 — BADGE penutup-nol (perubahan kode kedua; NOL perubahan angka)
+
+`getZeroClosingEvents` disambungkan ke halaman Laporan → `LaporanRaw.zeroClosing` →
+`buildArusMinyak`. `getDailyGlByProduct` TIDAK disentuh; `Losses ≡ gl` tetap hijau 1e−6.
+
+**Dua kelas, sebab dua kelas memang ada:**
+- **kelas 2** — detektor tertala (op=0 ∧ prev>1.000 ∧ next>1.000 ∧ ΣDO besok < next).
+  Inilah yang berbahaya: pada hari SELESAI ia bisa mengenai sebagian tangki saja →
+  angkanya bukan nol, hanya kurang ±10.000 L, dan `provisional = FALSE`.
+- **kelas 1** — penutup 0 pada hari yang belum punya jangkar hari-berikutnya, sehingga
+  aturan tertala belum bisa menyala sama sekali (terbukti: query pada jendela
+  01–09 Agu mengembalikan **0 baris** untuk Adisucipto). Dikenali dari `fisik = 0 ∧
+  Teori > 1.000` — syarat Teori penting supaya tangki yang memang terjual habis
+  (Teori ≈ 0) tidak ikut tertandai.
+
+Tanpa kelas 1, badge hanya menyala pada yang sudah kelihatan. Tanpa kelas 2, ia
+melewatkan yang justru menipu.
+
+**Bukti PASANGAN** (menyala DAN padam):
+
+| kasus | hasil |
+|---|---|
+| 28 Oktober 2026-07-22 (kelas 2, `provisional=FALSE`) | **MENYALA**, tangki T-05, Losses −10.199,73 |
+| Adisucipto 2026-08-09 (kelas 1) | **MENYALA**, 5 produk |
+| **7 tanggal oracle bersih** (6 Agu 2026 + 21 Nov 2025) | **PADAM**, `zeroClosingCount = 0` |
+
+Uji merah: jalur kelas 2 dimatikan → 1 tes MERAH · jalur kelas 1 dimatikan → 1 tes
+MERAH · badge dibuat selalu menyala → 2 tes MERAH (termasuk tes PADAM).
+
+Teksnya menyebut **tindakan**: "Ralat opname hari itu di EasyMax, lalu muat ulang" —
+dan pada kelas 2 menyebut nomor tangkinya, karena di situlah ralatnya dilakukan.
+Ikut tercetak di PDF (blok PERINGATAN + penanda `[opname 0]` pada nama produk).
+
+## P3-4 — §3 celah komponen: MENYEMPIT, tidak tertutup
+
+Diperiksa langsung di berkas gold-check, bukan diasumsikan:
+
+| komponen | bukti lintas-unit | status |
+|---|---|---|
+| **Penjualan** (`sales_gross`) | `laporan-harian-goldcheck-preregistration.md` **B4**: rincian per-produk harian 7 unit × 7 produk — **56/56 eksak** (19 Jul) & **56/56** (20 Jul); 52/56 pada 21 Jul, keempat selisihnya **cacat PDF acuan** (E4, dibuktikan tiga pembacaan independen) | **TERTUTUP** |
+| **Losses** (`gl`) | G/L harian **178/196 sel**, 7 unit × 4 hari | **TERTUTUP** |
+| **Penerimaan** (`pen_do`) | dicari di seluruh `session-notes/` — tak ada gold-check yang mengadu volume penerimaan per produk per unit dgn EasyMax. Yang ada (`do-sisa-bakau/LEDGER.md`) membandingkan **Sisa DO per-SO** lewat popup F12 — besaran LAIN | **TERBUKA** |
+| **Stock Fisik / Awal** | tak ada gold-check stok/opname/RECAP sama sekali | **TERBUKA** |
+
+**Jangan mengarang jembatan** — tapi ada penyempitan yang SAH dan bisa dinyatakan:
+identitas `Losses = Fisik − (Awal + Penerimaan − Penjualan)` dengan Losses dan Penjualan
+sudah terverifikasi mengikat kombinasi `Fisik − Awal − Penerimaan`. Ditambah rantai
+carry-in `Awal(N) = Fisik(N−1)` (terbukti dari data: 30/30 di jendela oracle, 0
+pelanggaran di 120 hari), Awal bukan lagi derajat kebebasan terpisah. **Sisa risiko yang
+tepat: `Fisik` dan `Penerimaan` sama-sama salah dengan besaran yang sama dan konsisten.**
+Itu sempit, tapi bukan nol — dan tidak akan tertutup tanpa gold-check komponen.
+
+## P3-5 — §4 sapuan konsistensi internal, 120 hari IB
+
+`2026-04-09 … 2026-08-06` · **120 hari · 720 baris · 0 pelanggaran.**
+Diperiksa: identitas Teori & Losses tiap baris; rantai carry-in tak putus tanpa penanda;
+Awal/Fisik tak mustahil (<0 atau ≥200.000). Dua baris ber-|%|>1.000 —
+**23 Jun & 21 Jul, Pertamina Dex** — bukan pelanggaran melainkan **penyebut kecil**:
+jual 666,67 & 555,25 L melawan penerimaan 8.000 L (keluarga yang sama dengan anomali
+5–6 Agu: kiriman tak tercermin di pembacaan penutup).
+
+**CATATAN METODE — batas yang salah dibuang, bukan datanya.** Percobaan pertama memakai
+"|Losses| ≤ Awal + Penerimaan" dan menyala **9×** pada data yang sah. Batas itu keliru:
+ia hanya berlaku pada arah RUGI (dan di sana vakum, tersirat oleh Fisik ≥ 0), sedangkan
+arah UNTUNG memang boleh melebihinya (tangki terisi lebih dari yang terbuku). Yang
+diperbaiki adalah pemeriksaannya.
+
+**Batas sapuan ini, disebut sendiri:** nol pelanggaran atas 120 hari **BUKAN** bukti
+akurasi. P3-1 baru saja memperagakan kenapa — rumus % yang salah akan melewati sapuan
+ini tanpa satu pun pelanggaran, sebab ia SALAH SECARA KONSISTEN. Sapuan ini hanya
+menangkap kerusakan struktural.
+
+## P3-6 — §6 `excludedTanks`
+
+Nol hari di seluruh data 2026 lintas 7 unit. Tidak ada data yang dikarang untuk
+menyalakannya. Cabang itu terkunci **tes komponen** (`ArusMinyakSection.test.tsx`) dan
+**belum pernah dilihat mata pada data nyata** — batas yang jujur, bukan kegagalan.
+
+## Keputusan putaran 3
+
+### D-15 — Cermin EasyMax pada % & TOTAL Penjualan, + catatan kaki wajib
+- **Pilihan**: penyebut % kotor; TOTAL Penjualan kotor; kolom Penjualan tetap bersih.
+- **Alternatif**: tetap konsisten-internal (semua bersih) dan menyatakan oracle salah.
+- **Bukti pemutus**: 8 sel terdiskriminasi 21-11, oracle memilih kotor di tepat dua
+  turunan; 48 sel lain cocok → oracle konsisten dengan dirinya, kitalah yang salah.
+- **Membatalkannya**: hari ber-tera lain yang memperlihatkan pola berbeda.
+
+### D-16 — Badge dua kelas, bukan satu
+- **Bukti pemutus**: detektor tertala mengembalikan **0 baris** untuk hari berjalan
+  (butuh jangkar hari-berikutnya) — satu kelas saja meninggalkan lubang di sisi yang
+  justru paling sering dilihat pengawas (hari ini).
+- **Membatalkannya**: perbaikan hulu yang mengoreksi angka → badge kelas 1 jadi mubazir.

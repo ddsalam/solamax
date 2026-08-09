@@ -70,13 +70,14 @@ d("PDF sungguhan dari data live (pemeriksaan mata)", () => {
       const mStart = monthStart(date);
       const today = "2026-08-09";
       const [
-        prodDay, glRows, prodMonth, delivMonth, doDay, doAnomalies, doSuspects, shift,
+        prodDay, glRows, zeroClosing, prodMonth, delivMonth, doDay, doAnomalies, doSuspects, shift,
         corrections, cash, saldo, recapPelanggan, recapEdc, recapDeposit,
         recapPendapatanLain, recapPengeluaran, recapSetoran, terra,
         fK, gK, iK, fB, gB, iB,
       ] = await Promise.all([
         Q.getSalesByProduct(unitId, date, date),
         Q.getDailyGlByProduct(unitId, mStart, date),
+      Q.getZeroClosingEvents([unitId], addDays(date, -1), addDays(date, 1)),
         Q.getSalesByProduct(unitId, mStart, date),
         Q.getDeliveryByProduct(unitId, mStart, date),
         Q.getDoHarian(unitId, date),
@@ -103,7 +104,7 @@ d("PDF sungguhan dari data live (pemeriksaan mata)", () => {
       const mi = monthInfo(date);
       const model = buildLaporanModel(
         {
-          prodDay, glRows, prodMonth, delivMonth, doDay, doAnomalies, doSuspects, shift,
+          prodDay, glRows, zeroClosing, prodMonth, delivMonth, doDay, doAnomalies, doSuspects, shift,
           corrections, cash, saldo, recapPelanggan, recapEdc, recapDeposit,
           recapPendapatanLain, recapPengeluaran, recapSetoran, terra,
           tetanggaSebelum: { f: fK, g: gK, i: iK },

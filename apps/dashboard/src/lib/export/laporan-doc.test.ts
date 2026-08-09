@@ -7,6 +7,7 @@ import { buildLaporanModel, type LaporanRaw } from "@/lib/laporan-model";
 const raw = {
   prodDay: [{ ckdbbm: "P1", nama: "Pertalite", vol: 1000, omzet: 10_000_000, harga: 10000 }],
   glRows: [],
+  zeroClosing: [],
   prodMonth: [{ ckdbbm: "P1", nama: "Pertalite", vol: 30000, omzet: 300_000_000, harga: 10000 }],
   delivMonth: [],
   doDay: [],

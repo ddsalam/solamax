@@ -1194,3 +1194,8 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .grid-total.cols-harian, .grid-total.cols-harian2,
 .harian-subhead, .harian-delta { background: var(--neutral-50); }
 .grid-row.cols-harian, .grid-row.cols-harian2 { background: var(--color-surface); }
+/* Penanda penutup-nol Arus Minyak: opname penutup 0 padahal tangki mestinya
+   berisi. Ia menempel pada NAMA produk (bukan pada angkanya) karena angkanya
+   sengaja tidak dikoreksi — yang salah adalah inputnya, bukan hitungannya. */
+.zc-tag { margin-left: 6px; vertical-align: middle; }
+.zc-note { border-left: 3px solid var(--color-warning, #b45309); }

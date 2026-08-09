@@ -353,7 +353,11 @@ function arusSection(m: LaporanModel): Content[] {
   ];
   for (const r of a.rows) {
     body.push([
-      { text: pdfText(r.nama), color: PDF.textPrimary },
+      {
+        text: pdfText(r.zeroClosing ? `${r.nama}  [opname 0]` : r.nama),
+        color: r.zeroClosing ? PDF.warning : PDF.textPrimary,
+        bold: r.zeroClosing != null,
+      },
       { text: num2(r.awal), alignment: "right", color: PDF.textSecondary },
       { text: num2(r.penerimaan), alignment: "right", color: PDF.textSecondary },
       { text: num2(r.penjualan), alignment: "right", color: PDF.textSecondary },
@@ -375,13 +379,31 @@ function arusSection(m: LaporanModel): Content[] {
     { text: num2(t.losses), bold: true, alignment: "right", color: glColor(t.losses), fillColor: tf },
     { text: num2(t.pct), bold: true, alignment: "right", color: glColor(t.losses), fillColor: tf },
   ]);
-  return [
+  const out: Content[] = [
     sectionHeading("Arus Minyak Harian", a.provisional ? "belum final" : undefined),
+  ];
+  if (a.zeroClosingCount > 0)
+    out.push({
+      text:
+        `PERINGATAN — ${a.zeroClosingCount} produk bertanda [opname 0]: penutup opname tercatat 0 padahal tangki mestinya berisi. ` +
+        "Losses & % baris itu artefak input EasyMax, BUKAN kerugian; angkanya sengaja tidak dikoreksi agar tetap sama dengan panel Gain/Losses. " +
+        "Ralat opname hari itu di EasyMax, lalu cetak ulang.",
+      style: "footNote",
+      alignment: "left",
+      color: PDF.warning,
+      bold: true,
+      marginBottom: 3,
+    });
+  return [
+    ...out,
     table(["*", 62, 62, 62, 62, 62, 58, 34], body),
     {
       text:
-        "Stock Teori = Stock Awal + Penerimaan − Penjualan · Losses = Stock Fisik − Stock Teori · % = Losses ÷ Penjualan. " +
+        "Stock Teori = Stock Awal + Penerimaan − Penjualan · Losses = Stock Fisik − Stock Teori · % = Losses ÷ penjualan kotor. " +
         "Stock Awal = Stock Fisik hari-bisnis sebelumnya; Penjualan = jual kotor dikurangi tera resmi; Penerimaan = volume DO." +
+        (a.teraTotal > 0
+          ? ` Tera ${num2(a.teraTotal)} L hari ini. Mengikuti definisi EasyMax, kolom Penjualan sudah dikurangi tera, tetapi TOTAL Penjualan dan seluruh kolom % memakai penjualan KOTOR — karena itu TOTAL Penjualan lebih besar ${num2(a.teraTotal)} L daripada jumlah kolom di atasnya. Bukan tabel yang rusak.`
+          : "") +
         (a.excludedTanks > 0
           ? ` ${a.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik.`
           : "") +

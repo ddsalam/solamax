@@ -1,4 +1,4 @@
-import type { ArusMinyak, ArusRow } from "@/lib/arus-minyak";
+import type { ArusMinyak, ArusRow, ZeroFlag } from "@/lib/arus-minyak";
 import { num2 as liter2 } from "@/lib/format";
 
 /**
@@ -40,6 +40,18 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
           <span className="right">Losses (L)</span>
           <span className="right">%</span>
         </div>
+        {arus.zeroClosingCount > 0 && (
+          <div className="empty-inline t-warning zc-note">
+            <strong>
+              ⚠ {arus.zeroClosingCount} produk: opname penutup tercatat 0 padahal tangki mestinya
+              berisi.
+            </strong>{" "}
+            Losses &amp; % pada baris bertanda &ldquo;opname 0&rdquo; adalah artefak input EasyMax,
+            BUKAN kerugian — angkanya sengaja tidak dikoreksi di sini agar tetap sama dengan panel
+            Gain/Losses. Yang harus dilakukan: buka opname hari itu di EasyMax, isi angka
+            sesungguhnya, lalu muat ulang halaman ini.
+          </div>
+        )}
         {arus.rows.length === 0 && (
           <div className="empty-inline">
             Belum ada opname penutup pada tanggal bisnis ini — arus minyak belum bisa disusun.
@@ -47,7 +59,14 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
         )}
         {arus.rows.map((p) => (
           <div key={p.ckdbbm} className="grid-row cols-arus" data-arus-row={p.nama}>
-            <span className="text-caption w600">{p.nama}</span>
+            <span className="text-caption w600">
+              {p.nama}
+              {p.zeroClosing && (
+                <span className="anom-tag zc-tag" title={zcPesan(p.zeroClosing)}>
+                  opname 0
+                </span>
+              )}
+            </span>
             <span className="right fs16 t-secondary num">{liter2(p.awal)}</span>
             <span className="right fs16 t-secondary num">{liter2(p.penerimaan)}</span>
             <span className="right fs16 t-secondary num">{liter2(p.penjualan)}</span>
@@ -77,8 +96,18 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
         )}
         <div className="lap-cardfoot">
           Stock Teori = Stock Awal + Penerimaan − Penjualan · Losses = Stock Fisik − Stock Teori ·
-          % = Losses ÷ Penjualan. Stock Awal = Stock Fisik hari-bisnis sebelumnya; Penjualan = jual
-          kotor dikurangi tera resmi; Penerimaan = volume DO.
+          % = Losses ÷ penjualan kotor. Stock Awal = Stock Fisik hari-bisnis sebelumnya; Penjualan
+          = jual kotor dikurangi tera resmi; Penerimaan = volume DO.
+          {arus.teraTotal > 0 && (
+            <>
+              {" "}
+              <strong>Tera {liter2(arus.teraTotal)} L hari ini.</strong> Mengikuti definisi
+              EasyMax, kolom Penjualan sudah dikurangi tera, tetapi TOTAL Penjualan dan seluruh
+              kolom % memakai penjualan KOTOR (belum dikurangi tera) — karena itu TOTAL Penjualan
+              lebih besar {liter2(arus.teraTotal)} L daripada jumlah kolom di atasnya. Bukan
+              tabel yang rusak.
+            </>
+          )}
           {arus.excludedTanks > 0 &&
             ` ${arus.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik (lihat anomali kualitas data).`}
           {arus.incomplete &&
@@ -87,6 +116,18 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Pesan penanda penutup-nol — menyebut APA YANG HARUS DILAKUKAN, bukan sekadar
+ * bahwa ada sesuatu. Kelas 2 menyebut tangkinya karena di situlah ralatnya.
+ */
+function zcPesan(z: ZeroFlag): string {
+  const asal =
+    z.kelas === 2
+      ? `Tangki ${z.tangki.join(", ")}: penutup opname 0 sementara hari sebelum & sesudahnya berisi, tanpa DO yang menjelaskan.`
+      : "Penutup opname 0 padahal Stock Teori menunjukkan tangki mestinya berisi ribuan liter.";
+  return `${asal} Losses & % baris ini artefak input, BUKAN kerugian. Ralat opname hari ini di EasyMax, lalu muat ulang.`;
 }
 
 /** Warna Losses/% — konvensi sama dgn kolom Gain/Losses panel Omset. */

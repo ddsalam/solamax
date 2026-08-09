@@ -23,6 +23,7 @@ import {
   getDepositForDate,
   getManualEntries,
   getTerraResmiForDate,
+  getZeroClosingEvents,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
@@ -51,6 +52,7 @@ export default async function LaporanPage({
   const [
     prodDay,
     glRows,
+    zeroClosing,
     prodMonth,
     delivMonth,
     doDay,
@@ -73,6 +75,10 @@ export default async function LaporanPage({
     // G/L harian metode RESUME — satu fetch bulan-berjalan; turunkan harian (filter
     // d=date) & kumulatif (Σ). Lookback D−1 ditangani di query (anchor benar).
     getDailyGlByProduct(unit.unit_id, mStart, date),
+    // Penutup-nol: TIDAK mengubah angka, hanya menandai. Jendela D−1..D+1 wajib —
+    // aturannya membandingkan penutup hari itu dgn hari sebelum & sesudahnya,
+    // jadi rentang 1 hari tak akan pernah menyalakannya.
+    getZeroClosingEvents([unit.unit_id], addDays(date, -1), addDays(date, 1)),
     getSalesByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, mStart, date),
     getDoHarian(unit.unit_id, date),
@@ -110,6 +116,7 @@ export default async function LaporanPage({
     {
       prodDay,
       glRows,
+      zeroClosing,
       prodMonth,
       delivMonth,
       doDay,

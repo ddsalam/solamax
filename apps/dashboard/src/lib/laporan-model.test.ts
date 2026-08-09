@@ -16,6 +16,7 @@ const raw = {
     { ckdbbm: "P2", nama: "Pertamax", vol: 500, omzet: 6_000_000, harga: 12000 },
   ],
   glRows: [],
+  zeroClosing: [],
   prodMonth: [{ ckdbbm: "P1", nama: "Pertalite", vol: 30000, omzet: 300_000_000, harga: 10000 }],
   delivMonth: [],
   doDay: [],

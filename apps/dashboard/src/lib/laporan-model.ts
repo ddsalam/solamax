@@ -41,6 +41,7 @@ type DoRow = Awaited<ReturnType<typeof Q.getDoHarian>>[number];
 type DoAnom = Awaited<ReturnType<typeof Q.getDoAnomalies>>[number];
 type DoSuspect = Awaited<ReturnType<typeof Q.getDoSuspectSO>>[number];
 type Shift = Awaited<ReturnType<typeof Q.getShiftInfo>>;
+type ZeroClosing = Awaited<ReturnType<typeof Q.getZeroClosingEvents>>[number];
 type Cash = Awaited<ReturnType<typeof Q.getCashForDate>>[number];
 type Saldo = Awaited<ReturnType<typeof Q.getSaldoPelanggan>>;
 type Manual = Awaited<ReturnType<typeof Q.getManualEntries>>[number];
@@ -167,6 +168,8 @@ export interface LaporanModel {
 export interface LaporanRaw {
   prodDay: Prod[];
   glRows: GlRow[];
+  /** Kejadian penutup-nol jendela D−1..D+1; disaring ke `date` di sini. */
+  zeroClosing: ZeroClosing[];
   prodMonth: Prod[];
   delivMonth: Deliv[];
   doDay: DoRow[];
@@ -336,6 +339,7 @@ export function buildLaporanModel(
   const {
     prodDay,
     glRows,
+    zeroClosing,
     prodMonth,
     delivMonth,
     doDay,
@@ -418,7 +422,10 @@ export function buildLaporanModel(
   // Urutannya mengikuti `orderBy` halaman ini (Pertalite → Pertamax → …), BUKAN
   // urutan EasyMax — konsistensi antar-panel di satu halaman lebih berguna bagi
   // pembaca ketimbang meniru urutan laporan lain.
-  const arusMinyakRaw = buildArusMinyak(glRows.filter((r) => r.d === date));
+  const arusMinyakRaw = buildArusMinyak(
+    glRows.filter((r) => r.d === date),
+    zeroClosing.filter((z) => z.d === date),
+  );
   const arusMinyak: ArusMinyak = { ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows) };
 
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);

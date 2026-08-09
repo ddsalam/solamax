@@ -19,10 +19,12 @@ const baris = (o: Partial<ArusRow> = {}): ArusRow => ({
   awal: 100,
   penerimaan: 50,
   penjualan: 30,
+  tera: 0,
   teori: 120,
   fisik: 118,
   losses: -2,
   pct: -6.67,
+  zeroClosing: null,
   ...o,
 });
 
@@ -32,6 +34,8 @@ const arus = (o: Partial<ArusMinyak> = {}): ArusMinyak => ({
   provisional: false,
   excludedTanks: 0,
   incomplete: false,
+  teraTotal: 0,
+  zeroClosingCount: 0,
   ...o,
 });
 
