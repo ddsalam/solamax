@@ -1221,3 +1221,87 @@ KB 06 Agu (5 tangki), 28 Okt 31 Jul (1 tangki), 28 Okt 02 Agu (1 tangki). Maka:
 | 28 Oktober | 04–08 Agu | **5 tanggal BERSIH** |
 
 Kalau prediksi ini meleset, diagnosis di atas salah dan harus ditinjau ulang.
+
+## P4-5 ⚠️ KOREKSI ATAS P4-4 — blast radius saya OVERSTATED, dan prediksinya MELESET
+
+Prediksi §P4-4 bahwa 28 Oktober 01/02/03 Agustus akan MELESET **SALAH**. Ketiganya
+cocok EKSAK dengan segel. Sebabnya cacat pada **alat ukur saya sendiri**, bukan pada
+diagnosisnya:
+
+Query blast radius pertama membandingkan baris TERAKHIR dengan baris **PERTAMA** di
+jendela pagi. Kalau sebuah tangki punya DUA pembacaan pagi berurutan (mis. 06:05 lalu
+07:10) — hal yang lumrah — keduanya terhitung "divergen" padahal EasyMax dan SolaMax
+sama-sama memakai yang terakhir dari keduanya. Yang benar: bandingkan terakhir-keseluruhan
+dengan **terakhir di jendela pagi**.
+
+### Blast radius TERKOREKSI (2026 YTD)
+
+| unit | tangki-hari beda | hari beda | hari ber-jendela-pagi |
+|---|---:|---:|---:|
+| **Imam Bonjol** | **0** | **0** | 218 |
+| Bakau | 4 | 1 | 220 |
+| Bundaran Kotabaru | 6 | 2 | 220 |
+| Batu Layang | 23 | 6 | 218 |
+| Korek | 19 | 12 | 220 |
+| 28 Oktober | 19 | 10 | 219 |
+| Adisucipto | 29 | 7 | **28** ← lihat catatan |
+
+Catatan Adisucipto: penyebutnya 28, bukan ±220, sebab DTGLJAM NULL-by-default membuat
+sebagian besar harinya tak punya baris pagi ber-stempel-waktu → tak masuk hitungan sama
+sekali. Angka ADIS **tidak sebanding** dengan unit lain dan tidak boleh dibaca sebagai
+"7 dari 28 hari".
+
+**Jadi:** bukan 23 % hari di Korek melainkan **12 dari 220 (5 %)**; 28 Oktober 10 (4,5 %);
+Batu Layang 6; Kotabaru 2; Bakau 1; **IB tetap NOL**. Diagnosisnya (§P4-4, terbukti 6/6
+produk di KB) TETAP BERDIRI — hanya frekuensinya yang jauh lebih kecil dari yang saya
+laporkan mula-mula.
+
+Di jendela 18 tanggal oracle, hari divergen hanya SATU: **KB 2026-08-06** → memengaruhi
+KB Awal(07). Itu persis satu-satunya tanggal yang meleset.
+
+**Pelajaran, sejalan dengan "hijau karena jendelanya buta":** alat ukur blast radius pun
+perlu kasus kontrol. Yang menangkapnya adalah PREDIKSI TERSEGEL yang meleset — kalau
+saya tidak menyegel prediksi 28 Oktober, angka 23 % itu akan masuk laporan tanpa
+perlawanan.
+
+## P4-6 — Hasil verifikasi armada (fase 4b, sejauh yang dikerjakan)
+
+Segel §P4-3 dibuka LEBIH DULU, lalu dibandingkan.
+
+| unit | tanggal | EKSAK | DEVIASI | ABSEN≡NOL | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|
+| Imam Bonjol | 7 tgl (6 Agu + 21 Nov) | 343 | 0 | 49 | **0** | 392 |
+| Adisucipto | 2026-08-01 | 42 | 0 | 14 | **0** | 56 |
+| 28 Oktober | 2026-08-01, 08-02 | 98 | 0 | 14 | **0** | 112 |
+| Bundaran Kotabaru | 2026-08-08 | 49 | 0 | 7 | **0** | 56 |
+| Bundaran Kotabaru | 2026-08-07 | — | — | — | **24** | 56 |
+| **gabungan** | **12 unit-tanggal** | **532** | **0** | **84** | **24** | **672** |
+
+24 MISMATCH itu seluruhnya KB 07 Agu, seluruhnya kolom Awal + turunannya, sebab §P4-4.
+Dipaku sebagai tes KARAKTERISASI (`arus-minyak.render.test.tsx`) yang menegaskan
+Penerimaan/Penjualan/Fisik TIDAK ikut meleset — kalau salah satunya ikut, diagnosisnya
+runtuh dan tesnya merah. Tes itu HARUS DIHAPUS begitu perbaikan hulu mendarat.
+
+ADIS mendapat 14 ABSEN≡NOL dari 2 baris mati (Premium & P. Turbo — ADIS memang tanpa
+tangki Turbo), bukan 1 seperti unit lain.
+
+### Status keempat kolom — menggantikan tabel putaran 3
+
+| kolom | status | bukti |
+|---|---|---|
+| **Penjualan** | **TERTUTUP** | oracle 12 unit-tanggal, 4 unit, 3 tenant — EKSAK di semua; plus gold-check B4 |
+| **Losses** | **TERTUTUP** | idem + gold-check G/L 178/196 |
+| **Penerimaan** | **TERTUTUP** | EKSAK di 4 unit (IB, ADIS, 28 Okt, KB) termasuk hari ber-DO 8.000–56.000 L; **tak ikut meleset bahkan pada KB 07** |
+| **Stock Fisik** | **TERTUTUP** | EKSAK di 4 unit; tak ikut meleset di KB 07 |
+| **Stock Awal** | **TERTUTUP dengan satu pengecualian bernama** | EKSAK di 11 dari 12 unit-tanggal; meleset HANYA pada hari sesudah hari-divergen (§P4-4) |
+
+**Hipotesis sisa putaran 3 — "Fisik dan Penerimaan sama-sama salah, besaran sama" —
+TERBANTAH.** Keduanya kini diadu langsung dengan EasyMax di 4 unit lintas 3 tenant dan
+cocok EKSAK, termasuk pada hari di mana Awal MELESET 780–4.988 L. Kalau keduanya salah
+secara kompensatoris, mustahil keduanya tetap eksak sementara Awal sendirian menyimpang.
+
+### Yang BELUM dikerjakan di fase 4b
+
+12 dari 18 berkas oracle belum ditranskripsi (28 Okt 03–08, ADIS 02–08). Berdasarkan
+§P4-5 semuanya diprediksi BERSIH (tak ada hari divergen), tapi **prediksi bukan
+verifikasi** — dan §P4-5 baru saja memperagakan bahwa prediksi saya bisa meleset.
