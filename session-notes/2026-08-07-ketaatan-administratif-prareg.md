@@ -1420,3 +1420,82 @@ prasyarat memulihkan → `delta=21`.
 
 > **Mengubah cabang penanganan-error yang langka menjadi PRASYARAT yang selalu
 > dijalankan membuatnya teruji terus-menerus, bukan sekali seumur hidup.**
+
+---
+
+# 2026-08-09 — PENGUKURAN EKOR C/D DIHENTIKAN **SEBAGAI KEPUTUSAN**
+
+Bukan karena gagal. Perekamnya memang gagal **tiga kali** (hilang tersapu ·
+berjalan 12 jam tanpa menulis · gap tidur), tapi yang menghentikannya adalah
+**angkanya**: paparan ≤ ~20 menit tak mengubah keputusan apa pun, dan mengejar
+presisinya berarti mengundang kegagalan keempat.
+
+Dicatat di sini persis supaya orang berikutnya **tidak** membacanya sebagai
+"belum ada yang berhasil" lalu mengulanginya. Ia **sudah dijawab**.
+
+Kesimpulan (a) dan (b), apa yang membatalkannya, dan fakta operasional "shift
+terakhir tersinkron pagi hari berikutnya" ada di
+[`KETAATAN-ADMINISTRASI.md`](../apps/dashboard/KETAATAN-ADMINISTRASI.md) — bukan
+di sini, karena itu keputusan yang mengikat, bukan kronologi.
+
+Bukti mentah dipindahkan dari `.measure/` (**ter-gitignore — bisa tersapu, persis
+kegagalan pertama**) ke [`data/ekor-cd-2026-08-08.jsonl`](data/ekor-cd-2026-08-08.jsonl)
+yang ber-versi: 21 snapshot × 7 unit × 3 tanggal bisnis.
+
+Perekam dibongkar: `launchctl unload` + plist dihapus (0 entri tersisa),
+`caffeinate` kedaluwarsa sendiri, proxy dimatikan.
+
+---
+
+# 2026-08-09 — ATURAN SALIN-SETORAN DIKIRIM
+
+Bentuknya, volume alarmnya, dan alasan tiap syaratnya ada di
+`KETAATAN-ADMINISTRASI.md` §3b. Yang dicatat **di sini** hanya yang bersifat
+kronologi pengukuran.
+
+## Cek keadaan-akhir dari arsip perekam — **dan kontrolnya**
+
+| | |
+| --- | ---: |
+| pasangan hari berurutan diperiksa (7 unit × 08-06…08) | **14** |
+| Σ setoran identik dengan D−1 | **0** |
+
+**Kontrolnya TIDAK vakum**, dan ini yang membuat angka 0 itu berarti sesuatu:
+nilai **Rp 359.447.000 masih ada** di arsip pada **08-06** (21 snapshot,
+unit 6 = Korek), sedangkan **08-07 sudah terbaca Rp 332.053.000**. Jadi pasangan
+identik memang **akan terlihat** kalau masih ada — ia sudah diperbaiki pengawas,
+persis seperti yang direkonstruksi dari jejak audit kemarin.
+
+Sesuai §7 "backtest keadaan AKHIR — dan syaratnya": **0 itu batas BAWAH**, bukan
+volume alarm. Volume alarm yang sah tetap yang dari jejak audit: **10,19
+jam-alarm** per 40 hari × 7 unit.
+
+## ⛔ YANG **TIDAK** TERVERIFIKASI, dan kenapa
+
+**Dampak pada jendela 91 sel tenang BELUM diukur pada DB hidup.**
+`cloud-sql-proxy` menolak menyambung:
+
+```
+auth: "invalid_grant" "reauth related error (invalid_rapt)"
+```
+
+ADC kedaluwarsa dan pemulihannya **interaktif** — tak bisa saya jalankan:
+
+```bash
+gcloud auth application-default login
+```
+
+Yang **sudah** menggantikannya sebagian: cek arsip 14 pasang di atas (sempit —
+3 tanggal, bukan 91 sel) dan penalaran bahwa aturan ini hanya **mempersempit**
+vonis yang sudah non-`selaras`, jadi ia tak bisa memerahkan sel yang tadinya
+hijau. **Itu argumen, bukan pengukuran.** Jangan perlakukan sebaliknya.
+
+## Kegagalan alat yang berulang, dicatat
+
+Prasyarat port saya tulis `(echo > /dev/tcp/127.0.0.1/5432)` — di **zsh** itu
+**selalu gagal**: `/dev/tcp` fitur bash. Proxy jelas hidup menurut lognya, tapi
+pemeriksa saya bilang mati. **Pemeriksa yang tak pernah bisa HIJAU sama tak
+bergunanya dengan pemeriksa yang tak pernah bisa MERAH.** Yang benar: `nc -z`.
+
+> Ini bentuk yang sama dengan `pgrep` yang mencocoki argv-nya sendiri: prasyarat
+> ditulis dalam idiom shell yang salah, lalu jawabannya dipercaya.

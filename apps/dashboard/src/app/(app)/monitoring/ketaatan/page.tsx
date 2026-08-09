@@ -2,6 +2,7 @@ import { Heatmap, type HmRow } from "@/components/mon/Heatmap";
 import {
   adminStatus,
   opnameStatus,
+  pasangkanSetoranKemarin,
   salesStatus,
   SETORAN_TOLERANSI_RP,
   type AdminVerdict,
@@ -59,6 +60,8 @@ function adminNote(v: AdminVerdict, h: number, i: number | null): string {
       return `setoran MELEBIHI uang tunai ${rp((i ?? 0) - h)}`;
     case "kurang_setor":
       return `setoran kurang ${rp(h - (i ?? 0))}`;
+    case "setoran_tersalin":
+      return `setoran SAMA PERSIS dengan kemarin (${rp(i ?? 0)}) dan meleset ${rp(Math.abs((i ?? 0) - h))} dari uang tunai — periksa, kemungkinan angka kemarin terketik ulang`;
     case "setoran_kosong":
       return "pendapatan/pengeluaran terisi, SETORAN belum diisi";
     case "belum_diisi":
@@ -88,15 +91,21 @@ export default async function KetaatanPage() {
   const rows: HmRow[] = await Promise.all(
     units.map(async (u) => {
       // 2 query/unit. `getLastInputs` dilepas bersama strip kas dorman.
+      // DAYS + 1: hari TERTUA diambil semata sebagai benih `iSebelumnya` untuk
+      // sel terkiri, lalu dibuang dari tampilan. Tanpa itu, sel terkiri tak
+      // pernah bisa diperiksa aturan salin-setoran — lubang senyap yang
+      // bergeser satu hari setiap hari, jadi tak akan pernah ada yang sadar.
       const [matrix, tanks] = await Promise.all([
-        getComplianceMatrix(u.unit_id, DAYS),
+        getComplianceMatrix(u.unit_id, DAYS + 1),
         getTankCount(u.unit_id),
       ]);
-      const asc = [...matrix].reverse();
+      // Pemasangan D−1 dari lib/compliance.ts — SATU implementasi, teruji,
+      // dipakai bersama feed anomali. `.slice(1)` membuang baris benih.
+      const asc = pasangkanSetoranKemarin([...matrix].reverse()).slice(1);
       return {
         code: u.code,
         name: u.name,
-        cells: asc.map((d) => {
+        cells: asc.map(({ hari: d, iSebelumnya }) => {
           const s = salesStatus(d.shifts);
           const o = opnameStatus(d.tanks, tanks);
           // H dari SUMBER TUNGGAL (lib/rekon.ts) — bukan dihitung ulang di SQL.
@@ -116,6 +125,7 @@ export default async function KetaatanPage() {
               nSetoran: d.nSetoran,
               h,
               i: d.setoran,
+              iSebelumnya,
               shifts: d.shifts,
             },
             { businessDate: d.d, today },
@@ -191,7 +201,10 @@ export default async function KetaatanPage() {
         sampai akhir H+1 hanyalah hari yang <strong>belum diisi</strong> (sel berarsir),
         supaya pengawas tak dihukum karena hari yang memang belum waktunya. Sel bertitik-titik =
         sebelum unit ybs memakai panel Rincian (lantai adopsi beku di config) — bukan
-        kelalaian pengawas. Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
+        kelalaian pengawas. Setoran yang <strong>sama persis dengan hari sebelumnya</strong> DAN meleset dari
+        uang tunai ditandai merah tersendiri — angka kemarin yang terketik ulang
+        pernah terjadi (Korek 2026-08-07) dan tampak wajar sampai dibandingkan.
+        Modul kas EasyMax dihapus 2026-08-07 — dorman di ketujuh unit.
       </div>
     </div>
   );

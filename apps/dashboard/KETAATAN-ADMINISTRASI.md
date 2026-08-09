@@ -96,6 +96,75 @@ dan biayanya nyaris nol karena jatuh tempo memang akhir H+1.
 
 ---
 
+## 3b · Aturan SALIN-SETORAN — angka kemarin diketik ulang
+
+Ditambahkan 2026-08-09. Berasal dari temuan **owner**, bukan dari papan: setoran
+Korek 2026-08-07 **sama persis** dengan 2026-08-06 — Rp 359.447.000 dua kali —
+dan yang 08-07 meleset **Rp 3.877.128,50** dari uang tunai. Papan waktu itu
+hanya bilang "lebih setor", **kuning**; sebab sesungguhnya (angka kemarin
+terketik ulang) tak tersuarakan sama sekali.
+
+**Menyala hanya bila TIGA hal benar bersamaan:**
+
+| | syarat | ditegakkan di mana |
+| --- | --- | --- |
+| (a) | `I(D)` **sama persis** dengan `I(D−1)` | kondisi di `adminStatus` |
+| (b) | `D` **bukan hari ini** | **URUTAN** — gerbang `hari_berjalan` pulang lebih dulu |
+| (c) | `\|I − H\|` **>** toleransi (`SETORAN_TOLERANSI_RP`) | `kode !== "selaras"` |
+
+⚠️ **(b) dipikul oleh URUTAN, bukan oleh kondisi tertulis.** Memindahkan blok
+ini ke atas gerbang `hari_berjalan` akan menyalakannya pada hari yang H-nya
+masih dirakit — artefak yang justru jadi alasan gerbang itu ada. Kalau blok itu
+pindah, syarat (b) **harus ditulis eksplisit**. Dijaga tes.
+
+**Kenapa (c) wajib:** dua hari yang setorannya kebetulan sama tapi dua-duanya
+**selaras** dengan H masing-masing bukan kesalahan. Menandainya akan melatih
+orang mengabaikan aturannya — kegagalan yang sama dengan alarm kas dorman.
+
+**MERAH, bukan kuning — bahkan saat arahnya "lebih setor"** (yang sendirian
+hanya kuning). Kelebihan setor bisa punya sebab sah; angka **identik dengan
+kemarin DAN tak cocok dengan H** adalah kekeliruan ENTRI. Yang ditandai di sini
+**sebabnya**, bukan arah selisihnya.
+
+### Volume alarm — TERUKUR, bukan ditaksir
+
+| | |
+| --- | ---: |
+| jendela | 40 hari × 7 unit = **960 jam kalender** |
+| **jam-alarm (a ∧ b), dari jejak audit** | **10,19 jam** — batas ATAS |
+| backtest keadaan-akhir | **0** — batas BAWAH |
+| kejadian | **1** |
+| porsi waktu ber-alarm | **1,06%** |
+
+Aturannya **sunyi**. Ia tak akan dimatikan orang karena ramai.
+
+### ⛔ Aturan ini TIDAK BISA diverifikasi di produksi
+
+Keadaan akhir sudah **bersih** — pengawas mengoreksi kasusnya sendiri
+(08-08 pukul 10:11 → Rp 332.053.000). Jadi **"hijau di produksi" tidak akan
+pernah membuktikan aturan ini bekerja**, dan papan yang tenang bukan bukti apa
+pun. **Fixture di `compliance.test.ts` memikul SELURUH bebannya**, memakai angka
+historis yang nyata, dengan kontrol hari yang `I`-nya identik **tapi** H-nya
+cocok (tak boleh menyala).
+
+Pemeriksaan keadaan-akhir atas arsip perekam (14 pasang hari berurutan, 7 unit,
+2026-08-06…08): **0 menyala**. **Kontrolnya tidak vakum** — nilai Rp 359.447.000
+masih ada di arsip pada 08-06 (21 snapshot), sedangkan 08-07 sudah terbaca
+Rp 332.053.000. Jadi pasangan identik memang akan terlihat kalau ada; ia sudah
+diperbaiki. Ini konsisten dengan §7 "backtest keadaan AKHIR — dan syaratnya":
+angka 0 itu **batas bawah**, bukan volume alarm.
+
+### Pemasangan D−1 ada di SATU tempat
+
+`pasangkanSetoranKemarin()` di `compliance.ts`, dipakai halaman Ketaatan **dan**
+feed anomali — bukan disalin ke masing-masing. Prasyaratnya: deret **rapat &
+menaik** per unit (kedua query pemasoknya memakai `generate_series`). Halaman
+Ketaatan mengambil **`DAYS + 1`** hari dan membuang yang tertua dari tampilan:
+tanpa benih itu, sel terkiri tak pernah bisa diperiksa — lubang yang bergeser
+satu hari tiap hari, jadi tak akan pernah ada yang menyadarinya.
+
+---
+
 ## 4 · SATU pembuat vonis
 
 `adminStatus()` adalah **satu-satunya** yang memutuskan I-vs-H.
@@ -174,6 +243,53 @@ terblokir. Pulih = **revert PR**. Cakupannya `apps/dashboard/**` +
 `deploy-backend.yml` tak punya padanan, jadi SQL ingest tak dijaga gerbang
 eksekusi-SQL mana pun.
 
+### Ekor C/D — PERTANYAAN DITUTUP (2026-08-09)
+
+Dua kesimpulan **terpisah**. Bukti mentahnya diarsipkan ber-versi:
+[`session-notes/data/ekor-cd-2026-08-08.jsonl`](../../session-notes/data/ekor-cd-2026-08-08.jsonl)
+— 21 snapshot × 7 unit × 3 tanggal bisnis, 2026-08-08 10:16 → 2026-08-09 01:47.
+
+**(a) ✅ Jatuh tempo akhir H+1 CUKUP LAMBAT — margin ~13,7 jam.**
+Korek bd=2026-08-07 masih bergerak pukul **10:13** pada H+1 (H −23,5 jt, `A`
+diam), lalu **beku** sejak snapshot **10:16** dan seterusnya. Perakitan selesai
+~10:16 pada H+1; jatuh tempo 23:59 pada H+1. **Asumsi H+1 bertahan.**
+*(n = 1 hari × 1 unit — bukan hukum alam.)*
+
+**(b) ✅ Gerbang keempat TIDAK DIBANGUN — paparan ≤ ~20 menit.**
+Kekhawatiran "jendela ~10 jam tiap pagi" **terhapus**, bukan membesar. Sebabnya
+fakta operasional yang baru diketahui: **shift terakhir tersinkron PAGI hari
+berikutnya, bukan semalam** — bd=2026-08-08 masih `2 dari 3 shift` di **ketujuh**
+unit pada 01:32, dan `A/C/D` terakhir berubah 23:28:43.
+
+Jadi selama malam dan pagi buta, **`shifts < SHIFT_TARGET` sudah menahan** dan
+papan tidak menilai apa pun. Jendela paparan sesungguhnya hanya
+**[shift-3 mendarat → C/D berhenti]** — untuk Korek: ≤09:55 → ~10:13,
+yaitu **≤ ~20 menit**, lebih kecil dari satu siklus refresh halaman.
+
+> **Gerbang keempat tidak sebanding** dengan paparan 20 menit — ia harus
+> dijelaskan selamanya, dan ketiga gerbang yang ada sudah cukup.
+
+**⚠️ APA YANG MEMBATALKAN KEPUTUSAN INI** — tinjau ulang bila:
+- **shift ke-3 mulai mendarat tengah malam** (bukan pagi). Jendelanya melebar
+  dari ~20 menit menjadi berjam-jam, dan gerbang keempat kembali layak dibahas.
+- pola sinkron agent berubah (mis. jadwal sapuan digeser).
+
+**Sinyal kelengkapan H — TIDAK ADA yang bisa diamati** *(diperiksa 2026-08-09)*.
+`sync_state`: `pelanggan` **0 dari 7 unit** punya `last_watermark`, `edc`
+**0 dari 7** — tepat komponen C dan D yang bergerak. `sales` hanya 6 dari 7.
+Yang ada hanya `last_run_at`, dan itu berkata *"agent baru jalan"*, bukan
+*"tanggal D lengkap"*. Gerbang berbasis **kelengkapan** karenanya tak bisa
+dibangun tanpa mengubah `apps/agent`; gerbang berbasis **waktu** akan jadi
+pilihan sadar, bukan tebakan.
+
+**Pengukuran DIHENTIKAN sebagai KEPUTUSAN, bukan karena gagal.** Perekamnya
+memang gagal tiga kali (hilang · berjalan-tanpa-menulis · gap tidur), tapi yang
+menghentikannya adalah **angkanya**: paparan ≤20 menit tak mengubah keputusan
+apa pun, dan presisi lebih lanjut hanya akan mengundang kegagalan keempat.
+*Jangan baca ini sebagai menyerah dan mengulanginya.*
+
+<details><summary>catatan lama (dipertahankan)</summary>
+
 **Ekor C/D belum terukur tuntas** *(diamati 2026-08-08, 09:55 → 10:13 WIB, unit
 Korek, tanggal bisnis 2026-08-07)*. Diketahui: C+D masih tumbuh **setelah** shift
 penuh — 23.516.922 dalam 18 menit, dengan `A` tidak bergerak sama sekali. **Belum diketahui:** apakah ia berhenti
@@ -182,6 +298,7 @@ dini**. Sedang diukur oleh `.measure/` (launchd, tiap 15 menit).
 ⚠️ `ingested_at` **tidak bisa** dipakai mengukur ini: sapuan tier-2 agent menulis
 ulang baris secara batch (7 tanggal bisnis berbagi stempel pada **detik** yang
 sama). Ukur **NILAI**, bukan stempel tulis.
+</details>
 
 <details><summary>cara mengukurnya ulang</summary>
 
