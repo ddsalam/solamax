@@ -66,12 +66,35 @@ export type AdminKode =
   | "belum_tempo_terisi" // belum jatuh tempo, sudah diisi
   | "belum_tempo_kosong"; // belum jatuh tempo, belum diisi
 
+/** Komponen manual satu hari tetangga — hanya yang dibutuhkan aturan. */
+export interface TetanggaHari {
+  /** Σ setoran; null bila tak ada baris. */
+  i: number | null;
+  f: number;
+  g: number;
+}
+
 export interface AdminVerdict {
   kode: AdminKode;
   /** "pending" = netral: belum jatuh tempo atau tak bisa dinilai. */
   tone: Status | "pending";
   /** Pengawas sudah menyentuh hari ini (≥1 baris di seksi mana pun). */
   terisi: boolean;
+  /**
+   * Hanya pada `setoran_tersalin`: F **dan** G hari ini juga identik dengan
+   * tetangga yang setorannya cocok.
+   *
+   * Ini BUKAN pemicu terpisah (keputusan owner 2026-08-09) — ia bagian dari
+   * PESAN. Nilai diagnostiknya dapat, risiko positif-palsunya nol, dan tak ada
+   * ambang baru yang harus dibela: F/G identik antar hari bisa sepenuhnya sah
+   * (biaya tetap harian), dan basis datanya (0 dari 102 pasangan) memang belum
+   * cukup untuk membangun pemicu sendiri.
+   *
+   * Kenapa tetap penting: kalau kelak `I` saja yang diperbaiki agar cocok
+   * dengan `H` yang sudah salah, hari itu akan terbaca **selaras** padahal F & G
+   * masih milik hari lain. Fakta ini yang menjaga pertanyaannya tetap terbuka.
+   */
+  komponenIkut?: boolean;
 }
 
 export interface AdminHari {
@@ -90,16 +113,23 @@ export interface AdminHari {
   h: number;
   /** Σ setoran; null bila tak ada baris setoran. */
   i: number | null;
+  /** Komponen manual hari ini — dipakai membandingkan dengan tetangga. */
+  f: number;
+  g: number;
   /**
-   * Σ setoran hari SEBELUMNYA (D−1) untuk unit yang SAMA; null bila hari itu
-   * tak punya baris setoran ATAU berada di luar jendela yang diambil pemanggil.
+   * Hari TETANGGA (D−1 dan D+1) untuk aturan salin-setoran.
    *
-   * WAJIB, bukan opsional — pemanggil yang lupa menyediakannya harus gagal
-   * type-check, bukan diam-diam mematikan aturan salin-setoran. Preseden yang
-   * sama dengan `RincianKonteks`: memberi default akan mengubah bug menjadi
-   * "aturannya kok tak pernah menyala" yang tak terlihat siapa pun.
+   * ⚠️ DUA ARAH, sejak 2026-08-09. Versi pertama hanya melihat D−1 dan karena
+   * itu menangkap **0 dari 1** kejadian nyata: yang tersalin justru nilai hari
+   * BERIKUTNYA. Pemindaian yang melaporkan "sunyi" pun sunyi karena buta.
+   *
+   * WAJIB, bukan opsional — pemanggil yang lupa harus gagal type-check, bukan
+   * diam-diam mematikan aturannya. Preseden `RincianKonteks`.
+   *
+   * `sesudah` boleh diisi apa adanya: `adminStatus` sendiri yang MENGABAIKANNYA
+   * bila D+1 kebetulan hari ini (lihat aturannya). Pemanggil tak perlu tahu.
    */
-  iSebelumnya: number | null;
+  tetangga: { sebelum: TetanggaHari | null; sesudah: TetanggaHari | null };
   /** Jumlah shift penjualan ter-ingest. 0 = data penjualan belum masuk. */
   shifts: number;
 }
@@ -112,27 +142,29 @@ export function setoranStatus(h: number, i: number): AdminKode {
 }
 
 /**
- * Pasangkan tiap hari dengan Σ setoran hari SEBELUMNYA — bahan `iSebelumnya`.
+ * Pasangkan tiap hari dengan KEDUA tetangganya (D−1 dan D+1).
  *
  * ⚠️ PRASYARAT: `menaik` harus RAPAT dan MENAIK untuk SATU unit. Kedua query
  * pemasoknya (`getComplianceMatrix`, `getAdminDays`) memakai `generate_series`,
- * jadi hari tanpa data tetap hadir sebagai baris nol — tanpa itu "sebelumnya"
- * akan berarti "baris sebelumnya", yang bisa saja seminggu lalu.
+ * jadi hari tanpa data tetap hadir sebagai baris nol — tanpa itu "tetangga"
+ * akan berarti "baris di sebelahnya", yang bisa saja seminggu lalu.
  *
- * Ada di sini, bukan di dalam halaman, supaya lolosnya tes adalah jaminan atas
- * JALUR PRODUKSI dan bukan atas salinan logika — dan supaya salah-geser satu
- * indeks (`asc[j+1]`) tertangkap tes, bukan tertangkap pengawas.
+ * Ada di sini, bukan di dalam halaman, supaya lolosnya tes menjamin JALUR
+ * PRODUKSI dan bukan salinan logika — dan supaya salah-geser satu indeks
+ * tertangkap tes, bukan tertangkap pengawas.
  *
- * Elemen PERTAMA selalu ber-`iSebelumnya: null`. Pemanggil yang ingin sel
- * terawalnya ikut diperiksa harus mengambil satu hari EKSTRA sebagai benih lalu
+ * Ujung deret ber-`null` di sisi yang tak punya tetangga. Pemanggil yang ingin
+ * sel terawalnya ikut diperiksa mengambil satu hari EKSTRA sebagai benih lalu
  * membuang elemen pertama dari tampilan.
  */
-export function pasangkanSetoranKemarin<T extends { setoran: number | null }>(
+export function pasangkanTetangga<T extends { setoran: number | null; compF: number; compG: number }>(
   menaik: T[],
-): { hari: T; iSebelumnya: number | null }[] {
+): { hari: T; tetangga: { sebelum: TetanggaHari | null; sesudah: TetanggaHari | null } }[] {
+  const sisi = (r: T | undefined): TetanggaHari | null =>
+    r ? { i: r.setoran, f: r.compF, g: r.compG } : null;
   return menaik.map((hari, j) => ({
     hari,
-    iSebelumnya: j === 0 ? null : (menaik[j - 1]?.setoran ?? null),
+    tetangga: { sebelum: sisi(menaik[j - 1]), sesudah: sisi(menaik[j + 1]) },
   }));
 }
 
@@ -286,21 +318,49 @@ export function adminStatus(
   // identik dengan kemarin DAN tak cocok dengan H adalah kekeliruan ENTRI, dan
   // yang ditandai di sini adalah SEBABNYA, bukan arah selisihnya.
   //
-  // VOLUME ALARM TERUKUR (jejak audit, 40 hari × 7 unit = 960 jam kalender):
-  // batas ATAS 10,19 jam ber-alarm (1,06% waktu), 1 kejadian. Batas BAWAH 0 —
-  // backtest keadaan-akhir tak melihat apa pun karena koreksi pengawas
-  // menghapus buktinya. Aturan ini SUNYI; ia tak akan dimatikan orang.
+  // ── SALIN-SETORAN, DUA ARAH (diperbaiki 2026-08-09) ─────────────────────
   //
-  // ⛔ KONSEKUENSI UNTUK PENGUJIAN: karena data hidup sudah bersih, "hijau di
-  // produksi" TIDAK akan pernah membuktikan aturan ini bekerja. Fixture di
-  // compliance.test.ts memikul seluruh bebannya. Jangan simpulkan sebaliknya
-  // dari papan yang tenang.
-  // Tanpa penjaga `!== null` tambahan: `d.i` di titik ini sudah menyempit ke
-  // `number` (cabang `d.i === null` pulang di atas), jadi `number === null`
-  // selamanya false. Penjaga itu akan jadi cabang yang TAK BISA dimerahkan tes
-  // mana pun — dan cabang begitu memberi rasa aman yang tak dibayar apa-apa.
-  if (kode !== "selaras" && d.i === d.iSebelumnya) {
-    return { kode: "setoran_tersalin", tone: "red", terisi: true };
+  // Hari yang DITANDAI adalah hari yang tak cocok dengan H-nya SENDIRI;
+  // tetangga hanya memasok bukti ASAL-USUL angkanya. Rumusan itu menyatukan
+  // kedua arah tanpa menuduh hari yang benar: pada Batu Layang ia menyala di
+  // 08-07 (meleset 139 jt, sama dengan 08-08) dan DIAM di 08-08 (cocok sampai
+  // Rp 458) — tanpa aturan tambahan.
+  //
+  // Versi pertama hanya melihat D−1 dan menangkap 0 dari 1 kejadian nyata.
+  // Sebabnya BUKAN cuma aturannya: antarmuka membuka tanggal yang tidak
+  // dimaksud pengawas (default = cookie "terakhir dibuka"), dan itu yang
+  // MEMBUAT salinan terjadi. Deteksi ini menangkapnya sesudah — perbaikan UX
+  // ada di daftar terpisah, dan aturan ini bukan penggantinya.
+  // Pemindaian ulang tanpa arah (2026-06-01…08-08, 7 unit, 102 pasangan):
+  // 1 pasangan identik, 0 tertangkap, 1 terlewat.
+  //
+  // D+1 = HARI INI SENGAJA TIDAK DIBANDINGKAN (keputusan owner 2026-08-09):
+  // setoran hari ini masih diisi, jadi nilai yang kebetulan sama sesaat akan
+  // menyalakan alarm lalu padam. Biayanya nol — pada kasus yang kita punya, D+1
+  // adalah kemarin, bukan hari ini. Pengecualian ini ditegakkan DI SINI, bukan
+  // dititipkan ke empat pemanggil: aturan yang harus diingat empat kali akan
+  // dilupakan sekali.
+  //
+  // (b) "D bukan hari ini" tetap dipikul URUTAN — gerbang `hari_berjalan` di
+  // atas. Kalau blok ini pindah ke atasnya, syarat itu harus ditulis eksplisit.
+  //
+  // ⛔ TIDAK BISA DIVERIFIKASI DI PRODUKSI YANG TENANG: begitu pengawas
+  // memperbaiki entrinya, buktinya lenyap. Fixture di compliance.test.ts memikul
+  // seluruh bebannya. Jangan simpulkan apa pun dari papan yang sepi.
+  if (kode !== "selaras") {
+    // D+1 = hari ini ⟺ selisih hari (D → hari ini) tepat 1.
+    const sesudahBoleh = dayGap(opts.businessDate, opts.today) > 1;
+    const kandidat = [d.tetangga.sebelum, sesudahBoleh ? d.tetangga.sesudah : null];
+    const cocok = kandidat.find((t) => t !== null && t.i !== null && t.i === d.i);
+    if (cocok) {
+      return {
+        kode: "setoran_tersalin",
+        tone: "red",
+        terisi: true,
+        // Bagian dari PESAN, bukan pemicu — lihat AdminVerdict.komponenIkut.
+        komponenIkut: cocok.f === d.f && cocok.g === d.g,
+      };
+    }
   }
 
   const tone: Status = kode === "selaras" ? "green" : kode === "lebih_setor" ? "yellow" : "red";

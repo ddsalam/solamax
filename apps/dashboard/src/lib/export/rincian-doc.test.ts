@@ -205,7 +205,7 @@ describe("rantai model → PDF (angka & catatan setoran tak bergeser)", () => {
       konteks: {
         shifts: 3,
         adopsi: "2020-01-01",
-        iSebelumnya: null,
+        tetangga: { sebelum: null, sesudah: null },
         businessDate: "2026-07-01",
         today: "2026-07-03",
       },

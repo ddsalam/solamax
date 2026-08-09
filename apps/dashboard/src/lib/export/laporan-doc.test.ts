@@ -25,6 +25,9 @@ const raw = {
   recapPendapatanLain: [],
   recapPengeluaran: [],
   recapSetoran: [],
+  terra: [],
+  tetanggaSebelum: { f: [], g: [], i: [] },
+  tetanggaSesudah: { f: [], g: [], i: [] },
 } as unknown as LaporanRaw;
 
 const model = buildLaporanModel(raw, {

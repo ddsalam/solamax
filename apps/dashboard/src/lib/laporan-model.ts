@@ -6,14 +6,23 @@
  * (page.tsx & laporan-doc.ts) memformat via lib/format yang sama.
  */
 import {
+  adopsiRincian,
   canonicalProductKey,
   classifyProduct,
   DO_PRODUCTS,
   resolveDoProduct,
   targetVolumePerDay,
 } from "@/lib/config";
+import {
+  adminStatus,
+  fmtRp,
+  SETORAN_TOLERANSI_RP,
+  type AdminVerdict,
+  type TetanggaHari,
+} from "@/lib/compliance";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
+import { uangTunai } from "@/lib/rekon";
 import type * as Q from "@/lib/queries";
 
 /** Bentuk kembalian monthInfo() (tak diekspor sebagai tipe di lib/periods). */
@@ -170,6 +179,21 @@ export interface LaporanRaw {
   recapPendapatanLain: Manual[];
   recapPengeluaran: Manual[];
   recapSetoran: Manual[];
+  /**
+   * TERRA (komponen B). WAJIB, bukan opsional: tanpa B, H = A − (B+C+D) + F − G
+   * ter-hitung terlalu BESAR dan setiap hari akan terlihat "kurang setor".
+   * Halaman ini tak pernah mengambil terra sebelum vonis setoran disambungkan
+   * (2026-08-09) — jadi menambahkannya bukan kelengkapan tampilan, melainkan
+   * syarat kebenaran angkanya.
+   */
+  terra: { rp: number }[];
+  /**
+   * Baris manual hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA
+   * ARAH. `adminStatus` sendiri yang mengabaikan D+1 bila ia kebetulan hari
+   * ini; berkas ini tak boleh ikut menyimpan aturan itu.
+   */
+  tetanggaSebelum: { f: Manual[]; g: Manual[]; i: Manual[] };
+  tetanggaSesudah: { f: Manual[]; g: Manual[]; i: Manual[] };
 }
 
 /**
@@ -185,6 +209,117 @@ export function alurSelisihNote(alurSelisih: number): string | null {
   if (alurSelisih < 0)
     return `${fmtL(-alurSelisih)} terserap lebih-terima lama · lihat panel Alokasi`;
   return null;
+}
+
+/**
+ * Vonis Ketaatan Administrasi → cek alarm "Setoran Bank Sesuai".
+ *
+ * SATU pembuat vonis tetap `adminStatus` — fungsi ini hanya MENERJEMAHKAN, tidak
+ * memutuskan. Ia diekspor supaya bisa diukur pada data hidup sebelum disambungkan
+ * (dan supaya lolosnya tes menjamin jalur produksi, bukan salinan).
+ *
+ * `na` untuk SEMUA vonis bernada `pending`: hari berjalan, penjualan tak lengkap,
+ * belum jatuh tempo, pra-adopsi. Sengaja BUKAN `provisional` — `provisional`
+ * membuat nada skor jadi `warning`, dan hari yang memang belum bisa dinilai tak
+ * boleh terlihat seperti kabar buruk. Itu kesalahan kanal dua-nilai yang sama
+ * dengan `note.tone` di Rincian (lihat rincian-model.ts).
+ *
+ * `config_hilang` juga `na`, BUKAN `fail`: di papan Ketaatan ia merah karena di
+ * sana ia satu-satunya suara untuk "indikator unit ini tak bisa dipercaya". Di
+ * sini menjadikannya `fail` akan menuduh pengawas atas config yang belum diisi.
+ * Catatannya yang menyuarakan, dan ia tetap di luar penyebut.
+ */
+export function setoranCheck(v: AdminVerdict, h: number, i: number | null): AlarmCheck {
+  const selisih = i === null ? null : Math.abs(i - h);
+  switch (v.kode) {
+    case "selaras":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "ok",
+        note: `selaras dengan uang tunai (±${fmtRp(SETORAN_TOLERANSI_RP)})`,
+      };
+    case "setoran_tersalin":
+      return {
+        label: "Setoran Bank — SAMA PERSIS dengan hari tetangga",
+        state: "fail",
+        note:
+          `${fmtRp(i ?? 0)} identik dengan hari sebelumnya/sesudahnya dan meleset ${fmtRp(selisih ?? 0)} dari uang tunai` +
+          (v.komponenIkut ? " · Pendapatan Lain & Pengeluaran juga identik" : ""),
+      };
+    case "lebih_setor":
+      return {
+        label: "Setoran Bank melebihi uang tunai",
+        state: "fail",
+        note: `lebih ${fmtRp(selisih ?? 0)} di atas toleransi ${fmtRp(SETORAN_TOLERANSI_RP)}`,
+      };
+    case "kurang_setor":
+      return {
+        label: "Setoran Bank kurang dari uang tunai",
+        state: "fail",
+        note: `kurang ${fmtRp(selisih ?? 0)} di bawah toleransi ${fmtRp(SETORAN_TOLERANSI_RP)}`,
+      };
+    case "setoran_kosong":
+      return {
+        label: "Setoran Bank belum diisi",
+        state: "fail",
+        note: `pendapatan/pengeluaran terisi tapi setoran nihil · uang tunai ${fmtRp(h)} tak terpertanggungjawabkan`,
+      };
+    case "belum_diisi":
+      return {
+        label: "Setoran Bank belum diisi",
+        state: "fail",
+        note: "Rincian Penjualan belum diisi sama sekali · lewat jatuh tempo (akhir H+1)",
+      };
+    case "hari_berjalan":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "hari berjalan · uang tunai masih dirakit",
+      };
+    case "tak_terhitung":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "penjualan hari itu tak pernah lengkap · setoran tak bisa dinilai",
+      };
+    case "belum_tempo_terisi":
+      return { label: "Setoran Bank Sesuai", state: "na", note: "sudah diisi · belum jatuh tempo" };
+    case "belum_tempo_kosong":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "belum diisi · belum jatuh tempo (akhir H+1)",
+      };
+    case "pra_adopsi":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "sebelum unit ini memakai panel Rincian",
+      };
+    case "belum_adopsi":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "unit ini belum memakai panel Rincian sama sekali",
+      };
+    case "config_hilang":
+      return {
+        label: "Setoran Bank Sesuai",
+        state: "na",
+        note: "unit belum terdaftar di ADOPSI_RINCIAN (config) · indikator tak bisa dipercaya untuk unit ini",
+      };
+  }
+}
+
+/** Baris manual satu hari tetangga → bentuk yang dipakai aturan. */
+function sisiTetangga(t: { f: Manual[]; g: Manual[]; i: Manual[] }): TetanggaHari {
+  return {
+    // null (bukan 0) bila tak ada baris: "tak ada setoran" bukan "setoran nol",
+    // dan aturannya tak boleh menyala karena dua hari sama-sama kosong.
+    i: t.i.length > 0 ? t.i.reduce((s, r) => s + r.amount, 0) : null,
+    f: t.f.reduce((s, r) => s + r.amount, 0),
+    g: t.g.reduce((s, r) => s + r.amount, 0),
+  };
 }
 
 const orderBy = <T extends { nama: string }>(xs: T[]): T[] =>
@@ -341,13 +476,57 @@ export function buildLaporanModel(
     };
   };
 
+  // ── Setoran Bank Sesuai — VONIS TUNGGAL `adminStatus` (2026-08-09) ────────
+  // Komponen A–G dari raw halaman ini; H dari lib/rekon.ts. TIDAK ada rumus H
+  // kedua di berkas ini — kalau ada yang menuliskannya lagi di sini, hapus.
+  const setoranI =
+    raw.recapSetoran.length > 0 ? raw.recapSetoran.reduce((t, r) => t + r.amount, 0) : null;
+  const H = uangTunai({
+    A: prodDay.reduce((t, p) => t + p.omzet, 0),
+    B: raw.terra.reduce((t, r) => t + r.rp, 0),
+    C: raw.recapPelanggan.reduce((t, r) => t + r.rp, 0),
+    D: raw.recapEdc.reduce((t, r) => t + r.rp, 0),
+    F: raw.recapPendapatanLain.reduce((t, r) => t + r.amount, 0),
+    G: raw.recapPengeluaran.reduce((t, r) => t + r.amount, 0),
+  });
+  const setoranVerdict = adminStatus(
+    {
+      adopsi: adopsiRincian(unitCode),
+      nPendapatanLain: raw.recapPendapatanLain.length,
+      nPengeluaran: raw.recapPengeluaran.length,
+      nSetoran: raw.recapSetoran.length,
+      h: H,
+      i: setoranI,
+      f: raw.recapPendapatanLain.reduce((t, r) => t + r.amount, 0),
+      g: raw.recapPengeluaran.reduce((t, r) => t + r.amount, 0),
+      tetangga: { sebelum: sisiTetangga(raw.tetanggaSebelum), sesudah: sisiTetangga(raw.tetanggaSesudah) },
+      shifts: shift.shifts,
+    },
+    { businessDate: date, today },
+  );
+
   const checks: AlarmCheck[] = [
     dailyLoss(),
     monthlyLoss,
-    na("Setoran Bank Sesuai", "belum terhubung — lihat Ketaatan Administrasi"),
+    setoranCheck(setoranVerdict, H, setoranI),
     targetCheck(),
     na("Pencatatan DO Sesuai", "Domain DO"),
-    na("Pengeluaran Sudah Disahkan", "belum terhubung — lihat Ketaatan Administrasi"),
+    /**
+     * "Pengeluaran Sudah Disahkan" SENGAJA tetap `na` (keputusan 2026-08-09).
+     *
+     * Yang kita punya di `app.manual_entry` hanyalah bahwa baris pengeluaran
+     * ADA dan berapa nilainya. **Disahkan** adalah pertanyaan lain: siapa yang
+     * menyetujui, kapan, atas dasar apa. Tak ada satu pun kolom yang menyimpan
+     * itu — tak ada approver, tak ada stempel waktu persetujuan, tak ada status.
+     *
+     * Menyambungkannya ke "ada barisnya" akan membuat cek ini HIJAU untuk
+     * pengeluaran yang tak pernah disahkan siapa pun — hijau palsu yang lebih
+     * buruk daripada `na` jujur, karena ia menutup pertanyaannya.
+     *
+     * Membukanya butuh kolom persetujuan + panel pengesahan (belum ada gerbang
+     * ownernya). Sampai itu ada, catatannya yang bicara.
+     */
+    na("Pengeluaran Sudah Disahkan", "belum ada data pengesahan — bukan sekadar belum tersambung"),
     na("Harga Beli/Jual Benar", "master harga beli"),
     na("Saldo Hutang/Piutang Pelanggan Sesuai", "Domain deposit"),
     na("DO Untuk Penerimaan Besok Cukup", "Domain DO"),

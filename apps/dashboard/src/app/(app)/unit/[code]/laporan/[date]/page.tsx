@@ -5,7 +5,7 @@ import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { unitDotted } from "@/lib/config";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, fmtL, idn, isNegative, parenNeg, pct, rp, rpParen, rpShort, signed, timeWib } from "@/lib/format";
-import { monthInfo, monthStart, todayWib } from "@/lib/periods";
+import { addDays, monthInfo, monthStart, todayWib } from "@/lib/periods";
 import {
   getCashForDate,
   getDailyGlByProduct,
@@ -21,6 +21,7 @@ import {
   getEdcForDate,
   getDepositForDate,
   getManualEntries,
+  getTerraResmiForDate,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
@@ -64,6 +65,8 @@ export default async function LaporanPage({
     recapPendapatanLain,
     recapPengeluaran,
     recapSetoran,
+    terra,
+    fKemarin, gKemarin, iKemarin, fBesok, gBesok, iBesok,
   ] = await Promise.all([
     getSalesByProduct(unit.unit_id, date, date),
     // G/L harian metode RESUME — satu fetch bulan-berjalan; turunkan harian (filter
@@ -86,6 +89,18 @@ export default async function LaporanPage({
     getManualEntries(unit.unit_id, date, "pendapatan_lain"),
     getManualEntries(unit.unit_id, date, "pengeluaran"),
     getManualEntries(unit.unit_id, date, "setoran_tunai"),
+    // TERRA (komponen B) — tanpa ini H ter-hitung terlalu besar dan cek
+    // "Setoran Bank Sesuai" akan menuduh "kurang setor" tiap hari.
+    getTerraResmiForDate(unit.unit_id, date),
+    // Hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA ARAH (satu
+    // vonis, sama dengan papan). D+1 tetap diambil walau kebetulan hari ini:
+    // yang memutuskan mengabaikannya adalah `adminStatus`, satu tempat.
+    getManualEntries(unit.unit_id, addDays(date, -1), "pendapatan_lain"),
+    getManualEntries(unit.unit_id, addDays(date, -1), "pengeluaran"),
+    getManualEntries(unit.unit_id, addDays(date, -1), "setoran_tunai"),
+    getManualEntries(unit.unit_id, addDays(date, 1), "pendapatan_lain"),
+    getManualEntries(unit.unit_id, addDays(date, 1), "pengeluaran"),
+    getManualEntries(unit.unit_id, addDays(date, 1), "setoran_tunai"),
   ]);
 
   // SUMBER TUNGGAL: model dipakai render layar (di bawah) DAN ekspor PDF → angka
@@ -109,6 +124,9 @@ export default async function LaporanPage({
       recapPendapatanLain,
       recapPengeluaran,
       recapSetoran,
+      terra,
+      tetanggaSebelum: { f: fKemarin, g: gKemarin, i: iKemarin },
+      tetanggaSesudah: { f: fBesok, g: gBesok, i: iBesok },
     },
     { unitCode: unit.code, date, today, mi, detail },
   );

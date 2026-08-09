@@ -1,0 +1,84 @@
+name: G4 arsip
+
+# G4 OTOMATIS (2026-08-09). Aturan G4: temuan yang masuk `session-notes/` tidak
+# di-merge pada siklus yang sama ia diasersikan — ia harus bertahan satu putaran
+# lebih dulu.
+#
+# ⚠️ KENAPA INI ADA. G4 sudah menangkap satu kesalahan nyata (#223) — TAPI
+# karena owner kebetulan menahan PR-nya, bukan karena aturannya berjalan
+# sendiri. Aturan yang menuntut seseorang INGAT menerapkannya belum selesai jadi
+# aturan. Itu kelas yang sama dengan `enforce_admins: false` (gerbang yang bisa
+# dilewati) dan `expect(CASES.length).toBe(34)` (guard yang menegaskan dirinya
+# sendiri). Cek ini yang memaksa keputusannya keluar.
+#
+# ⚠️ BATAS YANG DISEBUT, BUKAN DISEMBUNYIKAN. Cek ini TIDAK membuktikan temuannya
+# sudah bertahan satu putaran. Ia hanya memaksa seseorang MENYATAKANNYA secara
+# eksplisit dan meninggalkan jejak di riwayat PR. Label bisa dipasang refleks.
+# Peningkatannya nyata — dari "berharap ada yang ingat" jadi "putuskan sadar" —
+# dan tidak lebih dari itu. Jangan pakai lolosnya cek ini sebagai bukti apa pun
+# tentang temuannya.
+#
+# Bentuk (c) — ambang JAM umur commit — sengaja DITOLAK: "satu siklus" konsep
+# percakapan, bukan konsep jam; sesi bisa berputar 12+ kali sehari, jadi ambang
+# apa pun akan salah di salah satu arah. Mengukur yang mudah diukur alih-alih
+# yang dimaksud adalah kesalahan yang sudah dibayar sekali (aritmetika TTL).
+
+on:
+  pull_request:
+    # `labeled`/`unlabeled` WAJIB ada: tanpanya, memasang label tidak menjalankan
+    # ulang cek ini dan gerbangnya tak akan pernah bisa berubah jadi hijau tanpa
+    # push kosong. Gerbang yang tak punya jalan keluar akan dimatikan orang.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  arsip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Temuan arsip butuh label siklus-kedua
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          BERUBAH=$(git diff --name-only "$BASE...$HEAD" -- 'session-notes/**' || true)
+
+          if [ -z "$BERUBAH" ]; then
+            echo "PR ini tidak menyentuh session-notes/ — G4 tak berlaku."
+            exit 0
+          fi
+
+          echo "Berkas arsip yang tersentuh:"
+          echo "$BERUBAH" | sed 's/^/  /'
+          echo
+
+          case ",$LABELS," in
+            *,arsip-siklus-kedua,*)
+              echo "Label 'arsip-siklus-kedua' terpasang — G4 dinyatakan terpenuhi oleh owner."
+              echo "Catatan: label ini MENYATAKAN, bukan MEMBUKTIKAN. Lihat komentar di workflow."
+              exit 0
+              ;;
+          esac
+
+          echo
+          echo "❌ G4 — temuan arsip belum dinyatakan bertahan satu putaran."
+          echo
+          echo "PR ini menambah/mengubah berkas di session-notes/, dan G4 melarang"
+          echo "me-merge temuan pada siklus yang sama ia diasersikan."
+          echo
+          echo "PERBAIKANNYA (owner): pasang label 'arsip-siklus-kedua' pada PR ini"
+          echo "setelah temuannya bertahan satu putaran. Cek ini jalan ulang sendiri"
+          echo "begitu label terpasang — tak perlu push."
+          echo
+          echo "Kalau isinya BUKAN temuan baru (mis. hanya memindahkan berkas,"
+          echo "memperbaiki tautan, atau mencatat keputusan yang sudah diverifikasi),"
+          echo "label yang sama tetap cara menyatakannya — dan alasannya sebaiknya"
+          echo "ditulis di badan PR supaya jejaknya bisa dibaca kemudian."
+          echo
+          exit 1
