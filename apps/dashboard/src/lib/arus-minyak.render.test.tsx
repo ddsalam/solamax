@@ -23,6 +23,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, describe, expect, it } from "vitest";
 import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { buildLaporanModel } from "@/lib/laporan-model";
+import { gradeArus, parseArusHtml, ringkas, type DeviasiSah } from "@/lib/arus-minyak.grade";
 import { monthStart } from "@/lib/periods";
 
 // Pool ditutup SEKALI di akhir berkas — afterAll per-describe pernah menutupnya
@@ -38,6 +39,7 @@ const d = LIVE ? describe : describe.skip;
 
 const UNIT_CODE = "6478111"; // Imam Bonjol
 const OUT = process.env.ARUS_RENDER_OUT ?? "/tmp/arus-minyak-render.html";
+const OUT_LINTAS = process.env.ARUS_RENDER_OUT_LINTAS ?? "/tmp/arus-minyak-lintas.html";
 /** CSS produksi ikut disematkan supaya berkas keluaran bisa DILIHAT MATA — bukan
  *  hanya di-assert strukturnya. Pelajaran proyek: grafik pernah lolos dua guard
  *  hijau dalam keadaan rusak secara visual. */
@@ -125,7 +127,7 @@ const ORACLE: Record<string, Record<string, Cells>> = {
  * = tera resmi Dexlite hari itu. Dicatat sebagai pengecualian BERNAMA, bukan
  * toleransi umum — kalau muncul di sel lain, tes tetap merah.
  */
-const DEVIASI_SAH: Record<string, { kolom: number; nilai: number; sebab: string }> = {
+const DEVIASI_SAH: Record<string, DeviasiSah> = {
   "2026-08-02|TOTAL": {
     kolom: 2,
     nilai: 52909.04,
@@ -134,27 +136,6 @@ const DEVIASI_SAH: Record<string, { kolom: number; nilai: number; sebab: string 
 };
 
 const COLS = ["Awal", "Penerimaan", "Penjualan", "Teori", "Fisik", "Losses", "%"];
-
-/** "18.685,01" → 18685.01 ; "—" → null. */
-function parseIdn(s: string): number | null {
-  const t = s.replace(/&#x27;|&nbsp;/g, "").trim();
-  if (t === "—" || t === "") return null;
-  return Number(t.replace(/\./g, "").replace(",", ".").replace(/−/g, "-"));
-}
-
-/** Ekstrak sel dari HTML hasil render — via data-arus-row + isi <span>. */
-export function parseArusHtml(html: string): Map<string, (number | null)[]> {
-  const out = new Map<string, (number | null)[]>();
-  const rowRe = /<div class="[^"]*cols-arus"[^>]*data-arus-row="([^"]*)"[^>]*>([\s\S]*?)<\/div>\s*(?=<div|$)/g;
-  for (const m of html.matchAll(rowRe)) {
-    const nama = m[1]!;
-    const cells = [...m[2]!.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)].map((c) =>
-      c[1]!.replace(/<[^>]+>/g, ""),
-    );
-    out.set(nama, cells.slice(1).map(parseIdn)); // sel[0] = nama produk
-  }
-  return out;
-}
 
 d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)", () => {
   it(
@@ -170,12 +151,8 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
       expect(u, `unit ${UNIT_CODE} tak ada`).toBeDefined();
       const unitId = u!.unit_id as SUID;
 
-      const verdict: string[] = [];
       const htmlParts: string[] = [];
-      let eksak = 0;
-      let deviasi = 0;
-      let absenNol = 0;
-      const mismatch: string[] = [];
+      const render: Record<string, Map<string, (number | null)[]>> = {};
 
       for (const date of Object.keys(ORACLE)) {
         const glRows = await Q.getDailyGlByProduct(unitId, monthStart(date), date);
@@ -189,37 +166,17 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
         });
         const html = renderToStaticMarkup(<ArusMinyakSection arus={model.arusMinyak} />);
         htmlParts.push(`<h2 style="font:600 16px system-ui">${date}</h2>${html}`);
-        const got = parseArusHtml(html);
-
-        for (const [nama, want] of Object.entries(ORACLE[date]!)) {
-          const row = got.get(nama);
-          if (!row) {
-            // Baris ada di oracle tapi tidak di SolaMax → hanya sah bila SELURUH
-            // selnya nol (baris mati). Kalau tidak, itu angka yang HILANG.
-            const allZero = want.every((x) => x === 0);
-            if (allZero) {
-              absenNol += 7;
-              verdict.push(`${date} ${nama}: ABSEN≡NOL (7 sel) — baris mati, TOTAL tak berubah`);
-            } else {
-              for (const [i, w] of want.entries())
-                mismatch.push(`${date} | ${nama} | ${COLS[i]} | oracle ${w} | ABSEN`);
-            }
-            continue;
-          }
-          for (const [i, w] of want.entries()) {
-            const g = row[i];
-            const dev = DEVIASI_SAH[`${date}|${nama}`];
-            if (dev && dev.kolom === i) {
-              expect(g, `${date} ${nama} ${COLS[i]} — deviasi bernama`).toBeCloseTo(dev.nilai, 2);
-              deviasi++;
-              verdict.push(`${date} ${nama} ${COLS[i]}: DEVIASI SAH ${g} vs oracle ${w} — ${dev.sebab}`);
-              continue;
-            }
-            if (g != null && Math.abs(g - w) < 0.005) eksak++;
-            else mismatch.push(`${date} | ${nama} | ${COLS[i]} | oracle ${w} | render ${g}`);
-          }
-        }
+        render[date] = parseArusHtml(html);
       }
+
+      // Penilaian dipisah ke `arus-minyak.grade.ts` (murni) supaya aturan
+      // "absen hanya sah bila SELURUH sel oracle nol" dijaga tes yang jalan di
+      // SETIAP commit, bukan oleh mutasi manual yang harus diingat.
+      const hasil = gradeArus(ORACLE, render, COLS, DEVIASI_SAH);
+      const r = ringkas(hasil);
+      const mismatch = hasil
+        .filter((h) => h.vonis === "mismatch")
+        .map((h) => `${h.tanggal} | ${h.baris} | ${h.kolom} | oracle ${h.oracle} | render ${h.render ?? "ABSEN"}`);
 
       writeFileSync(
         OUT,
@@ -227,11 +184,16 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
           `<body class="lap-page" style="padding:24px;background:var(--color-bg,#f5f6f8)">${htmlParts.join("")}</body>`,
       );
       console.log(
-        `\nARUS MINYAK vs ORACLE — EKSAK ${eksak} · DEVIASI SAH ${deviasi} · ABSEN≡NOL ${absenNol} · MISMATCH ${mismatch.length} (total ${eksak + deviasi + absenNol + mismatch.length})\n` +
-          verdict.map((v) => `  · ${v}`).join("\n"),
+        `\nARUS MINYAK vs ORACLE — EKSAK ${r.eksak} · DEVIASI SAH ${r.deviasi_sah} · ` +
+          `ABSEN≡NOL ${r.absen_nol} · MISMATCH ${r.mismatch} (total ${r.total})\n` +
+          [...new Set(
+            hasil
+              .filter((h) => h.vonis === "absen_nol" || h.vonis === "deviasi_sah")
+              .map((h) => `  · ${h.tanggal} ${h.baris}${h.vonis === "deviasi_sah" ? ` ${h.kolom}` : ""}: ${h.vonis.toUpperCase()} — ${h.catatan}`),
+          )].join("\n"),
       );
       expect(mismatch, `MISMATCH:\n${mismatch.join("\n")}`).toEqual([]);
-      expect(eksak + deviasi + absenNol).toBe(336);
+      expect(r.total).toBe(336);
     },
     240_000,
   );
@@ -275,8 +237,33 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
  * dan 28 Oktober (kode POS 8 digit, tenant terpisah, ATG).
  */
 d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
-  for (const code of ["6478101", "63781002"]) {
-    it(`unit ${code}: identitas berlaku pada angka yang TERCETAK`, async () => {
+  const LINTAS: Array<[string, string, string]> = [
+    ["6478101", "2026-08-06", "Adisucipto — kelas DTGLJAM NULL-by-default, tanpa ATG"],
+    ["63781002", "2026-08-06", "28 Oktober — kode POS 8 digit, tenant terpisah"],
+    // Hari BERJALAN: satu-satunya keadaan `provisional` yang benar-benar ada di
+    // data 2026 (opname penutup belum masuk) → penanda "belum final" terlihat.
+    ["6478101", "2026-08-09", "Adisucipto — hari berjalan (provisional)"],
+    ["63781002", "2026-08-09", "28 Oktober — hari berjalan (provisional)"],
+  ];
+  const potongan: string[] = [];
+  const penutupNol: string[] = [];
+
+  afterAll(() => {
+    if (penutupNol.length)
+      console.log(
+        `\nPENUTUP-NOL terdeteksi (${penutupNol.length}) — angka Losses-nya artefak data, bukan kerugian:\n` +
+          penutupNol.map((x) => `  · ${x}`).join("\n"),
+      );
+    if (potongan.length)
+      writeFileSync(
+        OUT_LINTAS,
+        `<meta charset="utf-8"><style>${CSS.map((f) => readFileSync(join(__dirname, "..", f), "utf8")).join("\n")}</style>` +
+          `<body class="lap-page" style="padding:24px;background:var(--color-bg,#f5f6f8)">${potongan.join("")}</body>`,
+      );
+  });
+
+  for (const [code, tanggal, label] of LINTAS) {
+    it(`unit ${code} ${tanggal}: identitas berlaku pada angka yang TERCETAK`, async () => {
       const Q = await import("@/lib/queries");
       const { q } = await import("@/lib/db");
       type SUID = Parameters<typeof Q.getDailyGlByProduct>[0];
@@ -284,7 +271,7 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
         code,
       ]);
       expect(u, `unit ${code} tak ada`).toBeDefined();
-      const date = "2026-08-06";
+      const date = tanggal;
       const glRows = await Q.getDailyGlByProduct(u!.unit_id as SUID, monthStart(date), date);
       const model = buildLaporanModel(neutralRaw(glRows), {
         unitCode: code,
@@ -293,7 +280,9 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
         mi: { month: 8, year: 2026, dayOfMonth: 6, daysInMonth: 31 },
         detail: true,
       });
-      const got = parseArusHtml(renderToStaticMarkup(<ArusMinyakSection arus={model.arusMinyak} />));
+      const markup = renderToStaticMarkup(<ArusMinyakSection arus={model.arusMinyak} />);
+      potongan.push(`<h2 style="font:600 16px system-ui">${label} · ${tanggal}</h2>${markup}`);
+      const got = parseArusHtml(markup);
       // Kontrol: unit hidup HARUS punya baris. Nol baris = sinyal, bukan lulus.
       expect(got.size, `unit ${code} tanpa baris sama sekali`).toBeGreaterThan(1);
 
@@ -315,6 +304,20 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
           if (v == null) continue;
           expect(v, `${code} ${nama} stok[${i}] mustahil`).toBeGreaterThanOrEqual(0);
           expect(v, `${code} ${nama} stok[${i}] mustahil`).toBeLessThan(200_000);
+        }
+        // PENUTUP-NOL — kelas yang lolos dari ">= 0" karena 0 memang >= 0.
+        // Opname penutup tercatat 0 padahal stok awal ribuan liter → Losses
+        // sebesar seluruh isi tangki, dan itu BUKAN kerugian. Fenomena ini
+        // sudah punya detektor tersendiri (`getZeroClosingEvents`, terpasang di
+        // /laporan-harian & feed anomali) tetapi BELUM tersambung ke halaman
+        // Laporan. Yang dijaga di sini: jangan sampai ia tampil sebagai angka
+        // FINAL tanpa penanda apa pun.
+        if (awal != null && awal > 1000 && fisik === 0) {
+          penutupNol.push(`${code} ${tanggal} ${nama}: awal ${awal} → fisik 0`);
+          expect(
+            model.arusMinyak.provisional,
+            `${code} ${tanggal} ${nama}: penutup-nol tampil sebagai FINAL tanpa penanda`,
+          ).toBe(true);
         }
         for (const [i, v] of c.slice(0, 6).entries()) sum[i]! += v ?? 0;
       }

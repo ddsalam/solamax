@@ -341,3 +341,257 @@ oracle PNG-nya.
 di-screenshot pada 1400 px lewat Chrome headless. Urutan kolom sesuai permintaan, TOTAL di
 tempatnya, tanpa kolom Persediaan, angka tak terpotong / tak pecah baris, Losses negatif merah
 & positif hijau.
+
+---
+
+# PUTARAN KONFIRMASI (2026-08-10) — pengerasan bukti
+
+Owner menahan merge sampai putaran ini bersih. Bukan revisi: tiga titik bukti yang
+masih tipis + satu koreksi.
+
+## K-0 — KOREKSI yang diterima: "CI hijau" adalah klaim yang salah
+
+Laporan sebelumnya menulis "CI hijau" setelah membaca `gh pr checks` SEKALI, tepat
+sesudah push, sebelum semua workflow selesai terpicu. Yang sebenarnya: workflow
+**`arsip` MERAH** (PR menyentuh `session-notes/` → menuntut label `arsip-siklus-kedua`
+dari owner), status PR **UNSTABLE**.
+
+**Aturan tetap sejak sekarang: jangan pernah menulis klaim agregat tentang CI.**
+Sebutkan SETIAP workflow dengan namanya + kesimpulannya, satu baris masing-masing,
+dari `gh pr checks`. Klaim agregat menyembunyikan tepat kelas kegagalan ini — satu
+workflow merah di antara yang hijau.
+
+## K-1 — §2 UJI MERAH: penilai bisa membedakan "absen karena nol" dari "absen karena hilang"
+
+Kekhawatiran owner: 42 sel diskor cocok PADAHAL tak ada yang diperiksa.
+
+**Dijalankan lebih dulu, sebelum apa pun yang lain.** Baris **SOLAR** (oracle jelas
+bukan nol) dibuang dari keluaran render, harness dijalankan:
+
+```
+ARUS MINYAK vs ORACLE — EKSAK 251 · DEVIASI SAH 1 · ABSEN≡NOL 42 · MISMATCH 42
+  2026-08-01 | SOLAR | Awal | oracle 2122.45 | ABSEN
+  … (7 kolom × 6 tanggal)
+```
+
+`ABSEN≡NOL` **tetap 42** (hanya PREMIUM) dan 42 sel SOLAR masuk **MISMATCH**. Penilai
+tidak menghijaukan ketiadaan.
+
+**Tapi mutasi manual bukan penjaga.** Diskriminasi itu sekarang dipindah ke modul
+murni [`arus-minyak.grade.ts`](../apps/dashboard/src/lib/arus-minyak.grade.ts) dan
+diuji **tanpa DB, di setiap commit** (`arus-minyak.test.ts`, 6 tes baru): absen-nol →
+`absen_nol`; absen-bukan-nol → `mismatch`; **satu** sel 0,01 sudah cukup untuk
+mismatch; tanggal yang hilang seluruhnya → mismatch; deviasi bernama hanya sah pada
+NILAI yang ditentukan (bukan pintu belakang); sel "—" tidak dihitung cocok dengan 0.
+
+Uji merah penjaganya sendiri: `seluruhNol = true` → 3 tes MERAH · deviasi jadi
+"apa pun boleh" → 1 tes MERAH · dipulihkan → hijau.
+
+## K-2 — §3 baris TOTAL 2 Agustus, sel per sel
+
+| kolom | oracle | SolaMax | selisih | Σ kolom oracle sendiri |
+|---|---:|---:|---:|---:|
+| Awal | 67.869,12 | 67.869,12 | 0,00 | 67.869,12 |
+| Penerimaan | 72.000,00 | 72.000,00 | 0,00 | 72.000,00 |
+| Persediaan | 139.869,12 | *(tak dirender)* | — | 139.869,12 |
+| **Penjualan** | **52.909,68** | **52.909,04** | **−0,64** | **52.909,04** ← TOTAL ≠ Σ kolomnya |
+| Teori | 86.960,08 | 86.960,08 | 0,00 | 86.960,08 |
+| Fisik | 87.111,45 | 87.111,45 | 0,00 | 87.111,45 |
+| Losses | 151,37 | 151,37 | 0,00 | 151,37 |
+| % | 0,29 | 0,29 | 0,00 | — |
+
+**Tetap SATU sel** yang menyimpang. Angka 293/1 tidak berubah.
+
+**Mekanismenya** (hipotesis owner "TOTAL Teori = ΣPersediaan − ΣPenjualan" **GUGUR**):
+
+| sel TOTAL oracle | kandidat (a) Σ kolom per-produk | kandidat (b) turunan baris TOTAL |
+|---|---|---|
+| Teori 86.960,08 | **86.960,08 COCOK** | ΣPersediaan − TOTAL Penjualan = 86.959,44 ✗ (Δ −0,64) |
+| Losses 151,37 | 151,37 COCOK | TOTAL Fisik − TOTAL Teori = 151,37 COCOK (tak membedakan) |
+| Persediaan 139.869,12 | 139.869,12 COCOK | TOTAL Awal + TOTAL Penerimaan = COCOK (tak membedakan) |
+| Penjualan 52.909,68 | 52.909,04 ✗ | **Σ jual KOTOR = 52.909,68 COCOK** |
+
+Jadi baris TOTAL EasyMax adalah **penjumlahan kolom per-produk untuk SETIAP kolom**,
+kecuali **Penjualan** yang sendirian diambil dari angka jual KOTOR. Karena Teori dan
+Losses dijumlah dari kolomnya sendiri — bukan diturunkan dari TOTAL Penjualan —
+inkonsistensinya **terkurung di satu sel**. Itu sebabnya ia tidak merambat.
+
+⚠️ **Kejujuran soal kolom %**: ia cocok, tapi bukan bukti.
+151,37/52.909,68 = 0,286091 dan 151,37/52.909,04 = 0,286095 — **keduanya tampil 0,29**.
+Kolom % TIDAK MAMPU membedakan kotor dari bersih pada presisi 2 desimal; kecocokannya
+kebetulan pembulatan, bukan konstruksi.
+
+## K-3 — §1 cabang (b): dari n=1 menjadi argumen yang tak lagi bergantung padanya
+
+**(a) Tera di IB bukan peristiwa langka.** Sapuan seluruh riwayat `terra_resmi`:
+**340 hari** ber-tera (2022-09-02 … 2026-08-02), total 31.423,77 L, hari terbesar
+1.537,90 L. Rentang oracle 1–6 Agu kebetulan hanya memuat satu tera kecil (0,64 L) —
+itu properti JENDELA-nya, bukan properti fenomenanya.
+
+Tanggal yang PALING BERGUNA bila owner bisa mengekspor RESUME EasyMax-nya:
+
+| prioritas | tanggal | tera hari itu | kenapa |
+|---|---|---:|---|
+| 1 | **2026-02-10** | 283,00 L (10 baris) | hari ber-tera terbesar di 2026 — era & format laporan sama; magnitudo ±440× sel penentu sekarang |
+| 2 | **2025-11-21** | 1.000,00 L, SATU produk (Dexlite) | pembeda terbersih: selisih kotor-vs-bersih terlihat di SATU baris, tanpa penjumlahan |
+| 3 | 2026-02-02 | 220,00 L | cadangan 2026 |
+
+**(b) Lintas unit**: tera rutin di **6 dari 7** unit — 28 Oktober 378 hari (hari
+terbesar 4.703 L), Bundaran Kotabaru 621 hari (3.471 L), Korek 226 (3.502 L),
+Batu Layang 224 (2.200 L), Bakau 201 (1.047 L), IB 340 (1.538 L).
+**Adisucipto: nol baris `terra_resmi`** — di sana cabang (a) dan (b) identik, jadi
+unit itu tak bisa dipakai membedakan.
+
+**(c) ARGUMEN PEWARISAN — SAH, dengan batas yang dinamai.**
+
+*Rantai 1 — kode tak bisa berperilaku per-unit.* Bukan hasil grep melainkan
+**tanda tangan tipe**: `buildArusMinyak(glRows: DailyGlRow[])` **tidak menerima unit
+sama sekali**, begitu pula `<ArusMinyakSection arus={…}>`. Sesuatu yang tak pernah
+menerima unit tak bisa bercabang atasnya. Grep memastikan tak ada jalan belakang:
+nol kemunculan `6478|6378|unitCode|unit_id|switch` di kedua berkas. Di
+`laporan-model.ts` sambungannya satu baris tanpa cabang, dan `getDailyGlByProduct`
+memakai unit hanya sebagai parameter SQL terikat `$1`. Ambang (`GARBAGE_*`) dan urutan
+(`CLASS_RULES`) global & berbasis NAMA produk.
+
+*Rantai 2 — Losses ≡ `gl` adalah identitas*, bukan kebetulan numerik: substitusi
+Teori ke Losses memberi `fisik − (fisik_prev + pen_do − (sales_gross − tera))`, persis
+ekspresi `gl`. Dijaga tes pada 1e−6.
+
+*Rantai 3 — `gl` sudah pernah diadu dengan EasyMax untuk KETUJUH unit.* Gold-check
+[`laporan-harian-goldcheck-preregistration.md`](laporan-harian-goldcheck-preregistration.md)
+(Juli 2026): **G/L harian 178/196 sel cocok** (7 unit × 7 produk × 4 hari, 19–22 Jul).
+Melesetnya terkarakterisasi: terbesar 28 Oktober 22 Jul (−10.202) **sebab penutup
+opname T-05 tercatat 0 — SolaMax benar terhadap sumbernya**; dua lainnya justru
+**PDF acuan yang salah** (Dexlite ⇄ Pertalite tertukar di AS 21 Jul, dibuktikan tiga
+pembacaan independen); sisanya 5–160 L.
+
+**Kesimpulan**: akurasi Arus Minyak di unit non-IB **bukan lagi lubang menganga** —
+kolom **Losses** mewarisi verifikasi lintas-7-unit itu lewat rantai kode yang terbukti
+unit-agnostik.
+
+**Batas yang TETAP terbuka, dinamai:** gold-check Juli mengadu **nilai `gl`**, bukan
+komponennya. Sepasang galat yang saling menghapus di dalam `gl` (mis. `fisik_prev`
+terlalu tinggi dan `pen_do` terlalu rendah sebesar sama) akan meninggalkan Losses benar
+sementara kolom **Stock Awal / Penerimaan / Stock Fisik** salah di layar. Untuk
+non-IB, keempat kolom penguraian itu belum pernah diadu satu-per-satu dengan EasyMax.
+Yang MENYEMPITKAN risiko itu: volume jual per-produk per-unit MEMANG ikut diadu di
+gold-check yang sama (kelas cacat E4/E5 lahir dari sana), jadi kolom Penjualan
+sebagian tertutup.
+
+## K-4 — §4 PDF dibuka dengan mata (bukan `docDefinition`)
+
+PDF sungguhan dibuat lewat pdfmake dari data live, IB 2 & 6 Agu, lalu dirender jadi
+gambar dan dilihat. Perkakasnya dijadikan **tes ber-gerbang**
+([`laporan-doc.pdf-eye.test.ts`](../apps/dashboard/src/lib/export/laporan-doc.pdf-eye.test.ts))
+alih-alih skrip lepas — skrip `.mts` di `scripts/` TIDAK ikut ter-typecheck
+(`tsconfig` hanya menyapu `**/*.ts`), jadi ia akan membusuk diam-diam.
+
+Yang terlihat: **posisi benar** (Alokasi/DO → **Arus Minyak** → Harga Jual) · 8 kolom
+urut sesuai permintaan, tanpa Persediaan · angka rata kanan, tak terpotong, tak pecah
+baris (termasuk `184,69` dan `5.546,96`) · baris TOTAL utuh dengan latar · warna
+merah/hijau bertahan ke PDF · TOTAL Penjualan tercetak **52.909,04** (deviasi D-5
+terlihat di berkas akhir).
+
+**Yang ditemukan HANYA dengan melihat:** tabelnya **terbelah di batas halaman 2→3**.
+Baris header berulang (`headerRows: 1` bekerja) tapi **judul section tidak** — pembaca
+di halaman 3 melihat tabel tanpa judul. Diperiksa apakah ini bawaan dokumen atau
+bawaan section baru: **halaman 2 pun sudah dibuka oleh lanjutan tabel tanpa judul**
+dari section sebelumnya. Jadi ini **pola dokumen yang sudah ada**, bukan yang saya
+bawa. Tidak diubah — memberi `unbreakable` hanya pada section ini justru membuatnya
+menyimpang sendiri. Dicatat sebagai usul terpisah.
+
+## K-5 — §5 lintas unit: satu temuan yang lebih penting dari screenshot-nya
+
+Dirender & dilihat: Adisucipto `6478101` dan 28 Oktober `63781002`, masing-masing
+2026-08-06 (hari selesai) dan 2026-08-09 (hari berjalan → penanda "belum final").
+
+🔴 **TEMUAN — PENUTUP-NOL tampil sebagai kerugian raksasa.**
+Adisucipto 2026-08-09: seluruh kolom Stock Fisik **0,00**, sehingga Losses
+−24.993 / −8.079 / −8.570 / −12.490 / −5.009 dan % sampai **−10.222,45**.
+Sebabnya pasti (baris mentah): sesi opname **21:36:03** mencatat `NSTOCKOP = 0` untuk
+SEMUA tangki padahal `NSTOCKBK` wajar (8.497 / 8.079 / 24.912 / 12.817 / 5.009), dan
+sesi itulah yang terakhir → jadi penutup.
+
+**Ini bukan formula Arus Minyak dan bukan regresi** — `gl` yang sama sudah tampil di
+panel "Omset Penjualan, Gain (Losses) & Tera" hari ini. Tapi Arus Minyak
+**memamerkannya**: satu kolom penuh nol.
+
+**Fenomenanya sudah dikenal DAN sudah punya detektor tertala**: `getZeroClosingEvents`
+(aturan v2 dengan syarat DO, diukur 12 bulan × 7 unit) — **terpasang di
+`/laporan-harian` & feed anomali, TIDAK terpasang di halaman Laporan per-unit.**
+
+**Kasus yang paling berbahaya bukan hari berjalan.** Diverifikasi pada kejadian
+historis dari gold-check (28 Oktober, 22 Juli): di sana penutup-nol hanya mengenai
+SATU tangki dari dua tangki produk yang sama, jadi hasilnya bukan 0 melainkan
+**19.254,70 (kurang ±10.000 L)** — dan `provisional = FALSE`. Artinya penutup-nol pada
+hari yang sudah selesai tampil sebagai angka **final dan meyakinkan**, tanpa penanda.
+
+**Tidak saya perbaiki di putaran ini** (mengubah angkanya akan memutus `Losses ≡ gl`
+— fondasi argumen pewarisan K-3c, dan menyentuh semantik G/L bersama).
+**Usul ke owner**: sambungkan `getZeroClosingEvents` ke halaman Laporan dan tandai
+produk terdampak di KEDUA panel sekaligus. Keputusan owner.
+
+**Harness-nya sendiri terbukti buta pada kelas ini**: pemeriksaan "nilai mustahil"
+memakai `>= 0`, dan **0 memang >= 0**. Sudah diperbaiki — harness kini mendeteksi
+`awal > 1.000 ∧ fisik = 0`, mencetak daftarnya, dan menuntut baris seperti itu
+TIDAK tampil final. Uji merahnya: `provisional: false` dipaksa → tes MERAH.
+
+Sisanya bersih: identitas berlaku pada angka yang TERCETAK di keempat render, TOTAL =
+jumlah kolom, tak ada stok negatif/≥200.000 L, tak ada NaN.
+
+Catatan: `excludedTanks` **tak pernah tersentuh data 2026** (sapuan 7 unit: nol hari
+dengan baris di luar batas wajar), jadi jalur itu dikunci tes komponen
+(`ArusMinyakSection.test.tsx`), bukan pemeriksaan mata.
+
+## K-6 — §6 higiene secret
+
+**Rotasi DITUNDA — keputusan owner 2026-08-10**, alasan: transkrip tidak meninggalkan
+mesin owner. Dicatat sebagai utang terbuka di vault. Tidak ada secret yang dirotasi.
+
+**Pemicu yang MEMBATALKAN penundaan** (salah satu cukup):
+1. transkrip sesi tersinkron/terunggah ke mana pun di luar mesin ini;
+2. mesin berpindah tangan / dipinjamkan / diservis;
+3. OAuth consent naik dari **Testing** ke **Published**.
+
+**Sapuan jejak** — 7 nilai (AUTH_SECRET, AUTH_GOOGLE_SECRET, db-app/ro/ingest/postgres,
+agent-api-key) dicari sebagai substring; skrip penyapunya hanya mencetak PANJANG,
+tak pernah nilai:
+
+| artefak | hasil |
+|---|---|
+| diff `origin/staging...HEAD` | BERSIH |
+| isi commit branch | BERSIH |
+| pesan commit | BERSIH |
+| `session-notes/2026-08-08-arus-minyak-harian.md` | BERSIH |
+| badan + judul PR #253 | BERSIH |
+| komentar & review PR #253 | BERSIH |
+| memory `solamax-arus-minyak.md` + `MEMORY.md` | BERSIH |
+| 24 berkas kerja scratchpad | BERSIH |
+| `/tmp/arus-minyak-*.html` | BERSIH |
+
+**Aturan permanen: JANGAN PERNAH mencetak isi `.env.local`.** Untuk memastikan sebuah
+key ada, uji **keberadaan/panjangnya**, bukan nilainya — persis pola skrip sapuan ini.
+
+## K-7 — §7 baris digerakkan data: KEPUTUSAN OWNER, nol perubahan kode
+
+Dipertahankan apa adanya. Alasannya (analisis BIO SOLAR yang menggugurkan hipotesis
+"baris dari master `product`") tetap di **D-6**. Konsekuensi yang membuat K-1 wajib:
+karena baris nol memang sengaja absen, penilai HARUS bisa membedakan absen-karena-nol
+dari absen-karena-hilang — itulah yang kini dijaga di setiap commit.
+
+## Keputusan baru putaran ini
+
+### D-12 — Tabel Arus Minyak dibiarkan boleh terbelah antar-halaman PDF
+- **Bukti pemutus**: halaman 2 dokumen yang sama sudah dibuka lanjutan tabel tanpa
+  judul dari section lain → memberi `unbreakable` hanya di sini membuatnya menyimpang.
+- **Membatalkannya**: keputusan menyeluruh untuk semua section PDF sekaligus.
+
+### D-13 — Penutup-nol TIDAK ditambal di Arus Minyak
+- **Alternatif**: menampilkan "—" saat `fisik = 0 ∧ awal > 1.000`.
+- **Alasan**: itu memutus `Losses ≡ gl` — dua panel di satu halaman jadi berbeda, dan
+  argumen pewarisan K-3c runtuh. Perbaikan yang benar ada di HULU (`getZeroClosingEvents`
+  disambungkan) dan berlaku untuk kedua panel.
+- **Membatalkannya**: owner memilih menyambungkan detektor itu.
+
+### D-14 — Perkakas pemeriksaan mata = tes ber-gerbang, bukan skrip `.mts`
+- **Bukti pemutus**: `tsconfig.include` = `**/*.ts` → `.mts` tak pernah ter-typecheck.

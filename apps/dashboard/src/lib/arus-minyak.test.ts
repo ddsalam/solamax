@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
+import { gradeArus, parseArusHtml, ringkas } from "@/lib/arus-minyak.grade";
 import type { DailyGlRow } from "@/lib/queries";
 
 type Comp = {
@@ -180,5 +181,107 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.total.penjualan).toBe(0);
     expect(a.total.pct).toBe(0);
     expect(a.incomplete).toBe(false);
+  });
+});
+
+/**
+ * PENJAGA TETAP untuk kelas kegagalan "pemeriksaan lulus JUSTRU karena tak ada
+ * yang diperiksa". Baris produk mati sengaja TIDAK dirender (keputusan owner:
+ * baris digerakkan data), jadi penilai HARUS memberi nilai pada ketiadaan —
+ * dan harus bisa membedakan "absen karena nol" dari "absen karena hilang".
+ *
+ * Sebelumnya diskriminasi ini hanya pernah dibuktikan lewat mutasi manual pada
+ * harness DB-live. Di sini ia diuji tanpa DB, di SETIAP commit.
+ */
+describe("gradeArus — absen: nol vs hilang", () => {
+  const KOL = ["Awal", "Penerimaan", "Penjualan", "Teori", "Fisik", "Losses", "%"];
+  const cells = (n: number) => [n, n, n, n, n, n, n];
+
+  it("baris absen dengan oracle SELURUH nol → absen_nol (bukan mismatch)", () => {
+    const hasil = gradeArus(
+      { "2026-08-01": { PREMIUM: cells(0) } },
+      { "2026-08-01": new Map() },
+      KOL,
+    );
+    expect(ringkas(hasil)).toMatchObject({ absen_nol: 7, mismatch: 0, total: 7 });
+  });
+
+  it("🔴 baris absen dengan oracle BUKAN nol → mismatch, TIDAK boleh absen_nol", () => {
+    const hasil = gradeArus(
+      { "2026-08-01": { SOLAR: [2122.45, 24000, 22280.63, 3841.82, 4080.56, 238.74, 1.07] } },
+      { "2026-08-01": new Map() },
+      KOL,
+    );
+    expect(ringkas(hasil)).toMatchObject({ absen_nol: 0, mismatch: 7, total: 7 });
+    expect(hasil.every((h) => h.catatan === "baris ABSEN dari render")).toBe(true);
+  });
+
+  it("satu sel bukan-nol saja sudah cukup — nyaris-mati tetap mismatch", () => {
+    const hasil = gradeArus(
+      { "2026-08-01": { X: [0, 0, 0, 0, 0, 0.01, 0] } },
+      { "2026-08-01": new Map() },
+      KOL,
+    );
+    expect(ringkas(hasil).mismatch).toBe(7);
+  });
+
+  it("TANGGAL yang hilang seluruhnya tidak lolos senyap", () => {
+    const hasil = gradeArus(
+      { "2026-08-01": { SOLAR: cells(5) } },
+      {}, // tak ada render sama sekali untuk tanggal itu
+      KOL,
+    );
+    expect(ringkas(hasil).mismatch).toBe(7);
+  });
+
+  it("deviasi bernama: hanya sah pada NILAI yang ditentukan, bukan 'apa pun boleh'", () => {
+    const dev = { "d|TOTAL": { kolom: 2, nilai: 52909.04, sebab: "uji" } };
+    const cocok = gradeArus(
+      { d: { TOTAL: [0, 0, 52909.68, 0, 0, 0, 0] } },
+      { d: new Map([["TOTAL", [0, 0, 52909.04, 0, 0, 0, 0]]]) },
+      KOL,
+      dev,
+    );
+    expect(ringkas(cocok)).toMatchObject({ deviasi_sah: 1, eksak: 6, mismatch: 0 });
+
+    // Nilai lain di kolom yang sama TETAP mismatch — deviasi bukan pintu belakang.
+    const meleset = gradeArus(
+      { d: { TOTAL: [0, 0, 52909.68, 0, 0, 0, 0] } },
+      { d: new Map([["TOTAL", [0, 0, 99999, 0, 0, 0, 0]]]) },
+      KOL,
+      dev,
+    );
+    expect(ringkas(meleset).mismatch).toBe(1);
+  });
+
+  it('sel "—" (null) tidak dihitung cocok dengan 0', () => {
+    const hasil = gradeArus(
+      { d: { X: cells(0) } },
+      { d: new Map([["X", [null, 0, 0, 0, 0, 0, 0]]]) },
+      KOL,
+    );
+    expect(ringkas(hasil)).toMatchObject({ eksak: 6, mismatch: 1 });
+  });
+});
+
+describe("parseArusHtml — pembaca DOM", () => {
+  const row = (nama: string, sel: string[]) =>
+    `<div class="grid-row cols-arus" data-arus-row="${nama}">` +
+    `<span class="text-caption w600">${nama}</span>` +
+    sel.map((v) => `<span class="right fs16 num">${v}</span>`).join("") +
+    `</div>`;
+
+  it("membaca angka id-ID dan '—' apa adanya", () => {
+    const got = parseArusHtml(
+      row("PERTAMAX", ["18.685,01", "8.000,00", "2.859,71", "23.825,30", "23.635,74", "-189,56", "-6,63"]) +
+        row("X", ["—", "0,00", "0,00", "—", "—", "—", "—"]),
+    );
+    expect(got.get("PERTAMAX")).toEqual([18685.01, 8000, 2859.71, 23825.3, 23635.74, -189.56, -6.63]);
+    expect(got.get("X")![0]).toBeNull();
+    expect(got.get("X")![1]).toBe(0);
+  });
+
+  it("baris yang tak dirender tidak muncul sebagai kunci (dasar diskriminasi absen)", () => {
+    expect(parseArusHtml(row("SOLAR", ["1,00", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00"])).has("PREMIUM")).toBe(false);
   });
 });
