@@ -286,19 +286,21 @@ export function adminStatus(
   // identik dengan kemarin DAN tak cocok dengan H adalah kekeliruan ENTRI, dan
   // yang ditandai di sini adalah SEBABNYA, bukan arah selisihnya.
   //
-  // VOLUME ALARM TERUKUR (jejak audit, 40 hari × 7 unit = 960 jam kalender):
-  // batas ATAS 10,19 jam ber-alarm (1,06% waktu), 1 kejadian. Batas BAWAH 0 —
-  // backtest keadaan-akhir tak melihat apa pun karena koreksi pengawas
-  // menghapus buktinya. Aturan ini SUNYI; ia tak akan dimatikan orang.
+  // 🔴 BUTA SATU ARAH — DIKETAHUI 2026-08-09, PERBAIKAN MENUNGGU GERBANG OWNER.
   //
-  // ⛔ KONSEKUENSI UNTUK PENGUJIAN: karena data hidup sudah bersih, "hijau di
-  // produksi" TIDAK akan pernah membuktikan aturan ini bekerja. Fixture di
-  // compliance.test.ts memikul seluruh bebannya. Jangan simpulkan sebaliknya
-  // dari papan yang tenang.
-  // Tanpa penjaga `!== null` tambahan: `d.i` di titik ini sudah menyempit ke
-  // `number` (cabang `d.i === null` pulang di atas), jadi `number === null`
-  // selamanya false. Penjaga itu akan jadi cabang yang TAK BISA dimerahkan tes
-  // mana pun — dan cabang begitu memberi rasa aman yang tak dibayar apa-apa.
+  // Aturan ini hanya membandingkan `I(D)` dengan `I(D−1)`. Pada kejadian nyata
+  // (Batu Layang 08-07/08-08) yang tersalin adalah nilai hari BERIKUTNYA, dan
+  // aturan ini TIDAK MELIHATNYA. Pemindaian ulang tanpa arah, 2026-06-01…08-08,
+  // 7 unit, 102 pasangan: 1 pasangan identik, **0 tertangkap aturan ini**,
+  // 1 terlewat. Nol dari satu.
+  //
+  // Klaim "SUNYI · 10,19 jam-alarm · 0 dari 14 pasangan" yang sempat ada di sini
+  // DICABUT: angkanya benar, pertanyaannya yang lebih sempit dari fenomenanya.
+  //
+  // ⚠️ JANGAN membaca papan yang tenang sebagai bukti tak ada salinan, dan
+  // jangan memperluas aturan ini sepotong-sepotong — perbaikannya tiga hal
+  // sekaligus (dua arah · F & G ikut · kapan vonis dihitung), rinci di
+  // KETAATAN-ADMINISTRASI.md §3b.
   if (kode !== "selaras" && d.i === d.iSebelumnya) {
     return { kode: "setoran_tersalin", tone: "red", terisi: true };
   }

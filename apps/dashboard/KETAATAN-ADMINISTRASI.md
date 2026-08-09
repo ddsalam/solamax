@@ -126,35 +126,84 @@ hanya kuning). Kelebihan setor bisa punya sebab sah; angka **identik dengan
 kemarin DAN tak cocok dengan H** adalah kekeliruan ENTRI. Yang ditandai di sini
 **sebabnya**, bukan arah selisihnya.
 
-### Volume alarm — TERUKUR, bukan ditaksir
+### ⛔ KOREKSI 2026-08-09 — ATURAN INI BUTA TERHADAP ARAH SEBALIKNYA
+
+**Ditemukan owner pada tinjauan kedua, sebelum #240 di-merge.** Yang tertulis di
+bawah garis ini menggantikan klaim "SUNYI · 10,19 jam-alarm · 0 dari 14" yang
+sempat ada di sini. Klaim itu **tidak salah hitung — ia menjawab pertanyaan yang
+lebih sempit dari fenomenanya**, lalu dilaporkan seolah menjawab yang penuh.
+
+Aturannya membandingkan `I(D)` dengan `I(D−1)` saja. Pada kejadian nyata,
+**yang tersalin adalah nilai hari BERIKUTNYA** — dan aturannya tak bisa
+melihatnya. Pemindaian yang melaporkan nol pun nol karena **alasan yang sama**,
+bukan karena bersih.
+
+**Batu Layang, hidup di produksi saat ini ditulis:**
+
+| bd | F | G | I | H | vonis |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 08-06 | 55.000.000 | 3.665.050 | 335.496.000 | 335.495.143 | selaras ✓ |
+| **08-07** | 103.478.000 | 40.608.000 | **483.803.000** | 344.766.190 | **+139.036.810** |
+| 08-08 | 103.478.000 | 40.608.000 | **483.803.000** | 483.802.542 | selaras ✓ |
+
+Ketiga nilai manual **identik persis** antara 08-07 dan 08-08. Angkanya milik
+08-08 (di sana ia cocok sampai Rp 458); ia juga terisi di form 08-07.
+
+**Pemindaian ULANG, tanpa arah** (`2026-06-01 … 2026-08-08`, 7 unit):
 
 | | |
 | --- | ---: |
-| jendela | 40 hari × 7 unit = **960 jam kalender** |
-| **jam-alarm (a ∧ b), dari jejak audit** | **10,19 jam** — batas ATAS |
-| backtest keadaan-akhir | **0** — batas BAWAH |
-| kejadian | **1** |
-| porsi waktu ber-alarm | **1,06%** |
+| pasangan hari berurutan diperiksa (kedua hari ber-setoran) | **102** |
+| pasangan dengan `I` identik | **1** |
+| **tertangkap aturan yang sekarang tayang** | **0** |
+| **TERLEWAT (hanya terlihat dari arah mundur)** | **1** |
+| pasangan yang F **dan** G ikut identik | **1** |
 
-Aturannya **sunyi**. Ia tak akan dimatikan orang karena ramai.
+**Nol dari satu.** Satu-satunya kejadian di seluruh jendela tidak tertangkap.
 
-### ⛔ Aturan ini TIDAK BISA diverifikasi di produksi
+### Jejak audit — dan temuan yang lebih buruk dari "terlewat"
 
-Keadaan akhir sudah **bersih** — pengawas mengoreksi kasusnya sendiri
-(08-08 pukul 10:11 → Rp 332.053.000). Jadi **"hijau di produksi" tidak akan
-pernah membuktikan aturan ini bekerja**, dan papan yang tenang bukan bukti apa
-pun. **Fixture di `compliance.test.ts` memikul SELURUH bebannya**, memakai angka
-historis yang nyata, dengan kontrol hari yang `I`-nya identik **tapi** H-nya
-cocok (tak boleh menyala).
+`created_at`/`voided_at` menunjukkan urutan sebenarnya. Pada **2026-08-09**:
 
-Pemeriksaan keadaan-akhir atas arsip perekam (14 pasang hari berurutan, 7 unit,
-2026-08-06…08): **0 menyala**. **Kontrolnya tidak vakum** — nilai Rp 359.447.000
-masih ada di arsip pada 08-06 (21 snapshot), sedangkan 08-07 sudah terbaca
-Rp 332.053.000. Jadi pasangan identik memang akan terlihat kalau ada; ia sudah
-diperbaiki. Ini konsisten dengan §7 "backtest keadaan AKHIR — dan syaratnya":
-angka 0 itu **batas bawah**, bukan volume alarm.
+| waktu WIB | yang terjadi |
+| --- | --- |
+| 12:08–12:11 | **08-07 DISUNTING**: F 0 → 103.478.000 · G 40.600.000 → 40.608.000 · setoran 241.297.000 **di-void**, diganti 483.803.000 |
+| 12:12–12:14 | **08-08 DIBUAT** dengan ketiga nilai yang sama persis |
 
-### Pemasangan D−1 ada di SATU tempat
+Rekonstruksi dari jejak itu (E = A − (B+C+D) murni EasyMax, tak tersentuh
+suntingan, = 281.896.190):
+
+```
+H 08-07 SEBELUM disunting = 281.896.190 + 0 − 40.600.000 = 241.296.190
+I 08-07 SEBELUM disunting =                                241.297.000
+selisih                   =                                        810  → SELARAS
+```
+
+> **08-07 tadinya BENAR. Suntingan itu yang merusaknya.** Ini bukan hari yang
+> salah lalu diperbaiki; ini hari yang benar lalu ditimpa angka hari lain.
+
+**Paparannya bukan "terlambat berhari-hari":** saat 08-07 dirusak (12:11), 08-08
+belum punya baris sama sekali — jadi tak ada arah mana pun yang bisa berbunyi.
+Deteksi mundur akan menyala **12:14**, tiga menit kemudian, begitu 08-08 masuk.
+
+### Dan `I` saja tidak cukup — F & G ikut tersalin
+
+Kalau nanti hanya `I` yang diperbaiki agar cocok dengan H yang **sudah salah**,
+hari itu akan terbaca **selaras** padahal F dan G masih milik hari lain.
+Rekonsiliasinya konsisten-dengan-dirinya-sendiri, komponennya keliru. Pada data
+sekarang kasus itu **belum terjadi** (0 dari 102 pasangan yang F&G identik
+sementara I sudah beda) — ia **laten**, dan menjadi nyata pada perbaikan
+berikutnya.
+
+### Status aturan
+
+🔴 **Aturan salin-setoran yang tayang sekarang menangkap 0 dari 1 kejadian
+nyata.** Perbaikannya (dua arah · F&G · waktu evaluasi) sedang menunggu gerbang
+owner — bentuk & biayanya dilaporkan di
+[`session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md`](../../session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md).
+Jangan baca papan yang tenang sebagai bukti tak ada salinan.
+
+### Pemasangan D−1 ada di SATU tempat (dan harus jadi dua sisi)
 
 `pasangkanSetoranKemarin()` di `compliance.ts`, dipakai halaman Ketaatan **dan**
 feed anomali — bukan disalin ke masing-masing. Prasyaratnya: deret **rapat &
