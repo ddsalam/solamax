@@ -1151,3 +1151,73 @@ tera hari ini **660,63 L** · provisional false · penutup-nol 0 · tangki dikec
 | TOTAL | 68.285,90 | 28.000,00 | 28.479,92 | 68.466,61 | 68.363,04 | -103,57 | -0,36 |
 
 </details>
+
+## P4-4 🔴 TEMUAN BESAR — aturan pemilihan opname PENUTUP menyimpang dari EasyMax
+
+Ditemukan saat oracle Bundaran Kotabaru 07 Agu MELESET 24 sel. Polanya bersih: **hanya
+kolom Stock Awal** yang salah (Teori/Losses/% ikut karena turunan); Penerimaan,
+Penjualan, dan Stock Fisik cocok EKSAK. Dan **08 Agu cocok sempurna** — jadi bukan unit
+yang rusak, melainkan satu hari.
+
+**Sebabnya, terbukti sel demi sel.** Untuk tanggal-bisnis 2026-08-06 di KB, tiap tangki
+punya pembacaan penutup pagi (07 Agu ±06:0x) DAN lima tangki punya pembacaan TAMBAHAN
+pada **07 Agu 10:20:49**. `getDailyGlByProduct` memakai `row_number() … ORDER BY dtgljam
+DESC` → ia mengambil yang 10:20. EasyMax memakai yang 06:0x — **keenam produk cocok**:
+
+| produk | tangki | 06:0x (dipakai EasyMax) | 10:20 (dipakai SolaMax) | oracle Awal(07) |
+|---|---|---:|---:|---:|
+| PERTAMAX | T-04 | 8.957,49 | 9.737,63 | **8.957,49** |
+| P. TURBO | T-08 | 6.633,66 | 6.628,88 | **6.633,66** |
+| PERTAMINA DEX | T-05 | 5.503,46 | 5.720,13 | **5.503,46** |
+| SOLAR | T-03+T-07 | 5.499,89+6.046,25 = 11.546,14 | +6.362,03 = 11.861,92 | **11.546,14** |
+| PERTALITE | T-01+T-02 | 21.042,25+22.527,93 = 43.570,18 | +27.515,77 = 48.558,02 | **43.570,18** |
+| DEXLITE | T-06 | 7.339,25 | *(tak ada entri telat)* | **7.339,25** ✓ juga di SolaMax |
+
+6 dari 6 memilih batch pagi. Ini aturan, bukan kebetulan.
+
+**Siapa yang salah: KITA.** Diuji dua arah sesuai preseden gold-check (di sana dua
+selisih ternyata PDF-nya yang salah). Di sini oracle konsisten dengan dirinya —
+rantai carry-in oracle 07→08 utuh (Fisik 07 = Awal 08), dan batch 10:20 adalah entri
+SESUDAH operasi hari berikutnya dimulai; memakainya sebagai "penutup hari kemarin"
+memang tak masuk akal secara operasional.
+
+### Blast radius — 2026 YTD, 221 hari-bisnis, seluruh armada
+
+Dihitung sebagai: baris TERAKHIR per (unit, hari, tangki) yang **nilainya berbeda** dari
+baris penutup pagi (D+1 sebelum 08:00).
+
+| unit | tangki-hari beda | hari beda | % hari |
+|---|---:|---:|---:|
+| **Imam Bonjol** | **0** | **0** | **0 %** |
+| Bakau | 4 | 1 | 0,5 % |
+| Bundaran Kotabaru | 6 | 2 | 0,9 % |
+| Batu Layang | 24 | 7 | 3 % |
+| Adisucipto | 104 | 25 | 11 % |
+| 28 Oktober | 40 | 26 | 12 % |
+| **Korek** | **117** | **51** | **23 %** |
+
+**IB = NOL.** Itulah sebabnya 343/392 sel oracle IB cocok sempurna dan cacat ini tak
+pernah terlihat selama empat putaran: unit pilot adalah satu-satunya unit yang aturannya
+tak pernah menyimpang. Kebutaan jendela, lagi — kali ini jendelanya UNIT, bukan tanggal.
+
+⚠️ **Ini bukan cacat Arus Minyak.** `getDailyGlByProduct` adalah G/L RESUME bersama:
+papan direksi, PDF, alarm, Laporan Harian. **Eskalasi butir 2** (angka G/L yang sudah
+dipakai ternyata keliru) → BERHENTI & LAPOR, dan §Batas putaran ini melarang
+menyentuhnya. Tidak diperbaiki di sini.
+
+### PREDIKSI TERSEGEL atas 18 tanggal oracle yang sudah ada
+
+Ditulis SEBELUM membuka PNG 28 Oktober. Hari divergen di jendela itu tepat tiga:
+KB 06 Agu (5 tangki), 28 Okt 31 Jul (1 tangki), 28 Okt 02 Agu (1 tangki). Maka:
+
+| unit | tanggal | prediksi |
+|---|---|---|
+| Adisucipto | 1–8 Agu | **8 tanggal BERSIH** (nol hari divergen) |
+| Bundaran Kotabaru | 07 Agu | **MELESET pada Stock Awal** (terbukti) |
+| Bundaran Kotabaru | 08 Agu | BERSIH (terbukti) |
+| 28 Oktober | 01 Agu | **MELESET pada Stock Awal** (imbas 31 Jul) |
+| 28 Oktober | 02 Agu | **MELESET pada Stock Fisik** (+ Losses/%) |
+| 28 Oktober | 03 Agu | **MELESET pada Stock Awal** (imbas 02 Agu) |
+| 28 Oktober | 04–08 Agu | **5 tanggal BERSIH** |
+
+Kalau prediksi ini meleset, diagnosis di atas salah dan harus ditinjau ulang.

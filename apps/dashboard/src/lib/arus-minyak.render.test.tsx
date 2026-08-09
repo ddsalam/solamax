@@ -142,53 +142,76 @@ const DEVIASI_SAH: Record<string, DeviasiSah> = {};
 
 const COLS = ["Awal", "Penerimaan", "Penjualan", "Teori", "Fisik", "Losses", "%"];
 
+
+/**
+ * Render satu (unit, tanggal) lewat jalur PRODUKSI dan kembalikan sel-nya dari
+ * HTML. Satu-satunya tempat harness menyentuh unit — dipakai IB maupun armada,
+ * sehingga menambah unit TIDAK menambah jalur kode yang bisa menyimpang.
+ */
+async function selTerender(
+  code: string,
+  date: string,
+): Promise<{ sel: Map<string, (number | null)[]>; html: string }> {
+  const Q = await import("@/lib/queries");
+  const { q } = await import("@/lib/db");
+  type SUID = Parameters<typeof Q.getDailyGlByProduct>[0];
+  const [u] = await q<{ unit_id: number }>(`SELECT unit_id FROM public.unit WHERE code = $1`, [
+    code,
+  ]);
+  if (!u) throw new Error(`unit ${code} tak ada`);
+  const id = u.unit_id as SUID;
+  const [glRows, zc] = await Promise.all([
+    Q.getDailyGlByProduct(id, monthStart(date), date),
+    Q.getZeroClosingEvents([id], addHari(date, -1), addHari(date, 1)),
+  ]);
+  const model = buildLaporanModel(neutralRaw(glRows, zc), {
+    unitCode: code,
+    date,
+    today: "2026-08-10",
+    mi: { month: 8, year: 2026, dayOfMonth: 6, daysInMonth: 31 },
+    detail: true,
+  });
+  const html = renderToStaticMarkup(<ArusMinyakSection arus={model.arusMinyak} />);
+  return { sel: parseArusHtml(html), html };
+}
+
+/** Uji satu unit terhadap oracle-nya. Dipakai IB dan setiap unit armada. */
+async function ujiOracle(
+  code: string,
+  nama: string,
+  oracle: Record<string, Record<string, Cells>>,
+  outHtml?: string,
+) {
+  const render: Record<string, Map<string, (number | null)[]>> = {};
+  const htmlParts: string[] = [];
+  for (const date of Object.keys(oracle)) {
+    const { sel, html } = await selTerender(code, date);
+    render[date] = sel;
+    htmlParts.push(`<h2 style="font:600 16px system-ui">${nama} ${date}</h2>${html}`);
+  }
+  const hasil = gradeArus(oracle, render, COLS, DEVIASI_SAH);
+  const r = ringkas(hasil);
+  const mismatch = hasil
+    .filter((h) => h.vonis === "mismatch")
+    .map((h) => `${code} ${h.tanggal} | ${h.baris} | ${h.kolom} | oracle ${h.oracle} | render ${h.render ?? "ABSEN"}`);
+  if (outHtml)
+    writeFileSync(
+      outHtml,
+      `<meta charset="utf-8"><style>${CSS.map((f) => readFileSync(join(__dirname, "..", f), "utf8")).join("\n")}</style>` +
+        `<body class="lap-page" style="padding:24px;background:var(--color-bg,#f5f6f8)">${htmlParts.join("")}</body>`,
+    );
+  console.log(
+    `  ${nama.padEnd(20)} EKSAK ${String(r.eksak).padStart(4)} · DEVIASI ${r.deviasi_sah} · ` +
+      `ABSEN≡NOL ${String(r.absen_nol).padStart(3)} · MISMATCH ${String(r.mismatch).padStart(3)} (total ${r.total})`,
+  );
+  return { hasil, r, mismatch };
+}
+
 d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)", () => {
   it(
     "392 sel: 8 baris × 7 kolom × 7 tanggal (6 Agu 2026 + 21 Nov 2025)",
     async () => {
-      const Q = await import("@/lib/queries");
-      const { q } = await import("@/lib/db");
-      type SUID = Parameters<typeof Q.getDailyGlByProduct>[0];
-      const [u] = await q<{ unit_id: number }>(
-        `SELECT unit_id FROM public.unit WHERE code = $1`,
-        [UNIT_CODE],
-      );
-      expect(u, `unit ${UNIT_CODE} tak ada`).toBeDefined();
-      const unitId = u!.unit_id as SUID;
-
-      const htmlParts: string[] = [];
-      const render: Record<string, Map<string, (number | null)[]>> = {};
-
-      for (const date of Object.keys(ORACLE)) {
-        const glRows = await Q.getDailyGlByProduct(unitId, monthStart(date), date);
-        const zc = await Q.getZeroClosingEvents([unitId], addHari(date, -1), addHari(date, 1));
-        // Jalur model PRODUKSI (filter d===date + urutan) — bukan jalan pintas.
-        const model = buildLaporanModel(neutralRaw(glRows, zc), {
-          unitCode: UNIT_CODE,
-          date,
-          today: "2026-08-09",
-          mi: { month: 8, year: 2026, dayOfMonth: 6, daysInMonth: 31 },
-          detail: true,
-        });
-        const html = renderToStaticMarkup(<ArusMinyakSection arus={model.arusMinyak} />);
-        htmlParts.push(`<h2 style="font:600 16px system-ui">${date}</h2>${html}`);
-        render[date] = parseArusHtml(html);
-      }
-
-      // Penilaian dipisah ke `arus-minyak.grade.ts` (murni) supaya aturan
-      // "absen hanya sah bila SELURUH sel oracle nol" dijaga tes yang jalan di
-      // SETIAP commit, bukan oleh mutasi manual yang harus diingat.
-      const hasil = gradeArus(ORACLE, render, COLS, DEVIASI_SAH);
-      const r = ringkas(hasil);
-      const mismatch = hasil
-        .filter((h) => h.vonis === "mismatch")
-        .map((h) => `${h.tanggal} | ${h.baris} | ${h.kolom} | oracle ${h.oracle} | render ${h.render ?? "ABSEN"}`);
-
-      writeFileSync(
-        OUT,
-        `<meta charset="utf-8"><style>${CSS.map((f) => readFileSync(join(__dirname, "..", f), "utf8")).join("\n")}</style>` +
-          `<body class="lap-page" style="padding:24px;background:var(--color-bg,#f5f6f8)">${htmlParts.join("")}</body>`,
-      );
+      const { hasil, r, mismatch } = await ujiOracle(UNIT_CODE, "Imam Bonjol", ORACLE, OUT);
       // Dilaporkan TERPISAH: jendela Agustus lama (336) supaya bisa dibandingkan
       // dengan angka putaran sebelumnya, dan 21 Nov 2025 yang baru (56).
       const sub = (pred: (t: string) => boolean) => ringkas(hasil.filter((h) => pred(h.tanggal)));
@@ -197,15 +220,6 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
       console.log(
         `\n  jendela Agustus 2026 (6 tgl): EKSAK ${agu.eksak} · DEVIASI ${agu.deviasi_sah} · ABSEN≡NOL ${agu.absen_nol} · MISMATCH ${agu.mismatch} (total ${agu.total})` +
           `\n  21 Nov 2025 (1 tgl, tera 1.000 L): EKSAK ${nov.eksak} · DEVIASI ${nov.deviasi_sah} · ABSEN≡NOL ${nov.absen_nol} · MISMATCH ${nov.mismatch} (total ${nov.total})`,
-      );
-      console.log(
-        `\nARUS MINYAK vs ORACLE — EKSAK ${r.eksak} · DEVIASI SAH ${r.deviasi_sah} · ` +
-          `ABSEN≡NOL ${r.absen_nol} · MISMATCH ${r.mismatch} (total ${r.total})\n` +
-          [...new Set(
-            hasil
-              .filter((h) => h.vonis === "absen_nol" || h.vonis === "deviasi_sah")
-              .map((h) => `  · ${h.tanggal} ${h.baris}${h.vonis === "deviasi_sah" ? ` ${h.kolom}` : ""}: ${h.vonis.toUpperCase()} — ${h.catatan}`),
-          )].join("\n"),
       );
       expect(mismatch, `MISMATCH:\n${mismatch.join("\n")}`).toEqual([]);
       expect(r.total).toBe(392);
@@ -389,6 +403,52 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
  * rumus % yang SALAH lolos 336 sel selama dua putaran karena jendelanya tak mampu
  * membedakan. Sapuan ini buta terhadap kesalahan yang KONSISTEN.
  */
+
+/**
+ * ORACLE ARMADA — RESUME EasyMax unit non-IB (ekspor owner, putaran 4).
+ * Ditranskripsi dari PNG di `~/Desktop/ArusMinyak/<UNIT>/`. Prediksi SolaMax
+ * untuk tanggal-tanggal ini sudah DISEGEL di decision log §P4-3 sebelum satu pun
+ * berkas dibuka.
+ */
+const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<string, Cells>> }> = {
+  "6478106": {
+    nama: "Bundaran Kotabaru",
+    hari: {
+      "2026-08-07": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [8957.49, 8000, 3861.2, 13096.29, 13083.6, -12.69, -0.33],
+        SOLAR: [11546.14, 8000, 7824.59, 11721.55, 11555.15, -166.4, -2.13],
+        "PERTAMAX TURBO": [6633.66, 0, 243.65, 6390.01, 6423.42, 33.41, 13.71],
+        PERTALITE: [43570.18, 32000, 30764.49, 44805.69, 45018.3, 212.61, 0.69],
+        DEXLITE: [7339.25, 0, 2389.35, 4949.9, 4934.5, -15.4, -0.64],
+        "PERTAMINA DEX": [5503.46, 0, 659.97, 4843.49, 4848.28, 4.79, 0.73],
+        TOTAL: [83550.18, 48000, 45743.25, 85806.93, 85863.25, 56.32, 0.12],
+      },
+      "2026-08-08": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [13083.6, 0, 3534.04, 9549.56, 9587.86, 38.3, 1.08],
+        SOLAR: [11555.15, 8000, 9207.67, 10347.48, 10419.47, 71.99, 0.78],
+        "PERTAMAX TURBO": [6423.42, 0, 230.81, 6192.61, 6122.49, -70.12, -30.38],
+        PERTALITE: [45018.3, 24000, 30119.14, 38899.16, 38863.03, -36.13, -0.12],
+        DEXLITE: [4934.5, 0, 2748.22, 2186.28, 2163.27, -23.01, -0.84],
+        "PERTAMINA DEX": [4848.28, 0, 571.79, 4276.49, 4320.19, 43.7, 7.64],
+        TOTAL: [85863.25, 32000, 46411.67, 71451.58, 71476.31, 24.73, 0.05],
+      },
+    },
+  },
+};
+
+d("Arus Minyak vs oracle EasyMax — ARMADA (unit non-IB)", () => {
+  const gagal: string[] = [];
+  for (const [code, { nama, hari }] of Object.entries(ORACLE_ARMADA)) {
+    it(`${nama} (${code}) — ${Object.keys(hari).length} tanggal`, async () => {
+      const { mismatch } = await ujiOracle(code, nama, hari, `/tmp/arus-${code}.html`);
+      gagal.push(...mismatch);
+      expect(mismatch, `MISMATCH:\n${mismatch.join("\n")}`).toEqual([]);
+    }, 240_000);
+  }
+});
+
 d("Sapuan konsistensi internal IB — 120 hari, tanpa oracle", () => {
   it("identitas, rantai carry-in, dan ledakan nilai", async () => {
     const Q = await import("@/lib/queries");
