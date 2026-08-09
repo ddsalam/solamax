@@ -96,35 +96,83 @@ dan biayanya nyaris nol karena jatuh tempo memang akhir H+1.
 
 ---
 
-## 3b · Aturan SALIN-SETORAN — angka kemarin diketik ulang
+## 3b · Aturan SALIN-SETORAN — angka hari TETANGGA diketik di tanggal ini
 
-Ditambahkan 2026-08-09. Berasal dari temuan **owner**, bukan dari papan: setoran
-Korek 2026-08-07 **sama persis** dengan 2026-08-06 — Rp 359.447.000 dua kali —
-dan yang 08-07 meleset **Rp 3.877.128,50** dari uang tunai. Papan waktu itu
-hanya bilang "lebih setor", **kuning**; sebab sesungguhnya (angka kemarin
-terketik ulang) tak tersuarakan sama sekali.
+**Keadaan akhir: aturannya DUA ARAH.** Versi pertama hanya melihat `D−1` dan
+menangkap **0 dari 1** kejadian nyata — yang tersalin ternyata nilai hari
+BERIKUTNYA. Riwayat kegagalan itu dan bukti yang mengoreksinya dilipat di bawah.
 
-**Menyala hanya bila TIGA hal benar bersamaan:**
+> Untuk hari `D` yang **dinilai**: bila `|I(D) − H(D)| >` toleransi **dan**
+> `I(D)` sama persis dengan `I(D−1)` **atau** `I(D+1)` → `setoran_tersalin`,
+> **MERAH**.
 
-| | syarat | ditegakkan di mana |
-| --- | --- | --- |
-| (a) | `I(D)` **sama persis** dengan `I(D−1)` | kondisi di `adminStatus` |
-| (b) | `D` **bukan hari ini** | **URUTAN** — gerbang `hari_berjalan` pulang lebih dulu |
-| (c) | `\|I − H\|` **>** toleransi (`SETORAN_TOLERANSI_RP`) | `kode !== "selaras"` |
+**Hari yang ditandai adalah yang tak cocok dengan H-nya SENDIRI; tetangga hanya
+memasok bukti ASAL-USUL angkanya.** Karena itu ia menyala di 08-07 dan **diam**
+di 08-08 — tanpa aturan tambahan.
 
-⚠️ **(b) dipikul oleh URUTAN, bukan oleh kondisi tertulis.** Memindahkan blok
-ini ke atas gerbang `hari_berjalan` akan menyalakannya pada hari yang H-nya
-masih dirakit — artefak yang justru jadi alasan gerbang itu ada. Kalau blok itu
-pindah, syarat (b) **harus ditulis eksplisit**. Dijaga tes.
+Tiga keputusan owner yang menyertainya:
 
-**Kenapa (c) wajib:** dua hari yang setorannya kebetulan sama tapi dua-duanya
-**selaras** dengan H masing-masing bukan kesalahan. Menandainya akan melatih
-orang mengabaikan aturannya — kegagalan yang sama dengan alarm kas dorman.
+1. **`D+1` = HARI INI tidak dibandingkan.** Setoran hari ini masih diisi, jadi
+   nilai yang kebetulan sama sesaat akan menyalakan alarm lalu padam. Biayanya
+   nol: pada kasus yang kita punya `D+1` adalah kemarin. ⚠️ Pengecualian ini
+   ditegakkan **di dalam `adminStatus`**, bukan dititipkan ke empat pemanggil —
+   aturan yang harus diingat empat kali akan dilupakan sekali.
+2. **F & G bukan pemicu terpisah, melainkan BAGIAN DARI PESAN**
+   (`AdminVerdict.komponenIkut`). Nilai diagnostiknya dapat, risiko
+   positif-palsunya nol, dan tak ada ambang baru yang harus dibela — F/G identik
+   antar hari bisa sah (biaya tetap harian), dan basisnya 0 dari 102 pasangan
+   memang belum cukup untuk pemicu sendiri.
+3. **Tetap MERAH walau buktinya hanya `D+1`**, meski secara kronologi tetangga
+   itu diketik belakangan.
 
-**MERAH, bukan kuning — bahkan saat arahnya "lebih setor"** (yang sendirian
-hanya kuning). Kelebihan setor bisa punya sebab sah; angka **identik dengan
-kemarin DAN tak cocok dengan H** adalah kekeliruan ENTRI. Yang ditandai di sini
-**sebabnya**, bukan arah selisihnya.
+**Waktu evaluasi tidak berubah — dan tak perlu berubah.** Tak ada vonis yang
+disimpan: `adminStatus` dihitung saat render dari data saat itu juga, jadi `D`
+memang **sudah** dinilai ulang setiap kali `D+1` bertambah. Biaya query: papan
+Ketaatan & feed anomali **nol** (deretnya sudah rapat), Rincian & Laporan
+**+1 kelompok** query kecil masing-masing.
+
+**Terbukti pada data produksi:** penjaga hidup `dua-arah.integration.test.ts`
+menjalankan jalur produksi atas 102 pasangan dan mengasersikan **1 kasus nyata**
+(Batu Layang 08-07) → `setoran_tersalin`.
+
+⚠️ Sejak kasus itu dikoreksi (2026-08-09 18:31) penjaga tersebut **hijau dengan
+NOL kasus**. Ia mencetak jumlah kasus yang benar-benar diasersikan justru untuk
+ini: **papan yang sepi bukan bukti aturannya bekerja — ia hanya bukti tak ada
+salinan tersisa hari ini.** Yang memikul beban pembuktian tetap fixture bernama
+di `compliance.test.ts`. Jangan hapus penjaga itu saat ia 0 kasus, dan jangan
+naikkan ia jadi "bukti" saat kebetulan punya kasus.
+
+### ⚠️ Lubang F & G — LATEN, dan syarat yang MEMBANGUNKANNYA
+
+`komponenIkut` hanya bicara ketika aturan `I` menyala. Tapi aturan itu dijaga
+`kode !== "selaras"` — dan **syarat yang sama mematikan `komponenIkut` tepat saat
+ia paling dibutuhkan.**
+
+Bangunkannya begini: seseorang memperbaiki **hanya `I`** agar cocok dengan `H`
+yang **sudah salah**. Setoran selalu dibulatkan ke ribuan, jadi ia mendarat di
+dalam toleransi dengan mudah → hari itu **selaras, hijau**, sementara F dan G
+masih milik hari lain. Rekonsiliasinya konsisten-dengan-dirinya-sendiri,
+komponennya keliru, dan **tak ada yang bersuara**.
+
+Basis data historis: **0 dari 102** pasangan (F&G identik sementara `I` sudah
+beda). Laten — **dan tetap laten**.
+
+> **Sebuah lubang yang laten dalam data historis bisa DIBANGUNKAN oleh tindakan
+> perbaikan yang kita rencanakan sendiri.** Mengukur laju kejadian pada data masa
+> lalu tidak memberi tahu apa pun tentang keadaan yang akan kita CIPTAKAN.
+
+**Keputusan owner 2026-08-09: JANGAN tutup dengan kode.** Instruksi koreksi
+menyebut **ketiga** angkanya, dan owner memverifikasi hasilnya di layar dengan
+memeriksa **ketiga nilainya, bukan warnanya**. Skenario itu ditutup oleh **orang**,
+bukan oleh aturan yang laju positif-palsunya belum terukur.
+
+Uji nyata pertamanya **lulus**: Batu Layang 2026-08-07 dikoreksi lengkap
+(F → 0 · G → 40.600.000 · I → 241.297.000; H 241.296.190, selisih Rp 810).
+⚠️ **Jangan baca hasil baik itu sebagai bukti lubangnya tertutup.** Ia tidak
+terjadi karena **instruksinya menyebut ketiga angkanya** — bukan karena ada
+penjaga.
+
+<details><summary>Riwayat: bagaimana aturan satu arah gagal, dan apa yang membuktikannya</summary>
 
 ### ⛔ KOREKSI 2026-08-09 — ATURAN INI BUTA TERHADAP ARAH SEBALIKNYA
 
@@ -195,49 +243,13 @@ sekarang kasus itu **belum terjadi** (0 dari 102 pasangan yang F&G identik
 sementara I sudah beda) — ia **laten**, dan menjadi nyata pada perbaikan
 berikutnya.
 
-### ✅ DIPERBAIKI — aturan sekarang DUA ARAH
+</details>
 
-Bentuk finalnya (gerbang owner 2026-08-09):
+### Pemasangan tetangga ada di SATU tempat
 
-> Untuk hari `D` yang **dinilai**: bila `|I(D) − H(D)| >` toleransi **dan**
-> `I(D)` sama persis dengan `I(D−1)` **atau** `I(D+1)` → `setoran_tersalin`,
-> **MERAH**.
-
-**Hari yang ditandai adalah yang tak cocok dengan H-nya SENDIRI; tetangga hanya
-memasok bukti ASAL-USUL angkanya.** Karena itu ia menyala di 08-07 dan **diam**
-di 08-08 — tanpa aturan tambahan.
-
-Tiga keputusan owner yang menyertainya:
-
-1. **`D+1` = HARI INI tidak dibandingkan.** Setoran hari ini masih diisi, jadi
-   nilai yang kebetulan sama sesaat akan menyalakan alarm lalu padam. Biayanya
-   nol: pada kasus yang kita punya `D+1` adalah kemarin. ⚠️ Pengecualian ini
-   ditegakkan **di dalam `adminStatus`**, bukan dititipkan ke empat pemanggil —
-   aturan yang harus diingat empat kali akan dilupakan sekali.
-2. **F & G bukan pemicu terpisah, melainkan BAGIAN DARI PESAN**
-   (`AdminVerdict.komponenIkut`). Nilai diagnostiknya dapat, risiko
-   positif-palsunya nol, dan tak ada ambang baru yang harus dibela — F/G identik
-   antar hari bisa sah (biaya tetap harian), dan basisnya 0 dari 102 pasangan
-   memang belum cukup untuk pemicu sendiri.
-3. **Tetap MERAH walau buktinya hanya `D+1`**, meski secara kronologi tetangga
-   itu diketik belakangan.
-
-**Waktu evaluasi tidak berubah — dan tak perlu berubah.** Tak ada vonis yang
-disimpan: `adminStatus` dihitung saat render dari data saat itu juga, jadi `D`
-memang **sudah** dinilai ulang setiap kali `D+1` bertambah. Biaya query: papan
-Ketaatan & feed anomali **nol** (deretnya sudah rapat), Rincian & Laporan
-**+1 kelompok** query kecil masing-masing.
-
-**Terbukti pada data produksi:** penjaga hidup `dua-arah.integration.test.ts`
-menjalankan jalur produksi atas 102 pasangan dan mengasersikan **1 kasus nyata**
-(Batu Layang 08-07) → `setoran_tersalin`. Ia juga mencetak jumlah kasus yang
-benar-benar diasersikan: **hijau dengan 0 kasus bukan bukti apa pun**, karena
-begitu pengawas memperbaiki entrinya buktinya lenyap dari data hidup.
-
-### Pemasangan D−1 ada di SATU tempat (dan harus jadi dua sisi)
-
-`pasangkanSetoranKemarin()` di `compliance.ts`, dipakai halaman Ketaatan **dan**
-feed anomali — bukan disalin ke masing-masing. Prasyaratnya: deret **rapat &
+`pasangkanTetangga()` di `compliance.ts` — mengembalikan **kedua** sisi (D−1 &
+D+1), dipakai papan Ketaatan, feed anomali, Rincian, dan Laporan; bukan disalin
+ke masing-masing. Prasyaratnya: deret **rapat &
 menaik** per unit (kedua query pemasoknya memakai `generate_series`). Halaman
 Ketaatan mengambil **`DAYS + 1`** hari dan membuang yang tertua dari tampilan:
 tanpa benih itu, sel terkiri tak pernah bisa diperiksa — lubang yang bergeser
@@ -286,6 +298,61 @@ Menyambungkannya ke "ada barisnya" akan membuat cek ini **hijau** untuk
 pengeluaran yang tak pernah disahkan siapa pun — hijau palsu yang lebih buruk
 daripada `na` jujur, karena ia **menutup** pertanyaannya. Membukanya butuh kolom
 persetujuan + panel pengesahan; belum ada gerbang ownernya. Dijaga tes.
+
+---
+
+## 3d · Isyarat di JALUR MASUK — mencegah, bukan mendeteksi
+
+Ditambahkan 2026-08-09, setelah dua pengawas **di dua unit** mengetik angka hari
+lain ke tanggal yang salah (Korek 08-07/08-06 · Batu Layang 08-07/08-08). Dua
+kejadian dari dua orang bukan kecerobohan individu — **itu pola yang dihasilkan
+antarmukanya.** Aturan deteksi menangkapnya SESUDAH; ini yang menyerang sebabnya.
+
+Penyelidikan jalur masuk menemukan **tiga lapis**:
+
+| lapis | keadaan | tindakan |
+| --- | --- | --- |
+| tanggal saat mengetik | hanya di kop lembar, ~110 baris di atas panel; `ManualEntryForm` tak menyebut tanggal sama sekali | ✅ **"Tanggal bisnis: …" tepat di atas kolom input** |
+| hari sudah terisi | tak ada isyarat — menimpa hari yang benar terasa sama dengan mengisi hari kosong | ✅ **peringatan menyebut seksi & jumlah barisnya** |
+| **default tanggal** | cookie "terakhir dibuka", write-through, umur 30 hari | ⛔ **SENGAJA TIDAK DISENTUH** |
+
+### ⛔ Kenapa default-nya TIDAK diubah
+
+Perilaku cookie itu **sengaja dibangun** pada arc topbar picker Juli: cookie
+diturunkan jadi *last-used write-through* untuk memperbaiki dropdown yang
+desinkron pada navigasi lunak. **Untuk navigasi, keputusan itu benar dan masih
+benar.** Membatalkannya lewat pintu belakang akan memunculkan kembali bug itu.
+
+> **Keputusan default yang benar untuk MEMBACA bisa jadi salah begitu
+> permukaannya mulai MENULIS — yang berubah bukan keputusannya, melainkan
+> konsekuensi kesalahannya.**
+
+Jangan tulis ini sebagai "cookie-nya salah". Pelajarannya berlaku di luar proyek
+ini: saat permukaan baca-saja mendapat kemampuan menulis, semua default yang
+dipilih demi kenyamanan baca **wajib ditinjau ulang** — bukan dibatalkan.
+
+### ⚠️ Nada KUNING, bukan merah — JANGAN "diperbaiki" nanti
+
+Membuka hari yang sudah terisi adalah tindakan **SAH**: untuk membaca, atau untuk
+mengoreksi. Merah di situ akan **berteriak serigala tiap hari dan mati dalam
+sepekan** — kegagalan yang sama dengan alarm kas dorman.
+
+Menyebut **nama hari** ("Sabtu, 8 Agustus 2026") juga bukan hiasan: itu isyarat
+**kedua yang independen** dari angka tanggalnya, dan orang menangkap "kok Sabtu?"
+lebih cepat daripada "kok 8?".
+
+**Keadaan diamnya harus benar-benar diam** — `rincianTerisi: null` dan **nol
+elemen peringatan** saat hari kosong. Diuji tersendiri, dan mutasi "peringatan
+SELALU muncul" memerahkannya. `PanelIsyarat` wajib di `ManualPanel`: panel tanpa
+tanggal adalah error type-check.
+
+Diverifikasi owner **di layar, dua arah** (2026-08-09): Batu Layang 08-08 terisi
+→ tanggal tebal + kotak kuning menyebut ketiga seksi; Adisucipto 07-28 kosong →
+tanggal tampil, **nol** peringatan.
+
+⚠️ **Mitigasi tidak menghapus mekanismenya.** Kalau kesalahan serupa muncul lagi
+meski peringatan sudah ada, itu sinyal **mitigasinya tak cukup** — bukan bahwa
+peringatannya gagal dipasang.
 
 ---
 
@@ -508,3 +575,47 @@ yang tak pernah berjalan dan guard yang menegaskan angkanya sendiri.
 Lihat §5. Ringkas: ia tak bisa mengukur alarm yang menyala pada keadaan
 **antara**, **bila** objek ukurnya bisa **dikoreksi**. Kalau objeknya tak bisa
 dikoreksi, keadaan akhir memang jawabannya dan backtest biasa sah.
+
+### Pengecualian gerbang tak boleh bersandar pada aturan di tempat lain
+
+Gerbang arsip **G4** (`scripts/ci/check-arsip-g4.sh`) mengecualikan PR
+**promosi** — siklus keduanya sudah dinilai pada PR ke `staging`, dan menuntut
+label yang sama setiap kali akan menjadikannya **stempel refleks dalam sepekan**.
+
+Pengecualiannya **sempit dengan sengaja**: `base = main` **saja tidak cukup —
+`head` harus `staging`**. Tanpa syarat kedua, gerbang bisa dilewati hanya dengan
+membuka PR langsung ke `main` dari branch fitur. Itu memang sudah dilarang aturan
+repo — dan justru itu masalahnya:
+
+> **Sebuah pengecualian tidak boleh bersandar pada aturan yang ditegakkan di
+> tempat lain.** Aturan itu bisa berubah tanpa ada yang ingat gerbang ini
+> bergantung padanya.
+
+Dan pengecualiannya **diuji pada keadaan LOLOS**, bukan hanya keadaan tolak —
+*pengecualian yang tak pernah dilihat bekerja adalah artefak yang sama dengan
+label yang tak pernah dibuat.* (Terbukti mengubah hasil pada promosi #248: satu
+berkas arsip, tanpa label, lolos.)
+
+### Gerbang yang menuntut ARTEFAK harus memastikan artefak itu ada
+
+Versi pertama G4 menuntut label `arsip-siklus-kedua` yang **belum pernah dibuat**.
+Ia dibuktikan bisa MERAH lalu dinyatakan "terpasang" — padahal jalur HIJAU-nya
+mustahil.
+
+> **Membuktikan MERAH tanpa membuktikan HIJAU adalah setengah bukti, dan setengah
+> yang hilang justru yang menentukan gerbangnya dipakai atau ditinggalkan.**
+
+Instruksinya: gerbang yang menuntut artefak apa pun (label, secret, berkas, izin)
+harus **memeriksa artefak itu ada**, memberi pesan gagal **terpisah** yang
+menyebut cara membuatnya — menyamakan cacat gerbang dengan cacat PR membuat orang
+mencari jalan pintas — dan keputusannya **keluar dari YAML** ke skrip yang CI dan
+self-test sama-sama panggil, supaya "sudah terbukti hijau" jadi asersi atas kode
+yang benar-benar berjalan.
+
+### Snapshot sesi bisa BASI terhadap repo
+
+Sumber yang ada **di depan mata** terasa otoritatif justru karena ia ada di depan
+mata. Keluarga yang sama dengan `ingested_at` dan data yang bergerak di bawah
+kaki: yang berbahaya bukan sumber yang jelas usang, melainkan yang **tampak
+segar**. Sebelum menyatakan sesuatu tentang keadaan repo — terutama setelah merge
+oleh orang lain — **baca dari `git`**, bukan dari yang terpampang di konteks.
