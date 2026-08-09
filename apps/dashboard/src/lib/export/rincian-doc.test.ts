@@ -15,6 +15,7 @@ const meta: RincianDocMeta = {
 
 const model: RincianModel = {
   verdict: { kode: "selaras" as const, tone: "green" as const, terisi: true },
+  panel: { tanggal: "1 Juli 2026", sudahTerisi: false, rincianTerisi: null },
 
   sections: [
     {
@@ -122,6 +123,7 @@ describe("buildRincianDocDefinition", () => {
   it("mensanitasi glyph tak didukung Roboto di jalur PDF; pertahankan · dan −", () => {
     const glyphModel: RincianModel = {
   verdict: { kode: "selaras" as const, tone: "green" as const, terisi: true },
+  panel: { tanggal: "1 Juli 2026", sudahTerisi: false, rincianTerisi: null },
 
       sections: [
         {

@@ -989,6 +989,16 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 
 /* ===== Input manual Rincian (panel pengawas, no-print) ===== */
 .manual-panel { display: flex; flex-direction: column; gap: var(--space-4); }
+/* Isyarat tanggal + peringatan hari-terisi (2026-08-09). Tanggalnya dulu hanya
+   ada di kop lembar, jauh di atas kolom input — dua pengawas mengetik ke
+   tanggal yang salah. Lihat rincian-model.ts › PanelIsyarat. */
+.manual-datebar { display: flex; flex-wrap: wrap; align-items: baseline;
+  justify-content: space-between; gap: var(--space-2); }
+.manual-date { color: var(--text-brand, var(--text-primary)); }
+.manual-warn { border: 1px solid var(--border-warning, #d97706);
+  background: var(--surface-warning, rgba(217, 119, 6, 0.08));
+  border-radius: var(--radius-2, 6px); padding: var(--space-3);
+  font-size: 15px; line-height: 1.5; }
 .manual-card {
   border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg);
   background: var(--color-surface); box-shadow: var(--shadow-1); overflow: hidden;

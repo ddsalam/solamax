@@ -2,6 +2,7 @@ import * as ReactNS from "react";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import type { PanelIsyarat } from "@/lib/rincian-model";
 
 // esbuild vitest mengompilasi TSX komponen dgn runtime JSX klasik
 // (React.createElement sbg variabel bebas; tsconfig jsx=preserve) — sediakan
@@ -200,10 +201,48 @@ describe("ManualSectionView — indikator rekonsiliasi I-vs-H", () => {
   });
 });
 
+/** Isyarat panel — dua keadaan, dan yang DIAM sama pentingnya. */
+const KOSONG: PanelIsyarat = { tanggal: "7 Agustus 2026", sudahTerisi: false, rincianTerisi: null };
+const TERISI: PanelIsyarat = {
+  tanggal: "7 Agustus 2026",
+  sudahTerisi: true,
+  rincianTerisi: "Pendapatan Lain (2 baris) · Setoran Bank (1 baris)",
+};
+
+describe("isyarat tanggal & hari-terisi di panel input (2026-08-09)", () => {
+  const panel = (isyarat: PanelIsyarat) =>
+    renderToStaticMarkup(h(ManualPanel, { isyarat }, h(ManualSectionView, baseProps())));
+
+  it("tanggal bisnis dirender DI DALAM panel input, bukan hanya di kop lembar", () => {
+    // Akar dua kesalahan nyata: satu-satunya penyebutan tanggal ada ~110 baris
+    // di atas kolom input, sudah ter-scroll keluar layar saat pengawas mengetik.
+    const html = panel(KOSONG);
+    expect(html).toContain("Tanggal bisnis");
+    expect(html).toContain("7 Agustus 2026");
+  });
+
+  it("hari SUDAH terisi → peringatan muncul, menyebut seksi & jumlah barisnya", () => {
+    const html = panel(TERISI);
+    expect(html).toContain("manual-warn");
+    expect(html).toContain("SUDAH terisi");
+    expect(html).toContain("Pendapatan Lain (2 baris)");
+  });
+
+  it("hari KOSONG → peringatan TIDAK menyala sama sekali", () => {
+    // Peringatan yang selalu menyala akan diabaikan dalam seminggu. Keadaan
+    // diamnya harus benar-benar diam — bukan versi lebih pelan dari peringatan.
+    const html = panel(KOSONG);
+    expect(html).not.toContain("manual-warn");
+    expect(html).not.toContain("SUDAH terisi");
+    // KONTROL: panelnya memang dirender (bukan hijau karena tak ada apa-apa).
+    expect(html).toContain("Tanggal bisnis");
+  });
+});
+
 describe("no-print — kontrol interaktif tak ikut cetak", () => {
   it("ManualPanel membungkus seluruh kontrol dalam .no-print", () => {
     const html = renderToStaticMarkup(
-      h(ManualPanel, null, h(ManualSectionView, baseProps())),
+      h(ManualPanel, { isyarat: KOSONG }, h(ManualSectionView, baseProps())),
     );
     expect(html).toMatch(/^<div class="no-print manual-panel mt12">/);
     expect(html).toContain("tidak ikut cetak");

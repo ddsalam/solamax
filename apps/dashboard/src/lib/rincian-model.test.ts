@@ -173,3 +173,33 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     expect(i.note).toBeUndefined();
   });
 });
+
+describe("panel: isyarat tanggal & hari-terisi", () => {
+  it("hari KOSONG → sudahTerisi false, rincianTerisi null (peringatan diam)", () => {
+    const m = buildRincianModel(raw({ pendapatanLain: [], pengeluaran: [], setoranTunai: [] }));
+    expect(m.panel.sudahTerisi).toBe(false);
+    expect(m.panel.rincianTerisi).toBeNull();
+    // KONTROL: tanggalnya tetap ada — panel diam bukan panel kosong.
+    expect(m.panel.tanggal).toContain("2026");
+  });
+
+  it("hanya seksi yang BERISI yang disebut, dengan jumlah barisnya", () => {
+    const m = buildRincianModel(
+      raw({
+        pendapatanLain: [manual("f1", "X", 1_000)],
+        pengeluaran: [],
+        setoranTunai: [manual("s1", "SETOR", 2_000), manual("s2", "SETOR", 3_000)],
+      }),
+    );
+    expect(m.panel.sudahTerisi).toBe(true);
+    expect(m.panel.rincianTerisi).toBe("Pendapatan Lain (1 baris) · Setoran Bank (2 baris)");
+    expect(m.panel.rincianTerisi).not.toContain("Pengeluaran");
+  });
+
+  it("SATU baris di seksi mana pun sudah cukup menyalakannya", () => {
+    const m = buildRincianModel(
+      raw({ pendapatanLain: [], pengeluaran: [manual("g1", "Y", 1)], setoranTunai: [] }),
+    );
+    expect(m.panel.sudahTerisi).toBe(true);
+  });
+});

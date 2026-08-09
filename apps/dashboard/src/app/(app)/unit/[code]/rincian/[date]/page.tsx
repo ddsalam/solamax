@@ -289,7 +289,7 @@ export default async function RincianPage({
         {/* Input manual (no-print) — Pendapatan Lain & Pengeluaran diisi pengawas.
             Tulis via server action ber-scope; edit = batalkan + tambah. Nomor
             seksi mengikuti model (5/7), bukan huruf summary (F/G). */}
-        <ManualPanel>
+        <ManualPanel isyarat={model.panel}>
           <ManualEntryForm
             code={unit.code}
             date={date}

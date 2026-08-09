@@ -11,6 +11,14 @@ name: G4 arsip
 # dilewati) dan `expect(CASES.length).toBe(34)` (guard yang menegaskan dirinya
 # sendiri). Cek ini yang memaksa keputusannya keluar.
 #
+# ⚠️ KOREKSI 2026-08-09 — versi pertama gerbang ini menuntut label
+# `arsip-siklus-kedua` yang BELUM PERNAH DIBUAT di repo. Ia dibuktikan bisa
+# MERAH lalu dinyatakan "terpasang", padahal jalur hijaunya mustahil. Gerbang
+# yang jalan keluarnya tak ada tak bisa dibedakan dari gerbang tanpa jalan
+# keluar. Sejak sekarang: keputusannya ada di scripts/ci/check-arsip-g4.sh yang
+# di-self-test EMPAT keadaan (termasuk hijau), dan gerbangnya MEMASTIKAN
+# labelnya ada sebelum menuntutnya.
+#
 # ⚠️ BATAS YANG DISEBUT, BUKAN DISEMBUNYIKAN. Cek ini TIDAK membuktikan temuannya
 # sudah bertahan satu putaran. Ia hanya memaksa seseorang MENYATAKANNYA secara
 # eksplisit dan meninggalkan jejak di riwayat PR. Label bisa dipasang refleks.
@@ -32,6 +40,9 @@ on:
 
 permissions:
   contents: read
+  # Label adalah sumber daya `issues` — tanpa ini pemeriksaan keberadaan label
+  # gagal dan gerbangnya jatuh ke "label tak ada" untuk alasan yang salah.
+  issues: read
 
 jobs:
   arsip:
@@ -45,40 +56,16 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          export BERUBAH LABEL_ADA
           BERUBAH=$(git diff --name-only "$BASE...$HEAD" -- 'session-notes/**' || true)
-
-          if [ -z "$BERUBAH" ]; then
-            echo "PR ini tidak menyentuh session-notes/ — G4 tak berlaku."
-            exit 0
+          # Keberadaan label DIPERIKSA, bukan diasumsikan.
+          if gh api "repos/$REPO/labels/arsip-siklus-kedua" >/dev/null 2>&1; then
+            LABEL_ADA=true
+          else
+            LABEL_ADA=false
           fi
-
-          echo "Berkas arsip yang tersentuh:"
-          echo "$BERUBAH" | sed 's/^/  /'
-          echo
-
-          case ",$LABELS," in
-            *,arsip-siklus-kedua,*)
-              echo "Label 'arsip-siklus-kedua' terpasang — G4 dinyatakan terpenuhi oleh owner."
-              echo "Catatan: label ini MENYATAKAN, bukan MEMBUKTIKAN. Lihat komentar di workflow."
-              exit 0
-              ;;
-          esac
-
-          echo
-          echo "❌ G4 — temuan arsip belum dinyatakan bertahan satu putaran."
-          echo
-          echo "PR ini menambah/mengubah berkas di session-notes/, dan G4 melarang"
-          echo "me-merge temuan pada siklus yang sama ia diasersikan."
-          echo
-          echo "PERBAIKANNYA (owner): pasang label 'arsip-siklus-kedua' pada PR ini"
-          echo "setelah temuannya bertahan satu putaran. Cek ini jalan ulang sendiri"
-          echo "begitu label terpasang — tak perlu push."
-          echo
-          echo "Kalau isinya BUKAN temuan baru (mis. hanya memindahkan berkas,"
-          echo "memperbaiki tautan, atau mencatat keputusan yang sudah diverifikasi),"
-          echo "label yang sama tetap cara menyatakannya — dan alasannya sebaiknya"
-          echo "ditulis di badan PR supaya jejaknya bisa dibaca kemudian."
-          echo
-          exit 1
+          bash scripts/ci/check-arsip-g4.sh

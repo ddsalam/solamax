@@ -25,6 +25,11 @@ jobs:
       # sementara semua check terlihat hijau. Di sini ia berbunyi di tempat yang
       # memang dilihat orang.
       - run: bash scripts/ci/check-workflows.sh
+      # Self-test gerbang G4 — EMPAT keadaan termasuk JALUR HIJAU. Versi pertama
+      # gerbang itu hanya pernah dibuktikan MERAH; jalur hijaunya mustahil karena
+      # label pelepasnya belum dibuat. Setengah bukti, dan setengah yang hilang
+      # justru yang menentukan gerbangnya dipakai atau ditinggalkan.
+      - run: bash scripts/ci/check-arsip-g4.selftest.sh
       - uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
