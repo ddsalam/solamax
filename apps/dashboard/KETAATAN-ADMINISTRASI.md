@@ -165,6 +165,50 @@ satu hari tiap hari, jadi tak akan pernah ada yang menyadarinya.
 
 ---
 
+## 3c · Hilir vonis — cek alarm Laporan Operasional (U1)
+
+Disambungkan 2026-08-09. `setoranCheck()` di `laporan-model.ts` **menerjemahkan**
+vonis jadi `AlarmCheck`; ia **tidak memutuskan apa pun**. Pembuat vonis tetap
+satu: `adminStatus`.
+
+**Semua vonis bernada `pending` → `na`, SENGAJA bukan `provisional`.**
+`provisional` membuat nada skor jadi `warning`, dan hari yang memang belum bisa
+dinilai tak boleh terlihat seperti kabar buruk — kesalahan kanal yang sama dengan
+`note.tone` dua-nilai di Rincian. `config_hilang` juga `na`, bukan `fail`: di
+papan Ketaatan ia merah karena di sana ia satu-satunya suara untuk "indikator
+unit ini tak bisa dipercaya"; di sini menjadikannya `fail` akan menuduh pengawas
+atas config yang belum diisi.
+
+⚠️ **Halaman Laporan kini WAJIB mengambil TERRA (komponen B).** Sebelum ini ia
+tak pernah mengambilnya. Tanpa B, `H = A − (B+C+D) + F − G` ter-hitung terlalu
+**besar** dan setiap hari akan terlihat "kurang setor". Itu bukan kelengkapan
+tampilan — itu syarat kebenaran angkanya.
+
+**Dampak terukur sebelum disambungkan** (jendela **2026-07-27 … 2026-08-08**,
+13 hari × 7 unit = **91 unit-hari**; kontrol: papan hari itu 10+7+43+31 = 91):
+
+| sel | yang berubah |
+| ---: | --- |
+| 31 | tak ada apa-apa (tetap `na`) |
+| 43 | penyebut +1 dan pembilang +1 — skor berubah, **nada tidak** |
+| **17** | cek gagal baru → **nada skor memburuk ≥1 langkah** |
+
+`setoran_tersalin` di jendela itu: **0**. Rinciannya di
+[`session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md`](../../session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md).
+
+### "Pengeluaran Sudah Disahkan" tetap N/A — dan itu keputusan
+
+Yang tersimpan di `app.manual_entry` hanyalah bahwa baris pengeluaran **ada** dan
+berapa nilainya. **Disahkan** pertanyaan lain: siapa yang menyetujui, kapan, atas
+dasar apa. **Tidak ada satu pun kolom** yang menyimpan itu.
+
+Menyambungkannya ke "ada barisnya" akan membuat cek ini **hijau** untuk
+pengeluaran yang tak pernah disahkan siapa pun — hijau palsu yang lebih buruk
+daripada `na` jujur, karena ia **menutup** pertanyaannya. Membukanya butuh kolom
+persetujuan + panel pengesahan; belum ada gerbang ownernya. Dijaga tes.
+
+---
+
 ## 4 · SATU pembuat vonis
 
 `adminStatus()` adalah **satu-satunya** yang memutuskan I-vs-H.
