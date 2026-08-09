@@ -8,6 +8,12 @@ export interface HmModule {
   note: string;
 }
 
+/** Nada sel yang dinilai. Dipakai juga sebagai kunci legenda (lihat LEGENDA_NADA). */
+export type HmTone = "success" | "warning" | "danger";
+
+/** Jenis sel netral (tak dinilai). Kunci legenda juga. */
+export type HmPending = "tempo" | "pra-adopsi";
+
 export interface HmCell {
   d: string; // YYYY-MM-DD
   tone: "success" | "warning" | "danger";
@@ -18,7 +24,7 @@ export interface HmCell {
    * sebagai bug, jadi tiap jenis wajib bisa dibedakan mata + punya nama di
    * panel detail.
    */
-  pendingKind?: "tempo" | "pra-adopsi";
+  pendingKind?: HmPending;
   modules: HmModule[];
 }
 
