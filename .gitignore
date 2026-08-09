@@ -37,3 +37,16 @@ solamax-agent-bundle.zip
 # TS incremental build cache
 *.tsbuildinfo
 .measure/
+
+# Artefak cadangan / merge / editor. Lapis PENCEGAH; lapis penangkapnya ada di
+# scripts/ci/check-backup-files.sh (menangkap `git add -f` & yang terlanjur
+# ter-track). Sebabnya nyata: compliance.ts.bak sempat tayang di `main`.
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*.save
+*~
+*.copy
+*.copy.*

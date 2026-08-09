@@ -1,4 +1,4 @@
-import { Heatmap, type HmRow } from "@/components/mon/Heatmap";
+import { Heatmap, type HmPending, type HmRow, type HmTone } from "@/components/mon/Heatmap";
 import {
   adminStatus,
   opnameStatus,
@@ -23,6 +23,35 @@ const TONE: Record<Status, "success" | "warning" | "danger"> = {
   yellow: "warning",
   red: "danger",
 };
+
+/**
+ * LEGENDA — memberi label TINGKAT, bukan SEBAB.
+ *
+ * ⚠️ KENAPA DIUBAH (2026-08-09, temuan owner). Legenda lama menulis
+ * "lengkap · sebagian · KOSONG". Tapi sel merah bisa berarti `setoran_tersalin`,
+ * `kurang_setor`, `setoran_kosong`, `belum_diisi`, ATAU `config_hilang` — dan
+ * hanya dua di antaranya benar-benar tentang kekosongan. Pembaca legenda
+ * karenanya membaca satu sebab untuk lima keadaan.
+ *
+ * Sudah begitu SEBELUM aturan salin-setoran; aturan itu hanya menambah penghuni
+ * keenam ke label yang artinya makin longgar. Keluarga yang sama dengan
+ * `note.tone` dua-nilai untuk fakta tiga-nilai: KANAL YANG MEMBAWA LEBIH SEDIKIT
+ * NILAI DARIPADA FAKTA YANG DITITIPKAN PADANYA.
+ *
+ * `Record`-nya disengaja: nada baru pada `HmTone`/`HmPending` tanpa entri
+ * legenda adalah error type-check, bukan legenda yang diam-diam jadi tak
+ * lengkap lagi. Sebabnya tetap ada — di tooltip tiap sel (`adminNote`).
+ */
+const LEGENDA_NADA: [HmTone, string][] = Object.entries({
+  success: "lengkap & selaras",
+  warning: "perlu dicek",
+  danger: "perlu tindakan",
+} satisfies Record<HmTone, string>) as [HmTone, string][];
+
+const LEGENDA_NETRAL: [HmPending, string][] = Object.entries({
+  tempo: "belum jatuh tempo",
+  "pra-adopsi": "pra-adopsi panel",
+} satisfies Record<HmPending, string>) as [HmPending, string][];
 
 /** Nada sel modul: `pending` = netral (belum jatuh tempo / tak bisa dinilai). */
 function modTone(t: Status | "pending"): "success" | "warning" | "danger" | "pending" {
@@ -173,31 +202,26 @@ export default async function KetaatanPage() {
           {units.length} unit × {DAYS} hari · agregat modul input · klik sel untuk detail
         </span>
         <span className="hm-legendrow">
-          <span className="hm-legenditem">
-            <span className="hm-legend success" />
-            <span className="fs15 t-tertiary">lengkap</span>
-          </span>
-          <span className="hm-legenditem">
-            <span className="hm-legend warning" />
-            <span className="fs15 t-tertiary">sebagian</span>
-          </span>
-          <span className="hm-legenditem">
-            <span className="hm-legend danger" />
-            <span className="fs15 t-tertiary">kosong</span>
-          </span>
-          <span className="hm-legenditem">
-            <span className="hm-legend pending" />
-            <span className="fs15 t-tertiary">belum diisi · belum tempo</span>
-          </span>
-          <span className="hm-legenditem">
-            <span className="hm-legend pending pra" />
-            <span className="fs15 t-tertiary">pra-adopsi panel</span>
-          </span>
+          {LEGENDA_NADA.map(([nada, teks]) => (
+            <span key={nada} className="hm-legenditem">
+              <span className={`hm-legend ${nada}`} />
+              <span className="fs15 t-tertiary">{teks}</span>
+            </span>
+          ))}
+          {LEGENDA_NETRAL.map(([jenis, teks]) => (
+            <span key={jenis} className="hm-legenditem">
+              <span className={`hm-legend pending${jenis === "pra-adopsi" ? " pra" : ""}`} />
+              <span className="fs15 t-tertiary">{teks}</span>
+            </span>
+          ))}
         </span>
       </div>
       <Heatmap rows={rows} dayLabels={dayLabels} />
       <div className="fs15 t-tertiary mt3">
-        Administrasi = pengisian Rincian Penjualan oleh pengawas (Pendapatan Lain,
+        <strong>Warna menyatakan TINGKAT, bukan sebab</strong> — satu sel merah bisa
+        berarti setoran tak selaras, setoran sama dengan hari tetangga, seksi yang
+        belum diisi, atau unit yang belum terdaftar di config. Sebabnya ada di
+        tooltip tiap sel. Administrasi = pengisian Rincian Penjualan oleh pengawas (Pendapatan Lain,
         Pengeluaran, Setoran Bank). Setoran dinilai SELARAS bila |I − H| ≤{" "}
         {rp(SETORAN_TOLERANSI_RP)} — setoran bank selalu dibulatkan ke ribuan, jadi
         kesamaan eksak dengan uang tunai tak pernah terjadi.{" "}
