@@ -4,7 +4,12 @@
  * (ScopedUnitId) di server; fungsi ini murni (tanpa I/O) → angka PDF identik
  * dengan angka layar (rekon ke rupiah). Formatter id-ID/WIB dari lib/format.
  */
-import { adminStatus, SETORAN_TOLERANSI_RP, type AdminVerdict } from "@/lib/compliance";
+import {
+  adminStatus,
+  SETORAN_TOLERANSI_RP,
+  type AdminVerdict,
+  type TetanggaHari,
+} from "@/lib/compliance";
 import { classifyProduct } from "@/lib/config";
 import { idn, rp } from "@/lib/format";
 import type * as Q from "@/lib/queries";
@@ -81,12 +86,11 @@ export interface RincianKonteks {
   /** Lantai adopsi unit (`adopsiRincian(code)`) — 3 nilai berbeda, lihat config. */
   adopsi: string | null | undefined;
   /**
-   * Σ setoran hari SEBELUMNYA (`business_date` − 1) di unit yang sama; null
-   * bila hari itu tak punya baris setoran. Dipakai aturan salin-setoran.
+   * Hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA ARAH.
    * Lembar INI yang ditandatangani pengawas, jadi ia harus memuat peringatan
    * yang sama dengan papan — bukan setengah permukaan saja.
    */
-  iSebelumnya: number | null;
+  tetangga: { sebelum: TetanggaHari | null; sesudah: TetanggaHari | null };
   businessDate: string;
   today: string;
 }
@@ -139,7 +143,9 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       nSetoran: setoranTunai.length,
       h: H,
       i: I,
-      iSebelumnya: raw.konteks.iSebelumnya,
+      f: F,
+      g: G,
+      tetangga: raw.konteks.tetangga,
       shifts: raw.konteks.shifts,
     },
     { businessDate: raw.konteks.businessDate, today: raw.konteks.today },
@@ -273,7 +279,12 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
           : verdict.kode === "setoran_tersalin"
             ? {
                 tone: "warn",
-                text: `Setoran SAMA PERSIS dengan hari sebelumnya (${rp(I)}) dan meleset ${rp(Math.abs(I - H))} dari uang tunai — periksa, kemungkinan angka kemarin terketik ulang`,
+                text:
+                  `Setoran SAMA PERSIS dengan hari tetangga (${rp(I)}) dan meleset ${rp(Math.abs(I - H))} dari uang tunai hari ini` +
+                  (verdict.komponenIkut
+                    ? " · Pendapatan Lain & Pengeluaran juga identik dengan hari itu"
+                    : "") +
+                  " — periksa, kemungkinan angka hari lain terketik di tanggal ini",
               }
             : verdict.kode === "selaras"
             ? { tone: "ok", text: `Setoran selaras dengan uang tunai (±${rp(SETORAN_TOLERANSI_RP)})` }

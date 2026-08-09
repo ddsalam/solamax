@@ -18,7 +18,13 @@ const raw = (over: Partial<RincianRaw> = {}): RincianRaw =>
   ({
     // Konteks vonis: hari LENGKAP & sudah lewat tempo → cabang setoran aktif.
     // Tes yang menguji gerbang shift meng-override `konteks` secara eksplisit.
-    konteks: { shifts: 3, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-05" },
+    konteks: {
+      shifts: 3,
+      adopsi: "2020-01-01",
+      tetangga: { sebelum: null, sesudah: null },
+      businessDate: "2026-07-01",
+      today: "2026-07-05",
+    },
     prod: [{ nama: "PERTALITE", vol: 1000, omzet: 10_000_000 }],
     terra: [{ nama: "PERTALITE", ckdbbm: "P", liter: 10, rp: 100_000 }],
     pelanggan: [{ nama: "PT MAJU", ckdplg: "PLG1", liter: 20, rp: 200_000 }],
@@ -131,7 +137,7 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
         konteks: {
           shifts: 2,
           adopsi: "2020-01-01",
-          iSebelumnya: null,
+          tetangga: { sebelum: null, sesudah: null },
           businessDate: "2026-07-01",
           today: "2026-07-05",
         },

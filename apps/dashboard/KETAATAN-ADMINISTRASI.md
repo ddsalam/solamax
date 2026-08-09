@@ -195,13 +195,44 @@ sekarang kasus itu **belum terjadi** (0 dari 102 pasangan yang F&G identik
 sementara I sudah beda) — ia **laten**, dan menjadi nyata pada perbaikan
 berikutnya.
 
-### Status aturan
+### ✅ DIPERBAIKI — aturan sekarang DUA ARAH
 
-🔴 **Aturan salin-setoran yang tayang sekarang menangkap 0 dari 1 kejadian
-nyata.** Perbaikannya (dua arah · F&G · waktu evaluasi) sedang menunggu gerbang
-owner — bentuk & biayanya dilaporkan di
-[`session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md`](../../session-notes/2026-08-09-u1-pengukuran-dan-usul-penjaga-yatim.md).
-Jangan baca papan yang tenang sebagai bukti tak ada salinan.
+Bentuk finalnya (gerbang owner 2026-08-09):
+
+> Untuk hari `D` yang **dinilai**: bila `|I(D) − H(D)| >` toleransi **dan**
+> `I(D)` sama persis dengan `I(D−1)` **atau** `I(D+1)` → `setoran_tersalin`,
+> **MERAH**.
+
+**Hari yang ditandai adalah yang tak cocok dengan H-nya SENDIRI; tetangga hanya
+memasok bukti ASAL-USUL angkanya.** Karena itu ia menyala di 08-07 dan **diam**
+di 08-08 — tanpa aturan tambahan.
+
+Tiga keputusan owner yang menyertainya:
+
+1. **`D+1` = HARI INI tidak dibandingkan.** Setoran hari ini masih diisi, jadi
+   nilai yang kebetulan sama sesaat akan menyalakan alarm lalu padam. Biayanya
+   nol: pada kasus yang kita punya `D+1` adalah kemarin. ⚠️ Pengecualian ini
+   ditegakkan **di dalam `adminStatus`**, bukan dititipkan ke empat pemanggil —
+   aturan yang harus diingat empat kali akan dilupakan sekali.
+2. **F & G bukan pemicu terpisah, melainkan BAGIAN DARI PESAN**
+   (`AdminVerdict.komponenIkut`). Nilai diagnostiknya dapat, risiko
+   positif-palsunya nol, dan tak ada ambang baru yang harus dibela — F/G identik
+   antar hari bisa sah (biaya tetap harian), dan basisnya 0 dari 102 pasangan
+   memang belum cukup untuk pemicu sendiri.
+3. **Tetap MERAH walau buktinya hanya `D+1`**, meski secara kronologi tetangga
+   itu diketik belakangan.
+
+**Waktu evaluasi tidak berubah — dan tak perlu berubah.** Tak ada vonis yang
+disimpan: `adminStatus` dihitung saat render dari data saat itu juga, jadi `D`
+memang **sudah** dinilai ulang setiap kali `D+1` bertambah. Biaya query: papan
+Ketaatan & feed anomali **nol** (deretnya sudah rapat), Rincian & Laporan
+**+1 kelompok** query kecil masing-masing.
+
+**Terbukti pada data produksi:** penjaga hidup `dua-arah.integration.test.ts`
+menjalankan jalur produksi atas 102 pasangan dan mengasersikan **1 kasus nyata**
+(Batu Layang 08-07) → `setoran_tersalin`. Ia juga mencetak jumlah kasus yang
+benar-benar diasersikan: **hijau dengan 0 kasus bukan bukti apa pun**, karena
+begitu pengawas memperbaiki entrinya buktinya lenyap dari data hidup.
 
 ### Pemasangan D−1 ada di SATU tempat (dan harus jadi dua sisi)
 

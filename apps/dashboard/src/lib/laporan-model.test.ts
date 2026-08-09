@@ -35,7 +35,8 @@ const raw = {
   recapPengeluaran: [],
   recapSetoran: [],
   terra: [],
-  setoranKemarin: [],
+  tetanggaSebelum: { f: [], g: [], i: [] },
+  tetanggaSesudah: { f: [], g: [], i: [] },
 } as unknown as LaporanRaw;
 
 const ctx = {
@@ -282,19 +283,28 @@ describe("penjaga SUMBER: halaman Laporan menyambungkan query yang benar", () =>
   it("`terra` diisi getTerraResmiForDate, dan halaman memang memanggilnya", () => {
     expect(HALAMAN).toContain("getTerraResmiForDate(unit.unit_id, date)");
     // Urutan destructuring ↔ urutan Promise.all: `terra` harus tepat sebelum
-    // `setoranKemarin`, sama seperti kedua query-nya.
+    // blok tetangga, sama seperti kedua kelompok query-nya.
     const iTerraVar = HALAMAN.indexOf("    terra,");
-    const iKemarinVar = HALAMAN.indexOf("    setoranKemarin,");
+    const iTetanggaVar = HALAMAN.indexOf("    fKemarin, gKemarin, iKemarin, fBesok, gBesok, iBesok,");
     const iTerraQ = HALAMAN.indexOf("getTerraResmiForDate(");
-    const iKemarinQ = HALAMAN.indexOf('addDays(date, -1), "setoran_tunai"');
-    for (const [n, i] of Object.entries({ iTerraVar, iKemarinVar, iTerraQ, iKemarinQ })) {
+    const iTetanggaQ = HALAMAN.indexOf('addDays(date, -1), "pendapatan_lain"');
+    for (const [n, i] of Object.entries({ iTerraVar, iTetanggaVar, iTerraQ, iTetanggaQ })) {
       expect(i, `${n} tak ditemukan`).toBeGreaterThan(-1);
     }
-    expect(iTerraVar).toBeLessThan(iKemarinVar);
-    expect(iTerraQ).toBeLessThan(iKemarinQ);
+    expect(iTerraVar).toBeLessThan(iTetanggaVar);
+    expect(iTerraQ).toBeLessThan(iTetanggaQ);
   });
 
-  it("setoran D−1 diambil dari tanggal SEBELUMNYA, bukan tanggal yang sama", () => {
-    expect(HALAMAN).toContain('getManualEntries(unit.unit_id, addDays(date, -1), "setoran_tunai")');
+  it("tetangga diambil DUA ARAH: D−1 dan D+1, ketiga seksinya", () => {
+    // Aturan satu arah menangkap 0 dari 1 kejadian nyata. Kalau salah satu dari
+    // enam query ini hilang, tetangganya jadi setengah dan kebutaan itu kembali.
+    for (const arah of ["-1", "1"]) {
+      for (const seksi of ["pendapatan_lain", "pengeluaran", "setoran_tunai"]) {
+        expect(
+          HALAMAN,
+          `query ${seksi} D${arah === "-1" ? "−1" : "+1"} hilang`,
+        ).toContain(`getManualEntries(unit.unit_id, addDays(date, ${arah}), "${seksi}")`);
+      }
+    }
   });
 });

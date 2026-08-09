@@ -18,6 +18,7 @@ import {
   fmtRp,
   SETORAN_TOLERANSI_RP,
   type AdminVerdict,
+  type TetanggaHari,
 } from "@/lib/compliance";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
@@ -186,8 +187,13 @@ export interface LaporanRaw {
    * syarat kebenaran angkanya.
    */
   terra: { rp: number }[];
-  /** Σ setoran D−1 (bahan aturan salin-setoran). Kosong = tak ada baris. */
-  setoranKemarin: Manual[];
+  /**
+   * Baris manual hari TETANGGA (D−1 & D+1) — bahan aturan salin-setoran DUA
+   * ARAH. `adminStatus` sendiri yang mengabaikan D+1 bila ia kebetulan hari
+   * ini; berkas ini tak boleh ikut menyimpan aturan itu.
+   */
+  tetanggaSebelum: { f: Manual[]; g: Manual[]; i: Manual[] };
+  tetanggaSesudah: { f: Manual[]; g: Manual[]; i: Manual[] };
 }
 
 /**
@@ -234,9 +240,11 @@ export function setoranCheck(v: AdminVerdict, h: number, i: number | null): Alar
       };
     case "setoran_tersalin":
       return {
-        label: "Setoran Bank — SAMA PERSIS dengan kemarin",
+        label: "Setoran Bank — SAMA PERSIS dengan hari tetangga",
         state: "fail",
-        note: `${fmtRp(i ?? 0)} identik dengan hari sebelumnya dan meleset ${fmtRp(selisih ?? 0)} dari uang tunai`,
+        note:
+          `${fmtRp(i ?? 0)} identik dengan hari sebelumnya/sesudahnya dan meleset ${fmtRp(selisih ?? 0)} dari uang tunai` +
+          (v.komponenIkut ? " · Pendapatan Lain & Pengeluaran juga identik" : ""),
       };
     case "lebih_setor":
       return {
@@ -301,6 +309,17 @@ export function setoranCheck(v: AdminVerdict, h: number, i: number | null): Alar
         note: "unit belum terdaftar di ADOPSI_RINCIAN (config) · indikator tak bisa dipercaya untuk unit ini",
       };
   }
+}
+
+/** Baris manual satu hari tetangga → bentuk yang dipakai aturan. */
+function sisiTetangga(t: { f: Manual[]; g: Manual[]; i: Manual[] }): TetanggaHari {
+  return {
+    // null (bukan 0) bila tak ada baris: "tak ada setoran" bukan "setoran nol",
+    // dan aturannya tak boleh menyala karena dua hari sama-sama kosong.
+    i: t.i.length > 0 ? t.i.reduce((s, r) => s + r.amount, 0) : null,
+    f: t.f.reduce((s, r) => s + r.amount, 0),
+    g: t.g.reduce((s, r) => s + r.amount, 0),
+  };
 }
 
 const orderBy = <T extends { nama: string }>(xs: T[]): T[] =>
@@ -478,10 +497,9 @@ export function buildLaporanModel(
       nSetoran: raw.recapSetoran.length,
       h: H,
       i: setoranI,
-      iSebelumnya:
-        raw.setoranKemarin.length > 0
-          ? raw.setoranKemarin.reduce((t, r) => t + r.amount, 0)
-          : null,
+      f: raw.recapPendapatanLain.reduce((t, r) => t + r.amount, 0),
+      g: raw.recapPengeluaran.reduce((t, r) => t + r.amount, 0),
+      tetangga: { sebelum: sisiTetangga(raw.tetanggaSebelum), sesudah: sisiTetangga(raw.tetanggaSesudah) },
       shifts: shift.shifts,
     },
     { businessDate: date, today },

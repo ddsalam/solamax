@@ -288,3 +288,93 @@ Bedanya dengan prediksi Korek yang meleset: kali ini saya meramal atas
 adopsi), bukan atas model yang saya tahu tak lengkap. Ramalan hanya sebaik
 bacaan yang mendahuluinya. ⚠️ Dan itu **tidak** menyelamatkan aturan
 salin-setoran: prediksinya benar semua di dalam pertanyaan yang salah.
+
+---
+
+# 2026-08-09 (penyelidikan UX) — antarmuka membuka tanggal yang TIDAK dimaksud
+
+Diminta owner: selidiki jalur masuk **sebelum** menyempurnakan deteksi. Dua
+kejadian dari **dua pengawas berbeda** dengan pola identik bukan kecerobohan
+individu.
+
+**Tak ada kode yang diubah dalam penyelidikan ini.**
+
+## Mekanismenya
+
+Tanggal default halaman Rincian datang dari `getSelection()` di
+[`selection.ts`](../apps/dashboard/src/lib/selection.ts):
+
+```
+tanggal = cookie `solamax.date`  bila formatnya sah
+        = hari ini (WIB)         bila tidak
+```
+
+Dan cookie itu **ditulis ulang setiap kali** pengawas membuka rute laporan
+per-unit (`selectionCookieWrites`, `dateFromUrl: true`, umur **30 hari**). Jadi
+defaultnya adalah **"tanggal laporan yang terakhir kebetulan saya buka"** —
+bukan tanggal yang belum diisi.
+
+Kartu Beranda dan tautan sidebar keduanya memakai tanggal yang sama itu. Tak ada
+satu pun jalur masuk yang bertanya "hari mana yang belum diisi?".
+
+## Kenapa itu menghasilkan PERSIS pola yang terlihat
+
+| | yang dibuka aplikasi | yang dimaksud pengawas |
+| --- | --- | --- |
+| **Korek** 08-07 10:28 | 08-07 | **08-06** (hari yang baru tutup) |
+| **Batu Layang** 08-09 12:08 | **08-07** — cookie dari sesi 08-08 | **08-08** |
+
+Untuk Batu Layang ini **berbasis jejak, bukan dugaan**: entri bd 08-07 dibuat
+**08-08 10:04–10:05**, jadi pada 08-08 mereka memang berada di
+`/rincian/2026-08-07` → cookie berisi `2026-08-07` selama 30 hari → sesi 08-09
+membuka **08-07** lagi.
+
+Untuk Korek saya **tidak bisa** memastikan default mana yang menyala — melihat
+halaman tak meninggalkan jejak. Yang pasti: aplikasi membuka **08-07** dan angka
+yang mereka ketik milik **08-06**.
+
+> Kedua default gagal karena alasan yang sama: **hari yang ingin diisi pengawas
+> hampir tak pernah "hari ini", dan tidak andal "yang terakhir saya buka" — ia
+> "hari terbaru yang belum diisi".** Dan aplikasi SUDAH tahu hari mana itu:
+> `adminStatus` menghitung `belum_diisi` setiap render. Informasinya ada; jalur
+> masuknya tidak memakainya.
+
+## Faktor kedua: tanggalnya tak terlihat saat mengetik
+
+Di `rincian/[date]/page.tsx`, "Tanggal bisnis …" dirender **satu kali** di kop
+lembar (baris 170). Panel input ada di baris **279** — setelah **empat** seksi
+ledger (Omset, Terra, Pelanggan, EDC), yang panjangnya mengikuti jumlah baris
+transaksi hari itu.
+
+`ManualEntryForm` sendiri **tidak menampilkan tanggal sama sekali** (diperiksa:
+tak ada rujukan tanggal di JSX-nya; prop `date` hanya dikirim ke server action).
+
+Jadi saat pengawas mengetik, tanggal yang sedang mereka isi **sudah ter-scroll
+keluar layar**, dan form untuk 08-07 tampak identik dengan form untuk 08-08.
+
+## Ringkas: tiga lapis yang semuanya menunjuk arah sama
+
+1. **Default salah** — cookie "terakhir dibuka", bukan "belum diisi".
+2. **Tak ada isyarat** bahwa hari yang terbuka **sudah** terisi (menimpa hari
+   yang sudah benar tak terasa berbeda dari mengisi hari kosong).
+3. **Tanggal tak terlihat** di titik pengetikan.
+
+Deteksi menangkapnya **sesudah**. Ketiga hal di atas yang membuatnya **terjadi**.
+
+**Tidak ada yang diubah. Menunggu gerbang owner untuk perbaikan UX-nya.**
+
+## ⚠️ BUKAN KODE — Batu Layang 08-07 masih rusak di produksi
+
+Entri asli sudah ter-**void** dan tak bisa dipulihkan lewat aplikasi tanpa
+dimasukkan ulang. Angka yang harus dikembalikan pada **business date 2026-08-07**:
+
+| komponen | nilai yang benar | yang ada sekarang |
+| --- | ---: | ---: |
+| **F** Pendapatan Lain | **0** (tak ada baris) | 103.478.000 |
+| **G** Pengeluaran | **40.600.000** | 40.608.000 |
+| **I** Setoran Bank | **241.297.000** | 483.803.000 |
+
+Dengan itu `H` kembali 241.296.190 dan selisihnya Rp 810 → **selaras**.
+Baris 08-08 sudah benar dan **jangan disentuh**.
+
+**Datanya tidak saya sentuh.**

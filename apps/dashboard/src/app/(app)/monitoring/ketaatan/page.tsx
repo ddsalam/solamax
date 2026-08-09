@@ -2,7 +2,7 @@ import { Heatmap, type HmRow } from "@/components/mon/Heatmap";
 import {
   adminStatus,
   opnameStatus,
-  pasangkanSetoranKemarin,
+  pasangkanTetangga,
   salesStatus,
   SETORAN_TOLERANSI_RP,
   type AdminVerdict,
@@ -61,7 +61,12 @@ function adminNote(v: AdminVerdict, h: number, i: number | null): string {
     case "kurang_setor":
       return `setoran kurang ${rp(h - (i ?? 0))}`;
     case "setoran_tersalin":
-      return `setoran SAMA PERSIS dengan kemarin (${rp(i ?? 0)}) dan meleset ${rp(Math.abs((i ?? 0) - h))} dari uang tunai — periksa, kemungkinan angka kemarin terketik ulang`;
+      return (
+        `setoran SAMA PERSIS dengan hari tetangga (${rp(i ?? 0)}) dan meleset ` +
+        `${rp(Math.abs((i ?? 0) - h))} dari uang tunai hari ini` +
+        (v.komponenIkut ? " · PENDAPATAN LAIN & PENGELUARAN juga identik" : "") +
+        " — periksa, kemungkinan angka hari lain terketik di sini"
+      );
     case "setoran_kosong":
       return "pendapatan/pengeluaran terisi, SETORAN belum diisi";
     case "belum_diisi":
@@ -99,13 +104,15 @@ export default async function KetaatanPage() {
         getComplianceMatrix(u.unit_id, DAYS + 1),
         getTankCount(u.unit_id),
       ]);
-      // Pemasangan D−1 dari lib/compliance.ts — SATU implementasi, teruji,
-      // dipakai bersama feed anomali. `.slice(1)` membuang baris benih.
-      const asc = pasangkanSetoranKemarin([...matrix].reverse()).slice(1);
+      // Pemasangan tetangga (D−1 & D+1) dari lib/compliance.ts — SATU
+      // implementasi, teruji, dipakai bersama feed anomali. `.slice(1)`
+      // membuang baris benih. Sel terakhir tak punya D+1 dan memang tak
+      // membutuhkannya: ia hari ini, dan hari ini tak dinilai.
+      const asc = pasangkanTetangga([...matrix].reverse()).slice(1);
       return {
         code: u.code,
         name: u.name,
-        cells: asc.map(({ hari: d, iSebelumnya }) => {
+        cells: asc.map(({ hari: d, tetangga }) => {
           const s = salesStatus(d.shifts);
           const o = opnameStatus(d.tanks, tanks);
           // H dari SUMBER TUNGGAL (lib/rekon.ts) — bukan dihitung ulang di SQL.
@@ -125,7 +132,9 @@ export default async function KetaatanPage() {
               nSetoran: d.nSetoran,
               h,
               i: d.setoran,
-              iSebelumnya,
+              f: d.compF,
+              g: d.compG,
+              tetangga,
               shifts: d.shifts,
             },
             { businessDate: d.d, today },

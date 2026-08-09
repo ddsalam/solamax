@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { adminStatus, pasangkanSetoranKemarin } from "./compliance";
+import { adminStatus, pasangkanTetangga } from "./compliance";
 import { adopsiRincian } from "./config";
 import { setoranCheck } from "./laporan-model";
 import { uangTunai } from "./rekon";
@@ -65,7 +65,7 @@ d("Setoran Bank Sesuai — dua jalur query, satu H", () => {
       const u = U(await unitId(k.kode));
 
       // ── jalur A: query per-domain, persis yang dipakai halaman Laporan ──
-      const [prod, terra, pelanggan, edc, fRows, gRows, iRows, iKemarinRows, shift] =
+      const [prod, terra, pelanggan, edc, fRows, gRows, iRows, shift] =
         await Promise.all([
           Q.getSalesByProduct(u, k.tanggal, k.tanggal),
           Q.getTerraResmiForDate(u, k.tanggal),
@@ -74,7 +74,6 @@ d("Setoran Bank Sesuai — dua jalur query, satu H", () => {
           Q.getManualEntries(u, k.tanggal, "pendapatan_lain"),
           Q.getManualEntries(u, k.tanggal, "pengeluaran"),
           Q.getManualEntries(u, k.tanggal, "setoran_tunai"),
-          Q.getManualEntries(u, addDays(k.tanggal, -1), "setoran_tunai"),
           Q.getShiftInfo(u, k.tanggal),
         ]);
       const hA = uangTunai({
@@ -87,8 +86,8 @@ d("Setoran Bank Sesuai — dua jalur query, satu H", () => {
       });
 
       // ── jalur B: getAdminDays (agregat di SQL), jalur papan Ketaatan ──
-      const rows = await Q.getAdminDays([u], addDays(k.tanggal, -1), k.tanggal);
-      const pasangan = pasangkanSetoranKemarin(rows).find((x) => x.hari.d === k.tanggal);
+      const rows = await Q.getAdminDays([u], addDays(k.tanggal, -1), addDays(k.tanggal, 1));
+      const pasangan = pasangkanTetangga(rows).find((x) => x.hari.d === k.tanggal);
       const r = pasangan?.hari;
       if (!r) throw new Error(`tak ada baris getAdminDays untuk ${k.kode} ${k.tanggal}`);
       const hB = uangTunai({
@@ -111,8 +110,9 @@ d("Setoran Bank Sesuai — dua jalur query, satu H", () => {
           nSetoran: iRows.length,
           h: hA,
           i: iA,
-          iSebelumnya:
-            iKemarinRows.length > 0 ? iKemarinRows.reduce((t, x) => t + x.amount, 0) : null,
+          f: fRows.reduce((t, x) => t + x.amount, 0),
+          g: gRows.reduce((t, x) => t + x.amount, 0),
+          tetangga: pasangan.tetangga,
           shifts: shift.shifts,
         },
         { businessDate: k.tanggal, today: HARI_INI },

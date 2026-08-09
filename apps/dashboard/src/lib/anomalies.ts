@@ -24,7 +24,7 @@ import {
 import type { ScopedUnit } from "./scope";
 import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
-import { adminStatus, fmtRp, pasangkanSetoranKemarin, SETORAN_TOLERANSI_RP } from "./compliance";
+import { adminStatus, fmtRp, pasangkanTetangga, SETORAN_TOLERANSI_RP } from "./compliance";
 import { adopsiRincian } from "./config";
 import { uangTunai } from "./rekon";
 import {
@@ -107,9 +107,9 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
     perUnit.set(r.unit_id, list);
   }
   const berpasangan = [...perUnit.values()].flatMap((list) =>
-    pasangkanSetoranKemarin([...list].sort((a, b) => a.d.localeCompare(b.d))),
+    pasangkanTetangga([...list].sort((a, b) => a.d.localeCompare(b.d))),
   );
-  for (const { hari: r, iSebelumnya: iKemarin } of berpasangan) {
+  for (const { hari: r, tetangga } of berpasangan) {
     if (r.d < dari) continue; // baris benih: tugasnya hanya memasok iKemarin
     const h = uangTunai({
       A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG,
@@ -122,7 +122,9 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         nSetoran: r.nSetoran,
         h,
         i: r.setoran,
-        iSebelumnya: iKemarin,
+        f: r.compF,
+        g: r.compG,
+        tetangga,
         shifts: r.shifts,
       },
       { businessDate: r.d, today },
@@ -161,9 +163,14 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         tier: "major",
         sev: selisih,
         dateIso: r.d,
-        title: `Setoran bank SAMA PERSIS dengan kemarin — ${fmtRp(r.setoran ?? 0)}`,
+        title: `Setoran bank SAMA PERSIS dengan hari tetangga — ${fmtRp(r.setoran ?? 0)}`,
         unit: unitTag,
-        desc: `Nilai setoran hari ini identik dengan hari sebelumnya DAN meleset ${fmtRp(selisih)} dari uang tunai H = ${fmtRp(h)}. Kemungkinan angka kemarin terketik ulang. Bila keduanya memang benar, angka ini akan cocok dengan H — di sini tidak.`,
+        desc:
+          `Nilai setoran hari ini identik dengan hari sebelumnya atau sesudahnya DAN meleset ${fmtRp(selisih)} dari uang tunai H = ${fmtRp(h)}. ` +
+          (v.komponenIkut
+            ? "Pendapatan Lain DAN Pengeluaran juga identik dengan hari itu — kemungkinan besar seluruh isian hari lain terketik di tanggal ini. "
+            : "") +
+          "Bila angkanya memang milik hari ini, ia akan cocok dengan H — di sini tidak.",
         time: r.d,
         href,
       });
