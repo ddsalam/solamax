@@ -30,6 +30,11 @@ jobs:
       # label pelepasnya belum dibuat. Setengah bukti, dan setengah yang hilang
       # justru yang menentukan gerbangnya dipakai atau ditinggalkan.
       - run: bash scripts/ci/check-arsip-g4.selftest.sh
+      # Penjaga berkas cadangan ter-track. Sebabnya nyata: compliance.ts.bak —
+      # sisa uji mutasi, yatim, salinan BASI logika vonis — sempat TAYANG di
+      # `main`. Menjaga akhiran, bukan konsep; batasnya ditulis di skripnya.
+      - run: bash scripts/ci/check-backup-files.selftest.sh
+      - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
