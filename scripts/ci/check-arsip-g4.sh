@@ -20,6 +20,8 @@
 # dua hari — dan yang ketiga terjadi pada alat yang dibangun untuk kelas ini.
 #
 # MASUKAN (env):
+#   BASE_REF   branch tujuan PR (mis. staging / main)
+#   HEAD_REF   branch asal PR
 #   BERUBAH    daftar berkas session-notes/ yang berubah, satu per baris ("" = tak ada)
 #   LABELS     label PR, dipisah koma
 #   LABEL_ADA  "true" bila label pelepas ADA di repo, selain itu dianggap tidak
@@ -30,6 +32,26 @@ set -euo pipefail
 
 LABEL="${LABEL:-arsip-siklus-kedua}"
 REPO="${REPO:-<owner>/<repo>}"
+
+# ── PENGECUALIAN: PR PROMOSI (staging → main) ────────────────────────────────
+#
+# Keputusan owner 2026-08-09. Siklus keduanya SUDAH terjadi di PR `staging`;
+# menuntutnya lagi saat promosi adalah ritual duplikat — dan gerbang yang
+# menuntut label yang sama setiap kali akan jadi stempel refleks dalam sepekan.
+# Itu persis kematian yang diramalkan untuk alarm kas dorman, dan alasannya tidak
+# berhenti berlaku hanya karena gerbang ini milik kami sendiri.
+#
+# ⚠️ SEMPIT DENGAN SENGAJA: `main` saja TIDAK cukup — head harus `staging`. Tanpa
+# syarat kedua itu, siapa pun bisa melewati gerbang ini hanya dengan membuka PR
+# langsung ke `main` dari branch fitur (yang memang sudah dilarang aturan repo,
+# tapi pengecualian tak boleh bersandar pada aturan yang ditegakkan di tempat
+# lain). Keadaan itu diuji tersendiri di self-test.
+if [ "${BASE_REF:-}" = "main" ] && [ "${HEAD_REF:-}" = "staging" ]; then
+  echo "PR promosi (staging → main) — G4 dikecualikan."
+  echo "Siklus kedua sudah dinilai pada PR ke staging; menuntutnya lagi di sini"
+  echo "hanya akan melatih orang memasang label secara refleks."
+  exit 0
+fi
 
 if [ -z "${BERUBAH:-}" ]; then
   echo "PR ini tidak menyentuh session-notes/ — G4 tak berlaku."
