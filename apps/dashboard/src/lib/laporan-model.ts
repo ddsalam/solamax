@@ -20,6 +20,7 @@ import {
   type AdminVerdict,
   type TetanggaHari,
 } from "@/lib/compliance";
+import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import { uangTunai } from "@/lib/rekon";
@@ -40,6 +41,7 @@ type DoRow = Awaited<ReturnType<typeof Q.getDoHarian>>[number];
 type DoAnom = Awaited<ReturnType<typeof Q.getDoAnomalies>>[number];
 type DoSuspect = Awaited<ReturnType<typeof Q.getDoSuspectSO>>[number];
 type Shift = Awaited<ReturnType<typeof Q.getShiftInfo>>;
+type ZeroClosing = Awaited<ReturnType<typeof Q.getZeroClosingEvents>>[number];
 type Cash = Awaited<ReturnType<typeof Q.getCashForDate>>[number];
 type Saldo = Awaited<ReturnType<typeof Q.getSaldoPelanggan>>;
 type Manual = Awaited<ReturnType<typeof Q.getManualEntries>>[number];
@@ -140,6 +142,8 @@ export interface LaporanModel {
     glMonthTotal: number;
     glPctMonth: number | null;
   };
+  /** Arus Minyak Harian — dekomposisi G/L RESUME per produk (lihat arus-minyak.ts). */
+  arusMinyak: ArusMinyak;
   target: { rows: TargetRow[] };
   doHarian: {
     rows: DoHarianRow[];
@@ -164,6 +168,8 @@ export interface LaporanModel {
 export interface LaporanRaw {
   prodDay: Prod[];
   glRows: GlRow[];
+  /** Kejadian penutup-nol jendela D−1..D+1; disaring ke `date` di sini. */
+  zeroClosing: ZeroClosing[];
   prodMonth: Prod[];
   delivMonth: Deliv[];
   doDay: DoRow[];
@@ -333,6 +339,7 @@ export function buildLaporanModel(
   const {
     prodDay,
     glRows,
+    zeroClosing,
     prodMonth,
     delivMonth,
     doDay,
@@ -408,6 +415,18 @@ export function buildLaporanModel(
     tera: teraByCode.get(p.ckdbbm) ?? 0,
     omzet: p.omzet,
   }));
+
+  // ── Arus Minyak Harian ──
+  // Dekomposisi G/L RESUME hari itu; `glRowsDay` sama persis dengan yang memberi
+  // makan `dayAgg` di atas → Losses ≡ Gain/Losses panel Omset, per konstruksi.
+  // Urutannya mengikuti `orderBy` halaman ini (Pertalite → Pertamax → …), BUKAN
+  // urutan EasyMax — konsistensi antar-panel di satu halaman lebih berguna bagi
+  // pembaca ketimbang meniru urutan laporan lain.
+  const arusMinyakRaw = buildArusMinyak(
+    glRows.filter((r) => r.d === date),
+    zeroClosing.filter((z) => z.d === date),
+  );
+  const arusMinyak: ArusMinyak = { ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows) };
 
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
   const glMonthTotal = monthAgg.totalSigned;
@@ -663,6 +682,7 @@ export function buildLaporanModel(
     },
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
     glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth },
+    arusMinyak,
     target: { rows: targetRows },
     doHarian: {
       rows: doRows,
