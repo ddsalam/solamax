@@ -1305,3 +1305,67 @@ secara kompensatoris, mustahil keduanya tetap eksak sementara Awal sendirian men
 12 dari 18 berkas oracle belum ditranskripsi (28 Okt 03–08, ADIS 02–08). Berdasarkan
 §P4-5 semuanya diprediksi BERSIH (tak ada hari divergen), tapi **prediksi bukan
 verifikasi** — dan §P4-5 baru saja memperagakan bahwa prediksi saya bisa meleset.
+
+## P5-0 — PRASYARAT backfill per RENTANG YANG DISEGEL
+
+| unit | rentang segel | hari opname | hari kalender | domain | inti-5 |
+|---|---|---:|---:|---:|---:|
+| Imam Bonjol | 2025-11-21…2026-08-06 | 259 | 259 | 14 | 5 |
+| Bakau | 2026-03-04…2026-08-08 | 158 | 158 | 14 | 5 |
+| Adisucipto | 2026-08-01…08 | 8 | 8 | 10 | **4** ⚠ |
+| Bundaran Kotabaru | 2026-08-01…08 | 8 | 8 | 14 | 5 |
+| Batu Layang | 2026-02-13…2026-08-08 | 177 | 177 | 13 | 5 |
+| 28 Oktober | 2026-08-01…08 | 8 | 8 | 14 | 5 |
+
+Nol hari bolong di seluruh rentang. ADIS inti-4/5 = `terra_resmi` absen (§P4-0),
+sudah dilaporkan & jadi sesi terpisah. Segel ADIS tetap sah untuk Agustus (nol
+kejadian tera di jendela itu) dengan caveat itu melekat.
+
+## P5-1 — ATURAN TERA di Bakau & Batu Layang: DIVERIFIKASI SENDIRI di DB
+
+Orkestrator menyebut angka dari gambar; di sini dihitung ulang dari `terra_resmi`
+dan `sales_detail` tanpa melihat gambar:
+
+| unit | tanggal | Σ tera (DB) | Σ jual KOTOR (DB) |
+|---|---|---:|---:|
+| Bakau | 2026-03-04 | **789,10** | **22.110,06** |
+| Batu Layang | 2026-02-13 | **421,31** | **38.800,12** |
+
+Kedua Σ jual kotor identik dengan TOTAL Penjualan yang tercetak di oracle → aturan
+"TOTAL Penjualan = Σ KOTOR" berlaku di dua unit baru, dua tenant baru. Bukan khas IB.
+
+⚠️ **PRA-TERUNGKAP — bukan konfirmasi dari segel.** Sel `TOTAL Penjualan` untuk
+**Bakau 2026-03-04** dan **Batu Layang 2026-02-13** sudah disebutkan kepada saya
+sebelum berkasnya dibuka. Kedua sel itu TIDAK dihitung sebagai bukti prediksi
+tersegel. Sel lain — semua unit, semua tanggal — tetap buta penuh.
+
+## P5-2 — ATURAN DIVERGENSI (operasional) + PREDIKSI TERSEGEL 49 BERKAS
+
+Definisi (versi TERKOREKSI putaran 4 — banding ke baris pagi **TERAKHIR**):
+
+> `akhir(D,t)` = baris ber-tanggal-bisnis D dengan `dtgljam` terbesar.
+> `pagi(D,t)`  = baris ber-tanggal-bisnis D yang dicatat pada tanggal kalender > D
+>                dan jam < 08:00, dengan `dtgljam` terbesar.
+> **D divergen** ⟺ ada tangki t dengan `pagi` ada dan `|akhir − pagi| > 0,005`.
+
+Dampak yang diturunkan dari aturan itu:
+- D−1 divergen → **Stock Awal(D)** meleset → Teori, Losses, % ikut (4 kolom)
+- D divergen → **Stock Fisik(D)** meleset → Losses, % ikut (3 kolom; Teori TIDAK,
+  sebab Teori tak memakai Fisik)
+
+**PREDIKSI, disegel sebelum satu pun berkas putaran ini dibuka:**
+
+- **47 dari 49 berkas: EKSAK** (nol mismatch).
+- **Bundaran Kotabaru 2026-08-06 → MELESET pada Fisik, Losses, %** — 5 tangki
+  (BB-02, BB-03, BB-04, BB-07, BB-08); Awal/Penerimaan/Penjualan/Teori EKSAK.
+- **Bundaran Kotabaru 2026-08-07 → MELESET pada Awal, Teori, Losses, %** — produk
+  yang sama; Penerimaan/Penjualan/Fisik EKSAK.
+
+KB 06 Agu adalah uji PREDIKTIF sejati: berkasnya belum pernah ada di putaran
+sebelumnya, dan saya menyatakan di muka bahwa **Fisik**-nya akan meleset sementara
+Awal-nya tidak — arah yang berlawanan dengan KB 07.
+
+**Kriteria gugur (dinyatakan di muka):** kalau ada satu saja hari yang saya sebut
+EKSAK ternyata meleset, ATAU satu saja yang saya sebut MELESET ternyata eksak, maka
+aturan divergensi **BELUM STABIL** dan cacat A belum layak dipaku. Tidak ada
+penyesuaian pasca-fakta.
