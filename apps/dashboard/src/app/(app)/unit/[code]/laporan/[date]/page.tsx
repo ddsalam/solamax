@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { EmptyPanel } from "@/components/EmptyPanel";
+import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { LaporanExport } from "@/components/laporan/LaporanExport";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { unitDotted } from "@/lib/config";
@@ -22,6 +23,7 @@ import {
   getDepositForDate,
   getManualEntries,
   getTerraResmiForDate,
+  getZeroClosingEvents,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
@@ -50,6 +52,7 @@ export default async function LaporanPage({
   const [
     prodDay,
     glRows,
+    zeroClosing,
     prodMonth,
     delivMonth,
     doDay,
@@ -72,6 +75,10 @@ export default async function LaporanPage({
     // G/L harian metode RESUME — satu fetch bulan-berjalan; turunkan harian (filter
     // d=date) & kumulatif (Σ). Lookback D−1 ditangani di query (anchor benar).
     getDailyGlByProduct(unit.unit_id, mStart, date),
+    // Penutup-nol: TIDAK mengubah angka, hanya menandai. Jendela D−1..D+1 wajib —
+    // aturannya membandingkan penutup hari itu dgn hari sebelum & sesudahnya,
+    // jadi rentang 1 hari tak akan pernah menyalakannya.
+    getZeroClosingEvents([unit.unit_id], addDays(date, -1), addDays(date, 1)),
     getSalesByProduct(unit.unit_id, mStart, date),
     getDeliveryByProduct(unit.unit_id, mStart, date),
     getDoHarian(unit.unit_id, date),
@@ -109,6 +116,7 @@ export default async function LaporanPage({
     {
       prodDay,
       glRows,
+      zeroClosing,
       prodMonth,
       delivMonth,
       doDay,
@@ -131,7 +139,7 @@ export default async function LaporanPage({
     { unitCode: unit.code, date, today, mi, detail },
   );
   // Rekonstruksi nama-nama lama agar JSX di bawah tetap identik.
-  const { sales, recap, glMonthly, target, doHarian, harga, rekon, header } = m;
+  const { sales, recap, glMonthly, arusMinyak: arus, target, doHarian, harga, rekon, header } = m;
   const {
     rows: doRows,
     totals: doTotal,
@@ -661,6 +669,11 @@ export default async function LaporanPage({
               </div>
             )}
           </div>
+
+          {/* 9b · ARUS MINYAK HARIAN — komponen terpisah agar harness verifikasi
+              bisa merender yang SAMA dengan produksi terhadap data live
+              (arus-minyak.render.test.tsx); halaman ini terkunci OAuth. */}
+          <ArusMinyakSection arus={arus} />
 
           {/* 10 + 11 — harga jual live; panel piutang pelanggan di-gate */}
           <div className={DOMAIN.pelanggan ? "lap-two mt10" : "mt10"}>

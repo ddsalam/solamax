@@ -12,7 +12,7 @@ import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
-import { fmtL, idn, isNegative, parenNeg, pct, rp, rpParen, signed } from "@/lib/format";
+import { fmtL, idn, isNegative, num2, parenNeg, pct, rp, rpParen, signed } from "@/lib/format";
 import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
 
 export interface LaporanDocMeta {
@@ -333,6 +333,87 @@ function doSection(m: LaporanModel, staleDays: number): Content[] {
   return out;
 }
 
+// ── Arus Minyak Harian ──
+// Urutan & isi IDENTIK layar (satu sumber: LaporanModel.arusMinyak). Kolom
+// "Persediaan (L)" EasyMax sengaja tidak ada — sama seperti layar.
+function arusSection(m: LaporanModel): Content[] {
+  const a = m.arusMinyak;
+  if (a.rows.length === 0) return [];
+  const body: TableCell[][] = [
+    [
+      th("Produk"),
+      th("Stock Awal (L)", "right"),
+      th("Penerimaan (L)", "right"),
+      th("Penjualan (L)", "right"),
+      th("Stock Teori (L)", "right"),
+      th("Stock Fisik (L)", "right"),
+      th("Losses (L)", "right"),
+      th("%", "right"),
+    ],
+  ];
+  for (const r of a.rows) {
+    body.push([
+      {
+        text: pdfText(r.zeroClosing ? `${r.nama}  [opname 0]` : r.nama),
+        color: r.zeroClosing ? PDF.warning : PDF.textPrimary,
+        bold: r.zeroClosing != null,
+      },
+      { text: num2(r.awal), alignment: "right", color: PDF.textSecondary },
+      { text: num2(r.penerimaan), alignment: "right", color: PDF.textSecondary },
+      { text: num2(r.penjualan), alignment: "right", color: PDF.textSecondary },
+      { text: num2(r.teori), alignment: "right", color: PDF.textSecondary },
+      { text: num2(r.fisik), alignment: "right", color: PDF.textSecondary },
+      { text: num2(r.losses), alignment: "right", color: glColor(r.losses), bold: r.losses !== null && r.losses < 0 },
+      { text: num2(r.pct), alignment: "right", color: glColor(r.losses) },
+    ]);
+  }
+  const tf = PDF.totalFill;
+  const t = a.total;
+  body.push([
+    { text: "TOTAL", style: "totalCell", fillColor: tf },
+    { text: num2(t.awal), style: "totalCell", alignment: "right", fillColor: tf },
+    { text: num2(t.penerimaan), style: "totalCell", alignment: "right", fillColor: tf },
+    { text: num2(t.penjualan), style: "totalCell", alignment: "right", fillColor: tf },
+    { text: num2(t.teori), style: "totalCell", alignment: "right", fillColor: tf },
+    { text: num2(t.fisik), style: "totalCell", alignment: "right", fillColor: tf },
+    { text: num2(t.losses), bold: true, alignment: "right", color: glColor(t.losses), fillColor: tf },
+    { text: num2(t.pct), bold: true, alignment: "right", color: glColor(t.losses), fillColor: tf },
+  ]);
+  const out: Content[] = [
+    sectionHeading("Arus Minyak Harian", a.provisional ? "belum final" : undefined),
+  ];
+  if (a.zeroClosingCount > 0)
+    out.push({
+      text:
+        `PERINGATAN — ${a.zeroClosingCount} produk bertanda [opname 0]: penutup opname tercatat 0 padahal tangki mestinya berisi. ` +
+        "Losses & % baris itu artefak input EasyMax, BUKAN kerugian; angkanya sengaja tidak dikoreksi agar tetap sama dengan panel Gain/Losses. " +
+        "Ralat opname hari itu di EasyMax, lalu cetak ulang.",
+      style: "footNote",
+      alignment: "left",
+      color: PDF.warning,
+      bold: true,
+      marginBottom: 3,
+    });
+  return [
+    ...out,
+    table(["*", 62, 62, 62, 62, 62, 58, 34], body),
+    {
+      text:
+        "Stock Teori = Stock Awal + Penerimaan − Penjualan · Losses = Stock Fisik − Stock Teori · % = Losses ÷ penjualan kotor. " +
+        "Stock Awal = Stock Fisik hari-bisnis sebelumnya; Penjualan = jual kotor dikurangi tera resmi; Penerimaan = volume DO." +
+        (a.teraTotal > 0
+          ? ` Tera ${num2(a.teraTotal)} L hari ini. Mengikuti definisi EasyMax, kolom Penjualan sudah dikurangi tera, tetapi TOTAL Penjualan dan seluruh kolom % memakai penjualan KOTOR — karena itu TOTAL Penjualan lebih besar ${num2(a.teraTotal)} L daripada jumlah kolom di atasnya. Bukan tabel yang rusak.`
+          : "") +
+        (a.excludedTanks > 0
+          ? ` ${a.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik.`
+          : "") +
+        (a.incomplete ? " Produk tanpa opname penutup/awal bertanda “—” dan tidak ikut TOTAL." : ""),
+      style: "footNote",
+      alignment: "left",
+    },
+  ];
+}
+
 // ── Harga ──
 function hargaSection(m: LaporanModel): Content[] {
   const full = DOMAIN.hargaBeli;
@@ -428,6 +509,9 @@ export function buildLaporanDocDefinition(args: {
     content.push(...glMonthlySection(model, meta));
     content.push(...targetSection(model, meta));
     content.push(...doSection(model, meta.staleDays));
+    // Urutan sama dgn layar: Arus Minyak duduk antara Alokasi (ekor doSection)
+    // dan Harga.
+    content.push(...arusSection(model));
     content.push(...hargaSection(model));
   }
   if (REKON_READY) content.push(...rekonSection(model));

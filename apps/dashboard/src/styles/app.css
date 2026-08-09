@@ -310,6 +310,10 @@ body { background: var(--neutral-50); }
 /* Produk · Sales · Gain/Losses · Tera · Omzet (5 kolom; %Mix dihapus). */
 .cols-sales { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.4fr); }
 .cols-glkum { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr); padding-top: 10px; padding-bottom: 10px; }
+/* Arus Minyak Harian — Produk + 7 kolom angka 2 desimal ("117.883,41"). Kolom %
+   paling sempit (paling panjang "184,69"); kolom liter sama lebar agar mata bisa
+   menyusuri identitas Awal + Penerimaan − Penjualan = Teori menyamping. */
+.cols-arus { grid-template-columns: minmax(0, 1.5fr) repeat(6, minmax(0, 1fr)) minmax(0, 0.6fr); padding-top: 11px; padding-bottom: 11px; }
 .cols-target { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr); }
 .cols-do { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); padding-top: 11px; padding-bottom: 11px; }
 .cols-do.lite { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); }
@@ -393,6 +397,9 @@ body { background: var(--neutral-50); }
    "/" (peluang putus alami). */
 .tbl-scroll .cols-suspect, .tbl-scroll .cols-anom { min-width: 420px; }
 .tbl-scroll .cols-target { min-width: 700px; }
+/* 8 kolom; yang mengikat = angka terpanjang yang boleh muncul ("117.883,41" ≈
+   80px pada fs16) × porsi fr-nya + gap + padding. Angka TIDAK BOLEH pecah. */
+.tbl-scroll .cols-arus { min-width: 820px; }
 .tbl-scroll .cols-usulan { min-width: 780px; }
 .tbl-scroll .cols-usulan-list { min-width: 590px; }
 /* Penanda ⚠ bisa di-Tab (nama aksesibelnya di aria-label) → butuh fokus yang
@@ -1187,3 +1194,8 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .grid-total.cols-harian, .grid-total.cols-harian2,
 .harian-subhead, .harian-delta { background: var(--neutral-50); }
 .grid-row.cols-harian, .grid-row.cols-harian2 { background: var(--color-surface); }
+/* Penanda penutup-nol Arus Minyak: opname penutup 0 padahal tangki mestinya
+   berisi. Ia menempel pada NAMA produk (bukan pada angkanya) karena angkanya
+   sengaja tidak dikoreksi — yang salah adalah inputnya, bukan hitungannya. */
+.zc-tag { margin-left: 6px; vertical-align: middle; }
+.zc-note { border-left: 3px solid var(--color-warning, #b45309); }
