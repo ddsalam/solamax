@@ -57,10 +57,12 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          export BERUBAH LABEL_ADA
+          export BERUBAH LABEL_ADA BASE_REF HEAD_REF
           BERUBAH=$(git diff --name-only "$BASE...$HEAD" -- 'session-notes/**' || true)
           # Keberadaan label DIPERIKSA, bukan diasumsikan.
           if gh api "repos/$REPO/labels/arsip-siklus-kedua" >/dev/null 2>&1; then
