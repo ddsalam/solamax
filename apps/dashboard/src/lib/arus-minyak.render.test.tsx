@@ -411,6 +411,42 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
  * berkas dibuka.
  */
 const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<string, Cells>> }> = {
+  "6378301": {
+    nama: "Bakau",
+    hari: {
+      // tera 789,10 L. ⚠ sel TOTAL Penjualan PRA-TERUNGKAP (§P5-1) — bukan
+      // konfirmasi segel; sel % di bawahnya TIDAK pra-terungkap dan itulah yang
+      // membuktikan penyebut KOTOR di unit ini.
+      "2026-03-04": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [17993.88, 0, 2252.36, 15741.52, 15767.43, 25.91, 1.11],
+        SOLAR: [28507.38, 0, 5029.39, 23477.99, 23440.4, -37.59, -0.71],
+        "PERTAMAX TURBO": [12977.87, 0, 152.25, 12825.62, 12825.06, -0.56, -0.29],
+        PERTALITE: [13530.39, 16000, 11481.41, 18048.98, 17791.19, -257.79, -2.2],
+        DEXLITE: [2892.99, 0, 2163.68, 729.31, 730.41, 1.1, 0.05],
+        "PERTAMINA DEX": [8145.26, 0, 241.87, 7903.39, 7903.39, 0, 0],
+        TOTAL: [84047.77, 16000, 22110.06, 78726.81, 78457.88, -268.93, -1.22],
+      },
+    },
+  },
+  "6478201": {
+    nama: "Batu Layang",
+    hari: {
+      // tera 421,31 L. ⚠ TOTAL Penjualan PRA-TERUNGKAP; EMPAT sel % per-baris
+      // (Pertalite −1,79 · Dexlite −2,23 · P.Dex −2,10 · TOTAL −0,54) TIDAK
+      // pra-terungkap dan semuanya menuntut penyebut KOTOR.
+      "2026-02-13": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [12357.31, 0, 1257.63, 11099.68, 11252.64, 152.96, 12.16],
+        SOLAR: [4474.45, 16000, 12636.62, 7837.83, 7926.32, 88.49, 0.7],
+        "PERTAMAX TURBO": [8492.84, 0, 283.75, 8209.09, 8213.53, 4.44, 1.56],
+        PERTALITE: [37770.44, 24000, 19838.64, 41931.8, 41572.54, -359.26, -1.79],
+        DEXLITE: [8321.6, 8000, 2949.47, 13372.13, 13305.55, -66.58, -2.23],
+        "PERTAMINA DEX": [6425.33, 5000, 1412.7, 10012.63, 9982.09, -30.54, -2.1],
+        TOTAL: [77841.97, 53000, 38800.12, 92463.16, 92252.67, -210.49, -0.54],
+      },
+    },
+  },
   "6478101": {
     nama: "Adisucipto",
     hari: {
@@ -455,6 +491,17 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
   "6478106": {
     nama: "Bundaran Kotabaru",
     hari: {
+      // 05 Agu = KONTROL: hari SEBELUM hari-divergen, diprediksi EKSAK.
+      "2026-08-05": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [16619, 0, 4021.1, 12597.9, 12651.13, 53.23, 1.32],
+        SOLAR: [14135.37, 8000, 8725.21, 13410.16, 13448.7, 38.54, 0.44],
+        "PERTAMAX TURBO": [6876.12, 0, 188.57, 6687.55, 6755.34, 67.79, 35.95],
+        PERTALITE: [45068.3, 24000, 28620.61, 40447.69, 40605.81, 158.12, 0.55],
+        DEXLITE: [4169.98, 0, 2285.59, 1884.39, 1882.21, -2.18, -0.1],
+        "PERTAMINA DEX": [4141.09, 3664, 1043.7, 6761.39, 6599.04, -162.35, -15.56],
+        TOTAL: [91009.86, 35664, 44888.78, 81789.08, 81942.23, 153.15, 0.34],
+      },
       "2026-08-08": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [13083.6, 0, 3534.04, 9549.56, 9587.86, 38.3, 1.08],
@@ -493,30 +540,55 @@ d("Arus Minyak vs oracle EasyMax — ARMADA (unit non-IB)", () => {
  * ORACLE_ARMADA. Ia ada supaya cacatnya mustahil terlupakan, bukan supaya
  * suite-nya hijau.
  */
-d("KARAKTERISASI cacat hulu — KB 2026-08-07 (opname penutup)", () => {
-  const ORACLE_KB07: Record<string, Cells> = {
-    PREMIUM: [0, 0, 0, 0, 0, 0, 0],
-    PERTAMAX: [8957.49, 8000, 3861.2, 13096.29, 13083.6, -12.69, -0.33],
-    SOLAR: [11546.14, 8000, 7824.59, 11721.55, 11555.15, -166.4, -2.13],
-    "PERTAMAX TURBO": [6633.66, 0, 243.65, 6390.01, 6423.42, 33.41, 13.71],
-    PERTALITE: [43570.18, 32000, 30764.49, 44805.69, 45018.3, 212.61, 0.69],
-    DEXLITE: [7339.25, 0, 2389.35, 4949.9, 4934.5, -15.4, -0.64],
-    "PERTAMINA DEX": [5503.46, 0, 659.97, 4843.49, 4848.28, 4.79, 0.73],
-    TOTAL: [83550.18, 48000, 45743.25, 85806.93, 85863.25, 56.32, 0.12],
+d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", () => {
+  const KB: Record<string, Record<string, Cells>> = {
+    // Hari DIVERGEN itu sendiri → Fisik meleset (Awal masih benar).
+    "2026-08-06": {
+      PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+      PERTAMAX: [12651.13, 0, 3699.2, 8951.93, 8957.49, 5.56, 0.15],
+      SOLAR: [13448.7, 8000, 9981.75, 11466.95, 11546.14, 79.19, 0.79],
+      "PERTAMAX TURBO": [6755.34, 0, 172.12, 6583.22, 6633.66, 50.44, 29.31],
+      PERTALITE: [40605.81, 32000, 28763.83, 43841.98, 43570.18, -271.8, -0.94],
+      DEXLITE: [1882.21, 8000, 2610.7, 7271.51, 7339.25, 67.74, 2.59],
+      "PERTAMINA DEX": [6599.04, 0, 1106.98, 5492.06, 5503.46, 11.4, 1.03],
+      TOTAL: [81942.23, 48000, 46334.58, 83607.65, 83550.18, -57.47, -0.12],
+    },
+    // Hari SESUDAHNYA → Awal meleset (Fisik sudah benar lagi).
+    "2026-08-07": {
+      PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+      PERTAMAX: [8957.49, 8000, 3861.2, 13096.29, 13083.6, -12.69, -0.33],
+      SOLAR: [11546.14, 8000, 7824.59, 11721.55, 11555.15, -166.4, -2.13],
+      "PERTAMAX TURBO": [6633.66, 0, 243.65, 6390.01, 6423.42, 33.41, 13.71],
+      PERTALITE: [43570.18, 32000, 30764.49, 44805.69, 45018.3, 212.61, 0.69],
+      DEXLITE: [7339.25, 0, 2389.35, 4949.9, 4934.5, -15.4, -0.64],
+      "PERTAMINA DEX": [5503.46, 0, 659.97, 4843.49, 4848.28, 4.79, 0.73],
+      TOTAL: [83550.18, 48000, 45743.25, 85806.93, 85863.25, 56.32, 0.12],
+    },
   };
-  it("meleset HANYA di Stock Awal + turunannya; Penerimaan/Penjualan/Fisik EKSAK", async () => {
-    const { sel } = await selTerender("6478106", "2026-08-07");
-    const hasil = gradeArus({ "2026-08-07": ORACLE_KB07 }, { "2026-08-07": sel }, COLS);
-    const salah = hasil.filter((h) => h.vonis === "mismatch");
-    // Kolom yang TIDAK boleh tersentuh cacat ini — kalau salah satunya ikut
-    // meleset, diagnosis §P4-4 salah dan harus ditinjau ulang.
-    for (const kol of ["Penerimaan", "Penjualan", "Fisik"])
-      expect(salah.filter((h) => h.kolom === kol), `${kol} ikut meleset`).toEqual([]);
-    expect(new Set(salah.map((h) => h.kolom))).toEqual(new Set(["Awal", "Teori", "Losses", "%"]));
-    expect(salah.length, "jumlah sel terdampak berubah").toBe(24);
-    // DEXLITE satu-satunya produk tanpa entri telat → harus tetap cocok.
-    expect(salah.some((h) => h.baris === "DEXLITE")).toBe(false);
-  }, 120_000);
+  /**
+   * ⚠️ Tes ini SENGAJA menegaskan SolaMax MELESET — cacatnya di
+   * `getDailyGlByProduct` (sesi hulu terpisah). Kalau ia GAGAL setelah perbaikan
+   * hulu mendarat, itu BUKAN regresi: HAPUS tes ini dan pindahkan kedua tanggal
+   * ke ORACLE_ARMADA. Ia ada supaya cacatnya mustahil terlupakan.
+   *
+   * Bentuk kegagalannya diprediksi DI MUKA (decision log §P5-2) dan berlawanan
+   * arah di kedua hari — itulah yang membuatnya uji, bukan sekadar catatan.
+   */
+  const kasus: Array<[string, string[], string[]]> = [
+    ["2026-08-06", ["Fisik", "Losses", "%"], ["Awal", "Penerimaan", "Penjualan", "Teori"]],
+    ["2026-08-07", ["Awal", "Teori", "Losses", "%"], ["Penerimaan", "Penjualan", "Fisik"]],
+  ];
+  for (const [tgl, kolomMeleset, kolomEksak] of kasus)
+    it(`${tgl}: meleset TEPAT di ${kolomMeleset.join("/")}, eksak di ${kolomEksak.join("/")}`, async () => {
+      const { sel } = await selTerender("6478106", tgl);
+      const hasil = gradeArus({ [tgl]: KB[tgl]! }, { [tgl]: sel }, COLS);
+      const salah = hasil.filter((h) => h.vonis === "mismatch");
+      expect(new Set(salah.map((h) => h.kolom))).toEqual(new Set(kolomMeleset));
+      for (const k of kolomEksak)
+        expect(salah.filter((h) => h.kolom === k), `${k} ikut meleset`).toEqual([]);
+      // DEXLITE = satu-satunya produk tanpa entri telat → harus tetap cocok.
+      expect(salah.some((h) => h.baris === "DEXLITE"), "DEXLITE ikut meleset").toBe(false);
+    }, 120_000);
 });
 
 d("Sapuan konsistensi internal IB — 120 hari, tanpa oracle", () => {

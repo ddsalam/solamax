@@ -1369,3 +1369,89 @@ Awal-nya tidak — arah yang berlawanan dengan KB 07.
 EKSAK ternyata meleset, ATAU satu saja yang saya sebut MELESET ternyata eksak, maka
 aturan divergensi **BELUM STABIL** dan cacat A belum layak dipaku. Tidak ada
 penyesuaian pasca-fakta.
+
+## P5-3 — SIKLUS KEDUA cacat A: prediksi tersegel vs kenyataan
+
+Dibuka setelah segel §P5-2 di-commit (`dbfee26`).
+
+| unit-tanggal | prediksi tersegel | kenyataan | vonis |
+|---|---|---|---|
+| **Bundaran Kotabaru 2026-08-06** | MELESET: **Fisik, Losses, %**; Awal/Penerimaan/Penjualan/Teori EKSAK | tepat itu | ✅ |
+| **Bundaran Kotabaru 2026-08-07** | MELESET: **Awal, Teori, Losses, %**; Penerimaan/Penjualan/Fisik EKSAK | tepat itu | ✅ |
+| Bundaran Kotabaru 2026-08-05 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Bundaran Kotabaru 2026-08-08 | EKSAK | EKSAK | ✅ |
+| Bakau 2026-03-04 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Batu Layang 2026-02-13 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Adisucipto 2026-08-01 | EKSAK | EKSAK (42/0/14/0) | ✅ |
+| 28 Oktober 2026-08-01, 08-02 | EKSAK | EKSAK (98/0/14/0) | ✅ |
+| Imam Bonjol 7 tanggal | EKSAK | EKSAK (343/0/49/0) | ✅ |
+
+**KB 06 Agu adalah uji prediktif sejati**: berkasnya tak pernah ada sebelum putaran ini,
+dan saya menyatakan DI MUKA bahwa **Fisik**-nya akan meleset sementara **Awal**-nya
+tidak — arah BERLAWANAN dengan KB 07, di unit yang sama, dua hari berturut. Keduanya
+kena tepat. Kuartet KB 05→06→07→08 (eksak → Fisik salah → Awal salah → eksak) adalah
+bentuk yang hanya bisa dihasilkan oleh aturan yang benar.
+
+Oracle KB juga konsisten dengan dirinya: Fisik(05)=Awal(06), Fisik(06)=Awal(07),
+Fisik(07)=Awal(08) — sementara Fisik(06) versi SolaMax menyimpang di kedua tempat.
+
+### VONIS: aturan divergensi cacat A **STABIL**
+
+**14 unit-tanggal**, nol prediksi meleset di kedua arah: tak ada yang saya sebut EKSAK
+ternyata meleset, tak ada yang saya sebut MELESET ternyata eksak. Kriteria gugur yang
+dinyatakan di muka tidak tersentuh. Cacat A **layak dipaku** untuk sesi hulu.
+
+Bentuk kegagalannya kini dipaku sebagai dua tes karakterisasi berlawanan-arah
+(`KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu`) — bukan sekadar "meleset",
+melainkan meleset TEPAT di kolom yang mana. Keduanya HARUS dihapus saat sesi hulu
+mendarat.
+
+## P5-4 — Aturan tera: GLOBAL, diverifikasi pada sel yang TIDAK pra-terungkap
+
+Sel `TOTAL Penjualan` BK 04-03 & BL 13-02 pra-terungkap → tidak dihitung. Yang
+membuktikan adalah kolom **%**, yang tidak pernah disebut kepada saya:
+
+| unit | sel | penyebut KOTOR | penyebut bersih | oracle |
+|---|---|---:|---:|---:|
+| Bakau | Pertalite % | −257,79/11.709,31 = **−2,20** | −2,25 | **−2,20** ✅ |
+| Bakau | TOTAL % | −268,93/22.110,06 = **−1,22** | −1,26 | **−1,22** ✅ |
+| Batu Layang | Pertalite % | −359,26/20.118,64 = **−1,79** | −1,81 | **−1,79** ✅ |
+| Batu Layang | Dexlite % | −66,58/2.989,47 = **−2,23** | −2,26 | **−2,23** ✅ |
+| Batu Layang | P. Dex % | −30,54/1.452,70 = **−2,10** | −2,16 | **−2,10** ✅ |
+| Batu Layang | TOTAL % | −210,49/38.800,12 = **−0,54** | −0,55 | **−0,54** ✅ |
+
+Enam sel, dua unit, dua tenant, semuanya menuntut penyebut KOTOR. **Aturan tera
+berlaku global** — tidak ada varian POS yang berbeda di antara unit yang diperiksa.
+
+## P5-5 — Nama berkas vs isi
+
+Diperiksa dengan membaca `Periode:` dan kode SPBU dari KEPALA LAPORAN, bukan nama berkas.
+
+| berkas | nama | isi | vonis |
+|---|---|---|---|
+| `BL/ArusMinyak_BL_13Februari2026.png` | 13 Feb 2026 | `Periode :13-02-2026`, SPBU 64.782.01 PT. BATU LAYANG JAYA | **COCOK** |
+| `BK/ArusMinyak_BK_04Maret2026.png` | 4 Mar 2026 | `Periode :04-03-2026`, SPBU 63.783.01 BAKAU | **COCOK** |
+| `KB/…05,06,07,08AGUSTUS2026` | — | `Periode :05/06/07/08-08-2026`, SPBU 64.781.06 | **COCOK** |
+| `ADIS/…01AGUSTUS`, `28OKT/…01,02AGUSTUS` | — | cocok, SPBU 64.781.01 / 63.781.002 | **COCOK** |
+
+⚠️ **Ketidakcocokan `BL_03Februari2026` yang disebut owner TIDAK ADA di disk** — berkas
+yang ada bernama `13Februari2026` dan isinya 13-02-2026. Entah sudah dirapikan, entah
+contohnya dari keadaan lain. **Nol ketidakcocokan ditemukan pada 13 berkas yang dibuka.**
+Sisanya belum dibuka → belum bisa dinyatakan.
+
+Folder **BK = Bakau** dan **KB = Bundaran Kotabaru** (mudah tertukar) — dikonfirmasi dari
+kode SPBU di isi, bukan dari nama folder.
+
+## P5-6 — CAKUPAN: apa yang BELUM dikerjakan
+
+**13 dari 49 berkas dibuka & ditranskripsi**; 36 belum. Semuanya diprediksi EKSAK di
+§P5-2, tetapi **prediksi bukan verifikasi** — dan putaran 4 memperagakan prediksi saya
+bisa meleset. Jangan hitung 49 sebagai terverifikasi.
+
+Yang dibuka: IB ×7 · KB ×4 (05,06,07,08) · 28OKT ×2 · ADIS ×1 · BK ×1 · BL ×1.
+Belum: KB 01–04 · 28OKT 03–08 · ADIS 02–08 · BK 01–08 Agu · BL 01–08 Agu.
+
+🔴 **KOREK TANPA ORACLE.** Ia unit dengan hari-divergen TERBANYAK (12 hari 2026),
+justru yang paling layak diuji, dan tidak diekspor. Cakupan armada ini **6 dari 7 unit**
+— bukan 7. Cacat A diuji lewat Kotabaru (2 hari divergen) dan disilang-periksa lewat
+28 Oktober; Korek tetap **belum teruji sama sekali**.
