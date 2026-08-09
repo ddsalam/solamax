@@ -17,6 +17,16 @@ export function rpShort(n: number): string {
 }
 
 export const fmtL = (n: number, d = 0): string => `${idn(n, d)} L`;
+
+/**
+ * Angka 2 desimal gaya laporan RESUME EasyMax ("13.981,84"); `null` → "—".
+ * Debu float dinormalkan ke 0 — Losses lahir dari pengurangan berantai (fisik −
+ * [awal + penerimaan − jual]) sehingga selisih sah 0 bisa muncul sebagai
+ * −1,8e−12 dan tercetak "−0,00", yang terbaca sebagai kerugian kecil padahal
+ * nol. Ambangnya setengah digit terakhir yang ditampilkan.
+ */
+export const num2 = (n: number | null): string =>
+  n === null ? "—" : idn(Math.abs(n) < 0.005 ? 0 : n, 2);
 export const fmtKL = (n: number, d = 1): string => `${idn(n / 1000, d)} KL`;
 
 /** Tinggi cairan: sumber EasyMax dalam mm → tampil cm. */

@@ -20,6 +20,7 @@ import {
   type AdminVerdict,
   type TetanggaHari,
 } from "@/lib/compliance";
+import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import { uangTunai } from "@/lib/rekon";
@@ -140,6 +141,8 @@ export interface LaporanModel {
     glMonthTotal: number;
     glPctMonth: number | null;
   };
+  /** Arus Minyak Harian — dekomposisi G/L RESUME per produk (lihat arus-minyak.ts). */
+  arusMinyak: ArusMinyak;
   target: { rows: TargetRow[] };
   doHarian: {
     rows: DoHarianRow[];
@@ -409,6 +412,15 @@ export function buildLaporanModel(
     omzet: p.omzet,
   }));
 
+  // ── Arus Minyak Harian ──
+  // Dekomposisi G/L RESUME hari itu; `glRowsDay` sama persis dengan yang memberi
+  // makan `dayAgg` di atas → Losses ≡ Gain/Losses panel Omset, per konstruksi.
+  // Urutannya mengikuti `orderBy` halaman ini (Pertalite → Pertamax → …), BUKAN
+  // urutan EasyMax — konsistensi antar-panel di satu halaman lebih berguna bagi
+  // pembaca ketimbang meniru urutan laporan lain.
+  const arusMinyakRaw = buildArusMinyak(glRows.filter((r) => r.d === date));
+  const arusMinyak: ArusMinyak = { ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows) };
+
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
   const glMonthTotal = monthAgg.totalSigned;
   const glPctMonth = monthAgg.hasGl ? glPercent(glMonthTotal, volMonth) : null;
@@ -663,6 +675,7 @@ export function buildLaporanModel(
     },
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
     glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth },
+    arusMinyak,
     target: { rows: targetRows },
     doHarian: {
       rows: doRows,
