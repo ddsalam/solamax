@@ -18,10 +18,21 @@ const HARI_INI = "2026-08-09";
  * pasangan identik yang salah satu harinya tak cocok dengan H-nya SENDIRI wajib
  * menghasilkan `setoran_tersalin`. Nol terlewat.
  *
- * ⛔ BATASNYA: begitu pengawas memperbaiki entrinya, buktinya lenyap dari data
- * hidup dan tes ini jadi hijau-tanpa-kasus. Karena itu ia mencetak jumlah kasus
- * yang benar-benar diperiksa — hijau dengan 0 kasus BUKAN bukti apa pun, dan
- * fixture di compliance.test.ts tetap yang memikul beban pembuktian.
+ * ⛔⛔ BACA INI SEBELUM MENYIMPULKAN APA PUN DARI HIJAUNYA TES INI.
+ *
+ * Kasus nyata satu-satunya di data hidup adalah Batu Layang 2026-08-07. Begitu
+ * pengawas memperbaiki entrinya — dan itu MEMANG DIRENCANAKAN — buktinya lenyap
+ * dari data hidup dan tes ini akan hijau dengan NOL kasus.
+ *
+ *   > HIJAU DENGAN 0 KASUS BUKAN BUKTI APA PUN. Papan yang sepi bukan bukti
+ *   > aturannya bekerja; ia hanya bukti tak ada salinan yang tersisa HARI INI.
+ *
+ * Karena itu tes ini MENCETAK jumlah kasus yang benar-benar diasersikan, dan
+ * menandainya eksplisit saat nol. Yang memikul beban pembuktian aturannya tetap
+ * fixture bernama di compliance.test.ts — bukan berkas ini.
+ *
+ * Jangan menghapus tes ini saat ia jadi 0 kasus, dan jangan menaikkannya jadi
+ * "bukti" saat ia kebetulan punya kasus.
  */
 d("salin-setoran DUA ARAH — penjaga pada data hidup", () => {
   afterAll(async () => {
@@ -126,8 +137,13 @@ d("salin-setoran DUA ARAH — penjaga pada data hidup", () => {
     // menuntut KEDUA hari punya setoran non-null, dan lantai adopsi masih muda,
     // jadi 102 memang jendela penuhnya. Ambang diturunkan ke 50 — tetap jauh di
     // atas nol, tetap menolak jendela yang menciut senyap.
-    console.log(`kasus yang BENAR-BENAR diasersikan: ${diperiksa}` +
-      (diperiksa === 0 ? "  <-- HIJAU TANPA KASUS: bukan bukti apa pun" : ""));
+    console.log(
+      `kasus yang BENAR-BENAR diasersikan: ${diperiksa}` +
+        (diperiksa === 0
+          ? "\n  ⛔ HIJAU TANPA KASUS — bukan bukti apa pun. Papan yang sepi hanya" +
+            "\n     berarti tak ada salinan tersisa hari ini, BUKAN bahwa aturannya bekerja."
+          : ""),
+    );
     expect(nPasang).toBeGreaterThan(50);
   }, 60_000);
 });
