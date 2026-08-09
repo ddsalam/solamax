@@ -6,6 +6,7 @@ import { StateView } from "@/components/loading/StateView";
 import { rp } from "@/lib/format";
 import { addManualEntry, voidManualEntry } from "@/lib/manual-entry-actions";
 import type { ManualEntryRow, ManualSection } from "@/lib/queries";
+import type { PanelIsyarat } from "@/lib/rincian-model";
 
 /**
  * Input manual Rincian (Pendapatan Lain / Pengeluaran / Setoran Tunai) — panel
@@ -54,10 +55,42 @@ export function ManualSourceBadge() {
 }
 
 /** Wrapper panel input manual (no-print) + caption; dipakai page Rincian. */
-export function ManualPanel({ children }: { children: React.ReactNode }) {
+/**
+ * Pembungkus kolom input manual — DAN tempat kedua isyarat tanggal berada.
+ *
+ * ⚠️ Tanggalnya dirender DI SINI, bukan hanya di kop lembar. Sebelum 2026-08-09
+ * satu-satunya penyebutan tanggal ada ~110 baris di atas panel ini, di balik
+ * empat seksi ledger — sudah ter-scroll keluar layar saat pengawas mengetik.
+ * Form untuk 08-07 tampak identik dengan form untuk 08-08, dan dua pengawas di
+ * dua unit memang tertukar.
+ *
+ * `isyarat` sengaja WAJIB: menambahkan panel ini tanpa menyediakan tanggalnya
+ * harus jadi error type-check, bukan panel diam yang mengulang cacat lama.
+ */
+export function ManualPanel({
+  isyarat,
+  children,
+}: {
+  isyarat: PanelIsyarat;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="no-print manual-panel mt12">
-      <div className="fs15 w700 t-tertiary">Input manual (pengawas) · tidak ikut cetak</div>
+      <div className="manual-datebar">
+        <span className="fs15 w700 t-tertiary">Input manual (pengawas) · tidak ikut cetak</span>
+        <span className="manual-date fs16 w700">
+          Tanggal bisnis: <strong>{isyarat.tanggal}</strong>
+        </span>
+      </div>
+      {/* Diam ketika hari masih kosong — peringatan yang selalu menyala akan
+          diabaikan dalam seminggu. */}
+      {isyarat.sudahTerisi && (
+        <div className="manual-warn" role="status">
+          <strong>Hari ini SUDAH terisi</strong> — {isyarat.rincianTerisi}. Pastikan
+          tanggal di atas memang tanggal yang Anda maksud sebelum menambah atau
+          membatalkan baris.
+        </div>
+      )}
       {children}
     </div>
   );

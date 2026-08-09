@@ -378,3 +378,90 @@ Dengan itu `H` kembali 241.296.190 dan selisihnya Rp 810 → **selaras**.
 Baris 08-08 sudah benar dan **jangan disentuh**.
 
 **Datanya tidak saya sentuh.**
+
+---
+
+# 2026-08-09 (putaran ketiga) — dua bentuk yang layak dibawa ke proyek lain
+
+## A · Gerbang yang label pelepasnya belum dibuat
+
+`arsip-siklus-kedua` **tidak ada di repo** saat gerbang G4 dipasang. Saya
+membuktikan ia bisa **MERAH**, lalu menyatakannya "terpasang" — padahal jalur
+**HIJAU**-nya mustahil.
+
+> **Membuktikan MERAH tanpa membuktikan HIJAU adalah setengah bukti, dan
+> setengah yang hilang justru yang menentukan gerbangnya dipakai atau
+> ditinggalkan.** Gerbang yang jalan keluarnya tak ada tak bisa dibedakan dari
+> gerbang tanpa jalan keluar: orang berikutnya akan mengira ia rusak lalu
+> mencari cara melewatinya.
+
+Ini **ketiga kalinya dalam dua hari** untuk keluarga yang sama — `/dev/tcp` di
+zsh (pemeriksa yang tak bisa hijau) · workflow yang gagal parse (pemeriksa yang
+tak pernah berjalan) · dan sekarang gerbang yang tak bisa dilepas. Yang ketiga
+terjadi **pada alat yang dibangun untuk menangkap justru kelas ini**.
+
+**Bentuknya yang diperbaiki, bukan kejadiannya:**
+
+1. **Gerbang yang menuntut label wajib MEMASTIKAN labelnya ada**, dan bila tidak,
+   pesan gagalnya menyebut **perintah persis** untuk membuatnya. Kegagalan itu
+   diberi pesan berbeda — *"cacat gerbangnya, bukan cacat PR-mu"* — karena
+   menyamakan keduanya membuat orang mencari jalan pintas.
+2. **Keputusannya keluar dari YAML** ke `scripts/ci/check-arsip-g4.sh`, dan
+   `check-arsip-g4.selftest.sh` mengujinya **lima keadaan termasuk jalur hijau**
+   — memanggil skrip yang **sama** dengan yang dipanggil workflow, bukan
+   tiruannya. Self-test itu berjalan di CI biasa.
+
+Self-test-nya diuji dua arah: jalur hijau dilucuti → **merah**; pemeriksaan
+keberadaan label dilucuti → **merah**; dipulihkan → hijau.
+
+**Aturan turunan:** setiap gerbang yang menuntut sebuah *artefak* (label, secret,
+berkas, izin) harus memeriksa artefak itu **ada** sebelum menuntutnya — dan
+diuji pada keadaan **lolos**, bukan hanya keadaan tolak.
+
+## B · Keputusan yang BENAR untuk membaca, jadi salah saat permukaannya menulis
+
+Koreksi penting dari owner atas penyelidikan UX saya. Perilaku cookie
+"terakhir dibuka" **bukan kecerobohan** — ia **sengaja dibangun** pada arc topbar
+picker Juli: cookie diturunkan menjadi *last-used write-through* untuk
+memperbaiki dropdown yang desinkron pada navigasi lunak. Untuk **navigasi**,
+keputusan itu benar dan masih benar.
+
+Yang tak diantisipasi siapa pun: **permukaan yang sama kemudian mendapat jalur
+TULIS UANG** (panel input Rincian). Saat itu "terakhir dibuka" berubah dari
+**kenyamanan** menjadi **jebakan** — bukan karena keputusannya memburuk, tapi
+karena taruhannya berubah.
+
+> **Sebuah keputusan default yang benar untuk MEMBACA bisa menjadi salah begitu
+> permukaannya mulai MENULIS.** Yang berubah bukan keputusannya, melainkan
+> konsekuensi kesalahannya.
+
+⚠️ **Jangan tulis ini sebagai "cookie-nya salah".** Menyalahkan keputusan lamanya
+akan menyembunyikan pelajarannya, dan pelajarannya berlaku di luar proyek ini:
+saat sebuah permukaan baca-saja mendapat kemampuan menulis, **semua default yang
+dipilih untuk kenyamanan baca wajib ditinjau ulang** — bukan dibatalkan, ditinjau.
+
+Karena itu keputusan owner: **perbaiki ISYARATNYA, jangan ubah default-nya.**
+Membatalkan perilaku cookie lewat pintu belakang akan memunculkan kembali bug
+dropdown desinkron yang arc Juli memang selesaikan.
+
+## C · Yang dibangun (kedua isyarat)
+
+Menyerang tepat dua dari tiga lapis yang ditemukan penyelidikan — lapis
+default **tidak** disentuh.
+
+| lapis | sebelum | sekarang |
+| --- | --- | --- |
+| tanggal saat mengetik | hanya di kop lembar, ~110 baris di atas panel; `ManualEntryForm` tak menyebut tanggal sama sekali | **"Tanggal bisnis: …" tepat di atas kolom input** |
+| hari sudah terisi | tak ada isyarat — menimpa hari benar terasa sama dengan mengisi hari kosong | **peringatan menyebut seksi & jumlah barisnya** |
+
+`PanelIsyarat` **wajib** di `ManualPanel`: menambahkan panel tanpa menyediakan
+tanggalnya adalah error type-check, bukan panel diam yang mengulang cacat lama.
+
+**Keadaan diamnya benar-benar diam** — `rincianTerisi: null` dan tak ada elemen
+peringatan sama sekali saat hari kosong. Peringatan yang selalu menyala akan
+diabaikan dalam seminggu; itu diuji sebagai tes tersendiri, dan mutasi
+"peringatan SELALU muncul" memerahkannya.
+
+Lima mutasi membuktikan kelimanya bisa merah: peringatan tak pernah muncul ·
+peringatan selalu muncul · tanggal dilepas dari panel · model selalu bilang
+"sudah terisi" · seksi kosong ikut disebut.
