@@ -202,7 +202,13 @@ describe("rantai model → PDF (angka & catatan setoran tak bergeser)", () => {
       pendapatanLain: [m0("f1", "X", 500_000)],
       pengeluaran: [m0("g1", "Y", 137)],
       setoranTunai: [m0("s1", "SETOR BANK", 10_500_000)], // +137 dari H → dalam toleransi
-      konteks: { shifts: 3, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-03" },
+      konteks: {
+        shifts: 3,
+        adopsi: "2020-01-01",
+        iSebelumnya: null,
+        businessDate: "2026-07-01",
+        today: "2026-07-03",
+      },
     } as Parameters<typeof buildRincianModel>[0]);
 
     // H = 10.000.000 + 500.000 − 137 = 10.499.863

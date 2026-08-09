@@ -11,7 +11,7 @@ import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { adopsiRincian, UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, timeWib } from "@/lib/format";
-import { todayWib } from "@/lib/periods";
+import { addDays, todayWib } from "@/lib/periods";
 import {
   getDepositForDate,
   getEdcBlankCard,
@@ -50,7 +50,7 @@ export default async function RincianPage({
 
   const [
     prod, terra, pelanggan, edc, edcBlank, deposit,
-    pendapatanLain, pengeluaran, setoranTunai, shiftInfo,
+    pendapatanLain, pengeluaran, setoranTunai, shiftInfo, setoranKemarin,
   ] =
     await Promise.all([
       getSalesByProduct(unit.unit_id, date, date),
@@ -65,6 +65,10 @@ export default async function RincianPage({
       // Vonis I-vs-H butuh `shifts`: selama penjualan belum lengkap, H masih
       // dirakit dan membandingkannya dengan setoran memunculkan selisih semu.
       getShiftInfo(unit.unit_id, date),
+      // Setoran hari SEBELUMNYA — bahan aturan salin-setoran. Query yang sudah
+      // ada dipakai ulang (ber-scope, `NOT void`, semantik identik dengan
+      // `getComplianceMatrix`) alih-alih menulis SQL baru untuk satu angka.
+      getManualEntries(unit.unit_id, addDays(date, -1), "setoran_tunai"),
     ]);
 
   // SUMBER TUNGGAL: model dipakai render layar (di bawah) DAN ekspor PDF →
@@ -73,6 +77,13 @@ export default async function RincianPage({
     konteks: {
       shifts: shiftInfo.shifts,
       adopsi: adopsiRincian(unit.code),
+      // null (bukan 0) bila kemarin tak punya baris setoran: "tak ada setoran"
+      // bukan "setoran nol", dan aturan salin-setoran tak boleh menyala karena
+      // dua hari sama-sama kosong.
+      iSebelumnya:
+        setoranKemarin.length > 0
+          ? setoranKemarin.reduce((s, r) => s + r.amount, 0)
+          : null,
       businessDate: date,
       today: todayWib(),
     },

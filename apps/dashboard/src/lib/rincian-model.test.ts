@@ -128,7 +128,13 @@ describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
     // halaman Rincian — lembar cetak yang DITANDATANGANI — masih menuduh.
     const m = buildRincianModel(
       raw({
-        konteks: { shifts: 2, adopsi: "2020-01-01", businessDate: "2026-07-01", today: "2026-07-05" },
+        konteks: {
+          shifts: 2,
+          adopsi: "2020-01-01",
+          iSebelumnya: null,
+          businessDate: "2026-07-01",
+          today: "2026-07-05",
+        },
         pendapatanLain: [manual("p1", "X", 15_489_700)],
         pengeluaran: [manual("g1", "Y", 80_137)],
         setoranTunai: [manual("s1", "SETOR BANK", 100_000_000)], // I jauh di atas H

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { adminStatus, SETORAN_TOLERANSI_RP } from "./compliance";
+import { adminStatus, pasangkanSetoranKemarin, SETORAN_TOLERANSI_RP } from "./compliance";
 import { adopsiRincian } from "./config";
 import { uangTunai } from "./rekon";
 import type { ScopedUnitId } from "./scope-rule";
@@ -45,8 +45,12 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
   const ambil = async (unit: number, tanggal: string) => {
     const { getAdminDays } = await import("./queries");
     const adopsi = adopsiRincian(await kodeUnit(unit));
-    const rows = await getAdminDays([U(unit)], tanggal, tanggal);
-    const r = rows[0];
+    // D−1 ikut diambil supaya `iSebelumnya` datang dari DATA, bukan dari null
+    // yang diam-diam mematikan aturan salin-setoran di jalur uji ini.
+    const { addDays } = await import("./periods");
+    const rows = await getAdminDays([U(unit)], addDays(tanggal, -1), tanggal);
+    const pasangan = pasangkanSetoranKemarin(rows).find((x) => x.hari.d === tanggal);
+    const r = pasangan?.hari;
     if (!r) throw new Error(`tak ada baris untuk unit ${unit} ${tanggal}`);
     const h = uangTunai({ A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG });
     // "today" jauh di depan → semua tanggal uji sudah lewat jatuh tempo.
@@ -58,6 +62,7 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
         nSetoran: r.nSetoran,
         h,
         i: r.setoran,
+        iSebelumnya: pasangan.iSebelumnya,
         shifts: r.shifts,
       },
       { businessDate: tanggal, today: "2026-08-07" },
@@ -102,8 +107,11 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
       "2026-07-01",
       "2026-08-05",
     );
-    const merah = rows
-      .map((r) => {
+    const perUnit = new Map<number, (typeof rows)[number][]>();
+    for (const r of rows) perUnit.set(r.unit_id, [...(perUnit.get(r.unit_id) ?? []), r]);
+    const merah = [...perUnit.values()]
+      .flatMap((list) => pasangkanSetoranKemarin([...list].sort((a, b) => a.d.localeCompare(b.d))))
+      .map(({ hari: r, iSebelumnya }) => {
         const h = uangTunai({
           A: r.compA, B: r.compB, C: r.compC, D: r.compD, F: r.compF, G: r.compG,
         });
@@ -117,6 +125,7 @@ d("ketaatan administrasi live — cabang keputusan pada data pilot nyata", () =>
               nSetoran: r.nSetoran,
               h,
               i: r.setoran,
+              iSebelumnya,
               shifts: r.shifts,
             },
             { businessDate: r.d, today: "2026-08-07" },

@@ -1133,3 +1133,369 @@ lintas-batas sedang mengumpulkan datanya sekarang.
 5. **Sebuah draf yang dibangun di atas snapshot harus diperiksa ulang sebelum
    diserahkan** — owner nyaris mengirim teguran atas kesalahan yang sudah
    dibereskan pengawas sendiri.
+
+---
+
+# ATURAN SALIN-SETORAN — dua prasyarat DIJAWAB sebelum menulis kodenya
+
+## Jendela keterlihatan pada kasus Korek NYATA: **10 jam 11 menit**
+
+Aturan butuh **tiga** hal benar bersamaan:
+(a) `I(D) == I(D−1)` persis · (b) `D` bukan hari ini · (c) `|I − H| > toleransi`.
+
+| peristiwa | waktu WIB | |
+| --- | --- | --- |
+| entri salah `359.447.000` dibuat di **08-07** | 08-07 **10:28** | (a) belum, pasangannya belum ada |
+| entri `359.447.000` dibuat di **08-06** | 08-07 **10:43** | (a) **terpenuhi** |
+| 08-07 berhenti jadi "hari ini" | 08-08 **00:00** | (b) **terpenuhi** ← **yang mengikat** |
+| pengawas mengoreksi → `332.053.000` | 08-08 **10:11** | (a) **lenyap** |
+
+**Jendela = 00:00 → 10:11 = 10 jam 11 menit.** Hitungan owner benar.
+
+**Syarat (c) terkonfirmasi langsung** di dalam jendela: pukul 09:55 saya mengukur
+H = 355.569.871,50 vs I = 359.447.000 → **|I − H| = 3.877.128,50**, ribuan kali
+di atas toleransi. Jadi jendelanya **bukan nol** — terbukti, bukan disimpulkan.
+
+⚠️ **Batas kejujuran:** saya tak punya nilai H antara 00:00–09:55, jadi saya
+**tidak** bisa membuktikan (c) bertahan **sepanjang** 10 jam itu. Yang terbukti:
+jendelanya **dibatasi atas** 10j11m oleh dua stempel waktu, dan **terkonfirmasi
+tidak nol** oleh satu pengamatan langsung ~16 menit sebelum koreksi.
+
+**Kesimpulan: aturannya berguna dalam bentuk ini.** Ia terlihat sepanjang jam
+kerja pagi, dan **lenyap begitu diperbaiki** — yang memang diinginkan.
+
+## Uji sunyi: **0 nyala dari 83 hari dinilai** (30 hari, 7 unit)
+
+Aturan penuh (a ∧ b ∧ c) atas data hidup saat ini:
+
+| | |
+| --- | ---: |
+| hari yang dinilai (punya hari sebelumnya) | **83** |
+| `I` identik dengan kemarin | **0** |
+| **ATURAN MENYALA** | **0** |
+
+Nol, karena satu-satunya kasus **sudah dikoreksi pengawas**. Itu justru
+memperkuat bentuk aturannya: ia menandai kesalahan yang **masih ada**, dan diam
+untuk yang sudah beres.
+
+**Efek samping yang BENAR dan disengaja:** kesalahan yang dikoreksi pengawas
+**sebelum** jatuh tempo tidak akan pernah jadi alarm. Papan tidak seharusnya
+melaporkan kesalahan yang sudah selesai sendiri.
+
+**Konsekuensi untuk pengujian:** karena data hidup kini bersih, aturan ini
+**tidak bisa** diverifikasi pada data produksi — fixture bernama dengan angka
+historis (`359.447.000` dua kali) yang memikul seluruh bebannya, dengan kontrol
+hari yang `I`-nya identik **tapi** `H`-nya cocok (tak boleh menyala).
+
+---
+
+## ⛔ KOREKSI: uji sunyi "0 dari 83" MENGUKUR HAL YANG SALAH
+
+Owner benar, dan **saya sudah menemukan bentuk ini kemarin lalu mengulanginya.**
+
+Aturan salin-setoran menyala pada **keadaan ANTARA** — entri salah yang hidup
+sampai dikoreksi. Uji sunyi saya berjalan pada **keadaan AKHIR**, yaitu setelah
+semua koreksi. **Kasus Korek adalah buktinya langsung:** ia **tak terlihat** di
+backtest baris-hidup, padahal ia akan menyala **sepuluh jam**.
+
+Persis kegagalan query frekuensi pertama saya kemarin (0 karena koreksi pengawas
+menghapus buktinya) — **kejadian yang sama, pertanyaan berbeda.**
+
+> **"0 dari 83" bukan volume alarm; ia BATAS BAWAH volume alarm.**
+
+### Pengukuran yang benar: JAM-ALARM dari jejak audit
+
+Merekonstruksi garis waktu tiap NILAI setoran dari `created_at`/`voided_at`
+(**termasuk baris ter-void**), lalu menghitung jam saat (a) `I(D) == I(D−1)`
+dengan **kedua nilai hidup bersamaan** dan (b) `D` sudah lewat tengah malam.
+
+| | |
+| --- | ---: |
+| jendela pengamatan | 40 hari × 7 unit = **960 jam kalender** |
+| baris setoran diperiksa (incl. void) | **113** |
+| **JAM-ALARM (a ∧ b)** | **10,19 jam** |
+| **kejadian** | **1** — Korek 2026-08-07, Rp 359.447.000 |
+| porsi waktu ber-alarm | **1,06%** |
+
+**Cek-silang yang menyenangkan:** rekonstruksi temporal ini menghasilkan
+**10,19 jam** — dan hitungan tangan dari dua stempel waktu memberi **10 j 11 m**.
+Dua metode independen, angka yang sama.
+
+**(a ∧ b) adalah BATAS ATAS**; syarat (c) `|I − H| > toleransi` hanya
+**mengurangi**. Jadi volume alarm sebenarnya berada di antara:
+
+```
+   0 jam  ≤  volume alarm  ≤  10,19 jam   (per 40 hari, 7 unit)
+   ^ backtest keadaan-akhir      ^ jejak audit (a ∧ b)
+```
+
+**Kesimpulan: aturannya SUNYI.** Satu kejadian, ~10 jam, 1,06% waktu kalender.
+Bukan aturan yang akan dimatikan orang karena ramai.
+
+### Bentuk yang berulang, dicatat supaya berhenti berulang
+
+> **Backtest atas keadaan AKHIR tidak bisa mengukur alarm yang menyala pada
+> keadaan ANTARA — BILA objek ukurnya bisa DIKOREKSI.** Koreksinya menghapus
+> buktinya, dan hasilnya nol yang menyenangkan. Ukur dari jejak audit, dengan
+> `created_at`/`voided_at`, dalam satuan **waktu**, bukan dalam satuan **hari
+> yang berakhir salah**.
+>
+> ⚠️ **SYARATNYA PENTING — jangan pakai aturan ini berlebihan.** Kalau objek
+> ukurnya TIDAK bisa dikoreksi (mis. omzet `sales_detail`, opname yang sudah
+> final, tanggal adopsi yang beku), **keadaan akhir MEMANG jawabannya** dan
+> backtest biasa sepenuhnya sah. Yang membatalkannya hanya kombinasi
+> *"bisa dikoreksi" × "alarm menyala pada keadaan antara"*. Tanpa syarat itu,
+> orang akan berhenti memakai backtest yang benar.
+
+Ini **ketiga kalinya** bentuk yang sama muncul dalam dua hari: query frekuensi
+pertama · query frekuensi kedua (menjumlahkan void + hidup) · uji sunyi ini.
+
+### Konsekuensi yang tetap berlaku
+
+Karena keadaan akhir bersih, **"hijau di produksi" tidak akan pernah membuktikan
+aturan ini bekerja.** Fixture bernama dengan angka historis memikul **seluruh**
+bebannya. Jangan simpulkan sebaliknya dari papan yang tenang.
+
+---
+
+## ⛔ PEREKAM GAGAL SENYAP 12 JAM — dan lognya berbohong dengan cara yang halus
+
+Perekam berjalan, tapi **tidak menulis apa pun dari 11:17 sampai 23:16 WIB**.
+Dua jalan launchd (16:28 dan 23:16) menghasilkan **nol baris**.
+
+**Dua sebab, dan yang kedua lebih penting:**
+
+1. **Gap tidur.** `launchd StartInterval` **tidak menyusul** interval yang
+   terlewat saat Mac tidur — ia menembak sekali saat bangun. Jejaknya di log:
+   `11:17 → 16:28 → 23:16` (gap 5 jam & 7 jam, bukan 15 menit).
+
+2. **Error ditelan, dan log-nya menyamarkan kegagalan.** Query memakai
+   `2>/dev/null`, dan baris log mencetak **TOTAL** (`baris=126`) tanpa syarat —
+   jadi jalan **gagal** dan jalan **sukses** menghasilkan baris log yang **bentuknya
+   sama**. Perbedaannya hanya angka yang tak berubah, dan angka yang tak berubah
+   tidak menarik perhatian siapa pun.
+
+> **Log yang mencetak KEADAAN, bukan PERUBAHAN, membuat kegagalan terlihat seperti
+> keberhasilan.** Cetak delta; kalau deltanya nol, katakan GAGAL dengan kata itu.
+
+**Diperbaiki:** stderr psql ke `rekam.err` (tidak ditelan) · log mencetak
+`delta=N total=N` + kata **GAGAL** saat delta nol · proxy di-restart lalu query
+diulang sekali bila delta nol.
+
+**Batas kejujuran:** cabang retry `DELTA=0` **TIDAK terbukti** — pada uji
+mematikan proxy, penjaga proxy di awal skrip sudah memulihkannya lebih dulu
+sehingga cabang itu tak pernah dimasuki. Yang terbukti adalah **hasilnya**
+(mematikan proxy tidak merusak jalan), bukan cabang retry-nya.
+
+**Mitigasi gap tidur:** `caffeinate -s -t 13200` (berbatas waktu, kedaluwarsa
+sendiri ~03:10 WIB) supaya jendela penentu lewat tengah malam **tertangkap**.
+Ini mengubah perilaku daya mesin owner untuk beberapa jam — disebutkan, bukan
+didiamkan.
+
+**Ini kali KEDUA perekam gagal, dengan bentuk berbeda:** yang pertama hilang
+karena penyimpanan session-scoped; yang kedua berjalan tapi tak menulis. Aturan
+"lewati batas sekali dan lihat ia masih hidup" **membuktikan satu penyeberangan**
+— dan itu tidak sama dengan membuktikan ia **terus** hidup.
+
+> **Menyeberangi batas SEKALI membuktikan ia bisa; ia tidak membuktikan ia akan
+> TERUS.** Untuk sesuatu yang harus hidup berjam-jam, periksa juga bahwa jalan
+> ke-N menghasilkan DATA, bukan cuma bahwa jalan ke-1 berhasil.
+
+---
+
+# 2026-08-09 DINI HARI — KURVA LINTAS TENGAH MALAM
+
+## 1 · KONTROL LEBIH DULU — dan satu perlu dipilah, bukan diabaikan
+
+| tanggal bisnis | pipeline `A/C/D` | manual `F/G/I` |
+| --- | --- | --- |
+| **2026-08-06** | **DIAM ✓** | diam |
+| **2026-08-07** | **DIAM ✓** | **bergerak — unit 4** |
+
+Kontrol 08-07 **bergerak**, tapi **hanya di `F/G/I`**: unit 4 (Bundaran Kotabaru)
+`F 0 → 14.501.400`, `G 0 → 659.000`, `I null → 386.904.000`. Itu **entri pengawas
+mengisi Rincian H+1** — perilaku yang memang diharapkan, **bukan** ekor pipeline.
+
+Komponen yang ekornya sedang diukur — `A`, `C`, `D` — **diam sempurna di kedua
+tanggal kontrol**. **Pembacaan sah.** Kalau `A/C/D` yang bergerak, kalimat ini
+akan berbunyi lain.
+
+## 2 · Kurva bd=2026-08-08 melintasi tengah malam — dan kenapa ia BELUM menjawab
+
+Agregat 7 unit (Rp juta):
+
+| jam WIB | Σshift | A | C | D | ΔC | ΔD |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 08-08 11:17 | 0 | 0,0 | 0,0 | 0,0 | | |
+| *(lubang 12 jam — perekam gagal senyap)* | | | | | | |
+| 08-08 23:28 | 14 | 2.414,3 | 347,6 | 261,1 | +347,61 | +261,14 |
+| 08-08 23:46 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| **08-09 00:01** | 14 | 2.414,3 | 347,6 | 261,1 | **+0,00** | **+0,00** |
+| 08-09 00:16 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| 08-09 00:31 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+| 08-09 00:46 | 14 | 2.414,3 | 347,6 | 261,1 | +0,00 | +0,00 |
+
+⛔ **JANGAN baca ini sebagai "asumsi H+1 terverifikasi".** Dua alasan:
+
+1. **Harinya BELUM LENGKAP.** Σshift = **14 dari 21** — **ketujuh unit** persis
+   `2 dari 3 shift`. Shift ketiga **belum mendarat di mana pun**. Kurva rata pada
+   hari yang masih menunggu sepertiga datanya **tidak** membuktikan perakitan
+   selesai; ia membuktikan **pipeline sedang diam pada 78 menit itu**.
+2. **Jendelanya cuma 78 menit** (23:28 → 00:46, 5 titik), dan **lubang 12 jam**
+   akibat perekam gagal-senyap menghapus resolusi intraday persis di tempat yang
+   paling dibutuhkan.
+
+**Pertanyaan tengah malam BELUM terjawab oleh perekam.** Ia akan terjawab pagi
+ini begitu shift ke-3 mendarat — datanya sedang dikumpulkan.
+
+## 3 · (a) dan (b) — TERPISAH, dan keduanya bersandar pada pengamatan 08-07
+
+Keduanya berdiri di atas pengamatan **manual** bd=2026-08-07, **bukan** kurva di
+atas: masih bergerak pukul **10:13** (H −23,5 jt, `A` diam), lalu **beku** sejak
+snapshot perekam pertama **10:16** — jadi ia berhenti dirakit antara **10:13 dan
+10:16 pada H+1**, sekitar **sepuluh jam** lewat tengah malamnya sendiri.
+
+### (a) ✅ Jatuh tempo akhir H+1 AMAN — margin ~13,7 jam
+
+Perakitan selesai ~10:16 pada H+1; jatuh tempo 23:59 pada H+1. **Asumsi H+1
+bertahan.** Ini menutup pertanyaan yang menggantung dua hari. *(n = 1 hari,
+1 unit — bukan hukum alam.)*
+
+### (b) ⛔ Gerbang "jangan nilai hari ini" TIDAK CUKUP
+
+Papan menilai **kemarin sejak 00:00**, sementara kemarin masih dirakit sampai
+**~10:16**. Ada jendela **~10 jam tiap pagi** ketika hari kemarin dinilai dengan
+`H` belum lengkap — dan **peringatan palsu Korek yang owner lihat 09:55 jatuh
+persis di dalamnya**.
+
+Ini **ketiga kalinya** pola yang sama berulang pada gerbang yang sama: nol-shift
+ditutup → shift-parsial → hari-berjalan, dan **tiap kali kelasnya lebih luas dari
+kasusnya**.
+
+## 4 · Pertanyaan yang lebih baik: APA yang menandakan H selesai dirakit?
+
+**Jawabannya: TIDAK ADA sinyal yang bisa diamati hari ini.** Bukan pendapat —
+`public.sync_state` per unit × domain:
+
+| domain | punya `last_watermark`? | komponen |
+| --- | --- | --- |
+| `sales` | **6 dari 7 unit** | A |
+| `opname` · `delivery` · `tera` | 7 dari 7 | — |
+| **`pelanggan`** | **0 dari 7** | **C** |
+| **`edc`** | **0 dari 7** | **D** |
+| `terra_resmi` | 0 dari 6 | B |
+| `deposit` · `piutang` · `hutang` · `tebus` · `cash` · `realtank` · `masters` | 0 | — |
+
+**Tepat komponen yang bergerak — C (`pelanggan`) dan D (`edc`) — tidak merekam
+watermark sama sekali.** Yang ada hanya `last_run_at`, dan itu berkata **"agent
+baru saja jalan"**, bukan **"tanggal bisnis D sudah lengkap"**. Bahkan `sales`
+hanya 6 dari 7 unit.
+
+Konsekuensinya untuk gerbang keempat, **tanpa mengusulkan apa pun** (kurvanya
+belum ada, dan angkanya yang memutuskan bentuknya):
+
+- **Gerbang berbasis kelengkapan TIDAK BISA dibangun hari ini** — sinyalnya tak
+  ada di DB.
+- Membuatnya ada = mengubah **agent** (`apps/agent`) supaya merekam watermark
+  untuk `pelanggan`/`edc` — di luar indikator ini.
+- Kalau tidak, gerbang berbasis **waktu** menjadi **pilihan sadar dengan batas
+  tertulis** — bukan tebakan keempat.
+
+## 5 · Cabang `DELTA=0` — DIHAPUS, bukan digantung
+
+Dua percobaan memicunya, dua-duanya gagal: (i) mematikan proxy — penjaga di awal
+skrip memulihkannya lebih dulu; (ii) proses tiruan ber-argv cocok — `pgrep` tak
+mencocokinya, penjaga memulihkannya lagi.
+
+Menerapkan aturan §4 yang baru ditulis: **buktikan ia menyala, atau hapus.**
+**Dihapus** — dan diganti sesuatu yang **lebih baik dari cabang langka**:
+
+> Penjaga `pgrep` ("ada proses bernama proxy") diganti **prasyarat port**
+> ("apakah 127.0.0.1:5433 MENJAWAB") yang dijalankan **SETIAP kali**.
+
+Itu justru menutup skenario yang cabang tadi tuju — **proxy hidup tapi BASI**
+setelah sleep/wake tetap cocok `pgrep` sementara portnya mati, dan itu penyebab
+paling mungkin dari 12 jam gagal-senyap. **Diuji:** proxy dimatikan → port mati →
+prasyarat memulihkan → `delta=21`.
+
+> **Mengubah cabang penanganan-error yang langka menjadi PRASYARAT yang selalu
+> dijalankan membuatnya teruji terus-menerus, bukan sekali seumur hidup.**
+
+---
+
+# 2026-08-09 — PENGUKURAN EKOR C/D DIHENTIKAN **SEBAGAI KEPUTUSAN**
+
+Bukan karena gagal. Perekamnya memang gagal **tiga kali** (hilang tersapu ·
+berjalan 12 jam tanpa menulis · gap tidur), tapi yang menghentikannya adalah
+**angkanya**: paparan ≤ ~20 menit tak mengubah keputusan apa pun, dan mengejar
+presisinya berarti mengundang kegagalan keempat.
+
+Dicatat di sini persis supaya orang berikutnya **tidak** membacanya sebagai
+"belum ada yang berhasil" lalu mengulanginya. Ia **sudah dijawab**.
+
+Kesimpulan (a) dan (b), apa yang membatalkannya, dan fakta operasional "shift
+terakhir tersinkron pagi hari berikutnya" ada di
+[`KETAATAN-ADMINISTRASI.md`](../apps/dashboard/KETAATAN-ADMINISTRASI.md) — bukan
+di sini, karena itu keputusan yang mengikat, bukan kronologi.
+
+Bukti mentah dipindahkan dari `.measure/` (**ter-gitignore — bisa tersapu, persis
+kegagalan pertama**) ke [`data/ekor-cd-2026-08-08.jsonl`](data/ekor-cd-2026-08-08.jsonl)
+yang ber-versi: 21 snapshot × 7 unit × 3 tanggal bisnis.
+
+Perekam dibongkar: `launchctl unload` + plist dihapus (0 entri tersisa),
+`caffeinate` kedaluwarsa sendiri, proxy dimatikan.
+
+---
+
+# 2026-08-09 — ATURAN SALIN-SETORAN DIKIRIM
+
+Bentuknya, volume alarmnya, dan alasan tiap syaratnya ada di
+`KETAATAN-ADMINISTRASI.md` §3b. Yang dicatat **di sini** hanya yang bersifat
+kronologi pengukuran.
+
+## Cek keadaan-akhir dari arsip perekam — **dan kontrolnya**
+
+| | |
+| --- | ---: |
+| pasangan hari berurutan diperiksa (7 unit × 08-06…08) | **14** |
+| Σ setoran identik dengan D−1 | **0** |
+
+**Kontrolnya TIDAK vakum**, dan ini yang membuat angka 0 itu berarti sesuatu:
+nilai **Rp 359.447.000 masih ada** di arsip pada **08-06** (21 snapshot,
+unit 6 = Korek), sedangkan **08-07 sudah terbaca Rp 332.053.000**. Jadi pasangan
+identik memang **akan terlihat** kalau masih ada — ia sudah diperbaiki pengawas,
+persis seperti yang direkonstruksi dari jejak audit kemarin.
+
+Sesuai §7 "backtest keadaan AKHIR — dan syaratnya": **0 itu batas BAWAH**, bukan
+volume alarm. Volume alarm yang sah tetap yang dari jejak audit: **10,19
+jam-alarm** per 40 hari × 7 unit.
+
+## ⛔ YANG **TIDAK** TERVERIFIKASI, dan kenapa
+
+**Dampak pada jendela 91 sel tenang BELUM diukur pada DB hidup.**
+`cloud-sql-proxy` menolak menyambung:
+
+```
+auth: "invalid_grant" "reauth related error (invalid_rapt)"
+```
+
+ADC kedaluwarsa dan pemulihannya **interaktif** — tak bisa saya jalankan:
+
+```bash
+gcloud auth application-default login
+```
+
+Yang **sudah** menggantikannya sebagian: cek arsip 14 pasang di atas (sempit —
+3 tanggal, bukan 91 sel) dan penalaran bahwa aturan ini hanya **mempersempit**
+vonis yang sudah non-`selaras`, jadi ia tak bisa memerahkan sel yang tadinya
+hijau. **Itu argumen, bukan pengukuran.** Jangan perlakukan sebaliknya.
+
+## Kegagalan alat yang berulang, dicatat
+
+Prasyarat port saya tulis `(echo > /dev/tcp/127.0.0.1/5432)` — di **zsh** itu
+**selalu gagal**: `/dev/tcp` fitur bash. Proxy jelas hidup menurut lognya, tapi
+pemeriksa saya bilang mati. **Pemeriksa yang tak pernah bisa HIJAU sama tak
+bergunanya dengan pemeriksa yang tak pernah bisa MERAH.** Yang benar: `nc -z`.
+
+> Ini bentuk yang sama dengan `pgrep` yang mencocoki argv-nya sendiri: prasyarat
+> ditulis dalam idiom shell yang salah, lalu jawabannya dipercaya.
