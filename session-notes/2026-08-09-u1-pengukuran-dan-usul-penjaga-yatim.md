@@ -126,7 +126,11 @@ Keluarga yang sama dengan tema dua hari ini: **kanal yang membawa lebih sedikit
 nilai daripada fakta yang dititipkan padanya** — `note.tone` dua-nilai untuk
 fakta tiga-nilai, dan sekarang legenda tiga-nada untuk vonis dua-belas-kode.
 
-**Belum dikerjakan. Menunggu gerbang owner.**
+> ✅ **SUDAH DIKERJAKAN — PR #245, tayang di pilot 2026-08-09.** Legenda kini
+> "lengkap & selaras · perlu dicek · perlu tindakan", plus kalimat eksplisit
+> bahwa warna menyatakan TINGKAT bukan sebab. Dijaga dua lapis: `satisfies
+> Record<HmTone, string>` (nada baru tanpa entri legenda = error tsc) dan tes
+> yang membaca sumber halamannya.
 
 ---
 
@@ -251,7 +255,12 @@ n = 1; jangan dijadikan hukum.
 3. Apakah `setoran_tersalin` tetap MERAH bila satu-satunya bukti adalah
    kesamaan dengan `D+1` (yang secara kronologi diketik BELAKANGAN).
 
-**Tidak ada yang dibangun. Menunggu gerbang.**
+> ✅ **SUDAH DIBANGUN — PR #240, tayang di pilot 2026-08-09.** Aturannya dua arah;
+> hari yang ditandai adalah yang tak cocok dengan H-nya sendiri, tetangga hanya
+> memasok bukti asal-usul. Ketiga keputusan owner terpasang: `D+1` = hari ini
+> tidak dibandingkan (ditegakkan di dalam `adminStatus`) · F&G masuk PESAN lewat
+> `komponenIkut`, bukan pemicu · tetap MERAH walau buktinya hanya `D+1`.
+> Waktu evaluasi tidak berubah — tak ada vonis tersimpan.
 
 ## 4 · Bentuk untuk arsip: permukaan pelaporan yang berbohong
 
@@ -361,7 +370,25 @@ keluar layar**, dan form untuk 08-07 tampak identik dengan form untuk 08-08.
 
 Deteksi menangkapnya **sesudah**. Ketiga hal di atas yang membuatnya **terjadi**.
 
-**Tidak ada yang diubah. Menunggu gerbang owner untuk perbaikan UX-nya.**
+> ✅ **SUDAH DIKERJAKAN — PR #241, tayang di pilot 2026-08-09**, dan
+> **diverifikasi owner DI LAYAR** dua arah: Batu Layang 08-08 (terisi) →
+> tanggal tebal + kotak kuning menyebut ketiga seksi; Adisucipto 07-28 (kosong)
+> → tanggal tampil, NOL peringatan.
+>
+> Dua lapis yang diserang: tanggal di atas kolom input, dan peringatan
+> hari-sudah-terisi. **Lapis ketiga — default tanggal = cookie "terakhir
+> dibuka" — SENGAJA TIDAK DISENTUH** (arc topbar Juli; membatalkannya lewat
+> pintu belakang memunculkan lagi bug dropdown desinkron).
+>
+> ⚠️ **Nada KUNING, bukan merah — jangan "diperbaiki" nanti.** Membuka hari yang
+> sudah terisi adalah tindakan SAH: untuk membaca atau mengoreksi. Merah di situ
+> akan berteriak serigala tiap hari dan mati dalam sepekan. Menyebut nama hari
+> ("Sabtu") juga bukan hiasan — itu isyarat kedua yang INDEPENDEN dari angka
+> tanggalnya, dan orang menangkap "kok Sabtu?" lebih cepat daripada "kok 8?".
+>
+> ⚠️ **Mitigasi tidak menghapus mekanismenya.** Kalau kesalahan serupa muncul
+> lagi meski peringatan sudah ada, itu sinyal **mitigasinya tak cukup** — bukan
+> bahwa peringatannya gagal dipasang.
 
 ## ⚠️ BUKAN KODE — Batu Layang 08-07 masih rusak di produksi
 
@@ -373,6 +400,30 @@ dimasukkan ulang. Angka yang harus dikembalikan pada **business date 2026-08-07*
 | **F** Pendapatan Lain | **0** (tak ada baris) | 103.478.000 |
 | **G** Pengeluaran | **40.600.000** | 40.608.000 |
 | **I** Setoran Bank | **241.297.000** | 483.803.000 |
+
+### ✅ HASILNYA — dikoreksi LENGKAP, lubangnya tidak terbangun
+
+Diperiksa baca-saja di DB pilot, **2026-08-09 pukul 18:30–18:31 WIB** pengawas
+mengoreksi **ketiganya**:
+
+| komponen | tindakan | hasil |
+| --- | --- | ---: |
+| **F** | kedua baris salinan (100.000.000 + 3.478.000) **di-void** | **0** ✓ |
+| **G** | 58.000 & 250.000 di-void, 300.000 dipasang kembali | **40.600.000** ✓ |
+| **I** | 483.803.000 di-void, 241.297.000 dimasukkan ulang | **241.297.000** ✓ |
+
+`H` kembali 241.296.190, selisih **Rp 810** → **selaras**. Baris 08-08 **tidak
+tersentuh** (F 103.478.000 · G 40.608.000 · I 483.803.000).
+
+> **Skenario "hanya `I` yang diperbaiki" TIDAK terjadi.** Lubang F&G tetap laten,
+> dan ia tetap laten karena **instruksi menyebut ketiga angkanya** — bukan karena
+> ada aturan yang menjaganya. Itu persis bentuk keputusannya: skenario yang
+> dibangunkan oleh rencana kita sendiri ditutup oleh **orang**, dengan instruksi
+> yang eksplisit dan verifikasi pada **angkanya, bukan warnanya**.
+
+Konsekuensi langsung yang sudah terlihat: penjaga hidup `dua-arah` kini mencetak
+**0 kasus** pada jendela penuh — persis peringatan yang ditulis di dekatnya. Ia
+menyala pada kesempatan nyata pertamanya.
 
 Dengan itu `H` kembali 241.296.190 dan selisihnya Rp 810 → **selaras**.
 Baris 08-08 sudah benar dan **jangan disentuh**.
@@ -465,3 +516,67 @@ diabaikan dalam seminggu; itu diuji sebagai tes tersendiri, dan mutasi
 Lima mutasi membuktikan kelimanya bisa merah: peringatan tak pernah muncul ·
 peringatan selalu muncul · tanggal dilepas dari panel · model selalu bilang
 "sudah terisi" · seksi kosong ikut disebut.
+
+
+---
+
+# 2026-08-09 (penutup arc) — dua bentuk terakhir
+
+## A · Lubang laten bisa DIBANGUNKAN oleh tindakan perbaikan kita sendiri
+
+Ditemukan saat menyapu sisa pekerjaan, bukan saat menulis kodenya — dan tak ada
+kode yang diubah karenanya (keputusan owner).
+
+Aturan salin-setoran dijaga `kode !== "selaras"`. Itu benar: dua hari yang
+setorannya kebetulan sama tapi dua-duanya selaras bukan kesalahan. **Tapi syarat
+yang sama juga mematikan `komponenIkut` tepat pada saat ia paling dibutuhkan.**
+
+Skenarionya adalah **rencana koreksi kita sendiri** untuk Batu Layang 08-07.
+Bila pengawas hanya memperbaiki `I` agar cocok dengan `H` yang **sudah salah** —
+mis. mengetik `344.766.000`, dan setoran memang selalu dibulatkan ke ribuan —
+maka |I − H| = **190** ≤ toleransi → **selaras, hijau**, sementara F dan G masih
+milik 08-08. Aturannya berhenti menyala, jadi fakta "komponen manual identik
+dengan hari tetangga" **tak pernah tersuarakan**.
+
+> **Sebuah lubang yang laten dalam data historis (0 dari 102) bisa dibangunkan
+> oleh tindakan perbaikan yang kita rencanakan sendiri.** Mengukur laju kejadian
+> pada data masa lalu tidak memberi tahu apa pun tentang keadaan yang akan kita
+> CIPTAKAN berikutnya.
+
+**Keputusan owner: JANGAN ubah kode.** Instruksi koreksinya menyebut **ketiga**
+nilainya secara eksplisit, dan owner memverifikasi hasilnya di layar dengan
+memeriksa **ketiga angkanya, bukan warnanya**. Skenario itu ditutup oleh **orang**,
+bukan oleh aturan yang laju positif-palsunya belum terukur.
+
+Angka yang harus dikembalikan pada **2026-08-07**, unit Batu Layang:
+
+| komponen | benar | (yang salah) |
+| --- | ---: | ---: |
+| **F** Pendapatan Lain | **0** (tanpa baris) | 103.478.000 |
+| **G** Pengeluaran | **40.600.000** | 40.608.000 |
+| **I** Setoran Bank | **241.297.000** | 483.803.000 |
+
+## B · Snapshot sesi bisa BASI terhadap repo
+
+Saat menyiapkan PR promosi, snapshot berkas di sesi saya menampilkan
+`arsip-g4.yml` **tanpa** wiring `BASE_REF`/`HEAD_REF` — padahal PR-nya sudah
+di-merge. Saya memeriksa `staging` langsung alih-alih melaporkan dari snapshot.
+
+> **Sumber yang ada di depan mata terasa otoritatif justru karena ia ada di depan
+> mata.** Keluarga yang sama dengan `ingested_at` dan dengan data yang bergerak
+> di bawah kaki: yang berbahaya bukan sumber yang jelas usang, melainkan sumber
+> yang tampak segar.
+
+**Aturan turunan:** sebelum menyatakan sesuatu tentang keadaan repo — terutama
+setelah merge yang dilakukan orang lain — baca dari `git`, bukan dari apa yang
+kebetulan terpampang di konteks.
+
+## C · Pengamatan cabang pengecualian G4 — hasilnya, dan batasnya
+
+Cabangnya **dieksekusi** pada PR #246 (`PR promosi (staging → main) — G4
+dikecualikan.`), jadi wiring `BASE_REF`/`HEAD_REF` **terbukti sampai ke skrip**.
+
+Tapi promosi itu membawa **nol** berkas `session-notes/`, jadi ia **tidak**
+membuktikan pengecualiannya **mengubah hasil** — tanpa pengecualian ia tetap
+lolos lewat cabang "G4 tak berlaku". Pengamatan penuhnya menunggu promosi yang
+membawa commit arsip. **Jangan tandai celah ini tertutup penuh sebelum itu.**
