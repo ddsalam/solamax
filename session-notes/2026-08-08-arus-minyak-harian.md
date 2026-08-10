@@ -1666,3 +1666,113 @@ harinya tak punya baris pagi ber-stempel-waktu. Angkanya **tidak sebanding** den
 Korek punya hari divergen terbanyak, tetapi **tak satu pun jatuh di jendela yang
 diekspor** (02 Jan · 31 Jan · 08 Feb · 02/07/09/11/30 Mar · 23 Apr · 03 Mei · 07 Jun ·
 28 Jul) — jadi Korek menguji arah EKSAK saja. **Arah MELESET hanya datang dari Kotabaru.**
+
+---
+
+# PUTARAN 7 (2026-08-10) — amandemen kriteria, subset bertarget, siklus kedua overflow
+
+## P7-1 — AMANDEMEN KRITERIA GUGUR #3 (bertanggal 2026-08-10)
+
+Putaran 6 menafsirkan kriteria #3 secara sempit dan owner menerimanya. Tafsir sempit
+tanpa amandemen tertulis = disiplin segel mengendur diam-diam. Karena itu ditulis ulang.
+
+**TEKS LAMA (segel `013454d`, 2026-08-10 pagi):**
+> Kalau muncul **kelas mismatch tanpa nama** (bukan cacat A, bukan penutup-nol) → status
+> turun apa pun angkanya.
+
+**TEKS BARU (berlaku sejak 2026-08-10 siang):**
+> Status cacat A **turun** bila muncul sel yang tidak cocok oracle **dan sebabnya belum
+> diketahui** — yakni: bukan cacat A (Awal/Fisik + turunannya pada hari yang aturan
+> divergensi memang menyebut divergen), bukan penutup-nol, dan bukan keterbatasan
+> **CETAK** oracle yang **mekanismenya sudah diperagakan secara aritmetis dan diuji dua
+> arah**. Keterbatasan cetak yang mekanismenya TIDAK bisa diperagakan tetap dihitung
+> sebagai kelas tak dikenal, dan status tetap turun.
+
+**ALASAN:** teks lama berbunyi atas sesuatu yang bukan hitungan kita. `***,**` bukan
+angka yang salah — ia pengakuan oracle bahwa kolomnya tak muat. Menurunkan status cacat A
+karenanya akan menghukum diagnosis yang benar atas properti pencetakan pihak lain.
+
+**YANG JADI LOLOS (disebutkan, bukan disembunyikan):** konvensi TAMPILAN oracle yang baru
+tapi mekanismenya bisa dijelaskan — misal pembulatan berbeda, jumlah desimal berbeda, atau
+pemotongan pemisah ribuan. Teks lama akan menurunkan status hanya karena kelasnya baru;
+teks baru meloloskannya asalkan mekanismenya terbukti. **Risikonya nyata**: "itu cuma soal
+tampilan" bisa dipakai post-hoc untuk menutupi cacat hitung. Penjaganya adalah frasa
+*diperagakan secara aritmetis dan diuji dua arah* — bukan sekadar diyakini.
+
+### 🔴 TIGA keadaan yang MASIH membuat kriteria baru berbunyi
+
+Kalau tak bisa disebut, amandemennya terlalu jauh. Ini yang tersisa:
+
+1. **Overflow palsu.** Oracle mencetak `***,**` sementara nilai SolaMax justru PENDEK
+   (mis. −4,42, lebar 5). Mekanisme cetak tak menjelaskannya → pasti ada sebab lain.
+   **Sudah terpasang di kode**: `gradeArus` memberi vonis `mismatch`, bukan
+   `oracle_overflow`, bila `idnLebar ≤ LEBAR_KOLOM_PCT`.
+2. **Mismatch di kolom yang tak punya mode-gagal dikenal.** `Penerimaan` atau `Penjualan`
+   meleset pada hari tanpa divergensi dan tanpa penutup-nol. Kedua kolom itu tak tersentuh
+   cacat A di seluruh 25 berkas sejauh ini; satu saja meleset = sebab yang belum ada namanya.
+3. **Cacat A muncul di tempat yang aturannya menyebut BERSIH.** `Awal`/`Fisik` meleset pada
+   hari yang aturan divergensi nyatakan tidak divergen — itu langsung membantah aturannya,
+   dan justru inilah yang diuji subset §P7-2.
+
+## P7-2 — SUBSET BERTARGET: aturan pemilihan (dinyatakan SEBELUM dibuka)
+
+**Aturan:** pilih hari yang entri opname-nya **paling dekat ke batas 08:00 pada D+1** —
+di situlah aturan divergensi paling mungkin patah — dan **sertakan kedua sisi batas**.
+Minimal satu hari per unit yang berkas Agustus-nya belum dibuka.
+
+Jarak ke batas (menit) dihitung untuk hari-D (memengaruhi Fisik) dan D−1 (memengaruhi Awal).
+
+**8 dari 33 dipilih:**
+
+| # | unit | tanggal | jarak ke batas | sisi | alasan |
+|---|---|---|---|---|---|
+| 1 | 28 Oktober | 2026-08-07 | **7 mnt** | **LEWAT** batas | ada entri 7 menit SESUDAH 08:00, tapi nilainya sama → "nyaris divergen tapi tidak". Kasus paling tajam di seluruh armada |
+| 2 | 28 Oktober | 2026-08-08 | 8 mnt (D) / **7 mnt** (D−1) | LEWAT, dua-duanya | menguji sisi Awal DAN Fisik sekaligus |
+| 3 | 28 Oktober | 2026-08-04 | **8 mnt** | **SEBELUM** batas | sisi lain: entri 8 menit SEBELUM 08:00. Kalau batas sebenarnya lebih pagi, hari ini yang berbalik |
+| 4 | Adisucipto | 2026-08-02 | 46 mnt | LEWAT | ADIS terdekat; sekaligus kelas DTGLJAM NULL-by-default |
+| 5 | Bundaran Kotabaru | 2026-08-03 | 82 mnt | — | KB terdekat; unit tempat cacat A ditemukan |
+| 6 | Batu Layang | 2026-08-01 | 108 mnt | — | BL terdekat |
+| 7 | Bakau | 2026-08-07 | 111 mnt | — | BK terdekat |
+| 8 | Bakau | 2026-08-04 | 117 mnt | — | **ditambahkan karena §P7-3**, bukan karena batas: memuat sel % 538,42 (lebar 6) — uji ambang overflow dari BAWAH |
+
+**25 dari 33 TIDAK dipilih.** Alasannya: seluruhnya berjarak **≥ 82 menit** dari batas dan
+**tak satu pun punya entri melewati batas** (`lewat = 0`) kecuali ADIS 03–08 yang jaraknya
+67–134 menit. Hari yang jelas jauh dari batas tak menguji aturan batas.
+
+⚠️ **JUJUR SOAL ANGGARAN:** itu alasan metodologis untuk *urutan* pemilihan, tetapi angka
+8 sendiri **dibatasi anggaran sesi**, bukan kecukupan metodologis. Dengan anggaran lebih
+besar saya akan membuka ketiga puluh tiga. **Jangan baca 8/33 sebagai "cukup".**
+
+## P7-3 — SEGEL SIKLUS KEDUA OVERFLOW (prediktif, dari render KITA sendiri)
+
+Dihitung dari `buildArusMinyak` untuk **seluruh 33 berkas yang belum dibuka**, tanpa
+menyentuh oracle: **224 sel %**.
+
+**PREDIKSI: TIDAK ADA SATU PUN sel yang akan mencetak `***,**`** di ketiga puluh tiga
+berkas — nol sel berlebar > 6.
+
+Sisi lain batas, untuk menguji ambangnya dari BAWAH — **7 sel berlebar TEPAT 6, diprediksi
+TETAP TERCETAK sebagai angka**:
+
+| unit | tanggal | produk | % | lebar |
+|---|---|---|---:|---:|
+| 28 Oktober | 2026-08-07 | PERTAMINA DEX | −26,77 | 6 |
+| Adisucipto | 2026-08-06 | PERTAMAX | −13,29 | 6 |
+| Adisucipto | 2026-08-08 | PERTAMAX | −13,53 | 6 |
+| Bakau | 2026-08-01 | PERTAMAX TURBO | −21,72 | 6 |
+| **Bakau** | **2026-08-04** | **PERTAMINA DEX** | **538,42** | **6** |
+| Bakau | 2026-08-05 | PERTAMAX TURBO | −16,03 | 6 |
+| Bakau | 2026-08-06 | PERTAMAX TURBO | −14,03 | 6 |
+
+Dua sel di antaranya ada di subset §P7-2 (28OKT 07 dan BK 04) → **ambang diuji dari bawah**.
+
+**KETERBATASAN, dinyatakan di muka:** subset ini **tidak memuat satu pun kandidat
+overflow** (memang tak ada di 33 berkas itu). Jadi arah "overflow muncul di tempat yang
+diprediksi" **tidak dapat diuji** putaran ini — yang bisa diuji hanya arah sebaliknya
+(overflow muncul di tempat yang TIDAK diprediksi) dan ambang dari bawah. Uji arah pertama
+menuntut hari ber-% ekstrem; kandidat terkuat yang diketahui ada di luar 33 berkas ini.
+
+**KRITERIA GUGUR §P7-3:** kalau `***,**` muncul di sel mana pun dari 8 berkas subset →
+aturan lebar (`idnLebar > 6`) **tidak lengkap** dan harus ditinjau (mungkin ambangnya
+bukan 6, atau tanda/pemisah ribuan dihitung berbeda). Kalau salah satu dari 7 sel
+berlebar-6 ternyata dicetak `***,**` → ambangnya sebenarnya 5, bukan 6.
