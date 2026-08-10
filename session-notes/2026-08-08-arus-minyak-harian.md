@@ -1957,3 +1957,168 @@ punya baris pagi ber-stempel-waktu. **Tidak sebanding** dengan unit lain.
   di `dbfee26`; prediksi bukan verifikasi.
 - **`terra_resmi` tidak tersinkron untuk Adisucipto** (§P4-0) — sesi terpisah.
 - **Arah "prediksi overflow lalu muncul" belum teruji** (§P7-4).
+
+---
+
+# PENUTUPAN ARC (2026-08-10) — keputusan owner
+
+Bukan putaran verifikasi: **nol berkas oracle baru dibuka, nol segel baru**. Berkas ini
+menjadi rujukan tunggal; ia ditulis supaya berdiri sendiri tanpa percakapan yang
+melahirkannya.
+
+## Z-1 — PEMBUKUAN CAKUPAN (perbaikan, agar tak menyesatkan)
+
+Putaran 7 menulis **31/58** di tabel dan **33/58** di vonis. Keduanya benar menurut
+konvensi yang dipakai, tetapi pembaca yang hanya melihat salah satunya akan mengutip
+angka yang berbeda. Ditegaskan sekali, di sini:
+
+> **33 berkas oracle DIBUKA = 31 berkas TERVERIFIKASI + 2 berkas KARAKTERISASI.**
+
+**Kenapa yang dua tidak masuk hitungan EKSAK/MISMATCH utama:** Bundaran Kotabaru
+**2026-08-06** dan **2026-08-07** adalah dua tanggal yang SENGAJA diharapkan meleset —
+keduanya memotret cacat hulu `getDailyGlByProduct` (cacat A). Memasukkan 48 mismatch-nya
+ke tabel utama akan mencampur "SolaMax salah karena cacat yang sudah didiagnosis dan
+dijadwalkan diperbaiki" dengan "SolaMax salah dan kita belum tahu kenapa". Keduanya
+dipisah supaya baris **MISMATCH = 0** di tabel utama berarti persis apa yang tertulis:
+**tak ada selisih yang belum ada penjelasannya.**
+
+Angka final, dipakai konsisten di seluruh dokumen:
+
+> **33 dari 58 berkas · 7 unit · 6 tenant · 1.848 sel**
+> (31 berkas / 1.736 sel terverifikasi: **1.504 EKSAK · 231 ABSEN≡NOL · 1 OVERFLOW ·
+> 0 MISMATCH** — ditambah 2 berkas / 112 sel karakterisasi: **48 MISMATCH** yang memang
+> diharapkan.)
+
+6 tenant untuk 7 unit karena **Imam Bonjol dan Bakau berbagi satu tenant**
+(`80885713-…`); lima unit lain masing-masing tenant sendiri. Diverifikasi dari tabel
+`unit`, bukan dari ingatan.
+
+## Z-2 — KENAPA DITUTUP DI 33, BUKAN 58
+
+Keputusan owner, dan alasannya adalah **pelajaran arc ini diterapkan pada dirinya sendiri**.
+
+Menurut **aturan seleksi yang saya nyatakan sendiri di §P7-2** — pilih hari yang entri
+opname-nya paling dekat ke batas 08:00 — ke-25 berkas yang tersisa seluruhnya berjarak
+**≥ 82 menit** dari batas dan **tak satu pun punya entri yang melewatinya**. Dengan kata
+lain: mereka adalah berkas dengan **daya-beda TERENDAH** dalam himpunan. Membukanya
+menambah **sel**, bukan **kekuatan bukti**.
+
+Yang memberi keyakinan bukan volumenya, melainkan bahwa subset yang dibuka **dipilih
+secara adversarial** — hari yang paling mungkin mematahkan aturan — dan tetap eksak di
+**kedua sisi** batas: entri 7 menit SESUDAH 08:00 (28 Okt 07 & 08) dan 8 menit SEBELUM
+(28 Okt 04). Itu argumen yang sama yang membuat 336 sel Agustus dulu MENIPU: bukan
+banyaknya sel yang meyakinkan, melainkan daya-bedanya.
+
+### 🔴 BANTAHANNYA — dicatat supaya keputusan ini bisa dinilai ulang
+
+Argumen di atas **mengandaikan aturan divergensi sudah benar**. Kalau ia salah dengan cara
+yang belum terpikir — misalnya batasnya bukan jam melainkan sesi/shift, atau ada sumber
+divergensi kedua yang tak berhubungan dengan stempel waktu — maka "jarak ke batas 08:00"
+bukan ukuran daya-beda yang tepat, dan ke-25 berkas itu **bisa** memuat kejutan yang tak
+akan pernah kita lihat.
+
+**Ini risiko yang diterima secara sadar, bukan risiko yang disangkal.** Pemicu untuk
+membuka kembali: cacat A ternyata tidak sembuh sepenuhnya setelah perbaikan hulu, ATAU
+muncul selisih di unit mana pun yang tak masuk ketiga kelas yang dikenal.
+
+## Z-3 — PERNYATAAN PENUTUP ARC
+
+### Yang TERBUKTI
+
+1. **Empat kolom TERTUTUP di 7 unit / 6 tenant** — `Penjualan`, `Losses`, `Penerimaan`,
+   `Stock Fisik` cocok EKSAK dengan RESUME EasyMax di seluruh berkas yang dibuka,
+   termasuk hari ber-DO 3.664–56.000 L.
+2. **`Stock Awal` tertutup dengan SATU pengecualian bernama** — meleset hanya pada hari
+   sesudah hari-divergen (cacat A), tak pernah di luar itu.
+3. **Aturan tera identik di ketujuh unit** — kolom Penjualan/Teori/Losses bersih-tera;
+   **TOTAL Penjualan dan penyebut % memakai KOTOR**. Pembeda paling ekstrem: Korek 30 Apr
+   P. Turbo, penyebut bersih memberi −4.062,50 % sementara oracle mencetak −18,45.
+4. **`Losses ≡ gl`** — identitas aljabar, dijaga tes pada 1e−6. Panel Arus Minyak dan
+   panel Gain/Losses tak bisa menyimpang satu sama lain.
+5. **Cacat A terdiagnosis dan STABIL** — aturan divergensinya lulus uji **prediktif dua
+   arah** di 22 unit-tanggal, termasuk memprediksi di muka bahwa KB 06 akan meleset di
+   **Fisik** sementara KB 07 meleset di **Awal** (arah berlawanan, unit sama, hari
+   berturut).
+
+### Yang TIDAK terbukti — daftar lengkap, tanpa pelunakan
+
+1. **25 dari 58 berkas oracle tak pernah dibuka.** Semuanya tersegel EKSAK di commit
+   `dbfee26`. **Prediksi bukan verifikasi.** Daftar: KB 01,02,04 · 28OKT 03,05,06 ·
+   ADIS 03–08 · BK 01,02,03,05,06,08 · BL 02–08.
+2. **Arah kedua uji overflow BELUM TERUJI.** "Diprediksi overflow lalu benar-benar
+   muncul" tak pernah terjadi — nol kandidat di 33 berkas. Satu-satunya instansi
+   (Korek 01 Agu) ditemukan **retrospektif**, bukan diprediksi. Yang menahan kelas ini
+   hanyalah handler yang **gagal-aman by construction**: bila nilai SolaMax tidak lebih
+   panjang dari kolom (`idnLebar ≤ 6`), vonisnya tetap `mismatch`, bukan
+   `oracle_overflow`. Itu properti kode, **bukan bukti empiris**.
+3. **`excludedTanks` tak pernah dilihat mata pada data nyata.** Sapuan 7 unit sepanjang
+   2026: **nol hari** dengan baris opname di luar batas wajar. Cabang itu hanya terkunci
+   tes komponen.
+4. **Akurasi di luar rentang tanggal yang diuji tidak diklaim.** Yang diuji:
+   2025-11-21 · 2026-02-13 · 2026-03-04 · 2026-04-30 · 2026-08-01…08. Di luar itu yang ada
+   hanyalah sapuan konsistensi INTERNAL 120 hari (identitas & carry-in) — dan sapuan itu
+   sendiri sudah terbukti buta terhadap kesalahan yang KONSISTEN (§P3-1).
+
+### Angka final
+
+> **33 dari 58 berkas · 7 unit · 6 tenant · 1.848 sel.**
+
+## Z-4 ⚠️ KOREKSI ANGKA di §P7-7 — ditemukan saat menulis penutupan
+
+§P7-7 butir 2 menyatakan bahwa setelah perbaikan hulu mendarat dan kedua tanggal
+karakterisasi dipindah ke `ORACLE_ARMADA`, baseline menjadi **"1.616 EKSAK / 0 MISMATCH
+dari 1.848 sel"**. **Itu salah** — aritmetika saya sendiri, bukan temuan baru.
+
+112 sel karakterisasi tidak seluruhnya menjadi EKSAK: **14 di antaranya adalah
+ABSEN≡NOL** (baris Premium mati, 7 sel × 2 tanggal). Yang benar:
+
+| | sebelum perbaikan | **sesudah perbaikan (target)** |
+|---|---:|---:|
+| EKSAK | 1.504 | **1.602** |
+| ABSEN≡NOL | 231 | **245** |
+| OVERFLOW | 1 | **1** |
+| MISMATCH | **48** | **0** |
+| total | 1.848 | **1.848** |
+
+Sesi hulu harus memakai **1.602 / 245 / 1 / 0**, bukan 1.616. Dilaporkan, bukan
+disembunyikan — angka salah di berkas serah-terima akan membuat sesi hulu menyimpulkan
+perbaikannya gagal padahal berhasil.
+
+## Z-5 — SERAH-TERIMA: apa yang harus dibaca, dan urutannya
+
+Sesi hulu (`getDailyGlByProduct`: cacat A + penutup-nol) cukup membaca **§P7-7** di berkas
+ini. Ia memuat: baseline per unit · 48 MISMATCH yang harus jadi 0 dengan kolom per tanggal
+· DEXLITE sebagai kontrol internal · dua tes yang harus dihapus (nama berkas + nama tes) ·
+satu perintah menjalankan harness · aturan divergensi versi final · sebaran hari divergen
+per unit · daftar yang jangan diubah · utang yang diketahui.
+
+**Dengan tiga tambahan dari penutupan ini:**
+
+1. **Angka baseline pasca-perbaikan = 1.602 / 245 / 1 / 0** (bukan 1.616 — lihat Z-4).
+2. **Baseline sudah diverifikasi ulang dari `staging` yang sudah di-merge** (`f62b69e`)
+   pada 2026-08-10: ketujuh baris angka reproduksi persis, dan kedua tes karakterisasi
+   hijau. Jadi baseline itu bukan catatan sejarah — ia keadaan `staging` hari ini.
+3. **Utang yang diketahui bertambah menjadi lima** (§P7-7 butir 7 menyebut tiga):
+   25 berkas tersegel tak dibuka · arah kedua overflow · `terra_resmi` ADIS ·
+   **`excludedTanks` nol hari di seluruh 2026** · **akurasi di luar rentang tanggal
+   yang diuji**. Rinciannya di Z-3.
+
+**Yang TIDAK perlu ditanyakan kepada sesi ini:** semua yang di atas ada di berkas.
+**Yang mungkin perlu keputusan owner, bukan jawaban saya:** apakah membuka 25 berkas
+tersegel sebelum/ sesudah perbaikan hulu (lihat bantahan di Z-2).
+
+## Z-6 — ARC DITUTUP
+
+Tujuh putaran. Yang paling berharga dari arc ini bukan angka 1.848 sel, melainkan tiga
+cara sebuah pemeriksaan bisa HIJAU tanpa menguji apa pun:
+
+1. **Jendelanya buta** (§P3-1) — rumus % yang salah lolos 336 sel selama dua putaran
+   karena tera di jendela Agustus maksimum 0,64 L; pada besaran itu kedua hipotesis
+   membulat ke angka yang sama.
+2. **Subjeknya lenyap** (§P6-4) — tes badge kelas-1 membusuk dalam lima hari ketika
+   opname penutupnya akhirnya masuk.
+3. **Tak pernah ada subjek** (§P7-5) — sapuan penutup-nol hijau dengan NOL baris, dan
+   tak ada yang tahu sampai jumlahnya dicetak.
+
+Penawarnya satu dan sama: **sebutkan jumlah subjek dan besaran yang mampu dibedakan,
+jangan hanya vonisnya.** Itu yang dibawa keluar dari arc ini.
