@@ -1776,3 +1776,91 @@ menuntut hari ber-% ekstrem; kandidat terkuat yang diketahui ada di luar 33 berk
 aturan lebar (`idnLebar > 6`) **tidak lengkap** dan harus ditinjau (mungkin ambangnya
 bukan 6, atau tanda/pemisah ribuan dihitung berbeda). Kalau salah satu dari 7 sel
 berlebar-6 ternyata dicetak `***,**` → ambangnya sebenarnya 5, bukan 6.
+
+## P7-4 — SEGEL DIBUKA: subset bertarget & overflow, kedua arah
+
+### Subset §P7-2 — 8 berkas, semuanya diprediksi EKSAK
+
+| # | unit-tanggal | jarak batas | prediksi | kenyataan |
+|---|---|---|---|---|
+| 1 | 28 Oktober 2026-08-07 | **7 mnt LEWAT** | EKSAK | **EKSAK** ✅ |
+| 2 | 28 Oktober 2026-08-08 | 8 / **7 mnt LEWAT** | EKSAK | **EKSAK** ✅ |
+| 3 | 28 Oktober 2026-08-04 | **8 mnt SEBELUM** | EKSAK | **EKSAK** ✅ |
+| 4 | Adisucipto 2026-08-02 | 46 mnt LEWAT | EKSAK | **EKSAK** ✅ |
+| 5 | Bundaran Kotabaru 2026-08-03 | 82 mnt | EKSAK | **EKSAK** ✅ |
+| 6 | Batu Layang 2026-08-01 | 108 mnt | EKSAK | **EKSAK** ✅ |
+| 7 | Bakau 2026-08-07 | 111 mnt | EKSAK | **EKSAK** ✅ |
+| 8 | Bakau 2026-08-04 | (uji ambang) | EKSAK | **EKSAK** ✅ |
+
+**Nol mismatch.** Yang paling berarti: 28 Okt 07 & 08 punya entri opname **7 menit
+SESUDAH** batas 08:00 — aturan divergensi menyebutnya bersih karena NILAI-nya sama, dan
+oracle setuju. 28 Okt 04 punya entri **8 menit SEBELUM** batas — sisi seberangnya, juga
+bersih. Aturan bertahan di kedua sisi batas, pada jarak yang sesempit yang tersedia di
+seluruh armada.
+
+### Overflow §P7-3 — dua arah
+
+| arah | hasil |
+|---|---|
+| overflow muncul di tempat yang TIDAK diprediksi | **tidak terjadi** — nol `***,**` di 8 berkas ✅ |
+| overflow yang diprediksi tidak muncul | **tak dapat diuji** — memang nol kandidat di 33 berkas (dinyatakan di muka) |
+| **ambang dari BAWAH** | **teruji**: `−26,77` (28 Okt 07) dan **`538,42`** (BK 04) berlebar TEPAT 6 dan **dicetak sebagai angka**, bukan `***,**` ✅ |
+
+**VONIS:** aturan lebar `idnLebar > 6` **konsisten dengan seluruh bukti yang tersedia**,
+dan ambangnya terbukti **bukan 5** (dua sel berlebar 6 tercetak normal). Ia **belum
+lengkap** dalam satu arah: belum pernah ada kesempatan memprediksi overflow lalu
+melihatnya muncul — satu-satunya instansi (`Korek 01 Agu`) ditemukan retrospektif.
+Menutup arah itu menuntut hari ber-% ekstrem yang tak ada di 33 berkas ini.
+
+## P7-5 — §4 SAPUAN KELAS "tes yang membusuk"
+
+Disapu **seluruh suite dashboard**: 72 berkas tes, **18 di antaranya menyentuh DB hidup**.
+
+| temuan | jumlah |
+|---|---|
+| berkas tes memakai `new Date()` / `Date.now()` | **0** — tak ada ketergantungan kalender tersisa |
+| berkas tes ber-DB-hidup | 18 |
+| benar-benar MEMBUSUK (hijau→merah tanpa ada yang rusak) | **1** — badge kelas-1, sudah diperbaiki putaran 6 |
+| RENTAN hijau-tanpa-subjek (loop atas himpunan hidup tanpa penjaga jumlah) | **1** — sapuan penutup-nol di `arus-minyak.render.test.tsx` |
+| diperbaiki putaran ini | **1** |
+
+Sisanya tidak rentan pada kelas ini: `dua-arah` sudah punya `expect(nPasang).toBeGreaterThan(50)`;
+`laporan-setoran` melooping daftar KASUS tetap; `scope.*`, `rbac-constraints`, `board-live`,
+`harian.*`, `ketaatan-live` memakai asersi nilai tetap atau penjaga jumlah (7–21 per berkas).
+
+**Perbaikannya membuktikan dirinya sendiri seketika.** Sapuan penutup-nol kini SELALU
+mencetak jumlahnya, termasuk nol — dan keluaran pertamanya berbunyi:
+
+```
+PENUTUP-NOL terdeteksi: 0 baris — TAK ADA SUBJEK di tanggal yang disapu;
+hijau di sini tidak menguji apa pun
+```
+
+Selama ini ia hijau **tanpa satu pun subjek**. Tanpa instrumen ini, hijau itu terbaca
+sebagai "diperiksa dan lolos". Sekarang ia terbaca apa adanya.
+
+**Pelajaran, disatukan dengan dua pelajaran sebelumnya:** pemeriksaan bisa hijau karena
+(1) jendelanya tak mampu membedakan hipotesis [P3-1], (2) yang diperiksa sudah lenyap
+[P6-4], atau (3) tak ada subjek untuk diperiksa sejak awal [di sini]. Ketiganya sama:
+**hijau tanpa daya-beda**. Penawarnya selalu sama — sebutkan jumlah subjek dan besaran
+yang mampu dilihat, jangan hanya vonisnya.
+
+## P7-6 — ANGKA HARNESS KUMULATIF (33 dari 58 berkas)
+
+| unit | kode | berkas | EKSAK | ABSEN≡NOL | OVERFLOW | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Imam Bonjol | 6478111 | 7/7 | 343 | 49 | 0 | **0** | 392 |
+| Korek | 6478311 | 9/9 | 440 | 63 | 1 | **0** | 504 |
+| 28 Oktober | 63781002 | 5/8 | 245 | 35 | 0 | **0** | 280 |
+| Bundaran Kotabaru | 6478106 | 3/8 ¹ | 147 | 21 | 0 | **0** | 168 |
+| Bakau | 6378301 | 3/9 | 147 | 21 | 0 | **0** | 168 |
+| Adisucipto | 6478101 | 2/8 | 84 | 28 | 0 | **0** | 112 |
+| Batu Layang | 6478201 | 2/9 | 98 | 14 | 0 | **0** | 112 |
+| **TOTAL** | **7 unit** | **31/58** | **1.504** | **231** | **1** | **0** | **1.736** |
+| KARAKTERISASI cacat A | KB 06,07 | 2/58 | — | — | — | **48** | 112 |
+| **SELURUHNYA** | | **33/58** | | | | **48** | **1.848** |
+
+¹ KB: 3 berkas di ORACLE_ARMADA (03, 05, 08) + 2 di blok karakterisasi (06, 07) = 5/8 dibuka.
+
+**Berkas yang BELUM dibuka: 25** — KB 01,02,04 · 28OKT 03,05,06 · ADIS 03–08 ·
+BK 01,02,03,05,06,08 · BL 02–08.
