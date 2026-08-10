@@ -1455,3 +1455,48 @@ Belum: KB 01–04 · 28OKT 03–08 · ADIS 02–08 · BK 01–08 Agu · BL 01–
 justru yang paling layak diuji, dan tidak diekspor. Cakupan armada ini **6 dari 7 unit**
 — bukan 7. Cacat A diuji lewat Kotabaru (2 hari divergen) dan disilang-periksa lewat
 28 Oktober; Korek tetap **belum teruji sama sekali**.
+
+---
+
+# PUTARAN 6 (2026-08-10) — penutup arc verifikasi
+
+## P6-0 — SEGEL KOREK (ditulis SEBELUM satu pun berkas KR dibuka)
+
+**Prasyarat backfill:** Korek 2026-04-29…2026-08-08 = **102 hari opname / 102 hari
+kalender**, 14 domain, **inti-5 lengkap** (termasuk `terra_resmi`). Segel sah.
+
+Tera 30 April dari DB: **660,63 L**; jual kotor **28.479,92 L**. (Owner tidak
+mengungkap satu sel pun dari Korek → segel ini berlaku PENUH, tanpa sel pra-terungkap.)
+
+### Prediksi: **KESEMBILAN berkas Korek EKSAK** — nol mismatch
+
+| tanggal | div H−1 | div H | prediksi |
+|---|---:|---:|---|
+| 2026-04-30 | 0 | 0 | EKSAK |
+| 2026-08-01 … 2026-08-08 | 0 | 0 | EKSAK (8 tanggal) |
+
+### ⚠️ KETERBATASAN yang harus dinyatakan DI MUKA, bukan sesudah
+
+Owner menduga Korek jadi ujian prediktif terbernilai karena ia punya **hari divergen
+terbanyak (12 di 2026)**. Ternyata **tak satu pun jatuh di jendela yang diekspor**:
+
+`02 Jan · 31 Jan · 08 Feb · 02 Mar · 07 Mar · 09 Mar · 11 Mar · 30 Mar · 23 Apr ·
+03 Mei · 07 Jun · 28 Jul`
+
+Terdekat dengan jendela: **23 April** (7 hari sebelum 30 Apr) dan **28 Juli** (4 hari
+sebelum 1 Agu) — keduanya di luar. Jadi Korek **hanya menguji arah EKSAK**, tidak arah
+MELESET. Ia tetap uji yang sah dan falsifiable (satu saja dari 9 meleset → aturan salah),
+tetapi **bukan** ujian dua-arah seperti kuartet KB 05→08. Yang menyediakan arah MELESET
+tetap hanya Kotabaru.
+
+### KRITERIA GUGUR — dinyatakan sekarang, sebelum melihat hasil
+
+1. Kalau **ada berkas Korek yang meleset** (arah mana pun) → aturan divergensi cacat A
+   **TURUN STATUS dari STABIL**, dan sesi perbaikan hulu **harus menunggu**.
+2. Kalau salah satu dari **36 berkas sisa** (segel `dbfee26`) yang diprediksi EKSAK
+   ternyata meleset → hal yang sama berlaku.
+3. Kalau muncul **kelas mismatch tanpa nama** (bukan cacat A, bukan penutup-nol) →
+   status turun apa pun angkanya.
+
+Tidak ada penyesuaian pasca-fakta. Segel `dbfee26` untuk 36 berkas lama **TIDAK
+ditulis ulang** — dibuka apa adanya.
