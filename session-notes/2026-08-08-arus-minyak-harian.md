@@ -1864,3 +1864,96 @@ yang mampu dilihat, jangan hanya vonisnya.
 
 **Berkas yang BELUM dibuka: 25** — KB 01,02,04 · 28OKT 03,05,06 · ADIS 03–08 ·
 BK 01,02,03,05,06,08 · BL 02–08.
+
+## P7-7 — PAKET SERAH-TERIMA FINAL (menggantikan §P6-6)
+
+Sesi hulu berangkat dari berkas ini tanpa konteks percakapan. Semua yang diperlukan ada
+di bawah.
+
+### 1. Baseline pasti — jalankan SEBELUM menyentuh apa pun
+
+Angka di §P7-6. Ringkasnya: **1.504 EKSAK · 231 ABSEN≡NOL · 1 OVERFLOW · 0 MISMATCH**
+dari 1.736 sel di 31 berkas / 7 unit, **plus 48 MISMATCH** di blok karakterisasi.
+
+**KRITERIA KEBERHASILAN: 48 MISMATCH itu harus jadi 0.** Kalau tidak, diagnosis belum
+lengkap. Rincian per tanggal:
+
+| unit-tanggal | sel | kolom yang HARUS berubah jadi eksak | kolom yang HARUS TETAP eksak |
+|---|---:|---|---|
+| Bundaran Kotabaru **2026-08-06** | 24 | **Fisik, Losses, %** | Awal, Penerimaan, Penjualan, Teori |
+| Bundaran Kotabaru **2026-08-07** | 24 | **Awal, Teori, Losses, %** | Penerimaan, Penjualan, Fisik |
+
+Tangki terdampak: BB-02, BB-03, BB-04, BB-07, BB-08. **DEXLITE tidak terdampak** (tak
+punya entri telat) — ia kontrol internal: kalau perbaikan mengubah DEXLITE, perbaikannya
+terlalu lebar.
+
+### 2. Tes yang HARUS DIHAPUS saat perbaikan mendarat
+
+Berkas **`apps/dashboard/src/lib/arus-minyak.render.test.tsx`**, blok
+`d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", …)` — dua tes:
+
+1. `2026-08-06: meleset TEPAT di Fisik/Losses/%, eksak di Awal/Penerimaan/Penjualan/Teori`
+2. `2026-08-07: meleset TEPAT di Awal/Teori/Losses/%, eksak di Penerimaan/Penjualan/Fisik`
+
+**Tes yang menegaskan cacat tidak boleh selamat dari perbaikannya** — ia berubah jadi
+penjaga yang melindungi bug. Setelah dihapus: pindahkan kedua tanggal beserta datanya
+(sudah ditranskripsi di dalam blok itu, konstanta `KB`) ke
+`ORACLE_ARMADA["6478106"].hari` sehingga keduanya jadi tes EKSAK biasa. Angka baseline
+akan berubah jadi **1.616 EKSAK / 0 MISMATCH dari 1.848 sel**.
+
+### 3. Menjalankan harness — satu perintah (sudah dicoba)
+
+```
+cd apps/dashboard && DATABASE_URL="postgresql://dashboard_ro:<PW>@127.0.0.1:5432/solamax" \
+  SCOPE_LIVE_DB=1 pnpm test -- arus-minyak.render
+```
+
+Prasyarat: `cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432` hidup.
+Tanpa `SCOPE_LIVE_DB=1` blok live di-skip dan tampil `skipped` (bukan hijau palsu).
+
+### 4. Aturan divergensi — operasional, versi final
+
+> `akhir(D,t)` = baris ber-tanggal-bisnis D dengan `dtgljam` terbesar.
+> `pagi(D,t)` = baris ber-tanggal-bisnis D yang dicatat pada tanggal kalender > D dan
+> jam **< 08:00**, dengan `dtgljam` terbesar.
+> **D divergen** ⟺ ada tangki t dengan `pagi` ada dan `|akhir − pagi| > 0,005`.
+>
+> D−1 divergen → **Awal(D)** salah (+Teori, Losses, %).
+> D divergen → **Fisik(D)** salah (+Losses, %).
+
+EasyMax memakai `pagi`; `getDailyGlByProduct` memakai `akhir`. **Itu satu-satunya
+perbedaannya.** Diuji prediktif di 14 + 8 unit-tanggal, kedua arah, termasuk entri yang
+jatuh **7 menit** di kedua sisi batas.
+
+### 5. Sebaran hari divergen per unit (2026 YTD)
+
+| kode | unit | tangki-hari | hari | hari ber-jendela |
+|---|---|---:|---:|---:|
+| 6478111 | **Imam Bonjol** | **0** | **0** | 219 |
+| 6378301 | Bakau | 4 | 1 | 221 |
+| 6478106 | Bundaran Kotabaru | 6 | 2 | 221 |
+| 6478201 | Batu Layang | 23 | 6 | 219 |
+| 6478101 | Adisucipto | 29 | 7 | **28** ⚠ |
+| 63781002 | 28 Oktober | 19 | 10 | 220 |
+| 6478311 | **Korek** | 19 | **12** | 221 |
+
+⚠ Penyebut ADIS 28 (bukan ±220): DTGLJAM NULL-by-default → sebagian besar harinya tak
+punya baris pagi ber-stempel-waktu. **Tidak sebanding** dengan unit lain.
+
+### 6. Yang JANGAN diubah tanpa memikirkan ulang
+
+- **`Losses ≡ gl`** — identitas yang menopang argumen pewarisan lintas unit. Kalau
+  perbaikan hulu mengubah `gl`, Arus Minyak ikut berubah **dengan sendirinya** dan itu
+  memang yang diinginkan; yang tak boleh adalah keduanya jadi berbeda.
+- **Konvensi tera** (§P3-1): kolom Penjualan/Teori/Losses bersih-tera; **TOTAL Penjualan
+  dan penyebut % memakai KOTOR**. Terbukti di **7 unit / 6 tenant**. Jangan
+  "dirapikan" jadi konsisten — itu akan memutus kecocokan dengan EasyMax.
+- **Badge penutup-nol** menandai, tidak menambal. Perbaikan hulu boleh membuat badge
+  kelas 2 tak pernah menyala lagi; kelas 1 tetap perlu ada.
+
+### 7. Utang yang diketahui, di luar lingkup sesi hulu
+
+- **25 dari 58 berkas oracle belum dibuka** (daftar di §P7-6). Semuanya tersegel EKSAK
+  di `dbfee26`; prediksi bukan verifikasi.
+- **`terra_resmi` tidak tersinkron untuk Adisucipto** (§P4-0) — sesi terpisah.
+- **Arah "prediksi overflow lalu muncul" belum teruji** (§P7-4).
