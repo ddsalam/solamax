@@ -1500,3 +1500,169 @@ tetap hanya Kotabaru.
 
 Tidak ada penyesuaian pasca-fakta. Segel `dbfee26` untuk 36 berkas lama **TIDAK
 ditulis ulang** — dibuka apa adanya.
+
+## P6-1 — SEGEL KOREK DIBUKA: prediksi vs kenyataan
+
+| prediksi (commit `013454d`) | kenyataan |
+|---|---|
+| 9 dari 9 berkas Korek **EKSAK**, nol mismatch | **0 MISMATCH** di kesembilan berkas ✅ |
+
+Angka: **EKSAK 440 · DEVIASI 0 · ABSEN≡NOL 63 · OVERFLOW 1 · MISMATCH 0** (total 504).
+
+Arah EKSAK terpenuhi penuh. **Namun satu sel BUKAN eksak** — kelas baru di bawah.
+
+## P6-2 🔴 KELAS BARU — oracle sendiri menolak mencetak nilai (`***,**`)
+
+**Korek 01 Agustus, baris Solar, kolom %**: EasyMax mencetak **`***,**`**, bukan angka.
+
+Sebabnya aritmetis dan bisa diperiksa: Losses −371,26 atas penjualan kotor 50,00 =
+**−742,52 %** → tujuh karakter di kolom yang lebarnya enam. Kolom itu memuat 184,69 dan
+−30,38 (enam karakter) tanpa masalah; −742,52 tidak muat. Ini **batas cetak laporan**,
+bukan perbedaan hitungan.
+
+**Bukan cacat A, bukan penutup-nol.** Kelas ketiga — yang owner minta muncul cepat kalau
+ada, dan sampai putaran 5 memang belum pernah ada.
+
+Penanganannya **tidak** dengan mengabaikan sel itu. Vonis baru `oracle_overflow`
+ditambahkan ke penilai, dan ia **memeriksa alasannya**: sel hanya masuk kategori itu bila
+nilai SolaMax memang lebih panjang dari lebar kolom (`idnLebar > 6`). Kalau nilainya
+ternyata pendek, sebabnya bukan overflow → tetap **mismatch**. Kategori ini punya jalan
+untuk berbunyi merah; ia bukan pintu keluar.
+
+### Akibatnya bagi kriteria gugur yang dinyatakan di muka
+
+- Kriteria 1 (*berkas Korek meleset*): **tidak tersentuh** — mismatch = 0.
+- Kriteria 2 (*36 berkas sisa*): belum dapat dinilai penuh (P6-5).
+- Kriteria 3 (*kelas mismatch tanpa nama*): kelas baru ini **muncul**, tetapi ia bukan
+  *mismatch* — ia sel yang oracle-nya sendiri tak menyatakan nilai, mekanismenya
+  terverifikasi, dan **orthogonal terhadap cacat A** (tak menyentuh Awal/Fisik).
+
+Saya **tidak** memutuskan ini sepihak untuk keuntungan sendiri: pembacaan ketat atas
+kriteria 3 bisa dipakai menurunkan status. Rekomendasi saya: **cacat A tetap STABIL**,
+sebab nol mismatch disebabkan divergensi, dan kelas baru ini properti pencetakan oracle,
+bukan properti hitungan kita. Keputusan akhir milik owner.
+
+## P6-3 — Aturan tera di Korek (tenant ke-6): SAMA
+
+Diverifikasi sendiri di DB sebelum berkas dibuka: tera 30 Apr **660,63 L**
+(PERTAMAX 140,00 · P. TURBO 350,63 · P. DEX 170,00), jual kotor **28.479,92 L**.
+
+Oracle mencetak TOTAL Penjualan **28.479,92** = Σ KOTOR (Σ kolom 27.819,29; Δ = 660,63).
+Kolom % menuntut penyebut KOTOR di tiga sel sekaligus:
+
+| produk | penyebut KOTOR | penyebut bersih | oracle |
+|---|---:|---:|---:|
+| PERTAMAX | −238,75/1.175,49 = **−20,31** | −23,06 | **−20,31** ✅ |
+| **P. TURBO** | −65,00/352,23 = **−18,45** | **−4.062,50** | **−18,45** ✅ |
+| PERTAMINA DEX | −76,56/1.278,20 = **−5,99** | −6,91 | **−5,99** ✅ |
+| TOTAL | −103,57/28.479,92 = **−0,36** | −0,37 | **−0,36** ✅ |
+
+P. Turbo adalah pembeda paling ekstrem di seluruh arc. **Aturan tera identik di ketujuh unit.**
+
+## P6-4 — Tes yang MEMBUSUK: pelajaran ketiga
+
+Tes "BADGE MENYALA di kelas 1 (Adisucipto 9 Agu)" dari putaran 3 **MERAH hari ini** —
+bukan karena ada yang rusak, melainkan karena opname penutup 9 Agustus akhirnya masuk,
+`fisik` tak lagi 0, dan kasusnya lenyap. **Lima hari umurnya.**
+
+Kelas-1 memang kelas paling fana: ia hanya ada selama sebuah hari belum punya jangkar
+hari-berikutnya. Menguji yang fana pada tanggal HIDUP = menulis tes yang kedaluwarsa
+sendiri.
+
+Diperbaiki: dipindah ke `arus-minyak.test.ts` sebagai **tes deterministik tanpa DB dan
+tanpa kalender** (5 kasus: ambang persis, tangki yang memang kering, fisik bukan-nol,
+kelas 2 menang atas kelas 1). Tes live yang tersisa hanya yang berjangkar pada tanggal
+HISTORIS (28 Okt 22 Jul, KB 06–07 Agu) — yang tak bisa berubah lagi.
+
+**Pelajaran:** tes yang menggantung pada "hari ini" bukan penjaga, melainkan alarm
+berjadwal. Kalau kasusnya fana, buat fixture-nya; kalau berjangkar sejarah, barulah live.
+
+## P6-5 — CAKUPAN PERSIS (jangan dibulatkan ke atas)
+
+**25 dari 58 berkas** ditranskripsi & diverifikasi. Sisa **33 belum dibuka**.
+
+| unit | tenant | berkas dibuka / tersedia | sel diperiksa |
+|---|---|---:|---:|
+| Imam Bonjol | 1 | 7/7 | 392 |
+| Korek | 6 | **9/9** | 504 |
+| Bundaran Kotabaru | 3 | 4/8 | 112 (+112 karakterisasi) |
+| 28 Oktober | 6 | 2/8 | 112 |
+| Adisucipto | 4 | 1/8 | 56 |
+| Bakau | 2 | 1/9 | 56 |
+| Batu Layang | 5 | 1/9 | 56 |
+| **total** | **7 unit / 6 tenant** | **25/58** | **1.288 + 112** |
+
+Rentang tanggal: 2025-11-21 · 2026-02-13 · 2026-03-04 · 2026-04-30 · 2026-08-01…08.
+
+Yang belum dibuka: KB 01–04 · 28OKT 03–08 · ADIS 02–08 · BK 01–08 Agu · BL 01–08 Agu.
+Semuanya diprediksi EKSAK di segel `dbfee26`; **prediksi bukan verifikasi**.
+
+## P6-6 — PAKET SERAH-TERIMA untuk sesi perbaikan hulu
+
+### 1. Baseline pasti (jalankan sebelum menyentuh apa pun)
+
+| unit | tanggal | EKSAK | ABSEN≡NOL | OVERFLOW | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|
+| Imam Bonjol | 7 tgl | 343 | 49 | 0 | **0** | 392 |
+| Korek | 9 tgl | 440 | 63 | 1 | **0** | 504 |
+| Bundaran Kotabaru | 08-05, 08-08 | 98 | 14 | 0 | **0** | 112 |
+| 28 Oktober | 08-01, 08-02 | 98 | 14 | 0 | **0** | 112 |
+| Adisucipto | 08-01 | 42 | 14 | 0 | **0** | 56 |
+| Bakau | 03-04 | 49 | 7 | 0 | **0** | 56 |
+| Batu Layang | 02-13 | 49 | 7 | 0 | **0** | 56 |
+| **ORACLE_ARMADA + IB** | **21 tgl** | **1.119** | **168** | **1** | **0** | **1.288** |
+| **KARAKTERISASI (cacat A)** | KB 08-06, 08-07 | — | — | — | **48** | 112 |
+
+**Kriteria keberhasilan: setelah perbaikan mendarat, 48 MISMATCH itu harus jadi 0.**
+Kalau tidak, diagnosis belum lengkap. Rinciannya:
+
+- **KB 2026-08-06** — 24 sel: kolom **Fisik, Losses, %** (Awal/Penerimaan/Penjualan/Teori
+  harus tetap eksak). 5 tangki: BB-02, BB-03, BB-04, BB-07, BB-08. DEXLITE tidak terdampak.
+- **KB 2026-08-07** — 24 sel: kolom **Awal, Teori, Losses, %** (Penerimaan/Penjualan/Fisik
+  harus tetap eksak). Produk sama. DEXLITE tidak terdampak.
+
+### 2. Tes yang HARUS DIHAPUS saat perbaikan mendarat
+
+Berkas `apps/dashboard/src/lib/arus-minyak.render.test.tsx`, blok
+`d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", …)`, dua tes:
+
+1. `2026-08-06: meleset TEPAT di Fisik/Losses/%, eksak di Awal/Penerimaan/Penjualan/Teori`
+2. `2026-08-07: meleset TEPAT di Awal/Teori/Losses/%, eksak di Penerimaan/Penjualan/Fisik`
+
+Keduanya menegaskan cacat. **Tes yang menegaskan cacat tidak boleh selamat dari
+perbaikannya** — ia berubah jadi penjaga yang melindungi bug. Setelah dihapus, pindahkan
+kedua tanggal ke `ORACLE_ARMADA["6478106"].hari` (datanya sudah ditranskripsi di blok itu,
+tinggal dipindah) sehingga keduanya menjadi tes EKSAK biasa.
+
+### 3. Menjalankan harness — satu perintah (sudah dicoba sendiri)
+
+```
+cd apps/dashboard && DATABASE_URL="postgresql://dashboard_ro:<PW>@127.0.0.1:5432/solamax" \
+  SCOPE_LIVE_DB=1 pnpm test -- arus-minyak.render
+```
+
+Prasyarat: `cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432` hidup.
+Tanpa `SCOPE_LIVE_DB=1` seluruh blok di-skip dan terlihat sebagai `skipped` di keluaran
+vitest (bukan hijau palsu).
+
+### 4. Sebaran hari divergen per unit (definisi TERKOREKSI)
+
+`akhir(D,t)` vs `pagi(D,t)` = baris TERAKHIR di jendela D+1 sebelum 08:00; divergen bila
+`|akhir − pagi| > 0,005`. 2026 YTD:
+
+| kode | unit | tangki-hari | hari | hari ber-jendela |
+|---|---|---:|---:|---:|
+| 6478111 | **Imam Bonjol** | **0** | **0** | 219 |
+| 6378301 | Bakau | 4 | 1 | 221 |
+| 6478106 | Bundaran Kotabaru | 6 | 2 | 221 |
+| 6478201 | Batu Layang | 23 | 6 | 219 |
+| 6478101 | Adisucipto | 29 | 7 | **28** ⚠ |
+| 63781002 | 28 Oktober | 19 | 10 | 220 |
+| 6478311 | **Korek** | 19 | **12** | 221 |
+
+⚠ Penyebut Adisucipto 28, bukan ±220 — DTGLJAM NULL-by-default membuat sebagian besar
+harinya tak punya baris pagi ber-stempel-waktu. Angkanya **tidak sebanding** dengan unit lain.
+
+Korek punya hari divergen terbanyak, tetapi **tak satu pun jatuh di jendela yang
+diekspor** (02 Jan · 31 Jan · 08 Feb · 02/07/09/11/30 Mar · 23 Apr · 03 Mei · 07 Jun ·
+28 Jul) — jadi Korek menguji arah EKSAK saja. **Arah MELESET hanya datang dari Kotabaru.**
