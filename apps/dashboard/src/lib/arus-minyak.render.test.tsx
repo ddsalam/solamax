@@ -24,7 +24,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { buildArusMinyak } from "@/lib/arus-minyak";
 import { buildLaporanModel } from "@/lib/laporan-model";
-import { gradeArus, parseArusHtml, ringkas, type DeviasiSah } from "@/lib/arus-minyak.grade";
+import { gradeArus, OVERFLOW, parseArusHtml, ringkas, type DeviasiSah } from "@/lib/arus-minyak.grade";
 import { addDays as addHari, monthStart } from "@/lib/periods";
 
 // Pool ditutup SEKALI di akhir berkas — afterAll per-describe pernah menutupnya
@@ -282,11 +282,18 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
   const penutupNol: string[] = [];
 
   afterAll(() => {
-    if (penutupNol.length)
-      console.log(
-        `\nPENUTUP-NOL terdeteksi (${penutupNol.length}) — angka Losses-nya artefak data, bukan kerugian:\n` +
-          penutupNol.map((x) => `  · ${x}`).join("\n"),
-      );
+    // JUMLAH selalu dicetak, termasuk 0. Pemeriksaan yang isinya "for … expect"
+    // atas himpunan dari DATA HIDUP bisa HIJAU karena himpunannya kosong —
+    // hijau-tanpa-subjek. Satu-satunya cara membedakannya dari hijau-dengan-subjek
+    // adalah menyebut jumlahnya. (Kelas-1 penutup-nol sendiri sudah pindah ke tes
+    // deterministik di arus-minyak.test.ts setelah ia membusuk dalam 5 hari.)
+    console.log(
+      `\nPENUTUP-NOL terdeteksi: ${penutupNol.length} baris` +
+        (penutupNol.length === 0
+          ? " — TAK ADA SUBJEK di tanggal yang disapu; hijau di sini tidak menguji apa pun"
+          : " — angka Losses-nya artefak data, bukan kerugian:"),
+    );
+    for (const x of penutupNol) console.log("  · " + x);
     if (potongan.length)
       writeFileSync(
         OUT_LINTAS,
@@ -305,13 +312,6 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
     expect(kena[0]!.zeroClosing!.tangki).toContain("T-05");
     // Angkanya TIDAK boleh berubah: badge menandai, bukan menambal.
     expect(m.arusMinyak.rows.every((r) => r.losses === null || Number.isFinite(r.losses))).toBe(true);
-  }, 120_000);
-
-  it("BADGE MENYALA di kelas 1 (Adisucipto 9 Agu) — penutup 0 tanpa jangkar hari berikutnya", async () => {
-    const m = await modelUntuk("6478101", "2026-08-09");
-    const kena = m.arusMinyak.rows.filter((r) => r.zeroClosing !== null);
-    expect(kena.length).toBeGreaterThan(0);
-    expect(kena.every((r) => r.zeroClosing!.kelas === 1)).toBe(true);
   }, 120_000);
 
   it("BADGE PADAM di KETUJUH hari oracle bersih — penanda yang selalu menyala tak berinformasi", async () => {
@@ -411,12 +411,128 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
  * berkas dibuka.
  */
 const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<string, Cells>> }> = {
+  "6478311": {
+    nama: "Korek",
+    hari: {
+      "2026-04-30": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [15785.36, 4000, 1035.49, 18749.87, 18511.12, -238.75, -20.31],
+        SOLAR: [14176.37, 0, 3517.44, 10658.93, 10658.93, 0, 0],
+        "PERTAMAX TURBO": [7258.82, 0, 1.6, 7257.22, 7192.22, -65, -18.45],
+        PERTALITE: [16932.42, 24000, 20784.31, 20148.11, 20424.85, 276.74, 1.33],
+        DEXLITE: [7709.21, 0, 1372.25, 6336.96, 6336.96, 0, 0],
+        "PERTAMINA DEX": [6423.72, 0, 1108.2, 5315.52, 5238.96, -76.56, -5.99],
+        TOTAL: [68285.9, 28000, 28479.92, 68466.61, 68363.04, -103.57, -0.36],
+      },
+      "2026-08-01": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [18767.88, 0, 507.73, 18260.15, 18189.08, -71.07, -14],
+        // % Solar = ***,** di oracle (−371,26/50,00 = −742,52 → 7 karakter).
+        SOLAR: [9761.77, 16000, 50, 25711.77, 25340.51, -371.26, OVERFLOW],
+        "PERTAMAX TURBO": [5229.67, 0, 199.69, 5029.98, 5032.09, 2.11, 1.06],
+        PERTALITE: [18689.5, 24000, 22995.17, 19694.33, 19852.37, 158.04, 0.69],
+        DEXLITE: [1961.64, 0, 1641.18, 320.46, 320.46, 0, 0],
+        "PERTAMINA DEX": [7229.14, 0, 1230.48, 5998.66, 5960.03, -38.63, -3.14],
+        TOTAL: [61639.6, 40000, 26624.25, 75015.35, 74694.54, -320.81, -1.2],
+      },
+      "2026-08-02": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [18189.08, 0, 836.24, 17352.84, 17431.53, 78.69, 9.41],
+        SOLAR: [25340.51, 0, 1994.85, 23345.66, 23425.93, 80.27, 4.02],
+        "PERTAMAX TURBO": [5032.09, 0, 68.98, 4963.11, 4964.41, 1.3, 1.88],
+        PERTALITE: [19852.37, 24000, 27725.31, 16127.06, 16451.06, 324, 1.17],
+        DEXLITE: [320.46, 4000, 1577.31, 2743.15, 2743.15, 0, 0],
+        "PERTAMINA DEX": [5960.03, 0, 1478.85, 4481.18, 4467, -14.18, -0.96],
+        TOTAL: [74694.54, 28000, 33681.54, 69013, 69483.08, 470.08, 1.4],
+      },
+      "2026-08-03": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [17431.53, 0, 622.94, 16808.59, 16813.8, 5.21, 0.84],
+        SOLAR: [23425.93, 8000, 13639.7, 17786.23, 18146.62, 360.39, 2.64],
+        "PERTAMAX TURBO": [4964.41, 0, 61.43, 4902.98, 4901.91, -1.07, -1.74],
+        PERTALITE: [16451.06, 24000, 27026.74, 13424.32, 13718.59, 294.27, 1.09],
+        DEXLITE: [2743.15, 4000, 2973.64, 3769.51, 3853.51, 84, 2.82],
+        "PERTAMINA DEX": [4467, 4000, 1777.17, 6689.83, 6666.76, -23.07, -1.3],
+        TOTAL: [69483.08, 40000, 46101.62, 63381.46, 64101.19, 719.73, 1.56],
+      },
+      "2026-08-04": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [16813.8, 0, 684.92, 16128.88, 16132.37, 3.49, 0.51],
+        SOLAR: [18146.62, 16000, 13352.34, 20794.28, 20793.87, -0.41, 0],
+        "PERTAMAX TURBO": [4901.91, 0, 35.05, 4866.86, 4867.8, 0.94, 2.68],
+        PERTALITE: [13718.59, 32000, 22730.47, 22988.12, 23092.26, 104.14, 0.46],
+        DEXLITE: [3853.51, 0, 2207.23, 1646.28, 1712.97, 66.69, 3.02],
+        "PERTAMINA DEX": [6666.76, 0, 1338.28, 5328.48, 5271.39, -57.09, -4.27],
+        TOTAL: [64101.19, 48000, 40348.29, 71752.9, 71870.66, 117.76, 0.29],
+      },
+      "2026-08-05": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [16132.37, 0, 367.62, 15764.75, 15766.98, 2.23, 0.61],
+        SOLAR: [20793.87, 8000, 18223.45, 10570.42, 11000.51, 430.09, 2.36],
+        "PERTAMAX TURBO": [4867.8, 0, 102.11, 4765.69, 4769.21, 3.52, 3.45],
+        PERTALITE: [23092.26, 24000, 26202.7, 20889.56, 21249.21, 359.65, 1.37],
+        DEXLITE: [1712.97, 4000, 3644.81, 2068.16, 2639.16, 571, 15.67],
+        "PERTAMINA DEX": [5271.39, 0, 1176.08, 4095.31, 4107.74, 12.43, 1.06],
+        TOTAL: [71870.66, 36000, 49716.77, 58153.89, 59532.81, 1378.92, 2.77],
+      },
+      "2026-08-06": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [15766.98, 0, 642.63, 15124.35, 15133.67, 9.32, 1.45],
+        SOLAR: [11000.51, 8000, 11964.08, 7036.43, 7310.5, 274.07, 2.29],
+        "PERTAMAX TURBO": [4769.21, 0, 73.14, 4696.07, 4697.64, 1.57, 2.15],
+        PERTALITE: [21249.21, 40000, 23949.11, 37300.1, 37010.13, -289.97, -1.21],
+        DEXLITE: [2639.16, 4000, 2576.28, 4062.88, 4267.88, 205, 7.96],
+        "PERTAMINA DEX": [4107.74, 4000, 1511.66, 6596.08, 6634.24, 38.16, 2.52],
+        TOTAL: [59532.81, 56000, 40716.9, 74815.91, 75054.06, 238.15, 0.58],
+      },
+      "2026-08-07": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [15133.67, 0, 783.79, 14349.88, 14306.37, -43.51, -5.55],
+        SOLAR: [7310.5, 8000, 5362.4, 9948.1, 9996.61, 48.51, 0.9],
+        "PERTAMAX TURBO": [4697.64, 0, 91.79, 4605.85, 4606.97, 1.12, 1.22],
+        PERTALITE: [37010.13, 16000, 25409.68, 27600.45, 28375.44, 774.99, 3.05],
+        DEXLITE: [4267.88, 4000, 3376.02, 4891.86, 6005.86, 1114, 33],
+        "PERTAMINA DEX": [6634.24, 0, 1034.23, 5600.01, 5554.34, -45.67, -4.42],
+        TOTAL: [75054.06, 28000, 36057.91, 66996.15, 68845.59, 1849.44, 5.13],
+      },
+      "2026-08-08": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [14306.37, 0, 879.61, 13426.76, 13428.64, 1.88, 0.21],
+        SOLAR: [9996.61, 16000, 11746.95, 14249.66, 14358.22, 108.56, 0.92],
+        "PERTAMAX TURBO": [4606.97, 0, 51.26, 4555.71, 4545.63, -10.08, -19.66],
+        PERTALITE: [28375.44, 32000, 26657.19, 33718.25, 33641.04, -77.21, -0.29],
+        DEXLITE: [6005.86, 0, 2379.14, 3626.72, 3626.72, 0, 0],
+        "PERTAMINA DEX": [5554.34, 0, 1085.57, 4468.77, 4471.53, 2.76, 0.25],
+        TOTAL: [68845.59, 48000, 42799.72, 74045.87, 74071.78, 25.91, 0.06],
+      },
+    },
+  },
   "6378301": {
     nama: "Bakau",
     hari: {
       // tera 789,10 L. ⚠ sel TOTAL Penjualan PRA-TERUNGKAP (§P5-1) — bukan
       // konfirmasi segel; sel % di bawahnya TIDAK pra-terungkap dan itulah yang
       // membuktikan penyebut KOTOR di unit ini.
+      "2026-08-04": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [21888.78, 0, 671.8, 21216.98, 21236.16, 19.18, 2.86],
+        SOLAR: [21625.77, 16000, 19995.26, 17630.51, 17729.78, 99.27, 0.5],
+        "PERTAMAX TURBO": [10055.5, 0, 11.19, 10044.31, 10044.03, -0.28, -2.5],
+        PERTALITE: [18170.38, 16000, 15682.68, 18487.7, 18487.52, -0.18, 0],
+        DEXLITE: [3523.62, 4000, 5697.74, 1825.88, 1825.88, 0, 0],
+        "PERTAMINA DEX": [5948.69, 0, 191.68, 5757.01, 6789.06, 1032.05, 538.42],
+        TOTAL: [81212.74, 36000, 42250.35, 74962.39, 76112.43, 1150.04, 2.72],
+      },
+      "2026-08-07": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [19665.78, 0, 789.05, 18876.73, 18906.65, 29.92, 3.79],
+        SOLAR: [18177.6, 16000, 16526.95, 17650.65, 17802.07, 151.42, 0.92],
+        "PERTAMAX TURBO": [10023.67, 0, 21.09, 10002.58, 10000.54, -2.04, -9.67],
+        PERTALITE: [23301.5, 16000, 14129.15, 25172.35, 25140.06, -32.29, -0.23],
+        DEXLITE: [221.54, 4000, 892.62, 3328.92, 3328.92, 0, 0],
+        "PERTAMINA DEX": [5941.03, 0, 1637.91, 4303.12, 4303.12, 0, 0],
+        TOTAL: [77331.12, 36000, 33996.77, 79334.35, 79481.36, 147.01, 0.43],
+      },
       "2026-03-04": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [17993.88, 0, 2252.36, 15741.52, 15767.43, 25.91, 1.11],
@@ -435,6 +551,16 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
       // tera 421,31 L. ⚠ TOTAL Penjualan PRA-TERUNGKAP; EMPAT sel % per-baris
       // (Pertalite −1,79 · Dexlite −2,23 · P.Dex −2,10 · TOTAL −0,54) TIDAK
       // pra-terungkap dan semuanya menuntut penyebut KOTOR.
+      "2026-08-01": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [13716.63, 0, 624.75, 13091.88, 13091.88, 0, 0],
+        SOLAR: [7535.81, 16000, 22834.75, 701.06, 1288.69, 587.63, 2.57],
+        "PERTAMAX TURBO": [9494.49, 0, 180.63, 9313.86, 9313.86, 0, 0],
+        PERTALITE: [16048.21, 32000, 24119.09, 23929.12, 23816.78, -112.34, -0.47],
+        DEXLITE: [13610.02, 0, 3272.09, 10337.93, 10337.93, 0, 0],
+        "PERTAMINA DEX": [15714.72, 0, 5712.88, 10001.84, 10022.04, 20.2, 0.35],
+        TOTAL: [76119.88, 48000, 56744.19, 67375.69, 67871.18, 495.49, 0.87],
+      },
       "2026-02-13": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [12357.31, 0, 1257.63, 11099.68, 11252.64, 152.96, 12.16],
@@ -451,6 +577,16 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
     nama: "Adisucipto",
     hari: {
       // Pembacaan BULAT (kelas DTGLJAM NULL-by-default) & tanpa tangki Turbo.
+      "2026-08-02": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [9857, 0, 190, 9667, 9652, -15, -7.89],
+        SOLAR: [7703, 8000, 7765, 7938, 7915, -23, -0.3],
+        "PERTAMAX TURBO": [0, 0, 0, 0, 0, 0, 0],
+        PERTALITE: [18585, 8000, 7570, 19015, 18962, -53, -0.7],
+        DEXLITE: [14082, 0, 1956, 12126, 12108, -18, -0.92],
+        "PERTAMINA DEX": [6554, 0, 125, 6429, 6425, -4, -3.2],
+        TOTAL: [56781, 16000, 17606, 55175, 55062, -113, -0.64],
+      },
       "2026-08-01": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [10089, 0, 206, 9883, 9857, -26, -12.62],
@@ -466,6 +602,36 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
   "63781002": {
     nama: "28 Oktober",
     hari: {
+      "2026-08-04": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [23968.57, 0, 965.85, 23002.72, 23011.53, 8.81, 0.91],
+        SOLAR: [8566.27, 8000, 13719.3, 2846.97, 2996.53, 149.56, 1.09],
+        "PERTAMAX TURBO": [7473.45, 0, 76.48, 7396.97, 7398.84, 1.87, 2.45],
+        PERTALITE: [26373.66, 24000, 20393.12, 29980.54, 30090.6, 110.06, 0.54],
+        DEXLITE: [26662.77, 0, 3710.66, 22952.11, 22998.99, 46.88, 1.26],
+        "PERTAMINA DEX": [3417.38, 8000, 3630.46, 7786.92, 7802.61, 15.69, 0.43],
+        TOTAL: [96462.1, 40000, 42495.87, 93966.23, 94299.1, 332.87, 0.78],
+      },
+      "2026-08-07": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [20158.54, 0, 2061.11, 18097.43, 18106.68, 9.25, 0.45],
+        SOLAR: [2362.41, 16000, 14969.43, 3392.98, 3647.18, 254.2, 1.7],
+        "PERTAMAX TURBO": [7220.27, 0, 137.54, 7082.73, 7088.29, 5.56, 4.04],
+        PERTALITE: [32209.75, 16000, 16831.22, 31378.53, 31587.67, 209.14, 1.24],
+        DEXLITE: [17092.42, 8000, 4102.27, 20990.15, 20780.58, -209.57, -5.11],
+        "PERTAMINA DEX": [6329.41, 8000, 3743.56, 10585.85, 9582.29, -1003.56, -26.77],
+        TOTAL: [85372.8, 48000, 41850.13, 91527.67, 90792.69, -734.98, -1.76],
+      },
+      "2026-08-08": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [18106.68, 8000, 1308.55, 24798.13, 24692.7, -105.43, -8.06],
+        SOLAR: [3647.18, 16000, 14535.21, 5111.97, 5300.67, 188.7, 1.3],
+        "PERTAMAX TURBO": [7088.29, 0, 76.85, 7011.44, 7011.33, -0.11, -0.14],
+        PERTALITE: [31587.67, 24000, 22053.29, 33534.38, 33487.8, -46.58, -0.21],
+        DEXLITE: [20780.58, 0, 2034.94, 18745.64, 18835.39, 89.75, 4.41],
+        "PERTAMINA DEX": [9582.29, 0, 4786.86, 4795.43, 5959.08, 1163.65, 24.31],
+        TOTAL: [90792.69, 48000, 44795.7, 93996.99, 95286.97, 1289.98, 2.88],
+      },
       "2026-08-01": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [28298.49, 0, 1544.04, 26754.45, 26765.29, 10.84, 0.7],
@@ -491,6 +657,16 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
   "6478106": {
     nama: "Bundaran Kotabaru",
     hari: {
+      "2026-08-03": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [15859.9, 0, 3882.65, 11977.25, 12022.1, 44.85, 1.13],
+        SOLAR: [17445.21, 8000, 9993.08, 15452.13, 15643.49, 191.36, 1.91],
+        "PERTAMAX TURBO": [7413.08, 0, 314.99, 7098.09, 7088.2, -9.89, -2.63],
+        PERTALITE: [38924.94, 32000, 28511.36, 42413.58, 42508.81, 95.23, 0.33],
+        DEXLITE: [9558.49, 0, 2801.8, 6756.69, 6823.96, 67.27, 2.4],
+        "PERTAMINA DEX": [5540.46, 0, 832.14, 4708.32, 4716.58, 8.26, 0.99],
+        TOTAL: [94742.08, 40000, 46557.02, 88406.06, 88803.14, 397.08, 0.85],
+      },
       // 05 Agu = KONTROL: hari SEBELUM hari-divergen, diprediksi EKSAK.
       "2026-08-05": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],

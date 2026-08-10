@@ -285,3 +285,51 @@ describe("parseArusHtml — pembaca DOM", () => {
     expect(parseArusHtml(row("SOLAR", ["1,00", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00"])).has("PREMIUM")).toBe(false);
   });
 });
+
+
+/**
+ * BADGE penutup-nol kelas 1 — DETERMINISTIK.
+ *
+ * Versi sebelumnya menguji ini pada tanggal HIDUP (Adisucipto 9 Agu, hari
+ * berjalan saat itu). Lima hari kemudian opname penutupnya masuk, `fisik` tak
+ * lagi 0, dan tesnya MERAH tanpa ada yang rusak. Tes yang bergantung pada "hari
+ * ini" membusuk sendiri; kelas-1 justru kelas yang paling fana (ia hanya ada
+ * selama hari itu belum punya jangkar). Karena itu ia dikunci di sini, dari
+ * baris buatan, bukan dari kalender.
+ */
+describe("badge penutup-nol kelas 1 (tanpa DB, tanpa kalender)", () => {
+  const zc = (c: Partial<Comp>) =>
+    buildArusMinyak([
+      row({ ckdbbm: "BB-02", nama: "PERTAMAX", fisik_prev: 22911, pen_do: 8000, sales_gross: 5918, tera: 0, fisik: 0, ...c }),
+    ]).rows[0]!;
+
+  it("fisik 0 dengan Teori jauh di atas ambang → kelas 1", () => {
+    const r = zc({});
+    expect(r.teori).toBe(24993);
+    expect(r.zeroClosing).toEqual({ kelas: 1, tangki: [] });
+  });
+
+  it("tangki yang MEMANG terjual habis (Teori ≈ 0) TIDAK ditandai", () => {
+    // Ini alasan syarat "Teori > 1.000" ada: tanpa itu, setiap tangki kering
+    // ikut tertandai dan penandanya jadi kebisingan.
+    expect(zc({ fisik_prev: 900, pen_do: 0, sales_gross: 900 })!.zeroClosing).toBeNull();
+  });
+
+  it("tepat DI ambang tidak menyala; sedikit di atasnya menyala", () => {
+    expect(zc({ fisik_prev: 1000, pen_do: 0, sales_gross: 0 }).teori).toBe(1000);
+    expect(zc({ fisik_prev: 1000, pen_do: 0, sales_gross: 0 }).zeroClosing).toBeNull();
+    expect(zc({ fisik_prev: 1000.01, pen_do: 0, sales_gross: 0 }).zeroClosing).not.toBeNull();
+  });
+
+  it("fisik bukan 0 → tidak menyala, sebesar apa pun Losses-nya", () => {
+    expect(zc({ fisik: 0.01 }).zeroClosing).toBeNull();
+  });
+
+  it("kelas 2 MENANG atas kelas 1 bila detektor tertala ikut menyala", () => {
+    const a = buildArusMinyak(
+      [row({ ckdbbm: "BB-02", nama: "PERTAMAX", fisik_prev: 22911, pen_do: 8000, sales_gross: 5918, tera: 0, fisik: 0 })],
+      [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 1, prev: 1, next: 1, recv_next: 0 }],
+    );
+    expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["T-05"] });
+  });
+});
