@@ -816,3 +816,1309 @@ menyalakannya. Cabang itu terkunci **tes komponen** (`ArusMinyakSection.test.tsx
   (butuh jangkar hari-berikutnya) — satu kelas saja meninggalkan lubang di sisi yang
   justru paling sering dilihat pengawas (hari ini).
 - **Membatalkannya**: perbaikan hulu yang mengoreksi angka → badge kelas 1 jadi mubazir.
+
+---
+
+# PUTARAN 4 — verifikasi armada (2026-08-10)
+
+## P4-0 — PRASYARAT: backfill diperiksa SEBELUM menyegel (pelajaran 28 Oktober)
+
+🔴 **TEMUAN: domain `terra_resmi` TIDAK tersinkron untuk Adisucipto (unit 3).**
+Ia ada di 6 unit lain. Akibatnya `tera = 0` di ADIS bukan FAKTA melainkan
+KETIADAAN DATA — dan itu justru salah satu kolom yang sedang diuji. Tabel `tera`
+MENTAH punya 17 baris di ADIS (2025-12-29 … 2026-05-21, terbesar 518,45 L
+Pertalite 30 Des), jadi tera memang TERJADI di sana.
+
+**Batas dampaknya**: tak ada satu pun kejadian tera ADIS di jendela 1–8 Agustus
+2026 → oracle ADIS Agustus TETAP SAH untuk menguji Penerimaan/Fisik/Awal.
+Yang TIDAK bisa diuji dari ADIS: konvensi tera. Di luar Agustus, G/L & Arus
+Minyak ADIS pada 12 tanggal itu berpotensi salah — dilaporkan sebagai temuan
+terpisah, BUKAN diperbaiki di sini (menyentuh domain sync = pekerjaan agent).
+
+Domain lain yang tak lengkap (konteks, tak menyentuh Arus Minyak):
+`cash` absen di unit 3 & 5; `deposit`/`realtank` absen di unit 3.
+Ketujuh unit: 8/8 hari opname untuk 1–8 Agustus; sinkron terakhir ±02:00 WIB 10 Agu.
+
+## P4-1 — Daftar belanja: 3 unit yang oracle-nya BELUM ada
+
+Kriteria berurut: tera terbesar · bukan hari penutup-nol · `provisional=FALSE` ·
+penerimaan ≠ 0 · ada opname H−1 (jangkar Stock Awal) · tanpa baris garbage.
+Ketiganya memenuhi SELURUH kriteria — tak ada trade-off yang perlu ditawar.
+
+| unit | kode SPBU | tanggal usul | tera (L) | penerimaan (L) | alasan | berkas yang diharapkan |
+|---|---|---|---:|---:|---|---|
+| Bakau | 6378301 | **2026-03-04** | 789,10 | 16.000,00 | tera terbesar 2026 di unit ini; 6× lipat dari yang menemukan cacat % | `ArusMinyak_BAKAU_04MARET2026.png` |
+| Batu Layang | 6478201 | **2026-02-13** | 421,31 | 53.000,00 | tera terbesar 2026; penerimaan terbesar dari semua kandidat → menguji kolom Penerimaan paling keras | `ArusMinyak_BL_13FEBRUARI2026.png` |
+| Korek | 6478311 | **2026-04-30** | 660,63 | 28.000,00 | tera terbesar 2026 di unit ini | `ArusMinyak_KOREK_30APRIL2026.png` |
+
+Adisucipto TIDAK masuk daftar ini: oracle-nya sudah diberikan (1–8 Agustus), dan
+karena `terra_resmi`-nya tak tersinkron, tanggal ber-tera di sana tak akan
+mengadu konvensi tera melainkan hanya memperlihatkan gap sinkronnya.
+
+## P4-2 — Oracle yang SUDAH diberikan owner (belum dibuka saat segel ditulis)
+
+| unit | kode | tanggal | jumlah berkas |
+|---|---|---|---:|
+| 28 Oktober | 63781002 | 1–8 Agustus 2026 | 8 |
+| Adisucipto | 6478101 | 1–8 Agustus 2026 | 8 |
+| Bundaran Kotabaru | 6478106 | 7–8 Agustus 2026 | 2 |
+
+**18 unit-tanggal.** Nama berkasnya dibaca dari `ls`; ISI PNG belum disentuh.
+
+## P4-3 — PREDIKSI TERSEGEL
+
+Dihasilkan `arus-minyak.prediksi.test.ts` dari jalur PRODUKSI `buildArusMinyak`,
+ditulis SEBELUM satu pun PNG dibuka. 21 unit-tanggal (18 yang oracle-nya ada +
+3 usulan daftar belanja). Status backfill ikut tersegel di kepala berkasnya.
+
+<details><summary>Isi segel (jangan dibaca sebelum membandingkan)</summary>
+
+## Prasyarat backfill (tersegel bersama prediksi)
+
+| unit | kode | domain ter-sync | sync terakhir |
+|---|---|---:|---|
+| Imam Bonjol | 6478111 | 0/14 | null |
+| Bakau | 6378301 | 0/14 | null |
+| Adisucipto | 6478101 | 0/14 | null |
+| Bundaran Kotabaru | 6478106 | 0/14 | null |
+| Batu Layang | 6478201 | 0/14 | null |
+| Korek | 6478311 | 0/14 | null |
+| 28 Oktober | 63781002 | 0/14 | null |
+
+### 28 Oktober (63781002) — 2026-08-01
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 28.298,49 | 0,00 | 1.544,04 | 26.754,45 | 26.765,29 | 10,84 | 0,70 |
+| SOLAR | 7.764,38 | 16.000,00 | 21.242,88 | 2.521,50 | 2.687,86 | 166,36 | 0,78 |
+| PERTAMAX TURBO | 7.878,49 | 0,00 | 199,91 | 7.678,58 | 7.685,33 | 6,75 | 3,38 |
+| DEXLITE | 26.565,83 | 0,00 | 2.338,70 | 24.227,13 | 24.238,83 | 11,70 | 0,50 |
+| PERTALITE | 23.140,28 | 24.000,00 | 20.908,53 | 26.231,75 | 26.585,82 | 354,07 | 1,69 |
+| PERTAMINA DEX | 9.036,26 | 0,00 | 5.269,52 | 3.766,74 | 3.896,46 | 129,72 | 2,46 |
+| TOTAL | 102.683,73 | 40.000,00 | 51.503,58 | 91.180,15 | 91.859,59 | 679,44 | 1,32 |
+
+### Adisucipto (6478101) — 2026-08-01
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 10.089,00 | 0,00 | 206,00 | 9.883,00 | 9.857,00 | -26,00 | -12,62 |
+| SOLAR | 8.055,00 | 8.000,00 | 8.367,00 | 7.688,00 | 7.703,00 | 15,00 | 0,18 |
+| DEXLITE | 15.724,00 | 0,00 | 2.644,00 | 13.080,00 | 14.082,00 | 1.002,00 | 37,90 |
+| PERTALITE | 18.831,00 | 8.000,00 | 8.183,00 | 18.648,00 | 18.585,00 | -63,00 | -0,77 |
+| PERTAMINA DEX | 6.688,00 | 0,00 | 134,00 | 6.554,00 | 6.554,00 | 0,00 | 0,00 |
+| TOTAL | 59.387,00 | 16.000,00 | 19.534,00 | 55.853,00 | 56.781,00 | 928,00 | 4,75 |
+
+### 28 Oktober (63781002) — 2026-08-02
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 26.765,29 | 0,00 | 1.459,27 | 25.306,02 | 25.325,04 | 19,02 | 1,30 |
+| SOLAR | 2.687,86 | 24.000,00 | 8.421,40 | 18.266,46 | 18.316,88 | 50,42 | 0,60 |
+| PERTAMAX TURBO | 7.685,33 | 0,00 | 102,58 | 7.582,75 | 7.587,89 | 5,14 | 5,01 |
+| DEXLITE | 24.238,83 | 0,00 | 2.790,68 | 21.448,15 | 21.556,13 | 107,98 | 3,87 |
+| PERTALITE | 26.585,82 | 24.000,00 | 20.107,22 | 30.478,60 | 30.565,73 | 87,13 | 0,43 |
+| PERTAMINA DEX | 3.896,46 | 8.000,00 | 2.308,23 | 9.588,23 | 9.552,03 | -36,20 | -1,57 |
+| TOTAL | 91.859,59 | 56.000,00 | 35.189,38 | 112.670,21 | 112.903,70 | 233,49 | 0,66 |
+
+### Adisucipto (6478101) — 2026-08-02
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 9.857,00 | 0,00 | 190,00 | 9.667,00 | 9.652,00 | -15,00 | -7,89 |
+| SOLAR | 7.703,00 | 8.000,00 | 7.765,00 | 7.938,00 | 7.915,00 | -23,00 | -0,30 |
+| DEXLITE | 14.082,00 | 0,00 | 1.956,00 | 12.126,00 | 12.108,00 | -18,00 | -0,92 |
+| PERTALITE | 18.585,00 | 8.000,00 | 7.570,00 | 19.015,00 | 18.962,00 | -53,00 | -0,70 |
+| PERTAMINA DEX | 6.554,00 | 0,00 | 125,00 | 6.429,00 | 6.425,00 | -4,00 | -3,20 |
+| TOTAL | 56.781,00 | 16.000,00 | 17.606,00 | 55.175,00 | 55.062,00 | -113,00 | -0,64 |
+
+### 28 Oktober (63781002) — 2026-08-03
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 25.325,04 | 0,00 | 1.376,20 | 23.948,84 | 23.968,57 | 19,73 | 1,43 |
+| SOLAR | 18.316,88 | 16.000,00 | 26.045,60 | 8.271,28 | 8.566,27 | 294,99 | 1,13 |
+| PERTAMAX TURBO | 7.587,89 | 0,00 | 116,51 | 7.471,38 | 7.473,45 | 2,07 | 1,78 |
+| DEXLITE | 21.556,13 | 8.000,00 | 2.855,57 | 26.700,56 | 26.662,77 | -37,79 | -1,32 |
+| PERTALITE | 30.565,73 | 16.000,00 | 20.339,78 | 26.225,95 | 26.373,66 | 147,71 | 0,73 |
+| PERTAMINA DEX | 9.552,03 | 0,00 | 6.288,50 | 3.263,53 | 3.417,38 | 153,85 | 2,45 |
+| TOTAL | 112.903,70 | 40.000,00 | 57.022,16 | 95.881,54 | 96.462,10 | 580,56 | 1,02 |
+
+### Adisucipto (6478101) — 2026-08-03
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 9.652,00 | 0,00 | 238,00 | 9.414,00 | 9.396,00 | -18,00 | -7,56 |
+| SOLAR | 7.915,00 | 16.000,00 | 11.044,00 | 12.871,00 | 12.877,00 | 6,00 | 0,05 |
+| DEXLITE | 12.108,00 | 0,00 | 3.652,00 | 8.456,00 | 8.437,00 | -19,00 | -0,52 |
+| PERTALITE | 18.962,00 | 8.000,00 | 9.045,00 | 17.917,00 | 17.823,00 | -94,00 | -1,04 |
+| PERTAMINA DEX | 6.425,00 | 0,00 | 288,00 | 6.137,00 | 6.137,00 | 0,00 | 0,00 |
+| TOTAL | 55.062,00 | 24.000,00 | 24.267,00 | 54.795,00 | 54.670,00 | -125,00 | -0,52 |
+
+### 28 Oktober (63781002) — 2026-08-04
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 23.968,57 | 0,00 | 965,85 | 23.002,72 | 23.011,53 | 8,81 | 0,91 |
+| SOLAR | 8.566,27 | 8.000,00 | 13.719,30 | 2.846,97 | 2.996,53 | 149,56 | 1,09 |
+| PERTAMAX TURBO | 7.473,45 | 0,00 | 76,48 | 7.396,97 | 7.398,84 | 1,87 | 2,45 |
+| DEXLITE | 26.662,77 | 0,00 | 3.710,66 | 22.952,11 | 22.998,99 | 46,88 | 1,26 |
+| PERTALITE | 26.373,66 | 24.000,00 | 20.393,12 | 29.980,54 | 30.090,60 | 110,06 | 0,54 |
+| PERTAMINA DEX | 3.417,38 | 8.000,00 | 3.630,46 | 7.786,92 | 7.802,61 | 15,69 | 0,43 |
+| TOTAL | 96.462,10 | 40.000,00 | 42.495,87 | 93.966,23 | 94.299,10 | 332,87 | 0,78 |
+
+### Adisucipto (6478101) — 2026-08-04
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 9.396,00 | 0,00 | 170,00 | 9.226,00 | 9.215,00 | -11,00 | -6,47 |
+| SOLAR | 12.877,00 | 8.000,00 | 13.716,00 | 7.161,00 | 7.133,00 | -28,00 | -0,20 |
+| DEXLITE | 8.437,00 | 8.000,00 | 4.980,00 | 11.457,00 | 11.443,00 | -14,00 | -0,28 |
+| PERTALITE | 17.823,00 | 8.000,00 | 9.321,00 | 16.502,00 | 16.435,00 | -67,00 | -0,72 |
+| PERTAMINA DEX | 6.137,00 | 0,00 | 412,00 | 5.725,00 | 5.721,00 | -4,00 | -0,97 |
+| TOTAL | 54.670,00 | 24.000,00 | 28.599,00 | 50.071,00 | 49.947,00 | -124,00 | -0,43 |
+
+### 28 Oktober (63781002) — 2026-08-05
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 23.011,53 | 0,00 | 1.323,01 | 21.688,52 | 21.698,20 | 9,68 | 0,73 |
+| SOLAR | 2.996,53 | 16.000,00 | 16.653,00 | 2.343,53 | 2.456,14 | 112,61 | 0,68 |
+| PERTAMAX TURBO | 7.398,84 | 0,00 | 100,38 | 7.298,46 | 7.302,70 | 4,24 | 4,22 |
+| DEXLITE | 22.998,99 | 0,00 | 2.876,15 | 20.122,84 | 20.234,65 | 111,81 | 3,89 |
+| PERTALITE | 30.090,60 | 24.000,00 | 20.055,42 | 34.035,18 | 34.061,89 | 26,71 | 0,13 |
+| PERTAMINA DEX | 7.802,61 | 8.000,00 | 4.753,38 | 11.049,23 | 11.045,33 | -3,90 | -0,08 |
+| TOTAL | 94.299,10 | 48.000,00 | 45.761,34 | 96.537,76 | 96.798,91 | 261,15 | 0,57 |
+
+### Adisucipto (6478101) — 2026-08-05
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 9.215,00 | 0,00 | 224,00 | 8.991,00 | 8.982,00 | -9,00 | -4,02 |
+| SOLAR | 7.133,00 | 8.000,00 | 7.260,00 | 7.873,00 | 7.858,00 | -15,00 | -0,21 |
+| DEXLITE | 11.443,00 | 0,00 | 2.070,00 | 9.373,00 | 9.345,00 | -28,00 | -1,35 |
+| PERTALITE | 16.435,00 | 8.000,00 | 8.263,00 | 16.172,00 | 16.093,00 | -79,00 | -0,96 |
+| PERTAMINA DEX | 5.721,00 | 0,00 | 115,00 | 5.606,00 | 5.606,00 | 0,00 | 0,00 |
+| TOTAL | 49.947,00 | 16.000,00 | 17.932,00 | 48.015,00 | 47.884,00 | -131,00 | -0,73 |
+
+### 28 Oktober (63781002) — 2026-08-06
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 21.698,20 | 0,00 | 1.556,72 | 20.141,48 | 20.158,54 | 17,06 | 1,10 |
+| SOLAR | 2.456,14 | 16.000,00 | 16.257,07 | 2.199,07 | 2.362,41 | 163,34 | 1,00 |
+| PERTAMAX TURBO | 7.302,70 | 0,00 | 84,47 | 7.218,23 | 7.220,27 | 2,04 | 2,42 |
+| DEXLITE | 20.234,65 | 0,00 | 3.318,47 | 16.916,18 | 17.092,42 | 176,24 | 5,31 |
+| PERTALITE | 34.061,89 | 16.000,00 | 17.985,56 | 32.076,33 | 32.209,75 | 133,42 | 0,74 |
+| PERTAMINA DEX | 11.045,33 | 0,00 | 4.822,41 | 6.222,92 | 6.329,41 | 106,49 | 2,21 |
+| TOTAL | 96.798,91 | 32.000,00 | 44.024,70 | 84.774,21 | 85.372,80 | 598,59 | 1,36 |
+
+### Adisucipto (6478101) — 2026-08-06
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 8.982,00 | 0,00 | 158,00 | 8.824,00 | 8.803,00 | -21,00 | -13,29 |
+| SOLAR | 7.858,00 | 8.000,00 | 9.638,00 | 6.220,00 | 6.181,00 | -39,00 | -0,40 |
+| DEXLITE | 9.345,00 | 0,00 | 2.925,00 | 6.420,00 | 6.391,00 | -29,00 | -0,99 |
+| PERTALITE | 16.093,00 | 8.000,00 | 8.286,00 | 15.807,00 | 15.721,00 | -86,00 | -1,04 |
+| PERTAMINA DEX | 5.606,00 | 0,00 | 164,00 | 5.442,00 | 5.442,00 | 0,00 | 0,00 |
+| TOTAL | 47.884,00 | 16.000,00 | 21.171,00 | 42.713,00 | 42.538,00 | -175,00 | -0,83 |
+
+### 28 Oktober (63781002) — 2026-08-07
+tera hari ini **5,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 20.158,54 | 0,00 | 2.061,11 | 18.097,43 | 18.106,68 | 9,25 | 0,45 |
+| SOLAR | 2.362,41 | 16.000,00 | 14.969,43 | 3.392,98 | 3.647,18 | 254,20 | 1,70 |
+| PERTAMAX TURBO | 7.220,27 | 0,00 | 137,54 | 7.082,73 | 7.088,29 | 5,56 | 4,04 |
+| DEXLITE | 17.092,42 | 8.000,00 | 4.102,27 | 20.990,15 | 20.780,58 | -209,57 | -5,11 |
+| PERTALITE | 32.209,75 | 16.000,00 | 16.831,22 | 31.378,53 | 31.587,67 | 209,14 | 1,24 |
+| PERTAMINA DEX | 6.329,41 | 8.000,00 | 3.743,56 | 10.585,85 | 9.582,29 | -1.003,56 | -26,77 |
+| TOTAL | 85.372,80 | 48.000,00 | 41.850,13 | 91.527,67 | 90.792,69 | -734,98 | -1,76 |
+
+### Adisucipto (6478101) — 2026-08-07
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 8.803,00 | 0,00 | 217,00 | 8.586,00 | 8.578,00 | -8,00 | -3,69 |
+| SOLAR | 6.181,00 | 16.000,00 | 14.761,00 | 7.420,00 | 7.420,00 | 0,00 | 0,00 |
+| DEXLITE | 6.391,00 | 8.000,00 | 5.204,00 | 9.187,00 | 9.187,00 | 0,00 | 0,00 |
+| PERTALITE | 15.721,00 | 16.000,00 | 8.203,00 | 23.518,00 | 23.453,00 | -65,00 | -0,79 |
+| PERTAMINA DEX | 5.442,00 | 0,00 | 319,00 | 5.123,00 | 5.101,00 | -22,00 | -6,90 |
+| TOTAL | 42.538,00 | 40.000,00 | 28.704,00 | 53.834,00 | 53.739,00 | -95,00 | -0,33 |
+
+### 28 Oktober (63781002) — 2026-08-08
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 18.106,68 | 8.000,00 | 1.308,55 | 24.798,13 | 24.692,70 | -105,43 | -8,06 |
+| SOLAR | 3.647,18 | 16.000,00 | 14.535,21 | 5.111,97 | 5.300,67 | 188,70 | 1,30 |
+| PERTAMAX TURBO | 7.088,29 | 0,00 | 76,85 | 7.011,44 | 7.011,33 | -0,11 | -0,14 |
+| DEXLITE | 20.780,58 | 0,00 | 2.034,94 | 18.745,64 | 18.835,39 | 89,75 | 4,41 |
+| PERTALITE | 31.587,67 | 24.000,00 | 22.053,29 | 33.534,38 | 33.487,80 | -46,58 | -0,21 |
+| PERTAMINA DEX | 9.582,29 | 0,00 | 4.786,86 | 4.795,43 | 5.959,08 | 1.163,65 | 24,31 |
+| TOTAL | 90.792,69 | 48.000,00 | 44.795,70 | 93.996,99 | 95.286,97 | 1.289,98 | 2,88 |
+
+### Adisucipto (6478101) — 2026-08-08
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 8.578,00 | 0,00 | 207,00 | 8.371,00 | 8.343,00 | -28,00 | -13,53 |
+| SOLAR | 7.420,00 | 8.000,00 | 8.913,00 | 6.507,00 | 6.510,00 | 3,00 | 0,03 |
+| DEXLITE | 9.187,00 | 0,00 | 3.172,00 | 6.015,00 | 6.005,00 | -10,00 | -0,32 |
+| PERTALITE | 23.453,00 | 8.000,00 | 8.460,00 | 22.993,00 | 22.911,00 | -82,00 | -0,97 |
+| PERTAMINA DEX | 5.101,00 | 0,00 | 40,00 | 5.061,00 | 5.058,00 | -3,00 | -7,50 |
+| TOTAL | 53.739,00 | 16.000,00 | 20.792,00 | 48.947,00 | 48.827,00 | -120,00 | -0,58 |
+
+### Bundaran Kotabaru (6478106) — 2026-08-07
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 9.737,63 | 8.000,00 | 3.861,20 | 13.876,43 | 13.083,60 | -792,83 | -20,53 |
+| SOLAR | 11.861,92 | 8.000,00 | 7.824,59 | 12.037,33 | 11.555,15 | -482,18 | -6,16 |
+| PERTAMAX TURBO | 6.628,88 | 0,00 | 243,65 | 6.385,23 | 6.423,42 | 38,19 | 15,67 |
+| DEXLITE | 7.339,25 | 0,00 | 2.389,35 | 4.949,90 | 4.934,50 | -15,40 | -0,64 |
+| PERTALITE | 48.558,02 | 32.000,00 | 30.764,49 | 49.793,53 | 45.018,30 | -4.775,23 | -15,52 |
+| PERTAMINA DEX | 5.720,13 | 0,00 | 659,97 | 5.060,16 | 4.848,28 | -211,88 | -32,10 |
+| TOTAL | 89.845,83 | 48.000,00 | 45.743,25 | 92.102,58 | 85.863,25 | -6.239,33 | -13,64 |
+
+### Bundaran Kotabaru (6478106) — 2026-08-08
+tera hari ini **0,00 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 13.083,60 | 0,00 | 3.534,04 | 9.549,56 | 9.587,86 | 38,30 | 1,08 |
+| SOLAR | 11.555,15 | 8.000,00 | 9.207,67 | 10.347,48 | 10.419,47 | 71,99 | 0,78 |
+| PERTAMAX TURBO | 6.423,42 | 0,00 | 230,81 | 6.192,61 | 6.122,49 | -70,12 | -30,38 |
+| DEXLITE | 4.934,50 | 0,00 | 2.748,22 | 2.186,28 | 2.163,27 | -23,01 | -0,84 |
+| PERTALITE | 45.018,30 | 24.000,00 | 30.119,14 | 38.899,16 | 38.863,03 | -36,13 | -0,12 |
+| PERTAMINA DEX | 4.848,28 | 0,00 | 571,79 | 4.276,49 | 4.320,19 | 43,70 | 7,64 |
+| TOTAL | 85.863,25 | 32.000,00 | 46.411,67 | 71.451,58 | 71.476,31 | 24,73 | 0,05 |
+
+### Bakau (6378301) — 2026-03-04
+tera hari ini **789,10 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 17.993,88 | 0,00 | 2.252,36 | 15.741,52 | 15.767,43 | 25,91 | 1,11 |
+| SOLAR | 28.507,38 | 0,00 | 5.029,39 | 23.477,99 | 23.440,40 | -37,59 | -0,71 |
+| PERTAMAX TURBO | 12.977,87 | 0,00 | 152,25 | 12.825,62 | 12.825,06 | -0,56 | -0,29 |
+| DEXLITE | 2.892,99 | 0,00 | 2.163,68 | 729,31 | 730,41 | 1,10 | 0,05 |
+| PERTALITE | 13.530,39 | 16.000,00 | 11.481,41 | 18.048,98 | 17.791,19 | -257,79 | -2,20 |
+| PERTAMINA DEX | 8.145,26 | 0,00 | 241,87 | 7.903,39 | 7.903,39 | 0,00 | 0,00 |
+| TOTAL | 84.047,77 | 16.000,00 | 22.110,06 | 78.726,81 | 78.457,88 | -268,93 | -1,22 |
+
+### Batu Layang (6478201) — 2026-02-13
+tera hari ini **421,31 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 12.357,31 | 0,00 | 1.257,63 | 11.099,68 | 11.252,64 | 152,96 | 12,16 |
+| SOLAR | 4.474,45 | 16.000,00 | 12.636,62 | 7.837,83 | 7.926,32 | 88,49 | 0,70 |
+| PERTAMAX TURBO | 8.492,84 | 0,00 | 283,75 | 8.209,09 | 8.213,53 | 4,44 | 1,56 |
+| DEXLITE | 8.321,60 | 8.000,00 | 2.949,47 | 13.372,13 | 13.305,55 | -66,58 | -2,23 |
+| PERTALITE | 37.770,44 | 24.000,00 | 19.838,64 | 41.931,80 | 41.572,54 | -359,26 | -1,79 |
+| PERTAMINA DEX | 6.425,33 | 5.000,00 | 1.412,70 | 10.012,63 | 9.982,09 | -30,54 | -2,10 |
+| TOTAL | 77.841,97 | 53.000,00 | 38.800,12 | 92.463,16 | 92.252,67 | -210,49 | -0,54 |
+
+### Korek (6478311) — 2026-04-30
+tera hari ini **660,63 L** · provisional false · penutup-nol 0 · tangki dikecualikan 0
+
+| Produk | Stock Awal | Penerimaan | Penjualan | Stock Teori | Stock Fisik | Losses | % |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PERTAMAX | 15.785,36 | 4.000,00 | 1.035,49 | 18.749,87 | 18.511,12 | -238,75 | -20,31 |
+| SOLAR | 14.176,37 | 0,00 | 3.517,44 | 10.658,93 | 10.658,93 | 0,00 | 0,00 |
+| PERTAMAX TURBO | 7.258,82 | 0,00 | 1,60 | 7.257,22 | 7.192,22 | -65,00 | -18,45 |
+| DEXLITE | 7.709,21 | 0,00 | 1.372,25 | 6.336,96 | 6.336,96 | 0,00 | 0,00 |
+| PERTALITE | 16.932,42 | 24.000,00 | 20.784,31 | 20.148,11 | 20.424,85 | 276,74 | 1,33 |
+| PERTAMINA DEX | 6.423,72 | 0,00 | 1.108,20 | 5.315,52 | 5.238,96 | -76,56 | -5,99 |
+| TOTAL | 68.285,90 | 28.000,00 | 28.479,92 | 68.466,61 | 68.363,04 | -103,57 | -0,36 |
+
+</details>
+
+## P4-4 🔴 TEMUAN BESAR — aturan pemilihan opname PENUTUP menyimpang dari EasyMax
+
+Ditemukan saat oracle Bundaran Kotabaru 07 Agu MELESET 24 sel. Polanya bersih: **hanya
+kolom Stock Awal** yang salah (Teori/Losses/% ikut karena turunan); Penerimaan,
+Penjualan, dan Stock Fisik cocok EKSAK. Dan **08 Agu cocok sempurna** — jadi bukan unit
+yang rusak, melainkan satu hari.
+
+**Sebabnya, terbukti sel demi sel.** Untuk tanggal-bisnis 2026-08-06 di KB, tiap tangki
+punya pembacaan penutup pagi (07 Agu ±06:0x) DAN lima tangki punya pembacaan TAMBAHAN
+pada **07 Agu 10:20:49**. `getDailyGlByProduct` memakai `row_number() … ORDER BY dtgljam
+DESC` → ia mengambil yang 10:20. EasyMax memakai yang 06:0x — **keenam produk cocok**:
+
+| produk | tangki | 06:0x (dipakai EasyMax) | 10:20 (dipakai SolaMax) | oracle Awal(07) |
+|---|---|---:|---:|---:|
+| PERTAMAX | T-04 | 8.957,49 | 9.737,63 | **8.957,49** |
+| P. TURBO | T-08 | 6.633,66 | 6.628,88 | **6.633,66** |
+| PERTAMINA DEX | T-05 | 5.503,46 | 5.720,13 | **5.503,46** |
+| SOLAR | T-03+T-07 | 5.499,89+6.046,25 = 11.546,14 | +6.362,03 = 11.861,92 | **11.546,14** |
+| PERTALITE | T-01+T-02 | 21.042,25+22.527,93 = 43.570,18 | +27.515,77 = 48.558,02 | **43.570,18** |
+| DEXLITE | T-06 | 7.339,25 | *(tak ada entri telat)* | **7.339,25** ✓ juga di SolaMax |
+
+6 dari 6 memilih batch pagi. Ini aturan, bukan kebetulan.
+
+**Siapa yang salah: KITA.** Diuji dua arah sesuai preseden gold-check (di sana dua
+selisih ternyata PDF-nya yang salah). Di sini oracle konsisten dengan dirinya —
+rantai carry-in oracle 07→08 utuh (Fisik 07 = Awal 08), dan batch 10:20 adalah entri
+SESUDAH operasi hari berikutnya dimulai; memakainya sebagai "penutup hari kemarin"
+memang tak masuk akal secara operasional.
+
+### Blast radius — 2026 YTD, 221 hari-bisnis, seluruh armada
+
+Dihitung sebagai: baris TERAKHIR per (unit, hari, tangki) yang **nilainya berbeda** dari
+baris penutup pagi (D+1 sebelum 08:00).
+
+| unit | tangki-hari beda | hari beda | % hari |
+|---|---:|---:|---:|
+| **Imam Bonjol** | **0** | **0** | **0 %** |
+| Bakau | 4 | 1 | 0,5 % |
+| Bundaran Kotabaru | 6 | 2 | 0,9 % |
+| Batu Layang | 24 | 7 | 3 % |
+| Adisucipto | 104 | 25 | 11 % |
+| 28 Oktober | 40 | 26 | 12 % |
+| **Korek** | **117** | **51** | **23 %** |
+
+**IB = NOL.** Itulah sebabnya 343/392 sel oracle IB cocok sempurna dan cacat ini tak
+pernah terlihat selama empat putaran: unit pilot adalah satu-satunya unit yang aturannya
+tak pernah menyimpang. Kebutaan jendela, lagi — kali ini jendelanya UNIT, bukan tanggal.
+
+⚠️ **Ini bukan cacat Arus Minyak.** `getDailyGlByProduct` adalah G/L RESUME bersama:
+papan direksi, PDF, alarm, Laporan Harian. **Eskalasi butir 2** (angka G/L yang sudah
+dipakai ternyata keliru) → BERHENTI & LAPOR, dan §Batas putaran ini melarang
+menyentuhnya. Tidak diperbaiki di sini.
+
+### PREDIKSI TERSEGEL atas 18 tanggal oracle yang sudah ada
+
+Ditulis SEBELUM membuka PNG 28 Oktober. Hari divergen di jendela itu tepat tiga:
+KB 06 Agu (5 tangki), 28 Okt 31 Jul (1 tangki), 28 Okt 02 Agu (1 tangki). Maka:
+
+| unit | tanggal | prediksi |
+|---|---|---|
+| Adisucipto | 1–8 Agu | **8 tanggal BERSIH** (nol hari divergen) |
+| Bundaran Kotabaru | 07 Agu | **MELESET pada Stock Awal** (terbukti) |
+| Bundaran Kotabaru | 08 Agu | BERSIH (terbukti) |
+| 28 Oktober | 01 Agu | **MELESET pada Stock Awal** (imbas 31 Jul) |
+| 28 Oktober | 02 Agu | **MELESET pada Stock Fisik** (+ Losses/%) |
+| 28 Oktober | 03 Agu | **MELESET pada Stock Awal** (imbas 02 Agu) |
+| 28 Oktober | 04–08 Agu | **5 tanggal BERSIH** |
+
+Kalau prediksi ini meleset, diagnosis di atas salah dan harus ditinjau ulang.
+
+## P4-5 ⚠️ KOREKSI ATAS P4-4 — blast radius saya OVERSTATED, dan prediksinya MELESET
+
+Prediksi §P4-4 bahwa 28 Oktober 01/02/03 Agustus akan MELESET **SALAH**. Ketiganya
+cocok EKSAK dengan segel. Sebabnya cacat pada **alat ukur saya sendiri**, bukan pada
+diagnosisnya:
+
+Query blast radius pertama membandingkan baris TERAKHIR dengan baris **PERTAMA** di
+jendela pagi. Kalau sebuah tangki punya DUA pembacaan pagi berurutan (mis. 06:05 lalu
+07:10) — hal yang lumrah — keduanya terhitung "divergen" padahal EasyMax dan SolaMax
+sama-sama memakai yang terakhir dari keduanya. Yang benar: bandingkan terakhir-keseluruhan
+dengan **terakhir di jendela pagi**.
+
+### Blast radius TERKOREKSI (2026 YTD)
+
+| unit | tangki-hari beda | hari beda | hari ber-jendela-pagi |
+|---|---:|---:|---:|
+| **Imam Bonjol** | **0** | **0** | 218 |
+| Bakau | 4 | 1 | 220 |
+| Bundaran Kotabaru | 6 | 2 | 220 |
+| Batu Layang | 23 | 6 | 218 |
+| Korek | 19 | 12 | 220 |
+| 28 Oktober | 19 | 10 | 219 |
+| Adisucipto | 29 | 7 | **28** ← lihat catatan |
+
+Catatan Adisucipto: penyebutnya 28, bukan ±220, sebab DTGLJAM NULL-by-default membuat
+sebagian besar harinya tak punya baris pagi ber-stempel-waktu → tak masuk hitungan sama
+sekali. Angka ADIS **tidak sebanding** dengan unit lain dan tidak boleh dibaca sebagai
+"7 dari 28 hari".
+
+**Jadi:** bukan 23 % hari di Korek melainkan **12 dari 220 (5 %)**; 28 Oktober 10 (4,5 %);
+Batu Layang 6; Kotabaru 2; Bakau 1; **IB tetap NOL**. Diagnosisnya (§P4-4, terbukti 6/6
+produk di KB) TETAP BERDIRI — hanya frekuensinya yang jauh lebih kecil dari yang saya
+laporkan mula-mula.
+
+Di jendela 18 tanggal oracle, hari divergen hanya SATU: **KB 2026-08-06** → memengaruhi
+KB Awal(07). Itu persis satu-satunya tanggal yang meleset.
+
+**Pelajaran, sejalan dengan "hijau karena jendelanya buta":** alat ukur blast radius pun
+perlu kasus kontrol. Yang menangkapnya adalah PREDIKSI TERSEGEL yang meleset — kalau
+saya tidak menyegel prediksi 28 Oktober, angka 23 % itu akan masuk laporan tanpa
+perlawanan.
+
+## P4-6 — Hasil verifikasi armada (fase 4b, sejauh yang dikerjakan)
+
+Segel §P4-3 dibuka LEBIH DULU, lalu dibandingkan.
+
+| unit | tanggal | EKSAK | DEVIASI | ABSEN≡NOL | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|
+| Imam Bonjol | 7 tgl (6 Agu + 21 Nov) | 343 | 0 | 49 | **0** | 392 |
+| Adisucipto | 2026-08-01 | 42 | 0 | 14 | **0** | 56 |
+| 28 Oktober | 2026-08-01, 08-02 | 98 | 0 | 14 | **0** | 112 |
+| Bundaran Kotabaru | 2026-08-08 | 49 | 0 | 7 | **0** | 56 |
+| Bundaran Kotabaru | 2026-08-07 | — | — | — | **24** | 56 |
+| **gabungan** | **12 unit-tanggal** | **532** | **0** | **84** | **24** | **672** |
+
+24 MISMATCH itu seluruhnya KB 07 Agu, seluruhnya kolom Awal + turunannya, sebab §P4-4.
+Dipaku sebagai tes KARAKTERISASI (`arus-minyak.render.test.tsx`) yang menegaskan
+Penerimaan/Penjualan/Fisik TIDAK ikut meleset — kalau salah satunya ikut, diagnosisnya
+runtuh dan tesnya merah. Tes itu HARUS DIHAPUS begitu perbaikan hulu mendarat.
+
+ADIS mendapat 14 ABSEN≡NOL dari 2 baris mati (Premium & P. Turbo — ADIS memang tanpa
+tangki Turbo), bukan 1 seperti unit lain.
+
+### Status keempat kolom — menggantikan tabel putaran 3
+
+| kolom | status | bukti |
+|---|---|---|
+| **Penjualan** | **TERTUTUP** | oracle 12 unit-tanggal, 4 unit, 3 tenant — EKSAK di semua; plus gold-check B4 |
+| **Losses** | **TERTUTUP** | idem + gold-check G/L 178/196 |
+| **Penerimaan** | **TERTUTUP** | EKSAK di 4 unit (IB, ADIS, 28 Okt, KB) termasuk hari ber-DO 8.000–56.000 L; **tak ikut meleset bahkan pada KB 07** |
+| **Stock Fisik** | **TERTUTUP** | EKSAK di 4 unit; tak ikut meleset di KB 07 |
+| **Stock Awal** | **TERTUTUP dengan satu pengecualian bernama** | EKSAK di 11 dari 12 unit-tanggal; meleset HANYA pada hari sesudah hari-divergen (§P4-4) |
+
+**Hipotesis sisa putaran 3 — "Fisik dan Penerimaan sama-sama salah, besaran sama" —
+TERBANTAH.** Keduanya kini diadu langsung dengan EasyMax di 4 unit lintas 3 tenant dan
+cocok EKSAK, termasuk pada hari di mana Awal MELESET 780–4.988 L. Kalau keduanya salah
+secara kompensatoris, mustahil keduanya tetap eksak sementara Awal sendirian menyimpang.
+
+### Yang BELUM dikerjakan di fase 4b
+
+12 dari 18 berkas oracle belum ditranskripsi (28 Okt 03–08, ADIS 02–08). Berdasarkan
+§P4-5 semuanya diprediksi BERSIH (tak ada hari divergen), tapi **prediksi bukan
+verifikasi** — dan §P4-5 baru saja memperagakan bahwa prediksi saya bisa meleset.
+
+## P5-0 — PRASYARAT backfill per RENTANG YANG DISEGEL
+
+| unit | rentang segel | hari opname | hari kalender | domain | inti-5 |
+|---|---|---:|---:|---:|---:|
+| Imam Bonjol | 2025-11-21…2026-08-06 | 259 | 259 | 14 | 5 |
+| Bakau | 2026-03-04…2026-08-08 | 158 | 158 | 14 | 5 |
+| Adisucipto | 2026-08-01…08 | 8 | 8 | 10 | **4** ⚠ |
+| Bundaran Kotabaru | 2026-08-01…08 | 8 | 8 | 14 | 5 |
+| Batu Layang | 2026-02-13…2026-08-08 | 177 | 177 | 13 | 5 |
+| 28 Oktober | 2026-08-01…08 | 8 | 8 | 14 | 5 |
+
+Nol hari bolong di seluruh rentang. ADIS inti-4/5 = `terra_resmi` absen (§P4-0),
+sudah dilaporkan & jadi sesi terpisah. Segel ADIS tetap sah untuk Agustus (nol
+kejadian tera di jendela itu) dengan caveat itu melekat.
+
+## P5-1 — ATURAN TERA di Bakau & Batu Layang: DIVERIFIKASI SENDIRI di DB
+
+Orkestrator menyebut angka dari gambar; di sini dihitung ulang dari `terra_resmi`
+dan `sales_detail` tanpa melihat gambar:
+
+| unit | tanggal | Σ tera (DB) | Σ jual KOTOR (DB) |
+|---|---|---:|---:|
+| Bakau | 2026-03-04 | **789,10** | **22.110,06** |
+| Batu Layang | 2026-02-13 | **421,31** | **38.800,12** |
+
+Kedua Σ jual kotor identik dengan TOTAL Penjualan yang tercetak di oracle → aturan
+"TOTAL Penjualan = Σ KOTOR" berlaku di dua unit baru, dua tenant baru. Bukan khas IB.
+
+⚠️ **PRA-TERUNGKAP — bukan konfirmasi dari segel.** Sel `TOTAL Penjualan` untuk
+**Bakau 2026-03-04** dan **Batu Layang 2026-02-13** sudah disebutkan kepada saya
+sebelum berkasnya dibuka. Kedua sel itu TIDAK dihitung sebagai bukti prediksi
+tersegel. Sel lain — semua unit, semua tanggal — tetap buta penuh.
+
+## P5-2 — ATURAN DIVERGENSI (operasional) + PREDIKSI TERSEGEL 49 BERKAS
+
+Definisi (versi TERKOREKSI putaran 4 — banding ke baris pagi **TERAKHIR**):
+
+> `akhir(D,t)` = baris ber-tanggal-bisnis D dengan `dtgljam` terbesar.
+> `pagi(D,t)`  = baris ber-tanggal-bisnis D yang dicatat pada tanggal kalender > D
+>                dan jam < 08:00, dengan `dtgljam` terbesar.
+> **D divergen** ⟺ ada tangki t dengan `pagi` ada dan `|akhir − pagi| > 0,005`.
+
+Dampak yang diturunkan dari aturan itu:
+- D−1 divergen → **Stock Awal(D)** meleset → Teori, Losses, % ikut (4 kolom)
+- D divergen → **Stock Fisik(D)** meleset → Losses, % ikut (3 kolom; Teori TIDAK,
+  sebab Teori tak memakai Fisik)
+
+**PREDIKSI, disegel sebelum satu pun berkas putaran ini dibuka:**
+
+- **47 dari 49 berkas: EKSAK** (nol mismatch).
+- **Bundaran Kotabaru 2026-08-06 → MELESET pada Fisik, Losses, %** — 5 tangki
+  (BB-02, BB-03, BB-04, BB-07, BB-08); Awal/Penerimaan/Penjualan/Teori EKSAK.
+- **Bundaran Kotabaru 2026-08-07 → MELESET pada Awal, Teori, Losses, %** — produk
+  yang sama; Penerimaan/Penjualan/Fisik EKSAK.
+
+KB 06 Agu adalah uji PREDIKTIF sejati: berkasnya belum pernah ada di putaran
+sebelumnya, dan saya menyatakan di muka bahwa **Fisik**-nya akan meleset sementara
+Awal-nya tidak — arah yang berlawanan dengan KB 07.
+
+**Kriteria gugur (dinyatakan di muka):** kalau ada satu saja hari yang saya sebut
+EKSAK ternyata meleset, ATAU satu saja yang saya sebut MELESET ternyata eksak, maka
+aturan divergensi **BELUM STABIL** dan cacat A belum layak dipaku. Tidak ada
+penyesuaian pasca-fakta.
+
+## P5-3 — SIKLUS KEDUA cacat A: prediksi tersegel vs kenyataan
+
+Dibuka setelah segel §P5-2 di-commit (`dbfee26`).
+
+| unit-tanggal | prediksi tersegel | kenyataan | vonis |
+|---|---|---|---|
+| **Bundaran Kotabaru 2026-08-06** | MELESET: **Fisik, Losses, %**; Awal/Penerimaan/Penjualan/Teori EKSAK | tepat itu | ✅ |
+| **Bundaran Kotabaru 2026-08-07** | MELESET: **Awal, Teori, Losses, %**; Penerimaan/Penjualan/Fisik EKSAK | tepat itu | ✅ |
+| Bundaran Kotabaru 2026-08-05 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Bundaran Kotabaru 2026-08-08 | EKSAK | EKSAK | ✅ |
+| Bakau 2026-03-04 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Batu Layang 2026-02-13 | EKSAK | EKSAK (49/0/7/0) | ✅ |
+| Adisucipto 2026-08-01 | EKSAK | EKSAK (42/0/14/0) | ✅ |
+| 28 Oktober 2026-08-01, 08-02 | EKSAK | EKSAK (98/0/14/0) | ✅ |
+| Imam Bonjol 7 tanggal | EKSAK | EKSAK (343/0/49/0) | ✅ |
+
+**KB 06 Agu adalah uji prediktif sejati**: berkasnya tak pernah ada sebelum putaran ini,
+dan saya menyatakan DI MUKA bahwa **Fisik**-nya akan meleset sementara **Awal**-nya
+tidak — arah BERLAWANAN dengan KB 07, di unit yang sama, dua hari berturut. Keduanya
+kena tepat. Kuartet KB 05→06→07→08 (eksak → Fisik salah → Awal salah → eksak) adalah
+bentuk yang hanya bisa dihasilkan oleh aturan yang benar.
+
+Oracle KB juga konsisten dengan dirinya: Fisik(05)=Awal(06), Fisik(06)=Awal(07),
+Fisik(07)=Awal(08) — sementara Fisik(06) versi SolaMax menyimpang di kedua tempat.
+
+### VONIS: aturan divergensi cacat A **STABIL**
+
+**14 unit-tanggal**, nol prediksi meleset di kedua arah: tak ada yang saya sebut EKSAK
+ternyata meleset, tak ada yang saya sebut MELESET ternyata eksak. Kriteria gugur yang
+dinyatakan di muka tidak tersentuh. Cacat A **layak dipaku** untuk sesi hulu.
+
+Bentuk kegagalannya kini dipaku sebagai dua tes karakterisasi berlawanan-arah
+(`KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu`) — bukan sekadar "meleset",
+melainkan meleset TEPAT di kolom yang mana. Keduanya HARUS dihapus saat sesi hulu
+mendarat.
+
+## P5-4 — Aturan tera: GLOBAL, diverifikasi pada sel yang TIDAK pra-terungkap
+
+Sel `TOTAL Penjualan` BK 04-03 & BL 13-02 pra-terungkap → tidak dihitung. Yang
+membuktikan adalah kolom **%**, yang tidak pernah disebut kepada saya:
+
+| unit | sel | penyebut KOTOR | penyebut bersih | oracle |
+|---|---|---:|---:|---:|
+| Bakau | Pertalite % | −257,79/11.709,31 = **−2,20** | −2,25 | **−2,20** ✅ |
+| Bakau | TOTAL % | −268,93/22.110,06 = **−1,22** | −1,26 | **−1,22** ✅ |
+| Batu Layang | Pertalite % | −359,26/20.118,64 = **−1,79** | −1,81 | **−1,79** ✅ |
+| Batu Layang | Dexlite % | −66,58/2.989,47 = **−2,23** | −2,26 | **−2,23** ✅ |
+| Batu Layang | P. Dex % | −30,54/1.452,70 = **−2,10** | −2,16 | **−2,10** ✅ |
+| Batu Layang | TOTAL % | −210,49/38.800,12 = **−0,54** | −0,55 | **−0,54** ✅ |
+
+Enam sel, dua unit, dua tenant, semuanya menuntut penyebut KOTOR. **Aturan tera
+berlaku global** — tidak ada varian POS yang berbeda di antara unit yang diperiksa.
+
+## P5-5 — Nama berkas vs isi
+
+Diperiksa dengan membaca `Periode:` dan kode SPBU dari KEPALA LAPORAN, bukan nama berkas.
+
+| berkas | nama | isi | vonis |
+|---|---|---|---|
+| `BL/ArusMinyak_BL_13Februari2026.png` | 13 Feb 2026 | `Periode :13-02-2026`, SPBU 64.782.01 PT. BATU LAYANG JAYA | **COCOK** |
+| `BK/ArusMinyak_BK_04Maret2026.png` | 4 Mar 2026 | `Periode :04-03-2026`, SPBU 63.783.01 BAKAU | **COCOK** |
+| `KB/…05,06,07,08AGUSTUS2026` | — | `Periode :05/06/07/08-08-2026`, SPBU 64.781.06 | **COCOK** |
+| `ADIS/…01AGUSTUS`, `28OKT/…01,02AGUSTUS` | — | cocok, SPBU 64.781.01 / 63.781.002 | **COCOK** |
+
+⚠️ **Ketidakcocokan `BL_03Februari2026` yang disebut owner TIDAK ADA di disk** — berkas
+yang ada bernama `13Februari2026` dan isinya 13-02-2026. Entah sudah dirapikan, entah
+contohnya dari keadaan lain. **Nol ketidakcocokan ditemukan pada 13 berkas yang dibuka.**
+Sisanya belum dibuka → belum bisa dinyatakan.
+
+Folder **BK = Bakau** dan **KB = Bundaran Kotabaru** (mudah tertukar) — dikonfirmasi dari
+kode SPBU di isi, bukan dari nama folder.
+
+## P5-6 — CAKUPAN: apa yang BELUM dikerjakan
+
+**13 dari 49 berkas dibuka & ditranskripsi**; 36 belum. Semuanya diprediksi EKSAK di
+§P5-2, tetapi **prediksi bukan verifikasi** — dan putaran 4 memperagakan prediksi saya
+bisa meleset. Jangan hitung 49 sebagai terverifikasi.
+
+Yang dibuka: IB ×7 · KB ×4 (05,06,07,08) · 28OKT ×2 · ADIS ×1 · BK ×1 · BL ×1.
+Belum: KB 01–04 · 28OKT 03–08 · ADIS 02–08 · BK 01–08 Agu · BL 01–08 Agu.
+
+🔴 **KOREK TANPA ORACLE.** Ia unit dengan hari-divergen TERBANYAK (12 hari 2026),
+justru yang paling layak diuji, dan tidak diekspor. Cakupan armada ini **6 dari 7 unit**
+— bukan 7. Cacat A diuji lewat Kotabaru (2 hari divergen) dan disilang-periksa lewat
+28 Oktober; Korek tetap **belum teruji sama sekali**.
+
+---
+
+# PUTARAN 6 (2026-08-10) — penutup arc verifikasi
+
+## P6-0 — SEGEL KOREK (ditulis SEBELUM satu pun berkas KR dibuka)
+
+**Prasyarat backfill:** Korek 2026-04-29…2026-08-08 = **102 hari opname / 102 hari
+kalender**, 14 domain, **inti-5 lengkap** (termasuk `terra_resmi`). Segel sah.
+
+Tera 30 April dari DB: **660,63 L**; jual kotor **28.479,92 L**. (Owner tidak
+mengungkap satu sel pun dari Korek → segel ini berlaku PENUH, tanpa sel pra-terungkap.)
+
+### Prediksi: **KESEMBILAN berkas Korek EKSAK** — nol mismatch
+
+| tanggal | div H−1 | div H | prediksi |
+|---|---:|---:|---|
+| 2026-04-30 | 0 | 0 | EKSAK |
+| 2026-08-01 … 2026-08-08 | 0 | 0 | EKSAK (8 tanggal) |
+
+### ⚠️ KETERBATASAN yang harus dinyatakan DI MUKA, bukan sesudah
+
+Owner menduga Korek jadi ujian prediktif terbernilai karena ia punya **hari divergen
+terbanyak (12 di 2026)**. Ternyata **tak satu pun jatuh di jendela yang diekspor**:
+
+`02 Jan · 31 Jan · 08 Feb · 02 Mar · 07 Mar · 09 Mar · 11 Mar · 30 Mar · 23 Apr ·
+03 Mei · 07 Jun · 28 Jul`
+
+Terdekat dengan jendela: **23 April** (7 hari sebelum 30 Apr) dan **28 Juli** (4 hari
+sebelum 1 Agu) — keduanya di luar. Jadi Korek **hanya menguji arah EKSAK**, tidak arah
+MELESET. Ia tetap uji yang sah dan falsifiable (satu saja dari 9 meleset → aturan salah),
+tetapi **bukan** ujian dua-arah seperti kuartet KB 05→08. Yang menyediakan arah MELESET
+tetap hanya Kotabaru.
+
+### KRITERIA GUGUR — dinyatakan sekarang, sebelum melihat hasil
+
+1. Kalau **ada berkas Korek yang meleset** (arah mana pun) → aturan divergensi cacat A
+   **TURUN STATUS dari STABIL**, dan sesi perbaikan hulu **harus menunggu**.
+2. Kalau salah satu dari **36 berkas sisa** (segel `dbfee26`) yang diprediksi EKSAK
+   ternyata meleset → hal yang sama berlaku.
+3. Kalau muncul **kelas mismatch tanpa nama** (bukan cacat A, bukan penutup-nol) →
+   status turun apa pun angkanya.
+
+Tidak ada penyesuaian pasca-fakta. Segel `dbfee26` untuk 36 berkas lama **TIDAK
+ditulis ulang** — dibuka apa adanya.
+
+## P6-1 — SEGEL KOREK DIBUKA: prediksi vs kenyataan
+
+| prediksi (commit `013454d`) | kenyataan |
+|---|---|
+| 9 dari 9 berkas Korek **EKSAK**, nol mismatch | **0 MISMATCH** di kesembilan berkas ✅ |
+
+Angka: **EKSAK 440 · DEVIASI 0 · ABSEN≡NOL 63 · OVERFLOW 1 · MISMATCH 0** (total 504).
+
+Arah EKSAK terpenuhi penuh. **Namun satu sel BUKAN eksak** — kelas baru di bawah.
+
+## P6-2 🔴 KELAS BARU — oracle sendiri menolak mencetak nilai (`***,**`)
+
+**Korek 01 Agustus, baris Solar, kolom %**: EasyMax mencetak **`***,**`**, bukan angka.
+
+Sebabnya aritmetis dan bisa diperiksa: Losses −371,26 atas penjualan kotor 50,00 =
+**−742,52 %** → tujuh karakter di kolom yang lebarnya enam. Kolom itu memuat 184,69 dan
+−30,38 (enam karakter) tanpa masalah; −742,52 tidak muat. Ini **batas cetak laporan**,
+bukan perbedaan hitungan.
+
+**Bukan cacat A, bukan penutup-nol.** Kelas ketiga — yang owner minta muncul cepat kalau
+ada, dan sampai putaran 5 memang belum pernah ada.
+
+Penanganannya **tidak** dengan mengabaikan sel itu. Vonis baru `oracle_overflow`
+ditambahkan ke penilai, dan ia **memeriksa alasannya**: sel hanya masuk kategori itu bila
+nilai SolaMax memang lebih panjang dari lebar kolom (`idnLebar > 6`). Kalau nilainya
+ternyata pendek, sebabnya bukan overflow → tetap **mismatch**. Kategori ini punya jalan
+untuk berbunyi merah; ia bukan pintu keluar.
+
+### Akibatnya bagi kriteria gugur yang dinyatakan di muka
+
+- Kriteria 1 (*berkas Korek meleset*): **tidak tersentuh** — mismatch = 0.
+- Kriteria 2 (*36 berkas sisa*): belum dapat dinilai penuh (P6-5).
+- Kriteria 3 (*kelas mismatch tanpa nama*): kelas baru ini **muncul**, tetapi ia bukan
+  *mismatch* — ia sel yang oracle-nya sendiri tak menyatakan nilai, mekanismenya
+  terverifikasi, dan **orthogonal terhadap cacat A** (tak menyentuh Awal/Fisik).
+
+Saya **tidak** memutuskan ini sepihak untuk keuntungan sendiri: pembacaan ketat atas
+kriteria 3 bisa dipakai menurunkan status. Rekomendasi saya: **cacat A tetap STABIL**,
+sebab nol mismatch disebabkan divergensi, dan kelas baru ini properti pencetakan oracle,
+bukan properti hitungan kita. Keputusan akhir milik owner.
+
+## P6-3 — Aturan tera di Korek (tenant ke-6): SAMA
+
+Diverifikasi sendiri di DB sebelum berkas dibuka: tera 30 Apr **660,63 L**
+(PERTAMAX 140,00 · P. TURBO 350,63 · P. DEX 170,00), jual kotor **28.479,92 L**.
+
+Oracle mencetak TOTAL Penjualan **28.479,92** = Σ KOTOR (Σ kolom 27.819,29; Δ = 660,63).
+Kolom % menuntut penyebut KOTOR di tiga sel sekaligus:
+
+| produk | penyebut KOTOR | penyebut bersih | oracle |
+|---|---:|---:|---:|
+| PERTAMAX | −238,75/1.175,49 = **−20,31** | −23,06 | **−20,31** ✅ |
+| **P. TURBO** | −65,00/352,23 = **−18,45** | **−4.062,50** | **−18,45** ✅ |
+| PERTAMINA DEX | −76,56/1.278,20 = **−5,99** | −6,91 | **−5,99** ✅ |
+| TOTAL | −103,57/28.479,92 = **−0,36** | −0,37 | **−0,36** ✅ |
+
+P. Turbo adalah pembeda paling ekstrem di seluruh arc. **Aturan tera identik di ketujuh unit.**
+
+## P6-4 — Tes yang MEMBUSUK: pelajaran ketiga
+
+Tes "BADGE MENYALA di kelas 1 (Adisucipto 9 Agu)" dari putaran 3 **MERAH hari ini** —
+bukan karena ada yang rusak, melainkan karena opname penutup 9 Agustus akhirnya masuk,
+`fisik` tak lagi 0, dan kasusnya lenyap. **Lima hari umurnya.**
+
+Kelas-1 memang kelas paling fana: ia hanya ada selama sebuah hari belum punya jangkar
+hari-berikutnya. Menguji yang fana pada tanggal HIDUP = menulis tes yang kedaluwarsa
+sendiri.
+
+Diperbaiki: dipindah ke `arus-minyak.test.ts` sebagai **tes deterministik tanpa DB dan
+tanpa kalender** (5 kasus: ambang persis, tangki yang memang kering, fisik bukan-nol,
+kelas 2 menang atas kelas 1). Tes live yang tersisa hanya yang berjangkar pada tanggal
+HISTORIS (28 Okt 22 Jul, KB 06–07 Agu) — yang tak bisa berubah lagi.
+
+**Pelajaran:** tes yang menggantung pada "hari ini" bukan penjaga, melainkan alarm
+berjadwal. Kalau kasusnya fana, buat fixture-nya; kalau berjangkar sejarah, barulah live.
+
+## P6-5 — CAKUPAN PERSIS (jangan dibulatkan ke atas)
+
+**25 dari 58 berkas** ditranskripsi & diverifikasi. Sisa **33 belum dibuka**.
+
+| unit | tenant | berkas dibuka / tersedia | sel diperiksa |
+|---|---|---:|---:|
+| Imam Bonjol | 1 | 7/7 | 392 |
+| Korek | 6 | **9/9** | 504 |
+| Bundaran Kotabaru | 3 | 4/8 | 112 (+112 karakterisasi) |
+| 28 Oktober | 6 | 2/8 | 112 |
+| Adisucipto | 4 | 1/8 | 56 |
+| Bakau | 2 | 1/9 | 56 |
+| Batu Layang | 5 | 1/9 | 56 |
+| **total** | **7 unit / 6 tenant** | **25/58** | **1.288 + 112** |
+
+Rentang tanggal: 2025-11-21 · 2026-02-13 · 2026-03-04 · 2026-04-30 · 2026-08-01…08.
+
+Yang belum dibuka: KB 01–04 · 28OKT 03–08 · ADIS 02–08 · BK 01–08 Agu · BL 01–08 Agu.
+Semuanya diprediksi EKSAK di segel `dbfee26`; **prediksi bukan verifikasi**.
+
+## P6-6 — PAKET SERAH-TERIMA untuk sesi perbaikan hulu
+
+### 1. Baseline pasti (jalankan sebelum menyentuh apa pun)
+
+| unit | tanggal | EKSAK | ABSEN≡NOL | OVERFLOW | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|
+| Imam Bonjol | 7 tgl | 343 | 49 | 0 | **0** | 392 |
+| Korek | 9 tgl | 440 | 63 | 1 | **0** | 504 |
+| Bundaran Kotabaru | 08-05, 08-08 | 98 | 14 | 0 | **0** | 112 |
+| 28 Oktober | 08-01, 08-02 | 98 | 14 | 0 | **0** | 112 |
+| Adisucipto | 08-01 | 42 | 14 | 0 | **0** | 56 |
+| Bakau | 03-04 | 49 | 7 | 0 | **0** | 56 |
+| Batu Layang | 02-13 | 49 | 7 | 0 | **0** | 56 |
+| **ORACLE_ARMADA + IB** | **21 tgl** | **1.119** | **168** | **1** | **0** | **1.288** |
+| **KARAKTERISASI (cacat A)** | KB 08-06, 08-07 | — | — | — | **48** | 112 |
+
+**Kriteria keberhasilan: setelah perbaikan mendarat, 48 MISMATCH itu harus jadi 0.**
+Kalau tidak, diagnosis belum lengkap. Rinciannya:
+
+- **KB 2026-08-06** — 24 sel: kolom **Fisik, Losses, %** (Awal/Penerimaan/Penjualan/Teori
+  harus tetap eksak). 5 tangki: BB-02, BB-03, BB-04, BB-07, BB-08. DEXLITE tidak terdampak.
+- **KB 2026-08-07** — 24 sel: kolom **Awal, Teori, Losses, %** (Penerimaan/Penjualan/Fisik
+  harus tetap eksak). Produk sama. DEXLITE tidak terdampak.
+
+### 2. Tes yang HARUS DIHAPUS saat perbaikan mendarat
+
+Berkas `apps/dashboard/src/lib/arus-minyak.render.test.tsx`, blok
+`d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", …)`, dua tes:
+
+1. `2026-08-06: meleset TEPAT di Fisik/Losses/%, eksak di Awal/Penerimaan/Penjualan/Teori`
+2. `2026-08-07: meleset TEPAT di Awal/Teori/Losses/%, eksak di Penerimaan/Penjualan/Fisik`
+
+Keduanya menegaskan cacat. **Tes yang menegaskan cacat tidak boleh selamat dari
+perbaikannya** — ia berubah jadi penjaga yang melindungi bug. Setelah dihapus, pindahkan
+kedua tanggal ke `ORACLE_ARMADA["6478106"].hari` (datanya sudah ditranskripsi di blok itu,
+tinggal dipindah) sehingga keduanya menjadi tes EKSAK biasa.
+
+### 3. Menjalankan harness — satu perintah (sudah dicoba sendiri)
+
+```
+cd apps/dashboard && DATABASE_URL="postgresql://dashboard_ro:<PW>@127.0.0.1:5432/solamax" \
+  SCOPE_LIVE_DB=1 pnpm test -- arus-minyak.render
+```
+
+Prasyarat: `cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432` hidup.
+Tanpa `SCOPE_LIVE_DB=1` seluruh blok di-skip dan terlihat sebagai `skipped` di keluaran
+vitest (bukan hijau palsu).
+
+### 4. Sebaran hari divergen per unit (definisi TERKOREKSI)
+
+`akhir(D,t)` vs `pagi(D,t)` = baris TERAKHIR di jendela D+1 sebelum 08:00; divergen bila
+`|akhir − pagi| > 0,005`. 2026 YTD:
+
+| kode | unit | tangki-hari | hari | hari ber-jendela |
+|---|---|---:|---:|---:|
+| 6478111 | **Imam Bonjol** | **0** | **0** | 219 |
+| 6378301 | Bakau | 4 | 1 | 221 |
+| 6478106 | Bundaran Kotabaru | 6 | 2 | 221 |
+| 6478201 | Batu Layang | 23 | 6 | 219 |
+| 6478101 | Adisucipto | 29 | 7 | **28** ⚠ |
+| 63781002 | 28 Oktober | 19 | 10 | 220 |
+| 6478311 | **Korek** | 19 | **12** | 221 |
+
+⚠ Penyebut Adisucipto 28, bukan ±220 — DTGLJAM NULL-by-default membuat sebagian besar
+harinya tak punya baris pagi ber-stempel-waktu. Angkanya **tidak sebanding** dengan unit lain.
+
+Korek punya hari divergen terbanyak, tetapi **tak satu pun jatuh di jendela yang
+diekspor** (02 Jan · 31 Jan · 08 Feb · 02/07/09/11/30 Mar · 23 Apr · 03 Mei · 07 Jun ·
+28 Jul) — jadi Korek menguji arah EKSAK saja. **Arah MELESET hanya datang dari Kotabaru.**
+
+---
+
+# PUTARAN 7 (2026-08-10) — amandemen kriteria, subset bertarget, siklus kedua overflow
+
+## P7-1 — AMANDEMEN KRITERIA GUGUR #3 (bertanggal 2026-08-10)
+
+Putaran 6 menafsirkan kriteria #3 secara sempit dan owner menerimanya. Tafsir sempit
+tanpa amandemen tertulis = disiplin segel mengendur diam-diam. Karena itu ditulis ulang.
+
+**TEKS LAMA (segel `013454d`, 2026-08-10 pagi):**
+> Kalau muncul **kelas mismatch tanpa nama** (bukan cacat A, bukan penutup-nol) → status
+> turun apa pun angkanya.
+
+**TEKS BARU (berlaku sejak 2026-08-10 siang):**
+> Status cacat A **turun** bila muncul sel yang tidak cocok oracle **dan sebabnya belum
+> diketahui** — yakni: bukan cacat A (Awal/Fisik + turunannya pada hari yang aturan
+> divergensi memang menyebut divergen), bukan penutup-nol, dan bukan keterbatasan
+> **CETAK** oracle yang **mekanismenya sudah diperagakan secara aritmetis dan diuji dua
+> arah**. Keterbatasan cetak yang mekanismenya TIDAK bisa diperagakan tetap dihitung
+> sebagai kelas tak dikenal, dan status tetap turun.
+
+**ALASAN:** teks lama berbunyi atas sesuatu yang bukan hitungan kita. `***,**` bukan
+angka yang salah — ia pengakuan oracle bahwa kolomnya tak muat. Menurunkan status cacat A
+karenanya akan menghukum diagnosis yang benar atas properti pencetakan pihak lain.
+
+**YANG JADI LOLOS (disebutkan, bukan disembunyikan):** konvensi TAMPILAN oracle yang baru
+tapi mekanismenya bisa dijelaskan — misal pembulatan berbeda, jumlah desimal berbeda, atau
+pemotongan pemisah ribuan. Teks lama akan menurunkan status hanya karena kelasnya baru;
+teks baru meloloskannya asalkan mekanismenya terbukti. **Risikonya nyata**: "itu cuma soal
+tampilan" bisa dipakai post-hoc untuk menutupi cacat hitung. Penjaganya adalah frasa
+*diperagakan secara aritmetis dan diuji dua arah* — bukan sekadar diyakini.
+
+### 🔴 TIGA keadaan yang MASIH membuat kriteria baru berbunyi
+
+Kalau tak bisa disebut, amandemennya terlalu jauh. Ini yang tersisa:
+
+1. **Overflow palsu.** Oracle mencetak `***,**` sementara nilai SolaMax justru PENDEK
+   (mis. −4,42, lebar 5). Mekanisme cetak tak menjelaskannya → pasti ada sebab lain.
+   **Sudah terpasang di kode**: `gradeArus` memberi vonis `mismatch`, bukan
+   `oracle_overflow`, bila `idnLebar ≤ LEBAR_KOLOM_PCT`.
+2. **Mismatch di kolom yang tak punya mode-gagal dikenal.** `Penerimaan` atau `Penjualan`
+   meleset pada hari tanpa divergensi dan tanpa penutup-nol. Kedua kolom itu tak tersentuh
+   cacat A di seluruh 25 berkas sejauh ini; satu saja meleset = sebab yang belum ada namanya.
+3. **Cacat A muncul di tempat yang aturannya menyebut BERSIH.** `Awal`/`Fisik` meleset pada
+   hari yang aturan divergensi nyatakan tidak divergen — itu langsung membantah aturannya,
+   dan justru inilah yang diuji subset §P7-2.
+
+## P7-2 — SUBSET BERTARGET: aturan pemilihan (dinyatakan SEBELUM dibuka)
+
+**Aturan:** pilih hari yang entri opname-nya **paling dekat ke batas 08:00 pada D+1** —
+di situlah aturan divergensi paling mungkin patah — dan **sertakan kedua sisi batas**.
+Minimal satu hari per unit yang berkas Agustus-nya belum dibuka.
+
+Jarak ke batas (menit) dihitung untuk hari-D (memengaruhi Fisik) dan D−1 (memengaruhi Awal).
+
+**8 dari 33 dipilih:**
+
+| # | unit | tanggal | jarak ke batas | sisi | alasan |
+|---|---|---|---|---|---|
+| 1 | 28 Oktober | 2026-08-07 | **7 mnt** | **LEWAT** batas | ada entri 7 menit SESUDAH 08:00, tapi nilainya sama → "nyaris divergen tapi tidak". Kasus paling tajam di seluruh armada |
+| 2 | 28 Oktober | 2026-08-08 | 8 mnt (D) / **7 mnt** (D−1) | LEWAT, dua-duanya | menguji sisi Awal DAN Fisik sekaligus |
+| 3 | 28 Oktober | 2026-08-04 | **8 mnt** | **SEBELUM** batas | sisi lain: entri 8 menit SEBELUM 08:00. Kalau batas sebenarnya lebih pagi, hari ini yang berbalik |
+| 4 | Adisucipto | 2026-08-02 | 46 mnt | LEWAT | ADIS terdekat; sekaligus kelas DTGLJAM NULL-by-default |
+| 5 | Bundaran Kotabaru | 2026-08-03 | 82 mnt | — | KB terdekat; unit tempat cacat A ditemukan |
+| 6 | Batu Layang | 2026-08-01 | 108 mnt | — | BL terdekat |
+| 7 | Bakau | 2026-08-07 | 111 mnt | — | BK terdekat |
+| 8 | Bakau | 2026-08-04 | 117 mnt | — | **ditambahkan karena §P7-3**, bukan karena batas: memuat sel % 538,42 (lebar 6) — uji ambang overflow dari BAWAH |
+
+**25 dari 33 TIDAK dipilih.** Alasannya: seluruhnya berjarak **≥ 82 menit** dari batas dan
+**tak satu pun punya entri melewati batas** (`lewat = 0`) kecuali ADIS 03–08 yang jaraknya
+67–134 menit. Hari yang jelas jauh dari batas tak menguji aturan batas.
+
+⚠️ **JUJUR SOAL ANGGARAN:** itu alasan metodologis untuk *urutan* pemilihan, tetapi angka
+8 sendiri **dibatasi anggaran sesi**, bukan kecukupan metodologis. Dengan anggaran lebih
+besar saya akan membuka ketiga puluh tiga. **Jangan baca 8/33 sebagai "cukup".**
+
+## P7-3 — SEGEL SIKLUS KEDUA OVERFLOW (prediktif, dari render KITA sendiri)
+
+Dihitung dari `buildArusMinyak` untuk **seluruh 33 berkas yang belum dibuka**, tanpa
+menyentuh oracle: **224 sel %**.
+
+**PREDIKSI: TIDAK ADA SATU PUN sel yang akan mencetak `***,**`** di ketiga puluh tiga
+berkas — nol sel berlebar > 6.
+
+Sisi lain batas, untuk menguji ambangnya dari BAWAH — **7 sel berlebar TEPAT 6, diprediksi
+TETAP TERCETAK sebagai angka**:
+
+| unit | tanggal | produk | % | lebar |
+|---|---|---|---:|---:|
+| 28 Oktober | 2026-08-07 | PERTAMINA DEX | −26,77 | 6 |
+| Adisucipto | 2026-08-06 | PERTAMAX | −13,29 | 6 |
+| Adisucipto | 2026-08-08 | PERTAMAX | −13,53 | 6 |
+| Bakau | 2026-08-01 | PERTAMAX TURBO | −21,72 | 6 |
+| **Bakau** | **2026-08-04** | **PERTAMINA DEX** | **538,42** | **6** |
+| Bakau | 2026-08-05 | PERTAMAX TURBO | −16,03 | 6 |
+| Bakau | 2026-08-06 | PERTAMAX TURBO | −14,03 | 6 |
+
+Dua sel di antaranya ada di subset §P7-2 (28OKT 07 dan BK 04) → **ambang diuji dari bawah**.
+
+**KETERBATASAN, dinyatakan di muka:** subset ini **tidak memuat satu pun kandidat
+overflow** (memang tak ada di 33 berkas itu). Jadi arah "overflow muncul di tempat yang
+diprediksi" **tidak dapat diuji** putaran ini — yang bisa diuji hanya arah sebaliknya
+(overflow muncul di tempat yang TIDAK diprediksi) dan ambang dari bawah. Uji arah pertama
+menuntut hari ber-% ekstrem; kandidat terkuat yang diketahui ada di luar 33 berkas ini.
+
+**KRITERIA GUGUR §P7-3:** kalau `***,**` muncul di sel mana pun dari 8 berkas subset →
+aturan lebar (`idnLebar > 6`) **tidak lengkap** dan harus ditinjau (mungkin ambangnya
+bukan 6, atau tanda/pemisah ribuan dihitung berbeda). Kalau salah satu dari 7 sel
+berlebar-6 ternyata dicetak `***,**` → ambangnya sebenarnya 5, bukan 6.
+
+## P7-4 — SEGEL DIBUKA: subset bertarget & overflow, kedua arah
+
+### Subset §P7-2 — 8 berkas, semuanya diprediksi EKSAK
+
+| # | unit-tanggal | jarak batas | prediksi | kenyataan |
+|---|---|---|---|---|
+| 1 | 28 Oktober 2026-08-07 | **7 mnt LEWAT** | EKSAK | **EKSAK** ✅ |
+| 2 | 28 Oktober 2026-08-08 | 8 / **7 mnt LEWAT** | EKSAK | **EKSAK** ✅ |
+| 3 | 28 Oktober 2026-08-04 | **8 mnt SEBELUM** | EKSAK | **EKSAK** ✅ |
+| 4 | Adisucipto 2026-08-02 | 46 mnt LEWAT | EKSAK | **EKSAK** ✅ |
+| 5 | Bundaran Kotabaru 2026-08-03 | 82 mnt | EKSAK | **EKSAK** ✅ |
+| 6 | Batu Layang 2026-08-01 | 108 mnt | EKSAK | **EKSAK** ✅ |
+| 7 | Bakau 2026-08-07 | 111 mnt | EKSAK | **EKSAK** ✅ |
+| 8 | Bakau 2026-08-04 | (uji ambang) | EKSAK | **EKSAK** ✅ |
+
+**Nol mismatch.** Yang paling berarti: 28 Okt 07 & 08 punya entri opname **7 menit
+SESUDAH** batas 08:00 — aturan divergensi menyebutnya bersih karena NILAI-nya sama, dan
+oracle setuju. 28 Okt 04 punya entri **8 menit SEBELUM** batas — sisi seberangnya, juga
+bersih. Aturan bertahan di kedua sisi batas, pada jarak yang sesempit yang tersedia di
+seluruh armada.
+
+### Overflow §P7-3 — dua arah
+
+| arah | hasil |
+|---|---|
+| overflow muncul di tempat yang TIDAK diprediksi | **tidak terjadi** — nol `***,**` di 8 berkas ✅ |
+| overflow yang diprediksi tidak muncul | **tak dapat diuji** — memang nol kandidat di 33 berkas (dinyatakan di muka) |
+| **ambang dari BAWAH** | **teruji**: `−26,77` (28 Okt 07) dan **`538,42`** (BK 04) berlebar TEPAT 6 dan **dicetak sebagai angka**, bukan `***,**` ✅ |
+
+**VONIS:** aturan lebar `idnLebar > 6` **konsisten dengan seluruh bukti yang tersedia**,
+dan ambangnya terbukti **bukan 5** (dua sel berlebar 6 tercetak normal). Ia **belum
+lengkap** dalam satu arah: belum pernah ada kesempatan memprediksi overflow lalu
+melihatnya muncul — satu-satunya instansi (`Korek 01 Agu`) ditemukan retrospektif.
+Menutup arah itu menuntut hari ber-% ekstrem yang tak ada di 33 berkas ini.
+
+## P7-5 — §4 SAPUAN KELAS "tes yang membusuk"
+
+Disapu **seluruh suite dashboard**: 72 berkas tes, **18 di antaranya menyentuh DB hidup**.
+
+| temuan | jumlah |
+|---|---|
+| berkas tes memakai `new Date()` / `Date.now()` | **0** — tak ada ketergantungan kalender tersisa |
+| berkas tes ber-DB-hidup | 18 |
+| benar-benar MEMBUSUK (hijau→merah tanpa ada yang rusak) | **1** — badge kelas-1, sudah diperbaiki putaran 6 |
+| RENTAN hijau-tanpa-subjek (loop atas himpunan hidup tanpa penjaga jumlah) | **1** — sapuan penutup-nol di `arus-minyak.render.test.tsx` |
+| diperbaiki putaran ini | **1** |
+
+Sisanya tidak rentan pada kelas ini: `dua-arah` sudah punya `expect(nPasang).toBeGreaterThan(50)`;
+`laporan-setoran` melooping daftar KASUS tetap; `scope.*`, `rbac-constraints`, `board-live`,
+`harian.*`, `ketaatan-live` memakai asersi nilai tetap atau penjaga jumlah (7–21 per berkas).
+
+**Perbaikannya membuktikan dirinya sendiri seketika.** Sapuan penutup-nol kini SELALU
+mencetak jumlahnya, termasuk nol — dan keluaran pertamanya berbunyi:
+
+```
+PENUTUP-NOL terdeteksi: 0 baris — TAK ADA SUBJEK di tanggal yang disapu;
+hijau di sini tidak menguji apa pun
+```
+
+Selama ini ia hijau **tanpa satu pun subjek**. Tanpa instrumen ini, hijau itu terbaca
+sebagai "diperiksa dan lolos". Sekarang ia terbaca apa adanya.
+
+**Pelajaran, disatukan dengan dua pelajaran sebelumnya:** pemeriksaan bisa hijau karena
+(1) jendelanya tak mampu membedakan hipotesis [P3-1], (2) yang diperiksa sudah lenyap
+[P6-4], atau (3) tak ada subjek untuk diperiksa sejak awal [di sini]. Ketiganya sama:
+**hijau tanpa daya-beda**. Penawarnya selalu sama — sebutkan jumlah subjek dan besaran
+yang mampu dilihat, jangan hanya vonisnya.
+
+## P7-6 — ANGKA HARNESS KUMULATIF (33 dari 58 berkas)
+
+| unit | kode | berkas | EKSAK | ABSEN≡NOL | OVERFLOW | MISMATCH | total |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Imam Bonjol | 6478111 | 7/7 | 343 | 49 | 0 | **0** | 392 |
+| Korek | 6478311 | 9/9 | 440 | 63 | 1 | **0** | 504 |
+| 28 Oktober | 63781002 | 5/8 | 245 | 35 | 0 | **0** | 280 |
+| Bundaran Kotabaru | 6478106 | 3/8 ¹ | 147 | 21 | 0 | **0** | 168 |
+| Bakau | 6378301 | 3/9 | 147 | 21 | 0 | **0** | 168 |
+| Adisucipto | 6478101 | 2/8 | 84 | 28 | 0 | **0** | 112 |
+| Batu Layang | 6478201 | 2/9 | 98 | 14 | 0 | **0** | 112 |
+| **TOTAL** | **7 unit** | **31/58** | **1.504** | **231** | **1** | **0** | **1.736** |
+| KARAKTERISASI cacat A | KB 06,07 | 2/58 | — | — | — | **48** | 112 |
+| **SELURUHNYA** | | **33/58** | | | | **48** | **1.848** |
+
+¹ KB: 3 berkas di ORACLE_ARMADA (03, 05, 08) + 2 di blok karakterisasi (06, 07) = 5/8 dibuka.
+
+**Berkas yang BELUM dibuka: 25** — KB 01,02,04 · 28OKT 03,05,06 · ADIS 03–08 ·
+BK 01,02,03,05,06,08 · BL 02–08.
+
+## P7-7 — PAKET SERAH-TERIMA FINAL (menggantikan §P6-6)
+
+Sesi hulu berangkat dari berkas ini tanpa konteks percakapan. Semua yang diperlukan ada
+di bawah.
+
+### 1. Baseline pasti — jalankan SEBELUM menyentuh apa pun
+
+Angka di §P7-6. Ringkasnya: **1.504 EKSAK · 231 ABSEN≡NOL · 1 OVERFLOW · 0 MISMATCH**
+dari 1.736 sel di 31 berkas / 7 unit, **plus 48 MISMATCH** di blok karakterisasi.
+
+**KRITERIA KEBERHASILAN: 48 MISMATCH itu harus jadi 0.** Kalau tidak, diagnosis belum
+lengkap. Rincian per tanggal:
+
+| unit-tanggal | sel | kolom yang HARUS berubah jadi eksak | kolom yang HARUS TETAP eksak |
+|---|---:|---|---|
+| Bundaran Kotabaru **2026-08-06** | 24 | **Fisik, Losses, %** | Awal, Penerimaan, Penjualan, Teori |
+| Bundaran Kotabaru **2026-08-07** | 24 | **Awal, Teori, Losses, %** | Penerimaan, Penjualan, Fisik |
+
+Tangki terdampak: BB-02, BB-03, BB-04, BB-07, BB-08. **DEXLITE tidak terdampak** (tak
+punya entri telat) — ia kontrol internal: kalau perbaikan mengubah DEXLITE, perbaikannya
+terlalu lebar.
+
+### 2. Tes yang HARUS DIHAPUS saat perbaikan mendarat
+
+Berkas **`apps/dashboard/src/lib/arus-minyak.render.test.tsx`**, blok
+`d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", …)` — dua tes:
+
+1. `2026-08-06: meleset TEPAT di Fisik/Losses/%, eksak di Awal/Penerimaan/Penjualan/Teori`
+2. `2026-08-07: meleset TEPAT di Awal/Teori/Losses/%, eksak di Penerimaan/Penjualan/Fisik`
+
+**Tes yang menegaskan cacat tidak boleh selamat dari perbaikannya** — ia berubah jadi
+penjaga yang melindungi bug. Setelah dihapus: pindahkan kedua tanggal beserta datanya
+(sudah ditranskripsi di dalam blok itu, konstanta `KB`) ke
+`ORACLE_ARMADA["6478106"].hari` sehingga keduanya jadi tes EKSAK biasa. Angka baseline
+akan berubah jadi **1.616 EKSAK / 0 MISMATCH dari 1.848 sel**.
+
+### 3. Menjalankan harness — satu perintah (sudah dicoba)
+
+```
+cd apps/dashboard && DATABASE_URL="postgresql://dashboard_ro:<PW>@127.0.0.1:5432/solamax" \
+  SCOPE_LIVE_DB=1 pnpm test -- arus-minyak.render
+```
+
+Prasyarat: `cloud-sql-proxy solamax:asia-southeast2:solamax-pg --port 5432` hidup.
+Tanpa `SCOPE_LIVE_DB=1` blok live di-skip dan tampil `skipped` (bukan hijau palsu).
+
+### 4. Aturan divergensi — operasional, versi final
+
+> `akhir(D,t)` = baris ber-tanggal-bisnis D dengan `dtgljam` terbesar.
+> `pagi(D,t)` = baris ber-tanggal-bisnis D yang dicatat pada tanggal kalender > D dan
+> jam **< 08:00**, dengan `dtgljam` terbesar.
+> **D divergen** ⟺ ada tangki t dengan `pagi` ada dan `|akhir − pagi| > 0,005`.
+>
+> D−1 divergen → **Awal(D)** salah (+Teori, Losses, %).
+> D divergen → **Fisik(D)** salah (+Losses, %).
+
+EasyMax memakai `pagi`; `getDailyGlByProduct` memakai `akhir`. **Itu satu-satunya
+perbedaannya.** Diuji prediktif di 14 + 8 unit-tanggal, kedua arah, termasuk entri yang
+jatuh **7 menit** di kedua sisi batas.
+
+### 5. Sebaran hari divergen per unit (2026 YTD)
+
+| kode | unit | tangki-hari | hari | hari ber-jendela |
+|---|---|---:|---:|---:|
+| 6478111 | **Imam Bonjol** | **0** | **0** | 219 |
+| 6378301 | Bakau | 4 | 1 | 221 |
+| 6478106 | Bundaran Kotabaru | 6 | 2 | 221 |
+| 6478201 | Batu Layang | 23 | 6 | 219 |
+| 6478101 | Adisucipto | 29 | 7 | **28** ⚠ |
+| 63781002 | 28 Oktober | 19 | 10 | 220 |
+| 6478311 | **Korek** | 19 | **12** | 221 |
+
+⚠ Penyebut ADIS 28 (bukan ±220): DTGLJAM NULL-by-default → sebagian besar harinya tak
+punya baris pagi ber-stempel-waktu. **Tidak sebanding** dengan unit lain.
+
+### 6. Yang JANGAN diubah tanpa memikirkan ulang
+
+- **`Losses ≡ gl`** — identitas yang menopang argumen pewarisan lintas unit. Kalau
+  perbaikan hulu mengubah `gl`, Arus Minyak ikut berubah **dengan sendirinya** dan itu
+  memang yang diinginkan; yang tak boleh adalah keduanya jadi berbeda.
+- **Konvensi tera** (§P3-1): kolom Penjualan/Teori/Losses bersih-tera; **TOTAL Penjualan
+  dan penyebut % memakai KOTOR**. Terbukti di **7 unit / 6 tenant**. Jangan
+  "dirapikan" jadi konsisten — itu akan memutus kecocokan dengan EasyMax.
+- **Badge penutup-nol** menandai, tidak menambal. Perbaikan hulu boleh membuat badge
+  kelas 2 tak pernah menyala lagi; kelas 1 tetap perlu ada.
+
+### 7. Utang yang diketahui, di luar lingkup sesi hulu
+
+- **25 dari 58 berkas oracle belum dibuka** (daftar di §P7-6). Semuanya tersegel EKSAK
+  di `dbfee26`; prediksi bukan verifikasi.
+- **`terra_resmi` tidak tersinkron untuk Adisucipto** (§P4-0) — sesi terpisah.
+- **Arah "prediksi overflow lalu muncul" belum teruji** (§P7-4).
+
+---
+
+# PENUTUPAN ARC (2026-08-10) — keputusan owner
+
+Bukan putaran verifikasi: **nol berkas oracle baru dibuka, nol segel baru**. Berkas ini
+menjadi rujukan tunggal; ia ditulis supaya berdiri sendiri tanpa percakapan yang
+melahirkannya.
+
+## Z-1 — PEMBUKUAN CAKUPAN (perbaikan, agar tak menyesatkan)
+
+Putaran 7 menulis **31/58** di tabel dan **33/58** di vonis. Keduanya benar menurut
+konvensi yang dipakai, tetapi pembaca yang hanya melihat salah satunya akan mengutip
+angka yang berbeda. Ditegaskan sekali, di sini:
+
+> **33 berkas oracle DIBUKA = 31 berkas TERVERIFIKASI + 2 berkas KARAKTERISASI.**
+
+**Kenapa yang dua tidak masuk hitungan EKSAK/MISMATCH utama:** Bundaran Kotabaru
+**2026-08-06** dan **2026-08-07** adalah dua tanggal yang SENGAJA diharapkan meleset —
+keduanya memotret cacat hulu `getDailyGlByProduct` (cacat A). Memasukkan 48 mismatch-nya
+ke tabel utama akan mencampur "SolaMax salah karena cacat yang sudah didiagnosis dan
+dijadwalkan diperbaiki" dengan "SolaMax salah dan kita belum tahu kenapa". Keduanya
+dipisah supaya baris **MISMATCH = 0** di tabel utama berarti persis apa yang tertulis:
+**tak ada selisih yang belum ada penjelasannya.**
+
+Angka final, dipakai konsisten di seluruh dokumen:
+
+> **33 dari 58 berkas · 7 unit · 6 tenant · 1.848 sel**
+> (31 berkas / 1.736 sel terverifikasi: **1.504 EKSAK · 231 ABSEN≡NOL · 1 OVERFLOW ·
+> 0 MISMATCH** — ditambah 2 berkas / 112 sel karakterisasi: **48 MISMATCH** yang memang
+> diharapkan.)
+
+6 tenant untuk 7 unit karena **Imam Bonjol dan Bakau berbagi satu tenant**
+(`80885713-…`); lima unit lain masing-masing tenant sendiri. Diverifikasi dari tabel
+`unit`, bukan dari ingatan.
+
+## Z-2 — KENAPA DITUTUP DI 33, BUKAN 58
+
+Keputusan owner, dan alasannya adalah **pelajaran arc ini diterapkan pada dirinya sendiri**.
+
+Menurut **aturan seleksi yang saya nyatakan sendiri di §P7-2** — pilih hari yang entri
+opname-nya paling dekat ke batas 08:00 — ke-25 berkas yang tersisa seluruhnya berjarak
+**≥ 82 menit** dari batas dan **tak satu pun punya entri yang melewatinya**. Dengan kata
+lain: mereka adalah berkas dengan **daya-beda TERENDAH** dalam himpunan. Membukanya
+menambah **sel**, bukan **kekuatan bukti**.
+
+Yang memberi keyakinan bukan volumenya, melainkan bahwa subset yang dibuka **dipilih
+secara adversarial** — hari yang paling mungkin mematahkan aturan — dan tetap eksak di
+**kedua sisi** batas: entri 7 menit SESUDAH 08:00 (28 Okt 07 & 08) dan 8 menit SEBELUM
+(28 Okt 04). Itu argumen yang sama yang membuat 336 sel Agustus dulu MENIPU: bukan
+banyaknya sel yang meyakinkan, melainkan daya-bedanya.
+
+### 🔴 BANTAHANNYA — dicatat supaya keputusan ini bisa dinilai ulang
+
+Argumen di atas **mengandaikan aturan divergensi sudah benar**. Kalau ia salah dengan cara
+yang belum terpikir — misalnya batasnya bukan jam melainkan sesi/shift, atau ada sumber
+divergensi kedua yang tak berhubungan dengan stempel waktu — maka "jarak ke batas 08:00"
+bukan ukuran daya-beda yang tepat, dan ke-25 berkas itu **bisa** memuat kejutan yang tak
+akan pernah kita lihat.
+
+**Ini risiko yang diterima secara sadar, bukan risiko yang disangkal.** Pemicu untuk
+membuka kembali: cacat A ternyata tidak sembuh sepenuhnya setelah perbaikan hulu, ATAU
+muncul selisih di unit mana pun yang tak masuk ketiga kelas yang dikenal.
+
+## Z-3 — PERNYATAAN PENUTUP ARC
+
+### Yang TERBUKTI
+
+1. **Empat kolom TERTUTUP di 7 unit / 6 tenant** — `Penjualan`, `Losses`, `Penerimaan`,
+   `Stock Fisik` cocok EKSAK dengan RESUME EasyMax di seluruh berkas yang dibuka,
+   termasuk hari ber-DO 3.664–56.000 L.
+2. **`Stock Awal` tertutup dengan SATU pengecualian bernama** — meleset hanya pada hari
+   sesudah hari-divergen (cacat A), tak pernah di luar itu.
+3. **Aturan tera identik di ketujuh unit** — kolom Penjualan/Teori/Losses bersih-tera;
+   **TOTAL Penjualan dan penyebut % memakai KOTOR**. Pembeda paling ekstrem: Korek 30 Apr
+   P. Turbo, penyebut bersih memberi −4.062,50 % sementara oracle mencetak −18,45.
+4. **`Losses ≡ gl`** — identitas aljabar, dijaga tes pada 1e−6. Panel Arus Minyak dan
+   panel Gain/Losses tak bisa menyimpang satu sama lain.
+5. **Cacat A terdiagnosis dan STABIL** — aturan divergensinya lulus uji **prediktif dua
+   arah** di 22 unit-tanggal, termasuk memprediksi di muka bahwa KB 06 akan meleset di
+   **Fisik** sementara KB 07 meleset di **Awal** (arah berlawanan, unit sama, hari
+   berturut).
+
+### Yang TIDAK terbukti — daftar lengkap, tanpa pelunakan
+
+1. **25 dari 58 berkas oracle tak pernah dibuka.** Semuanya tersegel EKSAK di commit
+   `dbfee26`. **Prediksi bukan verifikasi.** Daftar: KB 01,02,04 · 28OKT 03,05,06 ·
+   ADIS 03–08 · BK 01,02,03,05,06,08 · BL 02–08.
+2. **Arah kedua uji overflow BELUM TERUJI.** "Diprediksi overflow lalu benar-benar
+   muncul" tak pernah terjadi — nol kandidat di 33 berkas. Satu-satunya instansi
+   (Korek 01 Agu) ditemukan **retrospektif**, bukan diprediksi. Yang menahan kelas ini
+   hanyalah handler yang **gagal-aman by construction**: bila nilai SolaMax tidak lebih
+   panjang dari kolom (`idnLebar ≤ 6`), vonisnya tetap `mismatch`, bukan
+   `oracle_overflow`. Itu properti kode, **bukan bukti empiris**.
+3. **`excludedTanks` tak pernah dilihat mata pada data nyata.** Sapuan 7 unit sepanjang
+   2026: **nol hari** dengan baris opname di luar batas wajar. Cabang itu hanya terkunci
+   tes komponen.
+4. **Akurasi di luar rentang tanggal yang diuji tidak diklaim.** Yang diuji:
+   2025-11-21 · 2026-02-13 · 2026-03-04 · 2026-04-30 · 2026-08-01…08. Di luar itu yang ada
+   hanyalah sapuan konsistensi INTERNAL 120 hari (identitas & carry-in) — dan sapuan itu
+   sendiri sudah terbukti buta terhadap kesalahan yang KONSISTEN (§P3-1).
+
+### Angka final
+
+> **33 dari 58 berkas · 7 unit · 6 tenant · 1.848 sel.**
+
+## Z-4 ⚠️ KOREKSI ANGKA di §P7-7 — ditemukan saat menulis penutupan
+
+§P7-7 butir 2 menyatakan bahwa setelah perbaikan hulu mendarat dan kedua tanggal
+karakterisasi dipindah ke `ORACLE_ARMADA`, baseline menjadi **"1.616 EKSAK / 0 MISMATCH
+dari 1.848 sel"**. **Itu salah** — aritmetika saya sendiri, bukan temuan baru.
+
+112 sel karakterisasi tidak seluruhnya menjadi EKSAK: **14 di antaranya adalah
+ABSEN≡NOL** (baris Premium mati, 7 sel × 2 tanggal). Yang benar:
+
+| | sebelum perbaikan | **sesudah perbaikan (target)** |
+|---|---:|---:|
+| EKSAK | 1.504 | **1.602** |
+| ABSEN≡NOL | 231 | **245** |
+| OVERFLOW | 1 | **1** |
+| MISMATCH | **48** | **0** |
+| total | 1.848 | **1.848** |
+
+Sesi hulu harus memakai **1.602 / 245 / 1 / 0**, bukan 1.616. Dilaporkan, bukan
+disembunyikan — angka salah di berkas serah-terima akan membuat sesi hulu menyimpulkan
+perbaikannya gagal padahal berhasil.
+
+## Z-5 — SERAH-TERIMA: apa yang harus dibaca, dan urutannya
+
+Sesi hulu (`getDailyGlByProduct`: cacat A + penutup-nol) cukup membaca **§P7-7** di berkas
+ini. Ia memuat: baseline per unit · 48 MISMATCH yang harus jadi 0 dengan kolom per tanggal
+· DEXLITE sebagai kontrol internal · dua tes yang harus dihapus (nama berkas + nama tes) ·
+satu perintah menjalankan harness · aturan divergensi versi final · sebaran hari divergen
+per unit · daftar yang jangan diubah · utang yang diketahui.
+
+**Dengan tiga tambahan dari penutupan ini:**
+
+1. **Angka baseline pasca-perbaikan = 1.602 / 245 / 1 / 0** (bukan 1.616 — lihat Z-4).
+2. **Baseline sudah diverifikasi ulang dari `staging` yang sudah di-merge** (`f62b69e`)
+   pada 2026-08-10: ketujuh baris angka reproduksi persis, dan kedua tes karakterisasi
+   hijau. Jadi baseline itu bukan catatan sejarah — ia keadaan `staging` hari ini.
+3. **Utang yang diketahui bertambah menjadi lima** (§P7-7 butir 7 menyebut tiga):
+   25 berkas tersegel tak dibuka · arah kedua overflow · `terra_resmi` ADIS ·
+   **`excludedTanks` nol hari di seluruh 2026** · **akurasi di luar rentang tanggal
+   yang diuji**. Rinciannya di Z-3.
+
+**Yang TIDAK perlu ditanyakan kepada sesi ini:** semua yang di atas ada di berkas.
+**Yang mungkin perlu keputusan owner, bukan jawaban saya:** apakah membuka 25 berkas
+tersegel sebelum/ sesudah perbaikan hulu (lihat bantahan di Z-2).
+
+## Z-6 — ARC DITUTUP
+
+Tujuh putaran. Yang paling berharga dari arc ini bukan angka 1.848 sel, melainkan tiga
+cara sebuah pemeriksaan bisa HIJAU tanpa menguji apa pun:
+
+1. **Jendelanya buta** (§P3-1) — rumus % yang salah lolos 336 sel selama dua putaran
+   karena tera di jendela Agustus maksimum 0,64 L; pada besaran itu kedua hipotesis
+   membulat ke angka yang sama.
+2. **Subjeknya lenyap** (§P6-4) — tes badge kelas-1 membusuk dalam lima hari ketika
+   opname penutupnya akhirnya masuk.
+3. **Tak pernah ada subjek** (§P7-5) — sapuan penutup-nol hijau dengan NOL baris, dan
+   tak ada yang tahu sampai jumlahnya dicetak.
+
+Penawarnya satu dan sama: **sebutkan jumlah subjek dan besaran yang mampu dibedakan,
+jangan hanya vonisnya.** Itu yang dibawa keluar dari arc ini.

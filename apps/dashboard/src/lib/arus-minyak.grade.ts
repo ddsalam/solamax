@@ -17,7 +17,7 @@
  * Modul ini TIDAK dipakai aplikasi; hanya perkakas verifikasi.
  */
 
-export type Vonis = "eksak" | "deviasi_sah" | "absen_nol" | "mismatch";
+export type Vonis = "eksak" | "deviasi_sah" | "absen_nol" | "oracle_overflow" | "mismatch";
 
 export interface SelHasil {
   tanggal: string;
@@ -39,6 +39,16 @@ export interface DeviasiSah {
 
 /** Toleransi tampilan: 2 desimal → setengah digit terakhir. */
 const EPS = 0.005;
+
+/**
+ * Lebar maksimum kolom % di laporan EasyMax. Nilai yang lebih panjang dicetak
+ * `***,**` — bukan nilai, melainkan pengakuan bahwa kolomnya tak muat.
+ * Diukur dari data: −742,52 (7 karakter) overflow; 184,69 dan −30,38 (6) tidak.
+ */
+export const LEBAR_KOLOM_PCT = 6;
+
+/** Oracle mencetak `***,**` → tulis NaN di fixture. Bukan nilai, bukan nol. */
+export const OVERFLOW = NaN;
 
 /**
  * @param oracle  tanggal → nama baris → 7 sel
@@ -75,6 +85,23 @@ export function gradeArus(
           continue;
         }
         const g = got[i];
+        // Sel yang oracle-nya sendiri menolak mencetak nilai (`***,**`).
+        // TIDAK dihitung EKSAK. Yang diperiksa: apakah nilai SolaMax memang
+        // terlalu panjang untuk kolom itu — kalau ternyata pendek, berarti
+        // sebabnya bukan overflow dan ini mismatch sungguhan.
+        if (Number.isNaN(want)) {
+          const lebar = g === null || g === undefined ? 0 : idnLebar(g);
+          out.push({
+            tanggal,
+            baris,
+            kolom: kol,
+            oracle: want,
+            render: g,
+            vonis: lebar > LEBAR_KOLOM_PCT ? "oracle_overflow" : "mismatch",
+            catatan: `oracle mencetak ***,** (kolom ${LEBAR_KOLOM_PCT} karakter); SolaMax ${g} butuh ${lebar}`,
+          });
+          continue;
+        }
         if (dev && dev.kolom === i) {
           out.push({
             tanggal,
@@ -101,8 +128,13 @@ export function gradeArus(
   return out;
 }
 
+/** Lebar cetak gaya id-ID: 2 desimal, pemisah ribuan titik, koma desimal. */
+export function idnLebar(n: number): number {
+  return n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).length;
+}
+
 export function ringkas(hasil: SelHasil[]): Record<Vonis, number> & { total: number } {
-  const r = { eksak: 0, deviasi_sah: 0, absen_nol: 0, mismatch: 0, total: hasil.length };
+  const r = { eksak: 0, deviasi_sah: 0, absen_nol: 0, oracle_overflow: 0, mismatch: 0, total: hasil.length };
   for (const h of hasil) r[h.vonis]++;
   return r;
 }
