@@ -11,8 +11,8 @@ Workbook **"NERACA <unit>"** (penaksir harta bersih, `Laba = Δ harta bersih`)
 mengikat ke depan, alasannya, dan batas yang diketahui. Kalau kamu menyentuh
 keuangan harian, baca ini lebih dulu.
 
-Status: **K0 (investigasi) selesai. Belum ada kode, belum ada migrasi.**
-Gerbang masuk K1: **§9**.
+Status: **K1 DIBUKA 12 Agustus 2026** — B1–B8 terjawab (**§10**), §9.1 tercentang.
+Gerbang masuk K1: **§9**, dan ia tetap mengikat untuk setiap PR.
 
 Bukti: [`session-notes/2026-08-10-keuangan-k0-t1-neraca-bakau.md`](../../session-notes/2026-08-10-keuangan-k0-t1-neraca-bakau.md) ·
 [`…-t2-peta-masukan.md`](../../session-notes/2026-08-10-keuangan-k0-t2-peta-masukan.md) ·
@@ -506,6 +506,253 @@ Ditulis supaya tidak ditemukan ulang sebagai kejutan.
 
 ---
 
+## 10 · Jawaban B1–B8 — keputusan owner 12 Agustus 2026
+
+**K1 DIBUKA oleh keputusan ini.** Berkas inilah artefak §9.1; sebelum ada §10,
+kedelapan kotak BLOKIR kosong dan tidak ada dasar menulis kode.
+
+Tiap butir memuat **jawaban · alasan · konsekuensi**. Konsekuensinya yang mengikat
+pelaksana — jawabannya saja tidak cukup untuk mencegah salah bangun.
+
+### 10.1 B1 · Bagan akun SERAGAM untuk 7 unit
+
+**Jawaban:** seragam. `category_account_map.unit_id` **tetap nullable**
+(`NULL` = berlaku semua unit), dengan **nol** baris ber-unit saat mulai.
+
+**Alasan:** yang menegakkan keseragaman **bukan skema, melainkan gerbang owner** —
+menambah baris ber-unit butuh persetujuan. Kolom dibiarkan nullable supaya
+pengecualian pertama nanti menjadi **satu baris data**, bukan migrasi `ALTER` di
+tabel yang sudah berisi.
+
+**Konsekuensi:** jangan "merapikan" kolom itu jadi `NOT NULL` karena sekarang
+kosong. Kekosongannya adalah keadaan yang dijaga, bukan sisa yang belum diisi.
+
+### 10.2 B2 · `reason_code` — 19 kode, daftar TERTUTUP
+
+**`closing` (10)**
+
+| kode | arti |
+|---|---|
+| `CLS-ROUND` | Pembulatan setoran |
+| `CLS-CASH` | Selisih kas fisik |
+| `CLS-EDC-TIMING` | EDC belum settle |
+| `CLS-EDC-MDR` | Potongan MDR belum dibukukan |
+| `CLS-BANK-TIMING` | Mutasi bank beda hari |
+| `CLS-PURCH-PENDING` | Pembelian BBM belum diposting |
+| `CLS-PRICE-PENDING` | Harga beli belum diperbarui |
+| `CLS-AR-PENDING` | Pembayaran pelanggan belum diposting |
+| `CLS-DO-PENDING` | Penerimaan/penebusan belum diinput |
+| `CLS-INVESTIGATING` | Sedang ditelusuri — **tanggal target WAJIB** |
+
+**`adjustment` (6)** — `ADJ-AMOUNT` Nominal salah · `ADJ-DATE` Tanggal salah ·
+`ADJ-DUP` Entri ganda (dibalik) · `ADJ-MISSING` Transaksi terlewat · `ADJ-PARTY`
+Salah pelanggan/akun lawan · `ADJ-LEGACY` Jurnal rekonsiliasi legacy
+(persetujuan Direksi)
+
+**`reclass` (3)** — `RCL-NATURE` Sifat pengeluaran berbeda · `RCL-SPLIT` Mestinya
+terbagi dua akun · `RCL-MAPDEF` Pemetaan default keliru
+
+⛔ **Tidak ada "Lain-lain" untuk penutupan hari.** Katup jujurnya
+`CLS-INVESTIGATING`, dan katup itu **dijaga tanggal target wajib**: hari yang lewat
+tanggal targetnya **naik sendiri ke Direksi**, tanpa perlu ada orang yang melapor.
+
+**Alasan bentuk itu:** katup tanpa batas waktu berubah menjadi tempat sampah dalam
+hitungan minggu. Eskalasi yang bergantung pada seseorang mengingat = eskalasi yang
+tidak terjadi. Karena itu **waktulah** yang menaikkannya, bukan manusia.
+
+**`RCL-MAPDEF` sengaja terpisah dari `RCL-NATURE`:** kalau ia sering muncul untuk
+kategori yang sama, yang salah **tabel pemetaannya**, bukan transaksinya. Pemisahan
+ini satu-satunya cara membedakan keduanya tanpa membaca satu per satu.
+
+**Konsekuensi:** frekuensi tiap kode dihitung **per unit per bulan**. Kode yang
+berulang adalah **temuan proses** — bukan alasan menaikkan toleransi §3.
+
+### 10.3 B3 · Pemetaan 14 kategori → CoA, satu-ke-satu
+
+Bagan: `5-` HPP · `6-1` personil · `6-2` operasional SPBU · `6-3` umum & admin ·
+`6-4` pemasaran · `6-9` lain/taktis · `7-` beban keuangan · `8-` pendapatan lain.
+
+| kategori operasional (milik pengawas) | CoA (milik Finance) |
+|---|---|
+| Iklan, Promosi, Spanduk | `6-4100` Promosi & Iklan |
+| Transportasi / Kendaraan Milik Perusahaan | `6-2200` Kendaraan Operasional |
+| **Supir Tangki** | **`6-2100` Supir Tangki** |
+| Maintance Operasional SPBU (Tera, Cleaning Tank, Sabun) | `6-2300` Pemeliharaan Sarana |
+| Sumbangan / Donasi | `6-3500` Sumbangan & Donasi |
+| Komputer dan Internet | `6-3300` IT & Komunikasi |
+| Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan) | `6-2400` Utilitas & Prasarana |
+| Konsumsi Makanan, Lembur, & Hiburan | `6-1300` Konsumsi & Lembur |
+| Peralatan Kantor (ATK) | `6-3100` Perlengkapan Kantor |
+| Biaya Taktis | `6-9100` Beban Taktis |
+| Gaji Karyawan | `6-1100` Gaji & Tunjangan |
+| Lain-Lain | `6-9900` Beban Lain-Lain |
+| MDR | `7-1200` MDR |
+| Biaya Admin | `7-1100` Administrasi Bank |
+
+Sisi pendapatan: `8-1000` Pendapatan Lain-Lain.
+
+🔴 **Supir Tangki / mobil tangki = beban operasional `6-2100`, BUKAN freight-in ke
+HPP.** Keputusan owner.
+
+**Konsekuensi yang menyelamatkan pekerjaan:** karena ongkos angkut **tidak** masuk
+HPP, **Gross Profit tetap `Revenue + TeraValue + COGS` apa adanya** — dan angka GP
+yang sudah **terbukti eksak 10/10 tanggal** (T3) tetap berlaku sebagai kasus emas.
+Kalau jawabannya freight-in, seluruh 10 kasus emas itu harus dihitung ulang.
+
+**Dua kategori membungkus dua hal** — #7 (utilitas + prasarana) dan #8 (lembur =
+personil vs konsumsi = umum). Tangani **per kasus** dengan `RCL-SPLIT`. Kalau
+sering, itu sinyal memecah **kategori operasionalnya** — dan kategori operasional
+milik pengawas ⇒ **keputusan owner, bukan Finance** (§2.1).
+
+**Konsekuensi pelaporan:** `Lain-Lain` dan `Biaya Taktis` **wajib muncul di laporan
+bulanan dengan nilai DAN frekuensinya**, supaya "lain-lain" tidak diam-diam menjadi
+pos terbesar ketiga.
+
+### 10.4 B4 · Head of Finance = KAPABILITAS, bukan peran di `ROLE_RANK`
+
+**Jawaban:** peran `Head of Finance` **ada**, pemegangnya `ddsalam@solagroup.co`.
+**Direksi mewarisi seluruh akses HoF.**
+
+🔴 **JANGAN sisipkan `head_of_finance` ke `ROLE_RANK`**
+([`scope-rule.ts`](src/lib/scope-rule.ts): `pengawas 0 · direksi 1 ·
+admin_perusahaan 2 · super_admin 3`).
+
+**Alasan:** tangga itu mengatur **cakupan data**, bukan wewenang keuangan.
+Menaruh HoF **di atas** `direksi` ⇒ HoF melihat lebih banyak data daripada Direksi.
+Menaruhnya **di bawah** ⇒ Direksi kehilangan wewenang HoF. Keduanya salah, dan
+keduanya baru ketahuan setelah kebijakan RLS ditulis.
+
+**Bentuk yang dipakai — kapabilitas terpisah:**
+
+```
+canCloseException = role ∈ {direksi, super_admin} ∨ isHeadOfFinance
+```
+
+**Terverifikasi dari kode (12 Agu 2026):** invarian *satu peran per orang* bukan
+konvensi melainkan **struktural** — `app.user_role.user_id` adalah **PRIMARY KEY**
+([`schema.prisma`](../backend/prisma/schema.prisma) `model UserRole`). Jadi HoF
+memang **tidak bisa** dijadikan peran kedua bagi orang yang sudah punya peran.
+Ini mengunci: kapabilitas, bukan peran.
+
+**Konsekuensi:** `day_close.tier` tetap tiga tingkat (§3.2). `canCloseException`
+hidup di satu tempat dan dipakai baik oleh gerbang maupun layar — jangan
+menduplikasi predikatnya.
+
+### 10.5 B5 · `EDC Penampungan` = akun kliring riil, cair H+1
+
+**Jawaban:** akun kliring riil, cair **H+1** berdasarkan data settlement.
+**MDR dipotong di muka** (bank mentransfer neto). Settlement direkam di **rekapan
+akhir shift**.
+
+**Jurnal pencairan H+1:**
+
+```
+Kas Bank (neto yang masuk)          D
+Beban MDR  7-1200                   D
+    EDC Penampungan (bruto)             K
+```
+
+`7-1200` **terisi otomatis dari selisih bruto − neto, tidak diketik.** Angka yang
+diketik ulang dari yang sudah diketahui sistem adalah angka yang bisa salah ketik.
+
+**Yang perlu dibangun:** sisi **batch settlement** — nomor & tanggal settlement,
+acquirer, total batch, potongan. Sisi transaksinya **sudah ada** di tabel `edc`.
+
+**Jurnal pencairannya DITAWARKAN, bukan diposting** (pola §1.4). Selisih
+transaksi-vs-settlement **berdiri sebagai selisih ber-`reason_code`**
+(`CLS-EDC-TIMING` / `CLS-EDC-MDR`), tidak dibulatkan hilang.
+
+**Kontrol gratis yang wajib ikut dibangun:** **MDR sebagai % omzet EDC, per
+acquirer per bulan.** Persentase yang bergeser tanpa perubahan perjanjian adalah
+temuan — dan kontrol ini tidak menambah data apa pun, hanya membaginya.
+
+⚠️ **Konsekuensi jawaban ini terhadap Bakau:** kalau EDC adalah akun kliring yang
+cair H+1, maka saldo **Rp 12.435.466.761** pada akun yang semestinya berisi ±satu
+hari omzet non-tunai — turun hanya **78 dari 2.067 hari** — **bukan lagi pertanyaan
+terbuka, melainkan kerusakan keempat Bakau**. Sudah dipromosikan di paket
+serah-terima.
+
+### 10.6 B6 · `SisaSO` = `sisa − sisa_macet`
+
+**Jawaban:** `SOValue` memakai **`sisa − sisa_macet`** — "sisa yang masih bisa
+digunakan". Definisi "macet" = **penandaan manual Finance**; ambang hari hanya
+**mengusulkan kandidat**, tidak memutuskan.
+
+**Alasan:** ambang otomatis yang memutuskan akan menghapus SO yang sebenarnya masih
+ditagih, dan menghidupkan kembali SO mati begitu ambangnya digeser. Penandaan
+manual membuat penghapusan itu **punya pemilik dan tanggal**.
+
+**Konsekuensi:** yang dibangun adalah **penandaan `so_macet`-nya**, bukan ambangnya.
+Ambang boleh dipakai untuk mengurutkan daftar kandidat — tidak boleh dipakai untuk
+mengubah `SOValue` sendirian. Dua SO Solar Bakau 2023 (Rp 105.074.482) dan SO
+PREMIUM 1,12 juta liter adalah kandidat pertama, **bukan** penghapusan otomatis.
+
+### 10.7 B7 · Dua sumbu tanggal, bernama, tidak pernah dicampur
+
+**Jawaban:**
+
+| sumbu | dipakai untuk |
+|---|---|
+| **`dtgltrm`** (tanggal terima fisik) | **Inventory & COGS** |
+| **tanggal SO ditutup** | **hanya** sisa DO / `SOValue` |
+
+**Alasan:** keduanya menjawab pertanyaan berbeda — "liter ini sudah ada di tangki
+hari mana" versus "pesanan ini masih menggantung hari mana". Selisih D3 di T3
+(8.000 L Pertalite 2025-12-31) muncul justru karena workbook memakai satu sumbu
+untuk dua pertanyaan.
+
+**Konsekuensi:** beri **nama** pada kedua sumbu di kode dan jangan pernah
+memberi satu fungsi parameter tanggal yang artinya bergantung pemanggil.
+
+### 10.8 B8 · `ManualEntry` — aditif, semua kolom baru nullable, nol backfill nilai
+
+```
+operational_category  text NULL   -- pengawas; wajib utk section pengeluaran & pendapatan_lain
+accounting_account    text NULL   -- DISIMPAN, diisi dari category_account_map saat submit, lalu beku
+status                enum(draft, submitted, returned, closed) NOT NULL DEFAULT 'submitted'
+submitted_at, reviewed_by_user_id, reviewed_at, returned_reason
+```
+
+Lima aturan, semuanya mengikat:
+
+1. **`operational_category` NULL = "belum berkategori", bukan ditebak.**
+   ⛔ Jangan pernah menurunkannya dari `keterangan` — itu menebak milik pengawas.
+2. **`accounting_account` DISIMPAN, bukan diturunkan saat baca** (§2.1). Akun
+   efektif = reklasifikasi non-void terakhir bila ada, kalau tidak nilai beku ini.
+   Dengan begitu `reclassification` tetap append-only dan **tak pernah menyentuh
+   baris asli**.
+3. **Backfill `status` = `submitted`, BUKAN `closed`.** Immutabilitas datang
+   bersama `day_close`; ia **tidak dipasang mundur** ke hari yang tak pernah
+   melewati gerbangnya.
+4. **`void` hanya berlaku pada `draft`/`submitted`.** Setelah hari ditutup hanya
+   `Adjust/Reverse` (§2.3). Ditegakkan **di DB**, bukan hanya di aplikasi.
+5. **`setoran_tunai` tidak ikut aturan kategori** — ia bukan beban.
+
+⚠️ **Yang berisiko bukan migrasinya, melainkan LAYARNYA.** Pemilih kategori di
+Rincian Penjualan menyentuh permukaan yang dipakai **7 unit tiap hari** ⇒ **gerbang
+tersendiri**, dengan **mode transisi**: kategori **opsional dulu**, wajib setelah
+pengawas terbiasa.
+
+**Alasan mode transisi:** memaksa wajib di hari pertama menghasilkan pilihan asal,
+dan **data asal lebih buruk daripada data kosong** — kosong jujur mengatakan "belum
+berkategori", asal berbohong bahwa ia sudah.
+
+### 10.9 Yang BELUM terverifikasi dari keputusan ini
+
+Ditulis supaya tidak dianggap sudah beres:
+
+1. **Apakah `ddsalam@solagroup.co` sudah ada di `app.users`** — **belum bisa
+   diperiksa**: kredensial `gcloud` (user maupun ADC) perlu reauth
+   (`invalid_rapt`), sehingga cloud-sql-proxy tidak bisa tersambung pada sesi ini.
+   Kalau belum ada, ia diundang lewat `/admin` — **tindakan owner**, bukan pelaksana.
+2. **OAuth consent masih `Testing` dengan 4 test user** — status terdokumentasi di
+   `CLAUDE.md`, **tidak diverifikasi ulang** sesi ini (alasan sama). Kalau HoF
+   bukan salah satu dari 4 test user, ia tidak akan bisa login.
+3. Keduanya **tidak memblokir** penulisan kode §9.3, tetapi **memblokir** pengujian
+   `canCloseException` end-to-end.
+
+---
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu
@@ -541,18 +788,22 @@ boleh** memutuskan sendiri bahwa suatu pekerjaan "sebenarnya juga aman paralel",
 sekalipun alasannya terdengar kuat. Gerbang yang bisa diperluas oleh yang
 dijaganya bukan gerbang.
 
+**Status B1–B8: SEMUA TERCENTANG — dijawab owner 12 Agustus 2026, artefaknya
+commit `b8decb2` (§10). K1 DIBUKA.** Kotak di bawah tidak boleh dikosongkan
+kembali tanpa keputusan owner yang mencabut §10.
+
 Alasan tiap butir memblokir:
 
 | # | Yang harus ada | Kenapa memblokir | Artefak | ☐ |
 |---|---|---|---|---|
-| B1 | **Bagan akun (CoA) diseragamkan 7 unit atau per-unit** (§7.1) | Menentukan apakah `category_account_map.unit_id` nullable dipakai atau `NOT NULL`; salah tebak = migrasi ulang di tabel yang sudah berisi | ______ | ☐ |
-| B2 | **Isi awal daftar `reason_code`** (§7.2) | Daftar tertutup harus punya isi sebelum gerbang §3 bisa menolak apa pun; gerbang dengan master kosong = gerbang yang selalu lolos | ______ | ☐ |
-| B3 | **Pemetaan 14 kategori operasional → CoA** (§7.3) | Tanpa ini `accounting_account` tak punya nilai awal, dan `Reclassify` tak punya titik berangkat | ______ | ☐ |
-| B4 | **Peran RBAC penutupan: Head of Finance ada, atau langsung Direksi** (§7.8) | Menentukan jumlah tier di `day_close.tier`; menambah peran belakangan berarti membongkar tabel + kebijakan RLS | ______ | ☐ |
-| B5 | **Perlakuan `EDC Penampungan`** (§7.4) | Ia salah satu dari tujuh akun kas. Kalau ternyata bukan akun riil, struktur `CashFlow` berubah | ______ | ☐ |
-| B6 | **`SisaSO`: `sisa` atau `sisa − sisa_macet`** (§7.9) | Mengubah definisi `SOValue`, yang masuk Balance Sheet. Ini satu-satunya pos T3 yang belum pernah cocok | ______ | ☐ |
-| B7 | **Batas tanggal kiriman: `dtgltrm` atau tanggal SO ditutup** (§7.10) | Menentukan hari mana suatu liter masuk persediaan — memengaruhi Inventory, SO Value, dan gerbang tutup hari sekaligus | ______ | ☐ |
-| B8 | **Keputusan owner atas bentuk `ManualEntry` + kategori** (§2.4) | Menambah kolom milik pengawas ke tabel yang **sudah dipakai produksi** di 7 unit; harus diputuskan sekali, bukan diiterasi | ______ | ☐ |
+| B1 | **Bagan akun (CoA) diseragamkan 7 unit atau per-unit** (§7.1) | Menentukan apakah `category_account_map.unit_id` nullable dipakai atau `NOT NULL`; salah tebak = migrasi ulang di tabel yang sudah berisi | commit `b8decb2` §10.1 | ☑ |
+| B2 | **Isi awal daftar `reason_code`** (§7.2) | Daftar tertutup harus punya isi sebelum gerbang §3 bisa menolak apa pun; gerbang dengan master kosong = gerbang yang selalu lolos | commit `b8decb2` §10.2 | ☑ |
+| B3 | **Pemetaan 14 kategori operasional → CoA** (§7.3) | Tanpa ini `accounting_account` tak punya nilai awal, dan `Reclassify` tak punya titik berangkat | commit `b8decb2` §10.3 | ☑ |
+| B4 | **Peran RBAC penutupan: Head of Finance ada, atau langsung Direksi** (§7.8) | Menentukan jumlah tier di `day_close.tier`; menambah peran belakangan berarti membongkar tabel + kebijakan RLS | commit `b8decb2` §10.4 | ☑ |
+| B5 | **Perlakuan `EDC Penampungan`** (§7.4) | Ia salah satu dari tujuh akun kas. Kalau ternyata bukan akun riil, struktur `CashFlow` berubah | commit `b8decb2` §10.5 | ☑ |
+| B6 | **`SisaSO`: `sisa` atau `sisa − sisa_macet`** (§7.9) | Mengubah definisi `SOValue`, yang masuk Balance Sheet. Ini satu-satunya pos T3 yang belum pernah cocok | commit `b8decb2` §10.6 | ☑ |
+| B7 | **Batas tanggal kiriman: `dtgltrm` atau tanggal SO ditutup** (§7.10) | Menentukan hari mana suatu liter masuk persediaan — memengaruhi Inventory, SO Value, dan gerbang tutup hari sekaligus | commit `b8decb2` §10.7 | ☑ |
+| B8 | **Keputusan owner atas bentuk `ManualEntry` + kategori** (§2.4) | Menambah kolom milik pengawas ke tabel yang **sudah dipakai produksi** di 7 unit; harus diputuskan sekali, bukan diiterasi | commit `b8decb2` §10.8 | ☑ |
 
 **B1–B8 semuanya pertanyaan orang, bukan pekerjaan kode.** Tidak satu pun bisa
 diselesaikan dengan menulis program lebih dulu.
