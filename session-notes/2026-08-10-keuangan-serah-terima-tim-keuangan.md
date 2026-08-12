@@ -1,6 +1,8 @@
 # Pembukuan SPBU Bakau — apa yang perlu diketahui dan dikerjakan
 
 Untuk tim keuangan SolaGroup · 10 Agustus 2026
+**Diperbarui 12 Agustus 2026** setelah rapat keuangan: tujuh dari sepuluh
+pertanyaan sudah dijawab, dan satu catatan naik pangkat jadi kerusakan kelima.
 
 Dokumen ini hasil pemeriksaan atas workbook **`Finance SPBU 6378301 BK`** (Bakau),
 dibandingkan dengan data mentah kasir EasyMax. **Tidak ada satu pun angka di
@@ -13,7 +15,7 @@ adalah beberapa hal yang berhenti diisi.
 
 ---
 
-## Bagian 1 — Empat hal yang rusak
+## Bagian 1 — Lima hal yang rusak
 
 ### 1. Pembelian BBM berhenti dicatat sejak akhir Januari 2026
 
@@ -88,10 +90,22 @@ BRI (November 2021), BNI (September 2021), Mandiri (Januari 2024).
 > **± Rp 94 juta** — total saldo keempat rekening itu yang masih tercatat sebagai
 > kas perusahaan tanpa konfirmasi selama 2–5 tahun.
 
-Catatan tambahan di luar keempatnya: pos **"EDC Penampungan"** naik terus dari nol
-pada 2021 menjadi **Rp 12.435.466.761** dan nyaris tidak pernah turun. Uang EDC
-biasanya cair ke rekening dalam satu hari kerja, jadi angka sebesar itu tidak
-mungkin benar-benar mengendap. Perlu diputuskan pos ini sebenarnya apa.
+### 5. Pos "EDC Penampungan" menumpuk Rp 12,4 miliar
+
+Sampai 10 Agustus ini masih berupa pertanyaan. **Rapat 12 Agustus menjawabnya:**
+"EDC Penampungan" adalah **akun titipan sungguhan yang cair sehari setelah
+transaksi (H+1)**, dengan potongan MDR sudah dipotong bank di muka.
+
+Justru karena itu, angkanya menjadi kerusakan — bukan lagi pertanyaan. Akun yang
+cair tiap hari semestinya hanya berisi kira-kira **satu hari** penjualan non-tunai.
+
+> **Rp 12.435.466.761** — saldo pos ini, naik terus dari nol pada 2021 dan hanya
+> turun pada **78 dari 2.067 hari**. Selisih antara "satu hari" dan "dua belas
+> miliar" itulah yang perlu ditelusuri.
+
+Artinya pencairan EDC ke rekening hampir tidak pernah dibukukan sebagai pengurang
+pos ini — polanya sama dengan kerusakan nomor 1 dan 2: satu sisi dicatat, sisi
+lawannya tidak.
 
 ---
 
@@ -105,7 +119,7 @@ Urutannya mengikat: nomor 5 tidak masuk akal dikerjakan sebelum 1–4 beres.
 | 2 | **Isi harga beli Solar** sejak 4 Maret 2026, lalu perbarui harga beli semua produk | Harga pokok saat ini salah; menutup periode mana pun sebelum ini beres akan mengunci angka yang keliru | ______________ | ______ |
 | 3 | **Cocokkan saldo kelima rekening bank ke rekening koran**, termasuk empat rekening yang lama tidak dibukukan | Kas adalah satu-satunya pos yang bisa dibuktikan ke pihak luar | ______________ | ______ |
 | 4 | **Telusuri piutang pelanggan**: ke mana pembayaran pelanggan dibukukan selama ini | Menentukan apakah koreksinya menyentuh laba atau hanya neraca | ______________ | ______ |
-| 5 | **Putuskan perlakuan "EDC Penampungan"** | Harus selesai sebelum saldo awal ditandatangani | ______________ | ______ |
+| 5 | **Telusuri pos "EDC Penampungan"**: cocokkan ke bukti settlement acquirer, dan bukukan pencairan H+1 yang selama ini terlewat | Perlakuannya sudah diputuskan (akun titipan, cair H+1) — yang tersisa pekerjaan pencocokan. Harus selesai sebelum saldo awal ditandatangani | ______________ | ______ |
 | 6 | **Susun jurnal koreksi** untuk (a) selisih lama Rp 3.635.936 dan (b) periode 29 Jan → tanggal cut-over | Baru bisa disusun setelah 1–5 diketahui angkanya | ______________ | ______ |
 | 7 | **Persetujuan Direksi** atas jurnal koreksi | Nilainya jauh di atas batas kewenangan lain | ______________ | ______ |
 
@@ -118,34 +132,24 @@ Selisih ini juga **bukan** batas toleransi — setelah dikoreksi harus kembali n
 
 ---
 
-## Bagian 3 — Sepuluh pertanyaan untuk dibahas dalam rapat
+## Bagian 3 — Tiga pertanyaan yang MASIH terbuka
 
-Ditulis supaya bisa dijawab langsung dalam rapat. Semuanya menahan langkah
-berikutnya, jadi jawaban "nanti dulu" pun perlu disebut siapa yang memutuskan.
+Tujuh dari sepuluh pertanyaan sudah dijawab dalam rapat **12 Agustus 2026** dan
+dicatat di `apps/dashboard/KEUANGAN-HARIAN.md` §10 — **tidak perlu dibahas ulang**:
+bagan akun seragam untuk tujuh SPBU · daftar sebab-selisih (19 kode, tertutup) ·
+pemetaan 14 kategori ke akun · perlakuan "EDC Penampungan" · jabatan Head of
+Finance ada · pesanan BBM macet ditandai manual, bukan otomatis · dan aturan
+tanggal untuk BBM yang datang di pergantian bulan.
 
-1. **Apakah semua tujuh SPBU akan memakai daftar akun (bagan akun) yang sama, atau
-   tiap SPBU punya sendiri?** Kalau sama, siapa yang berwenang menambah akun baru?
-2. **Apa saja sebab-selisih yang boleh dipilih saat menutup hari?** Kami usulkan
-   mulai dari: pembulatan slip setoran, selisih kas fisik, selisih settlement EDC,
-   salah kategori, salah tanggal, entri ganda. Perlu ditambah apa?
-3. **Empat belas kategori biaya yang dipakai pengawas masuk ke akun akuntansi yang
-   mana?** Siapa yang menandatangani pemetaan pertamanya?
-4. **Pos "EDC Penampungan" Rp 12,4 miliar itu sebenarnya apa** — rekening
-   sungguhan, atau selisih yang menumpuk bertahun-tahun? Kapan uang EDC dianggap
-   sudah cair?
-5. **Ke mana pembayaran pelanggan dibukukan selama ini,** kalau bukan ke buku
-   piutang? Apakah ikut masuk ke "Setoran Hasil Penjualan"?
-6. **Tanggal berapa tiap SPBU mulai dibukukan di sistem baru, dan siapa yang
+Yang **belum** terjawab, dan ketiganya menahan penandatanganan saldo awal:
+
+1. **Ke mana pembayaran pelanggan dibukukan selama ini,** kalau bukan ke buku
+   piutang? Apakah ikut masuk ke "Setoran Hasil Penjualan"? Jawabannya menentukan
+   apakah koreksinya menyentuh **laba** atau hanya neraca.
+2. **Tanggal berapa tiap SPBU mulai dibukukan di sistem baru, dan siapa yang
    menandatangani saldo awalnya?**
-7. **Empat rekening bank yang lama tidak dibukukan itu masih ada, sudah ditutup,
+3. **Empat rekening bank yang lama tidak dibukukan itu masih ada, sudah ditutup,
    atau saldonya perlu dihapusbukukan?**
-8. **Apakah jabatan Head of Finance sudah ada?** Kalau belum, semua penutupan hari
-   yang selisihnya di atas Rp 10.000 harus lewat Direksi — apakah itu diterima?
-9. **Pesanan BBM yang sudah lama tidak pernah datang — masih dihitung atau
-   dihapus?** Contohnya dua pesanan Solar dari tahun 2023 senilai Rp 105.074.482
-   yang di workbook sudah dihapus tetapi di sistem masih tercatat.
-10. **Kalau BBM datang tanggal 31 tetapi pesanannya baru ditutup tanggal 1, masuk
-    bulan yang mana?** Perlu satu aturan yang dipakai semua SPBU.
 
 ---
 
@@ -157,5 +161,7 @@ berikutnya, jadi jawaban "nanti dulu" pun perlu disebut siapa yang memutuskan.
 - Rincian teknis, cara menghitung ulang, dan batas-batas pemeriksaan ada di
   `apps/dashboard/KEUANGAN-HARIAN.md` beserta catatan pendukungnya. Dokumen ini
   sengaja tidak mengulanginya.
-- **Belum ada sistem yang dibangun.** Yang selesai baru pemeriksaan dan keputusan
-  rancangan. Pembangunan menunggu jawaban atas sepuluh pertanyaan di atas.
+- **Pembangunan sistem baru dimulai 12 Agustus 2026**, setelah tujuh pertanyaan
+  terjawab. Yang dibangun lebih dulu adalah bagian yang tidak bergantung pada tiga
+  pertanyaan sisa; **penyalaan per SPBU tetap menunggu ketiganya**, dan khusus
+  Bakau menunggu pekerjaan nomor 1 di Bagian 2 selesai.
