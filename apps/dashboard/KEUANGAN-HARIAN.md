@@ -508,18 +508,40 @@ Ditulis supaya tidak ditemukan ulang sebagai kejutan.
 
 ## 9 · Gerbang masuk K1 — daftar periksa
 
-**Ini gerbang, bukan aspirasi.** Selama ada satu baris BLOKIR yang belum
-tercentang, baris kode K1 pertama **tidak boleh** ditulis. Kalau owner memutuskan
-menembus salah satunya, itu keputusan yang sah — tetapi **harus disebut** dan
-dicatat di sini, bukan dilewati diam-diam.
+**Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu
+BLOKIR, itu keputusan yang sah — tetapi **harus disebut** dan dicatat di sini,
+bukan dilewati diam-diam.
 
 Aturan pengisian: centang hanya kalau ada **artefak** yang bisa ditunjuk
 (keputusan tertulis, berkas, atau commit). "Sudah dibahas" bukan centang.
 
-### 9.1 BLOKIR — harus selesai sebelum baris kode pertama
+**Status per 12 Agustus 2026: K1 BELUM DIBUKA — keputusan owner.** Termasuk §9.3.
+Alasannya bukan kehati-hatian berlebihan: §9.3 memang aman secara bentuk, tetapi
+membukanya sebelum B1–B8 terjawab membuat gerbang ini berhenti berarti apa adanya
+pada hari yang sama ia ditulis. Jalur kritis proyek ini **bukan kode** — ia jawaban
+B1–B8 dari tim keuangan. Menulis kode paralel hanya memindahkan antrean, bukan
+memperpendeknya.
 
-Alasan tiap butir memblokir: jawabannya **mengubah bentuk tabel atau bentuk
-gerbang**. Menebaknya lebih dulu berarti membangun lalu membongkar.
+### 9.1 BLOKIR — apa yang diblokir, dan apa yang tidak
+
+**Yang diblokir B1–B8 (selama satu saja belum tercentang):** setiap pekerjaan yang
+**bentuk tabel atau bentuk gerbangnya bergantung pada jawaban B1–B8** — yaitu
+migrasi/DDL untuk tabel yang bentuknya belum tetap, kebijakan RLS dan peran RBAC
+penutupan, mesin `SOValue`, gerbang tutup hari beserta tiernya, serta perubahan
+`app.ManualEntry`. Menebaknya lebih dulu berarti membangun lalu membongkar — dan
+membongkarnya nanti dilakukan di tabel yang sudah berisi data produksi 7 unit.
+
+**Yang TIDAK diblokir B1–B8:** hanya butir yang tercantum di **§9.3**, dan hanya
+karena tiap butirnya **sudah diperiksa satu per satu** bahwa bentuknya tidak
+berubah oleh jawaban B1–B8 mana pun. §9.3 adalah **daftar pengecualian tertutup**,
+bukan kategori terbuka.
+
+⛔ **Menambah butir ke §9.3 butuh gerbang owner tersendiri.** Pelaksana **tidak
+boleh** memutuskan sendiri bahwa suatu pekerjaan "sebenarnya juga aman paralel",
+sekalipun alasannya terdengar kuat. Gerbang yang bisa diperluas oleh yang
+dijaganya bukan gerbang.
+
+Alasan tiap butir memblokir:
 
 | # | Yang harus ada | Kenapa memblokir | Artefak | ☐ |
 |---|---|---|---|---|
@@ -550,9 +572,14 @@ Bukan penghalang menulis kode, tetapi penghalang **menyalakan** unit tertentu.
 pencatatan pembelian BBM 29 Jan → sekarang** (paket serah-terima, pekerjaan #1).
 Selama itu belum dikerjakan, saldo awal Bakau apa pun akan lahir salah.
 
-### 9.3 BOLEH PARALEL — kerjakan kapan saja, tak menunggu siapa pun
+### 9.3 Daftar pengecualian TERTUTUP — bentuknya tidak bergantung pada B1–B8
 
-Semua ini bentuknya sudah tetap dan tidak berubah oleh jawaban B1–B8.
+**Bukan izin mulai.** Butir di bawah **tetap tertahan** selama K1 belum dibuka
+owner (§9, status). Yang dinyatakan daftar ini hanyalah: bentuk butir-butir ini
+**sudah diperiksa satu per satu** dan tidak berubah oleh jawaban B1–B8 mana pun —
+jadi ketika K1 dibuka, ia tidak perlu menunggu tim keuangan lagi.
+
+Daftar ini **tertutup**. Menambahinya butuh gerbang owner tersendiri (§9.1).
 
 - `purchase_price` (§4.1) berikut penjaga **P1** & **P2** — bentuk & perilaku sudah
   diputuskan penuh, termasuk tiga syarat P1 dan kolom pendampingnya.
@@ -575,6 +602,18 @@ Semua ini bentuknya sudah tetap dan tidak berubah oleh jawaban B1–B8.
 
 ### 9.5 Cara memakai gerbang ini
 
-Sebelum PR K1 pertama: salin §9.1–§9.2 ke deskripsi PR dengan artefaknya terisi.
-PR yang meninggalkan kotak BLOKIR kosong **ditolak tanpa dibaca isinya** — bukan
-karena kodenya buruk, tetapi karena belum ada dasar untuk menilai kodenya benar.
+Berlaku setelah owner membuka K1 (§9, status). Sebelum itu tidak ada PR K1 apa pun.
+
+Setiap PR K1 menyatakan lingkupnya di deskripsi, dan hanya ada **dua** bentuk yang sah:
+
+1. **PR yang seluruh isinya ada di daftar §9.3** — sebut butir §9.3 yang mana.
+   Tidak perlu kotak BLOKIR terisi. **Penulis PR tidak berwenang memperluas
+   daftarnya**: kalau isinya menyentuh apa pun di luar butir yang disebut, PR ini
+   otomatis jatuh ke bentuk 2.
+2. **PR lainnya** — salin §9.1–§9.2 ke deskripsi dengan artefaknya terisi.
+   PR yang meninggalkan kotak BLOKIR kosong **ditolak tanpa dibaca isinya** —
+   bukan karena kodenya buruk, tetapi karena belum ada dasar untuk menilai
+   kodenya benar.
+
+Kalau ragu sebuah PR masuk bentuk 1 atau 2, **ia bentuk 2**. Keraguan diselesaikan
+ke arah gerbang, bukan ke arah pelaksana.
