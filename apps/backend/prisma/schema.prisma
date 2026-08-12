@@ -599,6 +599,36 @@ model ManualEntry {
   @@schema("app")
 }
 
+// Harga beli BBM per (unit, produk, BERLAKU-SEJAK) — input manual, keputusan
+// owner final (KEUANGAN-HARIAN.md §4.1 & §10). Harga JUAL tidak pernah diketik.
+// Bukan deret harian: harga pada tanggal D = baris non-void dgn effective_from
+// terbesar yang ≤ D. VOID-only + audit. Kolom p1_* = jejak penjaga "harga beli >
+// harga jual" (PERINGATAN wajib-diakui, bukan reject) — kelengkapannya ditegakkan
+// CHECK di migrasi 0020, kejujuran flag-nya oleh `harga-beli.ts` + tesnya.
+model PurchasePrice {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId           Int       @map("unit_id") @db.SmallInt
+  productKey       String    @map("product_key")
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  price            Decimal   @db.Decimal(14, 4)
+  sourceNote       String?   @map("source_note")
+  p1Triggered      Boolean   @default(false) @map("p1_triggered")
+  /// Harga jual EasyMax saat keputusan diambil; selisih = price − p1SellPrice.
+  p1SellPrice      Decimal?  @map("p1_sell_price") @db.Decimal(14, 4)
+  p1AcknowledgedBy Int?      @map("p1_acknowledged_by")
+  p1AcknowledgedAt DateTime? @map("p1_acknowledged_at") @db.Timestamptz()
+  p1Reason         String?   @map("p1_reason")
+  void             Boolean   @default(false)
+  createdByUserId  Int       @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  voidedByUserId   Int?      @map("voided_by_user_id")
+  voidedAt         DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, productKey, effectiveFrom])
+  @@map("purchase_price")
+  @@schema("app")
+}
+
 // Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
 // tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
