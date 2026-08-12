@@ -11,8 +11,8 @@ Workbook **"NERACA <unit>"** (penaksir harta bersih, `Laba = Δ harta bersih`)
 mengikat ke depan, alasannya, dan batas yang diketahui. Kalau kamu menyentuh
 keuangan harian, baca ini lebih dulu.
 
-Status: **K0 (investigasi) selesai. Belum ada kode, belum ada migrasi.**
-Gerbang masuk K1: **§9**.
+Status: **K1 DIBUKA 12 Agustus 2026** — B1–B8 terjawab (**§10**), §9.1 tercentang.
+Gerbang masuk K1: **§9**, dan ia tetap mengikat untuk setiap PR.
 
 Bukti: [`session-notes/2026-08-10-keuangan-k0-t1-neraca-bakau.md`](../../session-notes/2026-08-10-keuangan-k0-t1-neraca-bakau.md) ·
 [`…-t2-peta-masukan.md`](../../session-notes/2026-08-10-keuangan-k0-t2-peta-masukan.md) ·
@@ -788,18 +788,22 @@ boleh** memutuskan sendiri bahwa suatu pekerjaan "sebenarnya juga aman paralel",
 sekalipun alasannya terdengar kuat. Gerbang yang bisa diperluas oleh yang
 dijaganya bukan gerbang.
 
+**Status B1–B8: SEMUA TERCENTANG — dijawab owner 12 Agustus 2026, artefaknya
+commit `b8decb2` (§10). K1 DIBUKA.** Kotak di bawah tidak boleh dikosongkan
+kembali tanpa keputusan owner yang mencabut §10.
+
 Alasan tiap butir memblokir:
 
 | # | Yang harus ada | Kenapa memblokir | Artefak | ☐ |
 |---|---|---|---|---|
-| B1 | **Bagan akun (CoA) diseragamkan 7 unit atau per-unit** (§7.1) | Menentukan apakah `category_account_map.unit_id` nullable dipakai atau `NOT NULL`; salah tebak = migrasi ulang di tabel yang sudah berisi | ______ | ☐ |
-| B2 | **Isi awal daftar `reason_code`** (§7.2) | Daftar tertutup harus punya isi sebelum gerbang §3 bisa menolak apa pun; gerbang dengan master kosong = gerbang yang selalu lolos | ______ | ☐ |
-| B3 | **Pemetaan 14 kategori operasional → CoA** (§7.3) | Tanpa ini `accounting_account` tak punya nilai awal, dan `Reclassify` tak punya titik berangkat | ______ | ☐ |
-| B4 | **Peran RBAC penutupan: Head of Finance ada, atau langsung Direksi** (§7.8) | Menentukan jumlah tier di `day_close.tier`; menambah peran belakangan berarti membongkar tabel + kebijakan RLS | ______ | ☐ |
-| B5 | **Perlakuan `EDC Penampungan`** (§7.4) | Ia salah satu dari tujuh akun kas. Kalau ternyata bukan akun riil, struktur `CashFlow` berubah | ______ | ☐ |
-| B6 | **`SisaSO`: `sisa` atau `sisa − sisa_macet`** (§7.9) | Mengubah definisi `SOValue`, yang masuk Balance Sheet. Ini satu-satunya pos T3 yang belum pernah cocok | ______ | ☐ |
-| B7 | **Batas tanggal kiriman: `dtgltrm` atau tanggal SO ditutup** (§7.10) | Menentukan hari mana suatu liter masuk persediaan — memengaruhi Inventory, SO Value, dan gerbang tutup hari sekaligus | ______ | ☐ |
-| B8 | **Keputusan owner atas bentuk `ManualEntry` + kategori** (§2.4) | Menambah kolom milik pengawas ke tabel yang **sudah dipakai produksi** di 7 unit; harus diputuskan sekali, bukan diiterasi | ______ | ☐ |
+| B1 | **Bagan akun (CoA) diseragamkan 7 unit atau per-unit** (§7.1) | Menentukan apakah `category_account_map.unit_id` nullable dipakai atau `NOT NULL`; salah tebak = migrasi ulang di tabel yang sudah berisi | commit `b8decb2` §10.1 | ☑ |
+| B2 | **Isi awal daftar `reason_code`** (§7.2) | Daftar tertutup harus punya isi sebelum gerbang §3 bisa menolak apa pun; gerbang dengan master kosong = gerbang yang selalu lolos | commit `b8decb2` §10.2 | ☑ |
+| B3 | **Pemetaan 14 kategori operasional → CoA** (§7.3) | Tanpa ini `accounting_account` tak punya nilai awal, dan `Reclassify` tak punya titik berangkat | commit `b8decb2` §10.3 | ☑ |
+| B4 | **Peran RBAC penutupan: Head of Finance ada, atau langsung Direksi** (§7.8) | Menentukan jumlah tier di `day_close.tier`; menambah peran belakangan berarti membongkar tabel + kebijakan RLS | commit `b8decb2` §10.4 | ☑ |
+| B5 | **Perlakuan `EDC Penampungan`** (§7.4) | Ia salah satu dari tujuh akun kas. Kalau ternyata bukan akun riil, struktur `CashFlow` berubah | commit `b8decb2` §10.5 | ☑ |
+| B6 | **`SisaSO`: `sisa` atau `sisa − sisa_macet`** (§7.9) | Mengubah definisi `SOValue`, yang masuk Balance Sheet. Ini satu-satunya pos T3 yang belum pernah cocok | commit `b8decb2` §10.6 | ☑ |
+| B7 | **Batas tanggal kiriman: `dtgltrm` atau tanggal SO ditutup** (§7.10) | Menentukan hari mana suatu liter masuk persediaan — memengaruhi Inventory, SO Value, dan gerbang tutup hari sekaligus | commit `b8decb2` §10.7 | ☑ |
+| B8 | **Keputusan owner atas bentuk `ManualEntry` + kategori** (§2.4) | Menambah kolom milik pengawas ke tabel yang **sudah dipakai produksi** di 7 unit; harus diputuskan sekali, bukan diiterasi | commit `b8decb2` §10.8 | ☑ |
 
 **B1–B8 semuanya pertanyaan orang, bukan pekerjaan kode.** Tidak satu pun bisa
 diselesaikan dengan menulis program lebih dulu.
