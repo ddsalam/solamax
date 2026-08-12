@@ -737,6 +737,48 @@ pengawas terbiasa.
 dan **data asal lebih buruk daripada data kosong** — kosong jujur mengatakan "belum
 berkategori", asal berbohong bahwa ia sudah.
 
+### 10.10 Taksonomi "transaksi apa yang boleh dikoreksi" — SENGAJA BELUM DITUTUP
+
+**Keputusan owner 12 Agustus 2026.** Taut ke transaksi asli pada
+`correction_entry` dan `reclassification` bersifat **polimorfik: `source_kind`
+eksplisit, TANPA foreign key.**
+
+**Alasan — bukan "biar fleksibel":** model ini **sudah berkomitmen** pada buku
+kas besar, lima buku bank, dan settlement EDC sebagai ledger terpisah (§1.3–§1.4).
+Sumber kedua bukan kemungkinan, ia **jadwal**. FK ke `manual_entry` hari ini
+berarti mencabutnya nanti — dan pencabutan itu migrasi di tabel yang sudah
+berisi entri koreksi, persis kelas pekerjaan yang gerbang §9 dibuat mencegah.
+
+**"Tanpa FK" TIDAK berarti "tanpa integritas".** Dua penjaga menggantikannya,
+dan keduanya perlu — satu tidak menggantikan yang lain:
+
+| penjaga | letak | mencegah |
+|---|---|---|
+| `source_kind` daftar tertutup | CHECK migrasi `0025` | salah ketik / jenis karangan |
+| penjaga **yatim** | [`keuangan-integritas.ts`](src/lib/keuangan-integritas.ts) | taut yang menunjuk ke **ketiadaan** |
+
+Perbedaan sifat yang harus disadari: FK **mencegah**, penjaga yatim **menemukan
+setelah terjadi**. Karena itu ia harus benar-benar dijalankan — penjaga yang
+tidak pernah dipanggil sama saja dengan tidak ada.
+
+Hari ini `source_kind` berisi **tepat satu** nilai: `manual_entry`.
+
+#### ⛔ Syarat yang membangunkannya
+
+Begitu ledger kedua lahir (kas besar / bank / EDC), **dalam PR yang SAMA**:
+
+1. perluas CHECK `source_kind` di migrasi baru;
+2. tambahkan nilainya ke `SUMBER_SAH`;
+3. tambahkan pengambil id-nya ke `SUMBER_ID_SQL`.
+
+**Ketiganya bersamaan, bukan menyusul.** Penjaga yang tertinggal satu rilis
+adalah penjaga yang buta terhadap justru sumber yang baru — dan sumber baru
+adalah tempat kesalahan paling mungkin muncul. Ada unit test yang memaksa
+langkah 2 dan 3 berjalan beriringan; langkah 1 dijaga oleh CHECK-nya sendiri.
+
+**Menambah nilai = menambah sumber yang bisa dikoreksi = KEPUTUSAN OWNER**,
+bukan keputusan pelaksana.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:
