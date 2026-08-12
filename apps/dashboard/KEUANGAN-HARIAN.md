@@ -617,3 +617,17 @@ Setiap PR K1 menyatakan lingkupnya di deskripsi, dan hanya ada **dua** bentuk ya
 
 Kalau ragu sebuah PR masuk bentuk 1 atau 2, **ia bentuk 2**. Keraguan diselesaikan
 ke arah gerbang, bukan ke arah pelaksana.
+
+#### ⚠️ Sisa yang diketahui — bentuk 1 masih dinilai sendiri
+
+**BELUM DITELUSURI. Jangan dibangun sekarang** (catatan owner 12 Agu 2026).
+
+"Kalau ragu ia bentuk 2" menutup sebagian besar celahnya, tetapi **tidak ada mata
+kedua** yang menyatakan sebuah PR benar-benar bentuk 1 — penilaian itu masih
+dilakukan oleh penulis PR-nya sendiri. Selama bentuk 1 jarang dipakai, risikonya
+kecil dan tidak sepadan dengan biaya penandatangan tambahan.
+
+**Syarat yang membangunkannya:** kalau K1 sudah berjalan dan **bentuk 1 mulai
+sering dipakai**, di situ ia butuh penandatangan kedua. Ditulis di sini supaya
+syaratnya terlihat lebih dulu, bukan ditemukan setelah ada PR bentuk 1 yang
+ternyata bukan.
