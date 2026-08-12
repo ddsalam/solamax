@@ -629,6 +629,55 @@ model PurchasePrice {
   @@schema("app")
 }
 
+// Reklasifikasi CoA (KEUANGAN-HARIAN §4.4). APPEND-ONLY: dashboard_app hanya
+// SELECT+INSERT, UPDATE/DELETE di-REVOKE (0021). Tidak pernah menyentuh baris
+// transaksi asli — nominal, tanggal, dan operational_category tetap milik
+// pengawas. `sourceKind`/`sourceTxnId` sengaja TANPA FK: taksonomi transaksi
+// yang boleh direklasifikasi belum diputuskan owner.
+model Reclassification {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  sourceKind      String   @map("source_kind")
+  sourceTxnId     String   @map("source_txn_id") @db.Uuid
+  fromAccount     String   @map("from_account")
+  toAccount       String   @map("to_account")
+  reasonCode      String   @map("reason_code")
+  note            String?
+  createdByUserId Int      @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([sourceKind, sourceTxnId, createdAt])
+  @@index([unitId, reasonCode, createdAt])
+  @@map("reclassification")
+  @@schema("app")
+}
+
+// Koreksi / pembalik setelah hari ditutup (KEUANGAN-HARIAN §4.5) dengan TUJUH
+// field audit. APPEND-ONLY. `submitted_by <> approved_by` ditegakkan CHECK di
+// DB (0021) — bukan di aplikasi: approver yang sama dengan pengaju membuat
+// seluruh tangga wewenang §3.2 jadi hiasan.
+model CorrectionEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int      @map("unit_id") @db.SmallInt
+  sourceKind        String   @map("source_kind")
+  originalTxnId     String   @map("original_txn_id") @db.Uuid
+  reasonCode        String   @map("reason_code")
+  valueBefore       Decimal  @map("value_before") @db.Decimal(17, 2)
+  valueAfter        Decimal  @map("value_after") @db.Decimal(17, 2)
+  submittedByUserId Int      @map("submitted_by_user_id")
+  approvedByUserId  Int      @map("approved_by_user_id")
+  approvedAt        DateTime @map("approved_at") @db.Timestamptz()
+  evidenceRef       String?  @map("evidence_ref")
+  /// 'reversal' | 'corrected_entry' (CHECK di 0021).
+  kind              String
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([sourceKind, originalTxnId, createdAt])
+  @@index([unitId, reasonCode, createdAt])
+  @@map("correction_entry")
+  @@schema("app")
+}
+
 // Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
 // tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
