@@ -1,0 +1,1337 @@
+{
+  "_sumber": "session-notes/2026-08-10-keuangan-k0-t3-prareg.md (segel commit 27c9055)",
+  "_dibangkitkan_oleh": "apps/dashboard/scripts/gen-keuangan-emas.mjs",
+  "_peringatan": "JANGAN disunting tangan. Bangkitkan ulang dari segelnya.",
+  "dates": [
+    {
+      "date": "2025-01-31",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 1724.28,
+          "sellPrice": 12800,
+          "tera": 0,
+          "stock": 14357.06,
+          "lossesGain": -20.16,
+          "sisaSo": 0,
+          "buyPrice": 12231.05425,
+          "expected": {
+            "revenue": 22070784,
+            "cogs": -21089762.22,
+            "teraValue": 0,
+            "inventoryValue": 175601979.73,
+            "lossesGainValue": -246578.05
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 18028.2,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 17978.95,
+          "lossesGain": -7.65,
+          "sisaSo": 64000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 122591760,
+            "cogs": -118393986.02,
+            "teraValue": 0,
+            "inventoryValue": 118070553.63,
+            "lossesGainValue": -50238.74
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 84.14,
+          "sellPrice": 14000,
+          "tera": 0,
+          "stock": 14244.84,
+          "lossesGain": -6.1,
+          "sisaSo": 0,
+          "buyPrice": 14257.182875,
+          "expected": {
+            "revenue": 1177960,
+            "cogs": -1199599.37,
+            "teraValue": 0,
+            "inventoryValue": 203091288.91,
+            "lossesGainValue": -86968.82
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 1322.42,
+          "sellPrice": 13900,
+          "tera": 0,
+          "stock": 3015.42,
+          "lossesGain": 0,
+          "sisaSo": 4000,
+          "buyPrice": 12803.96475,
+          "expected": {
+            "revenue": 18381638,
+            "cogs": -16932219.06,
+            "teraValue": 0,
+            "inventoryValue": 38609331.39,
+            "lossesGainValue": 0
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 14668.12,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 18044.7,
+          "lossesGain": -95.29,
+          "sisaSo": 64000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 146681200,
+            "cogs": -141980826.62,
+            "teraValue": 0,
+            "inventoryValue": 174664607.46,
+            "lossesGainValue": -922364.49
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 240.72,
+          "sellPrice": 14200,
+          "tera": 0,
+          "stock": 1301.23,
+          "lossesGain": 0,
+          "sisaSo": 2000,
+          "buyPrice": 13620.95725,
+          "expected": {
+            "revenue": 3418224,
+            "cogs": -3278836.83,
+            "teraValue": 0,
+            "inventoryValue": 17723998.2,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 314321566,
+        "cogs": -302875230.12,
+        "teraValue": 0,
+        "inventoryValue": 727761759.32,
+        "soValue": 1118247013.5,
+        "lossesGainValue": -1306150.09
+      },
+      "grossProfit": 11446335.88
+    },
+    {
+      "date": "2025-03-29",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 1049.38,
+          "sellPrice": 12800,
+          "tera": 0,
+          "stock": 12403.93,
+          "lossesGain": -22.8,
+          "sisaSo": 0,
+          "buyPrice": 12631.898125,
+          "expected": {
+            "revenue": 13432064,
+            "cogs": -13255661.25,
+            "teraValue": 0,
+            "inventoryValue": 156685180.11,
+            "lossesGainValue": -288007.28
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 10256.94,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 13175.81,
+          "lossesGain": 182.81,
+          "sisaSo": 56000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 69747192,
+            "cogs": -67358916.09,
+            "teraValue": 0,
+            "inventoryValue": 86527588.17,
+            "lossesGainValue": 1200541.63
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 336.52,
+          "sellPrice": 13800,
+          "tera": 0,
+          "stock": 8537.48,
+          "lossesGain": 0.08,
+          "sisaSo": 0,
+          "buyPrice": 14257.182875,
+          "expected": {
+            "revenue": 4643976,
+            "cogs": -4797827.18,
+            "teraValue": 0,
+            "inventoryValue": 121720413.65,
+            "lossesGainValue": 1140.57
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 344.64,
+          "sellPrice": 13900,
+          "tera": 0,
+          "stock": 4404.86,
+          "lossesGain": 0,
+          "sisaSo": 8000,
+          "buyPrice": 14106.707,
+          "expected": {
+            "revenue": 4790496,
+            "cogs": -4861735.5,
+            "teraValue": 0,
+            "inventoryValue": 62138069.4,
+            "lossesGainValue": 0
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 21668.9,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 10531.59,
+          "lossesGain": 163.98,
+          "sisaSo": 56000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 216689000,
+            "cogs": -209745238.92,
+            "teraValue": 0,
+            "inventoryValue": 101941070.41,
+            "lossesGainValue": 1587252.9
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 47.11,
+          "sellPrice": 14200,
+          "tera": 0,
+          "stock": 7188.26,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 14372.54,
+          "expected": {
+            "revenue": 668962,
+            "cogs": -677090.36,
+            "teraValue": 0,
+            "inventoryValue": 103313554.38,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 309971690,
+        "cogs": -300696469.3,
+        "teraValue": 0,
+        "inventoryValue": 632325876.12,
+        "soValue": 1022669241,
+        "lossesGainValue": 2500927.82
+      },
+      "grossProfit": 9275220.7
+    },
+    {
+      "date": "2025-03-31",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 1511.57,
+          "sellPrice": 12800,
+          "tera": 0,
+          "stock": 9537.98,
+          "lossesGain": 7.42,
+          "sisaSo": 8000,
+          "buyPrice": 12231.05425,
+          "expected": {
+            "revenue": 19348096,
+            "cogs": -18488094.67,
+            "teraValue": 0,
+            "inventoryValue": 116659550.82,
+            "lossesGainValue": 90754.42
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 1715.03,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 18965.89,
+          "lossesGain": 49.42,
+          "sisaSo": 64000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 11662204,
+            "cogs": -11262868.05,
+            "teraValue": 0,
+            "inventoryValue": 124551941.71,
+            "lossesGainValue": 324548.81
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 283.63,
+          "sellPrice": 13800,
+          "tera": 0,
+          "stock": 8091.59,
+          "lossesGain": 1.59,
+          "sisaSo": 0,
+          "buyPrice": 14257.182875,
+          "expected": {
+            "revenue": 3914094,
+            "cogs": -4043764.78,
+            "teraValue": 0,
+            "inventoryValue": 115363278.38,
+            "lossesGainValue": 22668.92
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 217.02,
+          "sellPrice": 13900,
+          "tera": 0,
+          "stock": 7889.2,
+          "lossesGain": 0,
+          "sisaSo": 4000,
+          "buyPrice": 14106.707,
+          "expected": {
+            "revenue": 3016578,
+            "cogs": -3061437.55,
+            "teraValue": 0,
+            "inventoryValue": 111290632.86,
+            "lossesGainValue": 0
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 16346.3,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 21292.64,
+          "lossesGain": 201.43,
+          "sisaSo": 64000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 163463000,
+            "cogs": -158224856.77,
+            "teraValue": 0,
+            "inventoryValue": 206103210.77,
+            "lossesGainValue": 1949752.11
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 58.31,
+          "sellPrice": 14200,
+          "tera": 0,
+          "stock": 7050.19,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 14372.54,
+          "expected": {
+            "revenue": 828002,
+            "cogs": -838062.81,
+            "teraValue": 0,
+            "inventoryValue": 101329137.78,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 202231974,
+        "cogs": -195919084.64,
+        "teraValue": 0,
+        "inventoryValue": 775297752.33,
+        "soValue": 1194064502,
+        "lossesGainValue": 2387724.26
+      },
+      "grossProfit": 6312889.36
+    },
+    {
+      "date": "2025-06-02",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 505.95,
+          "sellPrice": 12400,
+          "tera": 0,
+          "stock": 13755.64,
+          "lossesGain": 12.19,
+          "sisaSo": 0,
+          "buyPrice": 12130.84325,
+          "expected": {
+            "revenue": 6273780,
+            "cogs": -6137600.14,
+            "teraValue": 0,
+            "inventoryValue": 166867512.64,
+            "lossesGainValue": 147874.98
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 15563.06,
+          "sellPrice": 6800,
+          "tera": 6.93,
+          "stock": 21014.47,
+          "lossesGain": 218.22,
+          "sisaSo": 48000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 105828808,
+            "cogs": -102159518.85,
+            "teraValue": -47124,
+            "inventoryValue": 138005284.36,
+            "lossesGainValue": 1433084.59
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 118.55,
+          "sellPrice": 13350,
+          "tera": 0,
+          "stock": 12770.47,
+          "lossesGain": -30.94,
+          "sisaSo": 0,
+          "buyPrice": 13154.86425,
+          "expected": {
+            "revenue": 1582642.5,
+            "cogs": -1559509.16,
+            "teraValue": 0,
+            "inventoryValue": 167993799.26,
+            "lossesGainValue": -407011.5
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 931.15,
+          "sellPrice": 13020,
+          "tera": 0,
+          "stock": 4148.08,
+          "lossesGain": 0,
+          "sisaSo": 8000,
+          "buyPrice": 13104.597,
+          "expected": {
+            "revenue": 12123573,
+            "cogs": -12202345.5,
+            "teraValue": 0,
+            "inventoryValue": 54358916.72,
+            "lossesGainValue": 0
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 12962.39,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 22918.58,
+          "lossesGain": 81.2,
+          "sisaSo": 32000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 129623900,
+            "cogs": -125470124.81,
+            "teraValue": 0,
+            "inventoryValue": 221841581.15,
+            "lossesGainValue": 785979.6
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 61.92,
+          "sellPrice": 13500,
+          "tera": 0,
+          "stock": 4676.45,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 13470.641,
+          "expected": {
+            "revenue": 835920,
+            "cogs": -834102.09,
+            "teraValue": 0,
+            "inventoryValue": 62994779.1,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 256268623.5,
+        "cogs": -248363200.55,
+        "teraValue": -47124,
+        "inventoryValue": 812061873.24,
+        "soValue": 729805878,
+        "lossesGainValue": 1959927.67
+      },
+      "grossProfit": 7858298.95
+    },
+    {
+      "date": "2025-06-30",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 632.98,
+          "sellPrice": 12400,
+          "tera": 0,
+          "stock": 24391.64,
+          "lossesGain": -1.56,
+          "sisaSo": 0,
+          "buyPrice": 11830.210375,
+          "expected": {
+            "revenue": 7848952,
+            "cogs": -7488286.56,
+            "teraValue": 0,
+            "inventoryValue": 288558232.59,
+            "lossesGainValue": -18455.13
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 21183.52,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 18929.49,
+          "lossesGain": 274.09,
+          "sisaSo": 48000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 144047936,
+            "cogs": -139115461.93,
+            "teraValue": 0,
+            "inventoryValue": 124312897.27,
+            "lossesGainValue": 1799991.55
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 137.34,
+          "sellPrice": 13350,
+          "tera": 1,
+          "stock": 16918.62,
+          "lossesGain": 9.37,
+          "sisaSo": 0,
+          "buyPrice": 12703.91475,
+          "expected": {
+            "revenue": 1833489,
+            "cogs": -1732051.74,
+            "teraValue": -13350,
+            "inventoryValue": 214932706.17,
+            "lossesGainValue": 119035.68
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 1715.72,
+          "sellPrice": 13020,
+          "tera": 0,
+          "stock": 5648.95,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 12473.2685,
+          "expected": {
+            "revenue": 22338674.4,
+            "cogs": -21400636.23,
+            "teraValue": 0,
+            "inventoryValue": 70460870.09,
+            "lossesGainValue": 0
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 12685.27,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 16495.46,
+          "lossesGain": 148.63,
+          "sisaSo": 40000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 126852700,
+            "cogs": -122787727.43,
+            "teraValue": 0,
+            "inventoryValue": 159668658.71,
+            "lossesGainValue": 1438671.78
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 4.81,
+          "sellPrice": 13500,
+          "tera": 0,
+          "stock": 6428.01,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 12919.481,
+          "expected": {
+            "revenue": 64935,
+            "cogs": -62142.7,
+            "teraValue": 0,
+            "inventoryValue": 83046553.06,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 302986686.4,
+        "cogs": -292586306.6,
+        "teraValue": -13350,
+        "inventoryValue": 940979917.89,
+        "soValue": 702405516,
+        "lossesGainValue": 3339243.88
+      },
+      "grossProfit": 10387029.8
+    },
+    {
+      "date": "2025-08-31",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 815.7,
+          "sellPrice": 12500,
+          "tera": 0,
+          "stock": 12312.45,
+          "lossesGain": -5.01,
+          "sisaSo": 0,
+          "buyPrice": 11928.54625,
+          "expected": {
+            "revenue": 10196250,
+            "cogs": -9730115.18,
+            "teraValue": 0,
+            "inventoryValue": 146869629.28,
+            "lossesGainValue": -59762.02
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 7051.34,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 17713.68,
+          "lossesGain": -26.79,
+          "sisaSo": 72000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 47949112,
+            "cogs": -46307243.62,
+            "teraValue": 0,
+            "inventoryValue": 116328484.39,
+            "lossesGainValue": -175934.09
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 137.62,
+          "sellPrice": 13500,
+          "tera": 0,
+          "stock": 8626.61,
+          "lossesGain": -0.04,
+          "sisaSo": 0,
+          "buyPrice": 12703.91475,
+          "expected": {
+            "revenue": 1857870,
+            "cogs": -1748312.75,
+            "teraValue": 0,
+            "inventoryValue": 109591718.02,
+            "lossesGainValue": -508.16
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 1502.94,
+          "sellPrice": 14150,
+          "tera": 0,
+          "stock": 3433.02,
+          "lossesGain": 24.41,
+          "sisaSo": 8000,
+          "buyPrice": 13605.65175,
+          "expected": {
+            "revenue": 21266601,
+            "cogs": -20448478.24,
+            "teraValue": 0,
+            "inventoryValue": 46708474.57,
+            "lossesGainValue": 332113.96
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 15045.11,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 23365.66,
+          "lossesGain": 72.37,
+          "sisaSo": 48000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 150451100,
+            "cogs": -145629920.83,
+            "teraValue": 0,
+            "inventoryValue": 226169115.14,
+            "lossesGainValue": 700509.16
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 219.33,
+          "sellPrice": 14450,
+          "tera": 0,
+          "stock": 2273.36,
+          "lossesGain": 1.47,
+          "sisaSo": 4000,
+          "buyPrice": 13871.486,
+          "expected": {
+            "revenue": 3169318.5,
+            "cogs": -3042433.02,
+            "teraValue": 0,
+            "inventoryValue": 31534881.41,
+            "lossesGainValue": 20391.08
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 234890251.5,
+        "cogs": -226906503.64,
+        "teraValue": 0,
+        "inventoryValue": 677202302.82,
+        "soValue": 1101784811,
+        "lossesGainValue": 816809.94
+      },
+      "grossProfit": 7983747.86
+    },
+    {
+      "date": "2025-09-30",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1120000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 566.7,
+          "sellPrice": 12500,
+          "tera": 0,
+          "stock": 14094.29,
+          "lossesGain": -24.03,
+          "sisaSo": 0,
+          "buyPrice": 11930.42125,
+          "expected": {
+            "revenue": 7083750,
+            "cogs": -6760969.72,
+            "teraValue": 0,
+            "inventoryValue": 168150816.92,
+            "lossesGainValue": -286688.02
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 23448.11,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 10277.49,
+          "lossesGain": 238.36,
+          "sisaSo": 32000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 159447148,
+            "cogs": -153987375.76,
+            "teraValue": 0,
+            "inventoryValue": 67493871.13,
+            "lossesGainValue": 1565347.1
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 53.06,
+          "sellPrice": 13400,
+          "tera": 0,
+          "stock": 12916.85,
+          "lossesGain": 2.38,
+          "sisaSo": 0,
+          "buyPrice": 12703.91475,
+          "expected": {
+            "revenue": 711004,
+            "cogs": -674069.72,
+            "teraValue": 0,
+            "inventoryValue": 164094561.24,
+            "lossesGainValue": 30235.32
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 3042.6,
+          "sellPrice": 13900,
+          "tera": 0,
+          "stock": 2414.7,
+          "lossesGain": -69,
+          "sisaSo": 8000,
+          "buyPrice": 13355.125,
+          "expected": {
+            "revenue": 42292140,
+            "cogs": -40634303.32,
+            "teraValue": 0,
+            "inventoryValue": 32248620.34,
+            "lossesGainValue": -921503.63
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 12972.57,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 21046.82,
+          "lossesGain": 118.53,
+          "sisaSo": 40000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 129725700,
+            "cogs": -125568662.65,
+            "teraValue": 0,
+            "inventoryValue": 203723783.36,
+            "lossesGainValue": 1147317.27
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 764.13,
+          "sellPrice": 14150,
+          "tera": 0,
+          "stock": 4892.21,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 13871.486,
+          "expected": {
+            "revenue": 10812439.5,
+            "cogs": -10599618.6,
+            "teraValue": 0,
+            "inventoryValue": 67862222.52,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 350072181.5,
+        "cogs": -338224999.76,
+        "teraValue": 0,
+        "inventoryValue": 703573875.51,
+        "soValue": 704172034,
+        "lossesGainValue": 1534708.03
+      },
+      "grossProfit": 11847181.74
+    },
+    {
+      "date": "2025-12-01",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1152000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 616.09,
+          "sellPrice": 13050,
+          "tera": 0,
+          "stock": 16639.94,
+          "lossesGain": 17.31,
+          "sisaSo": 0,
+          "buyPrice": 11930.42125,
+          "expected": {
+            "revenue": 8039974.5,
+            "cogs": -7350213.23,
+            "teraValue": 0,
+            "inventoryValue": 198521493.77,
+            "lossesGainValue": 206515.59
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 19510.89,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 26543.1,
+          "lossesGain": 141.88,
+          "sisaSo": 48000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 132674052,
+            "cogs": -128131041.26,
+            "teraValue": 0,
+            "inventoryValue": 174312655.2,
+            "lossesGainValue": 931747.97
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 153.1,
+          "sellPrice": 14050,
+          "tera": 0,
+          "stock": 10581.67,
+          "lossesGain": -1.83,
+          "sisaSo": 0,
+          "buyPrice": 12754.02,
+          "expected": {
+            "revenue": 2151055,
+            "cogs": -1952640.46,
+            "teraValue": 0,
+            "inventoryValue": 134958830.81,
+            "lossesGainValue": -23339.86
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 3506.1,
+          "sellPrice": 15000,
+          "tera": 0,
+          "stock": 5269.49,
+          "lossesGain": -35.21,
+          "sisaSo": 16000,
+          "buyPrice": 14457.4455,
+          "expected": {
+            "revenue": 52591500,
+            "cogs": -50689249.67,
+            "teraValue": 0,
+            "inventoryValue": 76183364.49,
+            "lossesGainValue": -509046.66
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 12771.56,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 20733.71,
+          "lossesGain": 122.67,
+          "sisaSo": 40000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 127715600,
+            "cogs": -123622975.95,
+            "teraValue": 0,
+            "inventoryValue": 200693018.91,
+            "lossesGainValue": 1187390.61
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 332.44,
+          "sellPrice": 15300,
+          "tera": 0,
+          "stock": 3447.1,
+          "lossesGain": 0,
+          "sisaSo": 4000,
+          "buyPrice": 13871.486,
+          "expected": {
+            "revenue": 5086332,
+            "cogs": -4611436.81,
+            "teraValue": 0,
+            "inventoryValue": 47816399.39,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 328258513.5,
+        "cogs": -316357557.37,
+        "teraValue": 0,
+        "inventoryValue": 832485762.58,
+        "soValue": 989210588,
+        "lossesGainValue": 1793267.66
+      },
+      "grossProfit": 11900956.13
+    },
+    {
+      "date": "2025-12-31",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1152000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 1051.69,
+          "sellPrice": 13050,
+          "tera": 0,
+          "stock": 18913.64,
+          "lossesGain": 51,
+          "sisaSo": 8000,
+          "buyPrice": 12481.581625,
+          "expected": {
+            "revenue": 13724554.5,
+            "cogs": -13126754.58,
+            "teraValue": 0,
+            "inventoryValue": 236072141.49,
+            "lossesGainValue": 636560.66
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 3753.39,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 18792.02,
+          "lossesGain": -41.65,
+          "sisaSo": 56000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 25523052,
+            "cogs": -24649094.37,
+            "teraValue": 0,
+            "inventoryValue": 123410110.45,
+            "lossesGainValue": -273522.01
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 259.59,
+          "sellPrice": 14050,
+          "tera": 0,
+          "stock": 13341.6,
+          "lossesGain": 6.61,
+          "sisaSo": 0,
+          "buyPrice": 13405.39125,
+          "expected": {
+            "revenue": 3647239.5,
+            "cogs": -3479905.51,
+            "teraValue": 0,
+            "inventoryValue": 178849367.9,
+            "lossesGainValue": 88609.64
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 976.43,
+          "sellPrice": 15000,
+          "tera": 0,
+          "stock": 7039.88,
+          "lossesGain": -85.04,
+          "sisaSo": 0,
+          "buyPrice": 14457.4455,
+          "expected": {
+            "revenue": 14646450,
+            "cogs": -14116683.51,
+            "teraValue": 0,
+            "inventoryValue": 101778681.43,
+            "lossesGainValue": -1229461.17
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 17208,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 31190.18,
+          "lossesGain": 115.04,
+          "sisaSo": 48000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 172080000,
+            "cogs": -166565726.51,
+            "teraValue": 0,
+            "inventoryValue": 301906961.4,
+            "lossesGainValue": 1113535.63
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 328.51,
+          "sellPrice": 15300,
+          "tera": 0,
+          "stock": 4279.57,
+          "lossesGain": 0,
+          "sisaSo": 0,
+          "buyPrice": 14723.278,
+          "expected": {
+            "revenue": 5026203,
+            "cogs": -4836744.06,
+            "teraValue": 0,
+            "inventoryValue": 63009298.83,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 234647499,
+        "cogs": -226774908.55,
+        "teraValue": 0,
+        "inventoryValue": 1005026561.5,
+        "soValue": 932231824,
+        "lossesGainValue": 335722.76
+      },
+      "grossProfit": 7872590.45
+    },
+    {
+      "date": "2026-01-12",
+      "rows": [
+        {
+          "productKey": "BB-01",
+          "volume": 0,
+          "sellPrice": 0,
+          "tera": 0,
+          "stock": null,
+          "lossesGain": null,
+          "sisaSo": 1152000,
+          "buyPrice": null,
+          "expected": {
+            "revenue": 0,
+            "cogs": null,
+            "teraValue": 0,
+            "inventoryValue": null,
+            "lossesGainValue": null
+          }
+        },
+        {
+          "productKey": "BB-02",
+          "volume": 758.36,
+          "sellPrice": 12650,
+          "tera": 0,
+          "stock": 17414.88,
+          "lossesGain": 40.02,
+          "sisaSo": 0,
+          "buyPrice": 12080.73775,
+          "expected": {
+            "revenue": 9593254,
+            "cogs": -9161548.28,
+            "teraValue": 0,
+            "inventoryValue": 210384598.23,
+            "lossesGainValue": 483471.12
+          }
+        },
+        {
+          "productKey": "BB-03",
+          "volume": 21514.15,
+          "sellPrice": 6800,
+          "tera": 0,
+          "stock": 18121.52,
+          "lossesGain": 323.03,
+          "sisaSo": 48000,
+          "buyPrice": 6567.155125,
+          "expected": {
+            "revenue": 146296220,
+            "cogs": -141286760.43,
+            "teraValue": 0,
+            "inventoryValue": 119006832.94,
+            "lossesGainValue": 2121388.12
+          }
+        },
+        {
+          "productKey": "BB-04",
+          "volume": 208.16,
+          "sellPrice": 13700,
+          "tera": 0,
+          "stock": 10900.49,
+          "lossesGain": 2.46,
+          "sisaSo": 0,
+          "buyPrice": 13405.39125,
+          "expected": {
+            "revenue": 2851792,
+            "cogs": -2790466.24,
+            "teraValue": 0,
+            "inventoryValue": 146125333.27,
+            "lossesGainValue": 32977.26
+          }
+        },
+        {
+          "productKey": "BB-06",
+          "volume": 2272.15,
+          "sellPrice": 13800,
+          "tera": 0,
+          "stock": 6347.09,
+          "lossesGain": -37.8,
+          "sisaSo": 12000,
+          "buyPrice": 13254.91425,
+          "expected": {
+            "revenue": 31355670,
+            "cogs": -30117153.41,
+            "teraValue": 0,
+            "inventoryValue": 84130133.69,
+            "lossesGainValue": -501035.76
+          }
+        },
+        {
+          "productKey": "BB-07",
+          "volume": 13506.9,
+          "sellPrice": 10000,
+          "tera": 0,
+          "stock": 19517.93,
+          "lossesGain": 9.81,
+          "sisaSo": 32000,
+          "buyPrice": 9679.55175,
+          "expected": {
+            "revenue": 135069000,
+            "cogs": -130740737.53,
+            "teraValue": 0,
+            "inventoryValue": 188924813.49,
+            "lossesGainValue": 94956.4
+          }
+        },
+        {
+          "productKey": "BB-08",
+          "volume": 493.32,
+          "sellPrice": 13900,
+          "tera": 0,
+          "stock": 2396.81,
+          "lossesGain": 0,
+          "sisaSo": 8000,
+          "buyPrice": 13320.325,
+          "expected": {
+            "revenue": 6857148,
+            "cogs": -6571182.73,
+            "teraValue": 0,
+            "inventoryValue": 31926288.16,
+            "lossesGainValue": 0
+          }
+        }
+      ],
+      "totals": {
+        "revenue": 332023084,
+        "cogs": -320667848.63,
+        "teraValue": 0,
+        "inventoryValue": 780497999.77,
+        "soValue": 890590673,
+        "lossesGainValue": 2231757.15
+      },
+      "grossProfit": 11355235.37
+    }
+  ]
+}
