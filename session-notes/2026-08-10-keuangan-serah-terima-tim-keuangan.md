@@ -46,9 +46,18 @@ tidak pernah mencatat saat pelanggan membayar.
 > membayar dengan normal (tahun 2025: menambah Rp 3,34 miliar, membayar
 > Rp 3,06 miliar).
 
-Kami sudah memastikan angka kasir itu benar dengan mencocokkannya ke laporan resmi
-EasyMax "Daftar Saldo Hutang Piutang" Bakau — **lima belas angka, semuanya cocok
-persis**. Jadi yang keliru adalah workbook, bukan data kasir.
+Kami sudah memastikan **cara menghitung** angka kasir itu benar dengan mencocokkannya
+ke laporan resmi EasyMax "Daftar Saldo Hutang Piutang" Bakau — **lima belas angka,
+semuanya cocok persis**.
+
+Satu hal perlu disebut apa adanya: **lima tanggal uji itu tahun 2022**, sebab hanya
+tanggal-tanggal itu yang laporan resminya tersimpan. Jadi yang terbukti adalah
+rumusnya, bukan angka Januari 2026 secara langsung. Sebagai gantinya kami memeriksa
+pencatatan piutang Oktober 2025 – Agustus 2026 dan tidak menemukan satu pun hari
+yang bolong, jadi tidak ada celah data yang bisa menjelaskan selisih Rp 6,5 miliar.
+Kesimpulannya tetap: yang keliru adalah workbook, bukan data kasir. **Kalau unit bisa
+mencetak laporan "Daftar Saldo Hutang Piutang" untuk satu tanggal tahun 2026, kirimkan
+ke kami** — uji yang sama akan diulang dan hasilnya menutup keraguan terakhir.
 
 **Yang masih perlu dijawab orang keuangan:** kalau uang tagihan itu masuk ke bank
 tetapi dicatat sebagai "Setoran Hasil Penjualan", berarti **pendapatan juga ikut
