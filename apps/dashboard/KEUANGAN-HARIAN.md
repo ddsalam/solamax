@@ -385,6 +385,33 @@ sebab NULL ≠ NULL di indeks unik biasa.
 mengganti policy bercabang-NULL dengan versi ketat, dan baris globalnya lenyap.
 Jalankan ulang migrasi tabel itu bila terjadi.
 
+**(c) SEED baris ter-scope unit WAJIB mendahului blok `ENABLE`/`FORCE` RLS.**
+
+`FORCE ROW LEVEL SECURITY` berlaku **juga untuk pemilik tabel**, dan
+`prisma migrate deploy` berjalan **tanpa GUC `app.unit_ids`**. Maka `WITH CHECK`
+policy menolak setiap baris seed:
+
+```
+42501: new row violates row-level security policy for table "…"
+```
+
+| tabel | seed sesudah RLS? |
+|---|---|
+| ber-`unit_id` NOT NULL (mis. `cash_account`) | 🔴 **GAGAL** — policy menolak |
+| punya baris global `unit_id IS NULL` (mis. `category_account_map`) | lolos lewat cabang NULL-nya |
+| tanpa `unit_id` (mis. `reason_code`, `cash_mutation_category`) | lolos — tak ber-RLS |
+
+⛔ **Jangan menyiasatinya** dengan `NO FORCE` sementara atau `set_config` di dalam
+migrasi. Keduanya menambah keadaan yang harus **diingat** orang berikutnya;
+**urutan yang benar tidak butuh diingat.**
+
+**Ini bukan kekhawatiran teoretis.** `0029_cash_ledger` (13 Agu 2026) menyemai
+tujuh akun kas sesudah blok RLS: migrasi gagal, tercatat `failed`, dan **seluruh
+migrasi berikutnya terblokir `P3009`** sampai di-resolve. Gerbang CD bekerja
+persis seperti dirancang — tetapi tak satu pun tes berbunyi sebelum CD
+mencobanya. Kini ada penjaganya (`keuangan-migrasi.test.ts`, blok
+"KELAS: seed ter-scope unit mendahului RLS").
+
 Ini kelas kegagalan yang berulang di proyek ini: **bukan yang meledak, melainkan
 yang hijau dan salah.** Karena itu ia aturan, bukan catatan.
 
