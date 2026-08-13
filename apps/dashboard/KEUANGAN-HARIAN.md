@@ -145,7 +145,15 @@ pengawas — dan itu persis yang dilarang.
    uraian / metode pembayaran / informasi sumber salah → **Return for Correction**.
    **Yang memperbaiki tetap pengawas.**
 3. **Setelah day closing disahkan** — transaksi asli **immutable** bagi pengawas
-   **maupun** Finance.
+   **maupun** Finance. UPDATE dan DELETE ditolak **di DB** (trigger
+   `manual_entry_immutable_after_close`, migrasi 0026), dan penolakannya
+   bertanya pada **fakta** penutupan (`day_close`), bukan pada penanda yang
+   mewakilinya.
+
+   ⚠️ **"Immutable" punya SATU pengecualian bernama** — lihat §2.3b. Entri BARU
+   bertanggal hari yang sudah ditutup **ditahan secara default**, tetapi bisa
+   lewat jalur override yang disetujui. Kalimat "immutable" di atas karenanya
+   berlaku untuk **mengubah yang sudah ada**, bukan untuk menambah yang baru.
 4. **Salah ditemukan setelah closing** → **correction entry / reversal +
    corrected entry** yang bertaut ke transaksi asli.
 
@@ -167,6 +175,44 @@ termasuk "edit selama hari belum ditutup", "edit khusus super_admin", atau
 `Perbaikan`; Finance menilai akun yang benar `Beban Pemeliharaan Peralatan`.
 Nominal, tanggal, dan kategori operasional **tidak berubah**; yang berpindah hanya
 penyajian akuntansinya. Reklasifikasi teraudit, tidak perlu menyentuh pengawas.
+
+### 2.3b Jalur tembus BACKDATE — satu-satunya pengecualian "immutable"
+
+**Keputusan owner 13 Agustus 2026.** INSERT ke hari yang sudah ditutup
+**ditahan secara default**, dengan jalur tembus bagi Finance yang memakai
+**reason code + approver**.
+
+⛔ **Jalur tembus yang salah bentuk LEBIH BURUK daripada tidak ada gerbang sama
+sekali**: ia memberi rasa aman tanpa memberi jaminan. Lima syarat mengikat:
+
+| # | syarat | diwujudkan di |
+|---|---|---|
+| 1 | **BUKAN flag GUC** — GUC fail-**open**, aplikasi yang salah menyetelnya membuka pintu tanpa jejak | catatan override sebagai **DATA** yang dikonsultasi trigger (0027) |
+| 2 | `reason_code` **wajib**, ber-`applies_to = 'adjustment'` | FK komposit + CHECK (0027) |
+| 3 | approver memenuhi `canCloseException`; `requested_by ≠ approved_by` | kapabilitas di [`keuangan-override.ts`](src/lib/keuangan-override.ts); pemisahan tugas di DB |
+| 4 | **SEKALI PAKAI** | `consumed_at` diisi trigger begitu satu INSERT lolos |
+| 5 | setiap INSERT yang lolos **tertaut** ke override-nya | `consumed_by_entry_id` |
+
+🔴 **Syarat 4 yang terpenting.** Override yang **menetap** membuka hari itu
+**selamanya**, dan tak seorang pun akan menyadarinya. Dari dua pilihan owner
+(sekali pakai / ber-`expires_at` pendek) dipilih **sekali pakai**, sebab ia
+sekaligus memenuhi syarat 5: konsumsinya mencatat entri mana yang ia izinkan,
+jadi tautannya 1:1 tanpa kolom baru di tabel produksi.
+
+Ditambah satu penjaga yang tidak diminta tetapi diperlukan: **paling banyak SATU
+override aktif per (unit, tanggal)** (indeks unik parsial). Tanpa itu, sepuluh
+override bisa menumpuk dan hari itu terbuka sepuluh kali — "sekali pakai" yang
+dilipatgandakan bukan sekali pakai.
+
+⚠️ **Batas yang dijaga lapis DB, dan yang TIDAK:** DB menegakkan adanya override
+yang disetujui & belum terpakai, pemisahan tugas, grup reason code, dan
+pencatatan konsumsi. DB **tidak bisa** menegakkan `canCloseException` — keanggotaan
+Head of Finance hidup di ENV (§10.4), di luar jangkauan Postgres, dan menegakkan
+bagian rolenya saja akan **salah menolak** HoF (perannya `admin_perusahaan`).
+Kapabilitas itu dijaga lapis aturan sepenuhnya.
+
+**Setiap override yang terpakai muncul di laporan bulanan**, sama seperti
+exception close. Jalur tembus yang tidak terlihat bukan jalur tembus, ia kebocoran.
 
 ### 2.4 Dua pintu, satu daftar
 

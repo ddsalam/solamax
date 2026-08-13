@@ -55,6 +55,7 @@ const toInput = (r: Row): DayProductInput => ({
   stock: r.stock,
   lossesGain: r.lossesGain,
   buyPrice: r.buyPrice,
+  sisaSo: r.sisaSo,
 });
 
 describe("fixture emas — utuh dan tidak disunting tangan", () => {
@@ -70,7 +71,7 @@ describe("fixture emas — utuh dan tidak disunting tangan", () => {
     // Penjaga terhadap fixture yang disunting sebagian: kalau ada yang mengubah
     // satu sel supaya tes lain hijau, baris ini merah.
     for (const d of emas.dates) {
-      for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "lossesGainValue"] as const) {
+      for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "soValue", "lossesGainValue"] as const) {
         const jumlah = d.rows.reduce((s, r) => s + (r.expected[k] ?? 0), 0);
         // Jumlah sel yang MASING-MASING sudah dibulatkan vs total yang dicetak
         // dari nilai penuh ⇒ akumulasi pembulatan sampai n × satu sen.
@@ -100,7 +101,7 @@ describe("REGRESI: mesin mereproduksi 10 tanggal emas", () => {
         for (const [i, exp] of d.rows.entries()) {
           const got = rows[i]!;
           expect(got.productKey).toBe(exp.productKey);
-          for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "lossesGainValue"] as const) {
+          for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "soValue", "lossesGainValue"] as const) {
             const want = exp.expected[k];
             if (want === null) continue; // HargaBeli/HargaJual kosong → tak dihitung
             expect(
@@ -113,7 +114,7 @@ describe("REGRESI: mesin mereproduksi 10 tanggal emas", () => {
 
       it("total harian cocok dengan segel", () => {
         const tol = d.rows.length * SEN;
-        for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "lossesGainValue"] as const) {
+        for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "soValue", "lossesGainValue"] as const) {
           expect(Math.abs(totals[k] - d.totals[k]), `${d.date} · ${k}`).toBeLessThanOrEqual(tol);
         }
       });
@@ -148,6 +149,7 @@ describe("computeProduct — aturan yang tidak boleh longgar", () => {
     stock: 5_000,
     lossesGain: 10,
     buyPrice: 6_567.155125,
+    sisaSo: 0,
   };
 
   it("tera dipisah: mengurangi COGS dan memunculkan TeraValue negatif", () => {
@@ -195,7 +197,7 @@ describe("computeProduct — aturan yang tidak boleh longgar", () => {
 describe("computeDay — total tidak boleh menelan yang tak terhitung", () => {
   const a: DayProductInput = {
     productKey: "BB-03", volume: 100, sellPrice: 6_800, tera: 0,
-    stock: 1_000, lossesGain: 0, buyPrice: 6_500,
+    stock: 1_000, lossesGain: 0, buyPrice: 6_500, sisaSo: 0,
   };
   const b: DayProductInput = { ...a, productKey: "BB-06", buyPrice: null };
 

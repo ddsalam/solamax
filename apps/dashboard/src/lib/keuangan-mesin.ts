@@ -25,8 +25,10 @@
  *    "barang ini tidak berharga pokok" — pernyataan yang salah dan mahal
  *    (Solar Bakau sejak 2026-03-04). Yang benar: "belum bisa dihitung".
  *
- * ⛔ `SOValue` sengaja TIDAK ada di sini. Ia menunggu penandaan `so_macet` yang
- * dipelihara Finance (B6, §10.6) — memasukkannya sekarang berarti menebak.
+ * `SOValue` = `SisaSO_AKTIF × HargaBeli`, dengan **AKTIF = `sisa − sisa_macet`**
+ * (B6, §10.6). Yang masuk ke sini SUDAH neto: pengurangan `sisa_macet` terjadi
+ * di hulu (kueri), sebab "macet" adalah penandaan MANUAL Finance — bukan aturan
+ * yang boleh dihitung ulang di sini. Lihat {@link sisaSoAktif}.
  */
 
 /** Masukan satu produk pada satu hari. `null` = tidak diketahui, bukan nol. */
@@ -44,6 +46,11 @@ export interface DayProductInput {
   lossesGain: number | null;
   /** Rp/L, input manual berlaku-sejak. `null` = BELUM DIISI. */
   buyPrice: number | null;
+  /**
+   * Sisa SO **aktif** (Liter) — sudah dikurangi `sisa_macet`. `null` = tak
+   * terhitung. Lihat {@link sisaSoAktif}: jangan mengurangi macet di sini.
+   */
+  sisaSo: number | null;
 }
 
 /** Hasil satu produk. Setiap `null` berarti "tak bisa dihitung", bukan nol. */
@@ -55,8 +62,9 @@ export interface DayProductValue {
   grossProfit: number | null;
   lossesGainValue: number | null;
   inventoryValue: number | null;
+  soValue: number | null;
   /** Alasan sebuah nilai `null` — supaya layar/laporan bisa menyebutnya. */
-  missing: ReadonlyArray<"sellPrice" | "buyPrice" | "stock" | "lossesGain">;
+  missing: ReadonlyArray<"sellPrice" | "buyPrice" | "stock" | "lossesGain" | "sisaSo">;
 }
 
 /** Total satu hari. `incomplete` = ada produk yang tak bisa dihitung. */
@@ -67,18 +75,20 @@ export interface DayTotals {
   grossProfit: number;
   lossesGainValue: number;
   inventoryValue: number;
+  soValue: number;
   /** Produk yang menyumbang `null` ke salah satu pos di atas. */
   incomplete: ReadonlyArray<string>;
 }
 
 /** Hitung satu produk pada satu hari. */
 export function computeProduct(input: DayProductInput): DayProductValue {
-  const { productKey, volume, sellPrice, tera, stock, lossesGain, buyPrice } = input;
+  const { productKey, volume, sellPrice, tera, stock, lossesGain, buyPrice, sisaSo } = input;
   const missing: DayProductValue["missing"][number][] = [];
   if (sellPrice === null) missing.push("sellPrice");
   if (buyPrice === null) missing.push("buyPrice");
   if (stock === null) missing.push("stock");
   if (lossesGain === null) missing.push("lossesGain");
+  if (sisaSo === null) missing.push("sisaSo");
 
   const revenue = sellPrice === null ? null : volume * sellPrice;
   const teraValue = sellPrice === null ? null : -tera * sellPrice;
@@ -87,8 +97,12 @@ export function computeProduct(input: DayProductInput): DayProductValue {
     revenue === null || teraValue === null || cogs === null ? null : revenue + teraValue + cogs;
   const lossesGainValue = buyPrice === null || lossesGain === null ? null : lossesGain * buyPrice;
   const inventoryValue = buyPrice === null || stock === null ? null : stock * buyPrice;
+  const soValue = buyPrice === null || sisaSo === null ? null : sisaSo * buyPrice;
 
-  return { productKey, revenue, teraValue, cogs, grossProfit, lossesGainValue, inventoryValue, missing };
+  return {
+    productKey, revenue, teraValue, cogs, grossProfit,
+    lossesGainValue, inventoryValue, soValue, missing,
+  };
 }
 
 /**
@@ -109,11 +123,12 @@ export function computeDay(inputs: readonly DayProductInput[]): {
     grossProfit: 0,
     lossesGainValue: 0,
     inventoryValue: 0,
+    soValue: 0,
     incomplete: [],
   };
 
   for (const r of rows) {
-    for (const k of ["revenue", "teraValue", "cogs", "lossesGainValue", "inventoryValue"] as const) {
+    for (const k of ["revenue", "teraValue", "cogs", "lossesGainValue", "inventoryValue", "soValue"] as const) {
       const v = r[k];
       if (v === null) incomplete.add(r.productKey);
       else totals[k] += v;
@@ -125,4 +140,19 @@ export function computeDay(inputs: readonly DayProductInput[]): {
   totals.grossProfit = totals.revenue + totals.teraValue + totals.cogs;
   totals.incomplete = [...incomplete].sort();
   return { rows, totals };
+}
+
+/**
+ * Sisa SO **aktif** = `sisa − sisa_macet`, tidak pernah negatif.
+ *
+ * ⛔ "Macet" adalah **penandaan MANUAL Finance** (B6, §10.6). Ambang hari hanya
+ * MENGUSULKAN kandidat, tidak memutuskan — karena itu fungsi ini menerima jumlah
+ * macet yang **sudah ditandai**, dan tidak punya parameter ambang apa pun.
+ *
+ * Kalau ia punya ambang, ambang itu akan menghapus SO yang masih ditagih dan
+ * menghidupkan kembali SO mati begitu angkanya digeser — tanpa pemilik, tanpa
+ * tanggal, tanpa cara membatalkannya.
+ */
+export function sisaSoAktif(sisa: number, macet: number): number {
+  return Math.max(0, sisa - macet);
 }

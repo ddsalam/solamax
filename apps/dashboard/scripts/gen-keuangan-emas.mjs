@@ -80,6 +80,7 @@ for (let i = 0; i < starts.length; i++) {
         cogs: num(c[10]),
         teraValue: num(c[11]),
         inventoryValue: num(c[12]),
+        soValue: num(c[13]),
         lossesGainValue: num(c[14]),
       },
     });

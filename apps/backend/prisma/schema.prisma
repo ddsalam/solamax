@@ -718,6 +718,9 @@ model ReasonCode {
   /// Target FK KOMPOSIT dari app.day_close (0026): mengunci bayangan
   /// requires_target_date supaya tak bisa menyimpang dari masternya.
   @@unique([code, requiresTargetDate])
+  /// Target FK KOMPOSIT dari app.backdate_override (0027): hanya kode
+  /// ber-applies_to='adjustment' yang boleh membenarkan backdate.
+  @@unique([code, appliesTo])
   @@map("reason_code")
   @@schema("app")
 }
@@ -788,6 +791,56 @@ model DayClose {
   @@id([unitId, businessDate])
   @@index([unitId, status, businessDate])
   @@map("day_close")
+  @@schema("app")
+}
+
+// JALUR TEMBUS backdate ke hari yang sudah ditutup (keputusan owner 13 Agu 2026,
+// §2.2). SEKALI PAKAI: dikonsumsi trigger 0027 begitu satu INSERT lolos, dan
+// `consumedByEntryId` mencatat entri mana yang ia izinkan. Override yang MENETAP
+// membuka hari itu selamanya — itu kegagalan paling mahal di jalur ini.
+// ⚠️ DB tidak bisa menegakkan bahwa approver memenuhi canCloseException
+// (keanggotaan HoF ada di ENV); itu dijaga `keuangan-override.ts`.
+model BackdateOverride {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int       @map("unit_id") @db.SmallInt
+  businessDate      DateTime  @map("business_date") @db.Date
+  reasonCode        String    @map("reason_code")
+  /// Bayangan reason_code.applies_to, dikunci FK komposit + CHECK = 'adjustment'.
+  reasonAppliesTo   String    @map("reason_applies_to")
+  alasan            String
+  requestedByUserId Int       @map("requested_by_user_id")
+  approvedByUserId  Int?      @map("approved_by_user_id")
+  approvedAt        DateTime? @map("approved_at") @db.Timestamptz()
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz()
+  consumedByEntryId String?   @map("consumed_by_entry_id") @db.Uuid
+  void              Boolean   @default(false)
+  voidedByUserId    Int?      @map("voided_by_user_id")
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate, createdAt])
+  @@map("backdate_override")
+  @@schema("app")
+}
+
+// Penandaan SO MACET oleh Finance (B6, §10.6). SOValue = sisa − sisa_macet.
+// ⛔ MANUAL: tidak ada ambang di sini, dan tak ada baris yang lahir sendiri —
+// ambang hari hanya MENGUSULKAN kandidat. `cnoso` disimpan ter-normalisasi
+// (lower+trim) sebab tautan CNOSO di repo ini case-insensitive.
+model SoMacet {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId         Int       @map("unit_id") @db.SmallInt
+  cnoso          String
+  ckdbbm         String
+  alasan         String
+  markedByUserId Int       @map("marked_by_user_id")
+  markedAt       DateTime  @default(now()) @map("marked_at") @db.Timestamptz()
+  void           Boolean   @default(false)
+  voidedByUserId Int?      @map("voided_by_user_id")
+  voidedAt       DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId])
+  @@map("so_macet")
   @@schema("app")
 }
 
