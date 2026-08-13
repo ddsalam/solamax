@@ -201,18 +201,38 @@ Neraca secara prinsip selalu balance. Tidak ada toleransi di lapis GL. Titik.
 
 | selisih | siapa boleh menutup | syarat |
 |---|---|---|
-| **≤ Rp 10.000** per hari per outlet | penutup operasional | `reason_code` **wajib**; selisih **tetap tercatat** |
-| **Rp 10.001 – 100.000** | **Head of Finance** (exception close) | alasan **dan** bukti terdokumentasi |
-| **> Rp 100.000** | **Direksi** saja (override) | alasan + bukti + persetujuan Direksi |
+| selisih (NILAI MUTLAK) | predikat | tier |
+|---|---|---|
+| **≤ Rp 10.000** per hari per outlet | penutup operasional | `within_tolerance` |
+| **Rp 10.001 – 100.000** | `direksi ∨ super_admin ∨ isHeadOfFinance` | `exception_hof` |
+| **> Rp 100.000** | `direksi ∨ super_admin` — **TANPA HoF** | `override_direksi` |
+
+Wewenang tingkat ketiga = **keputusan owner 13 Agustus 2026**. Syaratnya tetap:
+tingkat 2 & 3 menuntut alasan, bukti terdokumentasi, dan persetujuan.
+
+⛔ **Kedua predikat WAJIB berdiri sendiri**
+([`keuangan-wewenang.ts`](src/lib/keuangan-wewenang.ts): `canCloseException` dan
+`canOverrideAboveMax`). Bedanya hanya **satu suku** — `isHeadOfFinance` — dan
+justru suku itulah yang membuat tangga ini punya arti. Menyatukannya "toh cuma
+beda HoF", atau menulis tingkat 3 sebagai turunan tingkat 2, membuat tangganya
+runtuh **tanpa satu pun tes merah**. Karena itu ada tes yang memerah bila HoF
+bisa menutup selisih > Rp 100.000.
+
+**Ambangnya pada NILAI MUTLAK**: toleransi soal besaran, bukan arah. Kurang
+setor Rp 50.000 sama seriusnya dengan lebih setor Rp 50.000.
+
+**`tier` adalah FUNGSI dari selisih, bukan pilihan.** Ditegakkan di DB (CHECK
+`day_close_tier_matches_difference`, migrasi 0026) — tanpa itu selisih Rp 5 juta
+bisa ditulis `within_tolerance` dan lolos tanpa persetujuan siapa pun.
 
 **Selisih di bawah toleransi TIDAK boleh dinolkan atau diabaikan.** Ia dicatat
 dengan `reason_code`-nya. Alasannya bukan kerapian: pola yang berulang hanya
 terlihat kalau selisih kecil disimpan. Gerbang yang "membereskan" selisih dengan
 membuangnya menghapus buktinya sendiri.
 
-**Bila RBAC tahap pertama hanya sanggup SATU peran untuk "close outside
-tolerance", peran itu DIREKSI.** Jangan Head of Finance sebagai penyederhanaan —
-menyederhanakan ke arah wewenang yang lebih longgar adalah pelonggaran diam-diam.
+~~Bila RBAC tahap pertama hanya sanggup SATU peran…~~ — **tidak berlaku lagi**:
+HoF ada sebagai **kapabilitas** (§10.4), jadi tangganya utuh sejak awal. Yang
+tetap berlaku: **jangan menyederhanakan ke arah wewenang yang lebih longgar.**
 
 ### 3.3 `reason_code` = daftar tertutup
 
@@ -290,6 +310,37 @@ terpicu, dan wajib terisi seluruhnya bila terpicu.
 Pasang apa adanya. Penjaga ini **akan menangkap kerusakan yang sedang berjalan**:
 harga beli Bakau beku sejak Januari 2026 (Solar bahkan sejak 2024-12-01) sementara
 harga jual terus bergerak sampai Juli 2026.
+
+### 4.1b ⛔ ATURAN RLS untuk SETIAP tabel baru yang punya `unit_id`
+
+Dua keputusan yang **wajib** diambil sadar, bukan diwarisi dengan menyalin:
+
+**(a) Pasang RLS-nya sendiri.** `0016_rls_unit_scope` self-adjusting **hanya atas
+tabel yang sudah ada saat ia dijalankan**; `prisma migrate deploy` tidak
+menjalankannya ulang. Tabel unit-scoped yang lahir sesudahnya berdiri **tanpa
+RLS** kalau bloknya lupa — dan **tidak ada yang berbunyi merah**.
+
+**(b) Putuskan cabang `NULL`-nya, JANGAN menyalin predikat.**
+Predikat 0016 adalah `unit_id = ANY (ARRAY(...))`. Untuk baris ber-`unit_id NULL`
+ekspresi itu menghasilkan **NULL, bukan true** ⇒ **barisnya tak terlihat oleh
+siapa pun, tanpa satu pun galat**.
+
+| tabel punya baris berlaku-global? | predikat |
+|---|---|
+| **tidak** (mis. `day_close`, `purchase_price`) | salin PERSIS 0016 — **dan nyatakan** bahwa ketiadaan cabang NULL itu keputusan |
+| **ya** (mis. `category_account_map`) | `unit_id IS NULL OR <predikat 0016>` |
+
+Kalau memilih cabang `NULL`, ikut wajib: **indeks unik memakai
+`COALESCE(unit_id, -1)`** — tanpa itu baris global bisa digandakan diam-diam,
+sebab NULL ≠ NULL di indeks unik biasa.
+
+⚠️ **Bahaya yang menyertai pilihan (b):** 0016 memakai
+`DROP POLICY IF EXISTS unit_scope`. Menjalankannya ulang secara manual akan
+mengganti policy bercabang-NULL dengan versi ketat, dan baris globalnya lenyap.
+Jalankan ulang migrasi tabel itu bila terjadi.
+
+Ini kelas kegagalan yang berulang di proyek ini: **bukan yang meledak, melainkan
+yang hijau dan salah.** Karena itu ia aturan, bukan catatan.
 
 ### 4.2 `reason_code`
 

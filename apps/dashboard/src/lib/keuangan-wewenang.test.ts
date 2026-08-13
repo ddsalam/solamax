@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { canCloseException, isHeadOfFinance, type WewenangCtx } from "./keuangan-wewenang";
+import {
+  canCloseException,
+  canOverrideAboveMax,
+  isHeadOfFinance,
+  type WewenangCtx,
+} from "./keuangan-wewenang";
 
 const HOF = ["ddsalam@solagroup.co"];
 const ctx = (over: Partial<WewenangCtx> = {}): WewenangCtx => ({
@@ -105,11 +110,40 @@ describe("ROLE_RANK tidak boleh disentuh", () => {
     expect(src).toMatch(/ROLE_RANK/);
   });
 
-  it("tingkat ketiga tangga §3.2 belum dibuat, dan itu DISEBUT di kodenya", () => {
-    // Bahaya nyata: memakai canCloseException untuk menjaga ambang > Rp 100.000
-    // akan meloloskan HoF pada tingkat yang §3.2 batasi ke Direksi.
+  it("peringatan 'jangan pakai canCloseException utk tingkat 3' tetap ada", () => {
     const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
-    expect(src).toMatch(/belum dibuat/);
-    expect(src).toMatch(/JANGAN memakai\s*\n?\s*\*?\s*`?canCloseException`?/);
+    expect(src).toMatch(/JANGAN memakai `?canCloseException`?/);
+  });
+});
+
+describe("canOverrideAboveMax — tingkat ketiga, BERDIRI SENDIRI", () => {
+  it("direksi & super_admin boleh (keputusan owner 13 Agu 2026)", () => {
+    expect(canOverrideAboveMax({ role: "direksi", email: null })).toBe(true);
+    expect(canOverrideAboveMax({ role: "super_admin", email: null })).toBe(true);
+  });
+
+  it("🔴 HoF TIDAK boleh — satu-satunya suku yang membedakan dua tingkat", () => {
+    expect(canOverrideAboveMax({ role: "admin_perusahaan", email: "ddsalam@solagroup.co" })).toBe(
+      false,
+    );
+    // …sementara pada tingkat kedua ia BOLEH. Pasangan pernyataan inilah yang
+    // menjaga tangganya: menyatukan dua predikat memerahkan salah satunya.
+    expect(canCloseException({ role: "admin_perusahaan", email: "ddsalam@solagroup.co" }, HOF)).toBe(
+      true,
+    );
+  });
+
+  it("pengawas & admin_perusahaan biasa tidak boleh", () => {
+    expect(canOverrideAboveMax({ role: "pengawas", email: "x@y.co" })).toBe(false);
+    expect(canOverrideAboveMax({ role: "admin_perusahaan", email: "x@y.co" })).toBe(false);
+  });
+
+  it("TIDAK bersandar pada canCloseException — dua predikat, bukan turunan", () => {
+    // Kalau tingkat ketiga ditulis sebagai `canCloseException(...) && ...`,
+    // perubahan pada tingkat kedua akan merembes ke tingkat ketiga diam-diam.
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    const badan = src.slice(src.indexOf("export function canOverrideAboveMax"));
+    expect(badan).not.toMatch(/canCloseException\s*\(/);
+    expect(badan).not.toMatch(/isHeadOfFinance\s*\(/);
   });
 });
