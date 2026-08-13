@@ -38,12 +38,36 @@ const pernyataan = (sql: string) =>
     .filter((l) => !l.trim().startsWith("--"))
     .join("\n");
 
+/**
+ * Ambil SATU pernyataan utuh yang dimulai dengan `prefix` (komentar dibuang,
+ * berhenti di `;` pertama di luar dollar-quote).
+ *
+ * Ditambahkan setelah uji mutasi menemukan cacat KEEMPAT dari kelas yang sama:
+ * mengomentari BARIS `CREATE TRIGGER` saja tetap lolos, sebab asersi lainnya
+ * (`BEFORE UPDATE OR DELETE`, `EXECUTE FUNCTION`) ada di baris-baris BERIKUTNYA
+ * yang tidak ikut dikomentari — jadi semuanya tetap "ditemukan", hanya saja
+ * tidak lagi menjadi satu pernyataan.
+ *
+ * Memeriksa fragmen yang tersebar tidak membuktikan pernyataannya utuh. Yang
+ * membuktikan adalah menuntut semuanya berada di dalam SATU pernyataan.
+ */
+const pernyataanYangDimulai = (sql: string, prefix: string): string => {
+  // Buang isi dollar-quote lebih dulu supaya `;` di dalam body fungsi tidak
+  // dianggap akhir pernyataan.
+  const tanpaBody = pernyataan(sql).replace(/\$([a-z]*)\$[\s\S]*?\$\1\$/g, "$$BODY$$");
+  const mulai = tanpaBody.indexOf(prefix);
+  if (mulai < 0) return "";
+  const akhir = tanpaBody.indexOf(";", mulai);
+  return tanpaBody.slice(mulai, akhir < 0 ? undefined : akhir + 1);
+};
+
 const sql0020 = MIG("0020_purchase_price");
 const sql0021 = MIG("0021_correction_reclass");
 const sql0022 = MIG("0022_reason_code");
 const sql0023 = MIG("0023_category_account_map");
 const sql0024 = MIG("0024_manual_entry_workflow");
 const sql0025 = MIG("0025_source_kind_closed");
+const sql0026 = MIG("0026_day_close");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -293,9 +317,11 @@ describe("0024: manual_entry aditif — tabel produksi 7 unit", () => {
     // CHECK hanya melihat baris akhir; aturannya tentang PERPINDAHAN.
     // Diperiksa atas PERNYATAAN, bukan teks mentah: trigger yang dikomentari
     // harus berbunyi merah (ditemukan lewat uji mutasi).
+    const trig = pernyataanYangDimulai(sql0024, "CREATE TRIGGER");
+    expect(trig).not.toBe("");
+    expect(trig).toContain('BEFORE UPDATE ON "app"."manual_entry"');
+    expect(trig).toContain("EXECUTE FUNCTION");
     const stmt = pernyataan(sql0024);
-    expect(stmt).toContain("CREATE TRIGGER");
-    expect(stmt).toContain("EXECUTE FUNCTION");
     expect(stmt).toMatch(/NEW\."void" AND NOT OLD\."void" AND OLD\."status" = 'closed'/);
     expect(stmt).toMatch(/RAISE EXCEPTION/);
   });
@@ -314,5 +340,93 @@ describe("0025: source_kind daftar tertutup", () => {
 
   it("kewajiban memperluas penjaga yatim DI PR YANG SAMA disebut", () => {
     expect(sql0025).toMatch(/PR YANG\s*\n?--\s*SAMA|PR YANG SAMA/);
+  });
+});
+
+describe("0026: day_close — gerbang penutupan hari", () => {
+  const stmt = pernyataan(sql0026);
+
+  it("PK (unit_id, business_date) — satu penutupan per unit per tanggal", () => {
+    expect(stmt).toMatch(/PRIMARY KEY \("unit_id", "business_date"\)/);
+  });
+
+  it("TIER adalah fungsi dari selisih — ketiga ambang ditegakkan DB", () => {
+    // Tanpa CHECK ini, selisih Rp 5 juta bisa ditulis within_tolerance dan lolos
+    // tanpa persetujuan siapa pun: tangga §3.2 runtuh dari dalam, tanpa galat.
+    expect(stmt).toMatch(/abs\("difference_rp"\) <= 10000\s+AND "tier" = 'within_tolerance'/);
+    expect(stmt).toMatch(/abs\("difference_rp"\) <= 100000\s+AND "tier" = 'exception_hof'/);
+    expect(stmt).toMatch(/abs\("difference_rp"\) >  100000\s+AND "tier" = 'override_direksi'/);
+  });
+
+  it("ambangnya pada NILAI MUTLAK, bukan nilai bertanda", () => {
+    const tierCheck = stmt.slice(stmt.indexOf("day_close_tier_matches_difference"));
+    const potong = tierCheck.slice(0, tierCheck.indexOf("),"));
+    expect(potong).not.toMatch(/"difference_rp" (<=|>)\s*-?\d/);
+    expect((potong.match(/abs\("difference_rp"\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("reason_code WAJIB bila selisih bukan nol", () => {
+    expect(stmt).toMatch(/"difference_rp" = 0 OR "reason_code" IS NOT NULL/);
+  });
+
+  it("tanggal target dibaca dari DATA — 'CLS-INVESTIGATING' TIDAK di-hardcode", () => {
+    // Aturannya milik masternya (requires_target_date), bukan nama kodenya.
+    // Kode kedua yang menuntut target cukup diberi flag, tanpa menyentuh migrasi.
+    expect(stmt).toMatch(
+      /NOT COALESCE\("reason_requires_target", false\) OR "target_date" IS NOT NULL/,
+    );
+    expect(stmt).not.toMatch(/CLS-INVESTIGATING/);
+  });
+
+  it("bayangan requires_target dikunci FK KOMPOSIT ke masternya", () => {
+    // Inilah yang membuat CHECK di atas tak bisa dibohongi: aplikasi tidak bisa
+    // menulis reason_requires_target=false untuk kode yang sebenarnya menuntut.
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("reason_code", "reason_requires_target"\)\s*\n?\s*REFERENCES "app"\."reason_code"\("code", "requires_target_date"\)/,
+    );
+    expect(stmt).toMatch(/UNIQUE \("code", "requires_target_date"\)/);
+  });
+
+  it("celah FK MATCH SIMPLE ditutup: kode & bayangannya ada/tiada bersama", () => {
+    expect(stmt).toMatch(
+      /\("reason_code" IS NULL\) = \("reason_requires_target" IS NULL\)/,
+    );
+  });
+
+  it("persetujuan wajib utk tier di luar toleransi, terlarang utk di dalamnya", () => {
+    expect(stmt).toMatch(/"tier" = 'within_tolerance'\s*\n?\s*OR "status" = 'open'/);
+    expect(stmt).toMatch(/"tier" <> 'within_tolerance'\s*\n?\s*OR \("approved_by_user_id" IS NULL/);
+  });
+
+  it("RLS: predikat IDENTIK 0016, TANPA cabang IS NULL — dan itu keputusan", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+    // Ketiadaan cabang NULL harus terbaca sebagai KEPUTUSAN, bukan kebetulan.
+    expect(sql0026).toMatch(/CABANG NULL DIPUTUSKAN SECARA SADAR/);
+  });
+
+  it("immutabilitas manual_entry setelah tutup: trigger UPDATE **dan** DELETE", () => {
+    const trig = pernyataanYangDimulai(sql0026, "CREATE TRIGGER");
+    expect(trig).not.toBe("");
+    expect(trig).toMatch(/BEFORE UPDATE OR DELETE ON "app"\."manual_entry"/);
+    expect(trig).toContain("EXECUTE FUNCTION");
+    expect(stmt).toMatch(/RAISE EXCEPTION/);
+    // Bertanya pada FAKTA penutupan (day_close), bukan pada penanda yang
+    // mewakilinya (manual_entry.status) — penanda harus diingat seseorang.
+    expect(stmt).toMatch(/FROM "app"\."day_close" d/);
+    expect(stmt).toMatch(/d\."status" = 'closed'/);
+  });
+
+  it("batas trigger DISEBUT: INSERT belum ditahan", () => {
+    expect(sql0026).toMatch(/TIDAK menahan INSERT/);
+  });
+
+  it("urutan wajib saat menutup hari ditulis di migrasinya", () => {
+    expect(sql0026).toMatch(/URUTAN YANG WAJIB DIIKUTI/);
+  });
+
+  it("DELETE dicabut dari dashboard_app", () => {
+    expect(stmt).toContain('REVOKE DELETE ON "app"."day_close" FROM dashboard_app');
   });
 });

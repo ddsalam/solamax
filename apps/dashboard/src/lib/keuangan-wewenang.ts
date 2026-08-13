@@ -72,16 +72,12 @@ export interface WewenangCtx {
  *   · Rp 10.001–100.000 → **Head of Finance**;
  *   · > Rp 100.000 → **hanya Direksi**.
  *
- * Predikat di bawah menjawab tingkat KEDUA. Tingkat ketiga (> Rp 100.000)
- * membutuhkan predikatnya sendiri dan **belum dibuat**: §3.2 menyebut "Direksi",
- * sementara definisi yang owner berikan untuk kapabilitas ini menyertakan
- * `super_admin` — apakah `super_admin` juga boleh meng-override di atas
- * Rp 100.000 TIDAK tertulis, jadi tidak ditebak di sini.
+ * Predikat di bawah menjawab tingkat KEDUA. Tingkat ketiga punya predikatnya
+ * sendiri: {@link canOverrideAboveMax}.
  *
- * ⛔ Konsekuensi yang harus dipegang pembangun `day_close`: JANGAN memakai
- * `canCloseException` untuk menjaga tingkat ketiga. Ia akan meloloskan HoF pada
- * ambang yang §3.2 batasi ke Direksi — pelonggaran senyap, persis kelas
- * kesalahan yang tangga ini dibuat untuk mencegah.
+ * ⛔ JANGAN memakai `canCloseException` untuk menjaga tingkat ketiga. Ia akan
+ * meloloskan HoF pada ambang yang §3.2 batasi ke Direksi — pelonggaran senyap,
+ * persis kelas kesalahan yang tangga ini dibuat untuk mencegah.
  */
 export function canCloseException(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return (
@@ -89,4 +85,24 @@ export function canCloseException(ctx: WewenangCtx, daftar?: readonly string[]):
     ctx.role === "super_admin" ||
     isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
   );
+}
+
+/**
+ * Boleh meng-override penutupan hari yang selisihnya **> Rp 100.000** (tingkat
+ * ketiga §3.2). Keputusan owner 13 Agustus 2026: **`direksi` DAN `super_admin`**,
+ * **TANPA** Head of Finance.
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI, sengaja — bukan `canCloseException(...) && …`.
+ *
+ * Beda kedua predikat hanya **satu suku** (`isHeadOfFinance`), dan justru suku
+ * itulah yang membuat tangga §3.2 punya arti. Kalau keduanya disatukan "toh cuma
+ * beda HoF", tangganya runtuh **tanpa satu pun tes merah** — kecuali predikatnya
+ * memang dua, dan ada tes yang memerah saat HoF bisa menutup di atas Rp 100.000.
+ *
+ * Menyusunnya sebagai turunan (`canCloseException` lalu disaring) akan membuat
+ * perubahan pada tingkat kedua merembes ke tingkat ketiga tanpa disadari. Dua
+ * ambang berbeda = dua predikat berbeda.
+ */
+export function canOverrideAboveMax(ctx: WewenangCtx): boolean {
+  return ctx.role === "direksi" || ctx.role === "super_admin";
 }

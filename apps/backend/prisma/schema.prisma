@@ -715,6 +715,9 @@ model ReasonCode {
   requiresTargetDate Boolean @default(false) @map("requires_target_date")
   active             Boolean @default(true)
 
+  /// Target FK KOMPOSIT dari app.day_close (0026): mengunci bayangan
+  /// requires_target_date supaya tak bisa menyimpang dari masternya.
+  @@unique([code, requiresTargetDate])
   @@map("reason_code")
   @@schema("app")
 }
@@ -735,6 +738,56 @@ model CategoryAccountMap {
 
   @@index([operationalCategory, effectiveFrom])
   @@map("category_account_map")
+  @@schema("app")
+}
+
+/// Status penutupan hari (§4.6). `closed` mengunci manual_entry hari itu.
+enum DayCloseStatus {
+  open
+  closed
+
+  @@map("day_close_status")
+  @@schema("app")
+}
+
+/// Tangga toleransi §3.2. TIER ADALAH FUNGSI dari difference_rp — ditegakkan
+/// CHECK di 0026, bukan dipilih bebas.
+enum DayCloseTier {
+  within_tolerance
+  exception_hof
+  override_direksi
+
+  @@map("day_close_tier")
+  @@schema("app")
+}
+
+// GERBANG PENUTUPAN HARI (§3.2 + §4.6). difference_rp = LANGKAH HARIAN
+// BSCheck(d) − BSCheck(d−1), disimpan APA ADANYA (tidak dibulatkan, tidak
+// dinolkan, termasuk yang ≤ Rp 10.000). `reasonRequiresTarget` adalah bayangan
+// reason_code.requires_target_date yang dikunci FK KOMPOSIT — itulah yang
+// membuat CHECK tanggal-target membaca DATA, bukan menghardcode nama kode.
+model DayClose {
+  unitId       Int            @map("unit_id") @db.SmallInt
+  businessDate DateTime       @map("business_date") @db.Date
+  status       DayCloseStatus @default(open)
+  differenceRp Decimal        @map("difference_rp") @db.Decimal(17, 2)
+  tier         DayCloseTier
+
+  reasonCode           String?   @map("reason_code")
+  reasonRequiresTarget Boolean?  @map("reason_requires_target")
+  targetDate           DateTime? @map("target_date") @db.Date
+
+  closedByUserId   Int?      @map("closed_by_user_id")
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz()
+  approvedByUserId Int?      @map("approved_by_user_id")
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@id([unitId, businessDate])
+  @@index([unitId, status, businessDate])
+  @@map("day_close")
   @@schema("app")
 }
 
