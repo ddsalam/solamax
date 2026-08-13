@@ -91,6 +91,7 @@ const sql0026 = MIG("0026_day_close");
 const sql0027 = MIG("0027_backdate_override");
 const sql0028 = MIG("0028_so_macet");
 const sql0029 = MIG("0029_cash_ledger");
+const sql0030 = MIG("0030_edc_settlement");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -681,5 +682,66 @@ describe("0029: buku kas & bank", () => {
 
   it("master kategori sengaja TANPA unit_id ⇒ tanpa RLS, dan itu dinyatakan", () => {
     expect(sql0029).toMatch(/TIDAK ber-`unit_id` ⇒ TIDAK ber-RLS, juga disengaja/);
+  });
+});
+
+describe("0030: settlement EDC", () => {
+  const stmt = pernyataan(sql0030);
+
+  it("🔴 MDR adalah kolom GENERATED — tidak pernah diketik", () => {
+    // Angka yang sudah diketahui sistem tak boleh punya kesempatan salah ketik.
+    expect(stmt).toMatch(
+      /"mdr_rp"\s+DECIMAL\(17,2\) GENERATED ALWAYS AS \("gross_rp" - "net_rp"\) STORED/,
+    );
+  });
+
+  it("selisih transaksi vs batch juga GENERATED, dan bisa ber-reason_code", () => {
+    expect(stmt).toMatch(/"selisih_rp"\s+DECIMAL\(17,2\) GENERATED ALWAYS AS/);
+    expect(stmt).toMatch(/"reason_applies_to" IS NULL OR "reason_applies_to" = 'closing'/);
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("reason_code", "reason_applies_to"\)\s*\n?\s*REFERENCES "app"\."reason_code"\("code", "applies_to"\)/,
+    );
+  });
+
+  it("neto tak boleh melebihi bruto (MDR ≥ 0) dan bruto nol bukan batch", () => {
+    expect(stmt).toMatch(/CHECK \("gross_rp" > 0\)/);
+    expect(stmt).toMatch(/"net_rp" > 0 AND "net_rp" <= "gross_rp"/);
+  });
+
+  it("H+1: uang tak mungkin masuk sebelum hari penjualannya", () => {
+    expect(stmt).toMatch(/CHECK \("settlement_date" >= "business_date"\)/);
+  });
+
+  it("akun tujuan terkunci ke unit yang SAMA (FK komposit)", () => {
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("to_account_id", "unit_id"\)\s*\n?\s*REFERENCES "app"\."cash_account"\("id", "unit_id"\)/,
+    );
+  });
+
+  it("satu batch per (unit, acquirer, nomor settlement)", () => {
+    expect(stmt).toMatch(/CREATE UNIQUE INDEX[^;]*edc_settlement_no_uq[^;]*WHERE NOT "void"/s);
+  });
+
+  it("persetujuan posting = PASANGAN (siapa, kapan) — bukan penanda otomatis", () => {
+    expect(stmt).toMatch(/\("posted_by_user_id" IS NULL\) = \("posted_at" IS NULL\)/);
+  });
+
+  it("baris buku kas bisa ditelusuri balik ke settlement-nya", () => {
+    expect(stmt).toMatch(/ADD COLUMN IF NOT EXISTS "edc_settlement_id" UUID/);
+    expect(stmt).toMatch(/cash_ledger_settlement_fk/);
+  });
+
+  it("RLS: ENABLE + FORCE + POLICY dieksekusi; predikat IDENTIK 0016 tanpa cabang NULL", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    expect(stmt).toMatch(/EXECUTE 'ALTER TABLE "app"\."edc_settlement" ENABLE ROW LEVEL SECURITY'/);
+    expect(stmt).toMatch(/EXECUTE 'ALTER TABLE "app"\."edc_settlement" FORCE ROW LEVEL SECURITY'/);
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+    expect(sql0030).toMatch(/DIPUTUSKAN SADAR/);
+  });
+
+  it("batas kaki ketiga (Beban MDR bukan akun kas) DISEBUT, bukan didiamkan", () => {
+    expect(sql0030).toMatch(/Beban MDR bukan akun kas/);
+    expect(sql0030).toMatch(/milik PENGAWAS|milik\s*\n?--\s*PENGAWAS/);
   });
 });
