@@ -61,6 +61,26 @@ const pernyataanYangDimulai = (sql: string, prefix: string): string => {
   return tanpaBody.slice(mulai, akhir < 0 ? undefined : akhir + 1);
 };
 
+/**
+ * Ambil blok `CREATE OR REPLACE FUNCTION … $tag$ … $tag$;` LENGKAP dengan
+ * badannya (komentar dibuang lebih dulu).
+ *
+ * Berbeda dari {@link pernyataanYangDimulai}, yang sengaja MEMBUANG isi
+ * dollar-quote supaya `;` di dalam badan tidak dikira akhir pernyataan. Untuk
+ * memeriksa isi badan fungsi kita justru membutuhkannya — tetapi tetap harus
+ * berangkat dari baris `CREATE`-nya, supaya mengomentari baris itu membuat
+ * seluruh pemeriksaan MERAH, bukan lolos lewat badan yang masih tertinggal.
+ */
+const blokFungsi = (sql: string): string => {
+  const teks = pernyataan(sql);
+  const mulai = teks.indexOf("CREATE OR REPLACE FUNCTION");
+  if (mulai < 0) return "";
+  const tag = teks.slice(mulai).match(/AS (\$[a-z]*\$)/)?.[1];
+  if (!tag) return "";
+  const akhir = teks.indexOf(`${tag};`, teks.indexOf(tag, mulai) + tag.length);
+  return akhir < 0 ? teks.slice(mulai) : teks.slice(mulai, akhir + tag.length + 1);
+};
+
 const sql0020 = MIG("0020_purchase_price");
 const sql0021 = MIG("0021_correction_reclass");
 const sql0022 = MIG("0022_reason_code");
@@ -68,6 +88,8 @@ const sql0023 = MIG("0023_category_account_map");
 const sql0024 = MIG("0024_manual_entry_workflow");
 const sql0025 = MIG("0025_source_kind_closed");
 const sql0026 = MIG("0026_day_close");
+const sql0027 = MIG("0027_backdate_override");
+const sql0028 = MIG("0028_so_macet");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -428,5 +450,127 @@ describe("0026: day_close — gerbang penutupan hari", () => {
 
   it("DELETE dicabut dari dashboard_app", () => {
     expect(stmt).toContain('REVOKE DELETE ON "app"."day_close" FROM dashboard_app');
+  });
+});
+
+describe("0027: jalur tembus backdate — bentuknya mengikat", () => {
+  const stmt = pernyataan(sql0027);
+
+  it("⛔ BUKAN flag GUC — override adalah DATA yang dikonsultasi trigger", () => {
+    // GUC fail-OPEN: aplikasi yang salah menyetelnya membuka pintu TANPA JEJAK.
+    // Trigger ini hanya boleh membaca tabel, tidak current_setting().
+    const gate = blokFungsi(sql0027);
+    expect(gate).not.toMatch(/current_setting/);
+    expect(gate).toMatch(/FROM "app"\."backdate_override" o/);
+  });
+
+  it("gerbang BEFORE INSERT terpasang sebagai SATU pernyataan utuh", () => {
+    const trig = pernyataanYangDimulai(sql0027, "CREATE TRIGGER");
+    expect(trig).not.toBe("");
+    expect(trig).toMatch(/BEFORE INSERT ON "app"\."manual_entry"/);
+    expect(trig).toContain("EXECUTE FUNCTION");
+  });
+
+  it("menahan HANYA bila harinya tertutup — hari biasa lewat tanpa syarat", () => {
+    const gate = blokFungsi(sql0027);
+    expect(gate).toMatch(/d\."status" = 'closed'/);
+    expect(gate).toMatch(/RETURN NEW; -- hari belum ditutup/);
+  });
+
+  it("hanya menerima override yang DISETUJUI dan BELUM terpakai", () => {
+    const gate = blokFungsi(sql0027);
+    expect(gate).toMatch(/o\."approved_at" IS NOT NULL/);
+    expect(gate).toMatch(/o\."consumed_at" IS NULL/);
+    expect(gate).toMatch(/NOT o\."void"/);
+    expect(gate).toMatch(/RAISE EXCEPTION/);
+  });
+
+  it("🔴 SEKALI PAKAI: override DIKONSUMSI dan tertaut ke entri yang diizinkan", () => {
+    // Syarat terpenting. Override yang menetap membuka hari itu SELAMANYA.
+    const gate = blokFungsi(sql0027);
+    expect(gate).toMatch(/UPDATE "app"\."backdate_override"/);
+    expect(gate).toMatch(/"consumed_at" = CURRENT_TIMESTAMP/);
+    expect(gate).toMatch(/"consumed_by_entry_id" = NEW\."id"/);
+  });
+
+  it("balapan dua INSERT dikunci FOR UPDATE", () => {
+    // Tanpa kunci baris, dua INSERT bersamaan bisa memakai SATU izin.
+    const gate = blokFungsi(sql0027);
+    expect(gate).toMatch(/FOR UPDATE/);
+  });
+
+  it("paling banyak SATU override aktif per (unit, tanggal)", () => {
+    expect(stmt).toMatch(
+      /CREATE UNIQUE INDEX[^;]*backdate_override_aktif_uq[^;]*WHERE "consumed_at" IS NULL AND NOT "void"/s,
+    );
+  });
+
+  it("reason code WAJIB dari grup adjustment — dikunci FK komposit + CHECK", () => {
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("reason_code", "reason_applies_to"\)\s*\n?\s*REFERENCES "app"\."reason_code"\("code", "applies_to"\)/,
+    );
+    expect(stmt).toMatch(/"reason_applies_to" = 'adjustment'/);
+    expect(stmt).toMatch(/UNIQUE \("code", "applies_to"\)/);
+  });
+
+  it("pemisahan tugas pengaju ≠ approver, di DB", () => {
+    expect(stmt).toMatch(/"approved_by_user_id" <> "requested_by_user_id"/);
+  });
+
+  it("persetujuan & konsumsi masing-masing PASANGAN utuh", () => {
+    expect(stmt).toMatch(/\("approved_by_user_id" IS NULL\) = \("approved_at" IS NULL\)/);
+    expect(stmt).toMatch(/\("consumed_at" IS NULL\) = \("consumed_by_entry_id" IS NULL\)/);
+  });
+
+  it("alasan tertulis wajib berisi", () => {
+    expect(stmt).toMatch(/btrim\("alasan"\) <> ''/);
+  });
+
+  it("RLS predikat IDENTIK 0016, tanpa cabang NULL, dan itu dinyatakan", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+    expect(sql0027).toMatch(/DIPUTUSKAN SADAR/);
+  });
+
+  it("batas yang TIDAK dijaga DB disebut apa adanya", () => {
+    expect(sql0027).toMatch(/TIDAK bisa menegakkan bahwa approver memenuhi `canCloseException`/);
+  });
+});
+
+describe("0028: penandaan SO macet — manual, tanpa ambang", () => {
+  const stmt = pernyataan(sql0028);
+
+  it("⛔ TIDAK ada ambang hari di skemanya — macet adalah PENANDAAN", () => {
+    // Ambang yang memutuskan akan menghapus SO yang masih ditagih, lalu
+    // menghidupkannya lagi begitu angkanya digeser — tanpa pemilik, tanpa tanggal.
+    expect(stmt).not.toMatch(/stale_days|threshold|ambang|umur_hari/i);
+  });
+
+  it("TIDAK di-seed — menandai SO unit sungguhan itu keputusan Finance", () => {
+    expect(stmt).not.toMatch(/INSERT INTO "app"\."so_macet"/);
+  });
+
+  it("alasan wajib + jejak siapa/kapan", () => {
+    expect(stmt).toMatch(/btrim\("alasan"\) <> ''/);
+    expect(stmt).toContain('"marked_by_user_id"');
+    expect(stmt).toContain('"marked_at"');
+  });
+
+  it("cnoso wajib ter-normalisasi — tautan CNOSO case-insensitive", () => {
+    // Penandaan yang salah huruf tak akan pernah cocok dengan SO-nya, dan
+    // diamnya itu terlihat persis seperti "tidak ada SO macet".
+    expect(stmt).toMatch(/"cnoso" = lower\(btrim\("cnoso"\)\)/);
+  });
+
+  it("VOID-only: satu penandaan aktif per (unit, SO, produk), tanpa DELETE", () => {
+    expect(stmt).toMatch(/CREATE UNIQUE INDEX[^;]*so_macet_aktif_uq[^;]*WHERE NOT "void"/s);
+    expect(stmt).toContain('REVOKE DELETE ON "app"."so_macet" FROM dashboard_app');
+  });
+
+  it("RLS predikat IDENTIK 0016, tanpa cabang NULL", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
   });
 });

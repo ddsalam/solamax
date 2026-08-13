@@ -20,6 +20,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -37,6 +38,7 @@
             "cogs": -21089762.22,
             "teraValue": 0,
             "inventoryValue": 175601979.73,
+            "soValue": 0,
             "lossesGainValue": -246578.05
           }
         },
@@ -54,6 +56,7 @@
             "cogs": -118393986.02,
             "teraValue": 0,
             "inventoryValue": 118070553.63,
+            "soValue": 420297928,
             "lossesGainValue": -50238.74
           }
         },
@@ -71,6 +74,7 @@
             "cogs": -1199599.37,
             "teraValue": 0,
             "inventoryValue": 203091288.91,
+            "soValue": 0,
             "lossesGainValue": -86968.82
           }
         },
@@ -88,6 +92,7 @@
             "cogs": -16932219.06,
             "teraValue": 0,
             "inventoryValue": 38609331.39,
+            "soValue": 51215859,
             "lossesGainValue": 0
           }
         },
@@ -105,6 +110,7 @@
             "cogs": -141980826.62,
             "teraValue": 0,
             "inventoryValue": 174664607.46,
+            "soValue": 619491312,
             "lossesGainValue": -922364.49
           }
         },
@@ -122,6 +128,7 @@
             "cogs": -3278836.83,
             "teraValue": 0,
             "inventoryValue": 17723998.2,
+            "soValue": 27241914.5,
             "lossesGainValue": 0
           }
         }
@@ -153,6 +160,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -170,6 +178,7 @@
             "cogs": -13255661.25,
             "teraValue": 0,
             "inventoryValue": 156685180.11,
+            "soValue": 0,
             "lossesGainValue": -288007.28
           }
         },
@@ -187,6 +196,7 @@
             "cogs": -67358916.09,
             "teraValue": 0,
             "inventoryValue": 86527588.17,
+            "soValue": 367760687,
             "lossesGainValue": 1200541.63
           }
         },
@@ -204,6 +214,7 @@
             "cogs": -4797827.18,
             "teraValue": 0,
             "inventoryValue": 121720413.65,
+            "soValue": 0,
             "lossesGainValue": 1140.57
           }
         },
@@ -221,6 +232,7 @@
             "cogs": -4861735.5,
             "teraValue": 0,
             "inventoryValue": 62138069.4,
+            "soValue": 112853656,
             "lossesGainValue": 0
           }
         },
@@ -238,6 +250,7 @@
             "cogs": -209745238.92,
             "teraValue": 0,
             "inventoryValue": 101941070.41,
+            "soValue": 542054898,
             "lossesGainValue": 1587252.9
           }
         },
@@ -255,6 +268,7 @@
             "cogs": -677090.36,
             "teraValue": 0,
             "inventoryValue": 103313554.38,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -286,6 +300,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -303,6 +318,7 @@
             "cogs": -18488094.67,
             "teraValue": 0,
             "inventoryValue": 116659550.82,
+            "soValue": 97848434,
             "lossesGainValue": 90754.42
           }
         },
@@ -320,6 +336,7 @@
             "cogs": -11262868.05,
             "teraValue": 0,
             "inventoryValue": 124551941.71,
+            "soValue": 420297928,
             "lossesGainValue": 324548.81
           }
         },
@@ -337,6 +354,7 @@
             "cogs": -4043764.78,
             "teraValue": 0,
             "inventoryValue": 115363278.38,
+            "soValue": 0,
             "lossesGainValue": 22668.92
           }
         },
@@ -354,6 +372,7 @@
             "cogs": -3061437.55,
             "teraValue": 0,
             "inventoryValue": 111290632.86,
+            "soValue": 56426828,
             "lossesGainValue": 0
           }
         },
@@ -371,6 +390,7 @@
             "cogs": -158224856.77,
             "teraValue": 0,
             "inventoryValue": 206103210.77,
+            "soValue": 619491312,
             "lossesGainValue": 1949752.11
           }
         },
@@ -388,6 +408,7 @@
             "cogs": -838062.81,
             "teraValue": 0,
             "inventoryValue": 101329137.78,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -419,6 +440,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -436,6 +458,7 @@
             "cogs": -6137600.14,
             "teraValue": 0,
             "inventoryValue": 166867512.64,
+            "soValue": 0,
             "lossesGainValue": 147874.98
           }
         },
@@ -453,6 +476,7 @@
             "cogs": -102159518.85,
             "teraValue": -47124,
             "inventoryValue": 138005284.36,
+            "soValue": 315223446,
             "lossesGainValue": 1433084.59
           }
         },
@@ -470,6 +494,7 @@
             "cogs": -1559509.16,
             "teraValue": 0,
             "inventoryValue": 167993799.26,
+            "soValue": 0,
             "lossesGainValue": -407011.5
           }
         },
@@ -487,6 +512,7 @@
             "cogs": -12202345.5,
             "teraValue": 0,
             "inventoryValue": 54358916.72,
+            "soValue": 104836776,
             "lossesGainValue": 0
           }
         },
@@ -504,6 +530,7 @@
             "cogs": -125470124.81,
             "teraValue": 0,
             "inventoryValue": 221841581.15,
+            "soValue": 309745656,
             "lossesGainValue": 785979.6
           }
         },
@@ -521,6 +548,7 @@
             "cogs": -834102.09,
             "teraValue": 0,
             "inventoryValue": 62994779.1,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -552,6 +580,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -569,6 +598,7 @@
             "cogs": -7488286.56,
             "teraValue": 0,
             "inventoryValue": 288558232.59,
+            "soValue": 0,
             "lossesGainValue": -18455.13
           }
         },
@@ -586,6 +616,7 @@
             "cogs": -139115461.93,
             "teraValue": 0,
             "inventoryValue": 124312897.27,
+            "soValue": 315223446,
             "lossesGainValue": 1799991.55
           }
         },
@@ -603,6 +634,7 @@
             "cogs": -1732051.74,
             "teraValue": -13350,
             "inventoryValue": 214932706.17,
+            "soValue": 0,
             "lossesGainValue": 119035.68
           }
         },
@@ -620,6 +652,7 @@
             "cogs": -21400636.23,
             "teraValue": 0,
             "inventoryValue": 70460870.09,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         },
@@ -637,6 +670,7 @@
             "cogs": -122787727.43,
             "teraValue": 0,
             "inventoryValue": 159668658.71,
+            "soValue": 387182070,
             "lossesGainValue": 1438671.78
           }
         },
@@ -654,6 +688,7 @@
             "cogs": -62142.7,
             "teraValue": 0,
             "inventoryValue": 83046553.06,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -685,6 +720,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -702,6 +738,7 @@
             "cogs": -9730115.18,
             "teraValue": 0,
             "inventoryValue": 146869629.28,
+            "soValue": 0,
             "lossesGainValue": -59762.02
           }
         },
@@ -719,6 +756,7 @@
             "cogs": -46307243.62,
             "teraValue": 0,
             "inventoryValue": 116328484.39,
+            "soValue": 472835169,
             "lossesGainValue": -175934.09
           }
         },
@@ -736,6 +774,7 @@
             "cogs": -1748312.75,
             "teraValue": 0,
             "inventoryValue": 109591718.02,
+            "soValue": 0,
             "lossesGainValue": -508.16
           }
         },
@@ -753,6 +792,7 @@
             "cogs": -20448478.24,
             "teraValue": 0,
             "inventoryValue": 46708474.57,
+            "soValue": 108845214,
             "lossesGainValue": 332113.96
           }
         },
@@ -770,6 +810,7 @@
             "cogs": -145629920.83,
             "teraValue": 0,
             "inventoryValue": 226169115.14,
+            "soValue": 464618484,
             "lossesGainValue": 700509.16
           }
         },
@@ -787,6 +828,7 @@
             "cogs": -3042433.02,
             "teraValue": 0,
             "inventoryValue": 31534881.41,
+            "soValue": 55485944,
             "lossesGainValue": 20391.08
           }
         }
@@ -818,6 +860,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -835,6 +878,7 @@
             "cogs": -6760969.72,
             "teraValue": 0,
             "inventoryValue": 168150816.92,
+            "soValue": 0,
             "lossesGainValue": -286688.02
           }
         },
@@ -852,6 +896,7 @@
             "cogs": -153987375.76,
             "teraValue": 0,
             "inventoryValue": 67493871.13,
+            "soValue": 210148964,
             "lossesGainValue": 1565347.1
           }
         },
@@ -869,6 +914,7 @@
             "cogs": -674069.72,
             "teraValue": 0,
             "inventoryValue": 164094561.24,
+            "soValue": 0,
             "lossesGainValue": 30235.32
           }
         },
@@ -886,6 +932,7 @@
             "cogs": -40634303.32,
             "teraValue": 0,
             "inventoryValue": 32248620.34,
+            "soValue": 106841000,
             "lossesGainValue": -921503.63
           }
         },
@@ -903,6 +950,7 @@
             "cogs": -125568662.65,
             "teraValue": 0,
             "inventoryValue": 203723783.36,
+            "soValue": 387182070,
             "lossesGainValue": 1147317.27
           }
         },
@@ -920,6 +968,7 @@
             "cogs": -10599618.6,
             "teraValue": 0,
             "inventoryValue": 67862222.52,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -951,6 +1000,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -968,6 +1018,7 @@
             "cogs": -7350213.23,
             "teraValue": 0,
             "inventoryValue": 198521493.77,
+            "soValue": 0,
             "lossesGainValue": 206515.59
           }
         },
@@ -985,6 +1036,7 @@
             "cogs": -128131041.26,
             "teraValue": 0,
             "inventoryValue": 174312655.2,
+            "soValue": 315223446,
             "lossesGainValue": 931747.97
           }
         },
@@ -1002,6 +1054,7 @@
             "cogs": -1952640.46,
             "teraValue": 0,
             "inventoryValue": 134958830.81,
+            "soValue": 0,
             "lossesGainValue": -23339.86
           }
         },
@@ -1019,6 +1072,7 @@
             "cogs": -50689249.67,
             "teraValue": 0,
             "inventoryValue": 76183364.49,
+            "soValue": 231319128,
             "lossesGainValue": -509046.66
           }
         },
@@ -1036,6 +1090,7 @@
             "cogs": -123622975.95,
             "teraValue": 0,
             "inventoryValue": 200693018.91,
+            "soValue": 387182070,
             "lossesGainValue": 1187390.61
           }
         },
@@ -1053,6 +1108,7 @@
             "cogs": -4611436.81,
             "teraValue": 0,
             "inventoryValue": 47816399.39,
+            "soValue": 55485944,
             "lossesGainValue": 0
           }
         }
@@ -1084,6 +1140,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -1101,6 +1158,7 @@
             "cogs": -13126754.58,
             "teraValue": 0,
             "inventoryValue": 236072141.49,
+            "soValue": 99852653,
             "lossesGainValue": 636560.66
           }
         },
@@ -1118,6 +1176,7 @@
             "cogs": -24649094.37,
             "teraValue": 0,
             "inventoryValue": 123410110.45,
+            "soValue": 367760687,
             "lossesGainValue": -273522.01
           }
         },
@@ -1135,6 +1194,7 @@
             "cogs": -3479905.51,
             "teraValue": 0,
             "inventoryValue": 178849367.9,
+            "soValue": 0,
             "lossesGainValue": 88609.64
           }
         },
@@ -1152,6 +1212,7 @@
             "cogs": -14116683.51,
             "teraValue": 0,
             "inventoryValue": 101778681.43,
+            "soValue": 0,
             "lossesGainValue": -1229461.17
           }
         },
@@ -1169,6 +1230,7 @@
             "cogs": -166565726.51,
             "teraValue": 0,
             "inventoryValue": 301906961.4,
+            "soValue": 464618484,
             "lossesGainValue": 1113535.63
           }
         },
@@ -1186,6 +1248,7 @@
             "cogs": -4836744.06,
             "teraValue": 0,
             "inventoryValue": 63009298.83,
+            "soValue": 0,
             "lossesGainValue": 0
           }
         }
@@ -1217,6 +1280,7 @@
             "cogs": null,
             "teraValue": 0,
             "inventoryValue": null,
+            "soValue": null,
             "lossesGainValue": null
           }
         },
@@ -1234,6 +1298,7 @@
             "cogs": -9161548.28,
             "teraValue": 0,
             "inventoryValue": 210384598.23,
+            "soValue": 0,
             "lossesGainValue": 483471.12
           }
         },
@@ -1251,6 +1316,7 @@
             "cogs": -141286760.43,
             "teraValue": 0,
             "inventoryValue": 119006832.94,
+            "soValue": 315223446,
             "lossesGainValue": 2121388.12
           }
         },
@@ -1268,6 +1334,7 @@
             "cogs": -2790466.24,
             "teraValue": 0,
             "inventoryValue": 146125333.27,
+            "soValue": 0,
             "lossesGainValue": 32977.26
           }
         },
@@ -1285,6 +1352,7 @@
             "cogs": -30117153.41,
             "teraValue": 0,
             "inventoryValue": 84130133.69,
+            "soValue": 159058971,
             "lossesGainValue": -501035.76
           }
         },
@@ -1302,6 +1370,7 @@
             "cogs": -130740737.53,
             "teraValue": 0,
             "inventoryValue": 188924813.49,
+            "soValue": 309745656,
             "lossesGainValue": 94956.4
           }
         },
@@ -1319,6 +1388,7 @@
             "cogs": -6571182.73,
             "teraValue": 0,
             "inventoryValue": 31926288.16,
+            "soValue": 106562600,
             "lossesGainValue": 0
           }
         }
