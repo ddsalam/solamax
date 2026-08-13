@@ -745,3 +745,84 @@ describe("0030: settlement EDC", () => {
     expect(sql0030).toMatch(/milik PENGAWAS|milik\s*\n?--\s*PENGAWAS/);
   });
 });
+
+/**
+ * PENJAGA KELAS: seed baris ter-scope unit WAJIB mendahului blok RLS.
+ *
+ * Latar (13 Agustus 2026, kejadian nyata): `0029_cash_ledger` menyemai tujuh akun
+ * kas SESUDAH `ENABLE`/`FORCE ROW LEVEL SECURITY`. `FORCE` berlaku **juga untuk
+ * pemilik tabel**, dan `prisma migrate deploy` berjalan **tanpa GUC
+ * `app.unit_ids`** ⇒ `WITH CHECK` menolak setiap baris seed:
+ *
+ *     42501: new row violates row-level security policy for table "cash_account"
+ *
+ * Migrasi tercatat `failed`, dan seluruh migrasi berikutnya terblokir `P3009`
+ * sampai di-resolve. Gerbangnya bekerja — tetapi tak ada satu pun tes yang
+ * berbunyi sebelum CD mencobanya.
+ *
+ * Kenapa ini KELAS, bukan kejadian: akan ada tabel ter-scope unit berikutnya,
+ * dan urutan blok di migrasi adalah hal yang paling mudah bergeser saat orang
+ * "merapikan". Tabel dengan baris berlaku-global (`unit_id IS NULL`) lolos
+ * karena cabang NULL policy-nya menerima baris itu; tabel ber-unit tidak.
+ *
+ * ⚠️ Batasnya tetap sama seperti penjaga teks lain: ia membaca URUTAN TEKS.
+ * Yang membuktikan migrasinya benar-benar berjalan tetap CD tier testing.
+ */
+describe("KELAS: seed ter-scope unit mendahului RLS", () => {
+  const semua: ReadonlyArray<[string, string]> = [
+    ["0020_purchase_price", sql0020],
+    ["0021_correction_reclass", sql0021],
+    ["0022_reason_code", sql0022],
+    ["0023_category_account_map", sql0023],
+    ["0024_manual_entry_workflow", sql0024],
+    ["0025_source_kind_closed", sql0025],
+    ["0026_day_close", sql0026],
+    ["0027_backdate_override", sql0027],
+    ["0028_so_macet", sql0028],
+    ["0029_cash_ledger", sql0029],
+    ["0030_edc_settlement", sql0030],
+  ];
+
+  /** Tabel yang DIBUAT di migrasi ini dan punya kolom `unit_id` NOT NULL. */
+  const tabelTerScope = (sql: string): string[] =>
+    [...sql.matchAll(/CREATE TABLE IF NOT EXISTS "app"\."(\w+)" \(([\s\S]*?)\n\);/g)]
+      .filter((m) => /"unit_id"\s+SMALLINT NOT NULL/.test(m[2]!))
+      .map((m) => m[1]!);
+
+  for (const [nama, sqlMentah] of semua) {
+    it(`${nama}: tidak ada seed ter-scope unit SESUDAH ENABLE RLS`, () => {
+      const sql = pernyataan(sqlMentah);
+      const rls = sql.indexOf("ENABLE ROW LEVEL SECURITY");
+      if (rls < 0) return; // migrasi tanpa RLS: tak ada yang bisa dilanggar
+
+      for (const t of tabelTerScope(sql)) {
+        const ins = sql.indexOf(`INSERT INTO "app"."${t}"`);
+        if (ins < 0) continue; // tabel ini memang tidak di-seed
+        expect(
+          ins,
+          `${nama}: seed "${t}" ada SESUDAH ENABLE RLS — FORCE berlaku juga untuk ` +
+            "pemilik tabel, dan migrate deploy jalan tanpa GUC app.unit_ids ⇒ 42501. " +
+            "Pindahkan blok INSERT-nya ke ATAS blok RLS.",
+        ).toBeLessThan(rls);
+      }
+    });
+  }
+
+  it("penjaga ini punya SUBJEK — ada tabel ter-scope unit yang benar-benar di-seed", () => {
+    // Tanpa baris ini, seluruh blok di atas bisa hijau hanya karena tak ada
+    // seed sama sekali: hijau-tanpa-subjek.
+    const berseed = semua.filter(([, sqlMentah]) => {
+      const sql = pernyataan(sqlMentah);
+      return tabelTerScope(sql).some((t) => sql.includes(`INSERT INTO "app"."${t}"`));
+    });
+    expect(berseed.map(([n]) => n)).toContain("0029_cash_ledger");
+  });
+
+  it("tabel TANPA unit_id tidak ikut dijaga — itu sebabnya seed kategori lolos", () => {
+    // `cash_mutation_category` (0029) dan `reason_code` (0022) di-seed dan tidak
+    // ber-unit_id ⇒ tak ber-RLS ⇒ letaknya bebas. Membedakan keduanya penting:
+    // aturan yang terlalu lebar akan memaksa urutan yang tak perlu.
+    expect(tabelTerScope(pernyataan(sql0029))).toEqual(["cash_account", "cash_ledger"]);
+    expect(tabelTerScope(pernyataan(sql0022))).toEqual([]);
+  });
+});

@@ -209,6 +209,44 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Seed 7 akun kas BAKAU (unit_id 2) — persis §1.3.
+--
+-- 🔴 LETAKNYA DI SINI BUKAN KEBETULAN: seed baris ter-scope unit WAJIB mendahului
+-- blok RLS di bawah. `FORCE ROW LEVEL SECURITY` berlaku JUGA untuk pemilik tabel,
+-- dan `prisma migrate deploy` berjalan TANPA GUC `app.unit_ids` ⇒ `WITH CHECK`
+-- policy menolak setiap baris seed dengan `42501: new row violates row-level
+-- security policy`. Itu persis yang terjadi pada percobaan pertama migrasi ini
+-- (13 Agu 2026): migrasi gagal, tercatat `failed`, dan seluruh migrasi
+-- berikutnya terblokir `P3009` sampai di-resolve.
+--
+-- Seed `cash_mutation_category` (di atas) lolos justru karena tabel itu TIDAK
+-- ber-`unit_id` ⇒ tidak ber-RLS. Itulah kenapa hanya satu yang jatuh.
+--
+-- ⛔ JANGAN menyiasatinya dengan `NO FORCE` sementara atau `set_config` di dalam
+-- migrasi: keduanya menambah keadaan yang harus DIINGAT orang berikutnya.
+-- Urutan yang benar tidak butuh diingat. Aturannya di KEUANGAN-HARIAN §4.1b.
+--
+-- Ini FAKTA dari workbook `Finance SPBU 6378301 BK`, bukan keputusan baru.
+-- ⚠️ `active = true` untuk ketujuhnya, TERMASUK empat rekening bank yang bukti
+-- T1 tunjukkan dorman 2–5 tahun (BCA-5125978301 sejak 2022-08, BRI 2021-11,
+-- BNI 2021-09, Mandiri 2024-01). Menandainya `false` sekarang berarti MENJAWAB
+-- §7.7 ("masih ada, sudah ditutup, atau perlu dihapusbukukan?") — pertanyaan
+-- yang masih terbuka. Dorman ≠ ditutup, dan hanya tim keuangan yang boleh
+-- memutuskan mana yang mana.
+--
+-- Unit lain: akun kasnya bagian dari onboarding per unit, bukan migrasi ini.
+-- ---------------------------------------------------------------------------
+INSERT INTO "app"."cash_account" ("unit_id", "nama", "kind") VALUES
+    (2, 'Kas Besar',                'kas'),
+    (2, 'EDC Penampungan',          'edc_penampungan'),
+    (2, 'Bank BCA - 5125036811',    'bank'),
+    (2, 'Bank BCA - 5125978301',    'bank'),
+    (2, 'Bank BRI',                 'bank'),
+    (2, 'Bank Mandiri',             'bank'),
+    (2, 'Bank BNI',                 'bank')
+ON CONFLICT ("unit_id", "nama") DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- RLS — cabang NULL DIPUTUSKAN SADAR: **TIDAK ADA** pada `cash_account` dan
 -- `cash_ledger`; keduanya selalu milik satu unit (kolomnya NOT NULL), tidak ada
 -- akun maupun mutasi yang berlaku global. Predikat disalin PERSIS dari 0016
@@ -237,26 +275,3 @@ BEGIN
   END LOOP;
 END
 $$;
-
--- ---------------------------------------------------------------------------
--- Seed 7 akun kas BAKAU (unit_id 2) — persis §1.3.
---
--- Ini FAKTA dari workbook `Finance SPBU 6378301 BK`, bukan keputusan baru.
--- ⚠️ `active = true` untuk ketujuhnya, TERMASUK empat rekening bank yang bukti
--- T1 tunjukkan dorman 2–5 tahun (BCA-5125978301 sejak 2022-08, BRI 2021-11,
--- BNI 2021-09, Mandiri 2024-01). Menandainya `false` sekarang berarti MENJAWAB
--- §7.7 ("masih ada, sudah ditutup, atau perlu dihapusbukukan?") — pertanyaan
--- yang masih terbuka. Dorman ≠ ditutup, dan hanya tim keuangan yang boleh
--- memutuskan mana yang mana.
---
--- Unit lain: akun kasnya bagian dari onboarding per unit, bukan migrasi ini.
--- ---------------------------------------------------------------------------
-INSERT INTO "app"."cash_account" ("unit_id", "nama", "kind") VALUES
-    (2, 'Kas Besar',                'kas'),
-    (2, 'EDC Penampungan',          'edc_penampungan'),
-    (2, 'Bank BCA - 5125036811',    'bank'),
-    (2, 'Bank BCA - 5125978301',    'bank'),
-    (2, 'Bank BRI',                 'bank'),
-    (2, 'Bank Mandiri',             'bank'),
-    (2, 'Bank BNI',                 'bank')
-ON CONFLICT ("unit_id", "nama") DO NOTHING;
