@@ -90,6 +90,7 @@ const sql0025 = MIG("0025_source_kind_closed");
 const sql0026 = MIG("0026_day_close");
 const sql0027 = MIG("0027_backdate_override");
 const sql0028 = MIG("0028_so_macet");
+const sql0029 = MIG("0029_cash_ledger");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -572,5 +573,113 @@ describe("0028: penandaan SO macet — manual, tanpa ambang", () => {
     expect(stmt).toContain(PREDIKAT_0016);
     expect(stmt).not.toContain("unit_id IS NULL OR");
     expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+  });
+});
+
+describe("0029: buku kas & bank", () => {
+  const stmt = pernyataan(sql0029);
+
+  it("akun adalah DATA, bukan enum — penutupan lewat active + closed_at", () => {
+    // Enum memaksa migrasi tiap kali rekening berubah, dan migrasi yang dipaksa
+    // biasanya berakhir sebagai nilai lama yang dipakai ulang untuk hal lain.
+    expect(stmt).toMatch(/CREATE TABLE IF NOT EXISTS "app"\."cash_account"/);
+    expect(stmt).toMatch(/"active"\s+BOOLEAN NOT NULL DEFAULT true/);
+    expect(stmt).toMatch(/"closed_at"\s+DATE/);
+    expect(stmt).toMatch(/CHECK \("active" = \("closed_at" IS NULL\)\)/);
+  });
+
+  it("tujuh akun kas Bakau di-seed, persis §1.3", () => {
+    const seedAkun = pernyataanYangDimulai(sql0029, 'INSERT INTO "app"."cash_account"');
+    expect(seedAkun).not.toBe("");
+    const seed = [...seedAkun.matchAll(/^\s*\(2, '([^']+)',\s*'(\w+)'\)/gm)].map((x) => x[1]);
+    expect(seed).toEqual([
+      "Kas Besar",
+      "EDC Penampungan",
+      "Bank BCA - 5125036811",
+      "Bank BCA - 5125978301",
+      "Bank BRI",
+      "Bank Mandiri",
+      "Bank BNI",
+    ]);
+  });
+
+  it("⚠️ empat bank dorman TIDAK ditandai nonaktif — §7.7 belum dijawab", () => {
+    // Dorman ≠ ditutup. Menandainya `false` berarti menjawab pertanyaan yang
+    // masih terbuka; yang boleh menjawab hanya tim keuangan.
+    expect(stmt).not.toMatch(/\(2, 'Bank BRI',\s*'bank',\s*false\)/);
+    expect(sql0029).toMatch(/Dorman ≠ ditutup/);
+  });
+
+  it("kategori mutasi = daftar TERTUTUP: 7 debet + 8 kredit, app hanya SELECT", () => {
+    // Dihitung DI DALAM pernyataan INSERT-nya, bukan atas seluruh berkas:
+    // mengomentari baris `INSERT INTO` saja meninggalkan baris VALUES-nya utuh,
+    // dan pemindai yang naif akan tetap menghitungnya (ditemukan lewat mutasi).
+    const seedKategori = pernyataanYangDimulai(
+      sql0029,
+      'INSERT INTO "app"."cash_mutation_category"',
+    );
+    expect(seedKategori).not.toBe("");
+    const debet = (seedKategori.match(/^\s*\('debet',\s*'/gm) ?? []).length;
+    const kredit = (seedKategori.match(/^\s*\('kredit',\s*'/gm) ?? []).length;
+    expect(debet).toBe(7);
+    expect(kredit).toBe(8);
+    expect(stmt).toContain('GRANT SELECT ON "app"."cash_mutation_category" TO dashboard_app');
+    expect(stmt).toContain(
+      'REVOKE INSERT, UPDATE, DELETE ON "app"."cash_mutation_category" FROM dashboard_app',
+    );
+  });
+
+  it("⛔ TIDAK ada kolom saldo di ledger — saldo adalah turunan", () => {
+    expect(stmt).not.toMatch(/"saldo[_a-z]*"\s+(DECIMAL|NUMERIC)/i);
+  });
+
+  it("🔴 kategori WAJIB sesisi dengan jenis mutasinya", () => {
+    expect(stmt).toMatch(/"jenis" = 'debet'\s+AND "category_side" = 'debet'/);
+    expect(stmt).toMatch(/"jenis" = 'kredit' AND "category_side" = 'kredit'/);
+    expect(stmt).toMatch(/"jenis" = 'adjustment' AND "category_side" IS NULL/);
+  });
+
+  it("tanda nominal mengikuti jenis; mutasi nol ditolak", () => {
+    expect(stmt).toMatch(/"jenis" = 'debet'\s+AND "amount" > 0/);
+    expect(stmt).toMatch(/"jenis" = 'kredit' AND "amount" < 0/);
+    expect(stmt).toMatch(/"jenis" = 'adjustment' AND "amount" <> 0/);
+  });
+
+  it("mutasi terkunci ke akun milik unit yang SAMA (FK komposit)", () => {
+    // Tanpa ini, mutasi unit A bisa menunjuk akun unit B dan RLS pada ledger
+    // TIDAK akan menangkapnya — unit_id barisnya sendiri sudah benar.
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("account_id", "unit_id"\)\s*\n?\s*REFERENCES "app"\."cash_account"\("id", "unit_id"\)/,
+    );
+    expect(stmt).toMatch(/UNIQUE \("id", "unit_id"\)/);
+  });
+
+  it("kategori ledger terkunci ke master (FK komposit side+label)", () => {
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("category_side", "category_label"\)\s*\n?\s*REFERENCES "app"\."cash_mutation_category"\("side", "label"\)/,
+    );
+  });
+
+  it("VOID-only: tanpa DELETE untuk akun maupun ledger", () => {
+    expect(stmt).toContain('REVOKE DELETE ON "app"."cash_account" FROM dashboard_app');
+    expect(stmt).toContain('REVOKE DELETE ON "app"."cash_ledger"  FROM dashboard_app');
+  });
+
+  it("RLS pada cash_account & cash_ledger; predikat IDENTIK 0016, tanpa cabang NULL", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    // KETIGA pernyataan harus benar-benar DIEKSEKUSI. Ditemukan lewat mutasi:
+    // mengomentari baris `EXECUTE format(` yang PERTAMA saja mematikan
+    // ENABLE ROW LEVEL SECURITY, sementara asersi CREATE POLICY tetap hijau —
+    // policy terpasang pada tabel yang RLS-nya tidak menyala sama sekali.
+    expect(stmt).toMatch(/EXECUTE format\(\s*'ALTER TABLE "app"\.%I ENABLE ROW LEVEL SECURITY/);
+    expect(stmt).toMatch(/EXECUTE format\(\s*'ALTER TABLE "app"\.%I FORCE ROW LEVEL SECURITY/);
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+    expect(stmt).toMatch(/ARRAY\['cash_account', 'cash_ledger'\]/);
+    expect(sql0029).toMatch(/DIPUTUSKAN SADAR/);
+  });
+
+  it("master kategori sengaja TANPA unit_id ⇒ tanpa RLS, dan itu dinyatakan", () => {
+    expect(sql0029).toMatch(/TIDAK ber-`unit_id` ⇒ TIDAK ber-RLS, juga disengaja/);
   });
 });
