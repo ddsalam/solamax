@@ -570,6 +570,17 @@ model Membership {
 /// Scope unit utk pengawas (direksi/admin = semua unit tenant → tanpa baris).
 // Manual-entry pengawas (Pendapatan Lain / Pengeluaran). Identitas = id uuid;
 // `urut` ordering biasa (BUKAN bagian unique). Audit void: voided_by + voided_at.
+/// Daur hidup transaksi sumber (§2.2). `closed` hanya dipasang oleh day_close.
+enum ManualEntryStatus {
+  draft
+  submitted
+  returned
+  closed
+
+  @@map("manual_entry_status")
+  @@schema("app")
+}
+
 enum ManualEntrySection {
   pendapatan_lain
   pengeluaran
@@ -594,6 +605,20 @@ model ManualEntry {
   voidedByUserId  Int?               @map("voided_by_user_id")
   voidedAt        DateTime?          @map("voided_at") @db.Timestamptz()
 
+  /// Milik PENGAWAS (§2.1). NULL = belum berkategori — JANGAN diturunkan dari
+  /// `keterangan`; itu menebak milik orang lain. Wajib menyusul mode transisi.
+  operationalCategory String?           @map("operational_category")
+  /// Milik FINANCE. Diisi dari category_account_map saat submit lalu BEKU;
+  /// akun efektif = reclassification non-void terakhir bila ada.
+  accountingAccount   String?           @map("accounting_account")
+  /// Backfill `submitted`, BUKAN `closed` — immutabilitas tidak dipasang mundur.
+  status              ManualEntryStatus @default(submitted)
+  submittedAt         DateTime?         @map("submitted_at") @db.Timestamptz()
+  reviewedByUserId    Int?              @map("reviewed_by_user_id")
+  reviewedAt          DateTime?         @map("reviewed_at") @db.Timestamptz()
+  returnedReason      String?           @map("returned_reason")
+
+  @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])
   @@map("manual_entry")
   @@schema("app")
@@ -675,6 +700,41 @@ model CorrectionEntry {
   @@index([sourceKind, originalTxnId, createdAt])
   @@index([unitId, reasonCode, createdAt])
   @@map("correction_entry")
+  @@schema("app")
+}
+
+// Master sebab-selisih — DAFTAR TERTUTUP (B2, §10.2). 19 kode di-seed migrasi
+// 0022. dashboard_app hanya SELECT: menambah kode = migrasi = keputusan owner.
+// Tanpa unit_id ⇒ tanpa RLS, disengaja (master rujukan, bukan data per-unit).
+model ReasonCode {
+  code               String  @id
+  label              String
+  /// 'closing' | 'adjustment' | 'reclass' (CHECK di 0022).
+  appliesTo          String  @map("applies_to")
+  /// CLS-INVESTIGATING = true. Penegakannya menyusul bersama day_close.
+  requiresTargetDate Boolean @default(false) @map("requires_target_date")
+  active             Boolean @default(true)
+
+  @@map("reason_code")
+  @@schema("app")
+}
+
+// Pemetaan kategori operasional → CoA (B1 seragam + B3, §10.1/§10.3).
+// unit_id NULL = berlaku semua unit; 14 baris seed seluruhnya default.
+// Baris ber-unit menuntut `override_reason` (CHECK 0023) supaya tak bisa masuk
+// tanpa disengaja, dan tetap butuh gerbang owner.
+model CategoryAccountMap {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              Int?     @map("unit_id") @db.SmallInt
+  operationalCategory String   @map("operational_category")
+  accountingAccount   String   @map("accounting_account")
+  effectiveFrom       DateTime @map("effective_from") @db.Date
+  overrideReason      String?  @map("override_reason")
+  createdByUserId     Int?     @map("created_by_user_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([operationalCategory, effectiveFrom])
+  @@map("category_account_map")
   @@schema("app")
 }
 
