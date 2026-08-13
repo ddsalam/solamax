@@ -931,6 +931,40 @@ model CashLedger {
   @@schema("app")
 }
 
+// Batch settlement EDC (§10.5). EDC Penampungan = akun kliring RIIL yang cair
+// H+1, MDR dipotong DI MUKA. `mdrRp` dan `selisihRp` adalah kolom GENERATED —
+// tidak pernah diketik. Jurnal pencairannya DITAWARKAN, bukan diposting:
+// `postedBy/At` adalah jejak PERSETUJUAN, bukan penanda otomatis.
+model EdcSettlement {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  acquirer        String
+  settlementNo    String    @map("settlement_no")
+  settlementDate  DateTime  @map("settlement_date") @db.Date
+  businessDate    DateTime  @map("business_date") @db.Date
+  toAccountId     String    @map("to_account_id") @db.Uuid
+  grossRp         Decimal   @map("gross_rp") @db.Decimal(17, 2)
+  netRp           Decimal   @map("net_rp") @db.Decimal(17, 2)
+  /// GENERATED gross − net. Jangan pernah ditulis aplikasi.
+  mdrRp           Decimal?  @map("mdr_rp") @db.Decimal(17, 2)
+  txnTotalRp      Decimal?  @map("txn_total_rp") @db.Decimal(17, 2)
+  /// GENERATED txn_total − gross.
+  selisihRp       Decimal?  @map("selisih_rp") @db.Decimal(17, 2)
+  reasonCode      String?   @map("reason_code")
+  reasonAppliesTo String?   @map("reason_applies_to")
+  postedByUserId  Int?      @map("posted_by_user_id")
+  postedAt        DateTime? @map("posted_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([unitId, acquirer, settlementDate])
+  @@map("edc_settlement")
+  @@schema("app")
+}
+
 // Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
 // tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
