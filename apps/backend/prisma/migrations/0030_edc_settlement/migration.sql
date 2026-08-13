@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS "app"."edc_settlement" (
     -- sama seperti rekening (alasan yang sama dengan `cash_account`, 0029).
     "acquirer"      TEXT NOT NULL,
     "settlement_no" TEXT NOT NULL,
-    /// Tanggal uang MASUK rekening (H+1).
+    -- Tanggal uang MASUK rekening (H+1).
     "settlement_date" DATE NOT NULL,
-    /// Hari penjualan yang di-settle (H).
+    -- Hari penjualan yang di-settle (H).
     "business_date" DATE NOT NULL,
 
     -- Akun kas tujuan neto. FK KOMPOSIT ke akun milik unit yang SAMA (idiom 0019
