@@ -844,6 +844,93 @@ model SoMacet {
   @@schema("app")
 }
 
+/// Jenis akun kas (§1.3). Tujuh akun Bakau: 1 kas · 1 EDC penampungan · 5 bank.
+enum CashAccountKind {
+  kas
+  bank
+  edc_penampungan
+
+  @@map("cash_account_kind")
+  @@schema("app")
+}
+
+enum CashMutationSide {
+  debet
+  kredit
+
+  @@map("cash_mutation_side")
+  @@schema("app")
+}
+
+enum CashMutationJenis {
+  debet
+  kredit
+  adjustment
+
+  @@map("cash_mutation_jenis")
+  @@schema("app")
+}
+
+// Akun kas — DATA, bukan enum (rekening bertambah/ditutup; 4 dari 5 bank Bakau
+// dorman 2–5 tahun, §7.7). Penutupan = active=false + closed_at, TANPA DELETE:
+// mutasi lama harus tetap menunjuk akun yang benar.
+model CashAccount {
+  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId    Int             @map("unit_id") @db.SmallInt
+  nama      String
+  kind      CashAccountKind
+  active    Boolean         @default(true)
+  openedAt  DateTime?       @map("opened_at") @db.Date
+  closedAt  DateTime?       @map("closed_at") @db.Date
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, nama])
+  /// Target FK komposit dari app.cash_ledger (0029): mengunci mutasi ke akun
+  /// milik unit yang SAMA — RLS pada ledger tak bisa menangkap salah-unit ini.
+  @@unique([id, unitId])
+  @@map("cash_account")
+  @@schema("app")
+}
+
+// Kategori mutasi debet/kredit — daftar TERTUTUP (workbook List!Q & List!S),
+// disiplin sama dgn reason_code: dashboard_app hanya SELECT. Kunci alaminya
+// (side, label) sebab tiga label muncul di KEDUA sisi.
+model CashMutationCategory {
+  side   CashMutationSide
+  label  String
+  active Boolean          @default(true)
+
+  @@id([side, label])
+  @@map("cash_mutation_category")
+  @@schema("app")
+}
+
+// Mutasi kas/bank. ⛔ TIDAK ada kolom saldo — saldo adalah TURUNAN (Σ amount).
+// Workbook menyimpan Saldo Akhir per baris, dan itulah yang membuat satu
+// sisipan di tengah mendiamkan seluruh kolom di bawahnya.
+// Nominal BERTANDA: debet > 0, kredit < 0 (CHECK di 0029).
+model CashLedger {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int               @map("unit_id") @db.SmallInt
+  accountId       String            @map("account_id") @db.Uuid
+  businessDate    DateTime          @map("business_date") @db.Date
+  keterangan      String
+  jenis           CashMutationJenis
+  categorySide    CashMutationSide? @map("category_side")
+  categoryLabel   String?           @map("category_label")
+  amount          Decimal           @db.Decimal(17, 2)
+  void            Boolean           @default(false)
+  createdByUserId Int               @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  voidedByUserId  Int?              @map("voided_by_user_id")
+  voidedAt        DateTime?         @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, accountId, businessDate])
+  @@index([unitId, categorySide, categoryLabel, businessDate])
+  @@map("cash_ledger")
+  @@schema("app")
+}
+
 // Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
 // tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,
