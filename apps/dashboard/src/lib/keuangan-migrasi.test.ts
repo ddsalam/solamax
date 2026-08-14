@@ -886,3 +886,57 @@ describe("0031: beban non-kas turunan-mesin", () => {
     expect(sql0031).toMatch(/tidak memunculkan galat apa pun/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0032 — peran RBAC `keuangan`: daftar di Postgres HARUS sama dengan `Role`
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0032_role_keuangan — daftar peran TypeScript ↔ Postgres", () => {
+  const sql = MIG("0032_role_keuangan");
+  const authCtx = readFileSync(resolve(__dirname, "auth-context.ts"), "utf8");
+  /** Peran menurut `Role` di auth-context.ts. */
+  const dariTs = [...authCtx.matchAll(/^\s*\|\s*"(\w+)"/gm)].map((m) => m[1]!);
+  const TABEL = ["membership", "user_role"] as const;
+
+  it("penjaga ini punya SUBJEK — jangan hijau karena regex tak menemukan apa-apa", () => {
+    expect(dariTs).toHaveLength(5);
+    expect(dariTs).toContain("keuangan");
+  });
+
+  for (const t of TABEL) {
+    it(`app.${t}: CHECK dipasang sebagai SATU pernyataan utuh, memuat persis daftar \`Role\``, () => {
+      // Lewat pernyataanYangDimulai(), BUKAN teks mentah: uji mutasi
+      // membuktikan versi teks-mentah tetap HIJAU saat seluruh baris
+      // `ALTER TABLE … ADD CONSTRAINT` dikomentari — kelas cacat yang sama
+      // sudah lima kali muncul di berkas ini.
+      const st = pernyataanYangDimulai(sql, `ALTER TABLE "app"."${t}" ADD CONSTRAINT`);
+      expect(st, `pernyataan ADD CONSTRAINT untuk app.${t} tidak ditemukan`).not.toBe("");
+      const daftar = [...st.matchAll(/'(\w+)'/g)].map((x) => x[1]!);
+      expect([...daftar].sort()).toEqual([...dariTs].sort());
+    });
+
+    it(`app.${t}: CHECK lama DIJATUHKAN lebih dulu — migrasi aman re-run`, () => {
+      const st = pernyataanYangDimulai(sql, `ALTER TABLE "app"."${t}" DROP CONSTRAINT`);
+      expect(st).toMatch(new RegExp(`IF EXISTS "${t}_role_check"`));
+    });
+  }
+
+  it("kedua tabel bergerak BERSAMA — daftar yang berselisih membuat FK komposit mustahil", () => {
+    // app.membership.role menunjuk app.user_role(user_id, role). Peran yang sah
+    // di satu tabel tetapi tidak di tabel lain = peran yang tak pernah bisa
+    // benar-benar dipakai, dan galatnya muncul jauh dari sebabnya.
+    const [a, b] = TABEL.map((t) =>
+      [...pernyataanYangDimulai(sql, `ALTER TABLE "app"."${t}" ADD CONSTRAINT`).matchAll(/'(\w+)'/g)]
+        .map((x) => x[1]!)
+        .sort(),
+    );
+    expect(a).toEqual(b);
+  });
+
+  it("0032 tidak menyentuh RLS dan tidak menyemai apa pun", () => {
+    // Tabel peran bukan tabel unit-scoped (0016). Kalau kelak ada baris disemai
+    // di sini, urutan §4.1b butir c (seed SEBELUM RLS) baru jadi relevan.
+    const st = pernyataan(sql);
+    expect(st).not.toMatch(/ROW LEVEL SECURITY/);
+    expect(st).not.toMatch(/INSERT INTO/);
+  });
+});

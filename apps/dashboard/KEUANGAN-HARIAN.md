@@ -214,6 +214,27 @@ Kapabilitas itu dijaga lapis aturan sepenuhnya.
 **Setiap override yang terpakai muncul di laporan bulanan**, sama seperti
 exception close. Jalur tembus yang tidak terlihat bukan jalur tembus, ia kebocoran.
 
+### 2.4 Dua pintu, satu daftar
+
+Biaya operasional & pendapatan lain-lain punya **dua pintu masuk**:
+pengawas (Rincian Penjualan) dan Finance (yang tidak lewat pengawas).
+**Daftar kategorinya satu** — 14 kategori `List!K`:
+
+`Iklan, Promosi, Spanduk` · `Transportasi / Kendaraan Milik Perusahaan` ·
+`Supir Tangki` · `Maintance Operasional SPBU (Tera, Cleaning Tank, Sabun)` ·
+`Sumbangan / Donasi` · `Komputer dan Internet` ·
+`Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)` ·
+`Konsumsi Makanan, Lembur, & Hiburan` · `Peralatan Kantor (ATK)` ·
+`Biaya Taktis` · `Gaji Karyawan` · `Lain-Lain` · `MDR` · `Biaya Admin`
+
+**Lubang yang ada sekarang:** `app.ManualEntry` **belum punya kolom kategori** —
+skemanya `(unitId, businessDate, section, urut, keterangan, amount, void, audit)`
+dengan `section ∈ {pendapatan_lain, pengeluaran, setoran_tunai}`. Kategori harus
+muncul **di layar Rincian Penjualan**, supaya biaya berkategori sejak awal dan
+Finance tidak perlu menebak dari `keterangan`.
+
+---
+
 ### 2.5 Beban NON-KAS turunan-mesin — rumah sendiri, bukan `manual_entry`
 
 **Keputusan owner 13 Agustus 2026.** Kaki ketiga jurnal pencairan EDC (§10.5)
@@ -266,26 +287,51 @@ Kategori operasional **`MDR` (#13, §10.3) TETAP ADA** — untuk MDR yang ditagi
 `7-1200`; dan asalnya tetap bisa dibedakan lewat `BarisBeban.sumber`. Itulah
 yang membuat "siapa yang menaruh ini" tetap punya jawaban.
 
-### 2.4 Dua pintu, satu daftar
+### 2.6 Siapa boleh MENULIS — peran `keuangan` (0032)
 
-Biaya operasional & pendapatan lain-lain punya **dua pintu masuk**:
-pengawas (Rincian Penjualan) dan Finance (yang tidak lewat pengawas).
-**Daftar kategorinya satu** — 14 kategori `List!K`:
+**Keputusan owner 15 Agustus 2026, pembuka K2.** Sampai putaran ini pertanyaan
+"siapa boleh mengetik harga beli, mutasi kas/bank, settlement, dan biaya di luar
+pengawas" **tidak tertulis di mana pun**: §2 menyebut *Finance* sebagai pemilik
+klasifikasi, tetapi `Finance` bukan peran yang ada.
 
-`Iklan, Promosi, Spanduk` · `Transportasi / Kendaraan Milik Perusahaan` ·
-`Supir Tangki` · `Maintance Operasional SPBU (Tera, Cleaning Tank, Sabun)` ·
-`Sumbangan / Donasi` · `Komputer dan Internet` ·
-`Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)` ·
-`Konsumsi Makanan, Lembur, & Hiburan` · `Peralatan Kantor (ATK)` ·
-`Biaya Taktis` · `Gaji Karyawan` · `Lain-Lain` · `MDR` · `Biaya Admin`
+Jawabannya: **peran RBAC kelima, `keuangan`** — bukan kapabilitas ENV.
 
-**Lubang yang ada sekarang:** `app.ManualEntry` **belum punya kolom kategori** —
-skemanya `(unitId, businessDate, section, urut, keterangan, amount, void, audit)`
-dengan `section ∈ {pendapatan_lain, pengeluaran, setoran_tunai}`. Kategori harus
-muncul **di layar Rincian Penjualan**, supaya biaya berkategori sejak awal dan
-Finance tidak perlu menebak dari `keterangan`.
+```
+canInputKeuangan = role ∈ {keuangan, super_admin}
+```
 
----
+⛔ **Ini BUKAN pembalikan §10.4.** Head of Finance tetap kapabilitas, dan
+alasannya utuh. Bedanya bukan selera:
+
+| | Head of Finance | `keuangan` |
+|---|---|---|
+| apa | **menyetujui** penutupan di luar toleransi | **mengisi** buku keuangan |
+| pemegangnya | sudah punya peran lain (`admin_perusahaan`) | tak punya peran lain |
+| satu-peran-per-orang | **mematikan** — memberinya peran mencabut `/admin` | **justru pas** |
+| bentuk | ENV `HEAD_OF_FINANCE_EMAILS` | baris `app.user_role` |
+
+**Yang menyetujui tidak mengetik; yang mengetik tidak menyetujui.** Kedua arah
+diuji: `keuangan` tidak lolos `canCloseException`/`canOverrideAboveMax`, dan HoF
+tidak lolos `canInputKeuangan`. Menyatukannya membuat penyetuju memeriksa
+pekerjaannya sendiri.
+
+⛔ **`pengawas` tidak ada di daftar itu, dan itulah inti §2.** Pengawas yang bisa
+mengetik harga beli meruntuhkan pemisahan fakta-vs-klasifikasi **tanpa satu pun
+angka terlihat salah**.
+
+**Keberatan yang saya sampaikan dan owner putuskan sebaliknya:** §10.4 menolak
+jalan "peran baru" untuk HoF, dan saya menyarankan pola kapabilitas ENV juga di
+sini. Owner memilih peran. Ongkos yang saya sebut saat itu tetap nyata dan
+sekarang terbayar: satu migrasi, `ROLE_RANK` bergeser, dan **dua penjaga lama
+berbunyi** — tangga peran (`keuangan-wewenang.test.ts`) dan daftar peran yang
+boleh didelegasikan (`admin-rules.test.ts`). Keduanya diperbarui **sebagai
+tindakan sadar**, dengan larangan aslinya tetap utuh. Imbalannya: keanggotaannya
+terlihat di `/admin`, bukan tersembunyi di env yang hanya berubah lewat deploy.
+
+**Cakupan data tidak datang dari peran ini.** Sejak 0019 luas unit ditentukan
+`membership.all_units` + `app.user_unit`; seorang `keuangan` melihat persis unit
+yang ditugaskan kepadanya. Default pemilihan unit di form akses sengaja
+**sempit** (daftar unit, seperti pengawas) — "semua unit" harus pilihan sadar.
 
 ## 3 · Gerbang tutup hari — tangga toleransi
 

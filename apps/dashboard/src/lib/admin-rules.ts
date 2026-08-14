@@ -12,9 +12,35 @@ import type { Role } from "./auth-context";
  */
 
 /** Role yang boleh diberikan super_admin lewat UI (super_admin sendiri: tidak pernah). */
-export const GRANTABLE_ROLES = ["admin_perusahaan", "direksi", "pengawas"] as const;
+export const GRANTABLE_ROLES = ["admin_perusahaan", "direksi", "keuangan", "pengawas"] as const;
 /** A2 — admin terdelegasi tak pernah boleh mengangkat admin_perusahaan. */
-export const DELEGABLE_ROLES = ["direksi", "pengawas"] as const;
+export const DELEGABLE_ROLES = ["direksi", "keuangan", "pengawas"] as const;
+
+/**
+ * Nama tampil peran — SATU sumber untuk seluruh UI.
+ *
+ * Sebelum 0032 daftar yang sama hidup dalam TIGA salinan (layout, /admin,
+ * AccessGrantForm) dan dua di antaranya ber-tipe `Record<string, string>`,
+ * sehingga peran baru lolos type-check dan muncul di layar sebagai slug mentah.
+ * `Record<Role, …>` di sini membuat peran berikutnya **gagal dikompilasi**
+ * sampai ia punya nama yang layak dibaca direksi.
+ */
+export const ROLE_LABEL: Record<Role, string> = {
+  super_admin: "Super Admin",
+  admin_perusahaan: "Admin Perusahaan",
+  direksi: "Direksi",
+  keuangan: "Keuangan",
+  pengawas: "Pengawas",
+};
+
+/**
+ * Label untuk nilai `role` yang datangnya dari DB sebagai `string` biasa.
+ * Nilai tak dikenal ditampilkan APA ADANYA, bukan disembunyikan: baris peran
+ * rusak harus terlihat oleh admin, bukan berubah jadi sel kosong.
+ */
+export function roleLabel(role: string): string {
+  return (ROLE_LABEL as Record<string, string>)[role] ?? role;
+}
 
 export interface AdminAuthority {
   /** Pelaku. */

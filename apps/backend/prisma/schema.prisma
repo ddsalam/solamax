@@ -545,7 +545,7 @@ model Membership {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         Int      @map("user_id")
   tenantId       String?  @map("tenant_id") @db.Uuid
-  role           String // super_admin | admin_perusahaan | direksi | pengawas
+  role           String // super_admin | admin_perusahaan | direksi | keuangan | pengawas  (CHECK di 0032)
   status         String   @default("active") // active | invited | disabled
   /// true = semua unit tenant ini (unit BARU ikut otomatis); false = hanya daftar
   /// di user_unit (beku). Himpunan kosong TIDAK PERNAH berarti "semua" (0019).
@@ -1023,7 +1023,7 @@ model UsulanSo {
 /// sini + ON UPDATE CASCADE. Bukan trigger: trigger prosedural & tak terlihat di \d.
 model UserRole {
   userId Int    @id @map("user_id")
-  role   String // super_admin | admin_perusahaan | direksi | pengawas
+  role   String // super_admin | admin_perusahaan | direksi | keuangan | pengawas  (CHECK di 0032)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

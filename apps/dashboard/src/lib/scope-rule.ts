@@ -66,12 +66,26 @@ export function unitVisible(
 /**
  * Urutan hak dari yang PALING RESTRIKTIF. Dipakai untuk resolusi fail-closed bila
  * invarian "satu role per orang" pernah dilanggar lewat penulisan manual.
+ *
+ * ⚠️ Tangga ini BUKAN "siapa lebih berkuasa" — ia hanya menjawab: bila satu orang
+ * entah bagaimana memegang dua peran, mana yang menang. Yang menang adalah yang
+ * paling sedikit haknya. Cakupan data tidak diambil dari sini sejak 0019
+ * (`membership.all_units` yang menentukan), dan wewenang keuangan tidak pernah
+ * diambil dari sini sama sekali (§10.4).
+ *
+ * `keuangan` (0032) ditaruh di **1** — di atas `pengawas`, di bawah `direksi`:
+ *   · bentrok dengan `pengawas` ⇒ menang `pengawas` = kehilangan hak tulis
+ *     keuangan;
+ *   · bentrok dengan `direksi` ⇒ menang `keuangan` = kehilangan wewenang
+ *     penutupan §3.2.
+ * Kedua arah mencabut sesuatu. Itulah yang dimaksud fail-closed di sini.
  */
 export const ROLE_RANK: Record<Role, number> = {
   pengawas: 0,
-  direksi: 1,
-  admin_perusahaan: 2,
-  super_admin: 3,
+  keuangan: 1,
+  direksi: 2,
+  admin_perusahaan: 3,
+  super_admin: 4,
 };
 
 /**

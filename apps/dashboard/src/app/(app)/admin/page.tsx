@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DELEGABLE_ROLES, GRANTABLE_ROLES, ROLE_LABEL, roleLabel } from "@/lib/admin-rules";
 import { notFound } from "next/navigation";
 import { getDataScope } from "@/lib/scope";
 import { q } from "@/lib/db";
@@ -16,12 +17,7 @@ import { ADMIN_MEMBERSHIPS_SQL } from "@/lib/membership-query";
 
 export const dynamic = "force-dynamic";
 
-const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Super Admin",
-  admin_perusahaan: "Admin Perusahaan",
-  direksi: "Direksi",
-  pengawas: "Pengawas",
-};
+
 
 interface UserRow {
   id: number;
@@ -225,14 +221,16 @@ export default async function AdminPage({
               >
                 <span className="fs16 w600">{g.email}</span>
                 {isSuperUser ? (
-                  <span className="fs15 t-secondary">{ROLE_LABEL[g.role] ?? g.role}</span>
+                  <span className="fs15 t-secondary">{roleLabel(g.role)}</span>
                 ) : (
                   <form action={setUserRole} style={{ display: "flex", gap: 4 }}>
                     <input type="hidden" name="membershipId" value={handle.id} />
                     <select name="role" defaultValue={g.role} className="seg-btn fs15">
-                      <option value="pengawas">Pengawas</option>
-                      <option value="direksi">Direksi</option>
-                      {isSuper && <option value="admin_perusahaan">Admin Perusahaan</option>}
+                      {(isSuper ? GRANTABLE_ROLES : DELEGABLE_ROLES).map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
                     </select>
                     <button type="submit" className="btn-outline sm">
                       Set

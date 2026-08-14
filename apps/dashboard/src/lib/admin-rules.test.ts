@@ -74,7 +74,13 @@ describe("A2 — super_admin tak pernah dikelola lewat UI", () => {
     }
   });
   it("admin terdelegasi tak bisa memberikan admin_perusahaan; super_admin bisa", () => {
-    expect(assignableRoles(adminA)).toEqual(["direksi", "pengawas"]);
+    // 📌 Penjaga ini BERBUNYI saat `keuangan` masuk daftar (0032, 15 Agu 2026) —
+    // memang tugasnya: menambah peran yang boleh diberikan admin terdelegasi
+    // adalah PELEBARAN wewenang, dan pelebaran harus jadi tindakan sadar, bukan
+    // efek samping. Yang dijaga baris ini tetap sama: `admin_perusahaan` tak
+    // pernah bisa didelegasikan, dan `super_admin` tak pernah bisa diberikan
+    // siapa pun (uji berikutnya).
+    expect(assignableRoles(adminA)).toEqual(["direksi", "keuangan", "pengawas"]);
     expect(assignableRoles(adminA)).not.toContain("admin_perusahaan");
     expect(assignableRoles(superAdmin)).toContain("admin_perusahaan");
   });

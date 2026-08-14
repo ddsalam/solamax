@@ -1,5 +1,6 @@
 "use client";
 
+import { GRANTABLE_ROLES, ROLE_LABEL, roleLabel } from "@/lib/admin-rules";
 import { useState } from "react";
 
 /**
@@ -44,12 +45,7 @@ export interface UnitOpt {
   tenant_id: string | null;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Super Admin",
-  admin_perusahaan: "Admin Perusahaan",
-  direksi: "Direksi",
-  pengawas: "Pengawas",
-};
+
 
 export function AccessGrantForm({
   users,
@@ -79,8 +75,10 @@ export function AccessGrantForm({
   // Default diturunkan dari role EFEKTIF; pilihan sadar admin tidak ditimpa.
   const unitMode: "all" | "list" = modeTouched
     ? modePilihan
-    : roleEfektif === "pengawas"
-      ? "list"
+    : roleEfektif === "pengawas" || roleEfektif === "keuangan"
+      ? // Default SEMPIT untuk peran yang bekerja di unit tertentu. "all" boleh,
+        // tapi harus pilihan sadar admin — bukan yang terjadi kalau ia diam.
+        "list"
       : "all";
   const pilihMode = (m: "all" | "list") => {
     setModeTouched(true);
@@ -112,7 +110,7 @@ export function AccessGrantForm({
           {users.map((u) => (
             <option key={u.id} value={u.id}>
               {u.email} {u.name ? `(${u.name})` : ""}
-              {u.role ? ` · ${ROLE_LABEL[u.role] ?? u.role}` : " · belum punya role"}
+              {u.role ? ` · ${roleLabel(u.role)}` : " · belum punya role"}
             </option>
           ))}
         </select>
@@ -133,7 +131,7 @@ export function AccessGrantForm({
               background: "var(--surface-subtle, transparent)",
             }}
           >
-            {ROLE_LABEL[roleTerkunci] ?? roleTerkunci} <span className="t-tertiary">· terkunci</span>
+            {roleLabel(roleTerkunci)} <span className="t-tertiary">· terkunci</span>
           </div>
           <p className="fs15 t-tertiary" style={{ marginTop: 6, marginBottom: 0, fontWeight: 400 }}>
             Role berlaku di <strong>semua perusahaan</strong> orang ini, jadi form ini tidak
@@ -155,9 +153,11 @@ export function AccessGrantForm({
             className="seg-btn"
             style={{ display: "block", width: "100%", marginTop: 6 }}
           >
-            <option value="pengawas">Pengawas</option>
-            <option value="direksi">Direksi</option>
-            <option value="admin_perusahaan">Admin Perusahaan</option>
+            {GRANTABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]}
+              </option>
+            ))}
           </select>
         </label>
       )}
