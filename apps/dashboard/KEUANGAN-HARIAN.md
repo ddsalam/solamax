@@ -214,6 +214,58 @@ Kapabilitas itu dijaga lapis aturan sepenuhnya.
 **Setiap override yang terpakai muncul di laporan bulanan**, sama seperti
 exception close. Jalur tembus yang tidak terlihat bukan jalur tembus, ia kebocoran.
 
+### 2.5 Beban NON-KAS turunan-mesin — rumah sendiri, bukan `manual_entry`
+
+**Keputusan owner 13 Agustus 2026.** Kaki ketiga jurnal pencairan EDC (§10.5)
+adalah **Beban MDR `7-1200`**. Ia bukan akun kas, jadi tak punya tempat di
+`cash_ledger` — dan ia **tidak boleh** ditulis ke `app.manual_entry`.
+
+**Alasannya, dan ini yang mengikat:** `manual_entry` berarti **diketik manusia**.
+Begitu ada satu baris di dalamnya yang lahir dari mesin, pertanyaan **"siapa yang
+memasukkan ini"** menjadi ambigu **selamanya** — padahal seluruh model
+kepemilikan §2 berdiri di atas jawaban itu yang tak ambigu. Aturan "jangan pernah
+menurunkan `operational_category`" (§2.1/§10.8) tetap **mutlak**, tanpa kecuali
+yang harus diingat orang berikutnya.
+
+Rumahnya: **`app.noncash_expense`** (migrasi 0031).
+
+| sifat | bentuk |
+|---|---|
+| `operational_category` | ⛔ **kolomnya TIDAK ADA** — bukan NULL karena "belum diisi", melainkan karena **tidak berlaku**: tak ada pengawas yang memilikinya |
+| `accounting_account` | ada, milik Finance |
+| tautan ke sumber | `edc_settlement_id` **NOT NULL** — `7-1200` selalu bisa ditelusuri ke selisih bruto−neto |
+| siapa menaruhnya | `posted_by_user_id` **NOT NULL** — **mesin menghitung, manusia menyetujui** |
+
+Kalau kolomnya tidak ada, **tak ada yang bisa salah mengisinya** — dan tak ada
+yang perlu mengingat larangannya.
+
+#### Ongkos yang diterima sadar: jalur baca beban menggabung DUA sumber
+
+`app.manual_entry` (diketik) + `app.noncash_expense` (dihitung, disetujui).
+
+⛔ **Beban yang hilang dari laporan TIDAK memunculkan galat apa pun** — ia hanya
+membuat laba terlihat lebih besar. Bandingkan COGS Solar Bakau yang nol sejak
+2026-03-04 selama berbulan-bulan tanpa satu pun alarm.
+
+Karena itu penggabungannya **di SATU tempat** —
+[`keuangan-beban.ts`](src/lib/keuangan-beban.ts) — dan dijaga **tiga lapis**:
+
+1. **TIPE** — `kumpulkanBeban` menerima `Record<SumberBeban, …>`. Menambah anggota
+   ke union **menggagalkan `tsc` di setiap pemanggil** sampai sumber itu
+   ditangani. Penjaga yang bekerja *sebelum* tes dijalankan.
+2. **TES** — ada uji yang memerah bila satu sumber tidak menyumbang.
+3. **DAFTAR** — `SUMBER_BEBAN` bisa dihitung, jadi "berapa sumber yang digabung"
+   punya jawaban, bukan tebakan.
+
+**Jangan pernah menjumlah beban di tempat lain.**
+
+#### Dua jalur MDR, satu akun
+
+Kategori operasional **`MDR` (#13, §10.3) TETAP ADA** — untuk MDR yang ditagih
+**terpisah**, di luar pola potong-di-muka. Dua jalur, dua asal, satu akun
+`7-1200`; dan asalnya tetap bisa dibedakan lewat `BarisBeban.sumber`. Itulah
+yang membuat "siapa yang menaruh ini" tetap punya jawaban.
+
 ### 2.4 Dua pintu, satu daftar
 
 Biaya operasional & pendapatan lain-lain punya **dua pintu masuk**:

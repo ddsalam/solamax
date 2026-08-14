@@ -965,6 +965,33 @@ model EdcSettlement {
   @@schema("app")
 }
 
+// Beban NON-KAS turunan-mesin (§2.5, keputusan owner 13 Agu 2026). Kaki ketiga
+// jurnal pencairan EDC: Beban MDR 7-1200, yang BUKAN akun kas sehingga tak
+// punya tempat di cash_ledger.
+// ⛔ SENGAJA TANPA `operationalCategory` — bukan NULL karena "belum diisi",
+// melainkan karena kolom itu TIDAK BERLAKU: tak ada pengawas yang memilikinya.
+// Kalau kolomnya tidak ada, tak ada yang bisa salah mengisinya.
+// MESIN menghitung, MANUSIA menyetujui: `postedByUserId` NOT NULL.
+model NoncashExpense {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int       @map("unit_id") @db.SmallInt
+  businessDate      DateTime  @map("business_date") @db.Date
+  accountingAccount String    @map("accounting_account")
+  amountRp          Decimal   @map("amount_rp") @db.Decimal(17, 2)
+  keterangan        String
+  /// NOT NULL: 7-1200 harus SELALU bisa ditelusuri ke selisih bruto−neto.
+  edcSettlementId   String    @map("edc_settlement_id") @db.Uuid
+  postedByUserId    Int       @map("posted_by_user_id")
+  postedAt          DateTime  @default(now()) @map("posted_at") @db.Timestamptz()
+  void              Boolean   @default(false)
+  voidedByUserId    Int?      @map("voided_by_user_id")
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate, accountingAccount])
+  @@map("noncash_expense")
+  @@schema("app")
+}
+
 // Usulan Penebusan SO (input pengawas → Keuangan). 3 kolom manual per produk per
 // tanggal; "awal hari" (Sisa Stock/DO) TIDAK disimpan (carry-forward D−1 dihitung
 // ulang di dashboard). VOID-only + audit. `status` draft→diajukan (informasional,

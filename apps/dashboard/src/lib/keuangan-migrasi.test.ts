@@ -92,6 +92,7 @@ const sql0027 = MIG("0027_backdate_override");
 const sql0028 = MIG("0028_so_macet");
 const sql0029 = MIG("0029_cash_ledger");
 const sql0030 = MIG("0030_edc_settlement");
+const sql0031 = MIG("0031_noncash_expense");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -781,6 +782,7 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
     ["0028_so_macet", sql0028],
     ["0029_cash_ledger", sql0029],
     ["0030_edc_settlement", sql0030],
+    ["0031_noncash_expense", sql0031],
   ];
 
   /** Tabel yang DIBUAT di migrasi ini dan punya kolom `unit_id` NOT NULL. */
@@ -824,5 +826,63 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
     // aturan yang terlalu lebar akan memaksa urutan yang tak perlu.
     expect(tabelTerScope(pernyataan(sql0029))).toEqual(["cash_account", "cash_ledger"]);
     expect(tabelTerScope(pernyataan(sql0022))).toEqual([]);
+  });
+});
+
+describe("0031: beban non-kas turunan-mesin", () => {
+  const stmt = pernyataan(sql0031);
+
+  it("⛔ TIDAK punya kolom operational_category — bukan NULL, TIDAK BERLAKU", () => {
+    // Kalau kolomnya tidak ada, tak ada yang bisa salah mengisinya, dan aturan
+    // §2.1 tetap mutlak tanpa kecuali yang harus diingat orang berikutnya.
+    expect(sql0031).not.toMatch(/"operational_category"/);
+  });
+
+  it("membawa accounting_account (milik Finance) dan mewajibkannya berisi", () => {
+    expect(stmt).toMatch(/"accounting_account" TEXT NOT NULL/);
+    expect(stmt).toMatch(/btrim\("accounting_account"\) <> ''/);
+  });
+
+  it("🔴 tertaut ke batch settlement, NOT NULL — 7-1200 selalu bisa ditelusuri", () => {
+    expect(stmt).toMatch(/"edc_settlement_id" UUID NOT NULL/);
+    expect(stmt).toMatch(
+      /FOREIGN KEY \("edc_settlement_id"\)\s*\n?\s*REFERENCES "app"\."edc_settlement"\("id"\)/,
+    );
+  });
+
+  it("MESIN menghitung, MANUSIA menyetujui: posted_by NOT NULL", () => {
+    // Barisnya tidak pernah lahir tanpa ada yang menyetujuinya, jadi "siapa yang
+    // menaruh ini" tetap punya jawaban.
+    expect(stmt).toMatch(/"posted_by_user_id" INTEGER NOT NULL/);
+    expect(stmt).toMatch(/"posted_at"     TIMESTAMPTZ NOT NULL/);
+  });
+
+  it("beban nol/negatif ditolak — negatif adalah pendapatan lewat pintu salah", () => {
+    expect(stmt).toMatch(/CHECK \("amount_rp" > 0\)/);
+  });
+
+  it("satu beban AKTIF per (settlement, akun) — cegah beban terhitung dua kali", () => {
+    expect(stmt).toMatch(
+      /CREATE UNIQUE INDEX[^;]*noncash_expense_settlement_uq[^;]*WHERE NOT "void"/s,
+    );
+  });
+
+  it("VOID-only: tanpa DELETE untuk dashboard_app", () => {
+    expect(stmt).toContain('REVOKE DELETE ON "app"."noncash_expense" FROM dashboard_app');
+  });
+
+  it("RLS: ENABLE + FORCE + POLICY dieksekusi; predikat IDENTIK 0016 tanpa cabang NULL", () => {
+    expect(stmt).toContain(PREDIKAT_0016);
+    expect(stmt).not.toContain("unit_id IS NULL OR");
+    expect(stmt).toMatch(/EXECUTE 'ALTER TABLE "app"\."noncash_expense" ENABLE ROW LEVEL SECURITY'/);
+    expect(stmt).toMatch(/EXECUTE 'ALTER TABLE "app"\."noncash_expense" FORCE ROW LEVEL SECURITY'/);
+    expect(stmt).toMatch(/EXECUTE format\(\s*'CREATE POLICY unit_scope/);
+    expect(sql0031).toMatch(/DIPUTUSKAN SADAR/);
+  });
+
+  it("konsekuensi dua-sumber DISEBUT, berikut tempat penggabungannya", () => {
+    // Beban yang hilang dari laporan tidak memunculkan galat apa pun.
+    expect(sql0031).toMatch(/keuangan-beban\.ts/);
+    expect(sql0031).toMatch(/tidak memunculkan galat apa pun/);
   });
 });
