@@ -2,7 +2,7 @@
   "name": "solamax",
   "private": true,
   "version": "0.0.0",
-  "description": "SolaMax — pipeline EasyMax POS → dashboard pengawasan SPBU SolaGroup",
+  "description": "SolaMax \u2014 pipeline EasyMax POS \u2192 dashboard pengawasan SPBU SolaGroup",
   "engines": {
     "node": ">=18.18"
   },
@@ -12,7 +12,11 @@
     "test": "pnpm -r test",
     "agent": "pnpm --filter @solamax/agent",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm -r typecheck && pnpm -r test"
+    "check": "node scripts/ci/check-sql-syntax.mjs && pnpm -r typecheck && pnpm -r test",
+    "check:sql": "node scripts/ci/check-sql-syntax.mjs"
   },
-  "packageManager": "pnpm@9.12.0"
+  "packageManager": "pnpm@9.12.0",
+  "devDependencies": {
+    "pg-query-emscripten": "^5.1.0"
+  }
 }
