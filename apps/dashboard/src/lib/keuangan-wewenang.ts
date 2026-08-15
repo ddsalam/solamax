@@ -1,15 +1,29 @@
 /**
- * Wewenang KEUANGAN sebagai KAPABILITAS, bukan sebagai peran.
+ * Wewenang keuangan — DUA BENTUK yang sengaja tidak disatukan.
+ *
+ *   · MENYETUJUI penutupan di luar toleransi = **kapabilitas** (Head of
+ *     Finance, lewat ENV) — §10.4, keputusan owner B4 12 Agustus 2026.
+ *   · MENGISI buku keuangan = **peran** `keuangan` (migrasi 0032) —
+ *     keputusan owner 15 Agustus 2026, pembuka K2.
+ *
+ * Yang menyetujui tidak mengetik; yang mengetik tidak menyetujui. Kalau kelak
+ * ada yang menggabungkan keduanya "supaya sederhana", yang hilang adalah
+ * pemisahan itu — dan tak ada angka yang akan terlihat salah karenanya.
  *
  * Keputusan owner B4, 12 Agustus 2026 (KEUANGAN-HARIAN.md §10.4).
  *
  *     canCloseException = role ∈ {direksi, super_admin} ∨ isHeadOfFinance
  *
  * ⛔ JANGAN menyisipkan `head_of_finance` ke `ROLE_RANK`
- * ([`scope-rule.ts`](scope-rule.ts): `pengawas 0 · direksi 1 · admin_perusahaan 2
- * · super_admin 3`). Tangga itu mengatur **cakupan data**, bukan wewenang
- * keuangan. Menaruh HoF di atas `direksi` ⇒ HoF melihat lebih banyak data
- * daripada Direksi; di bawah ⇒ Direksi kehilangan wewenang HoF.
+ * ([`scope-rule.ts`](scope-rule.ts): `pengawas 0 · keuangan 1 · direksi 2 ·
+ * admin_perusahaan 3 · super_admin 4` sejak migrasi 0032). Tangga itu mengatur
+ * **cakupan data**, bukan wewenang keuangan. Menaruh HoF di atas `direksi` ⇒
+ * HoF melihat lebih banyak data daripada Direksi; di bawah ⇒ Direksi kehilangan
+ * wewenang HoF.
+ *
+ * ⚠️ Peran `keuangan` yang MASUK tangga itu (0032) bukan pembalikan aturan ini.
+ * HoF sudah punya peran lain yang akan tercabut; pemegang `keuangan` tidak punya
+ * peran lain untuk dicabut. Lihat {@link canInputKeuangan}.
  *
  * 🔴 BUKTI KONKRET kenapa HoF-sebagai-peran MUSTAHIL, bukan sekadar tidak rapi
  * (diverifikasi owner 12 Agu 2026):
@@ -105,4 +119,34 @@ export function canCloseException(ctx: WewenangCtx, daftar?: readonly string[]):
  */
 export function canOverrideAboveMax(ctx: WewenangCtx): boolean {
   return ctx.role === "direksi" || ctx.role === "super_admin";
+}
+
+/**
+ * Boleh MENULIS di Layar 3 — Input Keuangan (harga beli, buku kas & bank,
+ * settlement EDC, biaya yang tidak lewat pengawas).
+ *
+ * Keputusan owner 15 Agustus 2026: peran RBAC baru `keuangan` (migrasi 0032),
+ * bukan kapabilitas ENV seperti HoF. Bedanya bukan selera — HoF adalah
+ * kapabilitas yang menempel pada orang yang SUDAH punya peran lain, sedangkan
+ * `keuangan` adalah pekerjaan yang menjadi SATU-SATUNYA peran pemegangnya.
+ * Satu-peran-per-orang mematikan yang pertama dan justru pas untuk yang kedua
+ * (§10.4 tetap berlaku utuh untuk HoF).
+ *
+ * ⛔ `pengawas` TIDAK ADA di sini, dan itu inti §2: pengawas memiliki FAKTA
+ * transaksi, Finance memiliki klasifikasi & penyajian akuntansi. Pengawas yang
+ * bisa mengetik harga beli meruntuhkan pemisahan itu tanpa satu pun angka
+ * terlihat salah.
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI — bukan turunan `canCloseException`, dan sengaja
+ * TIDAK menyebut `isHeadOfFinance`. Mengisi buku bukan mengesahkan selisih:
+ * HoF menyetujui penutupan (§3.2), ia tidak mengetik mutasi bank. Menyatukan
+ * keduanya akan memberi hak tulis kepada penyetuju, dan penyetuju yang boleh
+ * menulis adalah pemeriksa yang memeriksa pekerjaannya sendiri.
+ *
+ * `super_admin` ada karena ia harus bisa memulihkan keadaan tanpa memberi
+ * dirinya peran lain — dan karena satu-peran-per-orang membuat "sementara
+ * jadi keuangan" berarti kehilangan super_admin.
+ */
+export function canInputKeuangan(ctx: WewenangCtx): boolean {
+  return ctx.role === "keuangan" || ctx.role === "super_admin";
 }
