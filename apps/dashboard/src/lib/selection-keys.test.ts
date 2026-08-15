@@ -121,3 +121,38 @@ describe("selectionCookieWrites — write-through mengikuti navigasi", () => {
     expect(selectionCookieWrites(sel, UNITS, { unit: "6378301", date: SEED_DATE })).toEqual([]);
   });
 });
+
+describe("rute Keuangan — /keuangan/unit/{code}/{date}/… (K2, layar 3)", () => {
+  it("URL otoritatif: unit & tanggal diambil dari path, bukan cookie", () => {
+    // Bentuk rute ini BEDA dari rute laporan (unit setelah /keuangan, bukan di
+    // akar). Rute ber-unit yang tak terdaftar di sini bukan gagal terang — ia
+    // diam-diam memakai cookie, dan tautan sidebar menunjuk SPBU yang salah.
+    const s = derive("/keuangan/unit/6378301/2026-01-15/input");
+    expect(s.unit).toBe("6378301");
+    expect(s.date).toBe("2026-01-15");
+    expect(s.navDate).toBe("2026-01-15");
+    expect(s.unitFromUrl).toBe(true);
+    expect(s.dateFromUrl).toBe(true);
+  });
+
+  it("berbeda dari seed — jangan hijau karena kebetulan sama dengan cookie", () => {
+    // Daya-beda: kalau regexnya TIDAK cocok, hasilnya jatuh ke SEED. Uji ini
+    // memakai unit & tanggal yang berbeda dari seed supaya kegagalan itu
+    // terlihat, bukan tersamar.
+    const s = derive("/keuangan/unit/6478201/2026-03-09/input");
+    expect(s.unit).not.toBe(SEED_UNIT);
+    expect(s.date).not.toBe(SEED_DATE);
+  });
+
+  it("write-through cookie jalan untuk rute ini", () => {
+    const s = derive("/keuangan/unit/6378301/2026-01-15/input");
+    const w = selectionCookieWrites(s, ["6378301"], {});
+    expect(w.map((x) => x.value).sort()).toEqual(["2026-01-15", "6378301"]);
+  });
+
+  it("tanggal tak valid di path → tidak dianggap rute ber-unit", () => {
+    const s = derive("/keuangan/unit/6378301/kemarin/input");
+    expect(s.unitFromUrl).toBe(false);
+    expect(s.unit).toBe(SEED_UNIT);
+  });
+});
