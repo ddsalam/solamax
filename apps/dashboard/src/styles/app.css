@@ -1237,3 +1237,18 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .keu-attest input:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
 
 @media (max-width: 768px) { .keu-2col { grid-template-columns: 1fr; } }
+
+/* Buku kas & buku bank (blok 2) — Keterangan · Kategori · Nominal · Saldo ·
+   (Tindakan). Kolom Saldo TIDAK punya input di mana pun; ia hasil hitung. */
+.cols-buku { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); align-items: center; padding-top: 11px; padding-bottom: 11px; }
+.cols-buku.ro { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.tbl-scroll .cols-buku { min-width: 880px; }
+.tbl-scroll .cols-buku.ro { min-width: 760px; }
+
+/* Pemilih buku (kas besar · lima bank · EDC penampungan). */
+.keu-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+.keu-tab { appearance: none; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; min-height: 44px; padding: 9px 16px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); }
+.keu-tab:hover { color: var(--color-text-primary); }
+.keu-tab[aria-selected="true"] { background: var(--brand-navy); border-color: var(--brand-navy); color: var(--color-text-on-accent); }
+.keu-tab:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+.keu-banner .keu-attest { background: var(--color-surface); }

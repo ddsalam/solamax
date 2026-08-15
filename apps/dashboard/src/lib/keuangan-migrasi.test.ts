@@ -940,3 +940,56 @@ describe("0032_role_keuangan — daftar peran TypeScript ↔ Postgres", () => {
     expect(st).not.toMatch(/INSERT INTO/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0033 — tautan baris buku kas ke setoran pengawas yang MELAHIRKANNYA
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0033_cash_ledger_source — satu setoran, paling banyak satu baris kas", () => {
+  const sql = MIG("0033_cash_ledger_source");
+
+  it("penjaga ini punya SUBJEK", () => {
+    expect(pernyataan(sql)).toMatch(/ALTER TABLE "app"\."cash_ledger"/);
+  });
+
+  it("kolom tautan ditambahkan secara aditif & idempoten", () => {
+    const st = pernyataanYangDimulai(sql, 'ALTER TABLE "app"."cash_ledger"');
+    expect(st).toMatch(/ADD COLUMN IF NOT EXISTS "source_manual_entry_id" UUID/);
+    // NULLABLE: mutasi biasa tidak lahir dari setoran mana pun.
+    expect(st).not.toMatch(/source_manual_entry_id" UUID NOT NULL/);
+  });
+
+  it("FK LANGSUNG ke app.manual_entry — bukan polimorfik", () => {
+    // Alasan yang sama dengan 0031: sumber kedua belum ada, dan polimorfisme
+    // untuk pemakai yang belum ada adalah beban yang dibayar sekarang.
+    // FK-nya hidup di dalam blok DO $$ (idempoten lewat pg_constraint), yang
+    // sengaja DIBUANG oleh pernyataanYangDimulai. Karena itu satu regex yang
+    // menuntut ketiga bagiannya BERSEBELAHAN: mengomentari salah satu barisnya
+    // membuat sisanya berdempetan dan pola ini tidak lagi cocok.
+    expect(pernyataan(sql)).toMatch(
+      /ADD CONSTRAINT "cash_ledger_source_manual_fk"\s+FOREIGN KEY \("source_manual_entry_id"\)\s+REFERENCES "app"\."manual_entry"\("id"\)/,
+    );
+  });
+
+  it("🔴 indeks UNIK parsial — pencegahan setoran ganda adalah konsekuensi SKEMA", () => {
+    // Tanpa ini, "sudah disetujui belum?" hanya bisa ditebak dari nominal +
+    // tanggal, dan tebakan itu gagal justru pada dua shift bernominal sama.
+    const st = pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "cash_ledger_source_manual_uq"');
+    expect(st, "indeks unik tautan setoran tidak ditemukan utuh").not.toBe("");
+    expect(st).toMatch(/ON "app"\."cash_ledger"\("source_manual_entry_id"\)/);
+    // `WHERE NOT void` disengaja: baris yang dibatalkan harus boleh diganti.
+    expect(st).toMatch(/WHERE "source_manual_entry_id" IS NOT NULL AND NOT "void"/);
+  });
+
+  it("tidak menyentuh RLS dan tidak menyemai apa pun", () => {
+    // cash_ledger sudah RLS sejak 0029; menambah kolom tak mengubah kebijakan.
+    const st = pernyataan(sql);
+    expect(st).not.toMatch(/ROW LEVEL SECURITY/);
+    expect(st).not.toMatch(/CREATE POLICY/);
+    expect(st).not.toMatch(/INSERT INTO/);
+  });
+
+  it("tidak menambahkan kolom saldo — sekarang maupun lewat migrasi ini", () => {
+    expect(pernyataan(sql)).not.toMatch(/saldo|balance/i);
+  });
+});
+
