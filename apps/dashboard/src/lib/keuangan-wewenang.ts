@@ -10,6 +10,15 @@
  * ada yang menggabungkan keduanya "supaya sederhana", yang hilang adalah
  * pemisahan itu — dan tak ada angka yang akan terlihat salah karenanya.
  *
+ * ⚠️ SATU PENGECUALIAN, DISENGAJA: **`super_admin` lolos KEDUANYA** — ia boleh
+ * mengetik DAN boleh menyetujui. Ini break-glass, bukan kelalaian (§10.11):
+ * satu-peran-per-orang membuat "sementara jadi `keuangan`" berarti kehilangan
+ * `super_admin`, sehingga pemulihan keadaan mustahil justru saat dibutuhkan.
+ * Pemisahan tugas di modul ini berlaku di antara peran OPERASIONAL; terhadap
+ * `super_admin` yang menjaga hanyalah `app.audit_log` (0017) — jejak, bukan
+ * pencegahan. Menyebutnya di sini supaya pembaca berikutnya tidak "menemukan"
+ * lubang yang sebenarnya keputusan.
+ *
  * Keputusan owner B4, 12 Agustus 2026 (KEUANGAN-HARIAN.md §10.4).
  *
  *     canCloseException = role ∈ {direksi, super_admin} ∨ isHeadOfFinance

@@ -211,3 +211,33 @@ describe("canInputKeuangan — gerbang tulis Layar 3 (peran `keuangan`, 0032)", 
     expect(tutup).toEqual(["direksi", "super_admin"]);
   });
 });
+
+describe("super_admin — pengecualian pemisahan tugas yang DINYATAKAN (§10.11)", () => {
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 super_admin memang lolos KEDUA sisi — ini break-glass, bukan lubang", () => {
+    // Kalau baris ini kelak merah karena seseorang "merapikan" pemisahan tugas,
+    // yang ia patahkan adalah jalan pemulihan: satu-peran-per-orang membuat
+    // "sementara jadi keuangan" berarti kehilangan super_admin.
+    expect(canInputKeuangan(c("super_admin"))).toBe(true);
+    expect(canCloseException(c("super_admin"), [])).toBe(true);
+    expect(canOverrideAboveMax(c("super_admin"))).toBe(true);
+  });
+
+  it("dan ia SATU-SATUNYA yang lolos keduanya — pengecualiannya tidak melebar", () => {
+    // Penjaga arah sebaliknya: pengecualian yang dinyatakan boleh ada, tetapi
+    // ia harus tetap satu. Peran kedua yang ikut lolos keduanya = pemisahan
+    // tugas hilang tanpa ada yang memutuskannya.
+    const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+    const keduanya = semua.filter((r) => canInputKeuangan(c(r)) && canCloseException(c(r), []));
+    expect(keduanya).toEqual(["super_admin"]);
+  });
+
+  it("pengecualiannya TERTULIS di modul, bukan hanya berlaku diam-diam", () => {
+    // Pengecualian yang tersirat akan dibaca sebagai kelalaian oleh pembaca
+    // berikutnya — dan pembaca yang mengira menemukan lubang akan menambalnya.
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    expect(src).toMatch(/super_admin` lolos KEDUANYA/);
+    expect(src).toMatch(/§10\.11/);
+  });
+});
