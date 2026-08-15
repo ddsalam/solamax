@@ -12,8 +12,8 @@ import { NavIcon, type IconName } from "@/components/NavIcon";
  * SERVER (admin → notFound non-super; per-unit lewat requireUnit/ScopedUnitId).
  */
 
-export type GroupId = "monitoring" | "laporan" | "direksi";
-export const GROUP_IDS: GroupId[] = ["monitoring", "laporan", "direksi"];
+export type GroupId = "monitoring" | "laporan" | "keuangan" | "direksi";
+export const GROUP_IDS: GroupId[] = ["monitoring", "laporan", "keuangan", "direksi"];
 
 interface NavItem {
   href: string | null; // null = nonaktif (butuh unit tetapi tak ada unit scope)
@@ -70,6 +70,22 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
           label: "Usulan Penebusan SO",
           icon: "fuel",
           match: (p) => /^\/unit\/[^/]+\/usulan/.test(p),
+        },
+      ],
+    },
+    {
+      id: "keuangan",
+      title: "Keuangan",
+      items: [
+        // HANYA butir yang benar-benar ada. Empat layar keuangan lainnya
+        // (papan grup, laporan harian, tutup hari, sumber data) BELUM dibangun,
+        // dan menu yang menjanjikan halaman kosong lebih buruk daripada menu
+        // yang belum menyebutnya.
+        {
+          href: unitCode ? `/keuangan/unit/${unitCode}/${date}/input` : null,
+          label: "Input keuangan",
+          icon: "receipt",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+\/input/.test(p),
         },
       ],
     },
