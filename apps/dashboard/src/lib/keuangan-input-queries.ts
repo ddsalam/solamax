@@ -1,6 +1,7 @@
 import { qScoped } from "./db";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
+import type { Settlement } from "./keuangan-edc";
 import type { MutasiKas } from "./keuangan-kas";
 import type { AkunKas, SetoranPengawas } from "./keuangan-kas-model";
 
@@ -221,5 +222,76 @@ export async function getSetoranPengawas(
         AND NOT void
       ORDER BY urut, created_at`,
     [unit, date],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blok 3 — settlement EDC
+// ---------------------------------------------------------------------------
+
+export interface SettlementRow extends Settlement {
+  settlementNo: string;
+  reasonCode: string | null;
+  /** Sudah ada yang MENYETUJUI jurnal pencairannya? */
+  posted: boolean;
+}
+
+export async function getSettlements(
+  unit: ScopedUnitId,
+  from: string,
+  to: string,
+): Promise<SettlementRow[]> {
+  return qScoped<SettlementRow>(
+    unit,
+    `SELECT id::text                                AS id,
+            acquirer,
+            settlement_no                           AS "settlementNo",
+            to_char(settlement_date,'YYYY-MM-DD')   AS "settlementDate",
+            to_char(business_date,'YYYY-MM-DD')     AS "businessDate",
+            to_account_id::text                     AS "toAccountId",
+            gross_rp::float8                        AS "grossRp",
+            net_rp::float8                          AS "netRp",
+            txn_total_rp::float8                    AS "txnTotalRp",
+            reason_code                             AS "reasonCode",
+            (posted_at IS NOT NULL)                 AS posted,
+            void
+       FROM app.edc_settlement
+      WHERE unit_id = $1 AND settlement_date BETWEEN $2::date AND $3::date
+      ORDER BY settlement_date DESC, acquirer`,
+    [unit, from, to],
+  );
+}
+
+/**
+ * Total transaksi EDC menurut `public.edc` pada satu tanggal bisnis, per
+ * acquirer-kartu. Dipakai sebagai PEMBANDING saat rekonsiliasi — angkanya tidak
+ * pernah menimpa bruto settlement; selisihnya berdiri sebagai selisih (§10.5).
+ */
+export async function getTotalEdcHarian(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<{ ckdkartu: string; total: number }[]> {
+  return qScoped<{ ckdkartu: string; total: number }>(
+    unit,
+    `SELECT COALESCE(trim(ckdkartu),'(tanpa kode)') AS ckdkartu,
+            COALESCE(sum(total),0)::float8         AS total
+       FROM edc
+      WHERE unit_id = $1 AND business_date = $2::date
+      GROUP BY 1
+      ORDER BY 2 DESC`,
+    [unit, date],
+  );
+}
+
+/** Kode alasan grup `closing` — untuk selisih transaksi vs settlement. */
+export async function getReasonCodeClosing(
+  unit: ScopedUnitId,
+): Promise<{ code: string; label: string }[]> {
+  return qScoped<{ code: string; label: string }>(
+    unit,
+    `SELECT code, label
+       FROM app.reason_code
+      WHERE applies_to = 'closing' AND active
+      ORDER BY code`,
   );
 }

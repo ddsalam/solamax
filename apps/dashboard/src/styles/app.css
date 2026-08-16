@@ -1252,3 +1252,12 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .keu-tab[aria-selected="true"] { background: var(--brand-navy); border-color: var(--brand-navy); color: var(--color-text-on-accent); }
 .keu-tab:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
 .keu-banner .keu-attest { background: var(--color-surface); }
+
+/* Settlement EDC (blok 3). Kolom MDR ada di tabel tetapi TIDAK punya input di
+   mana pun — ia bruto − neto, dan di DB kolom GENERATED (0030). */
+.cols-edc { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-edc { min-width: 960px; }
+.cols-jurnal { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.tbl-scroll .cols-jurnal { min-width: 700px; }
+.cols-mdr { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.tbl-scroll .cols-mdr { min-width: 720px; }

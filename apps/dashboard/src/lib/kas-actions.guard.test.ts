@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { urutan } from "./penjaga-urutan";
 
 /**
  * Penjaga TEKS atas `kas-actions.ts` (Layar 3 blok 2).
@@ -69,7 +70,7 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
     expect(KODE).toMatch(/PESAN_TAK_BOLEH_INPUT\[alasan\]/);
     // `buka()` = requireUnit + gerbang; ia dipanggil di awal SETIAP aksi,
     // sebelum satu pun `pool.connect()`.
-    expect(KODE.indexOf("alasanTakBolehInput(")).toBeLessThan(KODE.indexOf("pool.connect()"));
+    expect(urutan(KODE, "alasanTakBolehInput(", "pool.connect()")).toBe("ok");
     expect(KODE).toMatch(/scope\.requireUnit\(code\)/);
     expect([...KODE.matchAll(/const ctx = await buka\(/g)]).toHaveLength(3);
     expect([...KODE.matchAll(/if \(!ctx\.boleh\) return/g)]).toHaveLength(3);
@@ -103,9 +104,7 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
 
   it("RLS 0016: set_config transaction-local mendahului setiap DML", () => {
     expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(3);
-    expect(KODE.indexOf("set_config('app.unit_ids'")).toBeLessThan(
-      KODE.indexOf("INSERT INTO app.cash_ledger"),
-    );
+    expect(urutan(KODE, "set_config('app.unit_ids'", "INSERT INTO app.cash_ledger")).toBe("ok");
   });
 
   it("VOID-only: tak ada DELETE, dan pembatalan meninggalkan jejak", () => {
