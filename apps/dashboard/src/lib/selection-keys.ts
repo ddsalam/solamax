@@ -14,6 +14,17 @@ export const SELECTION_MAX_AGE = 60 * 60 * 24 * 30;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const REPORT_ROUTE_RE = /^\/unit\/([^/]+)\/(?:laporan|rincian|usulan)\/(\d{4}-\d{2}-\d{2})/;
+/**
+ * Rute modul Keuangan: `/keuangan/unit/{code}/{date}/…` (mockup layar 3).
+ * Bentuknya BERBEDA dari REPORT_ROUTE_RE — unit datang SETELAH `/keuangan`,
+ * bukan di akar — karena kelima layar keuangan bernaung di bawah satu prefiks.
+ *
+ * ⚠️ Setiap rute baru yang membawa unit di URL WAJIB terdaftar di sini. Yang
+ * hilang bukan hal kecil: tautan sidebar akan menunjuk unit lain (cookie yang
+ * basi menang atas URL), dan write-through cookie tak pernah jalan — gejalanya
+ * "menu membawa saya ke SPBU yang salah", jauh dari sebabnya.
+ */
+const KEUANGAN_ROUTE_RE = /^\/keuangan\/unit\/([^/]+)\/(\d{4}-\d{2}-\d{2})/;
 const DENAH_ROUTE_RE = /^\/monitoring\/denah\/([^/]+)/;
 
 export interface TopbarSelection {
@@ -54,7 +65,7 @@ export function deriveTopbarSelection(
   seedDate: string,
   today: string,
 ): TopbarSelection {
-  const r = REPORT_ROUTE_RE.exec(path);
+  const r = REPORT_ROUTE_RE.exec(path) ?? KEUANGAN_ROUTE_RE.exec(path);
   if (r) return { unit: r[1], date: r[2]!, navDate: r[2]!, unitFromUrl: true, dateFromUrl: true };
   const d = DENAH_ROUTE_RE.exec(path);
   if (d) return { unit: d[1], date: today, navDate: seedDate, unitFromUrl: true, dateFromUrl: false };

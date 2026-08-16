@@ -9,7 +9,7 @@ import { worstSyncAt, worstSyncUnitId } from "@/lib/freshness";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
-import { type Role } from "@/lib/auth-context";
+import { ROLE_LABEL } from "@/lib/admin-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const ROLE_LABEL: Record<Role, string> = {
-  super_admin: "Super Admin",
-  admin_perusahaan: "Admin Perusahaan",
-  direksi: "Direksi",
-  pengawas: "Pengawas",
-};
+
 
 /** Shell ter-auth + ter-scope: getDataScope = gerbang otoritatif & sumber unit.
  *  Chrome (topbar + drawer) dirender oleh AppShell (client); semua bit server

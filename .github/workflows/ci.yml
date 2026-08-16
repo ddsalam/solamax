@@ -48,4 +48,8 @@ jobs:
       # Prisma client harus ter-generate; tipe tx transaksi (backend) berasal darinya.
       - run: pnpm --filter @solamax/backend prisma:generate
       # typecheck semua paket + SELURUH test suite (incl. uji akses-negatif).
+      # Self-test penjaga sintaks SQL — dibuktikan MERAH terhadap bug NYATA
+      # (`///` di 0030) sebelum penjaganya dipercaya. `pnpm check` sendiri sudah
+      # menjalankan checker-nya; ini yang membuktikan checker itu bisa gagal.
+      - run: bash scripts/ci/check-sql-syntax.selftest.sh
       - run: pnpm check

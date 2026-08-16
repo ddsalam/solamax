@@ -1199,3 +1199,73 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
    sengaja tidak dikoreksi — yang salah adalah inputnya, bukan hitungannya. */
 .zc-tag { margin-left: 6px; vertical-align: middle; }
 .zc-note { border-left: 3px solid var(--color-warning, #b45309); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Layar 3 — Input Keuangan (K2). Namespace `keu-*`, pola yang sama dengan
+   `manual-*`: satu blok milik satu permukaan, bukan utilitas global baru.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Harga beli — Produk · Harga beli · Harga jual · Margin/liter · Berlaku sejak ·
+   (Tindakan). Varian `.ro` untuk pembaca yang tak boleh menulis (§2.6): kolom
+   tindakan HILANG, bukan kosong — kolom kosong yang rapi tetap menyisakan
+   pertanyaan "tombol apa yang seharusnya di situ". */
+.cols-hargabeli { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 0.9fr); align-items: center; padding-top: 11px; padding-bottom: 11px; }
+.cols-hargabeli.ro { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); }
+.tbl-scroll .cols-hargabeli { min-width: 860px; }
+.tbl-scroll .cols-hargabeli.ro { min-width: 720px; }
+
+.keu-banner { margin-top: var(--space-4); flex-direction: column; gap: var(--space-2); }
+.keu-banner b { font-size: 17px; }
+.keu-p { margin: 0; font-size: 16px; }
+.keu-list { margin: 0; padding-left: 1.25em; font-size: 16px; display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* Penanda baris. Bukan hanya warna: teksnya sendiri yang membawa artinya —
+   penanda yang hanya berbeda warna tak terbaca oleh sebagian pembaca direksi. */
+.keu-pill { margin-left: 8px; font-size: 14px; font-weight: 700; color: var(--color-warning); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: var(--radius-full); padding: 2px 9px; white-space: nowrap; }
+
+.keu-form { margin-top: var(--space-5); }
+.keu-2col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.keu-fld { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-4); }
+.keu-2col .keu-fld { margin-top: 0; }
+.keu-label { font-size: 16px; font-weight: 600; }
+.keu-fld textarea.manual-input { min-height: 66px; resize: vertical; }
+
+/* Pengakuan P1: target sentuh ≥44px dan kotaknya cukup besar untuk jari,
+   bukan kotak 13px bawaan browser. */
+.keu-attest { display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-3); padding: var(--space-3) var(--space-4); min-height: 44px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-surface); font-size: 16px; }
+.keu-attest input[type="checkbox"] { width: 22px; height: 22px; margin: 0; flex: none; accent-color: var(--color-accent); }
+.keu-attest input:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+@media (max-width: 768px) { .keu-2col { grid-template-columns: 1fr; } }
+
+/* Buku kas & buku bank (blok 2) — Keterangan · Kategori · Nominal · Saldo ·
+   (Tindakan). Kolom Saldo TIDAK punya input di mana pun; ia hasil hitung. */
+.cols-buku { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); align-items: center; padding-top: 11px; padding-bottom: 11px; }
+.cols-buku.ro { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.tbl-scroll .cols-buku { min-width: 880px; }
+.tbl-scroll .cols-buku.ro { min-width: 760px; }
+
+/* Pemilih buku (kas besar · lima bank · EDC penampungan). */
+.keu-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+.keu-tab { appearance: none; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; min-height: 44px; padding: 9px 16px; border-radius: var(--radius-full); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-secondary); }
+.keu-tab:hover { color: var(--color-text-primary); }
+.keu-tab[aria-selected="true"] { background: var(--brand-navy); border-color: var(--brand-navy); color: var(--color-text-on-accent); }
+.keu-tab:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+.keu-banner .keu-attest { background: var(--color-surface); }
+
+/* Settlement EDC (blok 3). Kolom MDR ada di tabel tetapi TIDAK punya input di
+   mana pun — ia bruto − neto, dan di DB kolom GENERATED (0030). */
+.cols-edc { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-edc { min-width: 960px; }
+.cols-jurnal { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.tbl-scroll .cols-jurnal { min-width: 700px; }
+.cols-mdr { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.tbl-scroll .cols-mdr { min-width: 720px; }
+
+/* Biaya operasional (blok 4) — dua kolom, dua pemilik. Tak ada kolom "aksi"
+   ber-tombol Edit: yang ada daftar tindakan bernama, sebagai teks. */
+.cols-biaya { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr); align-items: baseline; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-biaya { min-width: 1080px; }
+
+/* Keping asal-usul. Netral (bukan peringatan) — ia keterangan, bukan alarm. */
+.keu-chip { margin-left: 8px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 2px 9px; white-space: nowrap; }

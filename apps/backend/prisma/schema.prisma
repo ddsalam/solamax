@@ -545,7 +545,7 @@ model Membership {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         Int      @map("user_id")
   tenantId       String?  @map("tenant_id") @db.Uuid
-  role           String // super_admin | admin_perusahaan | direksi | pengawas
+  role           String // super_admin | admin_perusahaan | direksi | keuangan | pengawas  (CHECK di 0032)
   status         String   @default("active") // active | invited | disabled
   /// true = semua unit tenant ini (unit BARU ikut otomatis); false = hanya daftar
   /// di user_unit (beku). Himpunan kosong TIDAK PERNAH berarti "semua" (0019).
@@ -570,6 +570,17 @@ model Membership {
 /// Scope unit utk pengawas (direksi/admin = semua unit tenant → tanpa baris).
 // Manual-entry pengawas (Pendapatan Lain / Pengeluaran). Identitas = id uuid;
 // `urut` ordering biasa (BUKAN bagian unique). Audit void: voided_by + voided_at.
+/// Daur hidup transaksi sumber (§2.2). `closed` hanya dipasang oleh day_close.
+enum ManualEntryStatus {
+  draft
+  submitted
+  returned
+  closed
+
+  @@map("manual_entry_status")
+  @@schema("app")
+}
+
 enum ManualEntrySection {
   pendapatan_lain
   pengeluaran
@@ -594,8 +605,403 @@ model ManualEntry {
   voidedByUserId  Int?               @map("voided_by_user_id")
   voidedAt        DateTime?          @map("voided_at") @db.Timestamptz()
 
+  /// Milik PENGAWAS (§2.1). NULL = belum berkategori — JANGAN diturunkan dari
+  /// `keterangan`; itu menebak milik orang lain. Wajib menyusul mode transisi.
+  operationalCategory String?           @map("operational_category")
+  /// Milik FINANCE. Diisi dari category_account_map saat submit lalu BEKU;
+  /// akun efektif = reclassification non-void terakhir bila ada.
+  accountingAccount   String?           @map("accounting_account")
+  /// Backfill `submitted`, BUKAN `closed` — immutabilitas tidak dipasang mundur.
+  status              ManualEntryStatus @default(submitted)
+  submittedAt         DateTime?         @map("submitted_at") @db.Timestamptz()
+  reviewedByUserId    Int?              @map("reviewed_by_user_id")
+  reviewedAt          DateTime?         @map("reviewed_at") @db.Timestamptz()
+  returnedReason      String?           @map("returned_reason")
+
+  @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])
+  /// Pintu masuk baris ini (0034): `pengawas` (Rincian Penjualan) atau
+  /// `finance`. FAKTA SAAT PENULISAN — jangan pernah menurunkannya dari peran
+  /// `createdByUserId` saat dibaca: peran orang berubah, dan sejarah tidak
+  /// boleh ikut berubah. CHECK di DB membatasi nilainya ke dua itu.
+  sourceDoor      String    @default("pengawas") @map("source_door")
+
   @@map("manual_entry")
+  @@schema("app")
+}
+
+// Harga beli BBM per (unit, produk, BERLAKU-SEJAK) — input manual, keputusan
+// owner final (KEUANGAN-HARIAN.md §4.1 & §10). Harga JUAL tidak pernah diketik.
+// Bukan deret harian: harga pada tanggal D = baris non-void dgn effective_from
+// terbesar yang ≤ D. VOID-only + audit. Kolom p1_* = jejak penjaga "harga beli >
+// harga jual" (PERINGATAN wajib-diakui, bukan reject) — kelengkapannya ditegakkan
+// CHECK di migrasi 0020, kejujuran flag-nya oleh `harga-beli.ts` + tesnya.
+model PurchasePrice {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId           Int       @map("unit_id") @db.SmallInt
+  productKey       String    @map("product_key")
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  price            Decimal   @db.Decimal(14, 4)
+  sourceNote       String?   @map("source_note")
+  p1Triggered      Boolean   @default(false) @map("p1_triggered")
+  /// Harga jual EasyMax saat keputusan diambil; selisih = price − p1SellPrice.
+  p1SellPrice      Decimal?  @map("p1_sell_price") @db.Decimal(14, 4)
+  p1AcknowledgedBy Int?      @map("p1_acknowledged_by")
+  p1AcknowledgedAt DateTime? @map("p1_acknowledged_at") @db.Timestamptz()
+  p1Reason         String?   @map("p1_reason")
+  void             Boolean   @default(false)
+  createdByUserId  Int       @map("created_by_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  voidedByUserId   Int?      @map("voided_by_user_id")
+  voidedAt         DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, productKey, effectiveFrom])
+  @@map("purchase_price")
+  @@schema("app")
+}
+
+// Reklasifikasi CoA (KEUANGAN-HARIAN §4.4). APPEND-ONLY: dashboard_app hanya
+// SELECT+INSERT, UPDATE/DELETE di-REVOKE (0021). Tidak pernah menyentuh baris
+// transaksi asli — nominal, tanggal, dan operational_category tetap milik
+// pengawas. `sourceKind`/`sourceTxnId` sengaja TANPA FK: taksonomi transaksi
+// yang boleh direklasifikasi belum diputuskan owner.
+model Reclassification {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  sourceKind      String   @map("source_kind")
+  sourceTxnId     String   @map("source_txn_id") @db.Uuid
+  fromAccount     String   @map("from_account")
+  toAccount       String   @map("to_account")
+  reasonCode      String   @map("reason_code")
+  note            String?
+  createdByUserId Int      @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([sourceKind, sourceTxnId, createdAt])
+  @@index([unitId, reasonCode, createdAt])
+  @@map("reclassification")
+  @@schema("app")
+}
+
+// Koreksi / pembalik setelah hari ditutup (KEUANGAN-HARIAN §4.5) dengan TUJUH
+// field audit. APPEND-ONLY. `submitted_by <> approved_by` ditegakkan CHECK di
+// DB (0021) — bukan di aplikasi: approver yang sama dengan pengaju membuat
+// seluruh tangga wewenang §3.2 jadi hiasan.
+model CorrectionEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int      @map("unit_id") @db.SmallInt
+  sourceKind        String   @map("source_kind")
+  originalTxnId     String   @map("original_txn_id") @db.Uuid
+  reasonCode        String   @map("reason_code")
+  valueBefore       Decimal  @map("value_before") @db.Decimal(17, 2)
+  valueAfter        Decimal  @map("value_after") @db.Decimal(17, 2)
+  submittedByUserId Int      @map("submitted_by_user_id")
+  approvedByUserId  Int      @map("approved_by_user_id")
+  approvedAt        DateTime @map("approved_at") @db.Timestamptz()
+  evidenceRef       String?  @map("evidence_ref")
+  /// 'reversal' | 'corrected_entry' (CHECK di 0021).
+  kind              String
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([sourceKind, originalTxnId, createdAt])
+  @@index([unitId, reasonCode, createdAt])
+  @@map("correction_entry")
+  @@schema("app")
+}
+
+// Master sebab-selisih — DAFTAR TERTUTUP (B2, §10.2). 19 kode di-seed migrasi
+// 0022. dashboard_app hanya SELECT: menambah kode = migrasi = keputusan owner.
+// Tanpa unit_id ⇒ tanpa RLS, disengaja (master rujukan, bukan data per-unit).
+model ReasonCode {
+  code               String  @id
+  label              String
+  /// 'closing' | 'adjustment' | 'reclass' (CHECK di 0022).
+  appliesTo          String  @map("applies_to")
+  /// CLS-INVESTIGATING = true. Penegakannya menyusul bersama day_close.
+  requiresTargetDate Boolean @default(false) @map("requires_target_date")
+  active             Boolean @default(true)
+
+  /// Target FK KOMPOSIT dari app.day_close (0026): mengunci bayangan
+  /// requires_target_date supaya tak bisa menyimpang dari masternya.
+  @@unique([code, requiresTargetDate])
+  /// Target FK KOMPOSIT dari app.backdate_override (0027): hanya kode
+  /// ber-applies_to='adjustment' yang boleh membenarkan backdate.
+  @@unique([code, appliesTo])
+  @@map("reason_code")
+  @@schema("app")
+}
+
+// Pemetaan kategori operasional → CoA (B1 seragam + B3, §10.1/§10.3).
+// unit_id NULL = berlaku semua unit; 14 baris seed seluruhnya default.
+// Baris ber-unit menuntut `override_reason` (CHECK 0023) supaya tak bisa masuk
+// tanpa disengaja, dan tetap butuh gerbang owner.
+model CategoryAccountMap {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              Int?     @map("unit_id") @db.SmallInt
+  operationalCategory String   @map("operational_category")
+  accountingAccount   String   @map("accounting_account")
+  effectiveFrom       DateTime @map("effective_from") @db.Date
+  overrideReason      String?  @map("override_reason")
+  createdByUserId     Int?     @map("created_by_user_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([operationalCategory, effectiveFrom])
+  @@map("category_account_map")
+  @@schema("app")
+}
+
+/// Status penutupan hari (§4.6). `closed` mengunci manual_entry hari itu.
+enum DayCloseStatus {
+  open
+  closed
+
+  @@map("day_close_status")
+  @@schema("app")
+}
+
+/// Tangga toleransi §3.2. TIER ADALAH FUNGSI dari difference_rp — ditegakkan
+/// CHECK di 0026, bukan dipilih bebas.
+enum DayCloseTier {
+  within_tolerance
+  exception_hof
+  override_direksi
+
+  @@map("day_close_tier")
+  @@schema("app")
+}
+
+// GERBANG PENUTUPAN HARI (§3.2 + §4.6). difference_rp = LANGKAH HARIAN
+// BSCheck(d) − BSCheck(d−1), disimpan APA ADANYA (tidak dibulatkan, tidak
+// dinolkan, termasuk yang ≤ Rp 10.000). `reasonRequiresTarget` adalah bayangan
+// reason_code.requires_target_date yang dikunci FK KOMPOSIT — itulah yang
+// membuat CHECK tanggal-target membaca DATA, bukan menghardcode nama kode.
+model DayClose {
+  unitId       Int            @map("unit_id") @db.SmallInt
+  businessDate DateTime       @map("business_date") @db.Date
+  status       DayCloseStatus @default(open)
+  differenceRp Decimal        @map("difference_rp") @db.Decimal(17, 2)
+  tier         DayCloseTier
+
+  reasonCode           String?   @map("reason_code")
+  reasonRequiresTarget Boolean?  @map("reason_requires_target")
+  targetDate           DateTime? @map("target_date") @db.Date
+
+  closedByUserId   Int?      @map("closed_by_user_id")
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz()
+  approvedByUserId Int?      @map("approved_by_user_id")
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz()
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@id([unitId, businessDate])
+  @@index([unitId, status, businessDate])
+  @@map("day_close")
+  @@schema("app")
+}
+
+// JALUR TEMBUS backdate ke hari yang sudah ditutup (keputusan owner 13 Agu 2026,
+// §2.2). SEKALI PAKAI: dikonsumsi trigger 0027 begitu satu INSERT lolos, dan
+// `consumedByEntryId` mencatat entri mana yang ia izinkan. Override yang MENETAP
+// membuka hari itu selamanya — itu kegagalan paling mahal di jalur ini.
+// ⚠️ DB tidak bisa menegakkan bahwa approver memenuhi canCloseException
+// (keanggotaan HoF ada di ENV); itu dijaga `keuangan-override.ts`.
+model BackdateOverride {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int       @map("unit_id") @db.SmallInt
+  businessDate      DateTime  @map("business_date") @db.Date
+  reasonCode        String    @map("reason_code")
+  /// Bayangan reason_code.applies_to, dikunci FK komposit + CHECK = 'adjustment'.
+  reasonAppliesTo   String    @map("reason_applies_to")
+  alasan            String
+  requestedByUserId Int       @map("requested_by_user_id")
+  approvedByUserId  Int?      @map("approved_by_user_id")
+  approvedAt        DateTime? @map("approved_at") @db.Timestamptz()
+  consumedAt        DateTime? @map("consumed_at") @db.Timestamptz()
+  consumedByEntryId String?   @map("consumed_by_entry_id") @db.Uuid
+  void              Boolean   @default(false)
+  voidedByUserId    Int?      @map("voided_by_user_id")
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate, createdAt])
+  @@map("backdate_override")
+  @@schema("app")
+}
+
+// Penandaan SO MACET oleh Finance (B6, §10.6). SOValue = sisa − sisa_macet.
+// ⛔ MANUAL: tidak ada ambang di sini, dan tak ada baris yang lahir sendiri —
+// ambang hari hanya MENGUSULKAN kandidat. `cnoso` disimpan ter-normalisasi
+// (lower+trim) sebab tautan CNOSO di repo ini case-insensitive.
+model SoMacet {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId         Int       @map("unit_id") @db.SmallInt
+  cnoso          String
+  ckdbbm         String
+  alasan         String
+  markedByUserId Int       @map("marked_by_user_id")
+  markedAt       DateTime  @default(now()) @map("marked_at") @db.Timestamptz()
+  void           Boolean   @default(false)
+  voidedByUserId Int?      @map("voided_by_user_id")
+  voidedAt       DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId])
+  @@map("so_macet")
+  @@schema("app")
+}
+
+/// Jenis akun kas (§1.3). Tujuh akun Bakau: 1 kas · 1 EDC penampungan · 5 bank.
+enum CashAccountKind {
+  kas
+  bank
+  edc_penampungan
+
+  @@map("cash_account_kind")
+  @@schema("app")
+}
+
+enum CashMutationSide {
+  debet
+  kredit
+
+  @@map("cash_mutation_side")
+  @@schema("app")
+}
+
+enum CashMutationJenis {
+  debet
+  kredit
+  adjustment
+
+  @@map("cash_mutation_jenis")
+  @@schema("app")
+}
+
+// Akun kas — DATA, bukan enum (rekening bertambah/ditutup; 4 dari 5 bank Bakau
+// dorman 2–5 tahun, §7.7). Penutupan = active=false + closed_at, TANPA DELETE:
+// mutasi lama harus tetap menunjuk akun yang benar.
+model CashAccount {
+  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId    Int             @map("unit_id") @db.SmallInt
+  nama      String
+  kind      CashAccountKind
+  active    Boolean         @default(true)
+  openedAt  DateTime?       @map("opened_at") @db.Date
+  closedAt  DateTime?       @map("closed_at") @db.Date
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, nama])
+  /// Target FK komposit dari app.cash_ledger (0029): mengunci mutasi ke akun
+  /// milik unit yang SAMA — RLS pada ledger tak bisa menangkap salah-unit ini.
+  @@unique([id, unitId])
+  @@map("cash_account")
+  @@schema("app")
+}
+
+// Kategori mutasi debet/kredit — daftar TERTUTUP (workbook List!Q & List!S),
+// disiplin sama dgn reason_code: dashboard_app hanya SELECT. Kunci alaminya
+// (side, label) sebab tiga label muncul di KEDUA sisi.
+model CashMutationCategory {
+  side   CashMutationSide
+  label  String
+  active Boolean          @default(true)
+
+  @@id([side, label])
+  @@map("cash_mutation_category")
+  @@schema("app")
+}
+
+// Mutasi kas/bank. ⛔ TIDAK ada kolom saldo — saldo adalah TURUNAN (Σ amount).
+// Workbook menyimpan Saldo Akhir per baris, dan itulah yang membuat satu
+// sisipan di tengah mendiamkan seluruh kolom di bawahnya.
+// Nominal BERTANDA: debet > 0, kredit < 0 (CHECK di 0029).
+model CashLedger {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int               @map("unit_id") @db.SmallInt
+  accountId       String            @map("account_id") @db.Uuid
+  businessDate    DateTime          @map("business_date") @db.Date
+  keterangan      String
+  jenis           CashMutationJenis
+  categorySide    CashMutationSide? @map("category_side")
+  categoryLabel   String?           @map("category_label")
+  amount          Decimal           @db.Decimal(17, 2)
+  void            Boolean           @default(false)
+  createdByUserId Int               @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  voidedByUserId  Int?              @map("voided_by_user_id")
+  voidedAt        DateTime?         @map("voided_at") @db.Timestamptz()
+  // Tautan ke settlement EDC yang melahirkan baris ini (0030). NULL untuk
+  // mutasi biasa. Kolomnya sudah ada di DB sejak 0030 tetapi belum pernah
+  // tercermin di sini — drift lama, dirapikan bersama 0033.
+  edcSettlementId String?           @map("edc_settlement_id") @db.Uuid
+  // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
+  // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
+  sourceManualEntryId String?       @map("source_manual_entry_id") @db.Uuid
+
+  @@index([unitId, accountId, businessDate])
+  @@index([unitId, categorySide, categoryLabel, businessDate])
+  @@map("cash_ledger")
+  @@schema("app")
+}
+
+// Batch settlement EDC (§10.5). EDC Penampungan = akun kliring RIIL yang cair
+// H+1, MDR dipotong DI MUKA. `mdrRp` dan `selisihRp` adalah kolom GENERATED —
+// tidak pernah diketik. Jurnal pencairannya DITAWARKAN, bukan diposting:
+// `postedBy/At` adalah jejak PERSETUJUAN, bukan penanda otomatis.
+model EdcSettlement {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  acquirer        String
+  settlementNo    String    @map("settlement_no")
+  settlementDate  DateTime  @map("settlement_date") @db.Date
+  businessDate    DateTime  @map("business_date") @db.Date
+  toAccountId     String    @map("to_account_id") @db.Uuid
+  grossRp         Decimal   @map("gross_rp") @db.Decimal(17, 2)
+  netRp           Decimal   @map("net_rp") @db.Decimal(17, 2)
+  /// GENERATED gross − net. Jangan pernah ditulis aplikasi.
+  mdrRp           Decimal?  @map("mdr_rp") @db.Decimal(17, 2)
+  txnTotalRp      Decimal?  @map("txn_total_rp") @db.Decimal(17, 2)
+  /// GENERATED txn_total − gross.
+  selisihRp       Decimal?  @map("selisih_rp") @db.Decimal(17, 2)
+  reasonCode      String?   @map("reason_code")
+  reasonAppliesTo String?   @map("reason_applies_to")
+  postedByUserId  Int?      @map("posted_by_user_id")
+  postedAt        DateTime? @map("posted_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([unitId, acquirer, settlementDate])
+  @@map("edc_settlement")
+  @@schema("app")
+}
+
+// Beban NON-KAS turunan-mesin (§2.5, keputusan owner 13 Agu 2026). Kaki ketiga
+// jurnal pencairan EDC: Beban MDR 7-1200, yang BUKAN akun kas sehingga tak
+// punya tempat di cash_ledger.
+// ⛔ SENGAJA TANPA `operationalCategory` — bukan NULL karena "belum diisi",
+// melainkan karena kolom itu TIDAK BERLAKU: tak ada pengawas yang memilikinya.
+// Kalau kolomnya tidak ada, tak ada yang bisa salah mengisinya.
+// MESIN menghitung, MANUSIA menyetujui: `postedByUserId` NOT NULL.
+model NoncashExpense {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId            Int       @map("unit_id") @db.SmallInt
+  businessDate      DateTime  @map("business_date") @db.Date
+  accountingAccount String    @map("accounting_account")
+  amountRp          Decimal   @map("amount_rp") @db.Decimal(17, 2)
+  keterangan        String
+  /// NOT NULL: 7-1200 harus SELALU bisa ditelusuri ke selisih bruto−neto.
+  edcSettlementId   String    @map("edc_settlement_id") @db.Uuid
+  postedByUserId    Int       @map("posted_by_user_id")
+  postedAt          DateTime  @default(now()) @map("posted_at") @db.Timestamptz()
+  void              Boolean   @default(false)
+  voidedByUserId    Int?      @map("voided_by_user_id")
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, businessDate, accountingAccount])
+  @@map("noncash_expense")
   @@schema("app")
 }
 
@@ -630,7 +1036,7 @@ model UsulanSo {
 /// sini + ON UPDATE CASCADE. Bukan trigger: trigger prosedural & tak terlihat di \d.
 model UserRole {
   userId Int    @id @map("user_id")
-  role   String // super_admin | admin_perusahaan | direksi | pengawas
+  role   String // super_admin | admin_perusahaan | direksi | keuangan | pengawas  (CHECK di 0032)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -24,7 +24,19 @@ import { resolveRole, type Assignment } from "./scope-rule";
  *    membuat pencabutan akses berlaku SEKETIKA pada request berikutnya, tanpa
  *    logout. Jangan pindahkan scope ke JWT.
  */
-export type Role = "super_admin" | "admin_perusahaan" | "direksi" | "pengawas";
+export type Role =
+  | "super_admin"
+  | "admin_perusahaan"
+  | "direksi"
+  | "pengawas"
+  /**
+   * Staf keuangan unit — satu-satunya peran yang boleh MENULIS di Layar 3
+   * (harga beli, buku kas & bank, settlement EDC, biaya di luar pengawas).
+   * Keputusan owner 15 Agu 2026; migrasi 0032. Predikatnya `canInputKeuangan`
+   * di keuangan-wewenang.ts — JANGAN dibaca dari peran ini secara langsung di
+   * tempat lain.
+   */
+  | "keuangan";
 
 export interface AuthContext {
   userId: number;
