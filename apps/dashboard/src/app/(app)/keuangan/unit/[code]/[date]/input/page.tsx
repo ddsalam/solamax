@@ -22,7 +22,11 @@ import {
   type BarisBuku,
   type KakiBuku,
 } from "@/lib/keuangan-kas-model";
-import { canInputKeuangan } from "@/lib/keuangan-wewenang";
+import {
+  alasanTakBolehInput,
+  canInputKeuangan,
+  PESAN_TAK_BOLEH_INPUT,
+} from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +58,7 @@ export default async function InputKeuanganPage({
   const scope = await getDataScope();
   const unit = scope.requireUnit(code);
   const bolehTulis = canInputKeuangan({ role: scope.role, email: scope.email });
+  const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
 
   const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran] = await Promise.all([
     getProdukUnit(unit.unit_id),
@@ -100,8 +105,8 @@ export default async function InputKeuanganPage({
         <div className="banner info keu-banner" role="status">
           <b>Anda melihat halaman ini sebagai pembaca</b>
           <p className="keu-p">
-            Mengisi harga beli dan buku keuangan adalah wewenang peran <strong>Keuangan</strong>.
-            Angkanya tetap terbuka untuk diperiksa siapa pun yang boleh melihat unit ini.
+            {alasan === null ? "" : PESAN_TAK_BOLEH_INPUT[alasan]} Angkanya tetap terbuka untuk
+            diperiksa siapa pun yang boleh melihat unit ini.
           </p>
         </div>
       )}
@@ -116,6 +121,21 @@ export default async function InputKeuanganPage({
         />
       </div>
 
+      {akun.length === 0 ? (
+        <>
+          <div className="section-h mt10">
+            <h3 className="text-h3">2 · Buku kas besar &amp; buku bank</h3>
+          </div>
+          {/* KOSONG SECARA EKSPLISIT. Panel yang diam pada unit tanpa akun kas
+              terbaca sebagai "tidak ada mutasi hari ini" — padahal bukunya
+              sendiri yang belum ada. */}
+          <div className="card empty-inline">
+            Belum ada akun kas untuk unit ini. Buku kas besar dan buku bank baru bisa dipakai
+            setelah daftar rekening riilnya didaftarkan — itu pekerjaan data, bukan cacat
+            aplikasi. Saat ini baru unit Bakau yang punya daftar itu.
+          </div>
+        </>
+      ) : (
       <div className="mt10">
         <BukuKasPanel
           code={unit.code}
@@ -130,6 +150,7 @@ export default async function InputKeuanganPage({
           bolehTulis={bolehTulis}
         />
       </div>
+      )}
 
       <div className="section-h mt8">
         <h3 className="text-h3">3 · Settlement EDC</h3>

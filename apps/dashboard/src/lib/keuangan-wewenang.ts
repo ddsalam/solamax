@@ -155,7 +155,47 @@ export function canOverrideAboveMax(ctx: WewenangCtx): boolean {
  * `super_admin` ada karena ia harus bisa memulihkan keadaan tanpa memberi
  * dirinya peran lain — dan karena satu-peran-per-orang membuat "sementara
  * jadi keuangan" berarti kehilangan super_admin.
+ *
+ * ⛔ **IRISAN HoF × `keuangan` DITUTUP DI SINI** (§10.12, 16 Agu 2026). Pemegang
+ * `HEAD_OF_FINANCE_EMAILS` yang entah bagaimana diberi peran `keuangan` **tidak**
+ * mendapat hak tulis: ia sudah lolos `canCloseException`, dan menambahkan hak
+ * tulis membuat satu orang mengetik sekaligus menyetujui — tepat pada orang yang
+ * wewenang persetujuannya tertinggi setelah Direksi.
+ *
+ * Yang DICABUT adalah hak MENGETIK, bukan hak menyetujui: HoF diangkat sebagai
+ * penyetuju, jadi itulah yang harus bertahan bila keduanya bertabrakan.
+ *
+ * ⚠️ Ini penjagaan **runtime**, bukan penjagaan yang bisa diuji statis: HoF
+ * hidup di ENV, peran hidup di DB, dan tak ada satu proses pun yang melihat
+ * keduanya di waktu build. Uji yang "memerah bila irisannya tak kosong" karena
+ * itu MUSTAHIL sebagai uji unit — yang mungkin hanyalah membuat irisannya
+ * TIDAK BERBAHAYA, dan itu yang dilakukan baris di bawah.
  */
-export function canInputKeuangan(ctx: WewenangCtx): boolean {
-  return ctx.role === "keuangan" || ctx.role === "super_admin";
+export function canInputKeuangan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  if (ctx.role === "super_admin") return true;
+  if (ctx.role !== "keuangan") return false;
+  return !isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+/**
+ * Kenapa pemanggil ini tidak boleh menulis — SATU sumber untuk pesan di layar
+ * dan pesan dari server action. Dua pesan yang ditulis terpisah akan berselisih,
+ * dan yang berselisih di sini adalah penjelasan tentang wewenang.
+ */
+export type AlasanTakBolehInput = "bukan_keuangan" | "hof_tidak_mengetik";
+
+export function alasanTakBolehInput(
+  ctx: WewenangCtx,
+  daftar?: readonly string[],
+): AlasanTakBolehInput | null {
+  if (canInputKeuangan(ctx, daftar)) return null;
+  if (ctx.role === "keuangan") return "hof_tidak_mengetik";
+  return "bukan_keuangan";
+}
+
+export const PESAN_TAK_BOLEH_INPUT: Record<AlasanTakBolehInput, string> = {
+  bukan_keuangan: "Hanya peran Keuangan yang boleh mengisi input keuangan.",
+  hof_tidak_mengetik:
+    "Akun ini terdaftar sebagai Head of Finance, jadi ia menyetujui — bukan mengetik. " +
+    "Pemisahan itu hilang bila satu orang melakukan keduanya. Minta staf Keuangan mengisinya.",
+};

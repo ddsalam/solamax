@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "./keuangan-kas";
-import { canInputKeuangan } from "./keuangan-wewenang";
-import { getDataScope } from "./scope";
+import { alasanTakBolehInput, PESAN_TAK_BOLEH_INPUT } from "./keuangan-wewenang";
+import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -31,14 +31,22 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export type KasResult = { ok: true; n?: number } | { ok: false; error: string };
 
-async function buka(code: string) {
+/**
+ * Gerbang bersama ketiga aksi: unit ter-scope + wewenang tulis. Mengembalikan
+ * ALASAN penolakan, bukan sekadar `null` — pesan "Anda tidak berwenang" yang
+ * tidak menyebut sebabnya membuat HoF mengira sistemnya rusak.
+ */
+type Buka =
+  | { boleh: false; error: string }
+  | { boleh: true; scope: DataScope; unit: ScopedUnit };
+
+async function buka(code: string): Promise<Buka> {
   const scope = await getDataScope();
   const unit = scope.requireUnit(code); // di luar scope → notFound(), tak menulis
-  if (!canInputKeuangan({ role: scope.role, email: scope.email })) return null;
-  return { scope, unit };
+  const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
+  if (alasan !== null) return { boleh: false, error: PESAN_TAK_BOLEH_INPUT[alasan] };
+  return { boleh: true, scope, unit };
 }
-
-const DITOLAK = "Hanya peran Keuangan yang boleh mengisi buku kas.";
 
 export interface MutasiInput {
   code: string;
@@ -54,7 +62,7 @@ export interface MutasiInput {
 
 export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
   const ctx = await buka(input.code);
-  if (ctx === null) return { ok: false, error: DITOLAK };
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
   const { scope, unit } = ctx;
 
   if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
@@ -125,7 +133,7 @@ export async function setujuiSetoran(input: {
   manualEntryIds: string[];
 }): Promise<KasResult> {
   const ctx = await buka(input.code);
-  if (ctx === null) return { ok: false, error: DITOLAK };
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
   const { scope, unit } = ctx;
 
   if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
@@ -205,7 +213,7 @@ export async function voidMutasiKas(input: {
   id: string;
 }): Promise<KasResult> {
   const ctx = await buka(input.code);
-  if (ctx === null) return { ok: false, error: DITOLAK };
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
   const { scope, unit } = ctx;
 
   const client = await pool.connect();

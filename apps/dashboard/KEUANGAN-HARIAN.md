@@ -1079,6 +1079,58 @@ peran operasional. Ia **tidak** berlaku terhadap `super_admin`, dan tidak ada
 kontrol teknis di SolaMax yang membuatnya berlaku. Yang menjaga di lapis itu
 adalah `app.audit_log` (0017, append-only) — jejak, bukan pencegahan.
 
+### 10.12 K2 · HoF dan `keuangan` SALING MENIADAKAN (16 Agustus 2026)
+
+**Keputusan owner, dicatat sebelum dipakai.** Saat hendak menetapkan peran
+`keuangan` pertama, owner mengusulkan `ddsalam@solagroup.co`. **Ditahan**, dan
+owner setuju menunjuk orang lain. Dua sebabnya, keduanya mengikat:
+
+1. **Akun itu ber-peran `admin_perusahaan`** — satu-satunya yang memberi akses
+   `/admin`. Karena `app.user_role.user_id` adalah PK, memberi peran baru
+   **mencabut** yang lama. Ini jebakan yang **sama persis** dengan yang membuat
+   HoF diputuskan jadi kapabilitas (§10.4), **pada akun yang sama**.
+2. **Akun itu adalah Head of Finance.** Dengan peran `keuangan` ia lolos
+   `canInputKeuangan` **dan** `canCloseException` — satu orang mengetik
+   sekaligus menyetujui, tepat pada orang yang wewenang persetujuannya
+   tertinggi setelah Direksi. Itu meniadakan pemisahan tugas §2.6.
+
+> ⛔ **ATURAN:** siapa pun yang ada di `HEAD_OF_FINANCE_EMAILS` **tidak boleh**
+> diberi peran `keuangan`, dan siapa pun ber-peran `keuangan` **tidak boleh**
+> dimasukkan ke daftar HoF.
+
+#### Ditegakkan di mana — dan apa yang TIDAK bisa ditegakkan
+
+**Bisa:** `canInputKeuangan` menolak hak tulis bagi pemegang HoF, apa pun
+perannya. Irisannya boleh terjadi; yang tidak boleh adalah irisan itu
+**berbahaya**. Yang dicabut hak **mengetik**, bukan hak menyetujui — HoF
+diangkat sebagai penyetuju, jadi itulah yang bertahan saat keduanya bertabrakan.
+
+```
+canInputKeuangan = super_admin  ∨  (keuangan ∧ ¬isHeadOfFinance)
+```
+
+**Tidak bisa:** ⚠️ uji statis yang *"memerah bila irisan keduanya tak kosong"*
+**mustahil** — HoF hidup di **ENV**, peran hidup di **DB**, dan tak ada satu
+proses pun yang melihat keduanya pada waktu build. Uji unit hanya bisa
+membuktikan predikatnya berperilaku benar bila irisan itu terjadi.
+
+**Karena itu sisanya adalah PROSEDUR, dan ditulis sebagai prosedur:**
+
+- Sebelum memberi peran `keuangan` lewat `/admin`, periksa email calon terhadap
+  `HEAD_OF_FINANCE_EMAILS` di env Cloud Run.
+- Sebelum menambah email ke `HEAD_OF_FINANCE_EMAILS`, periksa `app.user_role`
+  orang itu bukan `keuangan`.
+- Bila prosedur ini terlewat, akibatnya **bukan** pemisahan tugas yang jebol —
+  predikat di atas menahannya — melainkan orang yang **tak bisa mengetik dan
+  tidak tahu kenapa**. Pesannya sudah menyebut sebab dan perbaikannya.
+
+#### Konsekuensi yang harus diterima
+
+Head of Finance **tidak akan pernah** bisa mengisi Layar 3 sendiri. Kalau kelak
+itu terasa menghambat, yang perlu diubah adalah **keputusan pemisahan tugasnya**
+(§2.6) — bukan predikatnya, dan bukan dengan mengeluarkan orang itu dari daftar
+HoF sekadar agar ia bisa mengetik.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:
