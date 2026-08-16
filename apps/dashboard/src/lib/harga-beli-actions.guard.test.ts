@@ -59,6 +59,15 @@ describe("harga-beli-actions — penjagaan yang tak boleh hilang", () => {
     // lewat `urutan()`, yang GAGAL bila salah satunya hilang (lihat
     // penjaga-urutan.ts: `indexOf(a) < indexOf(b)` lolos saat `a` lenyap).
     expect(urutan(KODE, "alasanTakBolehInput(", "pool.connect()")).toBe("ok");
+    // 🔴 Bukan hanya "gerbangnya dipanggil" — PENOLAKANNYA harus terjadi.
+    // Uji mutasi: menghapus baris `return` ini meninggalkan `const alasan = …`
+    // yang tetap cocok dengan asersi lama, jadi penjaga tetap hijau sementara
+    // siapa pun boleh menulis. Memanggil pemeriksa tanpa memakai hasilnya
+    // adalah bentuk lain dari "hijau tanpa subjek".
+    expect(KODE).toMatch(
+      /if \(alasan !== null\) return \{ (ok: false, error|boleh: false, error): PESAN_TAK_BOLEH_INPUT\[alasan\] \}/,
+    );
+
   });
 
   it("🔴 HARGA JUAL dibaca di server, tidak pernah diterima dari client", () => {

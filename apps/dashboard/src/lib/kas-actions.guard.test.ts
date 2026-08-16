@@ -71,6 +71,15 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
     // `buka()` = requireUnit + gerbang; ia dipanggil di awal SETIAP aksi,
     // sebelum satu pun `pool.connect()`.
     expect(urutan(KODE, "alasanTakBolehInput(", "pool.connect()")).toBe("ok");
+    // 🔴 Bukan hanya "gerbangnya dipanggil" — PENOLAKANNYA harus terjadi.
+    // Uji mutasi: menghapus baris `return` ini meninggalkan `const alasan = …`
+    // yang tetap cocok dengan asersi lama, jadi penjaga tetap hijau sementara
+    // siapa pun boleh menulis. Memanggil pemeriksa tanpa memakai hasilnya
+    // adalah bentuk lain dari "hijau tanpa subjek".
+    expect(KODE).toMatch(
+      /if \(alasan !== null\) return \{ (ok: false, error|boleh: false, error): PESAN_TAK_BOLEH_INPUT\[alasan\] \}/,
+    );
+
     expect(KODE).toMatch(/scope\.requireUnit\(code\)/);
     expect([...KODE.matchAll(/const ctx = await buka\(/g)]).toHaveLength(3);
     expect([...KODE.matchAll(/if \(!ctx\.boleh\) return/g)]).toHaveLength(3);

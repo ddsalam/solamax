@@ -993,3 +993,35 @@ describe("0033_cash_ledger_source — satu setoran, paling banyak satu baris kas
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 0034 — asal-usul baris biaya: kolom yang direkam saat tulis
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0034_manual_entry_source_door — satu-satunya migrasi K2 atas tabel produksi", () => {
+  const sql = MIG("0034_manual_entry_source_door");
+
+  it("penjaga ini punya SUBJEK", () => {
+    expect(pernyataan(sql)).toMatch(/ALTER TABLE "app"\."manual_entry"/);
+  });
+
+  it("🔴 kolom NOT NULL ber-DEFAULT — baris lama TIDAK boleh jadi asal-usul kosong", () => {
+    // Seluruh baris yang sudah ada memang lahir dari Rincian Penjualan. Kolom
+    // nullable akan membuat sejarah bertahun-tahun kehilangan asal-usulnya, dan
+    // layar menampilkan keping kosong untuk baris yang asalnya justru pasti.
+    const st = pernyataanYangDimulai(sql, 'ALTER TABLE "app"."manual_entry"');
+    expect(st).toMatch(
+      /ADD COLUMN IF NOT EXISTS "source_door" TEXT NOT NULL DEFAULT 'pengawas'/,
+    );
+  });
+
+  it("aditif & idempoten — tak ada backfill nilai, tak ada UPDATE", () => {
+    const st = pernyataan(sql);
+    expect(st).toMatch(/ADD COLUMN IF NOT EXISTS/);
+    expect(st).not.toMatch(/UPDATE "?app"?\./);
+    expect(st).not.toMatch(/INSERT INTO/);
+  });
+
+  it("tidak menyentuh RLS — manual_entry sudah RLS sejak 0016", () => {
+    expect(pernyataan(sql)).not.toMatch(/ROW LEVEL SECURITY|CREATE POLICY/);
+  });
+});
+
