@@ -175,3 +175,22 @@ describe("rute Laporan Keuangan — /keuangan/unit/{code}/{date} (K2, layar 2)",
     expect(s.date).not.toBe(SEED_DATE);
   });
 });
+
+describe("rute Tutup Hari — /keuangan/unit/{code}/tutup-hari/{date} (K2, layar 4)", () => {
+  it("🔴 tanggal ada di segmen KETIGA — URL tetap otoritatif", () => {
+    // Jebakan yang didokumentasikan sendiri lalu nyaris terinjak: pola Layar
+    // 2/3 menaruh tanggal di segmen kedua. Kalau regexnya tak menampung bentuk
+    // ini, `unitFromUrl` jadi false, nilai jatuh ke cookie, dan tautan sidebar
+    // menunjuk SPBU LAIN — gejala yang jauh dari sebabnya.
+    const s = derive("/keuangan/unit/6378301/tutup-hari/2026-01-29");
+    expect(s.unit).toBe("6378301");
+    expect(s.date).toBe("2026-01-29");
+    expect(s.unitFromUrl).toBe(true);
+    expect(s.dateFromUrl).toBe(true);
+  });
+
+  it("beda dari seed — daya-beda ada", () => {
+    const s = derive("/keuangan/unit/6478201/2026-03-09");
+    expect(s.unit).not.toBe(SEED_UNIT);
+  });
+});

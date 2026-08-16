@@ -1291,3 +1291,18 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .lap-sebab .keu-p { font-size: 15px; margin-top: var(--space-2); }
 
 @media (max-width: 1080px) { .lap3 { grid-template-columns: 1fr; } }
+
+/* Layar 4 — gerbang tutup hari. */
+.tutup3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.tutup-syarat { border-left: 4px solid var(--color-border); }
+.tutup-syarat.baik { border-left-color: var(--color-success); }
+.tutup-syarat.buruk { border-left-color: var(--color-danger); }
+.tutup-syarat.tak_terhitung { border-left-color: var(--neutral-300); }
+.tutup-angka { font-size: 28px; font-weight: 700; letter-spacing: -.008em; margin: 2px 0 4px; }
+.cols-tangga { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.5fr); align-items: baseline; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-tangga { min-width: 860px; }
+.cols-override { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr); align-items: baseline; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-override { min-width: 820px; }
+/* Baris tangga yang berlaku hari ini — penanda, bukan sekadar warna. */
+.tangga-aktif { background: var(--accent-50); }
+@media (max-width: 1080px) { .tutup3 { grid-template-columns: 1fr; } }

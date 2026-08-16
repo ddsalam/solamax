@@ -90,6 +90,12 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
           match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+$/.test(p),
         },
         {
+          href: unitCode ? `/keuangan/unit/${unitCode}/tutup-hari/${date}` : null,
+          label: "Tutup hari",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/tutup-hari\//.test(p),
+        },
+        {
           href: unitCode ? `/keuangan/unit/${unitCode}/${date}/input` : null,
           label: "Input keuangan",
           icon: "receipt",
