@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import { canManageAccess } from "./admin-rules";
 import type { Role } from "./auth-context";
 import {
+  alasanTakBolehInput,
   canCloseException,
   canInputKeuangan,
+  PESAN_TAK_BOLEH_INPUT,
   canOverrideAboveMax,
   isHeadOfFinance,
   type WewenangCtx,
@@ -151,8 +153,16 @@ describe("canOverrideAboveMax — tingkat ketiga, BERDIRI SENDIRI", () => {
   it("TIDAK bersandar pada canCloseException — dua predikat, bukan turunan", () => {
     // Kalau tingkat ketiga ditulis sebagai `canCloseException(...) && ...`,
     // perubahan pada tingkat kedua akan merembes ke tingkat ketiga diam-diam.
+    // 📌 Dibatasi ke BADAN FUNGSINYA, bukan "dari sini sampai akhir berkas".
+    // Bentuk lama memerah saat `canInputKeuangan` — yang letaknya di BAWAH —
+    // mulai memakai `isHeadOfFinance` untuk menutup irisan HoF × keuangan
+    // (§10.12). Asersi itu benar isinya dan salah cakupannya; asersi bercakupan
+    // satu fungsi yang tak dibatasi akan memaksa penulisnya melonggarkan
+    // aturannya sampai tak menjaga apa-apa.
     const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
-    const badan = src.slice(src.indexOf("export function canOverrideAboveMax"));
+    const mulai = src.indexOf("export function canOverrideAboveMax");
+    const badan = src.slice(mulai, src.indexOf("\n}", mulai) + 2);
+    expect(badan, "fungsi canOverrideAboveMax tidak ditemukan").toMatch(/return/);
     expect(badan).not.toMatch(/canCloseException\s*\(/);
     expect(badan).not.toMatch(/isHeadOfFinance\s*\(/);
   });
@@ -241,3 +251,50 @@ describe("super_admin — pengecualian pemisahan tugas yang DINYATAKAN (§10.11)
     expect(src).toMatch(/§10\.11/);
   });
 });
+
+describe("irisan HoF × `keuangan` — ditutup di predikatnya (§10.12)", () => {
+  const HOF2 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 pemegang HoF yang diberi peran `keuangan` TIDAK boleh mengetik", () => {
+    // Ia sudah lolos canCloseException. Menambahkan hak tulis membuat satu
+    // orang mengetik sekaligus menyetujui — tepat pada orang yang wewenang
+    // persetujuannya tertinggi setelah Direksi.
+    expect(canInputKeuangan(c("keuangan", "hof@solagroup.co"), HOF2)).toBe(false);
+    // …tetapi hak MENYETUJUI-nya tetap. Yang dicabut yang benar.
+    expect(canCloseException(c("keuangan", "hof@solagroup.co"), HOF2)).toBe(true);
+  });
+
+  it("staf keuangan biasa tidak terdampak — kontrol POSITIF", () => {
+    // Tanpa baris ini, penjaga di atas juga hijau bila canInputKeuangan selalu
+    // false untuk peran `keuangan`.
+    expect(canInputKeuangan(c("keuangan", "staf@solagroup.co"), HOF2)).toBe(true);
+    expect(canInputKeuangan(c("keuangan", null), HOF2)).toBe(true);
+  });
+
+  it("daftar HoF kosong ⇒ tak seorang pun terkecualikan (env belum dipasang)", () => {
+    expect(canInputKeuangan(c("keuangan", "hof@solagroup.co"), [])).toBe(true);
+  });
+
+  it("super_admin tetap lolos meski ia HoF — break-glass §10.11 tidak tergerus", () => {
+    expect(canInputKeuangan(c("super_admin", "hof@solagroup.co"), HOF2)).toBe(true);
+  });
+
+  it("alasan penolakan dibedakan, dan pesannya punya SATU sumber", () => {
+    expect(alasanTakBolehInput(c("pengawas"), HOF2)).toBe("bukan_keuangan");
+    expect(alasanTakBolehInput(c("keuangan", "hof@solagroup.co"), HOF2)).toBe("hof_tidak_mengetik");
+    expect(alasanTakBolehInput(c("keuangan", "staf@solagroup.co"), HOF2)).toBeNull();
+    // Pesannya menyebut PERBAIKANNYA, bukan hanya penolakannya.
+    expect(PESAN_TAK_BOLEH_INPUT.hof_tidak_mengetik).toMatch(/menyetujui/);
+    expect(PESAN_TAK_BOLEH_INPUT.hof_tidak_mengetik).toMatch(/staf Keuangan/);
+  });
+
+  it("⚠️ batasnya: ini penjagaan RUNTIME, bukan uji atas irisan yang sebenarnya", () => {
+    // HoF hidup di ENV, peran hidup di DB; tak ada satu proses pun yang melihat
+    // keduanya saat build. Yang bisa diuji hanyalah bahwa irisannya TIDAK
+    // BERBAHAYA — bukan bahwa irisannya kosong.
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    expect(src).toMatch(/penjagaan \*\*runtime\*\*/);
+  });
+});
+

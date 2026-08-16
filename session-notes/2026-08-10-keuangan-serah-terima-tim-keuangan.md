@@ -132,6 +132,38 @@ Selisih ini juga **bukan** batas toleransi — setelah dikoreksi harus kembali n
 
 ---
 
+## Bagian 2b — Pekerjaan DATA yang menahan layar baru (ditambahkan 16 Agu 2026)
+
+Layar **Input Keuangan** sudah dibangun, tetapi dua hal berikut adalah data,
+bukan program — dan keduanya menahan pemakaian nyatanya.
+
+### 1. Daftar rekening riil untuk enam SPBU
+
+Buku kas besar dan lima buku bank baru punya daftar rekening untuk **Bakau**.
+Enam unit lain — Imam Bonjol, Bundaran Kotabaru, Adisucipto, Batu Layang, Korek,
+28 Oktober — belum punya, sehingga layarnya akan menyatakan apa adanya:
+*"Belum ada akun kas untuk unit ini."*
+
+Yang dibutuhkan per unit, dari tim keuangan:
+
+| kolom | contoh (Bakau) |
+|---|---|
+| nama rekening | `Bank BCA - 5125036811` |
+| jenis | kas · bank · EDC penampungan |
+| masih aktif? | empat dari lima rekening bank Bakau **dorman 2–5 tahun** |
+
+⚠️ Rekening yang sudah tidak dipakai **jangan dihapus dari daftar** — tandai
+tidak aktif. Mutasi lama harus tetap menunjuk rekening yang benar.
+
+### 2. Siapa yang memegang peran `Keuangan`
+
+Layar itu hanya bisa diisi oleh orang ber-peran **Keuangan**. Sampai ada yang
+ditunjuk, tak seorang pun bisa mengisinya.
+
+⛔ **Orang itu tidak boleh Head of Finance.** Bukan soal kepercayaan: kalau satu
+orang mengetik sekaligus menyetujui, tidak ada lagi yang memeriksa. Sistem
+menahannya sendiri, tetapi lebih baik tidak sampai ke situ.
+
 ## Bagian 3 — Tiga pertanyaan yang MASIH terbuka
 
 Tujuh dari sepuluh pertanyaan sudah dijawab dalam rapat **12 Agustus 2026** dan

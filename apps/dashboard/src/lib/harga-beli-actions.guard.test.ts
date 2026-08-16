@@ -48,8 +48,12 @@ describe("harga-beli-actions — penjagaan yang tak boleh hilang", () => {
   });
 
   it("🔴 gerbang tulis §2.6 dipanggil, dan MENOLAK sebelum menyentuh DB", () => {
-    expect(KODE).toMatch(/canInputKeuangan\(/);
-    const idxGerbang = KODE.indexOf("canInputKeuangan(");
+    // Lewat `alasanTakBolehInput`, yang membungkus `canInputKeuangan` DAN
+    // menutup irisan HoF × keuangan (§10.12) — satu pintu, bukan dua
+    // pemeriksaan yang bisa berselisih.
+    expect(KODE).toMatch(/alasanTakBolehInput\(/);
+    expect(KODE).toMatch(/PESAN_TAK_BOLEH_INPUT\[alasan\]/);
+    const idxGerbang = KODE.indexOf("alasanTakBolehInput(");
     const idxConnect = KODE.indexOf("pool.connect()");
     expect(idxGerbang).toBeGreaterThan(-1);
     expect(idxConnect).toBeGreaterThan(-1);

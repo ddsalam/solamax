@@ -61,12 +61,18 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
   });
 
   it("gerbang §2.6 dipanggil, dan MENDAHULUI koneksi", () => {
-    expect(KODE).toMatch(/canInputKeuangan\(/);
+    // `alasanTakBolehInput` MEMBUNGKUS `canInputKeuangan` + menutup irisan
+    // HoF × keuangan (§10.12), dan membawa alasan penolakannya. Penjaga ini
+    // menuntut gerbangnya lewat SATU pintu itu — bukan dua pemeriksaan yang
+    // bisa berselisih.
+    expect(KODE).toMatch(/alasanTakBolehInput\(/);
+    expect(KODE).toMatch(/PESAN_TAK_BOLEH_INPUT\[alasan\]/);
     // `buka()` = requireUnit + gerbang; ia dipanggil di awal SETIAP aksi,
     // sebelum satu pun `pool.connect()`.
-    expect(KODE.indexOf("canInputKeuangan(")).toBeLessThan(KODE.indexOf("pool.connect()"));
+    expect(KODE.indexOf("alasanTakBolehInput(")).toBeLessThan(KODE.indexOf("pool.connect()"));
     expect(KODE).toMatch(/scope\.requireUnit\(code\)/);
     expect([...KODE.matchAll(/const ctx = await buka\(/g)]).toHaveLength(3);
+    expect([...KODE.matchAll(/if \(!ctx\.boleh\) return/g)]).toHaveLength(3);
   });
 
   it("🔴 nominal tawaran dibaca DI SERVER, tidak diterima dari client", () => {

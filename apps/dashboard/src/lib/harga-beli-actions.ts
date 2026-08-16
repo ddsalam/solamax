@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { evaluateP1 } from "./harga-beli";
-import { canInputKeuangan } from "./keuangan-wewenang";
+import {
+  alasanTakBolehInput,
+  canInputKeuangan,
+  PESAN_TAK_BOLEH_INPUT,
+} from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
 
 /**
@@ -55,9 +59,8 @@ export async function simpanHargaBeli(input: SimpanHargaBeliInput): Promise<Acti
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code); // di luar scope → notFound(), tak menulis
 
-  if (!canInputKeuangan({ role: scope.role, email: scope.email })) {
-    return { ok: false, error: "Hanya peran Keuangan yang boleh mengisi harga beli." };
-  }
+  const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
+  if (alasan !== null) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasan] };
   if (!DATE_RE.test(input.date) || !DATE_RE.test(input.effectiveFrom)) {
     return { ok: false, error: "Tanggal tak valid." };
   }
