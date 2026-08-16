@@ -199,3 +199,31 @@ export const PESAN_TAK_BOLEH_INPUT: Record<AlasanTakBolehInput, string> = {
     "Akun ini terdaftar sebagai Head of Finance, jadi ia menyetujui — bukan mengetik. " +
     "Pemisahan itu hilang bila satu orang melakukan keduanya. Minta staf Keuangan mengisinya.",
 };
+
+/**
+ * Boleh MEMBACA Laporan Keuangan Harian (Layar 2)?
+ *
+ * Keputusan owner 17 Agustus 2026 — §10.13, ditulis ke repo sebelum dipakai.
+ *
+ * ⛔ `pengawas` TIDAK termasuk. Laba, ekuitas, saldo tujuh rekening, gaji
+ * karyawan, dan kontribusi ke pusat tidak terlihat oleh pengawas unit —
+ * 15 dari 21 pengguna produksi berperan pengawas. Alasannya sejalan §2:
+ * pengawas memiliki FAKTA transaksi, bukan penyajian keuangannya.
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI — ini gerbang **BACA**, dan ia sengaja BUKAN
+ * turunan {@link canInputKeuangan}. Keduanya berbeda ke dua arah: seorang
+ * `direksi` boleh membaca tetapi tidak boleh mengisi; seorang `keuangan` boleh
+ * keduanya. Menyusun yang satu dari yang lain akan membuat perubahan pada
+ * gerbang tulis merembes ke gerbang baca tanpa ada yang memutuskannya.
+ *
+ * Ongkos yang diterima sadar (§10.13): pengawas tidak bisa melihat akibat dari
+ * angka yang ia isi sendiri.
+ */
+export function canViewLaporanKeuangan(ctx: WewenangCtx): boolean {
+  return (
+    ctx.role === "keuangan" ||
+    ctx.role === "direksi" ||
+    ctx.role === "admin_perusahaan" ||
+    ctx.role === "super_admin"
+  );
+}

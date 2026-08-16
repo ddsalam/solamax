@@ -9,6 +9,7 @@ import {
   canInputKeuangan,
   PESAN_TAK_BOLEH_INPUT,
   canOverrideAboveMax,
+  canViewLaporanKeuangan,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -298,3 +299,45 @@ describe("irisan HoF × `keuangan` — ditutup di predikatnya (§10.12)", () => 
   });
 });
 
+
+describe("canViewLaporanKeuangan — gerbang BACA Layar 2 (§10.13)", () => {
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 pengawas TIDAK bisa membuka laporan keuangan", () => {
+    expect(canViewLaporanKeuangan(c("pengawas"))).toBe(false);
+  });
+
+  it("keuangan, direksi, admin_perusahaan, super_admin bisa", () => {
+    for (const r of ["keuangan", "direksi", "admin_perusahaan", "super_admin"] as Role[]) {
+      expect(canViewLaporanKeuangan(c(r)), r).toBe(true);
+    }
+  });
+
+  it("🔴 BACA ≠ TULIS — dua gerbang berbeda ke DUA arah", () => {
+    // direksi: boleh membaca, tidak boleh mengisi.
+    expect(canViewLaporanKeuangan(c("direksi"))).toBe(true);
+    expect(canInputKeuangan(c("direksi"))).toBe(false);
+    // keuangan: boleh keduanya.
+    expect(canViewLaporanKeuangan(c("keuangan"))).toBe(true);
+    expect(canInputKeuangan(c("keuangan"))).toBe(true);
+    // Daftarnya memang harus berselisih.
+    const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+    expect(semua.filter((r) => canViewLaporanKeuangan(c(r)))).not.toEqual(
+      semua.filter((r) => canInputKeuangan(c(r))),
+    );
+  });
+
+  it("HoF (admin_perusahaan) boleh MEMBACA meski tak boleh mengisi", () => {
+    const hof = "hof@solagroup.co";
+    expect(canViewLaporanKeuangan(c("admin_perusahaan", hof))).toBe(true);
+    expect(canInputKeuangan(c("admin_perusahaan", hof), [hof])).toBe(false);
+  });
+
+  it("gerbang baca tidak MEMAKAI gerbang tulis — dua predikat, bukan turunan", () => {
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    const mulai = src.indexOf("export function canViewLaporanKeuangan");
+    const badan = src.slice(mulai, src.indexOf("\n}", mulai) + 2);
+    expect(badan, "fungsi canViewLaporanKeuangan tidak ditemukan").toMatch(/return/);
+    expect(badan).not.toMatch(/canInputKeuangan\s*\(/);
+  });
+});
