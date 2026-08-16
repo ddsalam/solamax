@@ -1001,6 +1001,84 @@ langkah 2 dan 3 berjalan beriringan; langkah 1 dijaga oleh CHECK-nya sendiri.
 **Menambah nilai = menambah sumber yang bisa dikoreksi = KEPUTUSAN OWNER**,
 bukan keputusan pelaksana.
 
+### 10.11 K2 · Gerbang tulis Layar 3 = peran RBAC `keuangan` (15 Agustus 2026)
+
+**Keputusan owner, dikonfirmasi 15 Agustus 2026.** Dicatat di sini karena
+pertanyaan & jawabannya terjadi **di luar jalur relay** dan sempat dipakai
+sebelum ditulis — persis kegagalan yang §10 dibuat untuk mencegah, pada putaran
+paling struktural sejauh ini.
+
+> ⛔ **Aturan yang berlaku ke depan:** keputusan owner yang datang lewat jalur
+> mana pun **belum berlaku sampai ia ada di repo**. Jawaban yang diterima di
+> luar relay ditulis dulu, baru dipakai.
+
+**Pertanyaannya:** siapa boleh MENULIS di Layar 3 (harga beli, buku kas/bank,
+settlement EDC, biaya di luar pengawas). §2 menyebut *Finance* sebagai pemilik
+klasifikasi, tetapi `Finance` bukan peran yang ada.
+
+| | |
+|---|---|
+| **Dipilih** | peran RBAC kelima **`keuangan`** (migrasi 0032) |
+| **Ditolak** | kapabilitas ber-ENV (`FINANCE_EMAILS`), pola §10.4 — usulan saya |
+| **Predikat** | `canInputKeuangan = role ∈ {keuangan, super_admin}` |
+
+Alasan owner memilih peran: keanggotaannya **terlihat dan dikelola di `/admin`**,
+bukan tersembunyi di env yang hanya berubah lewat deploy.
+
+#### Kenapa `ROLE_RANK` boleh bergeser di sini padahal `head_of_finance` tidak
+
+Larangan §10.4 **tetap berlaku utuh**, dan tanpa bagian ini ia akan tampak
+sewenang-wenang. Bedanya nyata:
+
+| | `keuangan` | Head of Finance |
+|---|---|---|
+| apa yang diwakili | **cakupan data** — peran seseorang | **wewenang keuangan** — hak menyetujui |
+| pemegangnya | tak punya peran lain; ini *adalah* pekerjaannya | sudah punya peran lain (`admin_perusahaan`) |
+| satu-peran-per-orang | wajar: satu orang satu pekerjaan | **mematikan**: memberinya peran MENCABUT `admin_perusahaan`, satu-satunya yang memberi `/admin` |
+| tempatnya | di tangga | **di luar** tangga (ENV) |
+
+Ringkasnya: tangga peran adalah tempat **peran orang**, dan `keuangan` memang
+peran orang. HoF bukan peran orang — ia wewenang yang menempel pada orang yang
+sudah punya peran. Memasukkan yang kedua ke tangga akan mencabut peran itu.
+
+#### Bukti bahwa pergeserannya AMAN — bukan asumsi
+
+Angka rank bergeser: `pengawas 0 · keuangan 1 · direksi 2 · admin_perusahaan 3
+· super_admin 4` (sebelumnya `direksi 1 · admin_perusahaan 2 · super_admin 3`).
+Diverifikasi ulang atas basis kode 15 Agu 2026:
+
+1. **`ROLE_RANK` punya TEPAT SATU konsumen produksi** —
+   [`scope-rule.ts`](src/lib/scope-rule.ts) `resolveRole`:
+   `ROLE_RANK[r] < ROLE_RANK[min]`. Sisanya hanya penyebutan di komentar dan tes.
+2. **Nol perbandingan ke angka literal.** Pencarian
+   `ROLE_RANK[...] <>= <angka>` dan kebalikannya: nihil. Yang dipakai hanya
+   perbandingan **rank terhadap rank**, jadi nilainya boleh bergeser selama
+   URUTANNYA benar.
+3. **Rank tidak pernah dipersistensi** — tak ada di migrasi/SQL, tak ada di
+   cookie/URL. Ia tidak punya pembaca di luar proses.
+
+Posisi `keuangan` = **1** dipilih supaya kedua arah bentrok tetap fail-closed:
+bentrok dengan `pengawas` ⇒ menang `pengawas` (kehilangan hak tulis keuangan);
+bentrok dengan `direksi` ⇒ menang `keuangan` (kehilangan wewenang penutupan).
+
+#### ⚠️ `super_admin` adalah PENGECUALIAN yang disengaja — break-glass
+
+Kalimat "yang menyetujui tidak mengetik, yang mengetik tidak menyetujui" benar
+untuk `keuangan` vs HoF, **tetapi `super_admin` lolos keduanya**
+(`canInputKeuangan` DAN `canCloseException`/`canOverrideAboveMax`). Itu
+**disengaja**, dan dinyatakan di sini supaya tidak dibaca sebagai kelalaian:
+
+- satu-peran-per-orang membuat "sementara jadi `keuangan`" berarti **kehilangan
+  `super_admin`** — pemulihan keadaan jadi mustahil justru saat dibutuhkan;
+- pemegangnya adalah owner, yang toh bisa memberikan peran apa pun kepada siapa
+  pun lewat `/admin`. Menutup pintu ini tidak menambah jaminan apa pun; ia hanya
+  membuat pemulihan lebih berliku.
+
+**Batas yang ikut dinyatakan:** pemisahan tugas di modul ini berlaku di antara
+peran operasional. Ia **tidak** berlaku terhadap `super_admin`, dan tidak ada
+kontrol teknis di SolaMax yang membuatnya berlaku. Yang menjaga di lapis itu
+adalah `app.audit_log` (0017, append-only) — jejak, bukan pencegahan.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:

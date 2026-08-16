@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="id"><head>
+<!-- SALINAN VERSI-TERKENDALI mockup 'SolaMax — Modul Keuangan (mockup untuk
+     persetujuan)', Revisi 4, disetujui owner 10 Agustus 2026.
+     Aslinya terbit sebagai artifact claude.ai, DI LUAR git — dan putaran K2
+     menunjukkan apa yang terjadi ketika sesuatu yang mengikat tak punya rumah
+     di repo. Berkas ini ACUAN, bukan kode yang dijalankan. -->
+<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>SolaMax — Modul Keuangan (mockup untuk persetujuan)</title>
+
+<style>
+/* ============================================================
+   Token SolaGroup Design System — disalin apa adanya dari
+   apps/dashboard/src/styles/ds/tokens/*.css agar mockup ini
+   memakai palet & skala tipe yang SAMA dengan aplikasi.
+   Tema: LIGHT-ONLY, mengikuti keputusan DS ("light theme saja,
+   token semantik siap dark"). Sengaja tidak dibuat dark.
+   ============================================================ */
+:root {
+  color-scheme: light;
+
+  --brand-navy:      #1A3252;
+  --brand-navy-deep: #0D284A;
+  --brand-sky:       #1CA0E6;
+
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #F5F5F7;
+  --neutral-100: #E8E8ED;
+  --neutral-200: #D2D2D7;
+  --neutral-300: #B0B0B8;
+  --neutral-400: #86868B;
+  --neutral-500: #6E6E73;
+  --neutral-600: #515154;
+  --neutral-700: #3A3A3C;
+  --neutral-900: #1D1D1F;
+
+  --accent-50:  #EAF5FC;
+  --accent-100: #D6EBF9;
+  --accent-200: #ABD7F3;
+  --accent-500: #1CA0E6;
+  --accent-600: #0A6EBD;
+  --accent-700: #085A9C;
+  --accent-800: #07477C;
+
+  --color-bg:              var(--neutral-0);
+  --color-bg-secondary:    var(--neutral-50);
+  --color-surface:         var(--neutral-0);
+  --color-text-primary:    var(--neutral-900);
+  --color-text-secondary:  var(--neutral-600);
+  --color-text-tertiary:   var(--neutral-500);
+  --color-text-brand:      var(--brand-navy);
+  --color-text-on-accent:  #FFFFFF;
+  --color-accent:          var(--accent-600);
+  --color-border:          var(--neutral-200);
+  --color-border-hairline: rgba(0,0,0,.10);
+
+  --color-success: #15803D; --color-success-bg: #E9F5EE; --color-success-border: #B7DDC5;
+  --color-warning: #B45309; --color-warning-bg: #FDF3E5; --color-warning-border: #F0D6AC;
+  --color-danger:  #B91C1C; --color-danger-bg:  #FBEAEA; --color-danger-border:  #EFC4C4;
+  --color-info:    var(--accent-600); --color-info-bg: var(--accent-50); --color-info-border: var(--accent-200);
+
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px;
+  --space-6:24px; --space-8:32px; --space-10:40px; --space-12:48px;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:14px; --radius-xl:20px; --radius-full:999px;
+
+  --shadow-1: 0 1px 3px rgba(29,29,31,.06);
+  --shadow-2: 0 2px 8px rgba(29,29,31,.08);
+  --shadow-3: 0 8px 24px rgba(29,29,31,.12);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 17px;               /* lantai body DS — pembaca direksi */
+  line-height: 1.55;
+  color: var(--color-text-primary);
+  background: var(--neutral-100);
+  -webkit-font-smoothing: antialiased;
+}
+.num { font-variant-numeric: tabular-nums; }
+.right { text-align: right; }
+.w600 { font-weight: 600; } .w700 { font-weight: 700; }
+
+/* ===== Chrome milik mockup (di LUAR bingkai aplikasi) ===== */
+.wrap { max-width: 1320px; margin: 0 auto; padding: var(--space-10) var(--space-6) var(--space-12); }
+
+.doc-head { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-8); }
+.doc-eyebrow {
+  font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.doc-title { font-size: 40px; line-height: 1.10; font-weight: 700; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+.doc-sub { font-size: 21px; line-height: 1.5; color: var(--color-text-secondary); max-width: 68ch; margin: 0; }
+.doc-flags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.flag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 16px; font-weight: 600; padding: 5px 12px; border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+.flag.draft   { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.flag.data    { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success-border); }
+.flag.theme   { color: var(--color-text-secondary); background: var(--neutral-50); border-color: var(--color-border); }
+
+/* Pemilih layar — pola .seg aplikasi */
+.seg { display: flex; flex-wrap: wrap; background: var(--neutral-100); border-radius: var(--radius-full); padding: 4px; gap: 2px; position: sticky; top: 0; z-index: 20; box-shadow: 0 0 0 8px var(--neutral-100); margin-bottom: var(--space-8); }
+.seg-btn {
+  appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 16px; font-weight: 600;
+  color: var(--color-text-secondary); background: transparent;
+  padding: 10px 18px; min-height: 44px; border-radius: var(--radius-full);
+}
+.seg-btn:hover { color: var(--color-text-primary); }
+.seg-btn[aria-selected="true"] { color: var(--color-text-on-accent); background: var(--brand-navy); }
+.seg-btn:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+.screen[hidden] { display: none; }
+
+/* Bingkai jendela */
+.frame { border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-3); border: 1px solid var(--color-border); background: var(--color-bg); }
+.frame-bar {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px var(--space-4); background: var(--neutral-100); border-bottom: 1px solid var(--color-border);
+}
+.frame-dots { display: flex; gap: 6px; }
+.frame-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--neutral-300); display: block; }
+.frame-url {
+  flex: 1; font-size: 15px; color: var(--color-text-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-full); padding: 4px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.frame-role { font-size: 15px; font-weight: 600; color: var(--color-text-secondary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 3px 12px; white-space: nowrap; }
+
+/* ===== Shell aplikasi (tiruan .shell) ===== */
+.shell { display: grid; grid-template-columns: 248px 1fr; background: var(--neutral-50); }
+.sidebar { background: var(--neutral-50); padding: var(--space-4) var(--space-3) var(--space-4); border-right: 1px solid var(--color-border-hairline); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 0 var(--space-2) var(--space-5); }
+.brand-mark { width: 26px; height: 26px; border-radius: 50%; background: var(--brand-navy-deep); display: grid; place-items: center; flex: none; }
+.brand-mark svg { display: block; }
+.brand-name { font-size: 17px; font-weight: 700; color: var(--color-text-brand); letter-spacing: -.01em; }
+.side-group { display: flex; flex-direction: column; gap: 2px; margin-top: var(--space-3); }
+.side-group-head { font-size: 15px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-tertiary); padding: var(--space-2) var(--space-2) var(--space-1); }
+.side-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px var(--space-2);
+  border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: 16px; text-decoration: none;
+}
+.side-item svg { flex: none; width: 18px; height: 18px; }
+.side-item:hover { background: var(--neutral-100); color: var(--color-text-primary); }
+.side-item.active { background: var(--color-surface); color: var(--color-text-brand); font-weight: 600; box-shadow: var(--shadow-1); }
+.side-item .new { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--color-text-on-accent); background: var(--color-accent); border-radius: var(--radius-full); padding: 1px 8px; }
+.side-foot { margin-top: auto; padding: var(--space-4) var(--space-2) 0; border-top: 1px solid var(--color-border-hairline); font-size: 15px; color: var(--color-text-tertiary); display: flex; flex-direction: column; gap: 2px; }
+
+.main { padding: var(--space-8) var(--space-8) var(--space-10); background: var(--color-bg); min-width: 0; }
+
+/* Baris filter halaman */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: 1px solid var(--color-border-hairline); margin-bottom: var(--space-6); }
+.field { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); padding: 8px 14px; min-height: 44px; font-size: 16px; font-weight: 600; color: var(--color-text-primary); }
+.field span.lbl { font-weight: 400; color: var(--color-text-tertiary); }
+.spacer { margin-left: auto; }
+
+.btn { appearance: none; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; border-radius: var(--radius-md); min-height: 44px; padding: 10px 18px; border: 1px solid transparent; }
+.btn-navy { background: var(--brand-navy); color: var(--color-text-on-accent); }
+.btn-navy:hover { background: var(--accent-800); }
+.btn-tint { background: var(--accent-50); color: var(--color-accent); border-color: var(--accent-100); }
+.btn-outline { background: var(--color-surface); color: var(--color-text-primary); border-color: var(--color-border); }
+.btn:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+h2.page-title { font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -.005em; margin: 0 0 var(--space-1); }
+.page-sub { font-size: 16px; color: var(--color-text-tertiary); margin: 0 0 var(--space-6); }
+
+.section-h { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin: var(--space-8) 0 var(--space-4); }
+.section-h h3 { font-size: 20px; font-weight: 600; margin: 0; }
+.section-h .note { font-size: 16px; color: var(--color-text-tertiary); }
+
+/* Kartu & KPI */
+.card { background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+.card-pad { padding: var(--space-5); }
+.kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); }
+.kpi-label { font-size: 16px; font-weight: 500; color: var(--color-text-tertiary); }
+.kpi-value { font-size: 32px; line-height: 1.16; font-weight: 700; letter-spacing: -.008em; margin-top: 2px; }
+.kpi-value.sm { font-size: 28px; }
+.kpi-note { display: flex; align-items: center; gap: 7px; margin-top: var(--space-2); font-size: 16px; color: var(--color-text-tertiary); }
+.up { color: var(--color-success); font-weight: 600; }
+.down { color: var(--color-danger); font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.dot.success { background: var(--color-success); } .dot.warning { background: var(--color-warning); }
+.dot.danger { background: var(--color-danger); } .dot.muted { background: var(--neutral-300); }
+.dot.info { background: var(--color-info); }
+
+/* Banner */
+.banner { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); font-size: 16px; }
+.banner .dot { margin-top: 8px; }
+.banner.danger { background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); }
+.banner.warning { background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); }
+.banner.info { background: var(--color-info-bg); border: 1px solid var(--color-info-border); }
+.banner.success { background: var(--color-success-bg); border: 1px solid var(--color-success-border); }
+.banner b { display: block; font-size: 17px; }
+.banner .body { flex: 1; }
+.banner .act { margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* Keping asal-usul angka — penanda semantik modul ini */
+.src {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-size: 15px; font-weight: 600; padding: 2px 9px; border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+.src.auto   { color: var(--accent-700); background: var(--accent-50);        border-color: var(--accent-100); }
+.src.manual { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.src.todo   { color: var(--color-danger);  background: var(--color-danger-bg);  border-color: var(--color-danger-border); }
+.src.turunan{ color: var(--color-text-secondary); background: var(--neutral-50); border-color: var(--color-border); }
+
+/* Tabel grid — pola .grid-head/.grid-row/.grid-total aplikasi */
+.tbl { overflow: hidden; }
+.tbl .g { display: grid; gap: var(--space-3); padding: 13px var(--space-6); align-items: baseline; }
+.tbl .g > * { min-width: 0; overflow-wrap: break-word; }
+.tbl .head { background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline); }
+.tbl .head > * { font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); }
+.tbl .row { border-bottom: 1px solid var(--color-border-hairline); }
+.tbl .row.sub { background: var(--neutral-50); padding-top: 9px; padding-bottom: 9px; }
+.tbl .row.sub .nm { padding-left: var(--space-5); color: var(--color-text-secondary); font-size: 16px; }
+.tbl .total { background: var(--neutral-50); font-weight: 700; padding-top: 15px; padding-bottom: 15px; }
+.tbl .row:last-child { border-bottom: 0; }
+.tbl .nm { font-weight: 600; }
+.tbl .meta { font-size: 15px; color: var(--color-text-tertiary); font-weight: 400; }
+
+.cols-unit    { grid-template-columns: minmax(0,1.5fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.15fr); }
+.cols-komposisi { grid-template-columns: minmax(0,1.8fr) minmax(0,1fr) minmax(0,1.25fr); }
+.cols-input   { grid-template-columns: minmax(0,1.6fr) minmax(0,1.25fr) minmax(0,1fr) minmax(0,1.1fr); }
+.cols-piutang { grid-template-columns: minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.05fr) minmax(0,.8fr); }
+
+/* Uji silang dua jalur */
+.xcheck { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--space-5); align-items: stretch; }
+.xpath { border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); padding: var(--space-5); background: var(--color-surface); }
+.xpath h4 { margin: 0 0 var(--space-1); font-size: 17px; font-weight: 600; }
+.xpath .amt { font-size: 28px; font-weight: 700; letter-spacing: -.005em; margin: var(--space-2) 0; }
+.xline { display: flex; justify-content: space-between; gap: var(--space-4); font-size: 16px; padding: 5px 0; border-bottom: 1px dashed var(--color-border); }
+.xline:last-child { border-bottom: 0; }
+.xline span:first-child { color: var(--color-text-secondary); }
+.xgap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 190px; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); text-align: center; }
+.xgap .lbl { font-size: 15px; font-weight: 600; color: var(--color-warning); letter-spacing: .04em; text-transform: uppercase; }
+.xgap .amt { font-size: 24px; font-weight: 700; color: var(--color-warning); }
+.xgap .hint { font-size: 15px; color: var(--color-text-secondary); }
+
+/* Form input keuangan */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-4); }
+.fld { display: flex; flex-direction: column; gap: 6px; }
+.fld label { font-size: 16px; font-weight: 600; }
+.fld .hint { font-size: 15px; color: var(--color-text-tertiary); }
+.inp {
+  border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
+  padding: 11px 14px; min-height: 44px; font: inherit; font-size: 17px; font-variant-numeric: tabular-nums;
+  text-align: right; color: var(--color-text-primary);
+}
+.inp.filled { border-color: var(--accent-200); background: var(--accent-50); font-weight: 600; }
+.inp.empty { color: var(--color-text-tertiary); text-align: left; font-style: italic; }
+.attest { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); border: 1px solid var(--color-border); background: var(--neutral-50); }
+.box { width: 22px; height: 22px; border-radius: var(--radius-sm); border: 2px solid var(--color-accent); background: var(--color-accent); color: #fff; display: grid; place-items: center; flex: none; margin-top: 2px; font-size: 14px; font-weight: 700; }
+.trail { display: flex; flex-direction: column; gap: var(--space-3); }
+.trail-item { display: flex; gap: var(--space-3); font-size: 16px; }
+.trail-item .when { color: var(--color-text-tertiary); font-size: 15px; white-space: nowrap; min-width: 120px; }
+
+/* Catatan rancangan (di luar bingkai) */
+.notes { margin-top: var(--space-6); border-left: 3px solid var(--brand-navy); background: var(--color-surface); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; padding: var(--space-5) var(--space-6); box-shadow: var(--shadow-1); }
+.notes h4 { margin: 0 0 var(--space-3); font-size: 17px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--color-text-brand); }
+.notes ul { margin: 0; padding-left: 1.25em; display: flex; flex-direction: column; gap: var(--space-2); }
+.notes li { font-size: 17px; line-height: 1.55; color: var(--color-text-secondary); }
+.notes li b { color: var(--color-text-primary); }
+.notes .ask { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border-hairline); font-size: 17px; }
+.notes .ask b { color: var(--color-text-brand); }
+
+.scroll-x { overflow-x: auto; }
+
+@media (max-width: 1080px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .kpi-grid { grid-template-columns: 1fr; }
+  .xcheck { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .main { padding: var(--space-5); }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+<style>
+/* ===== Tambahan: tiga panel laporan, bagan penyimpangan, tabel sumber, form input ===== */
+.rep3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); align-items: start; }
+.rep-card { background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden; }
+.rep-head { padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50); }
+.rep-head h4 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-tertiary); }
+.rep-body { padding: var(--space-3) var(--space-5) var(--space-4); }
+.ln { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--space-4); padding: 7px 0; font-size: 16px; border-bottom: 1px solid var(--color-border-hairline); }
+.ln:last-child { border-bottom: 0; }
+.ln .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ln.ind .k { padding-left: var(--space-4); color: var(--color-text-tertiary); }
+.ln.sum { font-weight: 700; border-top: 2px solid var(--color-border); border-bottom: 0; margin-top: 4px; padding-top: 10px; }
+.ln.sub { font-weight: 600; }
+.ln.chk { border-bottom: 0; margin-top: var(--space-3); padding: 10px var(--space-3); border-radius: var(--radius-md); background: var(--color-success-bg); border: 1px solid var(--color-success-border); }
+.ln.chk.bad { background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+.ln.chk .k { font-weight: 600; color: var(--color-success); padding-left: 0; }
+.ln.chk.bad .k { color: var(--color-danger); }
+
+.figure { background: var(--color-surface); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); padding: var(--space-5) var(--space-6) var(--space-4); }
+.figure figcaption { font-size: 16px; color: var(--color-text-tertiary); margin-top: var(--space-3); max-width: 78ch; }
+.figure h4 { margin: 0 0 var(--space-1); font-size: 18px; font-weight: 600; }
+.chart { width: 100%; height: 260px; display: block; overflow: visible; }
+.ax { stroke: var(--neutral-200); stroke-width: 1; }
+.zero { stroke: var(--neutral-400); stroke-width: 1.5; }
+.bar { fill: var(--color-danger); }
+.bar.ok { fill: var(--neutral-300); }
+.tick { font-size: 13px; fill: var(--color-text-tertiary); }
+.dlabel { font-size: 13px; font-weight: 600; fill: var(--color-text-secondary); }
+
+.cols-src    { grid-template-columns: minmax(0,1.55fr) minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1.1fr); }
+.cols-grup   { grid-template-columns: minmax(0,1.5fr) minmax(0,1.05fr) minmax(0,1.05fr) minmax(0,1.15fr) minmax(0,1.2fr); }
+.cols-harga  { grid-template-columns: minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.1fr); }
+.cols-buku   { grid-template-columns: minmax(0,2.2fr) minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr); }
+.cols-biaya  { grid-template-columns: minmax(0,1.9fr) minmax(0,1.35fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.1fr); }
+.cols-biaya2 { grid-template-columns: minmax(0,1.7fr) minmax(0,1.05fr) minmax(0,1.7fr) minmax(0,.95fr) minmax(0,1.15fr) minmax(0,1.25fr); }
+.cols-daur   { grid-template-columns: minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.7fr) minmax(0,1.7fr); }
+.cols-tol    { grid-template-columns: minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1.6fr) minmax(0,1.5fr); }
+
+.inp-cell { border: 1px solid var(--accent-200); background: var(--accent-50); border-radius: var(--radius-sm); padding: 4px 10px; font-weight: 600; font-variant-numeric: tabular-nums; display: block; text-align: right; }
+.ro-cell { color: var(--color-text-secondary); }
+.attest { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); border: 1px solid var(--color-border); background: var(--neutral-50); }
+.box { width: 22px; height: 22px; border-radius: var(--radius-sm); border: 2px solid var(--color-accent); background: var(--color-accent); color: #fff; display: grid; place-items: center; flex: none; margin-top: 2px; font-size: 14px; font-weight: 700; }
+.trail { display: flex; flex-direction: column; gap: var(--space-3); }
+.trail-item { display: flex; gap: var(--space-3); font-size: 16px; }
+.trail-item .when { color: var(--color-text-tertiary); font-size: 15px; white-space: nowrap; min-width: 118px; }
+
+@media (max-width: 1080px) { .rep3 { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+
+  <header class="doc-head">
+    <div class="doc-eyebrow">SolaMax · Modul baru · Revisi 4</div>
+    <h1 class="doc-title">Keuangan &amp; Akuntansi SPBU</h1>
+    <p class="doc-sub">
+      Model sasaran mengikuti <em>Finance SPBU 6378301 BK</em>: <strong>Cash Flow · Income Statement ·
+      Balance Sheet harian</strong>, lengkap dengan angka pemeriksanya. Revisi ini menerapkan
+      <strong>toleransi neraca Rp 0</strong> dengan tangga eskalasi, dan memisahkan
+      <strong>kepemilikan fakta transaksi</strong> (pengawas) dari <strong>wewenang klasifikasi
+      akuntansi</strong> (Finance).
+    </p>
+    <div class="doc-flags">
+      <span class="flag draft">Mockup · belum ada kode</span>
+      <span class="flag data">Angka nyata · Bakau 15 Januari 2026</span>
+      <span class="flag theme">Light-only, mengikuti SolaGroup DS</span>
+    </div>
+  </header>
+
+  <div class="banner danger" style="margin-bottom:var(--space-8)">
+    <span class="dot danger"></span>
+    <div class="body">
+      <b>Sebelum apa pun soal aplikasi — neraca Bakau berhenti seimbang sejak 29 Januari 2026</b>
+      <em>Balance Sheet Check</em> melompat dari +Rp 3.635.936 (28 Jan) ke <strong>−Rp 49.143.546</strong> (29 Jan),
+      lalu membesar tiap bulan sampai <strong>−Rp 39.452.607.134</strong> pada 27 Juli 2026.
+      Angka ini <strong>kumulatif</strong> — yang berarti adalah selisihnya terhadap hari sebelumnya, dan hari itu residu naik Rp 52,8 juta dalam sehari.
+      Penyebabnya sudah terkunci: BBM diterima tanpa pernah dicatat sebagai pembelian. Ini perlu ditangani terlepas dari jadi atau tidaknya modul ini.
+    </div>
+  </div>
+
+  <div class="seg" role="tablist" aria-label="Pilih layar">
+    <button class="seg-btn" role="tab" aria-selected="true"  aria-controls="s1" id="t1">1 · Papan keuangan grup</button>
+    <button class="seg-btn" role="tab" aria-selected="false" aria-controls="s2" id="t2">2 · Laporan harian</button>
+    <button class="seg-btn" role="tab" aria-selected="false" aria-controls="s3" id="t3">3 · Input keuangan</button>
+    <button class="seg-btn" role="tab" aria-selected="false" aria-controls="s4" id="t4">4 · Gerbang tutup hari</button>
+    <button class="seg-btn" role="tab" aria-selected="false" aria-controls="s5" id="t5">5 · Sumber data</button>
+  </div>
+
+  <!-- ==================== LAYAR 1 ==================== -->
+  <section class="screen" id="s1" role="tabpanel" aria-labelledby="t1">
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="frame-dots"><i></i><i></i><i></i></div>
+        <div class="frame-url">solamax.solagroup.id/keuangan?tanggal=2026-01-15</div>
+        <div class="frame-role">Direksi</div>
+      </div>
+      <div class="shell">
+        <nav class="sidebar">
+          <div class="brand">
+            <span class="brand-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v9l6 4" stroke="#1CA0E6" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#1CA0E6" stroke-width="1.6" opacity=".55"/></svg></span>
+            <span class="brand-name">SolaMax</span>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Keuangan</div>
+            <a class="side-item active" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Papan keuangan<span class="new">Baru</span></a>
+            <a class="side-item" href="#s2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Laporan harian</a>
+            <a class="side-item" href="#s3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M8 10h8M8 14h5"/></svg>Input keuangan</a>
+            <a class="side-item" href="#s4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M9 3v4M15 3v4M9 13l2 2 4-4"/></svg>Tutup hari &amp; bulan</a>
+            <a class="side-item" href="#s5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Sumber data</a>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Laporan</div>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Rincian penjualan</a>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Operasional harian</a>
+          </div>
+          <div class="side-foot"><div>Sinkron terlama · Korek</div><div><span class="dot success" style="margin-right:6px"></span>6 mnt lalu</div></div>
+        </nav>
+
+        <main class="main">
+          <div class="filters">
+            <span class="field"><span class="lbl">Tanggal</span> 15 Januari 2026</span>
+            <span class="field"><span class="lbl">Cakupan</span> Semua unit (7)</span>
+            <span class="spacer"></span>
+            <button class="btn btn-outline">Ekspor XLSX</button>
+            <button class="btn btn-navy">Cetak ringkasan</button>
+          </div>
+
+          <h2 class="page-title">Papan keuangan grup</h2>
+          <p class="page-sub">Laba bersih, kas, dan <em>kesehatan pembukuan</em> tiap SPBU. Kolom paling kanan adalah angka pemeriksa neraca — kalau ia bukan nol, angka di sebelah kirinya belum boleh dipercaya.</p>
+
+          <div class="kpi-grid">
+            <div class="card card-pad">
+              <div class="kpi-label">Laba bersih hari ini</div>
+              <div class="kpi-value num up">+11.875.869</div>
+              <div class="kpi-note"><span class="dot muted"></span>1 unit termodelkan</div>
+            </div>
+            <div class="card card-pad">
+              <div class="kpi-label">Kas akhir</div>
+              <div class="kpi-value num sm">7.304.915.872</div>
+              <div class="kpi-note"><span class="dot warning"></span>EDC penampungan 8,26 M belum cair</div>
+            </div>
+            <div class="card card-pad">
+              <div class="kpi-label">Neraca seimbang</div>
+              <div class="kpi-value num">0 / 1</div>
+              <div class="kpi-note"><span class="dot danger"></span>Selisih legacy Rp 132.266 · toleransi Rp 0</div>
+            </div>
+          </div>
+
+          <div class="banner warning" style="margin-top:var(--space-5)">
+            <span class="dot warning"></span>
+            <div class="body">
+              <b>Selisih Rp 132.266 di Bakau bukan “dalam toleransi” — ia residu kumulatif yang belum diselesaikan</b>
+              Per 15 Januari residunya Rp 132.266; dua langkah berikutnya membawanya ke <strong>Rp 3.635.936</strong> pada 28 Januari — itulah angka yang harus dibersihkan.
+              Di bawah aturan baru neraca harus Rp 0; residu ini diselesaikan sekali lewat rekonsiliasi dan jurnal koreksi yang disetujui Direksi.
+              <div class="act"><button class="btn btn-navy">Buka rekonsiliasi sekali-jalan</button></div>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Per unit</h3><span class="note">Klik unit untuk membuka laporan hariannya</span></div>
+
+          <div class="card tbl scroll-x">
+            <div class="g head cols-grup"><span>SPBU</span><span class="right">Laba bersih</span><span class="right">Kas akhir</span><span class="right">Neraca — selisih</span><span>Status</span></div>
+            <div class="g row cols-grup">
+              <span class="nm">Bakau <span class="meta">· 63.783.01</span></span>
+              <span class="right num up">+11.875.869</span>
+              <span class="right num">7.304.915.872</span>
+              <span class="right num down">132.266</span>
+              <span><span class="src manual">Selisih legacy</span></span>
+            </div>
+            <div class="g row cols-grup"><span class="nm">Imam Bonjol <span class="meta">· 64.781.11</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+            <div class="g row cols-grup"><span class="nm">Bundaran Kotabaru <span class="meta">· 64.781.06</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+            <div class="g row cols-grup"><span class="nm">Adisucipto <span class="meta">· 64.781.01</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+            <div class="g row cols-grup"><span class="nm">Batu Layang <span class="meta">· 64.782.01</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+            <div class="g row cols-grup"><span class="nm">Korek <span class="meta">· 64.783.11</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+            <div class="g row cols-grup"><span class="nm">28 Oktober <span class="meta">· 63.781.002</span></span><span class="right meta">—</span><span class="right meta">—</span><span class="right meta">—</span><span><span class="src todo">Belum dimodelkan</span></span></div>
+          </div>
+
+          <div class="banner info" style="margin-top:var(--space-5)">
+            <span class="dot info"></span>
+            <div class="body">
+              <b>Enam unit lain memakai metode yang berbeda</b>
+              Batu Layang, Korek, Bakau, dan Adisucipto punya workbook “NERACA” — itu penaksir harta bersih harian, bukan laporan keuangan.
+              Imam Bonjol, Kotabaru, dan 28 Oktober tidak punya keduanya. Model akuntansi penuh baru ada satu: Bakau.
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h4>Catatan rancangan — layar 1</h4>
+      <ul>
+        <li><b>Hal pertama yang dijawab papan ini adalah apakah pembukuan unit masih seimbang</b>, baru kemudian labanya. Angka laba yang neracanya tidak seimbang tidak layak dipajang tanpa peringatan.</li>
+        <li><b>Enam unit kosong itu ukuran pekerjaan sebenarnya.</b> Menyalin model Bakau ke enam unit lain secara manual berarti enam workbook 40-tab yang harus dirawat orang.</li>
+        <li><b>Angka baris Bakau diambil dari sheet LaporanHarian 15 Januari 2026</b> — tanggal yang tersimpan di ReportGenerator, dan hari terakhir sebelum neracanya rusak.</li>
+        <li><b>Bakau kini terhitung “belum seimbang”, bukan “seimbang”.</b> Di revisi sebelumnya Rp 132.266 saya perlakukan sebagai toleransi yang berjalan; dengan aturan Rp 0 ia jadi utang rekonsiliasi. Papan ini sengaja menampilkan 0/1, bukan 1/1.</li>
+        <li><b>Koreksi terhadap revisi sebelumnya.</b> Saya sempat menulis bahwa angka ini “tak pernah lewat ±Rp 132 ribu selama lima tahun”. Itu keliru: angkanya kumulatif, dan pernah menyentuh Rp 204.591.500 pada 20 Januari 2022 sebelum berbalik keesokan harinya. Residu permanen yang harus dibersihkan adalah <b>Rp 3.635.936</b>, bukan Rp 132.268.</li>
+      </ul>
+      <div class="ask"><b>Sudah diputuskan:</b> toleransi akuntansi Rp 0 · eksepsi penutupan operasional maks Rp 10.000/hari/outlet dengan reason code · Rp 10.000–100.000 disetujui Head of Finance · di atas Rp 100.000 hanya Direksi · selisih legacy Bakau diselesaikan sekali lewat jurnal koreksi bertanda tangan Direksi.</div>
+    </div>
+  </section>
+
+  <!-- ==================== LAYAR 2 ==================== -->
+  <section class="screen" id="s2" role="tabpanel" aria-labelledby="t2" hidden>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="frame-dots"><i></i><i></i><i></i></div>
+        <div class="frame-url">solamax.solagroup.id/keuangan/unit/6378301/2026-01-15</div>
+        <div class="frame-role">Keuangan</div>
+      </div>
+      <div class="shell">
+        <nav class="sidebar">
+          <div class="brand">
+            <span class="brand-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v9l6 4" stroke="#1CA0E6" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#1CA0E6" stroke-width="1.6" opacity=".55"/></svg></span>
+            <span class="brand-name">SolaMax</span>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Keuangan</div>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Papan keuangan</a>
+            <a class="side-item active" href="#s2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Laporan harian</a>
+            <a class="side-item" href="#s3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M8 10h8M8 14h5"/></svg>Input keuangan</a>
+            <a class="side-item" href="#s4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M9 3v4M15 3v4M9 13l2 2 4-4"/></svg>Tutup hari &amp; bulan</a>
+            <a class="side-item" href="#s5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Sumber data</a>
+          </div>
+          <div class="side-foot"><div>SPBU 63.783.01</div><div>Sungai Bakau Besar Laut</div></div>
+        </nav>
+
+        <main class="main">
+          <div class="filters">
+            <span class="field"><span class="lbl">Unit</span> Bakau · 63.783.01</span>
+            <span class="field"><span class="lbl">Tanggal</span> 15 Januari 2026</span>
+            <span class="spacer"></span>
+            <button class="btn btn-outline">Laporan periode</button>
+            <button class="btn btn-navy">Cetak PDF</button>
+          </div>
+
+          <h2 class="page-title">Laporan keuangan harian</h2>
+          <p class="page-sub">Susunan dan penamaannya mengikuti sheet <em>LaporanHarian</em> yang sudah dipakai tim keuangan — supaya tidak ada yang perlu belajar membaca laporan baru.</p>
+
+          <div class="rep3">
+            <div class="rep-card">
+              <div class="rep-head"><h4>Cash Flow</h4></div>
+              <div class="rep-body">
+                <div class="ln sub"><span class="k">Kas awal</span><span class="v">6.984.348.053</span></div>
+                <div class="ln ind"><span class="k">Kas besar</span><span class="v">168.263.000</span></div>
+                <div class="ln ind"><span class="k">EDC penampungan</span><span class="v">8.253.300.186</span></div>
+                <div class="ln ind"><span class="k">BCA · 5125036811</span><span class="v">−1.531.305.020</span></div>
+                <div class="ln ind"><span class="k">BCA · 5125978301</span><span class="v">−4.598.834</span></div>
+                <div class="ln ind"><span class="k">BRI</span><span class="v">645.284</span></div>
+                <div class="ln ind"><span class="k">Mandiri</span><span class="v">90.017.159</span></div>
+                <div class="ln ind"><span class="k">BNI</span><span class="v">8.026.278</span></div>
+                <div class="ln"><span class="k">Omzet penjualan</span><span class="v">327.828.456</span></div>
+                <div class="ln"><span class="k">Transaksi piutang pelanggan EasyMax</span><span class="v">−9.042.000</span></div>
+                <div class="ln"><span class="k">Transaksi hutang piutang non-EasyMax</span><span class="v">2.280.900</span></div>
+                <div class="ln"><span class="k">Penebusan SO</span><span class="v">0</span></div>
+                <div class="ln"><span class="k">Pendapatan lain-lain</span><span class="v">464</span></div>
+                <div class="ln"><span class="k">Biaya operasional</span><span class="v">−500.000</span></div>
+                <div class="ln sub"><span class="k">Net cash change</span><span class="v">+320.567.819</span></div>
+                <div class="ln sum"><span class="k">Kas akhir</span><span class="v">7.304.915.872</span></div>
+                <div class="ln chk"><span class="k">Cash flow check</span><span class="v">0</span></div>
+              </div>
+            </div>
+
+            <div class="rep-card">
+              <div class="rep-head"><h4>Income Statement</h4></div>
+              <div class="rep-body">
+                <div class="ln"><span class="k">Omzet penjualan</span><span class="v">327.828.456</span></div>
+                <div class="ln"><span class="k">Tera nozzle</span><span class="v">0</span></div>
+                <div class="ln"><span class="k">COGS</span><span class="v">−316.592.795</span></div>
+                <div class="ln sub"><span class="k">Gross profit</span><span class="v">11.235.661</span></div>
+                <div class="ln"><span class="k">Gain / losses</span><span class="v">+1.139.745</span></div>
+                <div class="ln sub"><span class="k">Operating profit</span><span class="v">12.375.406</span></div>
+                <div class="ln"><span class="k">Biaya operasional</span><span class="v">−500.000</span></div>
+                <div class="ln"><span class="k">Pendapatan lain-lain</span><span class="v">464</span></div>
+                <div class="ln sum"><span class="k">Net profit</span><span class="v">11.875.869</span></div>
+                <div class="ln ind"><span class="k">Margin bersih</span><span class="v">3,62 %</span></div>
+                <div class="ln chk"><span class="k">Income adjustment</span><span class="v">0</span></div>
+              </div>
+            </div>
+
+            <div class="rep-card">
+              <div class="rep-head"><h4>Balance Sheet</h4></div>
+              <div class="rep-body">
+                <div class="ln sub"><span class="k">Asset − liabilities</span><span class="v">13.694.248.217</span></div>
+                <div class="ln ind"><span class="k">Cash on hand</span><span class="v">7.304.915.872</span></div>
+                <div class="ln ind"><span class="k">Nilai stock</span><span class="v">747.646.746</span></div>
+                <div class="ln ind"><span class="k">Nilai DO</span><span class="v">573.658.336</span></div>
+                <div class="ln ind"><span class="k">Hutang piutang pelanggan EasyMax</span><span class="v">7.245.821.009</span></div>
+                <div class="ln ind"><span class="k">Hutang piutang non-EasyMax</span><span class="v">−2.177.793.746</span></div>
+                <div class="ln sub" style="margin-top:var(--space-3)"><span class="k">Equity</span><span class="v">13.694.380.484</span></div>
+                <div class="ln ind"><span class="k">Kontribusi / dividend</span><span class="v">3.463.481.899</span></div>
+                <div class="ln ind"><span class="k">Opened retained earnings</span><span class="v">13.682.504.614</span></div>
+                <div class="ln ind"><span class="k">Net income</span><span class="v">11.875.869</span></div>
+                <div class="ln chk bad"><span class="k">Balance sheet check</span><span class="v">132.266</span></div>
+                <div class="ln ind" style="border-bottom:0"><span class="k">Selisih legacy · menunggu rekonsiliasi sekali-jalan</span><span class="v"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Sisa DO akhir hari</h3><span class="note">Dihitung SolaMax dari SO vs penerimaan — tidak perlu diketik</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head" style="grid-template-columns: repeat(7, minmax(0,1fr))">
+              <span>Pertalite Khusus</span><span>Pertamax</span><span>Solar</span><span>Dexlite</span><span>Pertalite</span><span>Pertamina Dex</span><span>Pertamax Turbo</span>
+            </div>
+            <div class="g row num" style="grid-template-columns: repeat(7, minmax(0,1fr))">
+              <span>0</span><span>0</span><span>24.000</span><span>4.000</span><span>32.000</span><span>4.000</span><span>0</span>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h4>Catatan rancangan — layar 2</h4>
+      <ul>
+        <li><b>Ini bukan laporan baru — ini laporan Anda sendiri, dipindah wadah.</b> Seluruh baris dan namanya mengikuti sheet <em>LaporanHarian</em> Bakau, dan angkanya adalah angka 15 Januari 2026 apa adanya.</li>
+        <li><b>Tiga angka pemeriksa naik pangkat jadi bagian laporan</b>, bukan sel tersembunyi di kolom N.</li>
+        <li><b>EDC penampungan Rp 8,25 miliar layak dipertanyakan.</b> Saldo penampungan EDC semestinya cair ke bank dalam hitungan hari. Ini dugaan, dan dugaan pertama yang akan diuji di Fase K0.</li>
+        <li><b>Satu-satunya tambahan saya</b> adalah <em>margin bersih</em> dalam persen.</li>
+      </ul>
+      <div class="ask"><b>Perlu keputusan Anda:</b> apakah laporan ini terbuka untuk pengawas unit, atau hanya untuk tim keuangan dan direksi.</div>
+    </div>
+  </section>
+
+  <!-- ==================== LAYAR 3 — INPUT KEUANGAN ==================== -->
+  <section class="screen" id="s3" role="tabpanel" aria-labelledby="t3" hidden>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="frame-dots"><i></i><i></i><i></i></div>
+        <div class="frame-url">solamax.solagroup.id/keuangan/unit/6378301/2026-01-15/input</div>
+        <div class="frame-role">Keuangan</div>
+      </div>
+      <div class="shell">
+        <nav class="sidebar">
+          <div class="brand">
+            <span class="brand-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v9l6 4" stroke="#1CA0E6" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#1CA0E6" stroke-width="1.6" opacity=".55"/></svg></span>
+            <span class="brand-name">SolaMax</span>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Keuangan</div>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Papan keuangan</a>
+            <a class="side-item" href="#s2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Laporan harian</a>
+            <a class="side-item active" href="#s3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M8 10h8M8 14h5"/></svg>Input keuangan</a>
+            <a class="side-item" href="#s4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M9 3v4M15 3v4M9 13l2 2 4-4"/></svg>Tutup hari &amp; bulan</a>
+            <a class="side-item" href="#s5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Sumber data</a>
+          </div>
+          <div class="side-foot"><div>Masuk sebagai</div><div>keuangan@solagroup.id</div></div>
+        </nav>
+
+        <main class="main">
+          <div class="filters">
+            <span class="field"><span class="lbl">Unit</span> Bakau · 63.783.01</span>
+            <span class="field"><span class="lbl">Tanggal</span> 15 Januari 2026</span>
+            <span class="spacer"></span>
+            <button class="btn btn-outline">Salin dari kemarin</button>
+            <button class="btn btn-navy">Simpan &amp; sahkan hari ini</button>
+          </div>
+
+          <h2 class="page-title">Input keuangan harian</h2>
+          <p class="page-sub">Empat blok isian. Angka yang sudah dihitung SolaMax sendiri — volume, stok, sisa DO, tera, piutang pelanggan — tidak muncul di sini sama sekali.</p>
+
+          <div class="banner success">
+            <span class="dot success"></span>
+            <div class="body">
+              <b>Biaya operasional dan pendapatan lain-lain sudah masuk dari Rincian Penjualan</b>
+              Dua baris biaya senilai Rp 500.000 dan pembulatan Rp 463,50 yang diisi pengawas di layar Rincian Penjualan langsung terpakai di sini —
+              tidak perlu diketik ulang. Tim keuangan hanya menambah yang tidak lewat pengawas.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>1 · Harga beli per produk</h3><span class="note">Berlaku sampai diganti · dari faktur Pertamina</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-harga"><span>Produk</span><span class="right">Harga beli</span><span class="right">Harga jual</span><span class="right">Margin / liter</span><span>Berlaku sejak</span></div>
+            <div class="g row cols-harga"><span class="nm">Pertamax</span><span class="right"><span class="inp-cell">12.080,74</span></span><span class="right num ro-cell">12.650,00</span><span class="right num">569,26</span><span class="meta">1 Jan 2026</span></div>
+            <div class="g row cols-harga"><span class="nm">Solar</span><span class="right"><span class="inp-cell">6.567,16</span></span><span class="right num ro-cell">6.800,00</span><span class="right num">232,84</span><span class="meta">1 Jan 2026</span></div>
+            <div class="g row cols-harga"><span class="nm">Dexlite</span><span class="right"><span class="inp-cell">13.254,91</span></span><span class="right num ro-cell">13.800,00</span><span class="right num">545,09</span><span class="meta">1 Jan 2026</span></div>
+            <div class="g row cols-harga"><span class="nm">Pertalite</span><span class="right"><span class="inp-cell">9.679,55</span></span><span class="right num ro-cell">10.000,00</span><span class="right num">320,45</span><span class="meta">1 Jan 2026</span></div>
+            <div class="g row cols-harga"><span class="nm">Pertamina Dex</span><span class="right"><span class="inp-cell">13.320,33</span></span><span class="right num ro-cell">13.900,00</span><span class="right num">579,68</span><span class="meta">1 Jan 2026</span></div>
+            <div class="g row cols-harga"><span class="nm">Pertamax Turbo</span><span class="right"><span class="inp-cell">13.405,39</span></span><span class="right num ro-cell">13.700,00</span><span class="right num">294,61</span><span class="meta">1 Jan 2026</span></div>
+          </div>
+
+          <div class="banner warning" style="margin-top:var(--space-4)">
+            <span class="dot warning"></span>
+            <div class="body">
+              <b>Dua penjaga yang berjalan saat harga beli disimpan</b>
+              Harga beli di atas harga jual <strong>ditolak</strong> — itu berarti persediaan dinilai di atas harga jualnya, persis yang terjadi di Batu Layang bulan Agustus 2026.
+              Dan bila harga jual berubah sementara harga beli tidak ikut diperbarui dalam 7 hari, SolaMax menagihnya. Harga jual sendiri diambil dari EasyMax, tidak diketik.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>2 · Buku kas besar</h3><span class="note">Saldo akhir 309.714.000</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-buku"><span>Keterangan</span><span>Kategori</span><span class="right">Nominal</span><span class="right">Saldo</span></div>
+            <div class="g row cols-buku"><span class="nm">Setoran kas besar ke bank hasil penjualan 11/1/2026</span><span class="meta">Setoran ke Bank</span><span class="right num down">−168.263.000</span><span class="right num">0</span></div>
+            <div class="g row cols-buku"><span class="nm">Setoran penjualan 10/1/2026 · shift 1</span><span class="meta">Setoran Hasil Penjualan</span><span class="right num">193.239.558</span><span class="right num">193.239.558</span></div>
+            <div class="g row cols-buku"><span class="nm">Setoran penjualan 10/1/2026 · shift 2</span><span class="meta">Setoran Hasil Penjualan</span><span class="right num">70.030.708</span><span class="right num">263.270.265</span></div>
+            <div class="g row cols-buku"><span class="nm">Setoran penjualan 10/1/2026 · shift 3</span><span class="meta">Setoran Hasil Penjualan</span><span class="right num">44.162.372</span><span class="right num">307.432.637</span></div>
+            <div class="g row cols-buku"><span class="nm">Setoran kas Bright BK 10/1/2026</span><span class="meta">Hutang Piutang</span><span class="right num">2.280.900</span><span class="right num">309.713.537</span></div>
+            <div class="g row cols-buku"><span class="nm">Pembulatan 10/1/2026</span><span class="meta">Pendapatan Lain-Lain</span><span class="right num">464</span><span class="right num">309.714.000</span></div>
+            <div class="g total cols-buku"><span>6 mutasi</span><span></span><span class="right num">+141.451.001</span><span class="right num">309.714.000</span></div>
+          </div>
+
+          <div class="banner info" style="margin-top:var(--space-4)">
+            <span class="dot info"></span>
+            <div class="body">
+              <b>Tiga baris setoran shift itu sudah diketahui SolaMax</b>
+              Nilai setoran per shift tanggal 10 Januari sudah ada di Rincian Penjualan. Usulan saya: baris kas besar seperti ini <em>ditawarkan</em> otomatis
+              dengan nominal terisi, tinggal disetujui — sehingga yang diketik tinggal tanggal terimanya.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>3 · Buku bank</h3><span class="note">Saldo akhir sesuai rekening koran</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-buku"><span>Rekening</span><span>Mutasi hari ini</span><span class="right">Nominal</span><span class="right">Saldo akhir</span></div>
+            <div class="g row cols-buku"><span class="nm">BCA · 5125036811</span><span class="meta">Setoran hasil penjualan</span><span class="right num">168.263.000</span><span class="right num down">−1.363.042.020</span></div>
+            <div class="g row cols-buku"><span class="nm">BCA · 5125978301</span><span class="meta">—</span><span class="right num">0</span><span class="right num down">−4.598.834</span></div>
+            <div class="g row cols-buku"><span class="nm">BRI</span><span class="meta">—</span><span class="right num">0</span><span class="right num">645.284</span></div>
+            <div class="g row cols-buku"><span class="nm">Mandiri</span><span class="meta">—</span><span class="right num">0</span><span class="right num">90.017.159</span></div>
+            <div class="g row cols-buku"><span class="nm">BNI</span><span class="meta">—</span><span class="right num">0</span><span class="right num">8.026.278</span></div>
+            <div class="g row cols-buku"><span class="nm">EDC penampungan</span><span class="meta">Belum cair</span><span class="right num">+10.853.819</span><span class="right num">8.264.154.005</span></div>
+          </div>
+
+          <div class="banner danger" style="margin-top:var(--space-4)">
+            <span class="dot danger"></span>
+            <div class="body">
+              <b>Keterangan mutasi BCA berbunyi “Setoran penjualan Tgl 27/8/2026”</b>
+              Nominalnya cocok dengan setoran kas besar 11 Januari, jadi angkanya benar dan tanggalnya salah ketik — tetapi tidak ada yang menangkapnya selama tujuh bulan.
+              Di SolaMax tanggal adalah kolom tersendiri yang divalidasi, bukan bagian dari kalimat bebas.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>4 · Biaya operasional &amp; pendapatan lain-lain</h3><span class="note">Fakta transaksi milik pengawas · klasifikasi akuntansi milik Finance</span></div>
+
+          <div class="banner info">
+            <span class="dot info"></span>
+            <div class="body">
+              <b>Finance tidak punya tombol Edit di sini</b>
+              Transaksi yang dicatat pengawas tidak bisa ditimpa. Yang tersedia hanya empat tindakan eksplisit:
+              <strong>Tinjau</strong> · <strong>Kembalikan untuk perbaikan</strong> · <strong>Reklasifikasi</strong> · <strong>Koreksi / balik</strong>.
+              Dua kolom terpisah menjaga batasnya: <em>kategori operasional</em> dipilih pengawas, <em>akun akuntansi</em> jadi tanggung jawab Finance.
+            </div>
+          </div>
+
+          <div class="card tbl scroll-x" style="margin-top:var(--space-4)">
+            <div class="g head cols-biaya2">
+              <span>Keterangan</span><span>Kategori operasional<br><span style="font-weight:400">pengawas</span></span><span>Akun akuntansi (CoA)<br><span style="font-weight:400">Finance</span></span><span class="right">Nominal</span><span>Status</span><span>Tindakan</span>
+            </div>
+
+            <div class="g row cols-biaya2">
+              <span class="nm">Supir tangki<br><span class="meta">Kas Besar · Pengawas BK · 08.12</span></span>
+              <span class="meta">Supir Tangki</span>
+              <span class="meta">6-2100 Beban Supir Tangki <span class="src auto" style="margin-left:4px">Otomatis</span></span>
+              <span class="right num down">−200.000</span>
+              <span><span class="src auto">Disahkan · terkunci</span></span>
+              <span class="meta">Reklasifikasi · Koreksi</span>
+            </div>
+
+            <div class="g row cols-biaya2">
+              <span class="nm">Voucher karyawan<br><span class="meta">Kas Besar · Pengawas BK · 08.12</span></span>
+              <span class="meta">Gaji Karyawan</span>
+              <span class="meta">6-1100 Beban Gaji &amp; Tunjangan <span class="src auto" style="margin-left:4px">Otomatis</span></span>
+              <span class="right num down">−300.000</span>
+              <span><span class="src manual">Menunggu tinjauan</span></span>
+              <span class="meta"><span class="w600" style="color:var(--color-accent)">Setujui</span> · Kembalikan</span>
+            </div>
+
+            <div class="g row cols-biaya2">
+              <span class="nm">Pembulatan 10/1/2026<br><span class="meta">Kas Besar · Pengawas BK · 08.12</span></span>
+              <span class="meta">Pendapatan Lain-Lain</span>
+              <span class="meta">8-1000 Pendapatan Lain-Lain <span class="src auto" style="margin-left:4px">Otomatis</span></span>
+              <span class="right num">+464</span>
+              <span><span class="src auto">Disahkan · terkunci</span></span>
+              <span class="meta">Reklasifikasi · Koreksi</span>
+            </div>
+
+            <div class="g row cols-biaya2">
+              <span class="nm ro-cell" style="font-weight:400;font-style:italic">Tambah biaya yang tidak lewat pengawas…</span><span></span><span></span>
+              <span class="right meta">—</span><span><span class="src manual">Input keuangan</span></span><span class="meta">—</span>
+            </div>
+
+            <div class="g total cols-biaya2"><span>Biaya operasional</span><span></span><span></span><span class="right num down">−500.000</span><span></span><span></span></div>
+          </div>
+
+          <div class="section-h"><h3>Daur hidup satu transaksi</h3><span class="note">Siapa boleh apa, di tahap mana</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-daur"><span>Tahap</span><span>Pengawas</span><span>Finance</span><span>Yang berubah</span></div>
+            <div class="g row cols-daur">
+              <span class="nm">Draft</span>
+              <span><span class="src auto">Sunting bebas</span></span>
+              <span class="meta">Belum terlihat</span>
+              <span class="meta">Apa saja</span>
+            </div>
+            <div class="g row cols-daur">
+              <span class="nm">Disubmit · hari belum ditutup</span>
+              <span class="meta">Terkunci</span>
+              <span><span class="src auto">Tinjau · Kembalikan untuk perbaikan</span></span>
+              <span class="meta">Hanya lewat pengawas, setelah dikembalikan</span>
+            </div>
+            <div class="g row cols-daur">
+              <span class="nm">Hari sudah ditutup</span>
+              <span class="meta">Terkunci permanen</span>
+              <span class="meta">Terkunci permanen</span>
+              <span class="meta">Tidak ada — fakta transaksi beku</span>
+            </div>
+            <div class="g row cols-daur">
+              <span class="nm">Ditemukan salah setelah closing</span>
+              <span class="meta">—</span>
+              <span><span class="src manual">Koreksi / balik</span></span>
+              <span class="meta">Entri baru bertaut, transaksi asli tetap utuh</span>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Reklasifikasi akuntansi</h3><span class="note">Tanpa menyentuh transaksi asli</span></div>
+          <div class="card card-pad">
+            <div class="ln"><span class="k">Transaksi asli <span class="meta">· dicatat Pengawas BK, tidak berubah</span></span><span class="v">Perbaikan · Rp 500.000</span></div>
+            <div class="ln"><span class="k">Kategori operasional</span><span class="v">Perbaikan <span class="meta">(tetap)</span></span></div>
+            <div class="ln"><span class="k">Akun akuntansi semula</span><span class="v">6-2400 Beban Perbaikan Umum</span></div>
+            <div class="ln"><span class="k">Direklasifikasi ke</span><span class="v">6-2310 Beban Pemeliharaan Peralatan</span></div>
+            <div class="ln"><span class="k">Alasan</span><span class="v">Sifat pengeluaran = pemeliharaan alat, bukan perbaikan bangunan</span></div>
+            <div class="ln"><span class="k">Diajukan · disetujui</span><span class="v">Rina (Finance) · Head of Finance</span></div>
+            <div class="ln sum"><span class="k">Nominal transaksi</span><span class="v">Rp 500.000 — tidak berubah</span></div>
+            <div class="ln chk"><span class="k">Fakta transaksi utuh · hanya penyajian akuntansi yang berpindah</span><span class="v">✓</span></div>
+          </div>
+          <p class="page-sub" style="margin-top:var(--space-3)">Contoh peragaan — bukan transaksi 15 Januari.</p>
+
+          <div class="section-h"><h3>Koreksi setelah penutupan</h3><span class="note">Bukan sunting — balik + entri baru, bertaut</span></div>
+          <div class="card card-pad">
+            <div class="ln"><span class="k">Referensi transaksi asli</span><span class="v">TRX-BK-20260115-0002</span></div>
+            <div class="ln"><span class="k">Nilai sebelum → sesudah</span><span class="v">−300.000 → −350.000</span></div>
+            <div class="ln"><span class="k">Alasan koreksi</span><span class="v">Nominal voucher pada bukti fisik Rp 350.000</span></div>
+            <div class="ln"><span class="k">Diajukan oleh</span><span class="v">Rina · Finance · 20 Jan 2026 09.14</span></div>
+            <div class="ln"><span class="k">Disetujui oleh</span><span class="v">Head of Finance · 20 Jan 2026 11.02</span></div>
+            <div class="ln"><span class="k">Bukti pendukung</span><span class="v">voucher-20260115.jpg</span></div>
+            <div class="ln sum"><span class="k">Terbentuk</span><span class="v">1 entri pembalik + 1 entri terkoreksi</span></div>
+            <div class="ln chk"><span class="k">TRX-BK-20260115-0002 tetap ada dan tetap terbaca apa adanya</span><span class="v">✓</span></div>
+          </div>
+
+          <div class="section-h"><h3>Pengesahan</h3></div>
+          <div class="attest">
+            <span class="box" aria-hidden="true">✓</span>
+            <div>
+              <div class="w600">Saldo bank dan kas di atas sudah saya cocokkan dengan rekening koran dan buku kas 15 Januari 2026.</div>
+              <div style="font-size:16px;color:var(--color-text-tertiary);margin-top:4px">
+                Tanpa centang ini, hari tersebut tetap tampil di laporan harian tetapi ditandai “belum disahkan”, dan tidak bisa ditutup.
+              </div>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Riwayat perubahan</h3><span class="note">Tidak ada yang bisa dihapus — koreksi tercatat sebagai baris baru</span></div>
+          <div class="card card-pad trail">
+            <div class="trail-item"><span class="when">15 Jan · 17.05</span><span><b>Rina</b> mengesahkan input keuangan 15 Januari</span></div>
+            <div class="trail-item"><span class="when">15 Jan · 16.52</span><span><b>Rina</b> menyetujui 3 baris kas besar yang ditawarkan dari Rincian Penjualan</span></div>
+            <div class="trail-item"><span class="when">15 Jan · 16.40</span><span><b>Rina</b> mengisi saldo lima rekening bank</span></div>
+            <div class="trail-item"><span class="when">15 Jan · 08.12</span><span><b>Pengawas BK</b> mencatat 2 biaya operasional di Rincian Penjualan <span style="color:var(--color-text-tertiary)">— terbawa ke sini</span></span></div>
+            <div class="trail-item"><span class="when">1 Jan · 09.30</span><span><b>Rina</b> memperbarui harga beli 6 produk untuk Januari 2026</span></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h4>Catatan rancangan — layar 3</h4>
+      <ul>
+        <li><b>Harga beli diketik di sini, bukan ditarik dari EasyMax</b> — sesuai arahan Anda. Konsekuensinya ia jadi satu-satunya angka besar tanpa sumber pembanding, karena itu saya pasangkan dua penjaga: tolak bila harga beli melebihi harga jual, dan tagih bila harga jual berubah tanpa harga beli ikut diperbarui. Angka harga beli pada layar ini nyata — sheet <em>HargaBeli</em> Bakau 15 Januari 2026.</li>
+        <li><b>Dua kolom, dua pemilik.</b> <code>operational_category</code> dipilih pengawas dan tidak bisa disentuh Finance; <code>accounting_account</code> dipetakan otomatis dari kategori itu, dan Finance boleh mereklasifikasinya kapan pun secara teraudit. Pemetaan otomatis membuat 95% kasus tidak perlu campur tangan; reklasifikasi menangani sisanya tanpa mengusik histori.</li>
+        <li><b>Tombol Edit generik memang tidak ada.</b> Empat tindakan bernama menggantikannya, dan tiap tindakan meninggalkan jejak yang berbeda. Ini juga menutup celah yang sekarang terbuka di spreadsheet: siapa pun yang membuka berkas bisa menimpa angka orang lain tanpa bekas.</li>
+        <li><b>Yang benar-benar diketik tinggal tiga hal:</b> harga beli (jarang), saldo &amp; mutasi bank, dan biaya yang tidak lewat pengawas. Baris kas besar ditawarkan otomatis dari setoran per shift yang sudah diketahui SolaMax.</li>
+        <li><b>Angka pada tabel utama nyata</b> — kas besar, bank, biaya, dan harga beli Bakau 15 Januari 2026. Panel reklasifikasi dan koreksi adalah peragaan alur, ditandai demikian.</li>
+      </ul>
+      <div class="ask"><b>Sudah diputuskan:</b> pengawas memiliki fakta transaksi; Finance memiliki klasifikasi &amp; penyajian akuntansi. Setelah closing, transaksi asli beku bagi keduanya.</div>
+    </div>
+  </section>
+
+  <!-- ==================== LAYAR 4 ==================== -->
+  <section class="screen" id="s4" role="tabpanel" aria-labelledby="t4" hidden>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="frame-dots"><i></i><i></i><i></i></div>
+        <div class="frame-url">solamax.solagroup.id/keuangan/unit/6378301/tutup-hari/2026-01-29</div>
+        <div class="frame-role">Keuangan</div>
+      </div>
+      <div class="shell">
+        <nav class="sidebar">
+          <div class="brand">
+            <span class="brand-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v9l6 4" stroke="#1CA0E6" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#1CA0E6" stroke-width="1.6" opacity=".55"/></svg></span>
+            <span class="brand-name">SolaMax</span>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Keuangan</div>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Papan keuangan</a>
+            <a class="side-item" href="#s2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Laporan harian</a>
+            <a class="side-item" href="#s3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M8 10h8M8 14h5"/></svg>Input keuangan</a>
+            <a class="side-item active" href="#s4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M9 3v4M15 3v4M9 13l2 2 4-4"/></svg>Tutup hari &amp; bulan</a>
+            <a class="side-item" href="#s5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Sumber data</a>
+          </div>
+          <div class="side-foot"><div>SPBU 63.783.01</div><div>Sungai Bakau Besar Laut</div></div>
+        </nav>
+
+        <main class="main">
+          <div class="filters">
+            <span class="field"><span class="lbl">Unit</span> Bakau · 63.783.01</span>
+            <span class="field"><span class="lbl">Tanggal</span> 29 Januari 2026</span>
+            <span class="spacer"></span>
+            <button class="btn btn-outline">Lihat jurnal hari ini</button>
+            <button class="btn btn-navy" disabled style="opacity:.45;cursor:not-allowed">Tutup hari</button>
+          </div>
+
+          <h2 class="page-title">Tutup hari</h2>
+          <p class="page-sub">Neraca dan buku besar harus seimbang di angka <strong>Rp 0</strong>. Untuk kebutuhan operasional ada eksepsi bertingkat — tetapi setiap selisih tetap tercatat dengan reason code, tidak pernah diabaikan.</p>
+
+          <div class="banner danger">
+            <span class="dot danger"></span>
+            <div class="body">
+              <b>Residu Rp 49.143.546 — di atas ambang Head of Finance, hanya Direksi yang bisa memberi override</b>
+              Kemarin residunya +Rp 3.635.936, jadi <strong>kesalahan hari ini Rp 52,8 juta</strong>. Angka pemeriksa ini kumulatif — yang dinilai gerbang adalah langkah hariannya.
+              Penyebab sudah terkunci: BBM diterima tanpa dicatat sebagai pembelian; menutup hari dengan override tanpa memperbaikinya berarti mengulang kesalahan yang sama esok hari.
+              <div class="act">
+                <button class="btn btn-navy">Telusuri mutasi 29 Januari</button>
+                <button class="btn btn-tint">Bandingkan dengan 28 Januari</button>
+                <button class="btn btn-outline">Ajukan override ke Direksi</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Tiga syarat penutupan</h3></div>
+          <div class="kpi-grid">
+            <div class="card card-pad">
+              <div class="kpi-label">Cash flow check</div>
+              <div class="kpi-value num sm">0</div>
+              <div class="kpi-note"><span class="dot success"></span>Terpenuhi</div>
+            </div>
+            <div class="card card-pad">
+              <div class="kpi-label">Balance sheet check</div>
+              <div class="kpi-value num sm down">−49.143.546</div>
+              <div class="kpi-note"><span class="dot danger"></span>4.914× ambang eskalasi Direksi</div>
+            </div>
+            <div class="card card-pad">
+              <div class="kpi-label">Kelengkapan input</div>
+              <div class="kpi-value num sm">4 / 4</div>
+              <div class="kpi-note"><span class="dot success"></span>Semua blok terisi &amp; disahkan</div>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Tangga toleransi</h3><span class="note">Berlaku per hari per outlet</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-tol"><span>Selisih</span><span>Siapa boleh menutup</span><span>Syarat</span><span>Jejak</span></div>
+            <div class="g row cols-tol">
+              <span class="nm">Rp 0</span>
+              <span><span class="src auto">Finance</span></span>
+              <span class="meta">Tidak ada — tutup normal</span>
+              <span class="meta">Penutupan biasa</span>
+            </div>
+            <div class="g row cols-tol">
+              <span class="nm">s.d. Rp 10.000</span>
+              <span><span class="src auto">Finance</span></span>
+              <span class="meta">Reason code wajib</span>
+              <span class="meta">Selisih tercatat, tidak dinolkan</span>
+            </div>
+            <div class="g row cols-tol">
+              <span class="nm">Rp 10.001 – 100.000</span>
+              <span><span class="src manual">Head of Finance</span></span>
+              <span class="meta">Alasan tertulis + bukti pendukung</span>
+              <span class="meta">Exception close · ditandai di papan</span>
+            </div>
+            <div class="g row cols-tol">
+              <span class="nm">Di atas Rp 100.000</span>
+              <span><span class="src todo">Direksi</span></span>
+              <span class="meta">Override eksplisit + bukti</span>
+              <span class="meta">Ditandai permanen, masuk laporan bulanan</span>
+            </div>
+          </div>
+
+          <div class="banner warning" style="margin-top:var(--space-4)">
+            <span class="dot warning"></span>
+            <div class="body">
+              <b>Eksepsi bukan pemaafan</b>
+              Selisih yang ditutup lewat eksepsi tetap berdiri sebagai angka dengan reason code-nya, bukan dibulatkan hilang.
+              Kalau reason code yang sama muncul berulang, itu sinyal proses yang rusak — bukan toleransi yang perlu dinaikkan.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Kalau gerbang ini tidak ada</h3><span class="note">Yang benar-benar terjadi setelah 29 Januari 2026</span></div>
+
+          <figure class="figure">
+            <h4>Selisih neraca Bakau, Januari – Juli 2026</h4>
+            <svg class="chart" viewBox="0 0 880 250" role="img" preserveAspectRatio="xMidYMid meet"
+                 aria-label="Selisih neraca Bakau: nyaris nol pada 15 Januari 2026, lalu turun tiap bulan hingga minus 39,45 miliar rupiah pada 27 Juli 2026.">
+              <line class="ax" x1="70" y1="30" x2="70" y2="196"/>
+              <line class="zero" x1="70" y1="34" x2="870" y2="34"/>
+              <text class="tick" x="62" y="38" text-anchor="end">0</text>
+              <text class="tick" x="62" y="120" text-anchor="end">−20 M</text>
+              <text class="tick" x="62" y="200" text-anchor="end">−40 M</text>
+              <line class="ax" x1="70" y1="116" x2="870" y2="116" stroke-dasharray="3 5"/>
+              <line class="ax" x1="70" y1="196" x2="870" y2="196" stroke-dasharray="3 5"/>
+              <g>
+                <rect class="bar ok" x="86"  y="32" width="72" height="2"   rx="1"><title>15 Jan 2026 · +Rp 132.266 — dalam toleransi</title></rect>
+                <rect class="bar"    x="184" y="34" width="72" height="3"   rx="1.5"><title>1 Feb 2026 · −Rp 453.062.992</title></rect>
+                <rect class="bar"    x="282" y="34" width="72" height="38"  rx="2.5"><title>1 Mar 2026 · −Rp 9.409.695.139</title></rect>
+                <rect class="bar"    x="380" y="34" width="72" height="70"  rx="2.5"><title>1 Apr 2026 · −Rp 17.341.986.408</title></rect>
+                <rect class="bar"    x="478" y="34" width="72" height="96"  rx="2.5"><title>1 Mei 2026 · −Rp 23.769.083.640</title></rect>
+                <rect class="bar"    x="576" y="34" width="72" height="118" rx="2.5"><title>1 Jun 2026 · −Rp 29.082.149.457</title></rect>
+                <rect class="bar"    x="674" y="34" width="72" height="140" rx="2.5"><title>1 Jul 2026 · −Rp 34.489.844.779</title></rect>
+                <rect class="bar"    x="772" y="34" width="72" height="160" rx="2.5"><title>27 Jul 2026 · −Rp 39.452.607.134</title></rect>
+              </g>
+              <text class="dlabel" x="122" y="24" text-anchor="middle">≈ 0</text>
+              <text class="dlabel" x="808" y="208" text-anchor="middle">−39,45 M</text>
+              <text class="tick" x="122" y="228" text-anchor="middle">15 Jan</text>
+              <text class="tick" x="220" y="228" text-anchor="middle">1 Feb</text>
+              <text class="tick" x="318" y="228" text-anchor="middle">1 Mar</text>
+              <text class="tick" x="416" y="228" text-anchor="middle">1 Apr</text>
+              <text class="tick" x="514" y="228" text-anchor="middle">1 Mei</text>
+              <text class="tick" x="612" y="228" text-anchor="middle">1 Jun</text>
+              <text class="tick" x="710" y="228" text-anchor="middle">1 Jul</text>
+              <text class="tick" x="808" y="228" text-anchor="middle">27 Jul</text>
+            </svg>
+            <figcaption>
+              Rp miliar, nilai <strong>kumulatif</strong>. Sheet-nya sudah menghitung angka ini setiap hari sejak 2021 dan residunya bertahan di bawah Rp 3,7 juta
+              sampai Januari 2026 — jadi rumusnya benar. Yang tidak ada hanyalah sesuatu yang memaksa orang berhenti ketika langkah hariannya meleset.
+              Di bawah tangga toleransi baru, kolom 1 Februari sudah harus naik ke Direksi.
+            </figcaption>
+          </figure>
+
+          <div class="section-h"><h3>Residu legacy Bakau</h3><span class="note">Diselesaikan sekali, bukan dijadikan patokan</span></div>
+          <div class="card card-pad">
+            <div class="ln"><span class="k">Residu per 28 Jan 2026</span><span class="v">Rp 3.635.936</span></div>
+            <div class="ln ind"><span class="k">5 Jan 2024 · +135.133</span><span class="v">132.267</span></div>
+            <div class="ln ind"><span class="k">16 Jan 2026 · +31.638</span><span class="v">163.904</span></div>
+            <div class="ln ind"><span class="k">19 Jan 2026 · +3.490.121</span><span class="v">3.654.024</span></div>
+            <div class="ln ind"><span class="k">20–28 Jan · −18.088</span><span class="v">3.635.936</span></div>
+            <div class="ln"><span class="k">Urutan pengerjaan</span><span class="v">Setelah patah 39,5 M &amp; piutang 6,5 M ditangani</span></div>
+            <div class="ln"><span class="k">Penyelesaian</span><span class="v">Satu jurnal koreksi, tujuh field audit</span></div>
+            <div class="ln"><span class="k">Penyetuju</span><span class="v">Direksi</span></div>
+            <div class="ln sum"><span class="k">Saldo setelah pembersihan</span><span class="v">Rp 0</span></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h4>Catatan rancangan — layar 4</h4>
+      <ul>
+        <li><b>Inilah satu-satunya layar yang benar-benar baru</b> — sisanya memindahkan apa yang sudah ada. Spreadsheet bisa <em>menghitung</em> angka pemeriksa; ia tidak bisa <em>menolak</em> hari berikutnya.</li>
+        <li><b>Tanggal 29 Januari 2026 bukan contoh yang dikarang.</b> Di situlah selisihnya benar-benar melompat, dan sejak itu ia bertambah rata-rata Rp 6,5 miliar per bulan tanpa pernah dihentikan.</li>
+        <li><b>Toleransi akuntansi Rp 0; eksepsi hanya untuk kelancaran operasional.</b> Bedanya penting: buku besar tidak pernah “boleh meleset sedikit”, yang boleh adalah <em>menutup hari</em> sambil selisihnya berdiri tercatat dengan reason code sampai diselesaikan.</li>
+        <li><b>Tangga eskalasinya menjadikan besaran sebagai penentu wewenang</b>, bukan siapa yang kebetulan sedang membuka aplikasi. Rp 49 juta di layar ini tidak bisa ditutup siapa pun selain Direksi.</li>
+        <li><b>Bila implementasi tahap pertama hanya sanggup satu peran untuk menutup di luar toleransi</b>, peran itu Direksi — sesuai arahan Anda. Tingkat Head of Finance menyusul saat peran itu ada di RBAC.</li>
+        <li><b>Reason code yang berulang adalah temuan, bukan formalitas.</b> Papan bulanan menghitung frekuensinya supaya proses yang rusak terlihat, bukan tersamar jadi kebiasaan.</li>
+      </ul>
+      <div class="ask"><b>Sudah diputuskan:</b> Rp 0 · eksepsi ≤ Rp 10.000 dengan reason code · Rp 10.001–100.000 Head of Finance · &gt; Rp 100.000 Direksi · selisih legacy dibersihkan sekali lewat jurnal koreksi bertanda tangan Direksi.</div>
+    </div>
+  </section>
+
+  <!-- ==================== LAYAR 5 ==================== -->
+  <section class="screen" id="s5" role="tabpanel" aria-labelledby="t5" hidden>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="frame-dots"><i></i><i></i><i></i></div>
+        <div class="frame-url">solamax.solagroup.id/keuangan/sumber-data</div>
+        <div class="frame-role">Keuangan</div>
+      </div>
+      <div class="shell">
+        <nav class="sidebar">
+          <div class="brand">
+            <span class="brand-mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v9l6 4" stroke="#1CA0E6" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="9" stroke="#1CA0E6" stroke-width="1.6" opacity=".55"/></svg></span>
+            <span class="brand-name">SolaMax</span>
+          </div>
+          <div class="side-group">
+            <div class="side-group-head">Keuangan</div>
+            <a class="side-item" href="#s1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15v-3M12 15V9M16 15v-5"/></svg>Papan keuangan</a>
+            <a class="side-item" href="#s2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg>Laporan harian</a>
+            <a class="side-item" href="#s3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v14H4z"/><path d="M8 10h8M8 14h5"/></svg>Input keuangan</a>
+            <a class="side-item" href="#s4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M9 3v4M15 3v4M9 13l2 2 4-4"/></svg>Tutup hari &amp; bulan</a>
+            <a class="side-item active" href="#s5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg>Sumber data</a>
+          </div>
+          <div class="side-foot"><div>14 sumber</div><div><span class="dot success" style="margin-right:6px"></span>9 otomatis</div></div>
+        </nav>
+
+        <main class="main">
+          <div class="filters">
+            <span class="field"><span class="lbl">Unit</span> Bakau · 63.783.01</span>
+            <span class="spacer"></span>
+            <button class="btn btn-outline">Riwayat sinkron</button>
+          </div>
+
+          <h2 class="page-title">Sumber data</h2>
+          <p class="page-sub">Setiap sheet masukan di workbook Bakau, dan dari mana SolaMax akan mengisinya. Sembilan dari empat belas tidak perlu diketik lagi.</p>
+
+          <div class="banner success">
+            <span class="dot success"></span>
+            <div class="body">
+              <b>Yang tersisa untuk diketik: harga beli, buku kas, lima buku bank, dan biaya di luar pengawas</b>
+              Biaya operasional dan pendapatan lain-lain yang sudah diisi pengawas di Rincian Penjualan mengalir langsung ke keuangan — tidak diketik dua kali.
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Empat belas masukan</h3></div>
+
+          <div class="card tbl scroll-x">
+            <div class="g head cols-src"><span>Sheet di workbook</span><span>Sumber di SolaMax</span><span>Cara</span><span>Status</span></div>
+
+            <div class="g row cols-src"><span class="nm">VolumePenjualan</span><span class="meta">sales_detail per nozzle</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap</span></div>
+            <div class="g row cols-src"><span class="nm">HargaJual</span><span class="meta">sales_detail · harga per transaksi</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap · lebih teliti dari harga bulanan</span></div>
+            <div class="g row cols-src"><span class="nm">HargaBeli</span><span class="meta">Faktur Pertamina</span><span><span class="src manual">Input keuangan</span></span><span class="meta">Dijaga: tak boleh &gt; harga jual</span></div>
+            <div class="g row cols-src"><span class="nm">StockAkhirHari</span><span class="meta">opname penutup per tangki</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap</span></div>
+            <div class="g row cols-src"><span class="nm">LossesGain</span><span class="meta">opname · nvolselisih</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap</span></div>
+            <div class="g row cols-src"><span class="nm">PenebusanBBM</span><span class="meta">tebus_header ⋈ tebus_detail</span><span><span class="src auto">Otomatis</span></span><span class="meta">Volume otomatis · nilainya dari harga beli</span></div>
+            <div class="g row cols-src"><span class="nm">SisaSO</span><span class="meta">SO vs penerimaan per CNOSO</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap · sudah dipakai di Usulan SO</span></div>
+            <div class="g row cols-src"><span class="nm">Tera</span><span class="meta">terra_resmi</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap</span></div>
+            <div class="g row cols-src"><span class="nm">PengambilanBBMPelangganEasyMax</span><span class="meta">pelanggan_sale</span><span><span class="src auto">Otomatis</span></span><span class="meta">Menggantikan IMPORTRANGE antar-sheet</span></div>
+            <div class="g row cols-src"><span class="nm">BukuHutangPiutangPelangganEasyMax</span><span class="meta">bppiut · bphut · pelanggan_master</span><span><span class="src auto">Otomatis</span></span><span class="meta">Siap · sudah teruji eksak</span></div>
+            <div class="g row cols-src"><span class="nm">BukuHutangPiutangNonEasyMax</span><span class="meta">Kebab, antar-SPBU, stockist</span><span><span class="src manual">Input keuangan</span></span><span class="meta">Daftar akun dari sheet List</span></div>
+            <div class="g row cols-src"><span class="nm">BiayaOperasional</span><span class="meta">Rincian Penjualan · seksi pengeluaran</span><span><span class="src auto">Otomatis + input</span></span><span class="meta">Milik pengawas · Finance reklasifikasi</span></div>
+            <div class="g row cols-src"><span class="nm">PendapatanLainLain</span><span class="meta">Rincian Penjualan · seksi pendapatan lain</span><span><span class="src auto">Otomatis + input</span></span><span class="meta">Milik pengawas · Finance reklasifikasi</span></div>
+            <div class="g row cols-src"><span class="nm">BukuKasBesar &amp; 5 buku bank &amp; BukuEDC</span><span class="meta">Rekening koran · setoran per shift</span><span><span class="src manual">Input keuangan</span></span><span class="meta">Baris setoran ditawarkan otomatis</span></div>
+            <div class="g total cols-src"><span>14 masukan</span><span class="meta">9 otomatis · 2 campuran · 3 input keuangan</span><span></span><span></span></div>
+          </div>
+
+          <div class="section-h"><h3>Dua daftar yang tidak boleh dicampur</h3><span class="note">Sheet “List” dipecah jadi dua master</span></div>
+          <div class="card tbl scroll-x">
+            <div class="g head cols-daur"><span>Master</span><span>Pemilik</span><span>Dipakai di</span><span>Isi</span></div>
+            <div class="g row cols-daur">
+              <span class="nm">Kategori operasional</span>
+              <span><span class="src auto">Pengawas memilih</span></span>
+              <span class="meta">Rincian Penjualan</span>
+              <span class="meta">Supir tangki · Gaji karyawan · Sarana &amp; prasarana · Maintenance · Iklan &amp; promosi · Donasi …</span>
+            </div>
+            <div class="g row cols-daur">
+              <span class="nm">Bagan akun (CoA)</span>
+              <span><span class="src manual">Finance memelihara</span></span>
+              <span class="meta">Buku besar &amp; laporan</span>
+              <span class="meta">6-1100 Beban Gaji &amp; Tunjangan · 6-2100 Beban Supir Tangki · 6-2310 Beban Pemeliharaan Peralatan · 8-1000 Pendapatan Lain-Lain …</span>
+            </div>
+            <div class="g row cols-daur">
+              <span class="nm">Pemetaan kategori → CoA</span>
+              <span><span class="src manual">Finance</span></span>
+              <span class="meta">Otomatis saat transaksi masuk</span>
+              <span class="meta">Bisa direklasifikasi per transaksi, teraudit</span>
+            </div>
+          </div>
+
+          <div class="section-h"><h3>Master lain</h3></div>
+          <div class="card card-pad">
+            <div class="ln"><span class="k">Produk BBM</span><span class="v">7 · dari master EasyMax</span></div>
+            <div class="ln"><span class="k">Pelanggan EasyMax</span><span class="v">dari pelanggan_master</span></div>
+            <div class="ln"><span class="k">Account non-EasyMax</span><span class="v">Kebab Bakau, SPBU Imam Bonjol, SPBU Kotabaru, SPBU 28 Oktober, Stockist, …</span></div>
+            <div class="ln"><span class="k">Kategori mutasi bank</span><span class="v">Setoran hasil penjualan, Pembelian BBM, Pindah buku, Kontribusi ke pusat, Management fee, …</span></div>
+            <div class="ln"><span class="k">Reason code selisih penutupan</span><span class="v">baru · dipakai saat tutup hari dengan eksepsi</span></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h4>Catatan rancangan — layar 5</h4>
+      <ul>
+        <li><b>Inilah jawaban atas “integrasikan dengan SolaMax”.</b> Sembilan dari empat belas masukan sudah ada di database SolaMax hari ini, dua mengalir dari Rincian Penjualan dan bisa ditambah tim keuangan, tiga sisanya diketik penuh.</li>
+        <li><b>Harga beli kini di jalur input</b> sesuai arahan Anda. Karena ia menentukan seluruh nilai COGS, persediaan, dan nilai DO, penjaganya dipasang di tempat pengisian: harga beli di atas harga jual ditolak.</li>
+        <li><b>Sheet List dipecah dua, dan itu perubahan struktural yang penting.</b> Sekarang satu daftar melayani dua tujuan sekaligus — dipilih pengawas <em>dan</em> jadi akun laporan. Memisahkannya adalah yang membuat Finance bisa mereklasifikasi tanpa menyentuh catatan pengawas.</li>
+        <li><b>Reason code selisih penutupan adalah master baru</b> yang belum ada di workbook mana pun. Ia perlu daftar tertutup sejak awal, kalau tidak isinya jadi teks bebas dan pola berulangnya tak pernah terlihat.</li>
+        <li><b>Satu tautan rapuh bisa dihapus.</b> Sheet PengambilanBBMPelangganEasyMax menarik data lewat IMPORTRANGE dari spreadsheet lain — kalau berkas sumbernya berpindah, laporan diam-diam kosong.</li>
+      </ul>
+      <div class="ask"><b>Perlu keputusan Anda:</b> apakah bagan akun dibuat seragam untuk tujuh unit sejak awal, atau tiap unit boleh punya daftar sendiri seperti sekarang. Saya condong ke seragam — tanpa itu laporan konsolidasi grup tidak bisa dijumlahkan.</div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.seg-btn'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.screen'));
+
+  function show(idx) {
+    tabs.forEach(function (t, i) { t.setAttribute('aria-selected', i === idx ? 'true' : 'false'); });
+    panels.forEach(function (p, i) { p.hidden = i !== idx; });
+  }
+
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { show(i); });
+    t.addEventListener('keydown', function (e) {
+      var next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
+      if (next === null) return;
+      e.preventDefault();
+      next = (next + tabs.length) % tabs.length;
+      show(next);
+      tabs[next].focus();
+    });
+  });
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a[href^="#s"]') : null;
+    if (!a) return;
+    var idx = parseInt(a.getAttribute('href').replace('#s', ''), 10) - 1;
+    if (idx >= 0 && idx < panels.length) {
+      e.preventDefault();
+      show(idx);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+
+  show(0);
+})();
+</script>
+
+</body></html>
