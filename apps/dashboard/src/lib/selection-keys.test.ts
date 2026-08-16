@@ -156,3 +156,22 @@ describe("rute Keuangan — /keuangan/unit/{code}/{date}/… (K2, layar 3)", () 
     expect(s.unit).toBe(SEED_UNIT);
   });
 });
+
+describe("rute Laporan Keuangan — /keuangan/unit/{code}/{date} (K2, layar 2)", () => {
+  it("tercakup regex yang sama dengan Layar 3 — tanpa akhiran /input", () => {
+    // Dibuktikan, bukan diasumsikan: regexnya tak menuntut akhiran, jadi rute
+    // laporan ikut tercakup. Kalau kelak ia dipersempit dengan `$`, baris ini
+    // merah — dan gejalanya di lapangan adalah tautan sidebar menunjuk SPBU lain.
+    const s = derive("/keuangan/unit/6378301/2026-01-15");
+    expect(s.unit).toBe("6378301");
+    expect(s.date).toBe("2026-01-15");
+    expect(s.unitFromUrl).toBe(true);
+    expect(s.dateFromUrl).toBe(true);
+  });
+
+  it("beda dari seed — daya-beda ada", () => {
+    const s = derive("/keuangan/unit/6478201/2026-03-09");
+    expect(s.unit).not.toBe(SEED_UNIT);
+    expect(s.date).not.toBe(SEED_DATE);
+  });
+});

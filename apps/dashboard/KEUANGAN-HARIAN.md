@@ -1131,6 +1131,34 @@ itu terasa menghambat, yang perlu diubah adalah **keputusan pemisahan tugasnya**
 (§2.6) — bukan predikatnya, dan bukan dengan mengeluarkan orang itu dari daftar
 HoF sekadar agar ia bisa mengetik.
 
+### 10.13 K2 · Laporan keuangan harian TIDAK terbuka untuk pengawas (17 Agustus 2026)
+
+**Keputusan owner.** Ditulis di sini **sebelum dipakai**, mengikuti aturan
+§10.11. Pertanyaannya sudah ditandai di mockup Layar 2 sendiri (*"perlu
+keputusan Anda: apakah laporan ini terbuka untuk pengawas unit"*) dan tak pernah
+terjawab di §2 maupun §10.
+
+```
+canViewLaporanKeuangan = role ∈ {keuangan, direksi, admin_perusahaan, super_admin}
+```
+
+⛔ **`pengawas` tidak termasuk.** Laba, ekuitas, saldo tujuh rekening, gaji
+karyawan, dan kontribusi ke pusat **tidak terlihat oleh pengawas unit** — 15 dari
+21 pengguna produksi berperan pengawas.
+
+**Alasannya sejalan §2:** pengawas memiliki **fakta transaksi**, bukan penyajian
+keuangannya. Ia mengisi apa yang terjadi di SPBU; bagaimana itu menjadi laba dan
+ekuitas adalah pekerjaan Finance.
+
+**Ongkos yang diterima sadar:** pengawas tidak bisa melihat akibat dari angka
+yang ia isi sendiri. Itu kehilangan nyata — umpan balik memperbaiki mutu isian —
+dan kalau kelak terasa menghambat, yang perlu ditinjau adalah **keputusan ini**,
+bukan predikatnya.
+
+⚠️ Ini gerbang **BACA**, terpisah dari gerbang **TULIS** (§2.6). Keduanya ditulis
+berdiri sendiri: seorang `direksi` boleh MEMBACA laporan tetapi tidak boleh
+MENGISI Layar 3, dan itu memang dimaksudkan.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:

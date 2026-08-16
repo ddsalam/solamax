@@ -1269,3 +1269,25 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 
 /* Keping asal-usul. Netral (bukan peringatan) — ia keterangan, bukan alarm. */
 .keu-chip { margin-left: 8px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 2px 9px; white-space: nowrap; }
+
+/* Layar 2 — laporan keuangan harian: tiga panel berdampingan. */
+.lap3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.lap-panel { overflow: hidden; }
+.lap-head { padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50); }
+.lap-judul { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-tertiary); }
+.lap-body { padding: var(--space-3) var(--space-5) var(--space-4); }
+.lap-ln { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); padding: 7px 0; font-size: 16px; border-bottom: 1px solid var(--color-border-hairline); }
+.lap-ln:last-of-type { border-bottom: 0; }
+.lap-ln.ind .lap-k { padding-left: var(--space-4); color: var(--color-text-tertiary); }
+.lap-ln.sum { font-weight: 700; border-top: 2px solid var(--color-border); border-bottom: 0; margin-top: 4px; padding-top: 10px; }
+.lap-kosong { font-style: italic; }
+
+/* Angka pemeriksa: di KAKI panel, berwarna keadaan — bukan sel tersembunyi. */
+.lap-chk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); margin-top: var(--space-3); padding: 10px var(--space-3); border-radius: var(--radius-md); font-weight: 600; font-size: 16px; }
+.lap-chk.baik { background: var(--color-success-bg); border: 1px solid var(--color-success-border); color: var(--color-success); }
+.lap-chk.buruk { background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); color: var(--color-danger); }
+.lap-chk.tak_terhitung { background: var(--neutral-50); border: 1px solid var(--color-border); color: var(--color-text-tertiary); }
+.lap-sebab { margin: var(--space-3) 0 0; padding-left: 1.1em; font-size: 15px; color: var(--color-text-tertiary); }
+.lap-sebab .keu-p { font-size: 15px; margin-top: var(--space-2); }
+
+@media (max-width: 1080px) { .lap3 { grid-template-columns: 1fr; } }

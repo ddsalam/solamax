@@ -82,6 +82,14 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
         // dan menu yang menjanjikan halaman kosong lebih buruk daripada menu
         // yang belum menyebutnya.
         {
+          href: unitCode ? `/keuangan/unit/${unitCode}/${date}` : null,
+          label: "Laporan harian",
+          icon: "report",
+          // Cocok HANYA pada rute laporan, bukan pada /input di bawahnya —
+          // tanpa `$`, butir ini akan ikut menyala saat Input Keuangan dibuka.
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+$/.test(p),
+        },
+        {
           href: unitCode ? `/keuangan/unit/${unitCode}/${date}/input` : null,
           label: "Input keuangan",
           icon: "receipt",
