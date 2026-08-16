@@ -1261,3 +1261,11 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .tbl-scroll .cols-jurnal { min-width: 700px; }
 .cols-mdr { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); align-items: center; padding-top: 10px; padding-bottom: 10px; }
 .tbl-scroll .cols-mdr { min-width: 720px; }
+
+/* Biaya operasional (blok 4) — dua kolom, dua pemilik. Tak ada kolom "aksi"
+   ber-tombol Edit: yang ada daftar tindakan bernama, sebagai teks. */
+.cols-biaya { grid-template-columns: minmax(0, 1.9fr) minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr); align-items: baseline; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-biaya { min-width: 1080px; }
+
+/* Keping asal-usul. Netral (bukan peringatan) — ia keterangan, bukan alarm. */
+.keu-chip { margin-left: 8px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); background: var(--neutral-50); border: 1px solid var(--color-border); border-radius: var(--radius-full); padding: 2px 9px; white-space: nowrap; }

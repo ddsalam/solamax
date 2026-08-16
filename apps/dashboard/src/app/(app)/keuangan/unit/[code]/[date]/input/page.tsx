@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { BiayaPanel } from "@/components/keuangan/BiayaPanel";
 import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
 import { EdcPanel } from "@/components/keuangan/EdcPanel";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
@@ -10,6 +11,8 @@ import {
   getHargaJualHistory,
   getKategoriMutasi,
   getMutasiKas,
+  getBiayaHarian,
+  getPetaKategori,
   getProdukUnit,
   getReasonCodeClosing,
   getSetoranPengawas,
@@ -76,9 +79,11 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
+    getBiayaHarian(unit.unit_id, date),
+    getPetaKategori(unit.unit_id, date),
   ]);
 
   const baris = barisHargaBeli(produk, buyRows, sellHistory, date);
@@ -174,12 +179,14 @@ export default async function InputKeuanganPage({
         />
       </div>
 
-      <div className="section-h mt8">
-        <h3 className="text-h3">4 · Biaya operasional &amp; pendapatan lain-lain</h3>
-      </div>
-      <div className="card empty-inline">
-        Belum dibangun — menyusul. Baris dari Rincian Penjualan akan tampil read-only dengan
-        keping asal-usulnya; tidak akan ada tombol Edit generik, sekarang maupun nanti (§2.3).
+      <div className="mt10">
+        <BiayaPanel
+          code={unit.code}
+          date={date}
+          baris={biaya}
+          peta={petaKategori}
+          bolehTulis={bolehTulis}
+        />
       </div>
     </>
   );

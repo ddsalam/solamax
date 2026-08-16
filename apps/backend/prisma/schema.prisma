@@ -620,6 +620,12 @@ model ManualEntry {
 
   @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])
+  /// Pintu masuk baris ini (0034): `pengawas` (Rincian Penjualan) atau
+  /// `finance`. FAKTA SAAT PENULISAN — jangan pernah menurunkannya dari peran
+  /// `createdByUserId` saat dibaca: peran orang berubah, dan sejarah tidak
+  /// boleh ikut berubah. CHECK di DB membatasi nilainya ke dua itu.
+  sourceDoor      String    @default("pengawas") @map("source_door")
+
   @@map("manual_entry")
   @@schema("app")
 }

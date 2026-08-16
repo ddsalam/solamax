@@ -1,6 +1,7 @@
 import { qScoped } from "./db";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
+import type { BarisBiaya } from "./keuangan-biaya-model";
 import type { Settlement } from "./keuangan-edc";
 import type { MutasiKas } from "./keuangan-kas";
 import type { AkunKas, SetoranPengawas } from "./keuangan-kas-model";
@@ -293,5 +294,63 @@ export async function getReasonCodeClosing(
        FROM app.reason_code
       WHERE applies_to = 'closing' AND active
       ORDER BY code`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blok 4 — biaya operasional & pendapatan lain-lain
+// ---------------------------------------------------------------------------
+
+/**
+ * Baris biaya/pendapatan satu unit+tanggal dari KEDUA pintu (§2.4).
+ *
+ * `source_door` dibaca apa adanya dari kolomnya (0034) — TIDAK diturunkan dari
+ * peran pembuatnya hari ini, sebab peran orang berubah dan sejarah tidak boleh
+ * ikut berubah.
+ */
+export async function getBiayaHarian(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<BarisBiaya[]> {
+  return qScoped<BarisBiaya>(
+    unit,
+    `SELECT id::text              AS id,
+            section::text         AS section,
+            keterangan,
+            amount::float8        AS amount,
+            operational_category  AS "operationalCategory",
+            accounting_account    AS "accountingAccount",
+            status::text          AS status,
+            source_door           AS "sourceDoor",
+            void
+       FROM app.manual_entry
+      WHERE unit_id = $1 AND business_date = $2::date
+        AND section IN ('pendapatan_lain','pengeluaran')
+      ORDER BY section, urut, created_at`,
+    [unit, date],
+  );
+}
+
+/**
+ * Pemetaan kategori operasional → CoA (0023) yang BERLAKU pada `date`.
+ *
+ * Override per-unit (baris ber-`unit_id`) menang atas default (`unit_id` NULL);
+ * di antara beberapa `effective_from` yang memenuhi syarat, yang TERBARU menang.
+ * `DISTINCT ON` + urutan itulah yang menegakkan keduanya — bukan penyaringan di
+ * TypeScript, yang akan berselisih dengan pemakai lain peta ini.
+ */
+export async function getPetaKategori(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<{ category: string; account: string }[]> {
+  return qScoped<{ category: string; account: string }>(
+    unit,
+    `SELECT DISTINCT ON (operational_category)
+            operational_category AS category,
+            accounting_account   AS account
+       FROM app.category_account_map
+      WHERE (unit_id = $1 OR unit_id IS NULL) AND effective_from <= $2::date
+      ORDER BY operational_category, (unit_id IS NULL), effective_from DESC`,
+    [unit, date],
   );
 }
