@@ -72,10 +72,15 @@ export interface BarisJurnal {
  * titik di mana manusia melihat angka itu.
  *
  * ⚠️ Kaki **Beban MDR bukan akun kas** — ia ditandai `bukanAkunKas` supaya
- * pemanggil tidak menyalinnya ke `cash_ledger`. Rumahnya `app.manual_entry`
- * dengan `operational_category='MDR'` → CoA `7-1200`, dan menuliskannya otomatis
- * berarti MESIN memilih `operational_category` yang §2.1 tetapkan milik
- * PENGAWAS. Karena itu kaki ketiga sengaja hanya DIUSULKAN.
+ * pemanggil tidak menyalinnya ke `cash_ledger`.
+ *
+ * 📌 KOREKSI (0031, 13 Agu 2026): kalimat lama di sini menyebut rumahnya
+ * `app.manual_entry` dengan `operational_category='MDR'`. **Sudah tidak
+ * berlaku.** Justru karena mesin tak boleh memilih `operational_category`
+ * (§2.1), owner memberi beban non-kas turunan-mesin **rumahnya sendiri**:
+ * `app.noncash_expense` — tabel yang **tidak punya kolom itu sama sekali**
+ * (§2.5). Kaki ketiga tetap hanya DIUSULKAN; yang berubah adalah ke mana ia
+ * mendarat setelah disetujui.
  */
 export function usulanJurnalPencairan(
   s: Pick<Settlement, "grossRp" | "netRp" | "toAccountId" | "acquirer" | "settlementDate">,

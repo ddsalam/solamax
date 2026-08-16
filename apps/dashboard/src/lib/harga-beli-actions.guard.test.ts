@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { urutan } from "./penjaga-urutan";
 
 /**
  * Penjaga TEKS atas `harga-beli-actions.ts` — permukaan TULIS pertama modul
@@ -53,13 +54,11 @@ describe("harga-beli-actions — penjagaan yang tak boleh hilang", () => {
     // pemeriksaan yang bisa berselisih.
     expect(KODE).toMatch(/alasanTakBolehInput\(/);
     expect(KODE).toMatch(/PESAN_TAK_BOLEH_INPUT\[alasan\]/);
-    const idxGerbang = KODE.indexOf("alasanTakBolehInput(");
-    const idxConnect = KODE.indexOf("pool.connect()");
-    expect(idxGerbang).toBeGreaterThan(-1);
-    expect(idxConnect).toBeGreaterThan(-1);
     // Kalau gerbangnya dipindah ke BAWAH koneksi, penolakan tetap benar tetapi
-    // koneksi terbuka untuk pemanggil yang tak berhak. Urutannya ikut dijaga.
-    expect(idxGerbang).toBeLessThan(idxConnect);
+    // koneksi terbuka untuk pemanggil yang tak berhak. Urutannya ikut dijaga —
+    // lewat `urutan()`, yang GAGAL bila salah satunya hilang (lihat
+    // penjaga-urutan.ts: `indexOf(a) < indexOf(b)` lolos saat `a` lenyap).
+    expect(urutan(KODE, "alasanTakBolehInput(", "pool.connect()")).toBe("ok");
   });
 
   it("🔴 HARGA JUAL dibaca di server, tidak pernah diterima dari client", () => {
@@ -72,9 +71,7 @@ describe("harga-beli-actions — penjagaan yang tak boleh hilang", () => {
 
   it("RLS 0016: konteks unit di-set TRANSACTION-LOCAL sebelum DML", () => {
     expect(KODE).toMatch(/set_config\('app\.unit_ids', \$1, true\)/);
-    const idxCfg = KODE.indexOf("set_config('app.unit_ids'");
-    const idxInsert = KODE.indexOf("INSERT INTO app.purchase_price");
-    expect(idxCfg).toBeLessThan(idxInsert);
+    expect(urutan(KODE, "set_config('app.unit_ids'", "INSERT INTO app.purchase_price")).toBe("ok");
   });
 
   it("VOID-only: tak ada DELETE, dan baris lama dibatalkan bukan ditimpa", () => {

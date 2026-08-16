@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
+import { EdcPanel } from "@/components/keuangan/EdcPanel";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
 import { unitLabel } from "@/lib/config";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -10,7 +11,9 @@ import {
   getKategoriMutasi,
   getMutasiKas,
   getProdukUnit,
+  getReasonCodeClosing,
   getSetoranPengawas,
+  getSettlements,
 } from "@/lib/keuangan-input-queries";
 import { barisHargaBeli, ringkasPenjaga } from "@/lib/keuangan-harga-model";
 import { saldoAkun } from "@/lib/keuangan-kas";
@@ -68,6 +71,14 @@ export default async function InputKeuanganPage({
     getMutasiKas(unit.unit_id, date),
     getKategoriMutasi(unit.unit_id),
     getSetoranPengawas(unit.unit_id, date),
+  ]);
+
+  // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
+  // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
+  // bila ada bulan pembanding.
+  const [settlements, reasonCodes] = await Promise.all([
+    getSettlements(unit.unit_id, mundur(date, 60), date),
+    getReasonCodeClosing(unit.unit_id),
   ]);
 
   const baris = barisHargaBeli(produk, buyRows, sellHistory, date);
@@ -152,12 +163,15 @@ export default async function InputKeuanganPage({
       </div>
       )}
 
-      <div className="section-h mt8">
-        <h3 className="text-h3">3 · Settlement EDC</h3>
-      </div>
-      <div className="card empty-inline">
-        Belum dibangun — menyusul. Jurnal pencairan H+1 akan muncul sebagai usulan yang harus
-        disetujui, bukan sebagai baris yang sudah diposting (§1.4).
+      <div className="mt10">
+        <EdcPanel
+          code={unit.code}
+          date={date}
+          settlements={settlements}
+          akun={akun}
+          reasonCodes={reasonCodes}
+          bolehTulis={bolehTulis}
+        />
       </div>
 
       <div className="section-h mt8">
@@ -173,6 +187,11 @@ export default async function InputKeuanganPage({
 
 /** Tanggal bisnis satu hari sebelum `date` — UTC murni, bebas zona waktu. */
 function hariSebelum(date: string): string {
-  const t = Date.parse(`${date}T00:00:00Z`) - 86_400_000;
+  return mundur(date, 1);
+}
+
+/** `date` dikurangi `n` hari, tetap sebagai tanggal bisnis `YYYY-MM-DD`. */
+function mundur(date: string, n: number): string {
+  const t = Date.parse(`${date}T00:00:00Z`) - n * 86_400_000;
   return new Date(t).toISOString().slice(0, 10);
 }
