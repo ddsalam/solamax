@@ -1159,6 +1159,33 @@ bukan predikatnya.
 berdiri sendiri: seorang `direksi` boleh MEMBACA laporan tetapi tidak boleh
 MENGISI Layar 3, dan itu memang dimaksudkan.
 
+### 10.14 K2 · Penutup operasional = Finance — lubang tier-1 ditutup (17 Agustus 2026)
+
+**Bukan keputusan baru; penambalan.** §3.2 menyebut tingkat pertama tangga
+(`≤ Rp 10.000`) sebagai *"penutup operasional"* tanpa pernah menyebut siapa
+orangnya — waktu itu peran `keuangan` belum ada. Tabel tangga di **mockup Layar
+4** (disetujui owner, kini versi-terkendali di
+[`design/keuangan-modul/`](design/keuangan-modul/)) menyebutnya: **Finance**.
+
+🔴 **Akibat lubang itu:** `bolehMenutup("within_tolerance", …)` mengembalikan
+`true` untuk **siapa pun**, termasuk `pengawas`. Seorang pengawas yang membuka
+Layar 4 bisa **menutup hari** — dan penutupan mengunci `manual_entry`-nya
+sendiri terhadap void (trigger 0024). Ia mengunci pekerjaannya sendiri terhadap
+koreksi, dan tak ada satu pun angka yang akan terlihat salah.
+
+```
+bolehMenutupOperasional = role ∈ {keuangan, super_admin}
+```
+
+**Tingkatnya ALTERNATIF, bukan berlapis.** Direksi yang meng-override tingkat
+ketiga tidak perlu juga jadi Finance — satu-peran-per-orang membuat itu
+mustahil. Yang berlaku: tiap tingkat menyebut siapa, dan orang itulah yang
+menutup pada tingkat itu.
+
+⚠️ **Konsekuensi yang disebut:** selama belum ada pemegang peran `keuangan`,
+**tak seorang pun bisa menutup hari** kecuali `super_admin`. Itu benar — gerbang
+tanpa penjaga lebih baik ditutup daripada dibuka untuk semua.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:
