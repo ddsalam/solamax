@@ -1,6 +1,8 @@
 import { qScoped } from "./db";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
+import type { MutasiKas } from "./keuangan-kas";
+import type { AkunKas, SetoranPengawas } from "./keuangan-kas-model";
 
 /**
  * Kueri BACA untuk Layar 3 — Input Keuangan (mockup layar 3, blok 1).
@@ -130,4 +132,94 @@ export async function getHargaJualHistory(
     out.set(r.productKey, arr);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Blok 2 — buku kas besar & lima buku bank
+// ---------------------------------------------------------------------------
+
+
+export async function getAkunKas(unit: ScopedUnitId): Promise<AkunKas[]> {
+  return qScoped<AkunKas>(
+    unit,
+    `SELECT id::text AS id, nama, kind::text AS kind, active
+       FROM app.cash_account
+      WHERE unit_id = $1
+      ORDER BY (kind <> 'kas'), nama`,
+    [unit],
+  );
+}
+
+export interface MutasiKasRow extends MutasiKas {
+  id: string;
+  keterangan: string;
+  sourceManualEntryId: string | null;
+}
+
+/**
+ * SELURUH mutasi unit ini SAMPAI DENGAN `to`.
+ *
+ * ⚠️ Tidak difilter tanggal-awal dengan sengaja: saldo adalah **kumulatif sejak
+ * awal buku**, jadi memotong ekornya akan menghasilkan saldo yang rapi dan
+ * salah. Baris `void` ikut ditarik — `saldoAkun`/`barisBuku` menyaringnya, dan
+ * menyaring di SQL membuat fungsi murni itu tak pernah teruji terhadap keadaan
+ * yang benar-benar bisa terjadi.
+ *
+ * Volumenya kecil: satu unit menghasilkan beberapa baris kas per hari, dan
+ * indeks parsial `cash_ledger_saldo_idx` (0029) melayani jalur ini.
+ */
+export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<MutasiKasRow[]> {
+  return qScoped<MutasiKasRow>(
+    unit,
+    `SELECT id::text                              AS id,
+            account_id::text                      AS "accountId",
+            to_char(business_date,'YYYY-MM-DD')   AS "businessDate",
+            keterangan,
+            jenis::text                           AS jenis,
+            category_side::text                   AS "categorySide",
+            category_label                        AS "categoryLabel",
+            amount::float8                        AS amount,
+            void,
+            source_manual_entry_id::text          AS "sourceManualEntryId"
+       FROM app.cash_ledger
+      WHERE unit_id = $1 AND business_date <= $2::date
+      ORDER BY business_date, created_at`,
+    [unit, to],
+  );
+}
+
+/** Daftar kategori mutasi (daftar TERTUTUP, 0029) — untuk pilihan di form. */
+export async function getKategoriMutasi(
+  unit: ScopedUnitId,
+): Promise<{ side: "debet" | "kredit"; label: string }[]> {
+  // Tabel ini TIDAK unit-scoped (master global), tetapi tetap dibaca lewat
+  // qScoped agar konteks RLS transaksi seragam dengan kueri lain di halaman —
+  // dan agar tak ada satu pun jalur baca halaman ini yang lolos tanpa scope.
+  return qScoped<{ side: "debet" | "kredit"; label: string }>(
+    unit,
+    `SELECT side::text AS side, label
+       FROM app.cash_mutation_category
+      WHERE active
+      ORDER BY side, label`,
+  );
+}
+
+/**
+ * Setoran per shift yang sudah diisi pengawas di Rincian Penjualan.
+ * Inilah bahan baris kas yang DITAWARKAN — nominalnya tak diketik ulang.
+ */
+export async function getSetoranPengawas(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<SetoranPengawas[]> {
+  return qScoped<SetoranPengawas>(
+    unit,
+    `SELECT id::text AS id, keterangan, amount::float8 AS amount
+       FROM app.manual_entry
+      WHERE unit_id = $1 AND business_date = $2::date
+        AND section = 'setoran_tunai'::app.manual_entry_section
+        AND NOT void
+      ORDER BY urut, created_at`,
+    [unit, date],
+  );
 }

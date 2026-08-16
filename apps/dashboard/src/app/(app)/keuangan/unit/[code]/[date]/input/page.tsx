@@ -1,13 +1,27 @@
 import { notFound } from "next/navigation";
+import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
 import { unitLabel } from "@/lib/config";
 import { DATE_RE } from "@/lib/selection-keys";
 import {
+  getAkunKas,
   getHargaBeliRows,
   getHargaJualHistory,
+  getKategoriMutasi,
+  getMutasiKas,
   getProdukUnit,
+  getSetoranPengawas,
 } from "@/lib/keuangan-input-queries";
 import { barisHargaBeli, ringkasPenjaga } from "@/lib/keuangan-harga-model";
+import { saldoAkun } from "@/lib/keuangan-kas";
+import {
+  barisBuku,
+  kakiBuku,
+  nilaiTertunda,
+  tawaranSetoran,
+  type BarisBuku,
+  type KakiBuku,
+} from "@/lib/keuangan-kas-model";
 import { canInputKeuangan } from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
 
@@ -41,14 +55,35 @@ export default async function InputKeuanganPage({
   const unit = scope.requireUnit(code);
   const bolehTulis = canInputKeuangan({ role: scope.role, email: scope.email });
 
-  const [produk, buyRows, sellHistory] = await Promise.all([
+  const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran] = await Promise.all([
     getProdukUnit(unit.unit_id),
     getHargaBeliRows(unit.unit_id),
     getHargaJualHistory(unit.unit_id, date),
+    getAkunKas(unit.unit_id),
+    getMutasiKas(unit.unit_id, date),
+    getKategoriMutasi(unit.unit_id),
+    getSetoranPengawas(unit.unit_id, date),
   ]);
 
   const baris = barisHargaBeli(produk, buyRows, sellHistory, date);
   const penjaga = ringkasPenjaga(baris);
+
+  // Blok 2 — saldo DIHITUNG di sini, tak pernah dibaca dari kolom mana pun.
+  const kemarin = hariSebelum(date);
+  const bukuPerAkun: Record<string, BarisBuku[]> = {};
+  const saldoAwalPerAkun: Record<string, number> = {};
+  const kakiPerAkun: Record<string, KakiBuku> = {};
+  for (const a of akun) {
+    const awal = saldoAkun(mutasi, a.id, kemarin);
+    const rows = barisBuku(mutasi, a.id, date, kemarin);
+    saldoAwalPerAkun[a.id] = awal;
+    bukuPerAkun[a.id] = rows;
+    kakiPerAkun[a.id] = kakiBuku(rows, awal);
+  }
+  const sudahDipakai = new Set(
+    mutasi.filter((m) => !m.void && m.sourceManualEntryId).map((m) => m.sourceManualEntryId!),
+  );
+  const tawaran = tawaranSetoran(setoran, sudahDipakai);
 
   return (
     <>
@@ -81,13 +116,19 @@ export default async function InputKeuanganPage({
         />
       </div>
 
-      {/* Keadaan kosong EKSPLISIT untuk blok yang belum dibangun — bukan diam. */}
-      <div className="section-h mt10">
-        <h3 className="text-h3">2 · Buku kas besar &amp; lima buku bank</h3>
-      </div>
-      <div className="card empty-inline">
-        Belum dibangun — menyusul pada PR berikutnya. Saldo tidak akan pernah diketik di sini;
-        ia dihitung dari mutasi (§5a).
+      <div className="mt10">
+        <BukuKasPanel
+          code={unit.code}
+          date={date}
+          akun={akun}
+          bukuPerAkun={bukuPerAkun}
+          saldoAwalPerAkun={saldoAwalPerAkun}
+          kakiPerAkun={kakiPerAkun}
+          kategori={kategori}
+          tawaran={tawaran}
+          nilaiTertunda={nilaiTertunda(tawaran)}
+          bolehTulis={bolehTulis}
+        />
       </div>
 
       <div className="section-h mt8">
@@ -107,4 +148,10 @@ export default async function InputKeuanganPage({
       </div>
     </>
   );
+}
+
+/** Tanggal bisnis satu hari sebelum `date` — UTC murni, bebas zona waktu. */
+function hariSebelum(date: string): string {
+  const t = Date.parse(`${date}T00:00:00Z`) - 86_400_000;
+  return new Date(t).toISOString().slice(0, 10);
 }

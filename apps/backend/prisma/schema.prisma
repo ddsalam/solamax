@@ -924,6 +924,13 @@ model CashLedger {
   createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
   voidedByUserId  Int?              @map("voided_by_user_id")
   voidedAt        DateTime?         @map("voided_at") @db.Timestamptz()
+  // Tautan ke settlement EDC yang melahirkan baris ini (0030). NULL untuk
+  // mutasi biasa. Kolomnya sudah ada di DB sejak 0030 tetapi belum pernah
+  // tercermin di sini — drift lama, dirapikan bersama 0033.
+  edcSettlementId String?           @map("edc_settlement_id") @db.Uuid
+  // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
+  // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
+  sourceManualEntryId String?       @map("source_manual_entry_id") @db.Uuid
 
   @@index([unitId, accountId, businessDate])
   @@index([unitId, categorySide, categoryLabel, businessDate])
