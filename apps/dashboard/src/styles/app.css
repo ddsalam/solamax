@@ -1316,3 +1316,14 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .keu-chip.status-ditutup_eksepsi { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
 .keu-chip.status-ditutup_normal { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success-border); }
 .cols-papan .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+
+/* Layar 5 — sumber data. */
+.cols-sumber { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 2.4fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }
+.tbl-scroll .cols-sumber { min-width: 1040px; }
+.cols-master { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 2.4fr); align-items: baseline; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-master { min-width: 800px; }
+.keu-chip.keadaan-siap { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success-border); }
+.keu-chip.keadaan-sebagian { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.keu-chip.keadaan-belum { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+.keu-chip.keadaan-batas_diketahui { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.cols-sumber .keu-p { display: block; margin-top: 4px; font-size: 15px; }

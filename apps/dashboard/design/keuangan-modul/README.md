@@ -45,7 +45,25 @@ alasan tertulis, keduanya tersimpan) — [`KEUANGAN-HARIAN.md`](../../KEUANGAN-H
 
 Teks mockup mendahului keputusan itu.
 
-### 2. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
+### 2. Layar 5 · "harga beli ditolak bila di atas harga jual" — tidak berlaku
+
+Sama dengan penyimpangan #1, pada layar yang berbeda: tabel 14-masukan Layar 5
+menulis status HargaBeli sebagai *"Dijaga: tak boleh > harga jual"*. Yang berlaku
+adalah **peringatan wajib-diakui** (§4.1). Layar 5 menyebut koreksi ini di
+layarnya sendiri.
+
+### 3. Layar 5 · pertanyaan "bagan akun seragam?" SUDAH TERJAWAB
+
+Catatan penutup Layar 5 berbunyi: *"Perlu keputusan Anda: apakah bagan akun
+dibuat seragam untuk tujuh unit sejak awal, atau tiap unit boleh punya daftar
+sendiri."*
+
+**Sudah terjawab** oleh migrasi `0023_category_account_map`: **default seragam**
+(baris ber-`unit_id NULL`), dengan **override per-unit** yang WAJIB menyertakan
+`override_reason` (ditegakkan CHECK). Pertanyaan yang sudah terjawab tetapi masih
+terpampang akan ditanyakan ulang oleh orang berikutnya.
+
+### 4. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
 
 Bukan contoh karangan, dan bukan pula keadaan hari ini. Jangan dipakai sebagai
 nilai harapan uji.
