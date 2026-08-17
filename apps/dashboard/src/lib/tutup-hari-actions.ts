@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { periksaTutupHari, tierFor } from "./keuangan-tutup-hari";
-import { getDataScope } from "./scope";
+import { getDataScope, type ScopedUnitId } from "./scope";
 
 /**
  * Server action gerbang tutup hari (Layar 4).
@@ -166,7 +166,12 @@ function pesanKurang(kurang: readonly string[]): string {
  * "seimbang", padahal artinya "belum terhitung".
  */
 export async function pastikanBarisDayClose(
-  unitId: number,
+  // ⛔ `ScopedUnitId`, bukan `number`. Tinjauan pra-promosi menemukan tanda-tipe
+  // ini menerima angka mentah: pemanggil hari ini benar (`unit.unit_id` dari
+  // `requireUnit`), tetapi pemanggil BERIKUTNYA tak akan dihalangi type-check —
+  // dan seluruh lapis tipe repo ini berdiri di atas janji "lupa men-scope =
+  // error type-check".
+  unitId: ScopedUnitId,
   date: string,
   langkahHarian: number | null,
 ): Promise<void> {

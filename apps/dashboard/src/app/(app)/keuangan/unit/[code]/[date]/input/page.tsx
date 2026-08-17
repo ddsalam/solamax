@@ -31,6 +31,7 @@ import {
 import {
   alasanTakBolehInput,
   canInputKeuangan,
+  canViewLaporanKeuangan,
   PESAN_TAK_BOLEH_INPUT,
 } from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
@@ -63,6 +64,19 @@ export default async function InputKeuanganPage({
 
   const scope = await getDataScope();
   const unit = scope.requireUnit(code);
+  // ⛔ GERBANG BACA — ditambahkan 17 Agu 2026 setelah tinjauan pra-promosi
+  // menemukan rute ini SATU-SATUNYA dari lima yang tidak punya gerbang baca.
+  //
+  // Konsekuensinya bukan teoretis: pengawas yang membukanya melihat harga beli,
+  // SALDO tujuh rekening kas/bank, settlement EDC, dan klasifikasi akuntansi —
+  // panel-panelnya merender tabelnya tanpa peduli `bolehTulis`, yang hanya
+  // menyembunyikan formulir.
+  //
+  // Dasarnya BUKAN keputusan baru: §10.13 sudah memutuskan pengawas tidak
+  // melihat "saldo tujuh rekening", dan saldo yang sama ada di layar ini. Yang
+  // hilang adalah penerapannya di rute ini, bukan keputusannya.
+  if (!canViewLaporanKeuangan({ role: scope.role, email: scope.email })) notFound();
+
   const bolehTulis = canInputKeuangan({ role: scope.role, email: scope.email });
   const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
 

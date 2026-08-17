@@ -119,6 +119,15 @@ describe("§10.15 — baris day_close lahir saat halaman dibuka", () => {
     expect(fn).toMatch(/if \(langkahHarian === null\) return;/);
   });
 
+  it("🔴 unitId ber-BRAND ScopedUnitId, bukan number mentah", () => {
+    // Melonggarkan tanda-tipe SELALU lolos type-check — tak ada pemanggil yang
+    // pecah, jadi tak ada tes perilaku yang bisa menangkapnya. Yang menjaganya
+    // hanya asersi ini, dan seluruh lapis tipe repo ini berdiri di atas janji
+    // "lupa men-scope = error type-check".
+    expect(KODE).toMatch(/unitId: ScopedUnitId,/);
+    expect(KODE).not.toMatch(/unitId: number,/);
+  });
+
   it("tier ditulis dari tierFor, bukan dari nilai bebas", () => {
     expect(KODE).toMatch(/const tier = tierFor\(langkahHarian\)/);
   });
