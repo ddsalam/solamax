@@ -57,6 +57,14 @@ describe("Layar 1 — papan keuangan grup", () => {
     expect(mentah).toMatch(/16 kueri per unit/);
   });
 
+  it("🔴 kartu 'seimbang' memakai penyebut YANG SUDAH DIPERIKSA", () => {
+    // Angka besar yang dibaca direksi mengalahkan kalimat kecil di bawahnya,
+    // jadi angkanya sendiri yang harus benar — bukan keterangannya.
+    expect(HAL).toMatch(/\{r\.seimbang\} \/ \{r\.diperiksa\}/);
+    expect(HAL).not.toMatch(/\{r\.seimbang\} \/ \{r\.termodelkan\}/);
+    expect(HAL).toMatch(/sudah diperiksa/);
+  });
+
   it("🔴 kumulatif disebut belum tersedia, langkah harian disebut yang dinilai", () => {
     expect(HAL).toMatch(/LANGKAH HARIAN/);
     expect(HAL).toMatch(/kumulatif belum tersedia/);
