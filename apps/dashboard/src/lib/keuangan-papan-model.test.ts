@@ -34,6 +34,16 @@ describe("status unit — ketiadaan baris ≠ status 'open' (§10.15)", () => {
     const b = barisUnit(u({ dayClose: null, langkahHarian: null }));
     expect(PENJELASAN_STATUS[b.status]).toMatch(/BUKAN 'seimbang'|bukan 'seimbang'/i);
     expect(b.nada).toBe("tak_terhitung");
+
+    // 🔴 DATANYA YANG PENTING: `langkahHarian: 0`, bukan `null`. Bentuk lama uji
+    // ini memakai `null`/`5`, dan satu angka bukan-nol menyembunyikan seluruh
+    // kelasnya — judulnya menjanjikan kartunya, asersinya hanya menjaga barisnya.
+    const nolTanpaJejak = barisUnit(u({ dayClose: null, langkahHarian: 0 }));
+    const r = ringkasPapan([nolTanpaJejak]);
+    expect(r.seimbang, "unit tanpa jejak ikut dihitung seimbang").toBe(0);
+    expect(r.diperiksa, "unit tanpa jejak ikut jadi penyebut").toBe(0);
+    expect(r.termodelkan).toBe(1);
+    expect(r.belumPernahDibuka).toBe(1);
   });
 
   it("baris ada & open ⇒ belum ditutup; closed dalam toleransi ⇒ ditutup", () => {
@@ -71,6 +81,20 @@ describe("urutan papan — yang paling perlu dilihat lebih dulu", () => {
     expect(urutkanPapan(rows).map((r) => r.nama)).toEqual(["B", "D", "A", "C"]);
   });
 
+  it("🔴 dalam status yang sama, yang TAK TERHITUNG mendahului yang tepat nol", () => {
+    // Saudaranya cacat kartu KPI, di fungsi sebelahnya: `langkahHarian ?? 0`
+    // membuat ketiadaan duduk bersama nol — dan karena sort stabil, yang tak
+    // diketahui justru jatuh ke bawah. Nol yang terbukti adalah kabar baik;
+    // "tak bisa dihitung" adalah pertanyaan yang belum dijawab.
+    const nol = barisUnit(u({ nama: "nol", langkahHarian: 0, dayClose: { status: "open", differenceRp: 0 } }));
+    const takHitung = barisUnit(
+      u({ nama: "takHitung", langkahHarian: null, dayClose: { status: "open", differenceRp: 0 } }),
+    );
+    expect(urutkanPapan([nol, takHitung]).map((r) => r.nama)).toEqual(["takHitung", "nol"]);
+    // …dan urutannya tidak bergantung pada urutan masukan.
+    expect(urutkanPapan([takHitung, nol]).map((r) => r.nama)).toEqual(["takHitung", "nol"]);
+  });
+
   it("dalam status yang sama, selisih TERBESAR lebih dulu", () => {
     const rows = [
       barisUnit(u({ nama: "kecil", langkahHarian: 100, dayClose: { status: "open", differenceRp: 100 } })),
@@ -81,16 +105,28 @@ describe("urutan papan — yang paling perlu dilihat lebih dulu", () => {
 });
 
 describe("ringkasPapan — total yang tidak lengkap adalah null", () => {
-  it("menghitung yang termodelkan, yang seimbang, dan yang tak berjejak", () => {
+  it("menghitung yang termodelkan, yang diperiksa, yang seimbang, dan yang tak berjejak", () => {
     const rows = [
       barisUnit(u({ nama: "A" })),
-      barisUnit(u({ nama: "B", dayClose: null, langkahHarian: 5 })),
+      // ⚠️ `langkahHarian: 0` DENGAN SENGAJA — inilah data yang menjatuhkan
+      // bentuk lama. Memakai 5 di sini membuat ujinya benar di atas data yang
+      // tak pernah melanggar aturannya.
+      barisUnit(u({ nama: "B", dayClose: null, langkahHarian: 0 })),
       barisUnit(u({ nama: "C", adaAkunKas: false })),
     ];
     const r = ringkasPapan(rows);
     expect(r.termodelkan).toBe(2);
+    expect(r.diperiksa).toBe(1);
     expect(r.seimbang).toBe(1);
     expect(r.belumPernahDibuka).toBe(1);
+  });
+
+  it("🔴 penyebut 'diperiksa' ≠ 'termodelkan' — dan bedanya harus terlihat", () => {
+    // Kalau keduanya kebetulan sama pada seluruh fixture, penjaga di atas hijau
+    // tanpa membuktikan apa pun.
+    const rows = [barisUnit(u({ nama: "A" })), barisUnit(u({ nama: "B", dayClose: null, langkahHarian: 0 }))];
+    const r = ringkasPapan(rows);
+    expect(r.diperiksa).not.toBe(r.termodelkan);
   });
 
   it("🔴 satu unit termodelkan tak terhitung ⇒ TOTAL null, dan namanya disebut", () => {

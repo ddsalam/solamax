@@ -63,14 +63,24 @@ export default async function PapanKeuanganPage({
 
       <div className="kpi-grid mt6">
         <div className="card card-pad">
+          {/* ⛔ Penyebutnya "sudah diperiksa", BUKAN "termodelkan". Unit yang tak
+              pernah dibuka tidak ada di pembilang MAUPUN penyebut — memasukkannya
+              ke penyebut akan membuat kartunya berbunyi "0 / 1" seolah ia
+              diperiksa lalu gagal, padahal ia belum diperiksa. */}
           <div className="fs16 t-tertiary">Pembukuan seimbang</div>
           <div className="tutup-angka num">
-            {r.seimbang} / {r.termodelkan}
+            {r.seimbang} / {r.diperiksa}
           </div>
           <div className="fs16 t-secondary">
-            {r.belumPernahDibuka > 0
-              ? `${r.belumPernahDibuka} unit belum pernah dibuka hari ini — belum diperiksa, bukan seimbang`
-              : "dari unit yang termodelkan"}
+            dari unit yang <strong>sudah diperiksa</strong> hari ini
+            {r.belumPernahDibuka > 0 && (
+              <>
+                {" · "}
+                <span className="t-danger">
+                  {r.belumPernahDibuka} unit belum pernah dibuka — belum diperiksa, bukan seimbang
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="card card-pad">

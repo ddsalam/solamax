@@ -114,11 +114,25 @@ export function barisUnit(i: InputUnit): BarisUnit {
   };
 }
 
-/** Urut: yang paling perlu dilihat lebih dulu, lalu selisih terbesar. */
+/**
+ * Urut: yang paling perlu dilihat lebih dulu, lalu selisih terbesar.
+ *
+ * 🔴 **Yang TAK TERHITUNG mendahului yang tepat nol.** Bentuk lama mengurutkan
+ * `langkahHarian ?? 0`, sehingga unit yang selisihnya **tak diketahui** duduk di
+ * tempat yang sama dengan unit yang selisihnya **terbukti nol** — dan karena
+ * pengurutannya stabil, yang tak diketahui justru jatuh ke bawah. Nol dan
+ * ketiadaan bertemu lagi, kali ini di pengurutan.
+ *
+ * Yang tak terhitung lebih perlu dilihat: nol yang terbukti adalah kabar baik,
+ * sementara "tak bisa dihitung" adalah pertanyaan yang belum dijawab.
+ */
 export function urutkanPapan(baris: readonly BarisUnit[]): BarisUnit[] {
   return [...baris].sort((a, b) => {
     const s = URUTAN_STATUS[a.status] - URUTAN_STATUS[b.status];
     if (s !== 0) return s;
+    const takHitung = (x: BarisUnit) => (x.langkahHarian === null ? 0 : 1);
+    const t = takHitung(a) - takHitung(b);
+    if (t !== 0) return t;
     return Math.abs(b.langkahHarian ?? 0) - Math.abs(a.langkahHarian ?? 0);
   });
 }
@@ -126,7 +140,23 @@ export function urutkanPapan(baris: readonly BarisUnit[]): BarisUnit[] {
 export interface RingkasPapan {
   /** Unit yang bisa dinilai sama sekali. */
   termodelkan: number;
-  /** Dari yang termodelkan: berapa yang langkah hariannya nol. */
+  /**
+   * Unit yang hari itu BENAR-BENAR pernah dinilai — punya baris `day_close`.
+   * Inilah penyebut yang sah untuk `seimbang`; `termodelkan` bukan.
+   */
+  diperiksa: number;
+  /**
+   * Dari yang SUDAH DIPERIKSA: berapa yang langkah hariannya nol.
+   *
+   * 🔴 Bentuk lama menghitungnya dari `termodelkan`, sehingga unit yang **tak
+   * pernah dibuka** ikut jadi pembilang begitu `langkahHarian` kebetulan nol —
+   * dan kartunya menampilkan "1 / 1" tepat di atas kalimat yang menyangkalnya.
+   * Angka besar yang dibaca direksi mengalahkan kalimat kecil di bawahnya.
+   *
+   * Nol yang belum diperiksa dan nol yang sudah diperiksa **bukan hal yang
+   * sama**, dan penghitung yang tak membedakannya menyatakan yang pertama
+   * sebagai yang kedua.
+   */
   seimbang: number;
   /** Unit yang tak punya jejak penilaian hari ini — bukan nol, bukan seimbang. */
   belumPernahDibuka: number;
@@ -146,13 +176,18 @@ export interface RingkasPapan {
  */
 export function ringkasPapan(baris: readonly BarisUnit[]): RingkasPapan {
   const model = baris.filter((b) => b.status !== "belum_dimodelkan");
+  // Hanya hari yang punya jejak penilaian. Diturunkan dari STATUS, yang sendiri
+  // diturunkan dari ketiadaan baris (§10.15) — bukan dari `langkahHarian`, yang
+  // tak tahu apa-apa tentang apakah hari itu pernah dinilai.
+  const diperiksa = model.filter((b) => b.status !== "belum_pernah_dibuka");
   const takTerhitung = model
     .filter((b) => b.labaBersih === null || b.kasAkhir === null)
     .map((b) => b.nama);
   const lengkap = takTerhitung.length === 0;
   return {
     termodelkan: model.length,
-    seimbang: model.filter((b) => b.langkahHarian === 0).length,
+    diperiksa: diperiksa.length,
+    seimbang: diperiksa.filter((b) => b.langkahHarian === 0).length,
     belumPernahDibuka: baris.filter((b) => b.status === "belum_pernah_dibuka").length,
     labaBersih: lengkap ? model.reduce((s, b) => s + (b.labaBersih ?? 0), 0) : null,
     kasAkhir: lengkap ? model.reduce((s, b) => s + (b.kasAkhir ?? 0), 0) : null,
