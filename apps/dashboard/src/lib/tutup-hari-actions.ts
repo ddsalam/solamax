@@ -147,3 +147,55 @@ function pesanKurang(kurang: readonly string[]): string {
   if (kurang.includes("persetujuan")) p.push("centang persetujuan eksplisitnya");
   return `Hari belum bisa ditutup: ${p.join(" · ")}.`;
 }
+
+/**
+ * Pastikan baris `day_close` ADA dan nilainya segar — dipanggil saat Layar 4
+ * dibuka (§10.15).
+ *
+ * ⛔ **BARIS TERTUTUP TIDAK PERNAH DISENTUH.** `WHERE status='open'` pada
+ * UPDATE bukan optimasi; ia yang mencegah hitung ulang menulis ulang sejarah.
+ * Selisih yang sudah disetujui seseorang tidak boleh berubah tanpa ia tahu —
+ * persetujuannya akan menempel pada angka yang bukan yang ia setujui.
+ *
+ * ⚠️ Ini penulisan pada permintaan BACA, dan itu tak lazim — disebut apa adanya
+ * di §10.15. Ditukar dengan hilangnya satu komponen (job harian) yang bisa mati
+ * tanpa suara; repo ini punya sejarahnya.
+ *
+ * `langkahHarian === null` ⇒ **tidak menulis apa pun**. Hari yang belum bisa
+ * dinilai tidak boleh mendapat baris bernilai nol — nol akan terbaca sebagai
+ * "seimbang", padahal artinya "belum terhitung".
+ */
+export async function pastikanBarisDayClose(
+  unitId: number,
+  date: string,
+  langkahHarian: number | null,
+): Promise<void> {
+  if (langkahHarian === null) return;
+  const tier = tierFor(langkahHarian);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unitId)]);
+    await client.query(
+      `INSERT INTO app.day_close (unit_id, business_date, status, difference_rp, tier)
+       VALUES ($1, $2::date, 'open', $3, $4::app.day_close_tier)
+       ON CONFLICT (unit_id, business_date) DO UPDATE
+          SET difference_rp = EXCLUDED.difference_rp,
+              tier          = EXCLUDED.tier,
+              updated_at    = now()
+        WHERE app.day_close.status = 'open'`,
+      [unitId, date, langkahHarian, tier],
+    );
+    await client.query("COMMIT");
+  } catch {
+    // Kegagalan di sini TIDAK boleh menjatuhkan halaman: gerbangnya masih bisa
+    // dibaca, dan `tutupHari` menolak sendiri bila barisnya tak ada.
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+  } finally {
+    client.release();
+  }
+}
