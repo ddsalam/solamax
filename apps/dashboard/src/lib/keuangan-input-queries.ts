@@ -354,3 +354,126 @@ export async function getPetaKategori(
     [unit, date],
   );
 }
+
+// ---------------------------------------------------------------------------
+// Layar 4 — gerbang tutup hari
+// ---------------------------------------------------------------------------
+
+export interface DayCloseRow {
+  status: "open" | "closed";
+  differenceRp: number;
+  tier: "within_tolerance" | "exception_hof" | "override_direksi";
+  reasonCode: string | null;
+  reasonRequiresTarget: boolean | null;
+  targetDate: string | null;
+  closedByUserId: number | null;
+  closedAt: string | null;
+  approvedByUserId: number | null;
+  approvedAt: string | null;
+}
+
+export async function getDayClose(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<DayCloseRow | null> {
+  const r = await qScoped<DayCloseRow>(
+    unit,
+    `SELECT status::text                      AS status,
+            difference_rp::float8             AS "differenceRp",
+            tier::text                        AS tier,
+            reason_code                       AS "reasonCode",
+            reason_requires_target            AS "reasonRequiresTarget",
+            to_char(target_date,'YYYY-MM-DD') AS "targetDate",
+            closed_by_user_id                 AS "closedByUserId",
+            to_char(closed_at,'YYYY-MM-DD HH24:MI') AS "closedAt",
+            approved_by_user_id               AS "approvedByUserId",
+            to_char(approved_at,'YYYY-MM-DD HH24:MI') AS "approvedAt"
+       FROM app.day_close
+      WHERE unit_id = $1 AND business_date = $2::date`,
+    [unit, date],
+  );
+  return r[0] ?? null;
+}
+
+/** Riwayat override backdate untuk satu unit+tanggal (§2.3b). */
+export interface OverrideRow {
+  id: string;
+  reasonCode: string;
+  alasan: string;
+  requestedBy: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  consumedAt: string | null;
+  void: boolean;
+}
+
+export async function getBackdateOverride(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<OverrideRow[]> {
+  return qScoped<OverrideRow>(
+    unit,
+    `SELECT o.id::text                            AS id,
+            o.reason_code                         AS "reasonCode",
+            o.alasan,
+            ru.email                              AS "requestedBy",
+            au.email                              AS "approvedBy",
+            to_char(o.approved_at,'YYYY-MM-DD HH24:MI') AS "approvedAt",
+            to_char(o.consumed_at,'YYYY-MM-DD HH24:MI') AS "consumedAt",
+            o.void
+       FROM app.backdate_override o
+       LEFT JOIN app.users ru ON ru.id = o.requested_by_user_id
+       LEFT JOIN app.users au ON au.id = o.approved_by_user_id
+      WHERE o.unit_id = $1 AND o.business_date = $2::date
+      ORDER BY o.created_at DESC`,
+    [unit, date],
+  );
+}
+
+/** Kelengkapan input empat blok Layar 3 — angka, bukan kesan. */
+export interface KelengkapanInput {
+  hargaBeliLengkap: boolean;
+  produkTanpaHarga: number;
+  adaAkunKas: boolean;
+  settlementBelumCair: number;
+  biayaMenungguTinjauan: number;
+}
+
+export async function getKelengkapanInput(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<KelengkapanInput> {
+  const [produk, harga, akun, edc, biaya] = await Promise.all([
+    qScoped<{ n: number }>(unit, `SELECT count(*)::int AS n FROM product WHERE unit_id = $1`, [unit]),
+    qScoped<{ n: number }>(
+      unit,
+      `SELECT count(DISTINCT product_key)::int AS n
+         FROM app.purchase_price
+        WHERE unit_id = $1 AND NOT void AND effective_from <= $2::date`,
+      [unit, date],
+    ),
+    qScoped<{ n: number }>(unit, `SELECT count(*)::int AS n FROM app.cash_account WHERE unit_id = $1`, [unit]),
+    qScoped<{ n: number }>(
+      unit,
+      `SELECT count(*)::int AS n FROM app.edc_settlement
+        WHERE unit_id = $1 AND business_date = $2::date AND NOT void AND posted_at IS NULL`,
+      [unit, date],
+    ),
+    qScoped<{ n: number }>(
+      unit,
+      `SELECT count(*)::int AS n FROM app.manual_entry
+        WHERE unit_id = $1 AND business_date = $2::date AND NOT void
+          AND section IN ('pengeluaran','pendapatan_lain') AND status = 'submitted'`,
+      [unit, date],
+    ),
+  ]);
+  const nProduk = produk[0]?.n ?? 0;
+  const nHarga = harga[0]?.n ?? 0;
+  return {
+    hargaBeliLengkap: nProduk > 0 && nHarga >= nProduk,
+    produkTanpaHarga: Math.max(0, nProduk - nHarga),
+    adaAkunKas: (akun[0]?.n ?? 0) > 0,
+    settlementBelumCair: edc[0]?.n ?? 0,
+    biayaMenungguTinjauan: biaya[0]?.n ?? 0,
+  };
+}
