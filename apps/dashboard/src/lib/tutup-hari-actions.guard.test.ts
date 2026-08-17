@@ -95,3 +95,83 @@ describe("tutup-hari-actions — penjagaan yang tak boleh hilang", () => {
     expect(PANEL).toMatch(/kumulatif belum tersedia|kumulatif/);
   });
 });
+
+describe("§10.15 — baris day_close lahir saat halaman dibuka", () => {
+  it("penjaga ini punya SUBJEK", () => {
+    expect(KODE).toMatch(/export async function pastikanBarisDayClose/);
+    expect(HAL).toMatch(/await pastikanBarisDayClose\(/);
+  });
+
+  it("🔴 BARIS TERTUTUP TIDAK PERNAH DISENTUH", () => {
+    // `WHERE app.day_close.status = 'open'` pada ON CONFLICT bukan optimasi;
+    // ia yang mencegah hitung ulang menulis ulang sejarah. Selisih yang sudah
+    // disetujui seseorang tak boleh berubah tanpa ia tahu.
+    const ins = KODE.slice(KODE.indexOf("INSERT INTO app.day_close"));
+    expect(ins).toMatch(/ON CONFLICT \(unit_id, business_date\) DO UPDATE/);
+    expect(ins).toMatch(/WHERE app\.day_close\.status = 'open'/);
+  });
+
+  it("🔴 langkah null ⇒ TIDAK menulis apa pun — nol bukan 'belum terhitung'", () => {
+    const fn = KODE.slice(
+      KODE.indexOf("export async function pastikanBarisDayClose"),
+      KODE.indexOf("const client = await pool.connect()", KODE.indexOf("pastikanBarisDayClose")),
+    );
+    expect(fn).toMatch(/if \(langkahHarian === null\) return;/);
+  });
+
+  it("tier ditulis dari tierFor, bukan dari nilai bebas", () => {
+    expect(KODE).toMatch(/const tier = tierFor\(langkahHarian\)/);
+  });
+
+  it("kegagalan pembuatan baris TIDAK menjatuhkan halaman", () => {
+    // Gerbangnya masih bisa dibaca, dan `tutupHari` menolak sendiri bila
+    // barisnya tak ada — jadi gagal di sini tak boleh jadi layar error.
+    const fn = KODE.slice(KODE.indexOf("export async function pastikanBarisDayClose"));
+    expect(fn).toMatch(/catch \{/);
+    expect(fn).not.toMatch(/throw /);
+  });
+});
+
+describe("§10.16 — Cash Flow Check TIDAK memblokir penutupan", () => {
+  it("🔴 aturan penutupan tidak menyebut cash flow sama sekali", async () => {
+    // Diuji pada ATURANNYA, bukan pada layarnya: kalau kelak ia disambungkan
+    // diam-diam, baris ini merah sebelum ada yang melihat layarnya.
+    const aturan = readFileSync(resolve(__dirname, "keuangan-tutup-hari.ts"), "utf8");
+    const kode = aturan
+      .split("\n")
+      .filter((l) => {
+        const t = l.trim();
+        return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+      })
+      .join("\n");
+    expect(kode).not.toMatch(/cashFlow|CashFlow|arus/i);
+  });
+
+  it("🔴 PERILAKU: cash flow check bukan-nol tidak menghalangi penutupan", async () => {
+    // Uji perilaku, bukan teks — tiga putaran terakhir menunjukkan penjaga teks
+    // kalah oleh sintaks alternatif.
+    const { periksaTutupHari } = await import("./keuangan-tutup-hari");
+    const hasil = periksaTutupHari(
+      { differenceRp: 0, reasonCode: null, reasonRequiresTarget: null, targetDate: null },
+      { role: "keuangan", email: null },
+      { sudahDisetujui: false },
+    );
+    // Tak ada parameter cash flow sama sekali di kontraknya — dan hasilnya
+    // BOLEH meski arusnya (di layar) sedang tidak nol.
+    expect(hasil.boleh).toBe(true);
+  });
+
+  it("aksi tutup hari tidak membaca cash flow", () => {
+    expect(KODE).not.toMatch(/cashFlow/i);
+  });
+
+  it("syarat yang MEMBANGUNKANNYA tertulis — 'nanti' punya bentuk", () => {
+    // Spasi diratakan lebih dulu: kalimat dokumen dibungkus baris, dan asersi
+    // yang tak meratakannya akan merah karena PEMBUNGKUSAN, bukan karena isinya
+    // hilang — penjaga yang merah karena sebab yang salah sama tak bergunanya
+    // dengan penjaga yang hijau karena sebab yang salah.
+    const doc = readFileSync(resolve(__dirname, "../../KEUANGAN-HARIAN.md"), "utf8").replace(/\s+/g, " ");
+    expect(doc).toMatch(/SYARAT YANG MEMBANGUNKANNYA/);
+    expect(doc).toMatch(/konsisten nol selama sekian minggu berjalan/);
+  });
+});

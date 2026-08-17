@@ -1186,6 +1186,72 @@ menutup pada tingkat itu.
 **tak seorang pun bisa menutup hari** kecuali `super_admin`. Itu benar — gerbang
 tanpa penjaga lebih baik ditutup daripada dibuka untuk semua.
 
+### 10.15 K2 · Baris `day_close` lahir SAAT HALAMAN DIBUKA (17 Agustus 2026)
+
+**Keputusan owner.** Bukan job harian; dihitung dari data yang ada pada saat itu
+juga.
+
+**Alasannya:** tak ada komponen tambahan yang bisa **mati diam-diam** — dan repo
+ini punya sejarahnya (agent Bakau mati 34 jam, dan `freshness.ts` yang
+mendeteksinya tetapi tak memberi tahu siapa pun). Angkanya juga selalu segar
+alih-alih hasil hitungan semalam.
+
+#### Aturan hitung-ulang
+
+| keadaan baris | hitung ulang saat dibuka |
+|---|---|
+| belum ada | **dibuat** |
+| ada, `status='open'` | **boleh menimpa** nilainya |
+| ada, `status='closed'` | ⛔ **TIDAK PERNAH** |
+
+Baris tertutup itu **beku**. Hitung ulang yang menyentuhnya akan menulis ulang
+sejarah: selisih yang sudah disetujui seseorang berubah tanpa ia tahu, dan
+persetujuannya jadi menempel pada angka yang bukan yang ia setujui.
+
+#### ⚠️ BATAS YANG DISENGAJA — hari yang tak pernah dibuka tak punya jejak
+
+Konsekuensi langsung dari "lahir saat dibuka": **hari yang tak pernah dibuka
+tidak punya baris sama sekali**, jadi tidak ada apa pun yang menyatakan ia belum
+ditutup. Ketiadaan bukti bukan bukti ketiadaan.
+
+**Karena itu, bagi Layar 1 (papan direksi):** "hari yang terlewat" harus
+diturunkan dari **KETIADAAN BARIS**, bukan dari kolom `status`. Menanyakan
+`WHERE status = 'open'` hanya akan menemukan hari yang **pernah dibuka lalu
+ditinggalkan** — dan justru melewatkan hari yang tak pernah disentuh sama
+sekali, yaitu kasus yang paling perlu terlihat.
+
+Ditulis di sini **sebelum** Layar 1 dibangun, supaya ia tidak ditemukan sebagai
+kejutan.
+
+**Ongkos yang diterima:** menulis saat render halaman adalah efek samping pada
+permintaan BACA — tak lazim, dan disebut apa adanya. Ditukar dengan hilangnya
+satu komponen yang bisa mati tanpa suara.
+
+### 10.16 K2 · `Cash Flow Check` TIDAK memblokir penutupan (17 Agustus 2026)
+
+**Keputusan owner.** Ia tetap **terlihat** sebagai salah satu dari tiga syarat di
+Layar 4, tetapi **tidak menahan** penutupan.
+
+**Alasannya:** di masa awal, buku kas masih diisi manual — jadi selisih arus akan
+sering muncul karena **pencatatan belum lengkap**, bukan karena ada yang salah.
+
+> Gerbang yang berbunyi terus-menerus karena sebab yang bukan kesalahan akan
+> diabaikan, dan **gerbang yang diabaikan lebih buruk daripada gerbang yang
+> tidak ada** — sebab ia memberi rasa terjaga tanpa menjaga.
+
+#### ⚠️ SYARAT YANG MEMBANGUNKANNYA — tanpa ini, "nanti" tak pernah tiba
+
+`Cash Flow Check` layak dinaikkan jadi **pemblokir dengan tangganya sendiri**
+begitu pola normalnya terlihat, yaitu: **`CashFlow Check` konsisten nol selama
+sekian minggu berjalan** pada unit yang buku kasnya sudah rutin diisi.
+
+Angka "sekian" sengaja belum dipatok — yang dipatok adalah **bentuk syaratnya**,
+supaya keputusan menaikkannya nanti berupa pengukuran, bukan perasaan.
+
+⛔ Jangan menyambungkannya ke `day_close` sebelum syarat itu terpenuhi **dan**
+owner memutuskan tangganya. Tangga §3.2 dibuat untuk selisih **neraca**, bukan
+untuk selisih **arus**; memakai ulang ambangnya adalah menebak.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:

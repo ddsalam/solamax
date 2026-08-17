@@ -9,6 +9,7 @@ import {
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
 import { panelBalance, panelCashFlow, panelIncome } from "@/lib/keuangan-laporan-model";
 import { bolehMenutup, tierFor } from "@/lib/keuangan-tutup-hari";
+import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { qScoped } from "@/lib/db";
 import { getDataScope } from "@/lib/scope";
@@ -41,8 +42,31 @@ export default async function TutupHariPage({
     .toISOString()
     .slice(0, 10);
 
+  const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
+  const bsAwal = panelBalance({
+    cashOnHand: bahanAwal.kasAkhir,
+    inventoryValue: bahanAwal.totals.inventoryValue,
+    soValue: bahanAwal.totals.soValue,
+    piutangEasymax: bahanAwal.piutangEasymax,
+    hutangPiutangNonEasymax: bahanAwal.hutangPiutangNonEasymax,
+    openedRetainedEarnings: null,
+    netIncome:
+      panelIncome({
+        totals: bahanAwal.totals,
+        beban: bahanAwal.beban,
+        pendapatanLain: bahanAwal.pendapatanLain,
+        incomeAdjustment: null,
+      }).baris.find((x) => x.label === "Net profit")!.nilai ?? 0,
+    incomeAdjustment: null,
+    totalAssetKemarin: bahanAwal.totalAssetKemarin,
+    deltaKontribusi: null,
+  });
+  // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
+  // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
+  await pastikanBarisDayClose(unit.unit_id, date, bsAwal.langkahHarian);
+
   const [bahan, dayClose, overrides, kelengkapan, reasonCodes] = await Promise.all([
-    getBahanLaporan(unit.unit_id, date, kemarin),
+    Promise.resolve(bahanAwal),
     getDayClose(unit.unit_id, date),
     getBackdateOverride(unit.unit_id, date),
     getKelengkapanInput(unit.unit_id, date),
