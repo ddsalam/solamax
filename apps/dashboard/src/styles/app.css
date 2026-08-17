@@ -1306,3 +1306,13 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 /* Baris tangga yang berlaku hari ini — penanda, bukan sekadar warna. */
 .tangga-aktif { background: var(--accent-50); }
 @media (max-width: 1080px) { .tutup3 { grid-template-columns: 1fr; } }
+
+/* Layar 1 — papan keuangan grup. Pemeriksa neraca duduk di kolom KEDUA, sebelum
+   laba: urutan kolom mengikuti pertanyaan yang papan ini jawab. */
+.cols-papan { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1.2fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }
+.tbl-scroll .cols-papan { min-width: 1000px; }
+.keu-chip.status-belum_pernah_dibuka { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+.keu-chip.status-belum_ditutup { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.keu-chip.status-ditutup_eksepsi { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.keu-chip.status-ditutup_normal { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success-border); }
+.cols-papan .keu-p { display: block; margin-top: 4px; font-size: 15px; }

@@ -82,6 +82,12 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
         // dan menu yang menjanjikan halaman kosong lebih buruk daripada menu
         // yang belum menyebutnya.
         {
+          href: "/keuangan",
+          label: "Papan keuangan",
+          icon: "chart",
+          match: (p) => p === "/keuangan",
+        },
+        {
           href: unitCode ? `/keuangan/unit/${unitCode}/${date}` : null,
           label: "Laporan harian",
           icon: "report",
