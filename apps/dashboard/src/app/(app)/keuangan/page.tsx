@@ -12,7 +12,7 @@ import {
   urutkanPapan,
   type BarisUnit,
 } from "@/lib/keuangan-papan-model";
-import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
+import { canInputKeuangan, canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { getDataScope, type ScopedUnit } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -27,11 +27,27 @@ export const dynamic = "force-dynamic";
  * melainkan angka.
  *
  * ⚠️ **ONGKOS YANG DIBATASI DENGAN SENGAJA.** Menyusun laporan penuh untuk
- * setiap unit mahal (≈16 kueri per unit). Papan ini hanya menyusunnya untuk unit
- * yang **termodelkan** — yang punya daftar rekening kas. Hari ini itu satu unit;
- * enam lainnya tampil sebagai keadaan kosong yang menyebut apa yang belum ada
- * dan siapa yang mengisinya. Batas itu bukan penghematan diam-diam: ia
- * tertulis di layarnya.
+ * setiap unit mahal. Papan ini hanya menyusunnya untuk unit yang
+ * **termodelkan** — yang punya daftar rekening kas. Batas itu bukan penghematan
+ * diam-diam: ia tertulis di sini.
+ *
+ * 📌 **DIUKUR 18 Agu 2026, bukan ditaksir** — dan taksiran lama SALAH:
+ *
+ * | besaran | ditulis semula | TERUKUR |
+ * |---|---|---|
+ * | kueri per unit termodelkan | ≈16 | **22** |
+ * | tujuh unit | ≈112 | **154** |
+ *
+ * Wall-clock (tier pengujian, **tabel kosong** — jadi ini **BATAS BAWAH**, bukan
+ * ongkos sebenarnya): 1 unit **294 ms**, 7 unit paralel **847 ms**, rasio
+ * **2,88×** pada `pool.max = 10`. Rasio yang jauh di bawah 7 menunjukkan
+ * antreannya belum jenuh pada beban itu.
+ *
+ * ⛔ Yang **belum** terukur, dan disebut apa adanya: tier pengujian tak punya
+ * satu pun baris `sales_header`/`cash_ledger`, sehingga suku yang dominan di
+ * produksi — `getDailyGlByProduct` dan `getSaldoPelanggan` atas data EasyMax
+ * nyata — **tidak ikut terukur di sini**. Angka di atas membatasi dari bawah;
+ * ia tidak membuktikan papan tetap cepat di produksi.
  */
 export default async function PapanKeuanganPage({
   searchParams,
@@ -40,6 +56,8 @@ export default async function PapanKeuanganPage({
 }) {
   const scope = await getDataScope();
   if (!canViewLaporanKeuangan({ role: scope.role, email: scope.email })) notFound();
+  // Keadaan kosong menyebut pekerjaannya; tautannya hanya bagi yang bisa mengerjakannya.
+  const bolehDaftar = canInputKeuangan({ role: scope.role, email: scope.email });
 
   const sp = await searchParams;
   const seleksi = getSelection(scope.units);
@@ -145,7 +163,12 @@ export default async function PapanKeuanganPage({
             </span>
             <span className="fs16">
               <span className={`keu-chip status-${b.status}`}>{LABEL_STATUS[b.status]}</span>
-              <span className="fs16 t-tertiary keu-p">{PENJELASAN_STATUS[b.status]}</span>
+              <span className="fs16 t-tertiary keu-p">
+                {PENJELASAN_STATUS[b.status]}{" "}
+                {b.status === "belum_dimodelkan" && bolehDaftar && (
+                  <a href={`/keuangan/unit/${b.code}/akun-kas`}>Daftarkan rekeningnya.</a>
+                )}
+              </span>
             </span>
             <span className="right num t-secondary">
               {b.labaBersih === null ? <span className="t-tertiary">—</span> : rp(b.labaBersih)}

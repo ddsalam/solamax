@@ -1327,3 +1327,8 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .keu-chip.keadaan-belum { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
 .keu-chip.keadaan-batas_diketahui { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
 .cols-sumber .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+
+/* Kelola akun kas (§10.18). Tak ada kolom "hapus" — DELETE tak diberikan. */
+.cols-akun { grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 2fr) minmax(0, 1.6fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }
+.tbl-scroll .cols-akun { min-width: 980px; }
+.cols-akun .keu-p { display: block; margin-top: 4px; font-size: 15px; }

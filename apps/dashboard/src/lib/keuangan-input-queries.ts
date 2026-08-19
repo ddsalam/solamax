@@ -1,6 +1,7 @@
 import { qScoped } from "./db";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
+import type { AkunKasRow } from "./keuangan-akun-model";
 import type { BarisBiaya } from "./keuangan-biaya-model";
 import type { Settlement } from "./keuangan-edc";
 import type { MutasiKas } from "./keuangan-kas";
@@ -476,4 +477,39 @@ export async function getKelengkapanInput(
     settlementBelumCair: edc[0]?.n ?? 0,
     biayaMenungguTinjauan: biaya[0]?.n ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Kelola Akun Kas (§10.18)
+// ---------------------------------------------------------------------------
+
+/**
+ * Akun kas unit ini — TERMASUK yang tidak aktif, berikut jumlah mutasi dan
+ * tanggal mutasi terakhirnya.
+ *
+ * Yang tidak aktif ikut ditarik dengan sengaja: layar ini yang mengelolanya,
+ * dan jalur "aktifkan kembali" (§10.18 butir 3) mustahil tanpa melihatnya.
+ * `mutasiTerakhir` yang menghidupkan penanda **dorman** — turunan, bukan kolom.
+ */
+export async function getAkunKasKelola(unit: ScopedUnitId): Promise<AkunKasRow[]> {
+  return qScoped<AkunKasRow>(
+    unit,
+    `SELECT a.id::text                            AS id,
+            a.nama,
+            a.kind::text                          AS kind,
+            a.active,
+            to_char(a.closed_at,'YYYY-MM-DD')     AS "closedAt",
+            COALESCE(m.n, 0)::int                 AS "nMutasi",
+            to_char(m.terakhir,'YYYY-MM-DD')      AS "mutasiTerakhir"
+       FROM app.cash_account a
+       LEFT JOIN (
+         SELECT account_id, count(*) AS n, max(business_date) AS terakhir
+           FROM app.cash_ledger
+          WHERE unit_id = $1 AND NOT void
+          GROUP BY account_id
+       ) m ON m.account_id = a.id
+      WHERE a.unit_id = $1
+      ORDER BY a.active DESC, (a.kind <> 'kas'), a.nama`,
+    [unit],
+  );
 }
