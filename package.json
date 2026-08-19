@@ -12,7 +12,7 @@
     "test": "pnpm -r test",
     "agent": "pnpm --filter @solamax/agent",
     "typecheck": "pnpm -r typecheck",
-    "check": "node scripts/ci/check-sql-syntax.mjs && pnpm -r typecheck && pnpm -r test",
+    "check": "node scripts/ci/check-sql-syntax.mjs && bash scripts/ci/mutasi.selftest.sh && pnpm -r typecheck && pnpm -r test",
     "check:sql": "node scripts/ci/check-sql-syntax.mjs"
   },
   "packageManager": "pnpm@9.12.0",
