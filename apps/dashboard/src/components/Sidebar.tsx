@@ -10,6 +10,23 @@ import { NavIcon, type IconName } from "@/components/NavIcon";
  * berubah jadi drawer off-canvas di mobile (≤768px). Menggantikan empat
  * permukaan nav lama. Menu IDENTIK untuk semua peran — akses ditegakkan di
  * SERVER (admin → notFound non-super; per-unit lewat requireUnit/ScopedUnitId).
+ *
+ * ⚠️ **BATAS kalimat di atas, sejak §10.17 (18 Agu 2026).** "Menu identik untuk
+ * semua peran" sah SELAMA setiap butir menu bisa dibuka semua orang — dan sejak
+ * modul keuangan itu berhenti benar: lima entri Keuangan menjadi tautan yang
+ * selalu 404 bagi `pengawas` (15 dari 21 pengguna produksi). Grup Keuangan
+ * karena itu disembunyikan lewat `bolehLihatKeuangan`.
+ *
+ * Kalimat lamanya sengaja TIDAK dihapus: ia masih berlaku untuk ketiga grup
+ * lainnya, dan kalimat yang hilang tanpa jejak akan ditulis ulang oleh orang
+ * berikutnya lengkap dengan alasan yang sudah kedaluwarsa.
+ *
+ * ⛔ **MENYEMBUNYIKAN MENU BUKAN KONTROL AKSES.** Yang menjaga tetap gerbang di
+ * SERVER, di SETIAP rute (`canViewLaporanKeuangan` → `notFound()`), dan
+ * `gerbang-rute-keuangan.guard.test.ts` yang menemukan daftar rutenya sendiri.
+ * Rute yang hanya "tak tertaut" tetap bisa dibuka dengan mengetik URL-nya.
+ * Siapa pun yang mengira berkas INI cukup akan meninggalkan rute baru tanpa
+ * gerbang.
  */
 
 export type GroupId = "monitoring" | "laporan" | "keuangan" | "direksi";
@@ -26,9 +43,15 @@ interface NavGroup {
   id: GroupId;
   title: string;
   items: NavItem[];
+  /** true = tak dirender sama sekali (§10.17). */
+  sembunyi?: boolean;
 }
 
-function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
+function buildGroups(
+  unitCode: string | undefined,
+  date: string,
+  bolehLihatKeuangan: boolean,
+): NavGroup[] {
   return [
     {
       id: "monitoring",
@@ -76,6 +99,9 @@ function buildGroups(unitCode: string | undefined, date: string): NavGroup[] {
     {
       id: "keuangan",
       title: "Keuangan",
+      // §10.17 — grup ini HILANG bagi yang tak boleh membacanya. Kenyamanan,
+      // bukan keamanan: gerbangnya tetap di server, per rute.
+      sembunyi: !bolehLihatKeuangan,
       items: [
         // HANYA butir yang benar-benar ada. Empat layar keuangan lainnya
         // (papan grup, laporan harian, tutup hari, sumber data) BELUM dibangun,
@@ -144,6 +170,7 @@ export function Sidebar({
   onCloseMobile,
   email,
   roleLabel,
+  bolehLihatKeuangan,
   lastSync,
   lastSyncUnit,
   lastSyncAwal,
@@ -160,6 +187,8 @@ export function Sidebar({
   onCloseMobile: () => void;
   email: string | null;
   roleLabel: string;
+  /** §10.17 — grup Keuangan disembunyikan bila false. Bukan kontrol akses. */
+  bolehLihatKeuangan: boolean;
   lastSync: string | null;
   /** Unit dengan sinkron TERLAMA — disebut namanya, lihat komentar di bawah. */
   lastSyncUnit: string | null;
@@ -172,7 +201,7 @@ export function Sidebar({
   const path = usePathname();
   // unitCode/date sudah diresolusi AppShell via useSelection (URL kanonik) →
   // link sidebar selalu mengikuti unit+tanggal yang tampil di picker.
-  const groups = buildGroups(unitCode, date);
+  const groups = buildGroups(unitCode, date, bolehLihatKeuangan).filter((g) => !g.sembunyi);
 
   const renderItem = (it: NavItem) => {
     if (it.href === null) {

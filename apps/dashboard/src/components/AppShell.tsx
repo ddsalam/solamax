@@ -53,6 +53,7 @@ const DEFAULT_OPEN = Object.fromEntries(GROUP_IDS.map((id) => [id, true])) as Re
 export function AppShell({
   roleLabel,
   email,
+  bolehLihatKeuangan,
   lastSync,
   lastSyncUnit,
   lastSyncAwal,
@@ -65,6 +66,8 @@ export function AppShell({
 }: {
   roleLabel: string;
   email: string | null;
+  /** §10.17 — dihitung di SERVER; sidebar tak pernah menyimpulkannya sendiri. */
+  bolehLihatKeuangan: boolean;
   lastSync: string | null;
   /** Nama unit dengan sinkron TERLAMA (nilai lastSync = MIN lintas scope). */
   lastSyncUnit: string | null;
@@ -198,6 +201,7 @@ export function AppShell({
         lastSyncUnit={lastSyncUnit}
         lastSyncAwal={lastSyncAwal}
         collapsed={collapsed}
+        bolehLihatKeuangan={bolehLihatKeuangan}
         openGroups={openGroups}
         mobileOpen={mobileOpen}
         onToggleCollapse={toggleCollapse}
