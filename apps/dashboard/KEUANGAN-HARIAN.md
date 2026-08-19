@@ -1252,6 +1252,48 @@ supaya keputusan menaikkannya nanti berupa pengukuran, bukan perasaan.
 owner memutuskan tangganya. Tangga §3.2 dibuat untuk selisih **neraca**, bukan
 untuk selisih **arus**; memakai ulang ambangnya adalah menebak.
 
+### 10.17 K2 · Grup menu Keuangan disembunyikan dari yang tak boleh membacanya (18 Agustus 2026)
+
+**Keputusan owner.** Bagi yang tidak lolos `canViewLaporanKeuangan` (§10.13),
+grup menu **Keuangan tidak ditampilkan** di sidebar.
+
+#### ⛔ Yang dibatalkannya, dan kenapa kalimat lamanya tidak dihapus begitu saja
+
+`Sidebar.tsx` menyatakan sejak #158:
+
+> *"Menu IDENTIK untuk semua peran — akses ditegakkan di SERVER."*
+
+Pilihan itu **sah**, dan alasannya bagus: satu bentuk untuk semua berarti lebih
+sedikit yang bisa salah, dan akses tak pernah bergantung pada apa yang
+kebetulan dirender. Ia berlaku **selama setiap butir menu bisa dibuka semua
+orang** — dan sejak modul keuangan, itu berhenti benar.
+
+Lima entri baru (Papan keuangan · Laporan harian · Sumber data · Tutup hari ·
+Input keuangan) terlihat oleh **15 dari 21 pengguna produksi** yang berperan
+pengawas, dan setelah gerbang baca ditutup, kelimanya menjadi **tautan yang
+selalu 404**. Tautan mati mengajari orang mengabaikan menu.
+
+Kalimat lamanya **tidak dihapus** — ia diberi batasnya di tempatnya. Kalimat yang
+hilang tanpa jejak akan ditulis ulang oleh orang berikutnya, lengkap dengan
+alasan yang sudah kedaluwarsa.
+
+#### ⛔ MENYEMBUNYIKAN MENU BUKAN KONTROL AKSES
+
+Ini yang tidak boleh bergeser sedikit pun:
+
+| | |
+|---|---|
+| yang **menjaga** | gerbang di **server**, di **setiap rute** (`canViewLaporanKeuangan` → `notFound()`), dijaga penjaga per-rute yang menemukan daftar rutenya sendiri |
+| yang **dilakukan sidebar** | berhenti menawarkan pintu yang terkunci |
+
+Sidebar adalah **kenyamanan**, bukan lapis keamanan. Rute yang hanya "tak
+tertaut" tetap bisa dibuka dengan mengetik URL-nya, dan siapa pun yang kelak
+mengira sidebar sudah cukup akan meninggalkan rute baru tanpa gerbang.
+
+Karena itu ada tes yang **memerah bila gerbang per-rute hilang**, terpisah dan
+tidak bergantung pada tes sidebar mana pun — dan sebuah tes yang menuntut
+peringatan ini tetap tertulis di kodenya.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:
