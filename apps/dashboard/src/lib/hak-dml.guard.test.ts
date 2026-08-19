@@ -36,6 +36,28 @@ import { describe, expect, it } from "vitest";
  *     dianggap boleh, melainkan **diakui tak diketahui**. Penjaga yang menebak
  *     pada data yang tak dimilikinya akan menuduh kode yang benar, dan tuduhan
  *     palsu adalah cara tercepat sebuah penjaga dimatikan.
+ *
+ * 🔴 **YANG "TAK DIKETAHUI" ITU SUDAH DIHITUNG, DAN ADA EMPAT** (diperiksa
+ *    19 Agu 2026, read-only, di kedua tier):
+ *
+ *      app.membership · app.user_unit · app.users · app.tenant
+ *
+ *    Keempatnya dipakai kode dashboard — `membership` dan `user_unit` bahkan
+ *    di-INSERT/UPDATE/DELETE oleh `/admin` — dan **tak punya satu pun GRANT di
+ *    migrasi mana pun**. Keduanya tetap berfungsi karena haknya dipasang DI LUAR
+ *    migrasi saat deploy B1 (`ALTER DEFAULT PRIVILEGES`, yang justru dirujuk di
+ *    komentar 0007/0015/0017/0021 tanpa pernah dieksekusi oleh migrasi). Artinya
+ *    **himpunan migrasi ini tidak cukup untuk membangun DB yang berfungsi.**
+ *
+ *    Akibat yang sudah terjadi, bukan hipotesis: hak DELETE keempatnya BERBEDA
+ *    antar-tier — produksi punya, tier pengujian TIDAK (kecuali `membership` dan
+ *    `user_unit` yang pernah ditambal tangan di sana). Tier pengujian karenanya
+ *    tidak menguji jalur yang butuh DELETE pada `sessions`/`users`/`tenant`/
+ *    `verification_token`.
+ *
+ *    ⛔ Penjaga ini SENGAJA tidak menambal keempatnya: menambal berarti menulis
+ *    migrasi, dan modul ini hidup di produksi. Yang dicatat di sini adalah
+ *    lubangnya, supaya ia tak ditemukan ulang dari nol.
  */
 
 const MIG = resolve(__dirname, "../../../backend/prisma/migrations");

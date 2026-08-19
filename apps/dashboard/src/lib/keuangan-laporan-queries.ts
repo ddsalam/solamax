@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { ukur } from "./ukur-kueri";
 import { effectiveBuyPrice } from "./harga-beli";
 import { kumpulkanBeban, type BarisBeban } from "./keuangan-beban";
 import { saldoAkun, saldoSemuaAkun } from "./keuangan-kas";
@@ -153,6 +154,19 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
 }
 
 export async function getBahanLaporan(
+  unit: ScopedUnitId,
+  date: string,
+  kemarin: string,
+): Promise<BahanLaporan> {
+  // 📏 DIUKUR DI JALUR NYATA (ukur-kueri.ts): satu baris log per panggilan berisi
+  // jumlah kueri, jumlah round-trip, dan wall-clock — tak ada isi datanya. Papan
+  // membungkus loop-nya dengan `ukur("papan", …)`, jadi angka per-unit dan angka
+  // per-halaman keduanya terbentuk dari pemakaian sesungguhnya, bukan dari beban
+  // tiruan yang ditembakkan ke `solamax-pg`.
+  return ukur("bahan-laporan", () => bahanLaporan(unit, date, kemarin));
+}
+
+async function bahanLaporan(
   unit: ScopedUnitId,
   date: string,
   kemarin: string,
