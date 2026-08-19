@@ -54,7 +54,11 @@ describe("Layar 1 — papan keuangan grup", () => {
   it("batas ongkos itu TERTULIS, bukan penghematan diam-diam", () => {
     const mentah = readFileSync(resolve(__dirname, "../app/(app)/keuangan/page.tsx"), "utf8");
     expect(mentah).toMatch(/ONGKOS YANG DIBATASI DENGAN SENGAJA/);
-    expect(mentah).toMatch(/16 kueri per unit/);
+    // 📌 Angkanya kini TERUKUR, bukan ditaksir — dan taksiran lama (≈16) meleset
+    // 37%. Penjaga menuntut angka terukurnya tetap tertulis, berikut batasnya.
+    expect(mentah).toMatch(/DIUKUR 18 Agu 2026, bukan ditaksir/);
+    expect(mentah).toMatch(/\*\*22\*\*/);
+    expect(mentah).toMatch(/BATAS BAWAH/);
   });
 
   it("🔴 kartu 'seimbang' memakai penyebut YANG SUDAH DIPERIKSA", () => {

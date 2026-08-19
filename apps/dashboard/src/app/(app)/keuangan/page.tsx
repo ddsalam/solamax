@@ -27,11 +27,27 @@ export const dynamic = "force-dynamic";
  * melainkan angka.
  *
  * ⚠️ **ONGKOS YANG DIBATASI DENGAN SENGAJA.** Menyusun laporan penuh untuk
- * setiap unit mahal (≈16 kueri per unit). Papan ini hanya menyusunnya untuk unit
- * yang **termodelkan** — yang punya daftar rekening kas. Hari ini itu satu unit;
- * enam lainnya tampil sebagai keadaan kosong yang menyebut apa yang belum ada
- * dan siapa yang mengisinya. Batas itu bukan penghematan diam-diam: ia
- * tertulis di layarnya.
+ * setiap unit mahal. Papan ini hanya menyusunnya untuk unit yang
+ * **termodelkan** — yang punya daftar rekening kas. Batas itu bukan penghematan
+ * diam-diam: ia tertulis di sini.
+ *
+ * 📌 **DIUKUR 18 Agu 2026, bukan ditaksir** — dan taksiran lama SALAH:
+ *
+ * | besaran | ditulis semula | TERUKUR |
+ * |---|---|---|
+ * | kueri per unit termodelkan | ≈16 | **22** |
+ * | tujuh unit | ≈112 | **154** |
+ *
+ * Wall-clock (tier pengujian, **tabel kosong** — jadi ini **BATAS BAWAH**, bukan
+ * ongkos sebenarnya): 1 unit **294 ms**, 7 unit paralel **847 ms**, rasio
+ * **2,88×** pada `pool.max = 10`. Rasio yang jauh di bawah 7 menunjukkan
+ * antreannya belum jenuh pada beban itu.
+ *
+ * ⛔ Yang **belum** terukur, dan disebut apa adanya: tier pengujian tak punya
+ * satu pun baris `sales_header`/`cash_ledger`, sehingga suku yang dominan di
+ * produksi — `getDailyGlByProduct` dan `getSaldoPelanggan` atas data EasyMax
+ * nyata — **tidak ikut terukur di sini**. Angka di atas membatasi dari bawah;
+ * ia tidak membuktikan papan tetap cepat di produksi.
  */
 export default async function PapanKeuanganPage({
   searchParams,
