@@ -1294,6 +1294,105 @@ Karena itu ada tes yang **memerah bila gerbang per-rute hilang**, terpisah dan
 tidak bergantung pada tes sidebar mana pun — dan sebuah tes yang menuntut
 peringatan ini tetap tertulis di kodenya.
 
+### 10.18 K2 · Kelola Akun Kas — rekening dorman TETAP aktif (18 Agustus 2026)
+
+**Keputusan owner**, ditulis sebelum dipakai. (Diberi nomor 10.18, bukan 10.17
+seperti disebut relay — §10.17 sudah dipakai keputusan sidebar.)
+
+#### 🔴 KOREKSI lebih dulu: `active` dan `closed_at` DILAS, bukan dipasangkan
+
+Saya sendiri pernah menulis bahwa keduanya "punya CHECK berpasangan", dan itu
+menyesatkan ke arah yang salah. Yang sebenarnya ditegakkan
+[`0029:72`](../../apps/backend/prisma/migrations/0029_cash_ledger/migration.sql):
+
+```sql
+CONSTRAINT "cash_account_closed_pair" CHECK ("active" = ("closed_at" IS NULL))
+```
+
+`active` benar **jika dan hanya jika** `closed_at` NULL. Konsekuensinya:
+
+> ⛔ **Tidak ada keadaan "nonaktif tetapi belum ditutup".** Menonaktifkan sebuah
+> rekening **MEWAJIBKAN** tanggal tutup. Skema menolak baris yang mengaku
+> berhenti dipakai tanpa mengaku ditutup.
+
+Jadi "nonaktif = kami tak memposting ke sini" dan "`closed_at` = bank
+mengonfirmasi tutup" **bukan dua fakta terpisah** di skema ini. Siapa pun yang
+merancang form dengan dua kendali terpisah akan menemukannya gagal di DB — dan
+gagalnya baru terlihat saat orang pertama mencoba menonaktifkan rekening.
+
+#### Keputusan: empat rekening dorman Bakau TETAP `active = true`
+
+Mereka tidak dinonaktifkan sekarang. Ditutup **sekaligus, dengan tanggal yang
+benar**, setelah rekonsiliasi saldo ke rekening koran (pekerjaan #3 paket
+serah-terima) selesai.
+
+Tanpa migrasi, tanpa mendefinisikan ulang `closed_at`, dan **tanpa mengaku tahu
+sesuatu yang belum diketahui** — menonaktifkan hari ini memaksa mengarang
+tanggal tutup, dan tanggal karangan di kolom yang artinya "bank mengonfirmasi"
+adalah kebohongan yang akan dibaca sebagai fakta bertahun-tahun kemudian.
+
+⚠️ **Ongkos yang diterima sadar:** keempatnya terus muncul sebagai pilihan saat
+tim keuangan menginput mutasi, dan itu mengundang salah pilih.
+
+#### Peredamnya: penanda "dorman" adalah TURUNAN, bukan keadaan baru
+
+Pemilih akun menandai rekening yang **tanggal mutasi terakhirnya** sudah lama
+sebagai *dorman*. Diturunkan, bukan disimpan:
+
+- tak ada kolom baru, tak ada migrasi, tak ada keadaan yang bisa basi;
+- **begitu rekeningnya dipakai lagi, tandanya hilang sendiri** — tak ada yang
+  perlu mengingat untuk mencabutnya.
+
+Keadaan yang disimpan butuh seseorang mengubahnya; turunan tidak.
+
+#### Wewenang — asimetris, dan asimetrinya disengaja
+
+| tindakan | siapa | **kenapa** |
+|---|---|---|
+| Lihat | `canViewLaporanKeuangan` | sama dengan layar keuangan lain |
+| Tambah · Ubah nama | `canInputKeuangan` | akun baru **TERLIHAT** — ia muncul sebagai baris baru di papan, jadi kesalahannya menampakkan diri |
+| **Nonaktifkan** | **Head of Finance** | **menghilangkan akun adalah cara membuat saldo hilang dari pandangan** — dan yang menghilang tidak menampakkan diri |
+
+⛔ **Jangan "merapikan" ini jadi satu predikat.** Bedanya bukan kerapian: satu
+tindakan menambah sesuatu yang terlihat, satu lagi mengurangi sesuatu sehingga
+berhenti terlihat. Menyatukannya menghapus alasan keduanya dibedakan.
+
+Karena `canInputKeuangan` fail-closed dan sudah mengecualikan HoF (§10.12),
+**HoF tidak bisa menambah akun**. Itu memang bentuknya: ia menyetujui, bukan
+mengetik.
+
+#### Tiga batas skema yang mengikat bentuk layarnya
+
+1. **Tak ada tombol Hapus.** `dashboard_app` hanya punya `SELECT, INSERT,
+   UPDATE`; `DELETE` di-REVOKE ([`0029:200`](../../apps/backend/prisma/migrations/0029_cash_ledger/migration.sql)).
+   Memanggilnya jatuh **`42501` saat dijalankan** — parser sempurna, `tsc` buta,
+   uji unit tak menyentuh DB. Yang dibangun: **Ubah nama** (menyembuhkan salah
+   ketik, kebutuhan yang sebenarnya) dan **Nonaktifkan**.
+2. **Ubah nama AMAN secara referensial** — FK dari `cash_ledger` menunjuk
+   `(id, unit_id)`, bukan nama. ⚠️ Tetapi **laporan lama akan menyebut nama
+   BARU untuk mutasi lama**; nama bukan riwayat. Ditulis di sini supaya tidak
+   ditemukan sebagai kejutan.
+3. **Jebakan reaktivasi.** `cash_account_nama_uq` pada `(unit_id, nama)`
+   **bukan indeks parsial** — ia mencakup baris tidak-aktif juga. Menonaktifkan
+   `Bank BCA - 5125036811` lalu menambahkannya lagi **ditolak kunci unik**, dan
+   galatnya terbaca seperti bug. Form **wajib** mendeteksi baris tidak-aktif
+   bernama sama dan menawarkan **mengaktifkan kembali** — yang berarti
+   mengosongkan `closed_at`, sebab CHECK-nya mengelas keduanya.
+
+#### Penamaan ditegakkan di FORM, bukan cuma di dokumen
+
+`nama` bagian dari kunci unik ⇒ ia **identitas**, dan salah tulis itu mahal.
+
+| aturan | alasan |
+|---|---|
+| `Bank <BANK> - <nomor rekening penuh>` untuk `kind = bank` | Bakau punya **dua** rekening BCA; tanpa nomor keduanya tak terbedakan |
+| nama **tidak** memuat nama SPBU | akun sudah terikat unit; "Kas Besar Bakau" merusak perbandingan lintas unit |
+| `Kas Besar` & `EDC Penampungan` **persis sama** di tiap unit | papan grup membandingkan berdasarkan nama |
+
+⛔ **Seed Bakau di 0029 JANGAN dihapus atau dipindahkan.** Tujuh barisnya punya
+mutasi yang menunjuknya; migrasi yang membersihkannya gagal FK — atau lebih
+buruk, **berhasil di rlsstg yang kosong dan gagal di produksi**.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:
