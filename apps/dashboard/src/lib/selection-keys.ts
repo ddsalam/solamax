@@ -24,7 +24,17 @@ const REPORT_ROUTE_RE = /^\/unit\/([^/]+)\/(?:laporan|rincian|usulan)\/(\d{4}-\d
  * basi menang atas URL), dan write-through cookie tak pernah jalan — gejalanya
  * "menu membawa saya ke SPBU yang salah", jauh dari sebabnya.
  */
-const KEUANGAN_ROUTE_RE = /^\/keuangan\/unit\/([^/]+)\/(\d{4}-\d{2}-\d{2})/;
+/**
+ * Tanggalnya bisa di segmen KEDUA (`…/{code}/{date}`, Layar 2 & 3) atau KETIGA
+ * (`…/{code}/tutup-hari/{date}`, Layar 4). Segmen antara sengaja dibiarkan
+ * bebas — bentuk rute keuangan berikutnya tak perlu menyunting regex ini lagi.
+ *
+ * 🔴 Bentuk lama hanya menampung segmen kedua, dan Layar 4 nyaris lolos dengan
+ * `unitFromUrl=false`: nilai jatuh ke cookie, dan tautan sidebar menunjuk SPBU
+ * LAIN. Gejalanya jauh dari sebabnya; tesnya ditulis lebih dulu supaya
+ * kegagalan itu terlihat sebelum diperbaiki.
+ */
+const KEUANGAN_ROUTE_RE = /^\/keuangan\/unit\/([^/]+)\/(?:[^/]+\/)?(\d{4}-\d{2}-\d{2})/;
 const DENAH_ROUTE_RE = /^\/monitoring\/denah\/([^/]+)/;
 
 export interface TopbarSelection {

@@ -14,6 +14,7 @@ const hof: WewenangCtx = { role: "admin_perusahaan", email: "ddsalam@solagroup.c
 const direksi: WewenangCtx = { role: "direksi", email: "dir@solagroup.co" };
 const superadmin: WewenangCtx = { role: "super_admin", email: "sa@solagroup.co" };
 const pengawas: WewenangCtx = { role: "pengawas", email: "peng@solagroup.co" };
+const keuangan: WewenangCtx = { role: "keuangan", email: "fin@solagroup.co" };
 
 describe("tierFor — ambang pada NILAI MUTLAK", () => {
   it("nol dan di dalam toleransi", () => {
@@ -45,8 +46,30 @@ describe("tierFor — ambang pada NILAI MUTLAK", () => {
 });
 
 describe("bolehMenutup — dua predikat, dan bedanya HANYA satu suku", () => {
-  it("dalam toleransi: siapa pun yang berhak menutup", () => {
-    expect(bolehMenutup("within_tolerance", pengawas, HOF)).toBe(true);
+  it("dalam toleransi: FINANCE yang menutup — bukan siapa pun", () => {
+    // 📌 Tes ini DULU berbunyi "siapa pun yang berhak menutup" dan menuntut
+    // `pengawas` LULUS. Ia mengabadikan lubang §10.14: waktu aturan ini ditulis
+    // peran `keuangan` belum ada, jadi tingkat pertama dibiarkan terbuka.
+    // Diperbarui sebagai tindakan sadar, dengan kontrol penolakannya di bawah.
+    expect(bolehMenutup("within_tolerance", keuangan, HOF)).toBe(true);
+    expect(bolehMenutup("within_tolerance", superadmin, HOF)).toBe(true);
+  });
+
+  it("🔴 PENGAWAS tidak bisa menutup hari, bahkan saat selisihnya nol", () => {
+    // Penutupan mengunci `manual_entry` terhadap void (trigger 0024) — pengawas
+    // yang bisa menutup mengunci pekerjaannya sendiri terhadap koreksi, dan tak
+    // satu pun angka akan terlihat salah.
+    for (const t of ["within_tolerance", "exception_hof", "override_direksi"] as const) {
+      expect(bolehMenutup(t, pengawas, HOF), t).toBe(false);
+    }
+  });
+
+  it("direksi menutup tingkat KETIGA tanpa perlu juga jadi Finance", () => {
+    // Tingkatnya alternatif, bukan berlapis — satu-peran-per-orang membuat
+    // "direksi yang juga keuangan" mustahil.
+    expect(bolehMenutup("override_direksi", direksi, HOF)).toBe(true);
+    // …tetapi ia bukan penutup operasional harian.
+    expect(bolehMenutup("within_tolerance", direksi, HOF)).toBe(false);
   });
 
   it("exception_hof: HoF boleh", () => {
@@ -87,12 +110,12 @@ describe("periksaTutupHari — satu tempat yang memutuskan", () => {
   });
 
   it("selisih nol tanpa alasan: boleh ditutup", () => {
-    const r = periksaTutupHari(syarat(), pengawas, { sudahDisetujui: false, daftarHof: HOF });
+    const r = periksaTutupHari(syarat(), keuangan, { sudahDisetujui: false, daftarHof: HOF });
     expect(r).toEqual({ boleh: true, tier: "within_tolerance" });
   });
 
   it("selisih kecil TANPA reason_code ⇒ ditolak (yang kecil pun wajib bersebab)", () => {
-    const r = periksaTutupHari(syarat({ differenceRp: 500 }), pengawas, {
+    const r = periksaTutupHari(syarat({ differenceRp: 500 }), keuangan, {
       sudahDisetujui: false,
       daftarHof: HOF,
     });
@@ -104,7 +127,7 @@ describe("periksaTutupHari — satu tempat yang memutuskan", () => {
   it("selisih kecil DENGAN reason_code ⇒ boleh, dan selisihnya tetap tersimpan", () => {
     const r = periksaTutupHari(
       syarat({ differenceRp: 500, reasonCode: "CLS-ROUND", reasonRequiresTarget: false }),
-      pengawas,
+      keuangan,
       { sudahDisetujui: false, daftarHof: HOF },
     );
     expect(r).toEqual({ boleh: true, tier: "within_tolerance" });
@@ -175,14 +198,14 @@ describe("periksaTutupHari — satu tempat yang memutuskan", () => {
   it("dalam toleransi TIDAK menuntut persetujuan", () => {
     const r = periksaTutupHari(
       syarat({ differenceRp: 1_000, reasonCode: "CLS-ROUND", reasonRequiresTarget: false }),
-      pengawas,
+      keuangan,
       { sudahDisetujui: false, daftarHof: HOF },
     );
     expect(r.boleh).toBe(true);
   });
 
   it("melaporkan SEMUA yang kurang sekaligus, bukan satu per satu", () => {
-    const r = periksaTutupHari(syarat({ differenceRp: 500_000 }), pengawas, {
+    const r = periksaTutupHari(syarat({ differenceRp: 500_000 }), keuangan, {
       sudahDisetujui: false,
       daftarHof: HOF,
     });

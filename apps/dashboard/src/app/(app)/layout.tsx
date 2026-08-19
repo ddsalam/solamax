@@ -10,6 +10,7 @@ import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
 import { ROLE_LABEL } from "@/lib/admin-rules";
+import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,10 @@ export default async function AppShellLayout({
     <>
       <AppShell
         roleLabel={ROLE_LABEL[scope.role]}
+        // §10.17 — predikat yang SAMA dengan gerbang rutenya, dihitung di
+        // server. Sidebar tak pernah menyimpulkannya sendiri; kesimpulan klien
+        // bisa dibuat benar dengan mengubah state di peramban.
+        bolehLihatKeuangan={canViewLaporanKeuangan({ role: scope.role, email: scope.email })}
         email={scope.email}
         lastSync={lastSync}
         lastSyncUnit={lastSyncUnit}

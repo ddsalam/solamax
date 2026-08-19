@@ -1131,6 +1131,169 @@ itu terasa menghambat, yang perlu diubah adalah **keputusan pemisahan tugasnya**
 (§2.6) — bukan predikatnya, dan bukan dengan mengeluarkan orang itu dari daftar
 HoF sekadar agar ia bisa mengetik.
 
+### 10.13 K2 · Laporan keuangan harian TIDAK terbuka untuk pengawas (17 Agustus 2026)
+
+**Keputusan owner.** Ditulis di sini **sebelum dipakai**, mengikuti aturan
+§10.11. Pertanyaannya sudah ditandai di mockup Layar 2 sendiri (*"perlu
+keputusan Anda: apakah laporan ini terbuka untuk pengawas unit"*) dan tak pernah
+terjawab di §2 maupun §10.
+
+```
+canViewLaporanKeuangan = role ∈ {keuangan, direksi, admin_perusahaan, super_admin}
+```
+
+⛔ **`pengawas` tidak termasuk.** Laba, ekuitas, saldo tujuh rekening, gaji
+karyawan, dan kontribusi ke pusat **tidak terlihat oleh pengawas unit** — 15 dari
+21 pengguna produksi berperan pengawas.
+
+**Alasannya sejalan §2:** pengawas memiliki **fakta transaksi**, bukan penyajian
+keuangannya. Ia mengisi apa yang terjadi di SPBU; bagaimana itu menjadi laba dan
+ekuitas adalah pekerjaan Finance.
+
+**Ongkos yang diterima sadar:** pengawas tidak bisa melihat akibat dari angka
+yang ia isi sendiri. Itu kehilangan nyata — umpan balik memperbaiki mutu isian —
+dan kalau kelak terasa menghambat, yang perlu ditinjau adalah **keputusan ini**,
+bukan predikatnya.
+
+⚠️ Ini gerbang **BACA**, terpisah dari gerbang **TULIS** (§2.6). Keduanya ditulis
+berdiri sendiri: seorang `direksi` boleh MEMBACA laporan tetapi tidak boleh
+MENGISI Layar 3, dan itu memang dimaksudkan.
+
+### 10.14 K2 · Penutup operasional = Finance — lubang tier-1 ditutup (17 Agustus 2026)
+
+**Bukan keputusan baru; penambalan.** §3.2 menyebut tingkat pertama tangga
+(`≤ Rp 10.000`) sebagai *"penutup operasional"* tanpa pernah menyebut siapa
+orangnya — waktu itu peran `keuangan` belum ada. Tabel tangga di **mockup Layar
+4** (disetujui owner, kini versi-terkendali di
+[`design/keuangan-modul/`](design/keuangan-modul/)) menyebutnya: **Finance**.
+
+🔴 **Akibat lubang itu:** `bolehMenutup("within_tolerance", …)` mengembalikan
+`true` untuk **siapa pun**, termasuk `pengawas`. Seorang pengawas yang membuka
+Layar 4 bisa **menutup hari** — dan penutupan mengunci `manual_entry`-nya
+sendiri terhadap void (trigger 0024). Ia mengunci pekerjaannya sendiri terhadap
+koreksi, dan tak ada satu pun angka yang akan terlihat salah.
+
+```
+bolehMenutupOperasional = role ∈ {keuangan, super_admin}
+```
+
+**Tingkatnya ALTERNATIF, bukan berlapis.** Direksi yang meng-override tingkat
+ketiga tidak perlu juga jadi Finance — satu-peran-per-orang membuat itu
+mustahil. Yang berlaku: tiap tingkat menyebut siapa, dan orang itulah yang
+menutup pada tingkat itu.
+
+⚠️ **Konsekuensi yang disebut:** selama belum ada pemegang peran `keuangan`,
+**tak seorang pun bisa menutup hari** kecuali `super_admin`. Itu benar — gerbang
+tanpa penjaga lebih baik ditutup daripada dibuka untuk semua.
+
+### 10.15 K2 · Baris `day_close` lahir SAAT HALAMAN DIBUKA (17 Agustus 2026)
+
+**Keputusan owner.** Bukan job harian; dihitung dari data yang ada pada saat itu
+juga.
+
+**Alasannya:** tak ada komponen tambahan yang bisa **mati diam-diam** — dan repo
+ini punya sejarahnya (agent Bakau mati 34 jam, dan `freshness.ts` yang
+mendeteksinya tetapi tak memberi tahu siapa pun). Angkanya juga selalu segar
+alih-alih hasil hitungan semalam.
+
+#### Aturan hitung-ulang
+
+| keadaan baris | hitung ulang saat dibuka |
+|---|---|
+| belum ada | **dibuat** |
+| ada, `status='open'` | **boleh menimpa** nilainya |
+| ada, `status='closed'` | ⛔ **TIDAK PERNAH** |
+
+Baris tertutup itu **beku**. Hitung ulang yang menyentuhnya akan menulis ulang
+sejarah: selisih yang sudah disetujui seseorang berubah tanpa ia tahu, dan
+persetujuannya jadi menempel pada angka yang bukan yang ia setujui.
+
+#### ⚠️ BATAS YANG DISENGAJA — hari yang tak pernah dibuka tak punya jejak
+
+Konsekuensi langsung dari "lahir saat dibuka": **hari yang tak pernah dibuka
+tidak punya baris sama sekali**, jadi tidak ada apa pun yang menyatakan ia belum
+ditutup. Ketiadaan bukti bukan bukti ketiadaan.
+
+**Karena itu, bagi Layar 1 (papan direksi):** "hari yang terlewat" harus
+diturunkan dari **KETIADAAN BARIS**, bukan dari kolom `status`. Menanyakan
+`WHERE status = 'open'` hanya akan menemukan hari yang **pernah dibuka lalu
+ditinggalkan** — dan justru melewatkan hari yang tak pernah disentuh sama
+sekali, yaitu kasus yang paling perlu terlihat.
+
+Ditulis di sini **sebelum** Layar 1 dibangun, supaya ia tidak ditemukan sebagai
+kejutan.
+
+**Ongkos yang diterima:** menulis saat render halaman adalah efek samping pada
+permintaan BACA — tak lazim, dan disebut apa adanya. Ditukar dengan hilangnya
+satu komponen yang bisa mati tanpa suara.
+
+### 10.16 K2 · `Cash Flow Check` TIDAK memblokir penutupan (17 Agustus 2026)
+
+**Keputusan owner.** Ia tetap **terlihat** sebagai salah satu dari tiga syarat di
+Layar 4, tetapi **tidak menahan** penutupan.
+
+**Alasannya:** di masa awal, buku kas masih diisi manual — jadi selisih arus akan
+sering muncul karena **pencatatan belum lengkap**, bukan karena ada yang salah.
+
+> Gerbang yang berbunyi terus-menerus karena sebab yang bukan kesalahan akan
+> diabaikan, dan **gerbang yang diabaikan lebih buruk daripada gerbang yang
+> tidak ada** — sebab ia memberi rasa terjaga tanpa menjaga.
+
+#### ⚠️ SYARAT YANG MEMBANGUNKANNYA — tanpa ini, "nanti" tak pernah tiba
+
+`Cash Flow Check` layak dinaikkan jadi **pemblokir dengan tangganya sendiri**
+begitu pola normalnya terlihat, yaitu: **`CashFlow Check` konsisten nol selama
+sekian minggu berjalan** pada unit yang buku kasnya sudah rutin diisi.
+
+Angka "sekian" sengaja belum dipatok — yang dipatok adalah **bentuk syaratnya**,
+supaya keputusan menaikkannya nanti berupa pengukuran, bukan perasaan.
+
+⛔ Jangan menyambungkannya ke `day_close` sebelum syarat itu terpenuhi **dan**
+owner memutuskan tangganya. Tangga §3.2 dibuat untuk selisih **neraca**, bukan
+untuk selisih **arus**; memakai ulang ambangnya adalah menebak.
+
+### 10.17 K2 · Grup menu Keuangan disembunyikan dari yang tak boleh membacanya (18 Agustus 2026)
+
+**Keputusan owner.** Bagi yang tidak lolos `canViewLaporanKeuangan` (§10.13),
+grup menu **Keuangan tidak ditampilkan** di sidebar.
+
+#### ⛔ Yang dibatalkannya, dan kenapa kalimat lamanya tidak dihapus begitu saja
+
+`Sidebar.tsx` menyatakan sejak #158:
+
+> *"Menu IDENTIK untuk semua peran — akses ditegakkan di SERVER."*
+
+Pilihan itu **sah**, dan alasannya bagus: satu bentuk untuk semua berarti lebih
+sedikit yang bisa salah, dan akses tak pernah bergantung pada apa yang
+kebetulan dirender. Ia berlaku **selama setiap butir menu bisa dibuka semua
+orang** — dan sejak modul keuangan, itu berhenti benar.
+
+Lima entri baru (Papan keuangan · Laporan harian · Sumber data · Tutup hari ·
+Input keuangan) terlihat oleh **15 dari 21 pengguna produksi** yang berperan
+pengawas, dan setelah gerbang baca ditutup, kelimanya menjadi **tautan yang
+selalu 404**. Tautan mati mengajari orang mengabaikan menu.
+
+Kalimat lamanya **tidak dihapus** — ia diberi batasnya di tempatnya. Kalimat yang
+hilang tanpa jejak akan ditulis ulang oleh orang berikutnya, lengkap dengan
+alasan yang sudah kedaluwarsa.
+
+#### ⛔ MENYEMBUNYIKAN MENU BUKAN KONTROL AKSES
+
+Ini yang tidak boleh bergeser sedikit pun:
+
+| | |
+|---|---|
+| yang **menjaga** | gerbang di **server**, di **setiap rute** (`canViewLaporanKeuangan` → `notFound()`), dijaga penjaga per-rute yang menemukan daftar rutenya sendiri |
+| yang **dilakukan sidebar** | berhenti menawarkan pintu yang terkunci |
+
+Sidebar adalah **kenyamanan**, bukan lapis keamanan. Rute yang hanya "tak
+tertaut" tetap bisa dibuka dengan mengetik URL-nya, dan siapa pun yang kelak
+mengira sidebar sudah cukup akan meninggalkan rute baru tanpa gerbang.
+
+Karena itu ada tes yang **memerah bila gerbang per-rute hilang**, terpisah dan
+tidak bergantung pada tes sidebar mana pun — dan sebuah tes yang menuntut
+peringatan ini tetap tertulis di kodenya.
+
 ### 10.9 Yang BELUM terverifikasi dari keputusan ini
 
 Ditulis supaya tidak dianggap sudah beres:

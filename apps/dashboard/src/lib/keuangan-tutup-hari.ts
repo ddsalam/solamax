@@ -54,7 +54,28 @@ export function tierFor(differenceRp: number): Tier {
 }
 
 /**
+ * Penutup OPERASIONAL — tingkat pertama tangga §3.2 ("Rp 0" dan "s.d. Rp
+ * 10.000": **Finance**, menurut tabel tangga di mockup Layar 4).
+ *
+ * 🔴 **LUBANG YANG DITUTUP DI SINI (17 Agu 2026).** Sampai hari ini
+ * {@link bolehMenutup} mengembalikan `true` untuk tier pertama **bagi siapa
+ * pun** — termasuk `pengawas`. Waktu aturan ini ditulis (K1), peran `keuangan`
+ * belum ada, jadi "penutup operasional" tak punya wujud dan dibiarkan terbuka.
+ * Sejak 0032 ia punya wujud, dan membiarkannya terbuka berarti pengawas bisa
+ * menutup hari — mengunci `manual_entry`-nya sendiri terhadap koreksi.
+ *
+ * `super_admin` ikut, sejalan break-glass §10.11.
+ */
+export function bolehMenutupOperasional(ctx: WewenangCtx): boolean {
+  return ctx.role === "keuangan" || ctx.role === "super_admin";
+}
+
+/**
  * Boleh menutup hari pada tier ini?
+ *
+ * Tiap tingkat menyebut SIAPA, dan tingkatnya adalah **alternatif**, bukan
+ * syarat berlapis: Direksi yang meng-override tingkat ketiga tidak perlu juga
+ * jadi Finance — satu-peran-per-orang membuat itu mustahil.
  *
  * ⛔ Tingkat ketiga memakai {@link canOverrideAboveMax}, **bukan**
  * `canCloseException`. Keduanya hanya beda satu suku (`isHeadOfFinance`), dan
@@ -63,7 +84,7 @@ export function tierFor(differenceRp: number): Tier {
 export function bolehMenutup(tier: Tier, ctx: WewenangCtx, daftarHof?: readonly string[]): boolean {
   switch (tier) {
     case "within_tolerance":
-      return true;
+      return bolehMenutupOperasional(ctx);
     case "exception_hof":
       return canCloseException(ctx, daftarHof);
     case "override_direksi":
