@@ -12,7 +12,7 @@ import {
   urutkanPapan,
   type BarisUnit,
 } from "@/lib/keuangan-papan-model";
-import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
+import { canInputKeuangan, canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { getDataScope, type ScopedUnit } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -40,6 +40,8 @@ export default async function PapanKeuanganPage({
 }) {
   const scope = await getDataScope();
   if (!canViewLaporanKeuangan({ role: scope.role, email: scope.email })) notFound();
+  // Keadaan kosong menyebut pekerjaannya; tautannya hanya bagi yang bisa mengerjakannya.
+  const bolehDaftar = canInputKeuangan({ role: scope.role, email: scope.email });
 
   const sp = await searchParams;
   const seleksi = getSelection(scope.units);
@@ -145,7 +147,12 @@ export default async function PapanKeuanganPage({
             </span>
             <span className="fs16">
               <span className={`keu-chip status-${b.status}`}>{LABEL_STATUS[b.status]}</span>
-              <span className="fs16 t-tertiary keu-p">{PENJELASAN_STATUS[b.status]}</span>
+              <span className="fs16 t-tertiary keu-p">
+                {PENJELASAN_STATUS[b.status]}{" "}
+                {b.status === "belum_dimodelkan" && bolehDaftar && (
+                  <a href={`/keuangan/unit/${b.code}/akun-kas`}>Daftarkan rekeningnya.</a>
+                )}
+              </span>
             </span>
             <span className="right num t-secondary">
               {b.labaBersih === null ? <span className="t-tertiary">—</span> : rp(b.labaBersih)}

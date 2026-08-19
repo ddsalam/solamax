@@ -227,3 +227,24 @@ export function canViewLaporanKeuangan(ctx: WewenangCtx): boolean {
     ctx.role === "super_admin"
   );
 }
+
+/**
+ * Boleh MENONAKTIFKAN akun kas? **Head of Finance saja** (§10.18).
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI, dan asimetrinya terhadap {@link canInputKeuangan}
+ * DISENGAJA — jangan "merapikan" keduanya jadi satu predikat:
+ *
+ *   · **Menambah** akun (`canInputKeuangan`) menambah sesuatu yang **TERLIHAT**:
+ *     ia muncul sebagai baris baru di papan, jadi kesalahannya menampakkan diri.
+ *   · **Menonaktifkan** mengurangi sesuatu sehingga ia **berhenti terlihat** —
+ *     dan menghilangkan akun adalah cara membuat saldo hilang dari pandangan.
+ *     Yang menghilang tidak menampakkan diri.
+ *
+ * Bedanya bukan kerapian; ia alasan keduanya dibedakan. Menyatukannya menghapus
+ * alasan itu tanpa satu pun angka terlihat salah.
+ *
+ * `super_admin` ikut, sejalan break-glass §10.11.
+ */
+export function canNonaktifkanAkunKas(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
