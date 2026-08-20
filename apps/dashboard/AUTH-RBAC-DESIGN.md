@@ -177,6 +177,49 @@ kelola penuh tabel auth/kontrol. Memenuhi: read-only data, read/write hanya auth
 
 ---
 
+## 7. Hak DB tabel autentikasi — keputusan owner 18 Agustus 2026
+
+**Temuan (19 Agustus 2026, read-only, kedua tier).** Tujuh tabel dipakai kode
+tanpa satu pun `GRANT` di migrasi mana pun:
+
+```
+app.users · app.accounts · app.sessions · app.verification_token
+app.membership · app.user_unit · app.tenant
+```
+
+Ketujuhnya jalur autentikasi. Keduanya tetap berfungsi karena haknya dipasang
+**di luar migrasi** saat deploy B1 lewat `ALTER DEFAULT PRIVILEGES` — mekanisme
+yang **dirujuk di komentar migrasi 0004 · 0006 · 0007 tetapi tidak pernah
+dieksekusi oleh migrasi mana pun**. Akibatnya bukan "`/admin` mati di DB yang
+dibangun ulang", melainkan **LOGIN yang mati**: DB dari migrasi murni tak bisa
+memproses siapa pun masuk.
+
+### Keputusan: tulis migrasinya — **GRANT eksplisit saja**
+
+Satu migrasi tanpa perubahan skema, menuliskan hak yang **sudah** dipegang kedua
+DB. Terhadap produksi dan `rlsstg` praktis tanpa efek; nilainya adalah repo
+kembali cukup untuk membangun DB dari nol.
+
+⛔ **BUKAN `ALTER DEFAULT PRIVILEGES`, dan alasannya mengikat.** Default
+privileges memberi hak otomatis pada tabel yang **belum ada** — termasuk tabel
+keuangan berikutnya yang mungkin sengaja lebih ketat. `app.cash_ledger` memang
+sengaja **tanpa `DELETE`** (§ tulis-VOID, bukan hapus); mekanisme yang murah hati
+secara diam-diam akan membatalkan kehati-hatian itu tanpa ada yang menyadarinya.
+Hak per tabel, diturunkan dari pemakaian — bukan `arwd` borongan.
+
+### Batas yang ikut ke mana pun keputusan ini dikutip
+
+1. **Migrasi ini menambah, tidak pernah mencabut.** Produksi hari ini memegang
+   `arwd` pada ketujuhnya dari default privileges tangan itu; migrasi GRANT-saja
+   **tidak** menyempitkannya. Jadi *DB baru* mendapat hak yang diturunkan, tetapi
+   *produksi* tetap lebih longgar dari itu. Menyamakannya = `REVOKE` di DB hidup
+   = keputusan terpisah, gerbang owner.
+2. **Sesudah migrasi ini kedua tier jadi setara pada `DELETE`.** Sebelumnya
+   `sessions`/`users`/`tenant`/`verification_token` punya `DELETE` di produksi
+   tetapi TIDAK di `rlsstg` — artinya sign-out sesi-DB dan pembersihan sesi
+   kedaluwarsa **tak pernah teruji** di tier pengujian. Jalur yang tiba-tiba bisa
+   berjalan adalah jalur yang belum pernah dijalankan.
+
 ## Alur ringkas (request)
 
 ```
