@@ -37,27 +37,25 @@ import { describe, expect, it } from "vitest";
  *     pada data yang tak dimilikinya akan menuduh kode yang benar, dan tuduhan
  *     palsu adalah cara tercepat sebuah penjaga dimatikan.
  *
- * 🔴 **YANG "TAK DIKETAHUI" ITU SUDAH DIHITUNG, DAN ADA EMPAT** (diperiksa
- *    19 Agu 2026, read-only, di kedua tier):
+ * 🔴 **LUBANG YANG PERNAH ADA DI SINI, DAN SUDAH DITUTUP.** Sampai 19 Agu 2026,
+ *    TUJUH tabel dipakai kode tanpa satu pun GRANT di migrasi mana pun:
  *
- *      app.membership · app.user_unit · app.users · app.tenant
+ *      app.users · app.accounts · app.sessions · app.verification_token
+ *      app.membership · app.user_unit · app.tenant
  *
- *    Keempatnya dipakai kode dashboard — `membership` dan `user_unit` bahkan
- *    di-INSERT/UPDATE/DELETE oleh `/admin` — dan **tak punya satu pun GRANT di
- *    migrasi mana pun**. Keduanya tetap berfungsi karena haknya dipasang DI LUAR
- *    migrasi saat deploy B1 (`ALTER DEFAULT PRIVILEGES`, yang justru dirujuk di
- *    komentar 0007/0015/0017/0021 tanpa pernah dieksekusi oleh migrasi). Artinya
- *    **himpunan migrasi ini tidak cukup untuk membangun DB yang berfungsi.**
+ *    Ketujuhnya jalur autentikasi. Haknya dipasang DI LUAR migrasi saat deploy
+ *    B1 (`ALTER DEFAULT PRIVILEGES` — dirujuk di komentar 0004/0006/0007, tak
+ *    pernah dieksekusi). Akibatnya bukan "/admin mati di DB yang dibangun
+ *    ulang", melainkan **LOGIN yang mati**.
  *
- *    Akibat yang sudah terjadi, bukan hipotesis: hak DELETE keempatnya BERBEDA
- *    antar-tier — produksi punya, tier pengujian TIDAK (kecuali `membership` dan
- *    `user_unit` yang pernah ditambal tangan di sana). Tier pengujian karenanya
- *    tidak menguji jalur yang butuh DELETE pada `sessions`/`users`/`tenant`/
- *    `verification_token`.
+ *    Ditutup `0035_grant_auth_tables` (keputusan owner 18 Agu 2026,
+ *    AUTH-RBAC-DESIGN.md §7). Dan karena ketidaktahuan itu kini punya obatnya,
+ *    ia **berhenti jadi pengecualian dan menjadi kegagalan**: tabel yang dipakai
+ *    kode tetapi tak pernah disebut GRANT mana pun MEMERAHKAN penjaga ini.
  *
- *    ⛔ Penjaga ini SENGAJA tidak menambal keempatnya: menambal berarti menulis
- *    migrasi, dan modul ini hidup di produksi. Yang dicatat di sini adalah
- *    lubangnya, supaya ia tak ditemukan ulang dari nol.
+ *    ⚠️ Batas yang tetap: migrasi ini MENAMBAH, tak mencabut. Produksi masih
+ *    memegang `arwd` pada ketujuhnya dari default privileges tangan itu, jadi
+ *    hak yang terbaca penjaga ini adalah hak DB BARU — bukan potret produksi.
  */
 
 const MIG = resolve(__dirname, "../../../backend/prisma/migrations");
@@ -108,12 +106,37 @@ function berkasKode(dir: string): string[] {
 
 /** DML ber-nama-literal ke `app.<tabel>`. */
 const RE_DML = /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"?app"?\."?([a-z_]+)"?/gi;
+/** BACA ber-nama-literal — membaca pun menuntut SELECT. */
+const RE_BACA = /\b(FROM|JOIN)\s+"?app"?\."?([a-z_]+)"?/gi;
 
 function aksiDari(kata: string): Aksi {
   const k = kata.toUpperCase();
   if (k.startsWith("INSERT")) return "INSERT";
   if (k.startsWith("DELETE")) return "DELETE";
   return "UPDATE";
+}
+
+/**
+ * Pelanggaran pada SATU sumber, sebagai fungsi murni — supaya penjaganya bisa
+ * disodori data karangan dan terbukti MEMERAH. Penjaga yang hanya pernah melihat
+ * repo yang sehat tak pernah membuktikan apa pun.
+ */
+export function pelanggaranPada(sumber: string, hak: Map<string, Set<Aksi>>): string[] {
+  const out: string[] = [];
+  for (const m of sumber.matchAll(RE_DML)) {
+    const aksi = aksiDari(m[1]!);
+    const tabel = m[2]!;
+    const punya = hak.get(tabel);
+    if (punya === undefined) out.push(`TANPA GRANT: ${aksi} app.${tabel}`);
+    else if (!punya.has(aksi)) out.push(`${aksi} app.${tabel}`);
+  }
+  for (const m of sumber.matchAll(RE_BACA)) {
+    const tabel = m[2]!;
+    const punya = hak.get(tabel);
+    if (punya === undefined) out.push(`TANPA GRANT: SELECT app.${tabel}`);
+    else if (!punya.has("SELECT")) out.push(`SELECT app.${tabel}`);
+  }
+  return out;
 }
 
 describe("DML dashboard hanya menyentuh tabel app.* yang haknya diberikan", () => {
@@ -132,23 +155,116 @@ describe("DML dashboard hanya menyentuh tabel app.* yang haknya diberikan", () =
     expect(hak.get("audit_log")?.has("UPDATE")).toBe(false);
   });
 
-  it("setiap DML ber-nama-literal punya haknya", () => {
+  it("🔴 setiap PEMAKAIAN app.* punya haknya — tak diketahui = GAGAL, bukan dilewati", () => {
     const langgar: string[] = [];
     for (const f of berkasKode(DASH)) {
-      const src = readFileSync(f, "utf8");
-      for (const m of src.matchAll(RE_DML)) {
-        const aksi = aksiDari(m[1]!);
-        const tabel = m[2]!;
-        const punya = hak.get(tabel);
-        // Tabel yang tak pernah disebut migrasi mana pun: TIDAK DIKETAHUI,
-        // bukan tidak boleh. Lihat batas di kepala berkas.
-        if (punya === undefined) continue;
-        if (!punya.has(aksi)) {
-          langgar.push(`${f.replace(DASH, "src")}: ${aksi} app.${tabel}`);
-        }
+      for (const p of pelanggaranPada(readFileSync(f, "utf8"), hak)) {
+        langgar.push(`${f.replace(DASH, "src")}: ${p}`);
       }
     }
-    expect(langgar, `DML tanpa hak:\n${langgar.join("\n")}`).toEqual([]);
+    expect(
+      langgar,
+      `Pemakaian app.* tanpa hak di migrasi mana pun:\n${langgar.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("penjaga ini MENEMUKAN HIMPUNANNYA SENDIRI, dan himpunannya tak sepele", () => {
+    // Tanpa baris ini, nol pelanggaran bisa berarti "tak ada yang diperiksa".
+    const dipakai = new Set<string>();
+    for (const f of berkasKode(DASH)) {
+      const src = readFileSync(f, "utf8");
+      for (const m of src.matchAll(RE_DML)) dipakai.add(m[2]!);
+      for (const m of src.matchAll(RE_BACA)) dipakai.add(m[2]!);
+    }
+    expect(dipakai.size).toBeGreaterThan(15);
+    // Tabel autentikasi yang DIPAKAI KODE KITA — dulu "tak diketahui", kini wajib.
+    for (const t of ["users", "membership", "user_unit", "tenant"]) {
+      expect(dipakai.has(t), `${t} tak lagi terpakai kode?`).toBe(true);
+      expect(hak.get(t)?.has("SELECT"), `app.${t} tanpa GRANT SELECT di migrasi`).toBe(true);
+    }
+  });
+
+  it("🔴 TABEL YANG SQL-NYA DI node_modules ikut ditemukan — bukan diketik dari ingatan", () => {
+    // ⛔ BATAS PENJAGA MANA PUN YANG MEMINDAI KODE KITA: `sessions`, `accounts`,
+    // dan `verification_token` TIDAK PERNAH muncul sebagai `app.<tabel>` di repo
+    // ini. SQL-nya milik @auth/pg-adapter. Penjaga yang berhenti di batas repo
+    // akan melaporkan "semua aman" atas tiga tabel yang tak pernah ia lihat —
+    // dan justru ketiganya jalur login. Jadi himpunannya diambil dari sumber
+    // adapter yang TERPASANG, bukan dari daftar yang diketik di sini.
+    const kandidat = [
+      resolve(DASH, "../node_modules/@auth/pg-adapter/index.js"),
+      resolve(DASH, "../../../node_modules/@auth/pg-adapter/index.js"),
+    ];
+    const berkas = kandidat.find((k) => existsSync(k));
+    // Adapter tak ketemu = penjaga TANPA SUBJEK. Itu kegagalan, bukan lewat.
+    expect(berkas, `@auth/pg-adapter tak ditemukan di:\n${kandidat.join("\n")}`).toBeDefined();
+    const src = readFileSync(berkas!, "utf8");
+    const ditemukan = new Set<string>();
+    for (const m of src.matchAll(
+      /\b(?:from|into|join|update)\s+"?([a-z_]+)"?\b/gi,
+    )) {
+      const t = m[1]!.toLowerCase();
+      if (hak.has(t) || ["users", "accounts", "sessions", "verification_token"].includes(t)) {
+        ditemukan.add(t);
+      }
+    }
+    // Adapter yang di-upgrade dan menyentuh tabel BARU akan memerahkan baris ini.
+    expect([...ditemukan].sort()).toEqual([
+      "accounts",
+      "sessions",
+      "users",
+      "verification_token",
+    ]);
+    for (const t of ditemukan) {
+      expect(hak.get(t)?.has("SELECT"), `app.${t} tanpa GRANT SELECT di migrasi`).toBe(true);
+    }
+    // Hak yang DITURUNKAN dari adapter (0035), bukan arwd borongan:
+    expect([...(hak.get("sessions") ?? [])].sort()).toEqual([
+      "DELETE",
+      "INSERT",
+      "SELECT",
+      "UPDATE",
+    ]);
+    expect(hak.get("accounts")?.has("UPDATE"), "adapter tak pernah UPDATE accounts").toBe(false);
+    expect(hak.get("verification_token")?.has("UPDATE")).toBe(false);
+    expect(hak.get("user_unit")?.has("UPDATE"), "pola DELETE-lalu-INSERT").toBe(false);
+    expect([...(hak.get("tenant") ?? [])].sort()).toEqual(["SELECT"]);
+  });
+
+  it("🔴 DATANYA BISA MENJATUHKANNYA: tabel karangan & aksi tanpa hak tertangkap", () => {
+    // Tabel yang tak pernah disebut migrasi mana pun.
+    expect(pelanggaranPada(`q(\`INSERT INTO app.tabel_hantu (x) VALUES (1)\`)`, hak)).toEqual([
+      "TANPA GRANT: INSERT app.tabel_hantu",
+    ]);
+    expect(pelanggaranPada(`q(\`SELECT 1 FROM app.tabel_hantu\`)`, hak)).toEqual([
+      "TANPA GRANT: SELECT app.tabel_hantu",
+    ]);
+    // Tabel yang ADA haknya, tetapi bukan aksi itu (cash_ledger sengaja tanpa DELETE).
+    expect(pelanggaranPada(`q(\`DELETE FROM app.cash_ledger\`)`, hak)).toEqual([
+      "DELETE app.cash_ledger",
+    ]);
+    // Kontrol: pemakaian yang SAH tidak menghasilkan apa-apa.
+    expect(pelanggaranPada(`q(\`SELECT 1 FROM app.cash_ledger\`)`, hak)).toEqual([]);
+  });
+
+  it("🔴 0035 adalah GRANT-SAJA — keputusan owner, bukan gaya", () => {
+    // §7 AUTH-RBAC-DESIGN.md: migrasi ini menuliskan hak yang SUDAH dipegang
+    // kedua DB. Satu REVOKE atau satu perubahan skema di sini mengubahnya dari
+    // "praktis tanpa efek di produksi" jadi perubahan pada DB hidup — dan modul
+    // keuangan sudah menyala di sana.
+    const f = join(MIG, "0035_grant_auth_tables", "migration.sql");
+    expect(existsSync(f), "0035 hilang").toBe(true);
+    const sql = readFileSync(f, "utf8")
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("--"))
+      .join("\n");
+    expect(sql).not.toMatch(/\bREVOKE\b/i);
+    expect(sql).not.toMatch(/\b(CREATE|DROP|ALTER)\s+(TABLE|SCHEMA|TYPE|INDEX|POLICY)\b/i);
+    expect(sql).not.toMatch(/\bALTER\s+DEFAULT\s+PRIVILEGES\b/i);
+    expect(sql).not.toMatch(/\bALL\s+TABLES\s+IN\s+SCHEMA\b/i);
+    expect(sql).not.toMatch(/\bALL\s+SEQUENCES\s+IN\s+SCHEMA\b/i);
+    // Dan ia memang berisi GRANT — bukan lulus karena kosong.
+    expect((sql.match(/\bGRANT\b/gi) ?? []).length).toBe(10);
   });
 
   it("batas yang TIDAK dijaga tertulis di berkas ini", () => {
