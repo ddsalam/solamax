@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ukur } from "@/lib/ukur-kueri";
 import { notFound } from "next/navigation";
 import { unitLabel } from "@/lib/config";
 import { getAkunKas, getDayClose } from "@/lib/keuangan-input-queries";
@@ -31,23 +32,39 @@ export const dynamic = "force-dynamic";
  * **termodelkan** — yang punya daftar rekening kas. Batas itu bukan penghematan
  * diam-diam: ia tertulis di sini.
  *
- * 📌 **DIUKUR 18 Agu 2026, bukan ditaksir** — dan taksiran lama SALAH:
+ * 📌 **DIUKUR, bukan ditaksir** — sumbernya `ukur-kueri.ts`, dipasang di jalur
+ * nyata dan bisa dijalankan ulang kapan saja
+ * (`UKUR_LIVE_DB=1 … ukur-kueri.integration.test.ts`). Terukur 19 Agu 2026 di
+ * tier PENGUJIAN:
  *
- * | besaran | ditulis semula | TERUKUR |
- * |---|---|---|
- * | kueri per unit termodelkan | ≈16 | **22** |
- * | tujuh unit | ≈112 | **154** |
+ * | besaran | TERUKUR |
+ * |---|---|
+ * | kueri logis `getBahanLaporan`, per unit termodelkan | **16** |
+ * | round-trip SQL untuk 16 kueri itu | **64** |
+ * | kueri logis satu papan, 3 unit (1 termodelkan) | **19** |
  *
- * Wall-clock (tier pengujian, **tabel kosong** — jadi ini **BATAS BAWAH**, bukan
- * ongkos sebenarnya): 1 unit **294 ms**, 7 unit paralel **847 ms**, rasio
- * **2,88×** pada `pool.max = 10`. Rasio yang jauh di bawah 7 menunjukkan
- * antreannya belum jenuh pada beban itu.
+ * ⛔ **KOREKSI ATAS ANGKA YANG PERNAH DITULIS DI SINI.** Baris ini sebelumnya
+ * menyebut "22 kueri per unit termodelkan" dan menyatakan taksiran lama (≈16)
+ * meleset 37%. **Itu salah, dan arah salahnya terbalik:** 16 adalah angka yang
+ * benar untuk `getBahanLaporan`, sedangkan 22 adalah ongkos SATU PAPAN pada tier
+ * 3-unit (16 + 3× `getAkunKas` + 3× `getDayClose`) yang keliru dibaca sebagai
+ * per-unit. Yang melahirkan kekeliruan itu persis yang kini dijaga: angka tanpa
+ * alat ukur yang bisa dijalankan ulang.
  *
- * ⛔ Yang **belum** terukur, dan disebut apa adanya: tier pengujian tak punya
- * satu pun baris `sales_header`/`cash_ledger`, sehingga suku yang dominan di
- * produksi — `getDailyGlByProduct` dan `getSaldoPelanggan` atas data EasyMax
- * nyata — **tidak ikut terukur di sini**. Angka di atas membatasi dari bawah;
- * ia tidak membuktikan papan tetap cepat di produksi.
+ * 🔑 **Yang benar-benar baru: 64 round-trip untuk 16 kueri.** Tiap `qScoped`
+ * berharga empat (BEGIN · set_config · kueri · COMMIT). Inilah besaran yang
+ * menekan `pool.max = 10`, dan ia tak pernah terlihat selama yang dihitung hanya
+ * "kueri".
+ *
+ * ⛔ Yang **belum** terukur, dan disebut apa adanya:
+ *  · Tier pengujian tak punya satu pun baris `sales_header`/`cash_ledger`,
+ *    sehingga suku dominan di produksi — `getDailyGlByProduct` dan
+ *    `getSaldoPelanggan` atas data EasyMax nyata — tidak ikut terukur.
+ *  · **Wall-clock dari laptop tidak sebanding dengan produksi** dan sengaja
+ *    tidak dikutip di sini: 64 round-trip × RTT laptop→GCP mendominasi
+ *    segalanya. Angka JUMLAH boleh dibawa ke mana saja; angka DURASI hanya sah
+ *    dari log Cloud Run, dan instrumen ini menuliskannya di sana tiap kali papan
+ *    dibuka.
  */
 export default async function PapanKeuanganPage({
   searchParams,
@@ -64,7 +81,12 @@ export default async function PapanKeuanganPage({
   const date = sp.tanggal && DATE_RE.test(sp.tanggal) ? sp.tanggal : seleksi.date;
   const kemarin = new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
-  const baris = await Promise.all(scope.units.map((u) => barisUntukUnit(u, date, kemarin)));
+  // 📏 Skop ukur PAPAN: membungkus seluruh loop, jadi barisnya adalah ongkos
+  // satu halaman utuh — sementara tiap `getBahanLaporan` di dalamnya menulis
+  // barisnya sendiri. Dua angka dari satu pemakaian nyata; tak ada beban tiruan.
+  const baris = await ukur("papan", () =>
+    Promise.all(scope.units.map((u) => barisUntukUnit(u, date, kemarin))),
+  );
   const urut = urutkanPapan(baris);
   const r = ringkasPapan(baris);
 
