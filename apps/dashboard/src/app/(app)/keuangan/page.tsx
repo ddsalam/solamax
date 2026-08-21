@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ukur } from "@/lib/ukur-kueri";
 import { PapanExportMount } from "@/components/keuangan/PapanExportMount";
+import { PapanCsvButton } from "@/components/keuangan/PapanCsvButton";
 import { ptLabelForUnits } from "@/lib/config";
 import { buildReportFilename } from "@/lib/export/filename";
 import { dateShort, timeWib } from "@/lib/format";
@@ -103,6 +104,16 @@ export default async function PapanKeuanganPage({
         <h1 className="text-h3 t-brand">Papan keuangan grup</h1>
         {/* "Cetak ringkasan" (mockup Layar 1). Ekspor terjadi di peramban pada
             halaman yang SUDAH lolos gerbang bacanya — bukan rute baru. */}
+        <PapanCsvButton
+          baris={baris}
+          tanggal={date}
+          filename={buildReportFilename({
+            reportName: "Ringkasan-Keuangan-Grup",
+            scope: ptLabelForUnits(scope.units.map((u) => u.code)),
+            period: date,
+            generated: date,
+          }).replace(/\.pdf$/, ".csv")}
+        />
         <PapanExportMount
           baris={baris}
           kop={{

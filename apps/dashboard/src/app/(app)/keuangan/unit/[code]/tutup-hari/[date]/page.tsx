@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { TutupHariPanel } from "@/components/keuangan/TutupHariPanel";
-import { unitLabel } from "@/lib/config";
+import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { TutupHariExportMount } from "@/components/keuangan/TutupHariExportMount";
+import { buildReportFilename } from "@/lib/export/filename";
+import { dateShort, timeWib } from "@/lib/format";
 import {
   getBackdateOverride,
   getDayClose,
@@ -118,7 +121,31 @@ export default async function TutupHariPage({
 
   return (
     <>
-      <h1 className="text-h3 t-brand">Tutup hari</h1>
+      <div className="section-h">
+        <h1 className="text-h3 t-brand">Tutup hari</h1>
+        {/* §10.20 — mockup tak memintanya; ini keputusan owner 21 Agu 2026.
+            Hari yang BELUM ditutup pun boleh dicetak, dan kertasnya berkata begitu. */}
+        <TutupHariExportMount
+          kop={{
+            ptLabel: ptLabelForUnits([unit.code]),
+            judul: "Lembar penutupan hari",
+            subjudul: `${unit.name} · ${unitLabel(unit.code)} — ${date}`,
+            generatedLabel: `${dateShort(date)} · ${timeWib(new Date().toISOString())}`,
+            dicetakOleh: scope.email ?? "",
+          }}
+          filename={buildReportFilename({
+            reportName: "Lembar-Penutupan-Hari",
+            unitCode: unit.code,
+            period: date,
+            generated: date,
+          })}
+          dayClose={dayClose}
+          langkahHarian={bs.langkahHarian}
+          tier={bs.langkahHarian === null ? null : tierFor(bs.langkahHarian)}
+          overrides={overrides}
+          labelReason={Object.fromEntries(reasonCodes.map((r) => [r.code, r.label]))}
+        />
+      </div>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)} — {date}
       </div>
