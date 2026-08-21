@@ -256,6 +256,20 @@ export function panelBalance(i: BalanceInput): PanelBalance {
 }
 
 /** Nada tampilan angka pemeriksa. Toleransi akuntansi/GL = Rp 0 (§3.1). */
+/**
+ * Caveat "Nilai DO" — SATU sumber untuk layar DAN PDF.
+ *
+ * ⛔ Kata-katanya milik keputusan B7, bukan milik penyaji. Ia disalin ke kertas
+ * apa adanya: berkas yang menghilangkan batasnya membuat pembacanya lebih
+ * percaya diri daripada yang berhak, dan berkas hidup lebih lama dari sesi.
+ *
+ * 📌 Saat penutupan B7 mendarat (session-notes/2026-08-21-b7-sovalue-hasil.md),
+ * kalimat ini yang disunting — satu tempat, bukan dua.
+ */
+export const CATATAN_NILAI_DO =
+  "Nilai DO masih memakai sumbu tanggal yang belum cocok pada 4 dari 10 tanggal uji (B7). " +
+  "Angkanya ditampilkan apa adanya — jangan dipakai sebagai bukti sampai sumbunya diselaraskan.";
+
 export type NadaPemeriksa = "baik" | "buruk" | "tak_terhitung";
 
 export function nadaPemeriksa(nilai: number | null): NadaPemeriksa {
