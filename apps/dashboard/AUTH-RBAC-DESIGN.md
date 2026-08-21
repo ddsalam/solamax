@@ -214,11 +214,19 @@ Hak per tabel, diturunkan dari pemakaian — bukan `arwd` borongan.
    **tidak** menyempitkannya. Jadi *DB baru* mendapat hak yang diturunkan, tetapi
    *produksi* tetap lebih longgar dari itu. Menyamakannya = `REVOKE` di DB hidup
    = keputusan terpisah, gerbang owner.
-2. **Sesudah migrasi ini kedua tier jadi setara pada `DELETE`.** Sebelumnya
-   `sessions`/`users`/`tenant`/`verification_token` punya `DELETE` di produksi
-   tetapi TIDAK di `rlsstg` — artinya sign-out sesi-DB dan pembersihan sesi
-   kedaluwarsa **tak pernah teruji** di tier pengujian. Jalur yang tiba-tiba bisa
-   berjalan adalah jalur yang belum pernah dijalankan.
+2. **Sesudah migrasi ini kedua tier setara pada `DELETE` untuk TIGA dari empat
+   tabel.** Sebelumnya `sessions`/`users`/`tenant`/`verification_token` punya
+   `DELETE` di produksi tetapi TIDAK di `rlsstg` — artinya sign-out sesi-DB dan
+   pembersihan sesi kedaluwarsa **tak pernah teruji** di tier pengujian. Jalur
+   yang tiba-tiba bisa berjalan adalah jalur yang belum pernah dijalankan.
+
+   ⚠️ **`tenant` TETAP timpang, dan itu disengaja.** Migrasi ini memberinya
+   `SELECT` saja (nol DML di kode), jadi `rlsstg` tidak mendapat `DELETE` atasnya
+   sementara produksi tetap punya dari default privileges lama. Diukur di
+   `rlsstg` sesudah 0035 benar-benar berjalan — bukan diturunkan dari isi berkas
+   migrasinya. Kalimat "kedua tier jadi setara" tanpa pengecualian ini pernah
+   berdiri di sini dan di badan PR #300; ia salah, dan koreksinya ditulis alih-alih
+   dihapus supaya tidak diklaim ulang.
 
 ## Alur ringkas (request)
 
