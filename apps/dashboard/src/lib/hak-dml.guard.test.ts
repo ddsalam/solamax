@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -117,6 +117,80 @@ function aksiDari(kata: string): Aksi {
 }
 
 /**
+ * Cari direktori paket dengan ALGORITMA RESOLUSI NODE — naik dari berkas ini ke
+ * tiap induk, cari `node_modules/<paket>`. Bukan tebakan path relatif.
+ *
+ * ⛔ Kenapa bukan `createRequire(...).resolve()`: @auth/pg-adapter hanya
+ * mengekspor kondisi `import` (`exports: {".": {import: "./index.js"}}`), jadi
+ * `require.resolve` gagal ERR_PACKAGE_PATH_NOT_EXPORTED — diverifikasi, bukan
+ * dikira. Dan penjaga ini butuh TEKS sumbernya, bukan modulnya.
+ *
+ * ⛔ Kenapa bukan daftar kandidat: penjaga harus menemukan subjeknya lewat
+ * mekanisme yang SAMA di CI dan di mesin pengembang. Daftar path bekerja sampai
+ * satu tata-letak install berbeda, lalu memerah di tempat yang salah — dan
+ * penjaga yang merah hanya di satu tempat mengajari orang mengabaikannya.
+ */
+export function cariBerkasPaket(mulai: string, subpath: string): string | null {
+  let dir = mulai;
+  for (;;) {
+    const kandidat = join(dir, "node_modules", subpath);
+    if (existsSync(kandidat)) return kandidat;
+    const induk = dirname(dir);
+    if (induk === dir) return null;
+    dir = induk;
+  }
+}
+
+/**
+ * Petik LITERAL yang isinya SQL dari sumber JavaScript.
+ *
+ * ⚠️ MASALAH YANG DITUTUPNYA: regex tabel dijalankan atas JAVASCRIPT, bukan SQL.
+ * `import x from "pg"` cocok dengan pola `from <nama>`. Selama ada saringan
+ * daftar-nama, kebisingan itu tersembunyi; begitu saringannya dilepas — dan ia
+ * HARUS dilepas, lihat di bawah — ia banjir. Jadi yang dipindai bukan seluruh
+ * berkas, melainkan hanya literal (backtick / kutip) yang isinya benar-benar
+ * SQL. Pembedanya kata kerja SQL di dalam literal itu sendiri.
+ */
+export function literalSql(sumber: string): string[] {
+  const literal = sumber.match(/`[^`]*`|'[^'\n]*'|"[^"\n]*"/g) ?? [];
+  return literal.filter((l) => /\b(select|insert\s+into|update|delete\s+from)\b/i.test(l));
+}
+
+/**
+ * Tabel yang disentuh adapter, dari SQL-nya sendiri.
+ *
+ * ⛔ TIDAK ADA SARINGAN DAFTAR-NAMA DI SINI, dan itu inti perbaikannya. Versi
+ * sebelumnya menyaring `if (hak.has(t) || [empat nama].includes(t))` — yang
+ * membuang **tepat kelas yang dicari**: adapter yang menyentuh tabel yang BELUM
+ * punya GRANT (kasus paling berbahaya, dan persis kasus yang melahirkan 0035)
+ * tak masuk himpunan, jadi asersinya tetap hijau. Nama tak dikenal WAJIB lolos
+ * masuk lalu memerahkan sesuatu, bukan disaring keluar diam-diam.
+ */
+export function tabelAdapter(sumber: string): Set<string> {
+  const out = new Set<string>();
+  for (const l of literalSql(sumber)) {
+    for (const m of l.matchAll(/\b(?:from|into|join|update)\s+"?([a-z_][a-z0-9_]*)"?/gi)) {
+      out.add(m[1]!.toLowerCase());
+    }
+  }
+  return out;
+}
+
+/**
+ * Pemeriksa hak adapter — SATU fungsi, dipakai baik oleh uji atas adapter NYATA
+ * maupun oleh uji atas adapter KARANGAN.
+ *
+ * ⛔ Kenapa terpisah: saat pemeriksanya ditulis inline di dalam uji, mutasi yang
+ * melumpuhkannya tetap HIJAU — adapter nyata tak punya satu pun tabel tanpa hak,
+ * jadi asersi itu tak punya kasus gagal yang tersedia. Uji karangan sudah ada,
+ * tetapi ia menyalin logikanya alih-alih memanggilnya, jadi keduanya tak saling
+ * menjaga. Satu pembuat vonis, dua pemanggil.
+ */
+export function adapterTanpaHak(sumber: string, hak: Map<string, Set<Aksi>>): string[] {
+  return [...tabelAdapter(sumber)].filter((t) => !hak.get(t)?.has("SELECT")).sort();
+}
+
+/**
  * Pelanggaran pada SATU sumber, sebagai fungsi murni — supaya penjaganya bisa
  * disodori data karangan dan terbukti MEMERAH. Penjaga yang hanya pernah melihat
  * repo yang sehat tak pernah membuktikan apa pun.
@@ -189,36 +263,32 @@ describe("DML dashboard hanya menyentuh tabel app.* yang haknya diberikan", () =
     // dan `verification_token` TIDAK PERNAH muncul sebagai `app.<tabel>` di repo
     // ini. SQL-nya milik @auth/pg-adapter. Penjaga yang berhenti di batas repo
     // akan melaporkan "semua aman" atas tiga tabel yang tak pernah ia lihat —
-    // dan justru ketiganya jalur login. Jadi himpunannya diambil dari sumber
-    // adapter yang TERPASANG, bukan dari daftar yang diketik di sini.
-    const kandidat = [
-      resolve(DASH, "../node_modules/@auth/pg-adapter/index.js"),
-      resolve(DASH, "../../../node_modules/@auth/pg-adapter/index.js"),
-    ];
-    const berkas = kandidat.find((k) => existsSync(k));
+    // dan justru ketiganya jalur login.
+    const berkas = cariBerkasPaket(__dirname, join("@auth", "pg-adapter", "index.js"));
     // Adapter tak ketemu = penjaga TANPA SUBJEK. Itu kegagalan, bukan lewat.
-    expect(berkas, `@auth/pg-adapter tak ditemukan di:\n${kandidat.join("\n")}`).toBeDefined();
-    const src = readFileSync(berkas!, "utf8");
-    const ditemukan = new Set<string>();
-    for (const m of src.matchAll(
-      /\b(?:from|into|join|update)\s+"?([a-z_]+)"?\b/gi,
-    )) {
-      const t = m[1]!.toLowerCase();
-      if (hak.has(t) || ["users", "accounts", "sessions", "verification_token"].includes(t)) {
-        ditemukan.add(t);
-      }
-    }
-    // Adapter yang di-upgrade dan menyentuh tabel BARU akan memerahkan baris ini.
+    expect(berkas, "@auth/pg-adapter tak ditemukan lewat resolusi node_modules").not.toBeNull();
+    const sumber = readFileSync(berkas!, "utf8");
+    const ditemukan = tabelAdapter(sumber);
+
+    // (a) SIFAT KEAMANANNYA: apa pun yang disentuh adapter harus punya haknya.
+    //     Nama yang tak dikenal sampai ke sini dan MEMERAHKAN baris ini.
+    const tanpaHak = adapterTanpaHak(sumber, hak);
+    expect(
+      tanpaHak,
+      `Adapter menyentuh tabel tanpa GRANT di migrasi mana pun: ${tanpaHak.join(", ")}`,
+    ).toEqual([]);
+
+    // (b) KOMPOSISINYA: adapter yang di-upgrade dan menyentuh tabel lain — punya
+    //     hak atau tidak — memerahkan baris ini, jadi turunan hak di 0035 wajib
+    //     ditinjau ulang, bukan diasumsikan masih benar.
     expect([...ditemukan].sort()).toEqual([
       "accounts",
       "sessions",
       "users",
       "verification_token",
     ]);
-    for (const t of ditemukan) {
-      expect(hak.get(t)?.has("SELECT"), `app.${t} tanpa GRANT SELECT di migrasi`).toBe(true);
-    }
-    // Hak yang DITURUNKAN dari adapter (0035), bukan arwd borongan:
+
+    // (c) Hak yang DITURUNKAN dari adapter (0035), bukan arwd borongan:
     expect([...(hak.get("sessions") ?? [])].sort()).toEqual([
       "DELETE",
       "INSERT",
@@ -231,20 +301,43 @@ describe("DML dashboard hanya menyentuh tabel app.* yang haknya diberikan", () =
     expect([...(hak.get("tenant") ?? [])].sort()).toEqual(["SELECT"]);
   });
 
-  it("🔴 DATANYA BISA MENJATUHKANNYA: tabel karangan & aksi tanpa hak tertangkap", () => {
-    // Tabel yang tak pernah disebut migrasi mana pun.
-    expect(pelanggaranPada(`q(\`INSERT INTO app.tabel_hantu (x) VALUES (1)\`)`, hak)).toEqual([
-      "TANPA GRANT: INSERT app.tabel_hantu",
+  it("🔴 DATANYA BISA MENJATUHKANNYA: adapter karangan yang menyentuh tabel tak ber-GRANT", () => {
+    // Kelas yang versi sebelumnya MUSTAHIL laporkan — saringannya membuangnya.
+    const palsu = 'const sql = `insert into tabel_hantu (a) values ($1)`';
+    expect(tabelAdapter(palsu).has("tabel_hantu")).toBe(true);
+    // Lewat PEMBUAT VONIS YANG SAMA dengan uji atas adapter nyata — bukan salinan.
+    expect(adapterTanpaHak(palsu, hak)).toEqual(["tabel_hantu"]);
+
+    // Kontrol: tabel yang SAH tidak menghasilkan pelanggaran.
+    expect(adapterTanpaHak('const sql = `select * from users where id = $1`', hak)).toEqual([]);
+
+    // ⛔ SUMBUNYA SELECT, BUKAN SEKADAR "ADA GRANT". Tabel yang punya GRANT
+    // tetapi TANPA SELECT tetap pelanggaran — adapter yang membacanya akan kena
+    // 42501. Tak ada tabel begini di migrasi hari ini, jadi kasusnya dikarang;
+    // tanpa ini, vonis "punya hak apa pun" lolos tanpa pernah ketahuan.
+    const hakSempit = new Map([["foo", new Set<Aksi>(["INSERT"])]]);
+    expect(adapterTanpaHak("const sql = `insert into foo (a) values (1)`", hakSempit)).toEqual([
+      "foo",
     ]);
-    expect(pelanggaranPada(`q(\`SELECT 1 FROM app.tabel_hantu\`)`, hak)).toEqual([
-      "TANPA GRANT: SELECT app.tabel_hantu",
-    ]);
-    // Tabel yang ADA haknya, tetapi bukan aksi itu (cash_ledger sengaja tanpa DELETE).
-    expect(pelanggaranPada(`q(\`DELETE FROM app.cash_ledger\`)`, hak)).toEqual([
-      "DELETE app.cash_ledger",
-    ]);
-    // Kontrol: pemakaian yang SAH tidak menghasilkan apa-apa.
-    expect(pelanggaranPada(`q(\`SELECT 1 FROM app.cash_ledger\`)`, hak)).toEqual([]);
+    const hakBaca = new Map([["foo", new Set<Aksi>(["SELECT"])]]);
+    expect(adapterTanpaHak("const sql = `insert into foo (a) values (1)`", hakBaca)).toEqual([]);
+  });
+
+  it("🔴 SQL DIBEDAKAN DARI KODE DI SEKITARNYA — `import … from \"pg\"` bukan tabel", () => {
+    // Melonggarkan saringan memunculkan kebisingan yang sebelumnya tersembunyi.
+    // Tanpa baris ini, perbaikan cacat #2 akan ditukar dengan banjir positif-palsu.
+    const js = [
+      'import { Pool } from "pg";',
+      'import { readFileSync } from "node:fs";',
+      'export * from "./adapter";',
+      'const x = orders.filter(o => o.id);',
+    ].join("\n");
+    expect([...tabelAdapter(js)]).toEqual([]);
+
+    // Dan pembedanya BEKERJA dua arah: SQL di dalam literal tetap terbaca,
+    // meski berkas yang sama penuh `import … from`.
+    const campur = `${js}\nconst sql = \`delete from sessions where id = $1\`;`;
+    expect([...tabelAdapter(campur)]).toEqual(["sessions"]);
   });
 
   it("🔴 0035 adalah GRANT-SAJA — keputusan owner, bukan gaya", () => {
