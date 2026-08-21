@@ -20,13 +20,19 @@ Acuan yang diam-diam disimpangi berhenti jadi acuan.
 
 ## Kelima layar
 
-| # | Layar | Status |
-|---|---|---|
-| 1 | Papan keuangan grup | belum dibangun |
-| 2 | Laporan harian | belum dibangun |
-| 3 | **Input keuangan** | blok 1 (harga beli) **live**; blok 2–4 menyusul |
-| 4 | Gerbang tutup hari | belum dibangun (mesinnya ada — `keuangan-tutup-hari.ts`) |
-| 5 | Sumber data | belum dibangun |
+| # | Layar | Status | Tombol cetak di mockup |
+|---|---|---|---|
+| 1 | Papan keuangan grup | **live** | "Ekspor XLSX" + "Cetak ringkasan" |
+| 2 | Laporan harian | **live** | "Cetak PDF" |
+| 3 | Input keuangan | **live** (4 blok) | — |
+| 4 | Gerbang tutup hari | **live** | — |
+| 5 | Sumber data | **live** | — |
+
+⚠️ **Hanya DUA layar yang punya tombol cetak di mockup**, dan salah satunya
+**XLSX**, bukan PDF. Dihitung langsung dari `layar-1-5.html` (13 tombol di lima
+layar); Layar 3, 4, dan 5 tak punya satu pun tombol ekspor/cetak. Bila kelak ada
+yang menyebut "empat layar punya tombolnya", angka itu tidak berasal dari berkas
+ini.
 
 ## ⚠️ Penyimpangan yang DIKETAHUI dari mockup
 
@@ -63,7 +69,15 @@ sendiri."*
 `override_reason` (ditegakkan CHECK). Pertanyaan yang sudah terjawab tetapi masih
 terpampang akan ditanyakan ulang oleh orang berikutnya.
 
-### 4. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
+### 4. Layar 1 · "Ekspor XLSX" BELUM dibangun — dan ia bukan PDF
+
+Putaran ekspor membangun **"Cetak ringkasan"** (Layar 1, PDF) dan **"Cetak PDF"**
+(Layar 2). Tombol **"Ekspor XLSX"** sengaja **tidak** dibangun: ia medium yang
+berbeda, dan repo ini tak punya jalur XLSX yang matang seperti `pdfmake`.
+Membangunnya sebagai PDF diam-diam akan membuat tombol yang berbohong tentang
+apa yang dihasilkannya. **Menunggu keputusan owner.**
+
+### 5. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
 
 Bukan contoh karangan, dan bukan pula keadaan hari ini. Jangan dipakai sebagai
 nilai harapan uji.
