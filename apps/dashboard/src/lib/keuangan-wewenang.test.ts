@@ -7,6 +7,7 @@ import {
   alasanTakBolehInput,
   canCloseException,
   canInputKeuangan,
+  canNonaktifkanAkunKas,
   PESAN_TAK_BOLEH_INPUT,
   canOverrideAboveMax,
   canViewLaporanKeuangan,
@@ -339,5 +340,49 @@ describe("canViewLaporanKeuangan — gerbang BACA Layar 2 (§10.13)", () => {
     const badan = src.slice(mulai, src.indexOf("\n}", mulai) + 2);
     expect(badan, "fungsi canViewLaporanKeuangan tidak ditemukan").toMatch(/return/);
     expect(badan).not.toMatch(/canInputKeuangan\s*\(/);
+  });
+});
+
+describe("canNonaktifkanAkunKas — asimetris terhadap canInputKeuangan (§10.18)", () => {
+  const HOF3 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("HoF boleh menonaktifkan; super_admin boleh (break-glass)", () => {
+    expect(canNonaktifkanAkunKas(c("admin_perusahaan", "hof@solagroup.co"), HOF3)).toBe(true);
+    expect(canNonaktifkanAkunKas(c("super_admin"), HOF3)).toBe(true);
+  });
+
+  it("🔴 peran `keuangan` boleh MENAMBAH tapi TIDAK menonaktifkan", () => {
+    // Menambah menambah sesuatu yang TERLIHAT; menonaktifkan membuat saldo
+    // berhenti terlihat. Yang menghilang tidak menampakkan diri.
+    expect(canInputKeuangan(c("keuangan"))).toBe(true);
+    expect(canNonaktifkanAkunKas(c("keuangan"), HOF3)).toBe(false);
+  });
+
+  it("🔴 dan HoF boleh menonaktifkan tapi TIDAK menambah — asimetrinya DUA arah", () => {
+    const hof = c("admin_perusahaan", "hof@solagroup.co");
+    expect(canNonaktifkanAkunKas(hof, HOF3)).toBe(true);
+    expect(canInputKeuangan(hof, HOF3)).toBe(false);
+  });
+
+  it("pengawas & direksi tidak boleh keduanya", () => {
+    for (const r of ["pengawas", "direksi"] as Role[]) {
+      expect(canNonaktifkanAkunKas(c(r), HOF3), r).toBe(false);
+      expect(canInputKeuangan(c(r)), r).toBe(false);
+    }
+  });
+
+  it("dua predikat, bukan satu — daftar perannya memang berselisih", () => {
+    const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+    const hof = "hof@solagroup.co";
+    const tambah = semua.filter((r) => canInputKeuangan(c(r, hof), [hof]));
+    const nonaktif = semua.filter((r) => canNonaktifkanAkunKas(c(r, hof), [hof]));
+    expect(tambah).not.toEqual(nonaktif);
+  });
+
+  it("alasan asimetrinya TERTULIS — supaya tak 'dirapikan' jadi satu predikat", () => {
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    expect(src).toMatch(/berhenti terlihat/);
+    expect(src).toMatch(/Yang menghilang tidak menampakkan diri/);
   });
 });

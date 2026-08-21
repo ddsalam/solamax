@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { urutan } from "./penjaga-urutan";
@@ -44,8 +44,9 @@ describe("Layar 1 — papan keuangan grup", () => {
   });
 
   it("🔴 ONGKOS DIBATASI: unit tanpa akun kas tak dihitung laporannya", () => {
-    // `getBahanLaporan` ≈16 kueri per unit. Papan yang menghitungnya untuk
-    // ketujuh unit akan menembakkan ratusan kueri ke pool yang cap-nya 10.
+    // `getBahanLaporan` = 16 kueri logis / **64 round-trip** per unit (terukur,
+    // `ukur-kueri.integration.test.ts`). Papan yang menghitungnya untuk ketujuh
+    // unit menembakkan ~450 round-trip ke pool yang cap-nya 10.
     const fn = HAL.slice(HAL.indexOf("async function barisUntukUnit"));
     expect(urutan(fn, "if (akun.length === 0)", "getBahanLaporan(")).toBe("ok");
     expect(fn).toMatch(/return barisUnit\(\{[\s\S]*?adaAkunKas: false/);
@@ -54,7 +55,31 @@ describe("Layar 1 — papan keuangan grup", () => {
   it("batas ongkos itu TERTULIS, bukan penghematan diam-diam", () => {
     const mentah = readFileSync(resolve(__dirname, "../app/(app)/keuangan/page.tsx"), "utf8");
     expect(mentah).toMatch(/ONGKOS YANG DIBATASI DENGAN SENGAJA/);
-    expect(mentah).toMatch(/16 kueri per unit/);
+    // 📌 Angkanya TERUKUR oleh `ukur-kueri.ts`, bukan ditaksir. (Klaim lama di
+    // sini — "taksiran ≈16 meleset 37%" — SALAH dan sudah dikoreksi di header
+    // halaman: 16 benar untuk getBahanLaporan; 22 itu ongkos satu papan.)
+    expect(mentah).toMatch(/DIUKUR, bukan ditaksir/);
+    expect(mentah).toMatch(/\*\*16\*\*/); // kueri logis getBahanLaporan
+    expect(mentah).toMatch(/\*\*64\*\*/); // round-trip SQL untuk 16 kueri itu
+    // Batas yang WAJIB ikut ke mana pun angkanya dikutip.
+    expect(mentah).toMatch(/tidak sebanding dengan produksi/);
+    expect(mentah).toMatch(/tak punya satu pun baris `sales_header`/);
+  });
+
+  it("🔴 angka itu punya ALAT UKUR yang terpasang, bukan cuma tulisan", () => {
+    // Kelas cacat yang melahirkan penjaga ini: angka dikutip di header, di
+    // komentar, dan di penjaga — sementara tak satu pun dari ketiganya bisa
+    // berbunyi merah kalau angkanya salah, sebab semuanya menjaga KALIMATNYA.
+    // Yang menutupnya bukan kalimat lain, melainkan alat ukur yang terpasang di
+    // jalur nyata dan bisa dijalankan ulang.
+    const kueri = readFileSync(resolve(__dirname, "keuangan-laporan-queries.ts"), "utf8");
+    expect(kueri).toMatch(/return ukur\("bahan-laporan",/);
+    const mentah = readFileSync(resolve(__dirname, "../app/(app)/keuangan/page.tsx"), "utf8");
+    expect(mentah).toMatch(/await ukur\("papan",/);
+    // Sumbernya harus ADA dan bisa dijalankan ulang — bukan pengukuran sekali
+    // pakai yang hilang bersama sesi yang melakukannya.
+    expect(existsSync(resolve(__dirname, "ukur-kueri.ts"))).toBe(true);
+    expect(existsSync(resolve(__dirname, "ukur-kueri.integration.test.ts"))).toBe(true);
   });
 
   it("🔴 kartu 'seimbang' memakai penyebut YANG SUDAH DIPERIKSA", () => {

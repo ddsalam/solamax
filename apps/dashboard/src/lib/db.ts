@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { catatKueri, catatPernyataan } from "./ukur-kueri";
 
 /**
  * Koneksi Cloud SQL sebagai role `dashboard_app`: SELECT-only ke data mirror
@@ -62,6 +63,10 @@ export async function q<T extends object>(
   text: string,
   params: unknown[] = [],
 ): Promise<T[]> {
+  // Penghitung ongkos (ukur-kueri.ts). No-op di luar skop `ukur()`; tak menyentuh
+  // `text`/`params` sama sekali — yang dicatat cuma jumlah.
+  catatKueri();
+  catatPernyataan();
   const res = await pool.query(text, params);
   return res.rows as T[];
 }
@@ -87,16 +92,23 @@ export async function qScoped<T extends object>(
 ): Promise<T[]> {
   const ids = (Array.isArray(unit) ? unit : [unit]).map((u) => Number(u));
   const idCsv = ids.join(","); // "" bila kosong → NULLIF→NULL→ANY(NULL)→0 baris
+  // Satu kueri LOGIS, tetapi empat round-trip di bawah — dihitung terpisah.
+  catatKueri();
   const client = await pool.connect();
   try {
+    catatPernyataan();
     await client.query("BEGIN");
     // is_local=true → berlaku hanya sampai COMMIT/ROLLBACK transaksi ini.
+    catatPernyataan();
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [idCsv]);
+    catatPernyataan();
     const res = await client.query(text, params);
+    catatPernyataan();
     await client.query("COMMIT");
     return res.rows as T[];
   } catch (err) {
     try {
+      catatPernyataan();
       await client.query("ROLLBACK");
     } catch {
       /* abaikan: koneksi mungkin sudah rusak */

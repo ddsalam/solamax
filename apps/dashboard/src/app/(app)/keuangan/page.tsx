@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ukur } from "@/lib/ukur-kueri";
 import { notFound } from "next/navigation";
 import { unitLabel } from "@/lib/config";
 import { getAkunKas, getDayClose } from "@/lib/keuangan-input-queries";
@@ -12,7 +13,7 @@ import {
   urutkanPapan,
   type BarisUnit,
 } from "@/lib/keuangan-papan-model";
-import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
+import { canInputKeuangan, canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { getDataScope, type ScopedUnit } from "@/lib/scope";
 import { getSelection } from "@/lib/selection";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -27,11 +28,43 @@ export const dynamic = "force-dynamic";
  * melainkan angka.
  *
  * ⚠️ **ONGKOS YANG DIBATASI DENGAN SENGAJA.** Menyusun laporan penuh untuk
- * setiap unit mahal (≈16 kueri per unit). Papan ini hanya menyusunnya untuk unit
- * yang **termodelkan** — yang punya daftar rekening kas. Hari ini itu satu unit;
- * enam lainnya tampil sebagai keadaan kosong yang menyebut apa yang belum ada
- * dan siapa yang mengisinya. Batas itu bukan penghematan diam-diam: ia
- * tertulis di layarnya.
+ * setiap unit mahal. Papan ini hanya menyusunnya untuk unit yang
+ * **termodelkan** — yang punya daftar rekening kas. Batas itu bukan penghematan
+ * diam-diam: ia tertulis di sini.
+ *
+ * 📌 **DIUKUR, bukan ditaksir** — sumbernya `ukur-kueri.ts`, dipasang di jalur
+ * nyata dan bisa dijalankan ulang kapan saja
+ * (`UKUR_LIVE_DB=1 … ukur-kueri.integration.test.ts`). Terukur 19 Agu 2026 di
+ * tier PENGUJIAN:
+ *
+ * | besaran | TERUKUR |
+ * |---|---|
+ * | kueri logis `getBahanLaporan`, per unit termodelkan | **16** |
+ * | round-trip SQL untuk 16 kueri itu | **64** |
+ * | kueri logis satu papan, 3 unit (1 termodelkan) | **19** |
+ *
+ * ⛔ **KOREKSI ATAS ANGKA YANG PERNAH DITULIS DI SINI.** Baris ini sebelumnya
+ * menyebut "22 kueri per unit termodelkan" dan menyatakan taksiran lama (≈16)
+ * meleset 37%. **Itu salah, dan arah salahnya terbalik:** 16 adalah angka yang
+ * benar untuk `getBahanLaporan`, sedangkan 22 adalah ongkos SATU PAPAN pada tier
+ * 3-unit (16 + 3× `getAkunKas` + 3× `getDayClose`) yang keliru dibaca sebagai
+ * per-unit. Yang melahirkan kekeliruan itu persis yang kini dijaga: angka tanpa
+ * alat ukur yang bisa dijalankan ulang.
+ *
+ * 🔑 **Yang benar-benar baru: 64 round-trip untuk 16 kueri.** Tiap `qScoped`
+ * berharga empat (BEGIN · set_config · kueri · COMMIT). Inilah besaran yang
+ * menekan `pool.max = 10`, dan ia tak pernah terlihat selama yang dihitung hanya
+ * "kueri".
+ *
+ * ⛔ Yang **belum** terukur, dan disebut apa adanya:
+ *  · Tier pengujian tak punya satu pun baris `sales_header`/`cash_ledger`,
+ *    sehingga suku dominan di produksi — `getDailyGlByProduct` dan
+ *    `getSaldoPelanggan` atas data EasyMax nyata — tidak ikut terukur.
+ *  · **Wall-clock dari laptop tidak sebanding dengan produksi** dan sengaja
+ *    tidak dikutip di sini: 64 round-trip × RTT laptop→GCP mendominasi
+ *    segalanya. Angka JUMLAH boleh dibawa ke mana saja; angka DURASI hanya sah
+ *    dari log Cloud Run, dan instrumen ini menuliskannya di sana tiap kali papan
+ *    dibuka.
  */
 export default async function PapanKeuanganPage({
   searchParams,
@@ -40,13 +73,20 @@ export default async function PapanKeuanganPage({
 }) {
   const scope = await getDataScope();
   if (!canViewLaporanKeuangan({ role: scope.role, email: scope.email })) notFound();
+  // Keadaan kosong menyebut pekerjaannya; tautannya hanya bagi yang bisa mengerjakannya.
+  const bolehDaftar = canInputKeuangan({ role: scope.role, email: scope.email });
 
   const sp = await searchParams;
   const seleksi = getSelection(scope.units);
   const date = sp.tanggal && DATE_RE.test(sp.tanggal) ? sp.tanggal : seleksi.date;
   const kemarin = new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
-  const baris = await Promise.all(scope.units.map((u) => barisUntukUnit(u, date, kemarin)));
+  // 📏 Skop ukur PAPAN: membungkus seluruh loop, jadi barisnya adalah ongkos
+  // satu halaman utuh — sementara tiap `getBahanLaporan` di dalamnya menulis
+  // barisnya sendiri. Dua angka dari satu pemakaian nyata; tak ada beban tiruan.
+  const baris = await ukur("papan", () =>
+    Promise.all(scope.units.map((u) => barisUntukUnit(u, date, kemarin))),
+  );
   const urut = urutkanPapan(baris);
   const r = ringkasPapan(baris);
 
@@ -145,7 +185,12 @@ export default async function PapanKeuanganPage({
             </span>
             <span className="fs16">
               <span className={`keu-chip status-${b.status}`}>{LABEL_STATUS[b.status]}</span>
-              <span className="fs16 t-tertiary keu-p">{PENJELASAN_STATUS[b.status]}</span>
+              <span className="fs16 t-tertiary keu-p">
+                {PENJELASAN_STATUS[b.status]}{" "}
+                {b.status === "belum_dimodelkan" && bolehDaftar && (
+                  <a href={`/keuangan/unit/${b.code}/akun-kas`}>Daftarkan rekeningnya.</a>
+                )}
+              </span>
             </span>
             <span className="right num t-secondary">
               {b.labaBersih === null ? <span className="t-tertiary">—</span> : rp(b.labaBersih)}

@@ -162,7 +162,12 @@ export default async function InputKeuanganPage({
           <div className="card empty-inline">
             Belum ada akun kas untuk unit ini. Buku kas besar dan buku bank baru bisa dipakai
             setelah daftar rekening riilnya didaftarkan — itu pekerjaan data, bukan cacat
-            aplikasi. Saat ini baru unit Bakau yang punya daftar itu.
+            aplikasi.{" "}
+            {/* Kalimat yang menyebut pekerjaannya tanpa memberi pintunya membuat
+                orang mencarinya sendiri. Pintunya hanya bagi yang berwenang. */}
+            {bolehTulis && (
+              <a href={`/keuangan/unit/${unit.code}/akun-kas`}>Daftarkan rekeningnya di sini.</a>
+            )}
           </div>
         </>
       ) : (
