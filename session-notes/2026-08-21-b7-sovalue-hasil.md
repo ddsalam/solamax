@@ -91,3 +91,41 @@ sisi uangnya baru punya arti setelah harga beli diisi lewat Layar 3.
    menempatkan keenam kontrol sebagai syarat lulus.
 3. Ketiga tanggal Dex: minta tim keuangan memeriksa apakah workbook masih membawa
    SO `4034028304` sesudah 2025-05-03.
+
+---
+
+## ⛔ KEPUTUSAN OWNER 21 Agustus 2026 — B7 DITUTUP sebagai *bukan cacat gerbang*
+
+Prioritasnya turun. Tiga alasan, ketiganya mengikat:
+
+1. **Gerbangnya terbukti tak tersentuh.** D3 asset-neutral (`inventoryValue` dan
+   `soValue` di jumlah `asset` yang sama), dan yang benar-benar menggerakkan
+   `asset` — D2, Rp 105.074.482 pada **setiap** tanggal — sudah diperbaiki B6.
+2. **Sisi uangnya belum ada di produksi.** `app.purchase_price` kosong ⇒
+   `SOValue` produksi hari ini **bukan angka yang salah, melainkan tidak ada**.
+   Menyamakan sesuatu yang belum dihitung adalah pekerjaan tanpa subjek.
+3. **Pada tiga tanggal Dex, yang tampak salah justru workbook.** EasyMax nol liter
+   Dex menggantung; sheet mencatat 4.000. Menyamakan SolaMax ke workbook yang
+   keliru berarti **membuat angka yang benar jadi salah**, dan sesudahnya tak ada
+   lagi yang bisa dipakai membandingkan.
+
+### ⚠️ SYARAT YANG MEMBANGUNKANNYA — tanpa ini, "nanti" tak pernah tiba
+
+B7 **wajib ditinjau ulang** ketika **harga beli sudah terisi** untuk unit yang
+diuji (paket serah-terima, pekerjaan #2) — sebab baru saat itu `SOValue` punya
+sisi uang dan perbandingan terhadap workbook berarti. Pemicunya konkret:
+
+> `SELECT count(*) FROM app.purchase_price WHERE unit_id = <unit>` **> 0**
+> untuk unit yang punya workbook pembanding.
+
+Saat itu terjadi: jalankan ulang `b7-sovalue.integration.test.ts` (harness sudah
+ada, `B7_LIVE_DB=1`), dan pakai **keenam kontrol negatif** — 2025-01-31 · 03-29 ·
+03-31 · 09-30 · 12-01 · 2026-01-12 — sebagai syarat lulus, bukan sebagai harapan.
+
+### Diserahkan ke tim keuangan (pekerjaan DATA, bukan kode)
+
+**Periksa apakah workbook masih membawa SO `4034028304` sesudah 2025-05-03.**
+SO Pertamina Dex 4.000 L, tebus 2025-05-02, **diterima penuh 2025-05-03** menurut
+EasyMax. Bila workbook masih membawanya, itu menjelaskan ketiga tanggal Dex
+sekaligus — dan ia adalah **cermin masalah SO-mati SolaMax di sisi seberang**.
+Hanya orang yang memegang workbook bisa menjawabnya.
