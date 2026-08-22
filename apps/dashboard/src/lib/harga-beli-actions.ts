@@ -135,6 +135,11 @@ export async function simpanHargaBeli(input: SimpanHargaBeliInput): Promise<Acti
         p1.triggered ? scope.userId : null,
         p1.triggered ? new Date() : null,
         p1.triggered ? (input.reason ?? "").trim() : null,
+        // $11 — created_by_user_id. Hilangnya baris ini membuat INSERT
+        // menyebut 11 kolom dengan 10 nilai: `bind message supplies 10
+        // parameters, but prepared statement "" requires 11`, HANYA saat
+        // dijalankan. Ditemukan owner di produksi, bukan oleh penjaga.
+        scope.userId,
       ],
     );
     await client.query("COMMIT");
