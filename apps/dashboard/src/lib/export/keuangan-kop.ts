@@ -1,6 +1,7 @@
 import type { Content, ContentText, TableCell } from "pdfmake/interfaces";
 import { PENJELASAN_KOSONG, type BarisLaporan, type SebabKosong } from "@/lib/keuangan-laporan-model";
 import { pdfText } from "./glyphs";
+import { KOSONG_PANEL } from "./teks-kosong";
 import { PDF } from "./pdf-tokens";
 
 /**
@@ -80,7 +81,7 @@ export function footerKeuangan(k: KopKeuangan) {
 export function selNilai(b: BarisLaporan): TableCell {
   if (b.nilai === null) {
     return {
-      text: "belum bisa dihitung",
+      text: KOSONG_PANEL,
       alignment: "right",
       fontSize: 8,
       italics: true,

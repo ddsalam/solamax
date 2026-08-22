@@ -371,6 +371,9 @@ export interface DayCloseRow {
   closedAt: string | null;
   approvedByUserId: number | null;
   approvedAt: string | null;
+  /** Diresolusi dari `app.users` — kertas menyebut orang, bukan id. */
+  closedByEmail: string | null;
+  approvedByEmail: string | null;
 }
 
 export async function getDayClose(
@@ -379,18 +382,25 @@ export async function getDayClose(
 ): Promise<DayCloseRow | null> {
   const r = await qScoped<DayCloseRow>(
     unit,
-    `SELECT status::text                      AS status,
-            difference_rp::float8             AS "differenceRp",
-            tier::text                        AS tier,
-            reason_code                       AS "reasonCode",
-            reason_requires_target            AS "reasonRequiresTarget",
-            to_char(target_date,'YYYY-MM-DD') AS "targetDate",
-            closed_by_user_id                 AS "closedByUserId",
-            to_char(closed_at,'YYYY-MM-DD HH24:MI') AS "closedAt",
-            approved_by_user_id               AS "approvedByUserId",
-            to_char(approved_at,'YYYY-MM-DD HH24:MI') AS "approvedAt"
-       FROM app.day_close
-      WHERE unit_id = $1 AND business_date = $2::date`,
+    `SELECT dc.status::text                   AS status,
+            dc.difference_rp::float8          AS "differenceRp",
+            dc.tier::text                     AS tier,
+            dc.reason_code                    AS "reasonCode",
+            dc.reason_requires_target         AS "reasonRequiresTarget",
+            to_char(dc.target_date,'YYYY-MM-DD') AS "targetDate",
+            dc.closed_by_user_id              AS "closedByUserId",
+            to_char(dc.closed_at,'YYYY-MM-DD HH24:MI') AS "closedAt",
+            dc.approved_by_user_id            AS "approvedByUserId",
+            to_char(dc.approved_at,'YYYY-MM-DD HH24:MI') AS "approvedAt",
+            -- Kertas menyebut ORANG, bukan id. Pola LEFT JOIN yang sama dengan
+            -- getBackdateOverride; LEFT supaya hari yang belum ditutup tetap
+            -- mengembalikan barisnya, bukan lenyap.
+            cu.email                          AS "closedByEmail",
+            au.email                          AS "approvedByEmail"
+       FROM app.day_close dc
+       LEFT JOIN app.users cu ON cu.id = dc.closed_by_user_id
+       LEFT JOIN app.users au ON au.id = dc.approved_by_user_id
+      WHERE dc.unit_id = $1 AND dc.business_date = $2::date`,
     [unit, date],
   );
   return r[0] ?? null;

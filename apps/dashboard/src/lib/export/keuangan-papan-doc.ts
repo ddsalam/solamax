@@ -8,6 +8,7 @@ import {
   rupiah,
   type KopKeuangan,
 } from "./keuangan-kop";
+import { KOSONG_RINGKAS } from "./teks-kosong";
 import { CONTENT_WIDTH_LANDSCAPE as CW, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 
@@ -30,7 +31,7 @@ export interface PapanKeuanganDocInput {
 
 function selAngka(v: number | null): TableCell {
   if (v === null) {
-    return { text: "belum dihitung", alignment: "right", fontSize: 7.5, italics: true, color: PDF.textMuted };
+    return { text: KOSONG_RINGKAS, alignment: "right", fontSize: 7.5, italics: true, color: PDF.textMuted };
   }
   return { text: rupiah(v), alignment: "right", fontSize: 8, color: v < 0 ? PDF.danger : PDF.textPrimary };
 }

@@ -11,6 +11,7 @@ import {
   selNilai,
   type KopKeuangan,
 } from "./keuangan-kop";
+import { KOSONG_PANEL } from "./teks-kosong";
 import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 
@@ -63,7 +64,7 @@ function panel(judul: string, p: PanelLaporan): Content[] {
           [
             { text: pdfText(p.pemeriksa.label), fontSize: 8.5, bold: true, color: warnaNada },
             p.pemeriksa.nilai === null
-              ? { text: "belum bisa dihitung", alignment: "right", fontSize: 8, italics: true, color: PDF.textMuted }
+              ? { text: KOSONG_PANEL, alignment: "right", fontSize: 8, italics: true, color: PDF.textMuted }
               : { text: rupiah(p.pemeriksa.nilai), alignment: "right", fontSize: 8.5, bold: true, color: warnaNada },
           ],
         ],
@@ -116,7 +117,7 @@ export function buildLaporanKeuanganDoc(i: LaporanKeuanganDocInput): TDocumentDe
     text: [
       { text: "Langkah harian: ", fontSize: 8.5, bold: true },
       i.balance.langkahHarian === null
-        ? { text: "belum bisa dihitung", fontSize: 8, italics: true, color: PDF.textMuted }
+        ? { text: KOSONG_PANEL, fontSize: 8, italics: true, color: PDF.textMuted }
         : {
             text: rupiah(i.balance.langkahHarian),
             fontSize: 8.5,
