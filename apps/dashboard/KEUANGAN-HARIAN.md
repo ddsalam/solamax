@@ -1444,19 +1444,30 @@ muncul diam-diam.
 ⚠️ **Hari yang BELUM ditutup juga boleh dicetak**, dan cetakannya **harus
 mengatakan itu di muka**. Kertas tanpa status terbaca sebagai kertas final.
 
-### 10.9 Yang BELUM terverifikasi dari keputusan ini
+### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
-Ditulis supaya tidak dianggap sudah beres:
+⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
+dan tiga hal salah karenanya sekaligus:
 
-1. **Apakah `ddsalam@solagroup.co` sudah ada di `app.users`** — **belum bisa
-   diperiksa**: kredensial `gcloud` (user maupun ADC) perlu reauth
-   (`invalid_rapt`), sehingga cloud-sql-proxy tidak bisa tersambung pada sesi ini.
-   Kalau belum ada, ia diundang lewat `/admin` — **tindakan owner**, bukan pelaksana.
-2. **OAuth consent masih `Testing` dengan 4 test user** — status terdokumentasi di
-   `CLAUDE.md`, **tidak diverifikasi ulang** sesi ini (alasan sama). Kalau HoF
-   bukan salah satu dari 4 test user, ia tidak akan bisa login.
-3. Keduanya **tidak memblokir** penulisan kode §9.3, tetapi **memblokir** pengujian
-   `canCloseException` end-to-end.
+1. Nomornya membuatnya **menyamar jadi keputusan** di antara dua puluh keputusan
+   sungguhan.
+2. Letaknya **sesudah §10.20**, jadi penomoran §10 tak lagi urut — dan
+   ketidakurutan itulah yang membuat orang berikutnya mengira ia salah ketik
+   belaka.
+3. Sebuah kutipan di kode (`keuangan-integritas.ts`) menunjuk **§10.9** untuk
+   keputusan **tanpa foreign key** — yang sebenarnya ada di **§10.10**. Siapa pun
+   yang mengikuti kutipan itu tiba di daftar "belum terverifikasi" dan
+   menyimpulkan keputusannya tak pernah ditulis. Kutipannya sudah diperbaiki.
+
+**Butirnya TIDAK dihapus.** Sesuatu yang pernah tak terverifikasi lalu
+terverifikasi adalah riwayat yang berguna; yang menyesatkan hanyalah membiarkannya
+berbunyi seperti pertanyaan yang masih terbuka.
+
+| pernah ditulis (12 Agu 2026) | keadaan sekarang |
+|---|---|
+| **Apakah `ddsalam@solagroup.co` ada di `app.users`?** — belum bisa diperiksa, `gcloud` perlu reauth (`invalid_rapt`) | ✅ **TERJAWAB 21 Agu 2026**, tinjauan pra-promosi ketiga (read-only, produksi): ia **ada**, aktif, dengan peran **`admin_perusahaan`** pada 6 membership — **bukan** `keuangan`. Konsekuensinya persis asimetri §10.18: boleh menonaktifkan akun kas, **tidak** boleh menginput, boleh membaca. |
+| **OAuth consent masih `Testing` dengan 4 test user** — tak diverifikasi ulang | ⚠️ **MASIH TERBUKA sebagai butir roadmap**, tetapi tak lagi memblokir: produksi hari ini melayani **22 pengguna / 52 membership aktif**, jadi premis "hanya 4 test user" sudah gugur oleh kenyataan. Status resminya tetap di `CLAUDE.md` (pra-produksi butir 3). |
+| **Keduanya memblokir pengujian `canCloseException` end-to-end** | ✅ **TIDAK LAGI**: pemegang HoF ada di DB, dan kesepakatan label↔predikat tiap tier kini diuji langsung (`csv-dan-tutup-hari.test.ts`) dengan menjalankan `bolehMenutup` untuk setiap peran, bukan dengan membaca tabelnya. |
 
 ---
 
