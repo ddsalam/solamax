@@ -44,20 +44,49 @@ export interface AkunKasRow {
 export const AMBANG_DORMAN_HARI = 90;
 
 /**
- * Rekening ini dorman pada `asOf`?
+ * Keadaan pemakaian sebuah rekening pada `asOf`.
+ *
+ * ⛔ **TIGA KEADAAN, BUKAN DUA.** Sampai 22 Agu 2026 `mutasiTerakhir === null`
+ * dilebur jadi "dorman", dan akibatnya terlihat pada hari pertama modul ini
+ * dipakai sungguhan: owner mendaftarkan rekening tujuh SPBU, dan **setiap
+ * rekening baru langsung berlencana Dorman**.
+ *
+ * Dua fakta yang berbeda:
+ *   · **belum pernah dipakai** — rekening baru. Wajar, bukan masalah, tak
+ *     menuntut apa pun.
+ *   · **dorman** — pernah dipakai lalu berhenti ≥ {@link AMBANG_DORMAN_HARI}
+ *     hari. Sinyal yang layak ditindaklanjuti.
+ *
+ * Penanda dorman dibangun untuk memunculkan **empat rekening dorman Bakau**.
+ * Menyalakannya pada populasi yang justru kebalikannya membuatnya berhenti
+ * berarti apa-apa — lencana yang menyala pada semua orang bukan lencana.
+ *
+ * Ini `null`-vs-nol lagi: **"belum ada datanya" bukan "datanya bernilai buruk"**.
  *
  * ⛔ **TURUNAN, bukan keadaan yang disimpan.** Begitu rekeningnya dipakai lagi,
  * tandanya hilang sendiri — tak ada yang perlu mengingat untuk mencabutnya.
- * Keadaan yang disimpan butuh seseorang mengubahnya; turunan tidak.
  *
- * Akun tidak-aktif TIDAK dihitung dorman: ia sudah punya penandanya sendiri,
- * dan dua penanda untuk satu keadaan membuat pembacanya menebak mana yang
- * berlaku.
+ * Akun tidak-aktif punya penandanya sendiri dan tidak masuk ke sini: dua penanda
+ * untuk satu keadaan membuat pembacanya menebak mana yang berlaku.
+ */
+export type KeadaanPakai = "tidak_aktif" | "belum_pernah_dipakai" | "dorman" | "dipakai";
+
+export function keadaanPakai(
+  a: Pick<AkunKasRow, "active" | "mutasiTerakhir">,
+  asOf: string,
+): KeadaanPakai {
+  if (!a.active) return "tidak_aktif";
+  if (a.mutasiTerakhir === null) return "belum_pernah_dipakai";
+  return selisihHari(a.mutasiTerakhir, asOf) >= AMBANG_DORMAN_HARI ? "dorman" : "dipakai";
+}
+
+/**
+ * ⛔ SATU PEMBUAT VONIS: `dorman` diturunkan dari {@link keadaanPakai}, tidak
+ * menghitung ambangnya sendiri. Dua tempat yang menghitung ambang yang sama akan
+ * menjawab berbeda pada hari mereka berbeda.
  */
 export function dorman(a: Pick<AkunKasRow, "active" | "mutasiTerakhir">, asOf: string): boolean {
-  if (!a.active) return false;
-  if (a.mutasiTerakhir === null) return true;
-  return selisihHari(a.mutasiTerakhir, asOf) >= AMBANG_DORMAN_HARI;
+  return keadaanPakai(a, asOf) === "dorman";
 }
 
 function selisihHari(dari: string, ke: string): number {

@@ -1393,6 +1393,34 @@ mengetik.
 mutasi yang menunjuknya; migrasi yang membersihkannya gagal FK — atau lebih
 buruk, **berhasil di rlsstg yang kosong dan gagal di produksi**.
 
+#### ⚠️ Koreksi 22 Agustus 2026 — "belum pernah dipakai" BUKAN dorman
+
+Ditemukan pada **hari pertama modul ini dipakai sungguhan**: owner mendaftarkan
+rekening enam unit lewat layar, dan **setiap rekening baru langsung berlencana
+Dorman**. Sebabnya satu baris — `mutasiTerakhir === null` dilebur jadi dorman.
+
+Dua fakta yang berbeda, dan meleburnya adalah `null`-vs-nol lagi:
+
+| keadaan | artinya | menuntut tindakan? |
+|---|---|---|
+| **belum pernah dipakai** | rekening baru | tidak — wajar |
+| **dorman** | pernah dipakai lalu berhenti ≥ 90 hari | ya |
+
+Penanda dorman dibangun untuk memunculkan **empat rekening dorman Bakau** (§8
+butir 7). Menyalakannya pada populasi yang justru kebalikannya membuatnya
+berhenti berarti apa-apa — **lencana yang menyala pada semuanya bukan lencana.**
+
+Sekarang ada **empat** keadaan (`keadaanPakai`): `tidak_aktif` ·
+`belum_pernah_dipakai` · `dorman` · `dipakai`. `dorman()` diturunkan darinya,
+tidak menghitung ambangnya sendiri.
+
+📌 **Diperiksa di produksi 22 Agu 2026:** 13 rekening (Bakau 7 dari seed 0029 +
+satu per enam unit lain), **seluruhnya `belum_pernah_dipakai`** — `cash_ledger`
+masih kosong. Artinya lencana dorman untuk sementara **tak punya subjek** di
+produksi; ia baru punya begitu mutasi masuk dan sebuah rekening diam ≥ 90 hari.
+Keempat rekening dorman Bakau itu hidup di **workbook**, bukan sebagai baris
+`app.cash_account`.
+
 ### 10.19 K2 · "Ekspor XLSX" → **CSV tanpa pustaka baru** (21 Agustus 2026)
 
 **Keputusan owner.** Tombol "Ekspor XLSX" pada mockup Layar 1 dibangun sebagai
