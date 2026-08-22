@@ -50,6 +50,7 @@ export default async function LaporanKeuanganPage({
 
   const cf = panelCashFlow({
     kasAwalPerAkun: b.kasAwalPerAkun,
+    sebabKas: b.sebabKas,
     kasAkhir: b.kasAkhir,
     omzet: b.totals.revenue,
     teraValue: b.totals.teraValue,
@@ -70,6 +71,7 @@ export default async function LaporanKeuanganPage({
   const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai ?? 0;
   const bs = panelBalance({
     cashOnHand: b.kasAkhir,
+    sebabKas: b.sebabKas,
     inventoryValue: b.totals.inventoryValue,
     soValue: b.totals.soValue,
     piutangEasymax: b.piutangEasymax,

@@ -22,12 +22,19 @@ import type { DayTotals } from "./keuangan-mesin";
 /** Kenapa sebuah baris belum punya nilai. */
 export type SebabKosong =
   | "belum_ada_akun_kas"
+  | "belum_ada_mutasi_kas"
   | "belum_ada_harga_beli"
   | "belum_ada_opname"
   | "belum_ada_saldo_pembuka"
   | "tak_bersumber";
 
 export const PENJELASAN_KOSONG: Record<SebabKosong, string> = {
+  // ⛔ BUKAN sama dengan `belum_ada_akun_kas` (§10.21). Akunnya ADA; yang belum
+  //    ada adalah isinya. Nama yang salah membuat pembacanya mencari akun yang
+  //    sebenarnya sudah terdaftar.
+  belum_ada_mutasi_kas:
+    "Rekeningnya sudah terdaftar tetapi buku kasnya belum diisi satu baris pun — " +
+    "saldonya BELUM DIKETAHUI, bukan nol. Tim keuangan yang mengisinya di Layar 3 blok 2.",
   belum_ada_akun_kas:
     "Unit ini belum punya daftar rekening kas/bank — tim keuangan yang mendaftarkannya.",
   belum_ada_harga_beli:
@@ -55,6 +62,8 @@ export interface BarisLaporan {
 // ---------------------------------------------------------------------------
 
 export interface CashFlowInput {
+  /** Sebab kosong sisi kas — WAJIB disebut pemanggil, tidak ditebak (§10.21). */
+  sebabKas: SebabKasInput;
   /** Saldo tiap akun kas pada H−1, berurut sesuai tampilan. `null` = tak ada akun. */
   kasAwalPerAkun: { nama: string; saldo: number }[] | null;
   kasAkhir: number | null;
@@ -92,7 +101,7 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
     {
       label: "Transaksi hutang piutang non-EasyMax",
       nilai: i.hutangPiutangNonEasymax,
-      sebab: i.hutangPiutangNonEasymax === null ? "belum_ada_akun_kas" : undefined,
+      sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined,
     },
     {
       label: "Penebusan SO",
@@ -109,7 +118,7 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
   const net = adaSemua ? arus.reduce((s, b) => s + (b.nilai ?? 0), 0) : null;
 
   const baris: BarisLaporan[] = [
-    { label: "Kas awal", nilai: kasAwal, sebab: kasAwal === null ? "belum_ada_akun_kas" : undefined },
+    { label: "Kas awal", nilai: kasAwal, sebab: kasAwal === null ? sebabKas(i.sebabKas) : undefined },
     ...(i.kasAwalPerAkun ?? []).map((a) => ({ label: a.nama, nilai: a.saldo, ind: true })),
     ...arus,
     { label: "Net cash change", nilai: net, sum: true },
@@ -117,7 +126,7 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
       label: "Kas akhir",
       nilai: i.kasAkhir,
       sum: true,
-      sebab: i.kasAkhir === null ? "belum_ada_akun_kas" : undefined,
+      sebab: i.kasAkhir === null ? sebabKas(i.sebabKas) : undefined,
     },
   ];
 
@@ -131,7 +140,7 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
     pemeriksa: {
       label: "Cash flow check",
       nilai: check,
-      sebab: check === null ? "belum_ada_akun_kas" : undefined,
+      sebab: check === null ? sebabKas(i.sebabKas) : undefined,
     },
   };
 }
@@ -184,6 +193,8 @@ export function panelIncome(i: IncomeInput): PanelLaporan & { marginBersih: numb
 // ---------------------------------------------------------------------------
 
 export interface BalanceInput {
+  /** Sebab kosong sisi kas — WAJIB disebut pemanggil, tidak ditebak (§10.21). */
+  sebabKas: SebabKasInput;
   cashOnHand: number | null;
   inventoryValue: number;
   soValue: number;
@@ -236,11 +247,11 @@ export function panelBalance(i: BalanceInput): PanelBalance {
   return {
     baris: [
       { label: "Asset − liabilities", nilai: asset, sum: true },
-      { label: "Cash on hand", nilai: i.cashOnHand, ind: true, sebab: i.cashOnHand === null ? "belum_ada_akun_kas" : undefined },
+      { label: "Cash on hand", nilai: i.cashOnHand, ind: true, sebab: i.cashOnHand === null ? sebabKas(i.sebabKas) : undefined },
       { label: "Nilai stock", nilai: i.inventoryValue, ind: true },
       { label: "Nilai DO", nilai: i.soValue, ind: true },
       { label: "Hutang piutang pelanggan EasyMax", nilai: i.piutangEasymax, ind: true, sebab: i.piutangEasymax === null ? "tak_bersumber" : undefined },
-      { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? "belum_ada_akun_kas" : undefined },
+      { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined },
       { label: "Equity", nilai: equity, sum: true, sebab: equity === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Opened retained earnings", nilai: i.openedRetainedEarnings, ind: true, sebab: i.openedRetainedEarnings === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Net income", nilai: i.netIncome, ind: true },
@@ -269,6 +280,35 @@ export function panelBalance(i: BalanceInput): PanelBalance {
 export const CATATAN_NILAI_DO =
   "Nilai DO masih memakai sumbu tanggal yang belum cocok pada 4 dari 10 tanggal uji (B7). " +
   "Angkanya ditampilkan apa adanya — jangan dipakai sebagai bukti sampai sumbunya diselaraskan.";
+
+/**
+ * Sebab kosong untuk pos-pos SISI KAS — **diserahkan pemanggil, tidak ditebak**.
+ *
+ * ⛔ Bentuk lama meng-hardcode `belum_ada_akun_kas` untuk SETIAP `null` di sisi
+ * kas. Sejak §10.21 ada dua sebab yang berbeda, dan menebak salah satunya
+ * membuat pembacanya mencari akun yang sebenarnya sudah terdaftar. Kalau
+ * pemanggil tak menyebut sebabnya, jatuhnya ke `tak_bersumber` — mengaku tak
+ * tahu, bukan mengarang sebab.
+ */
+function sebabKas(s: SebabKasInput): SebabKosong {
+  return s ?? "tak_bersumber";
+}
+
+/** `null` = pemanggil tak menyebutkan; JANGAN diisi tebakan. */
+export type SebabKasInput = "belum_ada_akun_kas" | "belum_ada_mutasi_kas" | null;
+
+/**
+ * ⛔ SATU PEMBUAT VONIS untuk "kenapa sisi kas kosong" (§10.21). Dipakai
+ * `getBahanLaporan`; dipisah ke sini supaya bisa diuji tanpa DB — aturannya
+ * terlalu penting untuk hanya hidup di dalam sebuah kueri.
+ *
+ * `null` (bukan sebab) berarti kasnya BISA dihitung.
+ */
+export function sebabKasDari(jumlahAkun: number, jumlahMutasiAktif: number): SebabKasInput {
+  if (jumlahAkun === 0) return "belum_ada_akun_kas";
+  if (jumlahMutasiAktif === 0) return "belum_ada_mutasi_kas";
+  return null;
+}
 
 export type NadaPemeriksa = "baik" | "buruk" | "tak_terhitung";
 

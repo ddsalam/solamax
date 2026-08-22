@@ -1472,6 +1472,59 @@ muncul diam-diam.
 ⚠️ **Hari yang BELUM ditutup juga boleh dicetak**, dan cetakannya **harus
 mengatakan itu di muka**. Kertas tanpa status terbaca sebagai kertas final.
 
+### 10.21 K3 · `kasAkhir` jadi `null`, tetapi LABA tetap tampil (22 Agustus 2026)
+
+**Keputusan owner.** Owner menolak kedua bentuk yang diajukan (semuanya `null`
+vs semuanya `0` bertanda) dan memilih yang ketiga.
+
+**Alasannya mengikat: kas dan laba adalah dua fakta berbeda dengan tingkat
+kepercayaan berbeda.** Laba datang dari penjualan EasyMax dan sudah bisa
+dipercaya; kas datang dari buku yang belum diisi siapa pun. Menghapus laba karena
+kas tak diketahui **menyamakan yang terbukti dengan yang belum ada** — kesalahan
+yang berlawanan arah dengan nol palsu, tetapi dari keluarga yang sama.
+
+**Yang menghalanginya satu baris:** satu gerbang `lengkap` menutup DUA total
+sekaligus di `ringkasPapan`. Dipisah: kelengkapan laba dinilai dari `labaBersih`,
+kelengkapan kas dari `kasAkhir`, dan `takTerhitung` ikut terpisah — satu daftar
+untuk dua sebab akan **menuduh unit yang labanya baik-baik saja**.
+
+⛔ **`kasAkhir = null` bila ada akun tetapi NOL MUTASI**, dan `null`-nya
+**bernama**: `belum_ada_mutasi_kas`. **Bukan** `belum_ada_akun_kas` — itu sebab
+yang berbeda dan sudah punya namanya sendiri. Nama yang salah membuat pembacanya
+mencari akun yang sebenarnya sudah ada.
+
+**Latar yang terukur** (produksi, 22 Agu 2026): `cashOnHand = 0` pada **ketujuh**
+unit, **termasuk Bakau yang punya `Kas Besar`** — sebab `cash_ledger` kosong dan
+`Σ` dari nol mutasi adalah 0. `takTerhitung` diam **karena tak ada yang `null`**,
+dan papan menampilkan laba grup **Rp 939.169.598** dengan sisi kas yang belum
+pernah diisi.
+
+#### ⚠️ AKIBAT YANG DISENGAJA — ditulis supaya tidak ditemukan sebagai kejutan
+
+`langkahHarian` ikut `null` (neraca yang sisi kasnya tak diketahui memang belum
+bisa dinilai), dan karenanya **gerbang tutup hari TIDAK BISA LULUS sampai buku
+kas diisi**: `tutupHari` menolak hari yang belum punya baris penilaian, dan
+`pastikanBarisDayClose` memang tidak menulis apa pun ketika `langkahHarian`
+`null` (§10.15). Ini konsekuensi yang dipilih, bukan cacat.
+
+### 10.22 K3 · Bagan akun tak lengkap: TETAP TAMPIL, ditandai (22 Agustus 2026)
+
+**Keputusan owner.** Baris unitnya tetap ada di papan, dengan keterangan yang
+menyebut **apa yang belum ada dan siapa yang mengisinya** — pola yang sudah
+dipakai di seluruh modul. **Bukan** `termodelkan` yang diperketat.
+
+**Alasan:** enam SPBU yang datanya sebenarnya mengalir tak boleh hilang dari
+papan direksi hanya karena bagan akunnya belum lengkap. **Menandai membuat
+kekurangannya terlihat; menyembunyikan membuat unitnya yang tak terlihat.**
+
+**Keadaan terukur:** enam unit punya **satu rekening bank**, nol `kas`, nol
+`edc_penampungan`; Bakau punya tujuh (1 kas · 5 bank · 1 EDC).
+
+⚠️ **Tandanya adalah PENGAMATAN, bukan tuduhan.** Kita **tidak tahu** apakah
+keenam unit itu memang hanya punya satu rekening di dunia nyata atau owner baru
+mengisi sebagian. Kalimatnya karena itu berbunyi "belum ada Kas Besar / EDC
+Penampungan", bukan "datanya salah".
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

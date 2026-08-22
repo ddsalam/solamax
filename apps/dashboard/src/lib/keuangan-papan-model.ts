@@ -71,6 +71,8 @@ export interface BarisUnit {
   status: StatusUnit;
   tier: Tier | null;
   nada: NadaPemeriksa;
+  /** Akun wajib yang belum ada — kosong berarti bagannya lengkap (§10.22). */
+  kekuranganBagan: string[];
 }
 
 export interface InputUnit {
@@ -79,11 +81,35 @@ export interface InputUnit {
   nama: string;
   /** Punya akun kas? Tanpa itu, unit belum bisa dimodelkan. */
   adaAkunKas: boolean;
+  /** `kind` tiap akun aktif unit ini — dasar `kekuranganBagan` (§10.22). */
+  kindAkun: readonly string[];
   labaBersih: number | null;
   kasAkhir: number | null;
   langkahHarian: number | null;
   /** Baris `day_close` untuk tanggal itu; `null` = TIDAK ADA (bukan 'open'). */
   dayClose: { status: "open" | "closed"; differenceRp: number } | null;
+}
+
+/**
+ * Apa yang BELUM ADA di bagan akun sebuah unit (§10.22).
+ *
+ * ⛔ Ini **pengamatan, bukan tuduhan.** Kita tidak tahu apakah unit itu memang
+ * hanya punya satu rekening di dunia nyata atau baru diisi sebagian; yang bisa
+ * dilakukan adalah membuat perbedaannya TERLIHAT. Karena itu kalimatnya menyebut
+ * apa yang belum ada, bukan bahwa datanya salah.
+ *
+ * Unit tanpa akun sama sekali TIDAK menghasilkan kekurangan: ia sudah punya
+ * penandanya sendiri (`belum_dimodelkan`), dan dua penanda untuk satu keadaan
+ * membuat pembacanya menebak mana yang berlaku.
+ */
+export const BAGAN_WAJIB: ReadonlyArray<{ kind: string; label: string }> = [
+  { kind: "kas", label: "Kas Besar" },
+  { kind: "edc_penampungan", label: "EDC Penampungan" },
+];
+
+export function kekuranganBagan(kindAkun: readonly string[]): string[] {
+  if (kindAkun.length === 0) return [];
+  return BAGAN_WAJIB.filter((w) => !kindAkun.includes(w.kind)).map((w) => w.label);
 }
 
 export function barisUnit(i: InputUnit): BarisUnit {
@@ -109,6 +135,7 @@ export function barisUnit(i: InputUnit): BarisUnit {
     // di sini adalah pengakuan, bukan nol yang menenangkan.
     bsCheckKumulatif: null,
     status,
+    kekuranganBagan: kekuranganBagan(i.kindAkun),
     tier: i.langkahHarian === null ? null : tierFor(i.langkahHarian),
     nada: nadaPemeriksa(i.langkahHarian),
   };
@@ -160,10 +187,17 @@ export interface RingkasPapan {
   seimbang: number;
   /** Unit yang tak punya jejak penilaian hari ini — bukan nol, bukan seimbang. */
   belumPernahDibuka: number;
+  /** `null` bila ADA unit termodelkan yang labanya tak terhitung. */
   labaBersih: number | null;
+  /** `null` bila ADA unit termodelkan yang kasnya tak terhitung — TERPISAH. */
   kasAkhir: number | null;
-  /** Produk/unit yang menyumbang `null` — dinamai, bukan disembunyikan. */
-  takTerhitung: string[];
+  /**
+   * Unit yang menyumbang `null` — **dinamai, dan dipisah menurut SEBABNYA**.
+   * Satu daftar untuk dua sebab akan menuduh unit yang labanya baik-baik saja
+   * hanya karena buku kasnya belum diisi (§10.21).
+   */
+  tanpaLaba: string[];
+  tanpaKas: string[];
 }
 
 /**
@@ -180,17 +214,24 @@ export function ringkasPapan(baris: readonly BarisUnit[]): RingkasPapan {
   // diturunkan dari ketiadaan baris (§10.15) — bukan dari `langkahHarian`, yang
   // tak tahu apa-apa tentang apakah hari itu pernah dinilai.
   const diperiksa = model.filter((b) => b.status !== "belum_pernah_dibuka");
-  const takTerhitung = model
-    .filter((b) => b.labaBersih === null || b.kasAkhir === null)
-    .map((b) => b.nama);
-  const lengkap = takTerhitung.length === 0;
+  // ⛔ DUA GERBANG, BUKAN SATU (§10.21). Bentuk lama memakai satu `lengkap`
+  //    untuk menutup KEDUA total: begitu sebuah unit tak punya angka kas, laba
+  //    grup ikut lenyap — padahal laba datang dari EasyMax dan sudah bisa
+  //    dipercaya, sementara kas datang dari buku yang belum diisi siapa pun.
+  //    Menghapus yang terbukti karena yang belum ada adalah kesalahan yang
+  //    berlawanan arah dengan nol palsu, tetapi dari keluarga yang sama.
+  const tanpaLaba = model.filter((b) => b.labaBersih === null).map((b) => b.nama);
+  const tanpaKas = model.filter((b) => b.kasAkhir === null).map((b) => b.nama);
   return {
     termodelkan: model.length,
     diperiksa: diperiksa.length,
     seimbang: diperiksa.filter((b) => b.langkahHarian === 0).length,
     belumPernahDibuka: baris.filter((b) => b.status === "belum_pernah_dibuka").length,
-    labaBersih: lengkap ? model.reduce((s, b) => s + (b.labaBersih ?? 0), 0) : null,
-    kasAkhir: lengkap ? model.reduce((s, b) => s + (b.kasAkhir ?? 0), 0) : null,
-    takTerhitung,
+    labaBersih:
+      tanpaLaba.length === 0 ? model.reduce((s, b) => s + (b.labaBersih ?? 0), 0) : null,
+    kasAkhir: tanpaKas.length === 0 ? model.reduce((s, b) => s + (b.kasAkhir ?? 0), 0) : null,
+    // Satu daftar untuk dua sebab akan MENUDUH unit yang labanya baik-baik saja.
+    tanpaLaba,
+    tanpaKas,
   };
 }
