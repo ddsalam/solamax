@@ -45,6 +45,7 @@ export function UnitDateFilters({
   today,
   maxDate,
   note,
+  dimensiUnit = "pilih",
 }: {
   /** Unit dalam scope caller (dari getDataScope) — daftar pilihan. */
   units: FilterUnitOpt[];
@@ -66,6 +67,16 @@ export function UnitDateFilters({
   maxDate?: string;
   /** Teks konteks singkat di ujung baris (mis. penjelasan realtime). */
   note?: string;
+  /**
+   * Dimensi unit halaman ini.
+   *
+   * ⛔ `"tak_berlaku"` BUKAN sama dengan "satu unit". Papan keuangan grup
+   * menampilkan **semua** unit dalam scope sekaligus, jadi pemilih unit di sana
+   * adalah kontrol yang **tak mengubah apa pun** — dan kontrol yang tak
+   * mengubah apa pun mengajari orang bahwa kontrol di halaman ini tak berarti.
+   * Yang berarti di sana hanya TANGGAL.
+   */
+  dimensiUnit?: "pilih" | "tak_berlaku";
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -134,7 +145,11 @@ export function UnitDateFilters({
         di 1440..800px menunjukkan teks penjelas di dalam bilahlah yang membuat
         chrome permanen justru MEMBENGKAK di bawah ~1280px. */}
     <div className="board-filters filters-sticky no-print" role="group" aria-label="Filter halaman">
-      {units.length > 1 ? (
+      {dimensiUnit === "tak_berlaku" ? (
+        <span className="fs16 t-secondary" data-dimensi-unit="tak-berlaku">
+          Semua unit dalam cakupan Anda ({units.length})
+        </span>
+      ) : units.length > 1 ? (
         <details ref={detailsRef} className="unit-picker" onKeyDown={onPickerKeyDown}>
           <summary ref={summaryRef} className="btn-outline unit-picker-btn">
             <span className="fs15 t-tertiary">Unit</span>

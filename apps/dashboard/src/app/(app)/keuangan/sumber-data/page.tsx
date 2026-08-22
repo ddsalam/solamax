@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
-import { unitLabel } from "@/lib/config";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
+import { unitDotted, unitLabel } from "@/lib/config";
 import { qScoped } from "@/lib/db";
 import { getKelengkapanInput } from "@/lib/keuangan-input-queries";
 import { getDoHarian } from "@/lib/queries";
@@ -56,6 +58,14 @@ export default async function SumberDataPage({
 
   return (
     <>
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="keuangan-sumber-data"
+        date={date}
+        today={todayWib()}
+        maxDate={todayWib()}
+      />
       <h1 className="text-h3 t-brand">Sumber data</h1>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)} — {date}
