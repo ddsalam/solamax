@@ -9,7 +9,7 @@ import {
 } from "@/lib/akun-kas-actions";
 import {
   AMBANG_DORMAN_HARI,
-  dorman,
+  keadaanPakai,
   kandidatAktifkanKembali,
   NAMA_BAKU,
   periksaNama,
@@ -115,7 +115,7 @@ export function AkunKasPanel({
           </div>
         ) : (
           akun.map((a) => {
-            const isDorman = dorman(a, hariIni);
+            const keadaan = keadaanPakai(a, hariIni);
             const cek = periksaNonaktif(a);
             return (
               <div className="grid-row cols-akun" key={a.id}>
@@ -134,20 +134,28 @@ export function AkunKasPanel({
                 <span className="fs16 t-secondary">{a.kind}</span>
                 <span className="right num t-secondary">{a.nMutasi}</span>
                 <span className="fs16">
-                  {!a.active ? (
+                  {/* ⛔ EMPAT keadaan, bukan tiga. "Belum pernah dipakai" TIDAK
+                      memakai lencana peringatan: rekening yang baru didaftarkan
+                      bukan masalah, dan lencana yang menyala pada semua rekening
+                      baru berhenti berarti apa-apa. Lihat `keadaanPakai`. */}
+                  {keadaan === "tidak_aktif" ? (
                     <>
                       <span className="keu-chip keadaan-belum">Tidak aktif</span>
                       <span className="fs16 t-tertiary keu-p">ditutup {a.closedAt}</span>
                     </>
-                  ) : isDorman ? (
+                  ) : keadaan === "belum_pernah_dipakai" ? (
+                    <>
+                      <span className="keu-chip keadaan-siap">Aktif</span>
+                      <span className="fs16 t-tertiary keu-p">
+                        belum pernah dipakai — wajar untuk rekening yang baru didaftarkan
+                      </span>
+                    </>
+                  ) : keadaan === "dorman" ? (
                     <>
                       <span className="keu-chip keadaan-sebagian">Dorman</span>
                       <span className="fs16 t-tertiary keu-p">
-                        {a.mutasiTerakhir === null
-                          ? "belum pernah dipakai"
-                          : `mutasi terakhir ${a.mutasiTerakhir}`}{" "}
-                        — tandanya hilang sendiri begitu dipakai lagi (ambang{" "}
-                        {AMBANG_DORMAN_HARI} hari)
+                        mutasi terakhir {a.mutasiTerakhir} — tandanya hilang sendiri begitu
+                        dipakai lagi (ambang {AMBANG_DORMAN_HARI} hari)
                       </span>
                     </>
                   ) : (

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { ukur } from "@/lib/ukur-kueri";
 import { PapanExportMount } from "@/components/keuangan/PapanExportMount";
 import { PapanCsvButton } from "@/components/keuangan/PapanCsvButton";
-import { ptLabelForUnits } from "@/lib/config";
+import { ptLabelForUnits, unitDotted } from "@/lib/config";
 import { buildReportFilename } from "@/lib/export/filename";
 import { dateShort, timeWib } from "@/lib/format";
 import { notFound } from "next/navigation";
@@ -100,6 +102,21 @@ export default async function PapanKeuanganPage({
 
   return (
     <>
+      {/* ⛔ TANPA pemilih unit, dan itu keputusan: papan ini menampilkan SEMUA
+          unit dalam cakupan sekaligus, jadi pemilih unit di sini tak mengubah
+          apa pun — dan kontrol yang tak mengubah apa pun mengajari orang bahwa
+          kontrol di halaman ini tak berarti. Yang berarti hanya TANGGAL, dan
+          sampai hari ini halaman ini membaca `?tanggal=` tanpa punya cara
+          mengubahnya sama sekali. */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={scope.units[0]?.code ?? ""}
+        segment="keuangan-papan"
+        dimensiUnit="tak_berlaku"
+        date={date}
+        today={todayWib()}
+        maxDate={todayWib()}
+      />
       <div className="section-h">
         <h1 className="text-h3 t-brand">Papan keuangan grup</h1>
         {/* "Cetak ringkasan" (mockup Layar 1). Ekspor terjadi di peramban pada

@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { TutupHariPanel } from "@/components/keuangan/TutupHariPanel";
-import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { ptLabelForUnits, unitDotted, unitLabel } from "@/lib/config";
 import { TutupHariExportMount } from "@/components/keuangan/TutupHariExportMount";
 import { buildReportFilename } from "@/lib/export/filename";
 import { dateShort, timeWib } from "@/lib/format";
@@ -121,6 +123,14 @@ export default async function TutupHariPage({
 
   return (
     <>
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="keuangan-tutup-hari"
+        date={date}
+        today={todayWib()}
+        maxDate={todayWib()}
+      />
       <div className="section-h">
         <h1 className="text-h3 t-brand">Tutup hari</h1>
         {/* §10.20 — mockup tak memintanya; ini keputusan owner 21 Agu 2026.
