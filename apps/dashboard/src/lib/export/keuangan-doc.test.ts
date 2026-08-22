@@ -143,7 +143,7 @@ function dasar(code: string, nama: string): BarisUnit {
   return {
     unitId: 1, code, nama,
     labaBersih: 0, kasAkhir: 0, langkahHarian: 0, bsCheckKumulatif: null,
-    status: "ditutup_normal", tier: null, nada: "baik",
+    status: "ditutup_normal", tier: null, nada: "baik", kekuranganBagan: [],
   };
 }
 const seimbang = (n: string): BarisUnit => dasar("1", n);

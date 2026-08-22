@@ -45,7 +45,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
       const [akun, dayClose] = await Promise.all([getAkunKas(id), getDayClose(id, DATE)]);
       if (akun.length === 0) {
         const b = barisUnit({
-          unitId: u.unit_id, code: u.code, nama: u.name, adaAkunKas: false,
+          unitId: u.unit_id, code: u.code, nama: u.name, adaAkunKas: false, kindAkun: [],
           labaBersih: null, kasAkhir: null, langkahHarian: null,
           dayClose: dayClose === null ? null : { status: dayClose.status, differenceRp: dayClose.differenceRp },
         });
@@ -61,6 +61,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
       const net = is.baris.find((x) => x.label === "Net profit")!.nilai;
       const bs = panelBalance({
         cashOnHand: bahan.kasAkhir,
+        sebabKas: bahan.sebabKas,
         inventoryValue: bahan.totals.inventoryValue,
         soValue: bahan.totals.soValue,
         piutangEasymax: bahan.piutangEasymax,
@@ -73,6 +74,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
       });
       const b = barisUnit({
         unitId: u.unit_id, code: u.code, nama: u.name, adaAkunKas: true,
+        kindAkun: akun.map((a) => a.kind),
         labaBersih: net, kasAkhir: bahan.kasAkhir, langkahHarian: bs.langkahHarian,
         dayClose: dayClose === null ? null : { status: dayClose.status, differenceRp: dayClose.differenceRp },
       });

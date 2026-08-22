@@ -50,6 +50,7 @@ export default async function TutupHariPage({
   const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
   const bsAwal = panelBalance({
     cashOnHand: bahanAwal.kasAkhir,
+    sebabKas: bahanAwal.sebabKas,
     inventoryValue: bahanAwal.totals.inventoryValue,
     soValue: bahanAwal.totals.soValue,
     piutangEasymax: bahanAwal.piutangEasymax,
@@ -86,6 +87,7 @@ export default async function TutupHariPage({
 
   const cf = panelCashFlow({
     kasAwalPerAkun: bahan.kasAwalPerAkun,
+    sebabKas: bahan.sebabKas,
     kasAkhir: bahan.kasAkhir,
     omzet: bahan.totals.revenue,
     teraValue: bahan.totals.teraValue,
@@ -103,6 +105,7 @@ export default async function TutupHariPage({
   });
   const bs = panelBalance({
     cashOnHand: bahan.kasAkhir,
+    sebabKas: bahan.sebabKas,
     inventoryValue: bahan.totals.inventoryValue,
     soValue: bahan.totals.soValue,
     piutangEasymax: bahan.piutangEasymax,

@@ -179,15 +179,21 @@ export default async function PapanKeuanganPage({
           <div className="fs16 t-tertiary">Laba bersih hari ini</div>
           <div className="tutup-angka num">{rp(r.labaBersih)}</div>
           <div className="fs16 t-secondary">
-            {r.takTerhitung.length > 0
-              ? `belum lengkap: ${r.takTerhitung.join(", ")}`
+            {r.tanpaLaba.length > 0
+              ? `belum lengkap: ${r.tanpaLaba.join(", ")}`
               : `${r.termodelkan} unit termodelkan`}
           </div>
         </div>
         <div className="card card-pad">
           <div className="fs16 t-tertiary">Kas akhir</div>
           <div className="tutup-angka num">{rp(r.kasAkhir)}</div>
-          <div className="fs16 t-secondary">seluruh akun kas unit termodelkan</div>
+          {/* ⛔ Sebabnya DISEBUT, dan ia BERBEDA dari sebab laba (§10.21).
+              Kartu yang diam saat angkanya null membuat pembacanya mengira nol. */}
+          <div className="fs16 t-secondary">
+            {r.tanpaKas.length > 0
+              ? `belum ada mutasi kas: ${r.tanpaKas.join(", ")} — bukunya belum diisi, bukan nol`
+              : "seluruh akun kas unit termodelkan"}
+          </div>
         </div>
       </div>
 
@@ -237,6 +243,15 @@ export default async function PapanKeuanganPage({
             </span>
             <span className="fs16">
               <span className={`keu-chip status-${b.status}`}>{LABEL_STATUS[b.status]}</span>
+              {/* §10.22 — PENGAMATAN, bukan tuduhan. Unitnya TETAP tampil:
+                  menandai membuat kekurangannya terlihat, menyembunyikan
+                  membuat unitnya yang tak terlihat. */}
+              {b.kekuranganBagan.length > 0 && (
+                <span className="fs16 t-tertiary keu-p">
+                  bagan akun belum lengkap — belum ada {b.kekuranganBagan.join(" & ")}; tim
+                  keuangan yang mendaftarkannya
+                </span>
+              )}
               <span className="fs16 t-tertiary keu-p">
                 {PENJELASAN_STATUS[b.status]}{" "}
                 {b.status === "belum_dimodelkan" && bolehDaftar && (
@@ -270,6 +285,7 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
       code: u.code,
       nama: u.name,
       adaAkunKas: false,
+      kindAkun: [],
       labaBersih: null,
       kasAkhir: null,
       langkahHarian: null,
@@ -287,6 +303,7 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
   const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai;
   const bs = panelBalance({
     cashOnHand: bahan.kasAkhir,
+    sebabKas: bahan.sebabKas,
     inventoryValue: bahan.totals.inventoryValue,
     soValue: bahan.totals.soValue,
     piutangEasymax: bahan.piutangEasymax,
@@ -303,6 +320,7 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
     code: u.code,
     nama: u.name,
     adaAkunKas: true,
+    kindAkun: akun.map((a) => a.kind),
     labaBersih: netProfit,
     kasAkhir: bahan.kasAkhir,
     langkahHarian: bs.langkahHarian,
