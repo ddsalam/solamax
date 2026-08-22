@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AMBANG_DORMAN_HARI,
   dorman,
+  keadaanPakai,
   kandidatAktifkanKembali,
   NAMA_BAKU,
   periksaNama,
@@ -57,8 +60,35 @@ describe("dorman — TURUNAN, bukan keadaan yang disimpan (§10.18)", () => {
     expect(dorman({ active: true, mutasiTerakhir: kurangSehari }, asOf)).toBe(false);
   });
 
-  it("belum pernah dipakai ⇒ dorman", () => {
-    expect(dorman({ active: true, mutasiTerakhir: null }, "2026-08-18")).toBe(true);
+  it("🔴 belum pernah dipakai BUKAN dorman — dua fakta berbeda (22 Agu 2026)", () => {
+    // Ditemukan pada hari pertama modul dipakai sungguhan: rekening yang BARU
+    // didaftarkan langsung berlencana Dorman. `null` bukan "buruk"; ia "belum".
+    const baru = { active: true, mutasiTerakhir: null };
+    expect(dorman(baru, "2026-08-18")).toBe(false);
+    expect(keadaanPakai(baru, "2026-08-18")).toBe("belum_pernah_dipakai");
+  });
+
+  it("🔴 SUBJEK ASLINYA tetap tertandai: rekening diam 2–5 tahun masih dorman", () => {
+    // Kalau perbaikan di atas ikut memadamkan mereka, ia bukan perbaikan.
+    //
+    // ⚠️ Keempat tanggal ini adalah empat rekening dorman Bakau dari temuan K0
+    // (§8 butir 7) — mereka hidup di WORKBOOK, bukan sebagai baris
+    // `app.cash_account`. Diperiksa di produksi 22 Agu 2026: ketiga-belas
+    // rekening yang ada seluruhnya `belum_pernah_dipakai`, jadi lencana dorman
+    // untuk sementara TAK PUNYA SUBJEK di sana. Ia baru punya begitu mutasi
+    // mulai masuk dan sebuah rekening diam ≥ 90 hari — karena itu subjeknya
+    // disediakan di sini, bukan diandaikan ada di DB.
+    for (const tgl of ["2024-01-10", "2022-08-18", "2021-11-23", "2021-09-23"]) {
+      expect(keadaanPakai({ active: true, mutasiTerakhir: tgl }, "2026-08-18"), tgl).toBe("dorman");
+    }
+  });
+
+  it("keempat keadaan saling eksklusif dan lengkap", () => {
+    const asOf = "2026-08-18";
+    expect(keadaanPakai({ active: false, mutasiTerakhir: null }, asOf)).toBe("tidak_aktif");
+    expect(keadaanPakai({ active: true, mutasiTerakhir: null }, asOf)).toBe("belum_pernah_dipakai");
+    expect(keadaanPakai({ active: true, mutasiTerakhir: "2020-01-01" }, asOf)).toBe("dorman");
+    expect(keadaanPakai({ active: true, mutasiTerakhir: "2026-08-17" }, asOf)).toBe("dipakai");
   });
 
   it("🔴 akun TIDAK AKTIF tidak dihitung dorman — dua penanda satu keadaan bikin menebak", () => {
@@ -137,5 +167,28 @@ describe("periksaNonaktif — mutasi yang menggantung harus TERLIHAT", () => {
 
   it("akun yang sudah tidak aktif tak bisa dinonaktifkan lagi", () => {
     expect(periksaNonaktif(a({ active: false })).boleh).toBe(false);
+  });
+});
+
+describe("🔴 LAYARNYA ikut dipisah, bukan hanya modelnya", () => {
+  const PANEL = readFileSync(
+    resolve(__dirname, "../components/keuangan/AkunKasPanel.tsx"),
+    "utf8",
+  );
+
+  it("panel memakai keadaanPakai, bukan menghitung dorman sendiri", () => {
+    expect(PANEL).toMatch(/keadaanPakai\(a, hariIni\)/);
+    // Satu pembuat vonis: panel tak boleh memanggil `dorman(` maupun menyentuh
+    // ambangnya sendiri.
+    expect(PANEL).not.toMatch(/\bdorman\(/);
+    expect(PANEL).not.toMatch(/mutasiTerakhir === null \?/);
+  });
+
+  it("rekening BARU tidak lagi berlencana Dorman — keempat cabang ada", () => {
+    for (const k of ["tidak_aktif", "belum_pernah_dipakai", "dorman"]) {
+      expect(PANEL, `cabang ${k} hilang`).toContain(`"${k}"`);
+    }
+    // Kalimat yang menenangkan pembacanya, bukan yang menuduhnya.
+    expect(PANEL).toContain("wajar untuk rekening yang baru didaftarkan");
   });
 });
