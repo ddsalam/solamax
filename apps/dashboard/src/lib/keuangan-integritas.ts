@@ -2,7 +2,7 @@
  * Penjaga INTEGRITAS taut polimorfik koreksi/reklasifikasi.
  *
  * Latar: `correction_entry.original_txn_id` dan `reclassification.source_txn_id`
- * sengaja TANPA foreign key (keputusan owner 12 Agu 2026, KEUANGAN-HARIAN §10.9).
+ * sengaja TANPA foreign key (keputusan owner 12 Agu 2026, KEUANGAN-HARIAN §10.10).
  * Alasannya bukan "biar fleksibel": model keuangan sudah berkomitmen pada buku
  * kas besar, lima buku bank, dan settlement EDC sebagai ledger terpisah
  * (§1.3–§1.4), jadi sumber kedua bukan kemungkinan melainkan jadwal. FK ke
