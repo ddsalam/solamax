@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { PanelLaporanKeuangan } from "@/components/keuangan/PanelLaporanKeuangan";
-import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { ptLabelForUnits, unitDotted, unitLabel } from "@/lib/config";
 import { LaporanKeuanganExportMount } from "@/components/keuangan/LaporanKeuanganExportMount";
 import { buildReportFilename } from "@/lib/export/filename";
 import { dateShort, timeWib } from "@/lib/format";
@@ -81,6 +83,14 @@ export default async function LaporanKeuanganPage({
 
   return (
     <>
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="keuangan-laporan"
+        date={date}
+        today={todayWib()}
+        maxDate={todayWib()}
+      />
       <div className="section-h">
         <h1 className="text-h3 t-brand">Laporan keuangan harian</h1>
         {/* "Cetak PDF" (mockup Layar 2). Panelnya diserahkan apa adanya —

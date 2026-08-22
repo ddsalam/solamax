@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { AkunKasPanel } from "@/components/keuangan/AkunKasPanel";
-import { unitLabel } from "@/lib/config";
+import { unitDotted, unitLabel } from "@/lib/config";
 import { getAkunKasKelola } from "@/lib/keuangan-input-queries";
 import {
   canInputKeuangan,
@@ -41,6 +43,14 @@ export default async function AkunKasPage({
 
   return (
     <>
+      {/* Tanpa kontrol TANGGAL dengan sengaja: daftar rekening bukan keadaan
+          harian, dan pemilih tanggal di sini akan menjanjikan sesuatu yang tak
+          pernah dijawab halamannya. */}
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="keuangan-akun-kas"
+      />
       <h1 className="text-h3 t-brand">Kelola akun kas</h1>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)}

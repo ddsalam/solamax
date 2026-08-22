@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
+import { todayWib } from "@/lib/periods";
+import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { BiayaPanel } from "@/components/keuangan/BiayaPanel";
 import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
 import { EdcPanel } from "@/components/keuangan/EdcPanel";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
-import { unitLabel } from "@/lib/config";
+import { unitDotted, unitLabel } from "@/lib/config";
 import { DATE_RE } from "@/lib/selection-keys";
 import {
   getAkunKas,
@@ -122,6 +124,14 @@ export default async function InputKeuanganPage({
 
   return (
     <>
+      <UnitDateFilters
+        units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
+        code={unit.code}
+        segment="keuangan-input"
+        date={date}
+        today={todayWib()}
+        maxDate={todayWib()}
+      />
       <h1 className="text-h3 t-brand">Input keuangan harian</h1>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)} — {date}
