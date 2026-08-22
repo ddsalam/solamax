@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { PanelLaporanKeuangan } from "@/components/keuangan/PanelLaporanKeuangan";
-import { unitLabel } from "@/lib/config";
+import { ptLabelForUnits, unitLabel } from "@/lib/config";
+import { LaporanKeuanganExportMount } from "@/components/keuangan/LaporanKeuanganExportMount";
+import { buildReportFilename } from "@/lib/export/filename";
+import { dateShort, timeWib } from "@/lib/format";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
 import {
+  CATATAN_NILAI_DO,
   panelBalance,
   panelCashFlow,
   panelIncome,
@@ -77,7 +81,32 @@ export default async function LaporanKeuanganPage({
 
   return (
     <>
-      <h1 className="text-h3 t-brand">Laporan keuangan harian</h1>
+      <div className="section-h">
+        <h1 className="text-h3 t-brand">Laporan keuangan harian</h1>
+        {/* "Cetak PDF" (mockup Layar 2). Panelnya diserahkan apa adanya —
+            PDF tidak menghitung ulang apa pun. */}
+        <LaporanKeuanganExportMount
+          kop={{
+            // PT unit INI, bukan payung — cakupannya satu unit.
+            ptLabel: ptLabelForUnits([unit.code]),
+            judul: "Laporan keuangan harian",
+            subjudul: `${unit.name} · ${unitLabel(unit.code)} — ${date}`,
+            generatedLabel: `${dateShort(date)} · ${timeWib(new Date().toISOString())}`,
+            dicetakOleh: scope.email ?? "",
+          }}
+          filename={buildReportFilename({
+            reportName: "Laporan-Keuangan-Harian",
+            unitCode: unit.code,
+            period: date,
+            generated: date,
+          })}
+          cashFlow={cf}
+          income={is}
+          balance={bs}
+          incomplete={b.incomplete}
+          catatanNilaiDo={CATATAN_NILAI_DO}
+        />
+      </div>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)} — {date}
       </div>
@@ -107,9 +136,8 @@ export default async function LaporanKeuanganPage({
             <>
               {/* ⚠️ Batas yang HARUS ikut ke layar, bukan hanya ke dokumen. */}
               <p className="keu-p">
-                ⚠️ <strong>Nilai DO</strong> masih memakai sumbu tanggal yang belum cocok pada
-                4 dari 10 tanggal uji (B7). Angkanya ditampilkan apa adanya — jangan dipakai
-                sebagai bukti sampai sumbunya diselaraskan.
+                {/* SATU sumber dengan PDF — lihat CATATAN_NILAI_DO. */}
+                ⚠️ {CATATAN_NILAI_DO}
               </p>
               <p className="keu-p">
                 <strong>Langkah harian:</strong>{" "}

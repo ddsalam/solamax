@@ -89,9 +89,21 @@ describe("Layar 2 — read-only, dan itu ditegakkan", () => {
   it("batas SOValue (B7) disebut DI LAYAR, bukan hanya di dokumen", () => {
     // Menyajikan angka yang kita tahu belum cocok tanpa menandainya adalah
     // bentuk paling halus dari melaporkan hasil yang menguntungkan.
-    expect(HAL).toMatch(/Nilai DO/);
-    expect(HAL).toMatch(/B7/);
-    expect(HAL).toMatch(/4 dari 10/);
+    // 📌 Kalimatnya kini SATU sumber (`CATATAN_NILAI_DO`) sebab PDF memakainya
+    //    juga. Penjaga mengikuti sumbernya — bukan menuntut teks yang disalin
+    //    ke halaman, yang justru akan menghukum penyatuan sumber.
+    // ⛔ Harus yang DIRENDER, bukan sekadar hadir. Versi pertama asersi ini
+    //    cocok dengan `catatanNilaiDo={CATATAN_NILAI_DO}` — prop untuk PDF —
+    //    sehingga melepas caveat dari LAYAR tetap hijau. Kejadian yang salah.
+    expect(HAL, "caveat tak dirender di layar").toMatch(/⚠️ \{CATATAN_NILAI_DO\}/);
+    // Dan ia juga diserahkan ke PDF — dua penyaji, satu sumber.
+    expect(HAL).toMatch(/catatanNilaiDo=\{CATATAN_NILAI_DO\}/);
+    const model = readFileSync(resolve(__dirname, "keuangan-laporan-model.ts"), "utf8");
+    const konst = /export const CATATAN_NILAI_DO =([\s\S]*?);\n/.exec(model)?.[1] ?? "";
+    expect(konst, "CATATAN_NILAI_DO tak ditemukan").not.toBe("");
+    for (const wajib of ["Nilai DO", "B7", "4 dari 10"]) {
+      expect(konst, `caveat kehilangan "${wajib}"`).toContain(wajib);
+    }
   });
 
   it("langkah harian disebut sebagai yang BERARTI, kumulatif ditandai bukan kesalahan hari ini", () => {

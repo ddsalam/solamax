@@ -81,6 +81,23 @@ export function bolehMenutupOperasional(ctx: WewenangCtx): boolean {
  * `canCloseException`. Keduanya hanya beda satu suku (`isHeadOfFinance`), dan
  * suku itulah yang membuat tangga ini punya arti.
  */
+/**
+ * SIAPA yang berwenang pada tiap tier — untuk dibaca manusia (cetakan §10.20
+ * butir 2: kertas harus menyebut **wewenangnya**, bukan hanya siapa yang
+ * menekan tombolnya).
+ *
+ * ⛔ Ini label, dan label bisa berbohong. Karena itu penjaganya **tidak**
+ * mencocokkan teks: ia membangun konteks untuk tiap peran yang disebut di sini
+ * dan menuntut {@link bolehMenutup} benar-benar menerimanya — serta menolak
+ * peran yang TIDAK disebut. Label dan predikat wajib sepakat, dibuktikan
+ * dengan menjalankannya.
+ */
+export const LABEL_WEWENANG_TIER: Record<Tier, string> = {
+  within_tolerance: "Finance (peran keuangan) atau super admin",
+  exception_hof: "Head of Finance, Direksi, atau super admin",
+  override_direksi: "Direksi atau super admin",
+};
+
 export function bolehMenutup(tier: Tier, ctx: WewenangCtx, daftarHof?: readonly string[]): boolean {
   switch (tier) {
     case "within_tolerance":

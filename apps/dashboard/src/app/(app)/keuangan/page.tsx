@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { ukur } from "@/lib/ukur-kueri";
+import { PapanExportMount } from "@/components/keuangan/PapanExportMount";
+import { PapanCsvButton } from "@/components/keuangan/PapanCsvButton";
+import { ptLabelForUnits } from "@/lib/config";
+import { buildReportFilename } from "@/lib/export/filename";
+import { dateShort, timeWib } from "@/lib/format";
 import { notFound } from "next/navigation";
 import { unitLabel } from "@/lib/config";
 import { getAkunKas, getDayClose } from "@/lib/keuangan-input-queries";
@@ -95,7 +100,37 @@ export default async function PapanKeuanganPage({
 
   return (
     <>
-      <h1 className="text-h3 t-brand">Papan keuangan grup</h1>
+      <div className="section-h">
+        <h1 className="text-h3 t-brand">Papan keuangan grup</h1>
+        {/* "Cetak ringkasan" (mockup Layar 1). Ekspor terjadi di peramban pada
+            halaman yang SUDAH lolos gerbang bacanya — bukan rute baru. */}
+        <PapanCsvButton
+          baris={baris}
+          tanggal={date}
+          filename={buildReportFilename({
+            reportName: "Ringkasan-Keuangan-Grup",
+            scope: ptLabelForUnits(scope.units.map((u) => u.code)),
+            period: date,
+            generated: date,
+          }).replace(/\.pdf$/, ".csv")}
+        />
+        <PapanExportMount
+          baris={baris}
+          kop={{
+            ptLabel: ptLabelForUnits(scope.units.map((u) => u.code)),
+            judul: "Ringkasan keuangan grup",
+            subjudul: `${scope.units.length} unit dalam cakupan — ${date}`,
+            generatedLabel: `${dateShort(date)} · ${timeWib(new Date().toISOString())}`,
+            dicetakOleh: scope.email ?? "",
+          }}
+          filename={buildReportFilename({
+            reportName: "Ringkasan-Keuangan-Grup",
+            scope: ptLabelForUnits(scope.units.map((u) => u.code)),
+            period: date,
+            generated: date,
+          })}
+        />
+      </div>
       <p className="fs16 t-tertiary mt2">
         Kolom paling kanan adalah angka pemeriksa neraca — kalau ia bukan nol, angka di
         sebelah kirinya belum boleh dipercaya.

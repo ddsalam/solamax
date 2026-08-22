@@ -20,13 +20,19 @@ Acuan yang diam-diam disimpangi berhenti jadi acuan.
 
 ## Kelima layar
 
-| # | Layar | Status |
-|---|---|---|
-| 1 | Papan keuangan grup | belum dibangun |
-| 2 | Laporan harian | belum dibangun |
-| 3 | **Input keuangan** | blok 1 (harga beli) **live**; blok 2–4 menyusul |
-| 4 | Gerbang tutup hari | belum dibangun (mesinnya ada — `keuangan-tutup-hari.ts`) |
-| 5 | Sumber data | belum dibangun |
+| # | Layar | Status | Tombol cetak di mockup |
+|---|---|---|---|
+| 1 | Papan keuangan grup | **live** | "Ekspor XLSX" → dibangun sbg **CSV** · "Cetak ringkasan" ✔ |
+| 2 | Laporan harian | **live** | "Cetak PDF" ✔ |
+| 3 | Input keuangan | **live** (4 blok) | — |
+| 4 | Gerbang tutup hari | **live** | — (cetakan **ditambahkan**, §10.20) |
+| 5 | Sumber data | **live** | — |
+
+⚠️ **Hanya DUA layar yang punya tombol cetak di mockup**, dan salah satunya
+**XLSX**, bukan PDF. Dihitung langsung dari `layar-1-5.html` (13 tombol di lima
+layar); Layar 3, 4, dan 5 tak punya satu pun tombol ekspor/cetak. Bila kelak ada
+yang menyebut "empat layar punya tombolnya", angka itu tidak berasal dari berkas
+ini.
 
 ## ⚠️ Penyimpangan yang DIKETAHUI dari mockup
 
@@ -63,7 +69,26 @@ sendiri."*
 `override_reason` (ditegakkan CHECK). Pertanyaan yang sudah terjawab tetapi masih
 terpampang akan ditanyakan ulang oleh orang berikutnya.
 
-### 4. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
+### 4. Layar 1 · "Ekspor XLSX" dibangun sebagai **"Ekspor CSV"** — labelnya ikut berubah
+
+Keputusan owner 21 Agu 2026 ([`KEUANGAN-HARIAN.md`](../../KEUANGAN-HARIAN.md)
+§10.19): CSV **ditulis tangan, tanpa pustaka baru**. Dashboard tak punya satu pun
+pustaka XLSX/CSV (diperiksa di `package.json` dan `node_modules`); `pdfmake`
+satu-satunya jalur ekspor yang ada.
+
+**Labelnya berbeda dari mockup dengan sengaja** — yang dihasilkan CSV, dan
+**tombol harus menyebut isinya dengan benar**. Tombol yang berbohong tentang
+isinya lebih buruk daripada tombol yang belum ada.
+
+### 5. Layar 4 · DAPAT tombol cetak yang tidak ada di mockup
+
+Keputusan owner 21 Agu 2026 (§10.20). Mockup tak memintanya sebab ia disusun
+**sebelum tangga §3.2 ada**; Layar 4 kini satu-satunya layar yang menghasilkan
+keputusan berwenang, dan jejaknyalah yang diminta auditor. Penambahan tombol
+dicatat di sini supaya ia terbaca sebagai keputusan, bukan sebagai tombol yang
+muncul diam-diam.
+
+### 6. Layar 3 · angka pada mockup adalah data Bakau 15 Januari 2026
 
 Bukan contoh karangan, dan bukan pula keadaan hari ini. Jangan dipakai sebagai
 nilai harapan uji.

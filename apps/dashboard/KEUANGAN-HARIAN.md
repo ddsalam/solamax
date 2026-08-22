@@ -1393,19 +1393,81 @@ mengetik.
 mutasi yang menunjuknya; migrasi yang membersihkannya gagal FK — atau lebih
 buruk, **berhasil di rlsstg yang kosong dan gagal di produksi**.
 
-### 10.9 Yang BELUM terverifikasi dari keputusan ini
+### 10.19 K2 · "Ekspor XLSX" → **CSV tanpa pustaka baru** (21 Agustus 2026)
 
-Ditulis supaya tidak dianggap sudah beres:
+**Keputusan owner.** Tombol "Ekspor XLSX" pada mockup Layar 1 dibangun sebagai
+**CSV yang ditulis tangan**, bukan XLSX.
 
-1. **Apakah `ddsalam@solagroup.co` sudah ada di `app.users`** — **belum bisa
-   diperiksa**: kredensial `gcloud` (user maupun ADC) perlu reauth
-   (`invalid_rapt`), sehingga cloud-sql-proxy tidak bisa tersambung pada sesi ini.
-   Kalau belum ada, ia diundang lewat `/admin` — **tindakan owner**, bukan pelaksana.
-2. **OAuth consent masih `Testing` dengan 4 test user** — status terdokumentasi di
-   `CLAUDE.md`, **tidak diverifikasi ulang** sesi ini (alasan sama). Kalau HoF
-   bukan salah satu dari 4 test user, ia tidak akan bisa login.
-3. Keduanya **tidak memblokir** penulisan kode §9.3, tetapi **memblokir** pengujian
-   `canCloseException` end-to-end.
+**Alasan, diverifikasi bukan diingat:** dashboard tak punya satu pun pustaka
+XLSX atau CSV — `pdfmake` satu-satunya jalur ekspor yang ada (diperiksa di
+`package.json` dan `node_modules`). XLSX berarti dependensi baru untuk medium
+yang justru sedang ditinggalkan tim keuangan; CSV memenuhi kebutuhan yang
+mendasari tombol itu — angkanya bisa diolah ulang — dan Excel membukanya sama
+saja.
+
+⚠️ **LABELNYA IKUT BERUBAH jadi "Ekspor CSV".** Alasannya sama dengan alasan
+menolak membangunnya sebagai PDF: **tombol harus menyebut isinya dengan benar.**
+Tombol yang berbohong tentang isinya lebih buruk daripada tombol yang belum ada.
+Penyimpangan dari mockup dicatat di `design/keuangan-modul/README.md`.
+
+⛔ **CSV TUNDUK PADA ATURAN YANG SAMA DENGAN PDF: `null` bernama tetap bernama.**
+`belum bisa dihitung` **tidak boleh** jadi sel kosong — sel kosong di CSV dibaca
+Excel sebagai **nol**, dan itu persis kelas yang arc ini habiskan untuk menutup,
+di medium yang paling gampang melanggarnya. Sel kosong dan nol harus dapat
+dibedakan tanpa membuka aplikasinya.
+
+### 10.20 K2 · Layar 4 DAPAT CETAKAN, meski mockup tak memintanya (21 Agustus 2026)
+
+**Keputusan owner.** Gerbang tutup hari mendapat tombol cetak.
+
+**Alasan:** penutupan hari adalah **satu-satunya layar yang menghasilkan
+keputusan berwenang** — siapa menutup, selisih berapa, `reason_code` apa,
+disetujui siapa, kapan. Itu yang diminta auditor, dan menyalinnya ulang dengan
+tangan adalah cara jejaknya berubah.
+
+**Kenapa mockup tak memintanya:** ia disusun **sebelum tangga §3.2 ada**. Disebut
+di sini supaya penambahannya terbaca sebagai keputusan, bukan sebagai tombol yang
+muncul diam-diam.
+
+**Yang WAJIB ada di kertasnya, dan tak boleh diringkas:**
+
+1. **selisih apa adanya**, termasuk yang di dalam toleransi — §3.2 tak pernah
+   menolkannya, dan kertas yang menolkannya berbohong lebih awet dari layar;
+2. **`tier`, DAN siapa yang berwenang pada tier itu** — bukan hanya siapa yang
+   menekan tombolnya;
+3. **`reason_code`** beserta **tanggal target** bila kodenya menuntutnya;
+4. jalur **`backdate_override`** bila hari itu memakainya: siapa mengajukan,
+   siapa menyetujui, kapan dikonsumsi;
+5. **langkah harian** yang dinilai, **dan** pernyataan bahwa kumulatifnya belum
+   tersedia — jangan biarkan kertas menyembunyikan apa yang layar sebutkan.
+
+⚠️ **Hari yang BELUM ditutup juga boleh dicetak**, dan cetakannya **harus
+mengatakan itu di muka**. Kertas tanpa status terbaca sebagai kertas final.
+
+### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
+
+⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
+dan tiga hal salah karenanya sekaligus:
+
+1. Nomornya membuatnya **menyamar jadi keputusan** di antara dua puluh keputusan
+   sungguhan.
+2. Letaknya **sesudah §10.20**, jadi penomoran §10 tak lagi urut — dan
+   ketidakurutan itulah yang membuat orang berikutnya mengira ia salah ketik
+   belaka.
+3. Sebuah kutipan di kode (`keuangan-integritas.ts`) menunjuk **§10.9** untuk
+   keputusan **tanpa foreign key** — yang sebenarnya ada di **§10.10**. Siapa pun
+   yang mengikuti kutipan itu tiba di daftar "belum terverifikasi" dan
+   menyimpulkan keputusannya tak pernah ditulis. Kutipannya sudah diperbaiki.
+
+**Butirnya TIDAK dihapus.** Sesuatu yang pernah tak terverifikasi lalu
+terverifikasi adalah riwayat yang berguna; yang menyesatkan hanyalah membiarkannya
+berbunyi seperti pertanyaan yang masih terbuka.
+
+| pernah ditulis (12 Agu 2026) | keadaan sekarang |
+|---|---|
+| **Apakah `ddsalam@solagroup.co` ada di `app.users`?** — belum bisa diperiksa, `gcloud` perlu reauth (`invalid_rapt`) | ✅ **TERJAWAB 21 Agu 2026**, tinjauan pra-promosi ketiga (read-only, produksi): ia **ada**, aktif, dengan peran **`admin_perusahaan`** pada 6 membership — **bukan** `keuangan`. Konsekuensinya persis asimetri §10.18: boleh menonaktifkan akun kas, **tidak** boleh menginput, boleh membaca. |
+| **OAuth consent masih `Testing` dengan 4 test user** — tak diverifikasi ulang | ⚠️ **MASIH TERBUKA sebagai butir roadmap**, tetapi tak lagi memblokir: produksi hari ini melayani **22 pengguna / 52 membership aktif**, jadi premis "hanya 4 test user" sudah gugur oleh kenyataan. Status resminya tetap di `CLAUDE.md` (pra-produksi butir 3). |
+| **Keduanya memblokir pengujian `canCloseException` end-to-end** | ✅ **TIDAK LAGI**: pemegang HoF ada di DB, dan kesepakatan label↔predikat tiap tier kini diuji langsung (`csv-dan-tutup-hari.test.ts`) dengan menjalankan `bolehMenutup` untuk setiap peran, bukan dengan membaca tabelnya. |
 
 ---
 

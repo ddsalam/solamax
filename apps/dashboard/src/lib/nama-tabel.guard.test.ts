@@ -101,13 +101,31 @@ const RE_TABEL = /\b(?:FROM|JOIN|INTO|USING)\s+(?:"?(app|public)"?\.)?"?([a-z_][
  */
 const RE_CTE = /\b([a-z_][a-z0-9_]*)\s+AS\s*\(/gi;
 
+/**
+ * Buang komentar SQL `-- …` sampai akhir baris.
+ *
+ * 🔴 LUBANG YANG DITUTUPNYA (21 Agu 2026): penjaga ini memindai isi literal
+ * MENTAH, jadi komentar SQL ikut dipindai. Komentar berbahasa Indonesia yang
+ * memuat kata "JOIN yang sama dengan …" membuatnya melaporkan tabel bernama
+ * `yang`. Itu positif-palsu, dan positif-palsu mengajari orang mengabaikan
+ * penjaganya — biaya yang sama mahalnya dengan negatif-palsu.
+ *
+ * Membuangnya tidak melemahkan apa pun: komentar bukan SQL, dan tak ada
+ * referensi tabel nyata yang hidup di dalamnya.
+ */
+function tanpaKomentar(q: string): string {
+  return q.replace(/--.*$/gm, "");
+}
+
 /** Potong sumber jadi kueri-kueri: isi setiap template literal & string. */
 function kueriDalam(src: string): string[] {
   return [
     ...[...src.matchAll(/`([^`]*)`/g)].map((m) => m[1]!),
     ...[...src.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((m) => m[1]!),
     ...[...src.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]!),
-  ].filter((q) => /\b(FROM|JOIN|INTO|USING)\s/i.test(q));
+  ]
+    .map(tanpaKomentar)
+    .filter((q) => /\b(FROM|JOIN|INTO|USING)\s/i.test(q));
 }
 
 /** Nama yang bukan tabel: fungsi set-returning & katalog sistem. */
@@ -166,6 +184,21 @@ describe("nama tabel di kueri mentah harus ada di schema.prisma", () => {
     const nama = [...(kueriDalam(q)[0] ?? "").matchAll(RE_TABEL)].map((m) => m[2]);
     expect(nama, "nama ber-kutip tak terdeteksi").toContain("so_header");
     expect(cte.size).toBe(0);
+  });
+
+  it("🔴 komentar SQL DIBUANG — dan pembuangannya tak menelan SQL sungguhan", () => {
+    // Positif-palsu yang melahirkan perbaikan ini: "JOIN yang sama dengan".
+    const dgnKomentar = "SELECT 1\n  -- Pola LEFT JOIN yang sama dengan getX\n  FROM app.day_close";
+    const nama = [...tanpaKomentar(dgnKomentar).matchAll(RE_TABEL)].map((m) => m[2]);
+    expect(nama).toEqual(["day_close"]);
+    // DAYA-BEDA: tanpa pembuangan, "yang" ikut terbaca sebagai tabel.
+    expect([...dgnKomentar.matchAll(RE_TABEL)].map((m) => m[2])).toContain("yang");
+    // Dan SQL sungguhan di baris yang sama dengan komentar tetap terbaca.
+    const campur = "FROM app.users u -- catatan\nJOIN app.membership m ON m.x = u.x";
+    expect([...tanpaKomentar(campur).matchAll(RE_TABEL)].map((m) => m[2])).toEqual([
+      "users",
+      "membership",
+    ]);
   });
 
   it("dashboard: setiap nama tabel menunjuk tabel yang ada", () => {
