@@ -67,7 +67,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
         piutangEasymax: bahan.piutangEasymax,
         hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
         openedRetainedEarnings: null,
-        netIncome: net ?? 0,
+        netIncome: net,
         incomeAdjustment: null,
         totalAssetKemarin: bahan.totalAssetKemarin,
         deltaKontribusi: null,

@@ -72,12 +72,19 @@ export interface DayTotals {
   revenue: number;
   teraValue: number;
   cogs: number;
-  grossProfit: number;
+  /** `null` = ada produk tanpa harga beli hari itu (§10.23). JANGAN dinolkan. */
+  grossProfit: number | null;
   lossesGainValue: number;
   inventoryValue: number;
   soValue: number;
   /** Produk yang menyumbang `null` ke salah satu pos di atas. */
   incomplete: ReadonlyArray<string>;
+  /**
+   * Produk yang MERUSAK laba kotor: menyumbang omzet tetapi beban pokoknya tak
+   * terhitung (§10.23). Sub-himpunan `incomplete`, dan **ini yang dinamai** saat
+   * GP `null` — pembaca perlu tahu produk mana yang harus diisi harganya.
+   */
+  perusakGp: ReadonlyArray<string>;
 }
 
 /** Hitung satu produk pada satu hari. */
@@ -125,19 +132,51 @@ export function computeDay(inputs: readonly DayProductInput[]): {
     inventoryValue: 0,
     soValue: 0,
     incomplete: [],
+    perusakGp: [],
   };
 
+  // Produk yang MERUSAK laba kotor — himpunan yang lebih SEMPIT dari
+  // `incomplete`, dan perbedaannya penting (lihat catatan di bawah).
+  const perusakGp = new Set<string>();
   for (const r of rows) {
     for (const k of ["revenue", "teraValue", "cogs", "lossesGainValue", "inventoryValue", "soValue"] as const) {
       const v = r[k];
       if (v === null) incomplete.add(r.productKey);
       else totals[k] += v;
     }
+    // ⛔ Yang membuat GP lebih saji BUKAN "ada yang kosong", melainkan
+    //    **omzetnya ikut sementara beban pokoknya tidak**. Produk yang tak
+    //    menyumbang omzet tak bisa merusak GP betapapun kosongnya.
+    if ((r.cogs === null || r.teraValue === null) && (r.revenue ?? 0) !== 0) {
+      perusakGp.add(r.productKey);
+    }
   }
   // GP total diturunkan dari total komponennya, BUKAN dijumlah dari GP per
   // produk: produk yang GP-nya null tetap boleh menyumbang Revenue-nya ke total,
   // dan menjumlah GP per-produk akan diam-diam membuang sumbangan itu.
-  totals.grossProfit = totals.revenue + totals.teraValue + totals.cogs;
+  //
+  // ⛔ BATAS KEPUTUSAN DI ATAS (22 Agu 2026, §10.23) — kalimatnya sengaja
+  //    DIPERTAHANKAN, bukan dihapus: alasannya masih benar untuk OMZET, dan
+  //    keputusan yang dihapus tanpa jejak akan diambil ulang orang berikutnya.
+  //
+  //    Yang TIDAK benar adalah lanjutannya. Bila sebuah produk tak punya harga
+  //    beli, omzetnya ikut sementara COGS-nya tidak — dan `revenue + tera +
+  //    cogs` karenanya LEBIH SAJI. Terukur: Bakau 2026-07-15 menunjukkan GP
+  //    Rp 174.101.616, persis sama dengan omzetnya, sebab keenam produknya tak
+  //    berharga. Angka yang lebih saji tetapi tampak normal lebih berbahaya
+  //    daripada angka yang hilang.
+  //
+  //    Maka: omzet TETAP dijumlahkan untuk semua produk (kalimat lama berlaku),
+  //    tetapi GROSS PROFIT menolak dihitung selama himpunannya belum lengkap.
+  //    ⚠️ Syaratnya `perusakGp`, BUKAN `incomplete`. Versi pertama memakai
+  //    `incomplete` dan **menghancurkan bukti tanggal emas**: kesepuluh tanggal
+  //    punya BB-01 Pertalite Khusus tanpa harga beli — tetapi omzetnya NOL,
+  //    jadi ia tak pernah merusak GP, dan GP-nya memang terbukti eksak 10/10.
+  //    Harness tanggal emas yang menangkapnya; aturan yang terlalu luas
+  //    membuang bukti yang sah bersama angka yang salah.
+  totals.grossProfit =
+    perusakGp.size > 0 ? null : totals.revenue + totals.teraValue + totals.cogs;
+  totals.perusakGp = [...perusakGp].sort();
   totals.incomplete = [...incomplete].sort();
   return { rows, totals };
 }

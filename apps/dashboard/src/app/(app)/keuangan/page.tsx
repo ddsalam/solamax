@@ -309,7 +309,8 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
     piutangEasymax: bahan.piutangEasymax,
     hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
     openedRetainedEarnings: null,
-    netIncome: netProfit ?? 0,
+    // §10.23 — JANGAN `?? 0`: itu memasukkan kembali laba lebih saji.
+    netIncome: netProfit,
     incomeAdjustment: null,
     totalAssetKemarin: bahan.totalAssetKemarin,
     deltaKontribusi: null,
