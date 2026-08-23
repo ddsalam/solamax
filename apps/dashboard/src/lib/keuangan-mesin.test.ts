@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import emas from "./__fixtures__/keuangan-t3-emas.json";
 import { computeDay, computeProduct, type DayProductInput } from "./keuangan-mesin";
+import type { DayProductInput } from "./keuangan-mesin";
 
 /**
  * UJI REGRESI KASUS EMAS — uji paling bernilai di K1.
@@ -122,7 +123,10 @@ describe("REGRESI: mesin mereproduksi 10 tanggal emas", () => {
       it("GROSS PROFIT eksak SAMPAI RUPIAH — pos yang terbukti 10/10 vs workbook", () => {
         // Klaim yang diuji persis klaim owner. Batas turunannya (3 pos × n sel ×
         // satu sen) jauh di bawah satu rupiah, jadi keduanya diuji sekaligus.
-        const dlt = Math.abs(totals.grossProfit - d.grossProfit);
+        // §10.23 — GP boleh `null`. Tanggal emas punya harga LENGKAP, jadi
+        // `null` di sini berarti fixture-nya yang tak lengkap, bukan mesinnya.
+        expect(totals.grossProfit, `${d.date} · GP null ⇒ ada produk tanpa harga`).not.toBeNull();
+        const dlt = Math.abs(totals.grossProfit! - d.grossProfit);
         expect(dlt, `${d.date} · turunan`).toBeLessThanOrEqual(3 * d.rows.length * SEN);
         expect(dlt, `${d.date} · klaim owner`).toBeLessThan(SATU_RUPIAH);
       });
@@ -135,7 +139,11 @@ describe("REGRESI: mesin mereproduksi 10 tanggal emas", () => {
     // bisa dibuat terhadap segel 2 desimal.
     const bulat = (x: number) => Math.round(x);
     expect(
-      emas.dates.map((d) => [d.date, bulat(computeDay(d.rows.map(toInput)).totals.grossProfit)]),
+      emas.dates.map((d) => {
+        const gp = computeDay(d.rows.map(toInput)).totals.grossProfit;
+        expect(gp, `${d.date} · GP null`).not.toBeNull();
+        return [d.date, bulat(gp!)];
+      }),
     ).toEqual(emas.dates.map((d) => [d.date, bulat(d.grossProfit)]));
   });
 });
@@ -217,5 +225,69 @@ describe("computeDay — total tidak boleh menelan yang tak terhitung", () => {
 
   it("semua lengkap ⇒ incomplete kosong", () => {
     expect(computeDay([a]).totals.incomplete).toEqual([]);
+  });
+});
+
+describe("§10.23 · laba kotor menolak dihitung dari himpunan yang merusaknya", () => {
+  const row = (o: Partial<DayProductInput> & { productKey: string }): DayProductInput => ({
+    volume: 100, sellPrice: 10_000, tera: 0, stock: 0, lossesGain: 0,
+    buyPrice: 9_000, sisaSo: 0, ...o,
+  });
+
+  it("🔴 produk BEROMZET tanpa harga beli ⇒ GP null, dan produknya DINAMAI", () => {
+    const { totals } = computeDay([row({ productKey: "BB-03", buyPrice: null })]);
+    expect(totals.grossProfit).toBeNull();
+    expect(totals.perusakGp).toEqual(["BB-03"]);
+  });
+
+  it("🔴 KONTROL yang menyelamatkan bukti emas: omzet NOL tak merusak GP", () => {
+    // BB-01 Pertalite Khusus ada di kesepuluh tanggal emas tanpa harga beli,
+    // tetapi volumenya nol. Aturan yang memakai `incomplete` (bukan `perusakGp`)
+    // akan menihilkan GP di kesepuluhnya dan membuang bukti yang sah.
+    const { totals } = computeDay([
+      row({ productKey: "BB-01", volume: 0, sellPrice: 0, buyPrice: null }),
+      row({ productKey: "BB-03" }),
+    ]);
+    expect(totals.incomplete).toContain("BB-01"); // tetap tercatat tak lengkap
+    expect(totals.perusakGp).toEqual([]); // TAPI tak merusak GP
+    expect(totals.grossProfit).not.toBeNull();
+  });
+
+  it("omzet TIDAK ikut null — ia tak bergantung harga beli", () => {
+    const { totals } = computeDay([row({ productKey: "BB-03", buyPrice: null })]);
+    expect(totals.revenue).toBe(1_000_000);
+    expect(totals.grossProfit).toBeNull();
+  });
+
+  it("semua berharga ⇒ GP dihitung — kontrol POSITIF", () => {
+    const { totals } = computeDay([row({ productKey: "BB-03" })]);
+    expect(totals.perusakGp).toEqual([]);
+    expect(totals.grossProfit).toBe(100_000);
+  });
+});
+
+describe("§10.23 · rambatan null sampai gerbang tutup hari", () => {
+  it("🔴 GP null ⇒ operating, net, margin, DAN langkahHarian ikut null", async () => {
+    const { panelBalance, panelIncome } = await import("./keuangan-laporan-model");
+    const totals = computeDay([
+      { productKey: "BB-03", volume: 100, sellPrice: 10_000, tera: 0, stock: 0,
+        lossesGain: 0, buyPrice: null, sisaSo: 0 },
+    ]).totals;
+    const is = panelIncome({ totals, beban: [], pendapatanLain: 0, incomeAdjustment: null });
+    for (const label of ["Gross profit", "Operating profit", "Net profit"]) {
+      const b = is.baris.find((x) => x.label === label)!;
+      expect(b.nilai, label).toBeNull();
+      expect(b.sebab, label).toBe("produk_tanpa_harga_beli");
+    }
+    expect(is.pemeriksa.nilai).toBeNull();
+
+    const bs = panelBalance({
+      sebabKas: null, cashOnHand: 0, inventoryValue: 0, soValue: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
+      incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null,
+    });
+    // Gerbang tutup hari TIDAK bisa lulus — konsekuensi yang disengaja.
+    expect(bs.langkahHarian).toBeNull();
   });
 });

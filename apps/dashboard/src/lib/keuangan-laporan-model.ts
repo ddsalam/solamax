@@ -23,12 +23,19 @@ import type { DayTotals } from "./keuangan-mesin";
 export type SebabKosong =
   | "belum_ada_akun_kas"
   | "belum_ada_mutasi_kas"
+  | "produk_tanpa_harga_beli"
   | "belum_ada_harga_beli"
   | "belum_ada_opname"
   | "belum_ada_saldo_pembuka"
   | "tak_bersumber";
 
 export const PENJELASAN_KOSONG: Record<SebabKosong, string> = {
+  // §10.23 — produknya DISEBUT oleh pemanggil (spanduk `incomplete`); kalimat
+  // ini menerangkan artinya, bukan menggantikan daftarnya.
+  produk_tanpa_harga_beli:
+    "Ada produk yang belum punya harga beli pada tanggal ini, jadi beban pokoknya " +
+    "tak terhitung — laba yang dijumlahkan tanpa itu akan LEBIH SAJI. Tim keuangan " +
+    "mengisinya di Layar 3 blok 1; produk mana saja disebut di peringatan halaman.",
   // ⛔ BUKAN sama dengan `belum_ada_akun_kas` (§10.21). Akunnya ADA; yang belum
   //    ada adalah isinya. Nama yang salah membuat pembacanya mencari akun yang
   //    sebenarnya sudah terdaftar.
@@ -161,29 +168,35 @@ export interface IncomeInput {
 export function panelIncome(i: IncomeInput): PanelLaporan & { marginBersih: number | null } {
   const t = i.totals;
   const biaya = -totalBeban(i.beban);
-  const operating = t.grossProfit + t.lossesGainValue;
-  const net = operating + biaya + i.pendapatanLain;
-  // Margin bersih: satu-satunya tambahan terhadap sheet workbook.
-  const margin = t.revenue === 0 ? null : net / t.revenue;
+  // ⛔ RAMBATAN `null` YANG DISENGAJA (§10.23). Setiap pos di bawah GP mewarisi
+  //    ketidaktahuannya; menggantinya dengan 0 di sini akan mengembalikan persis
+  //    angka lebih saji yang keputusan itu tutup, satu baris lebih rendah.
+  const operating = t.grossProfit === null ? null : t.grossProfit + t.lossesGainValue;
+  const net = operating === null ? null : operating + biaya + i.pendapatanLain;
+  const margin = net === null || t.revenue === 0 ? null : net / t.revenue;
+  // Sebabnya mengikuti himpunan yang BENAR-BENAR merusak GP — syarat yang sama
+  // dengan `grossProfit === null`. Dua tempat dengan himpunan berbeda akan
+  // menghasilkan "belum bisa dihitung" tanpa sebab, atau sebab tanpa null.
+  const sebabGp = t.perusakGp.length > 0 ? ("produk_tanpa_harga_beli" as const) : undefined;
 
   return {
     baris: [
       { label: "Omzet penjualan", nilai: t.revenue },
       { label: "Tera nozzle", nilai: t.teraValue },
       { label: "COGS", nilai: t.cogs },
-      { label: "Gross profit", nilai: t.grossProfit, sum: true },
+      { label: "Gross profit", nilai: t.grossProfit, sum: true, sebab: sebabGp },
       { label: "Gain / losses", nilai: t.lossesGainValue },
-      { label: "Operating profit", nilai: operating, sum: true },
+      { label: "Operating profit", nilai: operating, sum: true, sebab: sebabGp },
       { label: "Biaya operasional", nilai: biaya },
       { label: "Pendapatan lain-lain", nilai: i.pendapatanLain },
-      { label: "Net profit", nilai: net, sum: true },
+      { label: "Net profit", nilai: net, sum: true, sebab: sebabGp },
       {
         label: "Income adjustment",
         nilai: i.incomeAdjustment,
         sebab: i.incomeAdjustment === null ? "tak_bersumber" : undefined,
       },
     ],
-    pemeriksa: { label: "Margin bersih", nilai: margin },
+    pemeriksa: { label: "Margin bersih", nilai: margin, sebab: sebabGp },
     marginBersih: margin,
   };
 }
@@ -202,7 +215,8 @@ export interface BalanceInput {
   hutangPiutangNonEasymax: number | null;
   /** `Total Equity(d−1) − ΔKontribusi`. `null` = belum ada saldo pembuka. */
   openedRetainedEarnings: number | null;
-  netIncome: number;
+  /** `null` = laba tak terhitung (§10.23). JANGAN dinolkan di pemanggil. */
+  netIncome: number | null;
   incomeAdjustment: number | null;
   /** Total Asset kemarin — untuk LANGKAH harian. `null` = tak terhitung. */
   totalAssetKemarin: number | null;
@@ -229,8 +243,11 @@ export function panelBalance(i: BalanceInput): PanelBalance {
       (i.piutangEasymax ?? 0) +
       (i.hutangPiutangNonEasymax ?? 0);
 
+  // ⛔ `netIncome` boleh `null` sejak §10.23. Menggantinya 0 di sini — atau di
+  //    pemanggil dengan `?? 0` — memasukkan kembali angka lebih saji yang
+  //    keputusan itu tutup, lewat pintu belakang.
   const equity =
-    i.openedRetainedEarnings === null
+    i.openedRetainedEarnings === null || i.netIncome === null
       ? null
       : i.openedRetainedEarnings + i.netIncome + (i.incomeAdjustment ?? 0);
 
@@ -240,7 +257,7 @@ export function panelBalance(i: BalanceInput): PanelBalance {
   //   ΔBSCheck = NetIncome + IncomeAdj − ΔKontribusi − ΔAsset
   // Itulah sebabnya gerbang §3 bisa bekerja meski BSCheck kumulatif belum ada.
   const langkah =
-    asset === null || i.totalAssetKemarin === null
+    asset === null || i.totalAssetKemarin === null || i.netIncome === null
       ? null
       : i.netIncome + (i.incomeAdjustment ?? 0) - (i.deltaKontribusi ?? 0) - (asset - i.totalAssetKemarin);
 
