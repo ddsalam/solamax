@@ -1582,6 +1582,107 @@ GP-nya null tetap boleh menyumbang Revenue-nya ke total"*. Kalimat itu **tetap
 ada**, diberi tanggal dan batasnya — keputusan yang dihapus tanpa jejak akan
 diambil ulang oleh orang berikutnya (pola §10.17).
 
+### 10.24 K3 · Jalur saldo pembuka per rekening (22 Agustus 2026)
+
+**Keputusan owner:** saldo pembuka **per rekening**, dengan **tanggal cut-over
+sendiri**, dicatat sebagai **fakta bernama** — bukan diselundupkan lewat entri
+`Penyesuaian` biasa. **Wewenang: Head of Finance** (sejalan §10.18 — menetapkan
+titik awal sebuah rekening lebih dekat ke *menyetujui* daripada ke *mengetik*,
+dan ia tak bisa dikoreksi diam-diam sesudah mutasi menumpuk di atasnya).
+
+**Kenapa mendesak:** tanpa ini neraca salah **selamanya**, dan salahnya **tak
+akan pernah berbunyi** — sejak mutasi pertama ia terlihat seperti angka biasa.
+Tenggatnya bukan tanggal melainkan peristiwa: **selesai sebelum mutasi kas
+pertama masuk.**
+
+#### Bentuk — empat jawaban, dengan alasannya
+
+**1 · Di mana ia hidup: BARIS `cash_ledger` ber-`jenis='adjustment'`, ditandai
+kolom `saldo_awal` — BUKAN tabel tersendiri.**
+
+⛔ **Keputusan 0029 sudah menamai jalur ini dua kali**, dan usul tabel-tersendiri
+akan membatalkannya tanpa sengaja:
+
+> `-- Sisi kategori; NULL untuk 'adjustment' (mis. baris "Saldo Awal").`
+> `-- Tanda nominal mengikuti jenis. 'adjustment' bebas tanda (saldo awal bisa`
+> `-- negatif), tetapi tidak boleh nol`
+
+CHECK `cash_ledger_tanda` **sengaja dilonggarkan untuk saldo awal**. Membangun
+tabel lain berarti melonggarkan CHECK itu untuk sesuatu yang tak pernah datang.
+
+Dan **butir 2 keputusan 0029 justru menuntut bentuk ini.** Larangannya bukan
+"jangan simpan angka saldo di mana pun" melainkan **"saldo adalah TURUNAN:
+`SUM(amount)`, satu operasi, tanpa cabang"**. Anchor di tabel terpisah membuat
+setiap pembaca saldo jadi `SUM(mutasi) + anchor` — **sebuah cabang, di setiap
+pembaca, selamanya**. Baris ledger menjaga aturan satu-operasi itu utuh.
+
+Yang ditambahkan supaya ia **fakta bernama**, bukan penyesuaian biasa:
+
+| | |
+|---|---|
+| kolom | `saldo_awal BOOLEAN NOT NULL DEFAULT false` |
+| CHECK | `saldo_awal` hanya boleh pada `jenis='adjustment'` |
+| unik | indeks parsial: **satu** baris `saldo_awal` non-void per `(unit_id, account_id)` |
+| tanggal cut-over | `business_date` baris itu sendiri |
+
+⚠️ Ditolak: menandainya lewat teks `keterangan = "Saldo Awal"`. Teks bukan
+kendala; ia lolos salah ketik dan tak bisa dijadikan indeks unik.
+
+**2 · Mutasi bertanggal SEBELUM cut-over: DUA-DUANYA — mustahil ke depan,
+TERLIHAT ke belakang.**
+
+- **Ke depan:** jalur tulis menolak mutasi baru bertanggal `< cut-over`.
+- **Ke belakang:** baris yang **sudah** ada sebelum cut-over **dikeluarkan dari
+  saldo** dan **disebut namanya di layar**.
+
+Pengecualiannya **bukan pilihan, melainkan aritmetika**: saldo pembuka berarti
+"saldo pada AWAL hari cut-over", jadi menjumlahkannya bersama mutasi yang lebih
+tua **menghitung ganda**. Yang bisa dipilih hanyalah apakah pengecualian itu
+diam atau terlihat — dan diam bukan pilihan.
+
+Urutan nyata menuntut keduanya: tim keuangan mungkin sudah mengetik beberapa
+mutasi sebelum HoF menetapkan anchor-nya. Menolak *retroaktif* akan menelantarkan
+baris yang sudah tersimpan.
+
+**3 · Bisa diubah: YA — dengan MENGGANTI, bukan menyunting.**
+
+Anchor lama di-`void` (mekanisme `void`/`voided_by`/`voided_at` yang sudah ada),
+anchor baru disisipkan, dan `audit_log` mencatat keduanya berikut alasannya.
+
+**Alasannya:** melarang perubahan tidak membuat kekeliruan hilang — ia mendorong
+orang mengimbanginya dengan **mutasi palsu**, yang jauh lebih buruk sebab tak
+terlihat sebagai koreksi. Penggantian yang tercatat mengubah kekeliruan jadi
+riwayat.
+
+⚠️ **Batas:** `cash_ledger` tak punya kolom `void_reason`, jadi **alasannya hidup
+di `audit_log`, bukan di baris ledgernya**. Disebut di sini supaya tak ditemukan
+sebagai kejutan; menambah kolomnya bisa menyusul bila ternyata perlu.
+
+**4 · Gerbang tutup hari sebelum saldo pembuka ada: SUDAH tertahan — dan tak ada
+penahan baru yang dipasang.**
+
+Ia tertahan sebagai **konsekuensi §10.21**, bukan sebagai aturan baru: tanpa
+mutasi, `kasAkhir` `null` → `langkahHarian` `null` → gerbang tak punya angka
+untuk dinilai. Owner tidak memilih "tahan gerbang", dan **tak ada penahan
+tambahan yang dipasang diam-diam.**
+
+#### 📌 Hari pertama: anchor ADA, mutasi lain NOL — diukur, bukan diduga
+
+Karena anchor adalah **baris ledger**, ia terhitung sebagai mutasi. Maka pada
+hari pertama:
+
+| | |
+|---|---|
+| `sebabKasDari(akun, 1)` | `null` — kas **bisa** dihitung |
+| `kasAkhir` | **= saldo pembuka** |
+| `langkahHarian` | punya angka |
+| gerbang tutup hari | **bisa lulus** |
+
+Itu perilaku yang benar: rekening yang saldo awalnya diketahui dan belum
+bergerak memang saldonya sebesar itu. **Dan ini konsekuensi langsung dari
+jawaban 1** — dengan tabel terpisah, `sebabKasDari` harus diajari mengenal
+anchor, dan setiap pembaca saldo ikut berubah.
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

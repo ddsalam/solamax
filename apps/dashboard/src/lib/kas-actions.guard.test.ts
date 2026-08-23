@@ -57,8 +57,33 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
   it("🔴 SALDO tidak pernah ditulis — tak ada kolom saldo di INSERT mana pun", () => {
     // Kalau kelak ada yang menambahkan kolom saldo "biar cepat", yang ia bangun
     // adalah angka yang bisa berselisih dengan mutasinya sendiri.
-    expect(KODE).not.toMatch(/\bsaldo\b/i);
-    expect(KODE).not.toMatch(/balance/i);
+    //
+    // 🔴 DIPERSEMPIT 24 Agu 2026 (§10.24). Bentuk lama melarang KATA "saldo",
+    //    dan `saldo_awal` — sebuah PENANDA boolean, bukan angka — memerahkannya.
+    //    Itu positif-palsu, dan positif-palsu mengajari orang mengabaikan
+    //    penjaganya. Yang dilarang keputusan 0029 butir 2 adalah **kolom yang
+    //    MENYIMPAN saldo**, bukan kata.
+    //    Dan ia memeriksa SQL-nya, bukan berkasnya: kata "saldo" hidup wajar di
+    //    prosa dan pesan galat ("Saldo pembuka adalah titik awal…"). Penjaga
+    //    yang memindai prosa akan menuduh kalimat.
+    const sqlSaja = (teks: string): string =>
+      (teks.match(/`[^`]*`/g) ?? [])
+        .filter((l) => /\b(SELECT|INSERT|UPDATE|DELETE)\b/i.test(l))
+        .map((l) => l.replace(/--.*$/gm, ""))
+        .join("\n");
+
+    const TERLARANG = [/\bsaldo\b(?!_awal)/i, /saldo_akhir/i, /running_balance/i, /\bbalance\b/i];
+    const sql = sqlSaja(KODE);
+    expect(sql.length, "tak ada SQL yang diperiksa — penjaga tanpa subjek").toBeGreaterThan(200);
+    for (const t of TERLARANG) expect(sql, `pola terlarang: ${t}`).not.toMatch(t);
+
+    // 🔴 DAYA-BEDA di kedua arah, lewat PEMERIKSA YANG SAMA.
+    const palsu = "const q = `INSERT INTO app.cash_ledger (saldo_akhir) VALUES ($1)`";
+    expect(TERLARANG.some((t) => t.test(sqlSaja(palsu)))).toBe(true);
+    const sah = "const q = `INSERT INTO app.cash_ledger (saldo_awal) VALUES (true)`";
+    expect(TERLARANG.some((t) => t.test(sqlSaja(sah)))).toBe(false);
+    // Prosa yang menyebut "saldo" TIDAK dituduh.
+    expect(sqlSaja('const pesan = "Saldo pembuka adalah titik awal";')).toBe("");
   });
 
   it("gerbang §2.6 dipanggil, dan MENDAHULUI koneksi", () => {
@@ -112,7 +137,10 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
   });
 
   it("RLS 0016: set_config transaction-local mendahului setiap DML", () => {
-    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(3);
+    // Empat sejak §10.24 menambah `tetapkanSaldoAwal`. Angkanya SENGAJA dipatok:
+    // jalur tulis baru yang lupa men-set konteks akan menaikkannya tanpa
+    // menaikkan angka di sini, dan penjaga ini memerah.
+    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(4);
     expect(urutan(KODE, "set_config('app.unit_ids'", "INSERT INTO app.cash_ledger")).toBe("ok");
   });
 
@@ -128,5 +156,52 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
     // disalin ulang di sini akan berselisih dengan DB tanpa ada yang tahu.
     expect(KODE).toMatch(/tandaCocok\(input\.jenis, input\.amount\)/);
     expect(KODE).toMatch(/kategoriCocok\(input\.jenis, input\.categorySide\)/);
+  });
+});
+
+describe("§10.24 · saldo pembuka — gerbang dan bentuknya", () => {
+  const SRC = readFileSync(resolve(__dirname, "kas-actions.ts"), "utf8");
+  const fn = SRC.slice(SRC.indexOf("export async function tetapkanSaldoAwal"));
+
+  it("🔴 WEWENANG Head of Finance — bukan peran `keuangan`", () => {
+    expect(fn).toMatch(/if \(!canNonaktifkanAkunKas\(\{[^}]*\}\)\) \{/);
+    // Dan hasilnya DIPAKAI: memanggil tanpa menolak adalah kelas yang sudah
+    // menggigit repo ini empat kali.
+    expect(fn).toMatch(/return \{ ok: false, error: "Hanya Head of Finance/);
+  });
+
+  it("🔴 MENGGANTI, bukan menyunting: anchor lama di-VOID, bukan di-UPDATE nilainya", () => {
+    expect(fn).toMatch(/SET void = true, voided_by_user_id/);
+    expect(fn).toMatch(/saldo_awal, created_by_user_id/); // sisip baru
+    // Tak boleh ada UPDATE yang mengubah amount/business_date anchor.
+    expect(fn).not.toMatch(/SET amount/);
+    expect(fn).not.toMatch(/SET business_date/);
+  });
+
+  it("alasan WAJIB — syaratnya ADA, bukan hanya kalimatnya", () => {
+    // 🔴 Bentuk pertama hanya mencocokkan teks "Alasan wajib diisi", sehingga
+    //    melumpuhkan SYARATNYA tetap hijau (mutasi AA7). Kelas yang sudah
+    //    menggigit repo ini berkali-kali: memanggil pemeriksa tanpa memakai
+    //    hasilnya — di sini, menyimpan pesannya tanpa syaratnya.
+    expect(fn).toMatch(/if \(input\.alasan\.trim\(\) === ""\) \{/);
+    expect(fn).toMatch(/Alasan wajib diisi/);
+    expect(fn).toMatch(/INSERT INTO app\.audit_log/);
+    expect(fn).toMatch(/saldo_awal\.tetapkan|saldo_awal\.ganti/);
+  });
+
+  it("RLS di-set sebelum DML, di dalam transaksi yang sama", () => {
+    expect(fn).toMatch(/BEGIN[\s\S]*set_config\('app\.unit_ids'[\s\S]*INSERT INTO app\.cash_ledger/);
+  });
+
+  it("🔴 penolakan mutasi pra-cut-over ADA, dan di DALAM transaksi", () => {
+    const simpan = SRC.slice(
+      SRC.indexOf("export async function simpanMutasiKas"),
+      SRC.indexOf("export async function tetapkanSaldoAwal"),
+    );
+    // Diperiksa sesudah BEGIN — celah antara memeriksa dan menulis adalah cara
+    // dua permintaan bersamaan menyelipkan baris pra-cut-over.
+    expect(simpan).toMatch(/BEGIN[\s\S]*saldo_awal AND NOT void[\s\S]*INSERT INTO app\.cash_ledger/);
+    expect(simpan).toMatch(/input\.date < cutOver/);
+    expect(simpan).toMatch(/mendahului saldo pembuka/);
   });
 });

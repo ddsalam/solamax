@@ -617,15 +617,14 @@ model ManualEntry {
   reviewedByUserId    Int?              @map("reviewed_by_user_id")
   reviewedAt          DateTime?         @map("reviewed_at") @db.Timestamptz()
   returnedReason      String?           @map("returned_reason")
-
-  @@index([unitId, businessDate, status])
-  @@index([unitId, businessDate, section])
   /// Pintu masuk baris ini (0034): `pengawas` (Rincian Penjualan) atau
   /// `finance`. FAKTA SAAT PENULISAN — jangan pernah menurunkannya dari peran
   /// `createdByUserId` saat dibaca: peran orang berubah, dan sejarah tidak
   /// boleh ikut berubah. CHECK di DB membatasi nilainya ke dua itu.
-  sourceDoor      String    @default("pengawas") @map("source_door")
+  sourceDoor          String            @default("pengawas") @map("source_door")
 
+  @@index([unitId, businessDate, status])
+  @@index([unitId, businessDate, section])
   @@map("manual_entry")
   @@schema("app")
 }
@@ -916,27 +915,29 @@ model CashMutationCategory {
 // sisipan di tengah mendiamkan seluruh kolom di bawahnya.
 // Nominal BERTANDA: debet > 0, kredit < 0 (CHECK di 0029).
 model CashLedger {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  unitId          Int               @map("unit_id") @db.SmallInt
-  accountId       String            @map("account_id") @db.Uuid
-  businessDate    DateTime          @map("business_date") @db.Date
-  keterangan      String
-  jenis           CashMutationJenis
-  categorySide    CashMutationSide? @map("category_side")
-  categoryLabel   String?           @map("category_label")
-  amount          Decimal           @db.Decimal(17, 2)
-  void            Boolean           @default(false)
-  createdByUserId Int               @map("created_by_user_id")
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
-  voidedByUserId  Int?              @map("voided_by_user_id")
-  voidedAt        DateTime?         @map("voided_at") @db.Timestamptz()
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              Int               @map("unit_id") @db.SmallInt
+  accountId           String            @map("account_id") @db.Uuid
+  businessDate        DateTime          @map("business_date") @db.Date
+  keterangan          String
+  jenis               CashMutationJenis
+  categorySide        CashMutationSide? @map("category_side")
+  categoryLabel       String?           @map("category_label")
+  amount              Decimal           @db.Decimal(17, 2)
+  /// §10.24 — PENANDA, bukan angka: titik awal rekening. Satu per akun (indeks parsial 0036).
+  saldoAwal           Boolean           @default(false) @map("saldo_awal")
+  void                Boolean           @default(false)
+  createdByUserId     Int               @map("created_by_user_id")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  voidedByUserId      Int?              @map("voided_by_user_id")
+  voidedAt            DateTime?         @map("voided_at") @db.Timestamptz()
   // Tautan ke settlement EDC yang melahirkan baris ini (0030). NULL untuk
   // mutasi biasa. Kolomnya sudah ada di DB sejak 0030 tetapi belum pernah
   // tercermin di sini — drift lama, dirapikan bersama 0033.
-  edcSettlementId String?           @map("edc_settlement_id") @db.Uuid
+  edcSettlementId     String?           @map("edc_settlement_id") @db.Uuid
   // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
   // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
-  sourceManualEntryId String?       @map("source_manual_entry_id") @db.Uuid
+  sourceManualEntryId String?           @map("source_manual_entry_id") @db.Uuid
 
   @@index([unitId, accountId, businessDate])
   @@index([unitId, categorySide, categoryLabel, businessDate])

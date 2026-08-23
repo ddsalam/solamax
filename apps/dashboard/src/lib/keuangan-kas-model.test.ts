@@ -20,6 +20,7 @@ const m = (o: Partial<Row> = {}): Row => ({
   categorySide: "debet",
   categoryLabel: "Setoran Hasil Penjualan",
   amount: 100_000,
+  saldoAwal: false,
   void: false,
   ...o,
 });

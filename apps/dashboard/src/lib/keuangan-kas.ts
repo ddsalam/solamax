@@ -29,7 +29,43 @@ export interface MutasiKas {
   categoryLabel: string | null;
   /** Bertanda: debet > 0, kredit < 0. */
   amount: number;
+  /** §10.24 — baris TITIK AWAL rekening. Satu per akun (indeks parsial 0036). */
+  saldoAwal: boolean;
   void: boolean;
+}
+
+/**
+ * Tanggal cut-over sebuah rekening: `business_date` baris saldo pembukanya.
+ * `null` = rekening itu belum punya titik awal.
+ */
+export function tanggalCutOver(
+  mutasi: readonly MutasiKas[],
+  accountId: string,
+): string | null {
+  for (const m of mutasi) {
+    if (!m.void && m.saldoAwal && m.accountId === accountId) return m.businessDate;
+  }
+  return null;
+}
+
+/**
+ * Mutasi yang bertanggal SEBELUM cut-over — dikeluarkan dari saldo, dan
+ * **dinamai** supaya pengecualiannya terlihat (§10.24 butir 2).
+ *
+ * ⛔ Pengecualiannya bukan pilihan melainkan ARITMETIKA: saldo pembuka berarti
+ * "saldo pada AWAL hari cut-over", jadi menjumlahkannya bersama mutasi yang
+ * lebih tua **menghitung ganda**. Yang bisa dipilih hanyalah apakah pengecualian
+ * itu diam atau terlihat — dan diam bukan pilihan.
+ */
+export function mutasiSebelumCutOver(
+  mutasi: readonly MutasiKas[],
+  accountId: string,
+): MutasiKas[] {
+  const cut = tanggalCutOver(mutasi, accountId);
+  if (cut === null) return [];
+  return mutasi.filter(
+    (m) => !m.void && !m.saldoAwal && m.accountId === accountId && m.businessDate < cut,
+  );
 }
 
 /**
@@ -44,10 +80,15 @@ export function saldoAkun(
   accountId: string,
   date: string,
 ): number {
+  // §10.24 — baris yang lebih tua dari cut-over DIKELUARKAN (hitung ganda).
+  // Tetap satu operasi, satu lintasan: yang bertambah hanyalah satu syarat,
+  // bukan cabang kedua yang menjumlah dari sumber lain.
+  const cut = tanggalCutOver(mutasi, accountId);
   let s = 0;
   for (const m of mutasi) {
     if (m.void || m.accountId !== accountId) continue;
     if (m.businessDate > date) continue;
+    if (cut !== null && !m.saldoAwal && m.businessDate < cut) continue;
     s += m.amount;
   }
   return s;
