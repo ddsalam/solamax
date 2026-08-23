@@ -1525,6 +1525,63 @@ keenam unit itu memang hanya punya satu rekening di dunia nyata atau owner baru
 mengisi sebagian. Kalimatnya karena itu berbunyi "belum ada Kas Besar / EDC
 Penampungan", bukan "datanya salah".
 
+### 10.23 K3 · Laba kotor jadi `null` bila ada produk tanpa harga beli (22 Agustus 2026)
+
+**Keputusan owner.** `grossProfit` — dan pos-pos yang bergantung padanya —
+**tidak lagi dijumlahkan** ketika ada produk yang tak punya harga beli pada
+tanggal itu.
+
+**Sebab bentuk lama salah, dan salahnya tak berbunyi:** omzet dijumlahkan untuk
+**semua** produk, COGS hanya untuk yang **berharga**, lalu
+`grossProfit = revenue + tera + cogs`. Produk tanpa harga menyumbang omzetnya
+tetapi tidak beban pokoknya ⇒ **laba kotor LEBIH SAJI**, disajikan sebagai angka
+biasa. Terukur di produksi 22 Agu 2026:
+
+| tanggal | unit | yang terlihat | yang sebenarnya |
+|---|---|---|---|
+| 2026-07-15 | Bakau | GP **Rp 174.101.616** — *persis sama dengan omzetnya* | 6/6 produk tanpa harga ⇒ COGS 0 |
+| 2026-07-15 | Imam Bonjol | GP **Rp 173 juta** | pola Agustus unit yang sama: **~Rp 19 juta** |
+
+**Ini kelas yang SAMA PERSIS dengan nol palsu kas (§10.21), arah berlawanan:**
+nol palsu membuat yang belum ada terlihat **nol**; ini membuat yang belum ada
+terlihat **untung**. Dan laba lebih saji yang tampak normal lebih berbahaya
+daripada laba yang hilang — apalagi tanggal-tanggal itu justru yang dibuka tim
+keuangan saat merekonsiliasi.
+
+#### ⚠️ ONGKOSNYA, DIUKUR SEBELUM DIPUTUSKAN — bukan diperkirakan
+
+Diperiksa di produksi (120 hari terakhir, ketujuh unit):
+
+| | hasil |
+|---|---|
+| tanggal setiap unit **lengkap harganya** | **2026-08-01** — ketujuhnya, tanpa kecuali |
+| akibatnya | **seluruh tanggal SEBELUM 2026-08-01 kehilangan laba kotor** |
+| sejak 2026-08-01 | tak ada yang berubah — ketujuh unit lengkap |
+| satu-satunya produk yang **tak punya harga sama sekali** | `P1` di Imam Bonjol, 1 baris, terakhir terjual **2026-06-01** (sudah di dalam jendela yang hilang) |
+
+**Ongkos ini diterima sadar.** Ia besar: hampir seluruh riwayat yang bisa dibuka
+hari ini kehilangan laba kotornya sampai harga beli historis diisi.
+
+#### Yang TIDAK ikut `null`
+
+**Omzet tetap tampil.** Ia terukur dari penjualan dan tak bergantung harga beli —
+prinsip yang sama dengan §10.21 (laba tetap tampil meski kas tak diketahui).
+Yang `null` hanya yang memang tak bisa dihitung.
+
+#### `null`-nya BERNAMA, dan menyebut produknya
+
+Sebabnya `produk_tanpa_harga_beli` — bukan `tak_bersumber`, bukan
+`belum_ada_saldo_pembuka`. Dan **produknya disebut**, sebagaimana `tanpaLaba`
+menyebut unitnya: pembaca yang tahu produk mana yang kurang bisa mengisinya;
+yang hanya melihat "null" tidak bisa.
+
+#### Keputusan lama diberi BATAS, tidak dihapus
+
+Komentar di `keuangan-mesin.ts` menyebut perilaku lama disengaja: *"produk yang
+GP-nya null tetap boleh menyumbang Revenue-nya ke total"*. Kalimat itu **tetap
+ada**, diberi tanggal dan batasnya — keputusan yang dihapus tanpa jejak akan
+diambil ulang oleh orang berikutnya (pola §10.17).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

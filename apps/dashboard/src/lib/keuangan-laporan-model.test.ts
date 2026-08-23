@@ -22,6 +22,7 @@ const totals = (o: Partial<DayTotals> = {}): DayTotals => ({
   inventoryValue: 747_646_746,
   soValue: 573_658_336,
   incomplete: [],
+  perusakGp: [],
   ...o,
 });
 
