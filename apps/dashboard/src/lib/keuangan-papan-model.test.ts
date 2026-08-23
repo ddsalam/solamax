@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { sebabKasDari } from "./keuangan-laporan-model";
 import {
+  kekuranganBagan,
   barisUnit,
   LABEL_STATUS,
   PENJELASAN_STATUS,
@@ -13,6 +15,7 @@ const u = (o: Partial<InputUnit> = {}): InputUnit => ({
   code: "6378301",
   nama: "Bakau",
   adaAkunKas: true,
+  kindAkun: ["kas", "edc_penampungan"],
   labaBersih: 11_875_869,
   kasAkhir: 7_304_915_872,
   langkahHarian: 0,
@@ -135,7 +138,33 @@ describe("ringkasPapan — total yang tidak lengkap adalah null", () => {
     const rows = [barisUnit(u({ nama: "A" })), barisUnit(u({ nama: "B", labaBersih: null }))];
     const r = ringkasPapan(rows);
     expect(r.labaBersih).toBeNull();
-    expect(r.takTerhitung).toEqual(["B"]);
+    expect(r.tanpaLaba).toEqual(["B"]);
+  });
+
+  it("🔴 DUA GERBANG TERPISAH: kas tak terhitung TIDAK menghapus laba (§10.21)", () => {
+    // Kelas yang ditutup: satu `lengkap` menutup dua total, sehingga laba yang
+    // SUDAH terbukti dari EasyMax lenyap hanya karena buku kas belum diisi.
+    const rows = [
+      barisUnit(u({ nama: "A", labaBersih: 10, kasAkhir: null })),
+      barisUnit(u({ nama: "B", labaBersih: 5, kasAkhir: null })),
+    ];
+    const r = ringkasPapan(rows);
+    expect(r.labaBersih).toBe(15); // ← tetap tampil
+    expect(r.kasAkhir).toBeNull(); // ← yang tak diketahui tetap null
+    expect(r.tanpaLaba).toEqual([]); // ← dan TIDAK menuduh A/B soal laba
+    expect(r.tanpaKas).toEqual(["A", "B"]);
+  });
+
+  it("🔴 arah sebaliknya juga: laba tak terhitung tidak menghapus kas", () => {
+    const rows = [
+      barisUnit(u({ nama: "A", labaBersih: null, kasAkhir: 100 })),
+      barisUnit(u({ nama: "B", labaBersih: 5, kasAkhir: 50 })),
+    ];
+    const r = ringkasPapan(rows);
+    expect(r.labaBersih).toBeNull();
+    expect(r.kasAkhir).toBe(150);
+    expect(r.tanpaLaba).toEqual(["A"]);
+    expect(r.tanpaKas).toEqual([]);
   });
 
   it("semua lengkap ⇒ total dijumlah — kontrol POSITIF", () => {
@@ -144,7 +173,8 @@ describe("ringkasPapan — total yang tidak lengkap adalah null", () => {
     const r = ringkasPapan(rows);
     expect(r.labaBersih).toBe(15);
     expect(r.kasAkhir).toBe(150);
-    expect(r.takTerhitung).toEqual([]);
+    expect(r.tanpaLaba).toEqual([]);
+    expect(r.tanpaKas).toEqual([]);
   });
 
   it("unit BELUM DIMODELKAN tidak membuat total jadi null", () => {
@@ -152,5 +182,49 @@ describe("ringkasPapan — total yang tidak lengkap adalah null", () => {
     // membuat totalnya null selamanya sampai ketujuh unit didaftarkan.
     const rows = [barisUnit(u({ labaBersih: 10, kasAkhir: 100 })), barisUnit(u({ adaAkunKas: false }))];
     expect(ringkasPapan(rows).labaBersih).toBe(10);
+  });
+});
+
+describe("kekuranganBagan — PENGAMATAN, bukan tuduhan (§10.22)", () => {
+  it("unit dengan satu rekening bank: dua yang belum ada, dinamai", () => {
+    expect(kekuranganBagan(["bank"])).toEqual(["Kas Besar", "EDC Penampungan"]);
+  });
+
+  it("bagan lengkap ⇒ tak ada tanda — kontrol POSITIF", () => {
+    expect(kekuranganBagan(["kas", "bank", "edc_penampungan"])).toEqual([]);
+  });
+
+  it("🔴 unit TANPA akun sama sekali tidak ditandai — ia sudah punya penandanya", () => {
+    // Dua penanda untuk satu keadaan membuat pembacanya menebak mana yang berlaku.
+    expect(kekuranganBagan([])).toEqual([]);
+    expect(barisUnit(u({ adaAkunKas: false, kindAkun: [] })).kekuranganBagan).toEqual([]);
+  });
+
+  it("hanya SATU yang hilang ⇒ hanya satu yang disebut", () => {
+    expect(kekuranganBagan(["kas", "bank"])).toEqual(["EDC Penampungan"]);
+    expect(kekuranganBagan(["edc_penampungan"])).toEqual(["Kas Besar"]);
+  });
+
+  it("barisUnit menurunkannya, bukan menerimanya — satu pembuat vonis", () => {
+    expect(barisUnit(u({ kindAkun: ["bank"] })).kekuranganBagan).toEqual([
+      "Kas Besar",
+      "EDC Penampungan",
+    ]);
+  });
+});
+
+describe("sebabKasDari — DUA sebab yang berbeda, dinamai benar (§10.21)", () => {
+  it("tanpa akun ⇒ belum_ada_akun_kas", () => {
+    expect(sebabKasDari(0, 0)).toBe("belum_ada_akun_kas");
+  });
+
+  it("🔴 ADA akun tapi buku KOSONG ⇒ belum_ada_mutasi_kas, bukan belum_ada_akun_kas", () => {
+    // Nama yang salah mengirim orang mencari akun yang sudah terdaftar.
+    expect(sebabKasDari(7, 0)).toBe("belum_ada_mutasi_kas");
+    expect(sebabKasDari(1, 0)).not.toBe("belum_ada_akun_kas");
+  });
+
+  it("ada akun DAN ada mutasi ⇒ kasnya bisa dihitung — kontrol POSITIF", () => {
+    expect(sebabKasDari(1, 1)).toBeNull();
   });
 });

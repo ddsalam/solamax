@@ -39,7 +39,8 @@ export function susunCsv(baris: readonly (readonly string[])[]): string {
 export function papanCsv(baris: readonly BarisUnit[], tanggal: string): string {
   const r = ringkasPapan(baris);
   const rows: string[][] = [
-    ["Tanggal", "Unit", "Kode", "Status", "Laba bersih", "Kas akhir", "Langkah harian", "Tier"],
+    ["Tanggal", "Unit", "Kode", "Status", "Laba bersih", "Kas akhir", "Langkah harian", "Tier",
+     "Bagan akun"],
     ...baris.map((b) => [
       tanggal,
       b.nama,
@@ -50,6 +51,8 @@ export function papanCsv(baris: readonly BarisUnit[], tanggal: string): string {
       angkaTeks(b.langkahHarian),
       // Tier `null` bukan angka; ia tetap harus berbunyi, bukan diam.
       b.tier ?? KOSONG_RINGKAS,
+      // §10.22 — ikut ke CSV: yang diekspor adalah apa yang terlihat.
+      b.kekuranganBagan.length === 0 ? "lengkap" : `belum ada ${b.kekuranganBagan.join(" & ")}`,
     ]),
     [],
     ["Ringkasan", "unit dalam cakupan", String(baris.length)],

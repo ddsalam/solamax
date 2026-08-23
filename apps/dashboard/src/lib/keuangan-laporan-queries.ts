@@ -4,7 +4,12 @@ import { effectiveBuyPrice } from "./harga-beli";
 import { kumpulkanBeban, type BarisBeban } from "./keuangan-beban";
 import { saldoAkun, saldoSemuaAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
-import { deltaKategori, deltaKategoriSampai } from "./keuangan-laporan-model";
+import {
+  deltaKategori,
+  deltaKategoriSampai,
+  sebabKasDari,
+  type SebabKasInput,
+} from "./keuangan-laporan-model";
 import {
   getAkunKas,
   getHargaBeliRows,
@@ -32,6 +37,8 @@ export interface BahanLaporan {
   kasAwalPerAkun: { nama: string; saldo: number }[] | null;
   kasAwalTotal: number | null;
   kasAkhir: number | null;
+  /** Sebab `kasAkhir`/`kasAwalPerAkun` kosong — diteruskan ke panel apa adanya. */
+  sebabKas: SebabKasInput;
   /** SALDO kumulatif — untuk neraca. */
   hutangPiutangNonEasymax: number | null;
   /** ARUS hari itu — untuk cash flow. Bukan angka yang sama. */
@@ -202,16 +209,32 @@ async function bahanLaporan(
   });
   const { totals } = computeDay(inputs);
 
+  // ⛔ DUA SEBAB BERBEDA, DINAMAI (§10.21). Terukur di produksi 22 Agu 2026:
+  //    `cashOnHand = 0` di KETUJUH unit — termasuk Bakau yang punya `Kas Besar`
+  //    — sebab `cash_ledger` kosong dan Σ dari nol mutasi adalah 0. Nol itu
+  //    mengalir ke `asset`, lalu ke `langkahHarian`, dan seluruh jaring yang
+  //    dibangun untuk menangkap "angka dari himpunan tak lengkap" DIAM: bukan
+  //    karena rusak, melainkan karena 0 adalah angka yang sah.
   const adaAkun = akun.length > 0;
-  const kasAwalPerAkun = adaAkun
+  const sebabKas = sebabKasDari(akun.length, mutasi.filter((m) => !m.void).length);
+  /** Saldo hanya berarti bila bukunya punya isi. Kosong ⇒ BELUM DIKETAHUI. */
+  const kasTerhitung = sebabKas === null;
+  const kasAwalPerAkun = kasTerhitung
     ? akun.map((a) => ({ nama: a.nama, saldo: saldoAkun(mutasi, a.id, kemarin) }))
     : null;
   const kasAwalTotal = kasAwalPerAkun === null ? null : kasAwalPerAkun.reduce((s, a) => s + a.saldo, 0);
-  const kasAkhir = adaAkun ? [...saldoSemuaAkun(mutasi, date).values()].reduce((s, v) => s + v, 0) : null;
+  const kasAkhir = kasTerhitung
+    ? [...saldoSemuaAkun(mutasi, date).values()].reduce((s, v) => s + v, 0)
+    : null;
 
   // ⚠️ DUA angka berbeda dari kategori yang sama, dan mencampurnya adalah
   // kesalahan yang tak akan terlihat: NERACA butuh SALDO (kumulatif sampai
   // hari ini), CASH FLOW butuh ARUS (mutasi hari itu saja).
+  // ⚠️ BATAS YANG DISEBUT: kedua suku "Hutang Piutang" di bawah tetap memakai
+  //    `adaAkun`, bukan `kasTerhitung`. Keduanya ARUS/DELTA kategori, bukan
+  //    SALDO — nol di sana berarti "tak ada mutasi kategori itu", yang memang
+  //    benar. Keputusan §10.21 menyebut `kasAkhir`; memperluasnya diam-diam ke
+  //    pos lain adalah menebak keputusan yang tak diambil.
   const saldoNonEasymax = adaAkun ? deltaKategoriSampai(mutasi, date, "Hutang Piutang") : null;
   const arusNonEasymax = adaAkun ? deltaKategori(mutasi, date, "Hutang Piutang") : null;
 
@@ -228,6 +251,7 @@ async function bahanLaporan(
     kasAwalPerAkun,
     kasAwalTotal,
     kasAkhir,
+    sebabKas,
     hutangPiutangNonEasymax: saldoNonEasymax,
     arusHutangPiutangNonEasymax: arusNonEasymax,
     piutangEasymax,
