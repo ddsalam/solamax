@@ -182,6 +182,7 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             category_side::text                   AS "categorySide",
             category_label                        AS "categoryLabel",
             amount::float8                        AS amount,
+            saldo_awal                            AS "saldoAwal",
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId"
        FROM app.cash_ledger

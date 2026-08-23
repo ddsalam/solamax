@@ -5,10 +5,12 @@ import {
   cashFlowCheck,
   kasOnHand,
   kategoriCocok,
+  mutasiSebelumCutOver,
   ringkasPerKategori,
   saldoAkun,
   saldoSemuaAkun,
   tandaCocok,
+  tanggalCutOver,
   type MutasiKas,
 } from "./keuangan-kas";
 
@@ -19,6 +21,7 @@ const m = (o: Partial<MutasiKas> = {}): MutasiKas => ({
   categorySide: "debet",
   categoryLabel: "Setoran Hasil Penjualan",
   amount: 1_000,
+  saldoAwal: false,
   void: false,
   ...o,
 });
@@ -189,5 +192,67 @@ describe("migrasi 0029 — saldo TIDAK BOLEH jadi kolom", () => {
 
   it("indeks penjumlahan saldo ada — supaya tak ada alasan menyimpannya", () => {
     expect(stmt).toMatch(/cash_ledger_saldo_idx[\s\S]*?WHERE NOT "void"/);
+  });
+});
+
+describe("§10.24 · saldo pembuka sebagai titik awal rekening", () => {
+  const m = (o: Partial<MutasiKas> & { businessDate: string; amount: number }): MutasiKas => ({
+    accountId: "A", jenis: "debet", categorySide: "debet", categoryLabel: "x",
+    saldoAwal: false, void: false, ...o,
+  });
+  const anchor = (tgl: string, n: number): MutasiKas =>
+    m({ businessDate: tgl, amount: n, jenis: "adjustment", categorySide: null, categoryLabel: null, saldoAwal: true });
+
+  it("tanpa saldo pembuka: tak ada cut-over, semua mutasi ikut — kontrol", () => {
+    const rows = [m({ businessDate: "2026-01-05", amount: 100 })];
+    expect(tanggalCutOver(rows, "A")).toBeNull();
+    expect(mutasiSebelumCutOver(rows, "A")).toEqual([]);
+    expect(saldoAkun(rows, "A", "2026-12-31")).toBe(100);
+  });
+
+  it("🔴 mutasi SEBELUM cut-over dikeluarkan — hitung ganda adalah aritmetika, bukan gaya", () => {
+    const rows = [
+      m({ businessDate: "2026-01-05", amount: 100 }), // lebih tua dari anchor
+      anchor("2026-02-01", 5_000),
+      m({ businessDate: "2026-02-03", amount: 250 }),
+    ];
+    expect(tanggalCutOver(rows, "A")).toBe("2026-02-01");
+    expect(saldoAkun(rows, "A", "2026-12-31")).toBe(5_250); // BUKAN 5.350
+  });
+
+  it("🔴 yang dikeluarkan DINAMAI, bukan hilang diam-diam", () => {
+    const tua = m({ businessDate: "2026-01-05", amount: 100 });
+    const rows = [tua, anchor("2026-02-01", 5_000)];
+    expect(mutasiSebelumCutOver(rows, "A")).toEqual([tua]);
+  });
+
+  it("mutasi PADA hari cut-over ikut — saldo berlaku pada AWAL hari itu", () => {
+    const rows = [anchor("2026-02-01", 5_000), m({ businessDate: "2026-02-01", amount: 70 })];
+    expect(saldoAkun(rows, "A", "2026-02-01")).toBe(5_070);
+  });
+
+  it("anchor yang di-VOID tak lagi jadi cut-over — penggantian memang begitu caranya", () => {
+    const rows = [
+      { ...anchor("2026-02-01", 5_000), void: true },
+      anchor("2026-03-01", 9_000),
+      m({ businessDate: "2026-02-10", amount: 40 }),
+    ];
+    expect(tanggalCutOver(rows, "A")).toBe("2026-03-01");
+    expect(saldoAkun(rows, "A", "2026-12-31")).toBe(9_000); // 2026-02-10 kini pra-cut-over
+  });
+
+  it("cut-over satu akun tidak memengaruhi akun lain", () => {
+    const rows = [anchor("2026-02-01", 5_000), m({ accountId: "B", businessDate: "2026-01-05", amount: 100 })];
+    expect(tanggalCutOver(rows, "B")).toBeNull();
+    expect(saldoAkun(rows, "B", "2026-12-31")).toBe(100);
+  });
+
+  it("🔴 HARI PERTAMA: anchor ada, mutasi lain NOL — kas BISA dihitung", async () => {
+    // Konsekuensi langsung dari memilih baris ledger (bukan tabel terpisah):
+    // `sebabKasDari` tak perlu diajari apa pun.
+    const { sebabKasDari } = await import("./keuangan-laporan-model");
+    const rows = [anchor("2026-02-01", 5_000)];
+    expect(sebabKasDari(1, rows.filter((x) => !x.void).length)).toBeNull();
+    expect(saldoAkun(rows, "A", "2026-02-01")).toBe(5_000);
   });
 });
