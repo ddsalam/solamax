@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import emas from "./__fixtures__/keuangan-t3-emas.json";
 import { computeDay, computeProduct, type DayProductInput } from "./keuangan-mesin";
-import type { DayProductInput } from "./keuangan-mesin";
 
 /**
  * UJI REGRESI KASUS EMAS — uji paling bernilai di K1.
