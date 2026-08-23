@@ -95,6 +95,21 @@ export function buildPapanKeuanganDoc(i: PapanKeuanganDocInput): TDocumentDefini
     },
   ];
 
+  // §10.22 — bagan tak lengkap ikut ke kertas, sebagai PENGAMATAN.
+  const bagan = i.baris.filter((b) => b.kekuranganBagan.length > 0);
+  if (bagan.length > 0) {
+    isi.push({
+      margin: [0, 8, 0, 0],
+      text: pdfText(
+        `${bagan.length} unit bagan akunnya belum lengkap: ` +
+          bagan.map((b) => `${b.nama} (belum ada ${b.kekuranganBagan.join(" & ")})`).join(" · ") +
+          ". Angkanya tetap ditampilkan; yang belum ada disebut, bukan disembunyikan.",
+      ),
+      fontSize: 7.5,
+      color: PDF.textSecondary,
+    });
+  }
+
   // Keadaan kosong yang EKSPLISIT — sama seperti layarnya.
   const belum = i.baris.filter((b) => b.status === "belum_dimodelkan");
   if (belum.length > 0) {

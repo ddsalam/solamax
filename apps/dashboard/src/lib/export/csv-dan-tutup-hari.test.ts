@@ -246,6 +246,7 @@ function dasar(code: string, nama: string): BarisUnit {
   return {
     unitId: 1, code, nama, labaBersih: 0, kasAkhir: 0, langkahHarian: 0,
     bsCheckKumulatif: null, status: "ditutup_normal", tier: null, nada: "baik",
+    kekuranganBagan: [],
   };
 }
 const seimbang = (n: string): BarisUnit => dasar("1", n);
@@ -255,4 +256,21 @@ const belumDibuka = (n: string): BarisUnit => ({
 const belum = (code: string, nama: string): BarisUnit => ({
   ...dasar(code, nama), status: "belum_dimodelkan",
   labaBersih: null, kasAkhir: null, langkahHarian: null, nada: "tak_terhitung",
+});
+
+describe("§10.22 · bagan tak lengkap ikut ke CSV dan PDF", () => {
+  const timpang: BarisUnit = { ...dasar("9", "Korek"), kekuranganBagan: ["Kas Besar", "EDC Penampungan"] };
+
+  it("CSV menyebut apa yang belum ada, dan 'lengkap' bila tak ada yang kurang", () => {
+    const csv = papanCsv([timpang, dasar("1", "Bakau")], "2026-08-22");
+    expect(csv).toContain("belum ada Kas Besar & EDC Penampungan");
+    expect(csv).toContain("lengkap");
+  });
+
+  it("🔴 tetap tanpa sel kosong sesudah kolom baru", () => {
+    for (const l of papanCsv([timpang], "2026-08-22").split("\r\n").slice(1)) {
+      if (l === "" || l.startsWith("Ringkasan")) continue;
+      for (const sel of l.split(",")) expect(selKosong(sel), l).toBe(false);
+    }
+  });
 });

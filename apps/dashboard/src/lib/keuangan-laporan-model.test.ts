@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { BarisBeban } from "./keuangan-beban";
 import type { DayTotals } from "./keuangan-mesin";
 import {
+  PENJELASAN_KOSONG,
   deltaKategori,
   deltaKategoriSampai,
   nadaPemeriksa,
   panelBalance,
   panelCashFlow,
   panelIncome,
-  PENJELASAN_KOSONG,
   type BalanceInput,
   type CashFlowInput,
 } from "./keuangan-laporan-model";
@@ -30,6 +30,7 @@ const beban = (n: number): BarisBeban[] => [
 ];
 
 const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
+  sebabKas: null,
   kasAwalPerAkun: [{ nama: "Kas Besar", saldo: 100_000 }, { nama: "BCA", saldo: 900_000 }],
   kasAkhir: 1_320_000,
   omzet: 400_000,
@@ -43,6 +44,7 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
 });
 
 const bs = (o: Partial<BalanceInput> = {}): BalanceInput => ({
+  sebabKas: null,
   cashOnHand: 7_304_915_872,
   inventoryValue: 747_646_746,
   soValue: 573_658_336,
@@ -118,11 +120,30 @@ describe("Cash Flow — check di kaki panel", () => {
   });
 
   it("tanpa akun kas: kas awal & akhir null, dan sebabnya menyebut SIAPA", () => {
-    const p = panelCashFlow(cf({ kasAwalPerAkun: null, kasAkhir: null }));
+    const p = panelCashFlow(cf({ kasAwalPerAkun: null, kasAkhir: null, sebabKas: "belum_ada_akun_kas" }));
     const awal = p.baris.find((b) => b.label === "Kas awal")!;
     expect(awal.nilai).toBeNull();
     expect(awal.sebab).toBe("belum_ada_akun_kas");
     expect(PENJELASAN_KOSONG[awal.sebab!]).toMatch(/tim keuangan/);
+  });
+
+  it("🔴 AKUN ADA tapi buku KOSONG: sebabnya 'belum ada mutasi', BUKAN 'belum ada akun'", () => {
+    // §10.21 — nama yang salah membuat pembacanya mencari akun yang sebenarnya
+    // sudah terdaftar. Ini bukan soal gaya: ia mengirim orang ke pekerjaan yang
+    // salah.
+    const p = panelCashFlow(
+      cf({ kasAwalPerAkun: null, kasAkhir: null, sebabKas: "belum_ada_mutasi_kas" }),
+    );
+    const awal = p.baris.find((b) => b.label === "Kas awal")!;
+    expect(awal.nilai).toBeNull();
+    expect(awal.sebab).toBe("belum_ada_mutasi_kas");
+    expect(PENJELASAN_KOSONG.belum_ada_mutasi_kas).toContain("sudah terdaftar");
+    expect(PENJELASAN_KOSONG.belum_ada_mutasi_kas).toContain("BELUM DIKETAHUI, bukan nol");
+  });
+
+  it("🔴 pemanggil yang DIAM tidak dikarangkan sebabnya — jatuh ke tak_bersumber", () => {
+    const p = panelCashFlow(cf({ kasAwalPerAkun: null, kasAkhir: null, sebabKas: null }));
+    expect(p.baris.find((b) => b.label === "Kas awal")!.sebab).toBe("tak_bersumber");
   });
 
   it("tiap akun kas tampil sebagai rincian di bawah kas awal", () => {
