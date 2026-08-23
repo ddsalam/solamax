@@ -1,4 +1,8 @@
 import { notFound } from "next/navigation";
+import { SaldoPembukaPanel } from "@/components/keuangan/SaldoPembukaPanel";
+import { getMutasiKas } from "@/lib/keuangan-input-queries";
+import { mutasiSebelumCutOver, tanggalCutOver } from "@/lib/keuangan-kas";
+import { todayWib as hariIniWibServer } from "@/lib/periods";
 import { todayWib } from "@/lib/periods";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { AkunKasPanel } from "@/components/keuangan/AkunKasPanel";
@@ -39,6 +43,20 @@ export default async function AkunKasPage({
   if (!canViewLaporanKeuangan(ctx)) notFound();
 
   const akun = await getAkunKasKelola(unit.unit_id);
+  // §10.24 — titik awal tiap rekening, dihitung dari mutasi yang sama dengan
+  // yang dipakai saldo: satu sumber, bukan kolom kedua.
+  const mutasi = await getMutasiKas(unit.unit_id, hariIniWibServer());
+  const saldoAwal = akun.map((a) => {
+    const cutOver = tanggalCutOver(mutasi, a.id);
+    const anchor = mutasi.find((m) => !m.void && m.saldoAwal && m.accountId === a.id) ?? null;
+    return {
+      id: a.id,
+      nama: a.nama,
+      cutOver,
+      nominal: anchor?.amount ?? null,
+      praCutOver: mutasiSebelumCutOver(mutasi, a.id).length,
+    };
+  });
   const hariIni = getSelection(scope.units).date;
 
   return (
@@ -61,6 +79,11 @@ export default async function AkunKasPage({
       </p>
 
       <div className="mt6">
+        <SaldoPembukaPanel
+          code={unit.code}
+          akun={saldoAwal}
+          bolehTetapkan={canNonaktifkanAkunKas(ctx)}
+        />
         <AkunKasPanel
           code={unit.code}
           namaUnit={unit.name}

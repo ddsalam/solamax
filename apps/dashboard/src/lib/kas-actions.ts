@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "./keuangan-kas";
-import { alasanTakBolehInput, PESAN_TAK_BOLEH_INPUT } from "./keuangan-wewenang";
+import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canNonaktifkanAkunKas } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 
 /**
@@ -82,6 +82,29 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    // ⛔ §10.24 butir 2 — MUSTAHIL KE DEPAN. Mutasi baru tak boleh mendahului
+    //    titik awal rekeningnya: saldo pembuka berarti "saldo pada AWAL hari
+    //    cut-over", jadi baris yang lebih tua akan dihitung ganda. Diperiksa DI
+    //    DALAM transaksi yang sama supaya tak ada celah antara memeriksa dan
+    //    menulis.
+    const cut = await client.query<{ businessDate: string }>(
+      `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate"
+         FROM app.cash_ledger
+        WHERE unit_id = $1 AND account_id = $2::uuid AND saldo_awal AND NOT void`,
+      [unit.unit_id, input.accountId],
+    );
+    const cutOver = cut.rows[0]?.businessDate ?? null;
+    if (cutOver !== null && input.date < cutOver) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          `Tanggal mutasi mendahului saldo pembuka rekening ini (${cutOver}). ` +
+          `Saldo pembuka adalah titik awal; mutasi sebelum titik itu akan dihitung dua kali.`,
+      };
+    }
+
     await client.query(
       `INSERT INTO app.cash_ledger
          (unit_id, account_id, business_date, keterangan, jenis,
@@ -237,6 +260,112 @@ export async function voidMutasiKas(input: {
       /* abaikan */
     }
     return { ok: false, error: e instanceof Error ? e.message : "Gagal membatalkan." };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * TETAPKAN / GANTI saldo pembuka sebuah rekening — §10.24.
+ *
+ * ⛔ WEWENANG: Head of Finance (atau super admin), **bukan** peran `keuangan`.
+ * Menetapkan titik awal sebuah rekening lebih dekat ke *menyetujui* daripada ke
+ * *mengetik* (§10.18), dan ia tak bisa dikoreksi diam-diam sesudah mutasi
+ * menumpuk di atasnya.
+ *
+ * ⛔ MENGGANTI, BUKAN MENYUNTING (butir 3). Anchor lama di-VOID, anchor baru
+ * disisipkan, dan `audit_log` mencatat keduanya berikut alasannya. Melarang
+ * perubahan tidak membuat kekeliruan hilang — ia mendorong orang mengimbanginya
+ * dengan mutasi palsu, yang jauh lebih buruk sebab tak terlihat sebagai koreksi.
+ *
+ * ⚠️ Alasannya hidup di `audit_log`, bukan di baris ledgernya: `cash_ledger` tak
+ * punya kolom `void_reason`. Disebut apa adanya, bukan ditutupi.
+ */
+export interface SaldoAwalInput {
+  code: string;
+  accountId: string;
+  /** Tanggal cut-over — saldo berlaku pada AWAL hari ini. */
+  date: string;
+  /** Bebas tanda (rekening bisa negatif), tetapi tidak boleh nol. */
+  amount: number;
+  /** Wajib: kenapa angka ini, dan dari mana. */
+  alasan: string;
+}
+
+export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResult> {
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(input.code);
+  if (!canNonaktifkanAkunKas({ role: scope.role, email: scope.email })) {
+    return { ok: false, error: "Hanya Head of Finance yang boleh menetapkan saldo pembuka." };
+  }
+  if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
+  if (!Number.isFinite(input.amount) || input.amount === 0) {
+    return { ok: false, error: "Saldo pembuka tak boleh nol — rekening bersaldo nol tak perlu titik awal." };
+  }
+  if (input.alasan.trim() === "") {
+    return { ok: false, error: "Alasan wajib diisi: dari mana angka ini berasal." };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    const lama = await client.query<{ id: string; amount: string; businessDate: string }>(
+      `SELECT id::text AS id, amount::text AS amount,
+              to_char(business_date,'YYYY-MM-DD') AS "businessDate"
+         FROM app.cash_ledger
+        WHERE unit_id = $1 AND account_id = $2::uuid AND saldo_awal AND NOT void
+        FOR UPDATE`,
+      [unit.unit_id, input.accountId],
+    );
+    const sebelumnya = lama.rows[0] ?? null;
+    if (sebelumnya !== null) {
+      await client.query(
+        `UPDATE app.cash_ledger
+            SET void = true, voided_by_user_id = $2, voided_at = now()
+          WHERE id = $1::uuid AND unit_id = $3`,
+        [sebelumnya.id, scope.userId, unit.unit_id],
+      );
+    }
+
+    await client.query(
+      `INSERT INTO app.cash_ledger
+         (unit_id, account_id, business_date, keterangan, jenis, amount,
+          saldo_awal, created_by_user_id)
+       VALUES ($1,$2::uuid,$3::date,$4,'adjustment',$5,true,$6)`,
+      [unit.unit_id, input.accountId, input.date, "Saldo pembuka", input.amount, scope.userId],
+    );
+
+    await client.query(
+      `INSERT INTO app.audit_log (actor_user_id, action, target, detail)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        scope.userId,
+        sebelumnya === null ? "saldo_awal.tetapkan" : "saldo_awal.ganti",
+        `${unit.code}/${input.accountId}`,
+        JSON.stringify({
+          tanggal: input.date,
+          nominal: input.amount,
+          alasan: input.alasan.trim(),
+          sebelumnya:
+            sebelumnya === null
+              ? null
+              : { tanggal: sebelumnya.businessDate, nominal: sebelumnya.amount },
+        }),
+      ],
+    );
+
+    await client.query("COMMIT");
+    revalidatePath(`/keuangan/unit/${unit.code}/akun-kas`);
+    return { ok: true };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menetapkan saldo pembuka." };
   } finally {
     client.release();
   }
