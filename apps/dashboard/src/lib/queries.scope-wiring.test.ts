@@ -58,6 +58,7 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
   // multi-unit dan SELAMA INI TAK TERCAKUP di tes isolasi ini.
   ["getZeroClosingEvents", () => Q.getZeroClosingEvents([U], D, D)],
   ["getAdminDays", () => Q.getAdminDays([U], D, D)],
+  ["getHargaDeviasi", () => Q.getHargaDeviasi([U], D, D)],
 ];
 
 describe("scope-wiring: every converted query passes its authorized unit to qScoped", () => {

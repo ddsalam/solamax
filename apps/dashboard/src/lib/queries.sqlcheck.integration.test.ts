@@ -70,6 +70,7 @@ const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
   ["getAvgDailySales", () => Q.getAvgDailySales(U, D, D)],
   ["getComplianceMatrix", () => Q.getComplianceMatrix(U, 7)],
   ["getAdminDays", () => Q.getAdminDays([U], D, D)],
+  ["getHargaDeviasi", () => Q.getHargaDeviasi([U], D, D)],
   ["getTankCount", () => Q.getTankCount(U)],
   ["getLastInputs", () => Q.getLastInputs(U)],
   ["getCashForDate", () => Q.getCashForDate(U, D)],

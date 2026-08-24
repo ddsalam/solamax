@@ -17,6 +17,7 @@ import {
   getCorrections,
   getDailyGlByProduct,
   getDeliveryShortfalls,
+  getHargaDeviasi,
   getShiftInfo,
   getTankStocks,
   getZeroClosingEvents,
@@ -26,6 +27,7 @@ import { addDays, todayWib } from "./periods";
 import { ago, fmtL, idn, pct, signed as signedFmt, timeWib } from "./format";
 import { adminStatus, fmtRp, pasangkanTetangga, SETORAN_TOLERANSI_RP } from "./compliance";
 import { adopsiRincian } from "./config";
+import { ringkasHarga, selisihRp } from "./harga-wajar";
 import { uangTunai } from "./rekon";
 import {
   aggregateClosingGl,
@@ -188,6 +190,57 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         desc: `Uang tunai H = ${fmtRp(h)}, setoran I = ${fmtRp(r.setoran ?? 0)}. Selisih di luar toleransi ${fmtRp(SETORAN_TOLERANSI_RP)} (pembulatan slip setoran), jadi ini bukan artefak pembulatan.`,
         time: r.d,
         href,
+      });
+    }
+  }
+  /**
+   * HARGA JUAL TIDAK WAJAR (2026-08-24). SATU query multi-unit di luar loop
+   * per-unit — pola `getZeroClosingEvents`, tak menambah fan-out.
+   *
+   * TIER: `danger`/`major`, SENGAJA berbeda dari penutup-opname-nol yang
+   * `warning`. Alasannya bukan selera: penutup-nol adalah cacat entri yang
+   * TIDAK memindahkan rupiah, sedangkan harga salah memindahkannya dua kali —
+   * omzet A salah, lalu H = A − (B+C+D) + F − G ikut salah, sehingga setoran
+   * yang benar terbaca "melebihi uang tunai". Ia melahirkan alarm kedua yang
+   * menuduh orang yang tak bersalah, dan itulah yang membuatnya merah.
+   *
+   * Hanya vonis `cacat` yang terbit. `menunggu` (hari yang belum punya
+   * hari-jual berikutnya) sengaja TIDAK diumpankan ke feed: feed ini untuk hal
+   * yang bisa ditindaklanjuti sekarang, dan "mungkin perubahan harga" bukan
+   * salah satunya. Ia tetap terlihat di alarm Laporan Harian sebagai
+   * `provisional`.
+   */
+  {
+    const dev = await getHargaDeviasi(unitIds, addDays(today, -6), today);
+    // Kelompokkan per (unit, tanggal, produk): itu satuan perbaikannya di POS —
+    // satu produk, satu tanggal, satu kali buka Rekapan Per Shift.
+    const perProduk = new Map<string, typeof dev>();
+    for (const r of ringkasHarga(dev).cacat) {
+      const k = `${r.unit_id}|${r.d}|${r.ckdbbm}`;
+      const list = perProduk.get(k) ?? [];
+      list.push(r);
+      perProduk.set(k, list);
+    }
+    for (const list of perProduk.values()) {
+      const t = list[0]!;
+      const rp = list.reduce((x, r) => x + selisihRp(r), 0);
+      const vol = list.reduce((x, r) => x + r.vol, 0);
+      const shifts = [...new Set(list.map((r) => r.nshift))].sort((a, b) => a - b);
+      const kode = kodeUnit.get(t.unit_id);
+      items.push({
+        tone: "danger",
+        tier: "major",
+        sev: Math.abs(rp),
+        dateIso: t.d,
+        title: `Harga jual ${t.nama} salah — omzet ${rp >= 0 ? "kurang" : "lebih"} catat ${fmtRp(Math.abs(rp))}`,
+        unit: namaUnit.get(t.unit_id) ?? String(t.unit_id),
+        desc:
+          `Shift ${shifts.join(" & ")} merekam ${fmtRp(t.harga)}/L untuk ${fmtL(vol, 2)}, sedangkan harga ${t.nama} hari itu ${fmtRp(t.dom)}/L ` +
+          `(hari sebelumnya ${t.dom_prev === null ? "—" : fmtRp(t.dom_prev)}, sesudahnya ${t.dom_next === null ? "—" : fmtRp(t.dom_next)}). ` +
+          "Volume & totalisator TIDAK terpengaruh — yang salah hanya harganya. " +
+          "Perbaikan HARUS di EasyMax (Rekapan Per Shift): koreksi di sisi SolaMax akan ditimpa balik oleh rescan sales dalam 30 menit.",
+        time: t.d,
+        href: kode ? `/unit/${kode}/laporan/${t.d}` : undefined,
       });
     }
   }
