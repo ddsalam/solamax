@@ -67,6 +67,15 @@ const ConfigSchema = z.object({
     pelangganChunkDays: z.number().int().default(7),
     batchSize: z.number().int().default(1000),
 
+    // terra_resmi: lebar jendela `replace_window` di HOT-PATH (tiap siklus).
+    // Full-sync + UPSERT tak pernah menghapus, sehingga penghapusan sesi tera di
+    // POS jadi orphan abadi (3 kejadian produksi 2026: BL 13-08, 28 Oktober
+    // 29-08, IB 27-08). 7 hari menutup jendela tempat penghapusan NYATA terjadi
+    // (pengawas mengoreksi hari-H atau H+1) dalam ~2 menit; sisa sejarah
+    // ditangani sapuan `terra_resmi` (SWEEP_TABLE). Tabelnya mungil — sejendela
+    // seminggu jauh di bawah batchSize, jadi selalu muat satu payload.
+    terraResmiReplaceDays: z.number().int().default(7),
+
     // --- Track 2 (2026-07-02): sapuan lebar generik, menutup akar Transaksi
     // Pelanggan (koreksi EasyMax > window rescan hot-path tak ter-recapture)
     // untuk SEMUA domain berjendela — bukan cuma pelanggan. Dua tier: (1)
@@ -91,6 +100,11 @@ const ConfigSchema = z.object({
     deliveryDeepRescanIntervalMs: z.number().int().default(86_400_000),
     teraDeepRescanDays: z.number().int().default(14),
     teraDeepRescanIntervalMs: z.number().int().default(86_400_000),
+    // terra_resmi tier-1: 30 hari, harian. Lebih lebar dari tera (14h) karena
+    // sesi tera jarang tapi penghapusannya mahal — satu baris hantu memalsukan
+    // ALARM KAS ("setoran melebihi uang tunai"), bukan cuma angka volume.
+    terraResmiDeepRescanDays: z.number().int().default(30),
+    terraResmiDeepRescanIntervalMs: z.number().int().default(86_400_000),
     cashDeepRescanDays: z.number().int().default(30),
     cashDeepRescanIntervalMs: z.number().int().default(604_800_000), // weekly
     tebusDeepRescanDays: z.number().int().default(30),

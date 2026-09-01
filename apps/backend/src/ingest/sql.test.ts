@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReplace, buildUpsert } from "./sql.js";
+import { buildReplace, buildReplaceWindowDeletes, buildUpsert } from "./sql.js";
 import { TABLE_CONFIG } from "./table-config.js";
 
 describe("buildUpsert", () => {
@@ -261,5 +261,36 @@ describe("skipUnchanged — jangan tulis ulang baris yang sama", () => {
       'DO UPDATE SET "a" = EXCLUDED."a", "b" = EXCLUDED."b"' +
       ' WHERE ("t"."a", "t"."b") IS DISTINCT FROM (EXCLUDED."a", EXCLUDED."b")';
     expect(guardCols(utuh)).toEqual(setCols(utuh));
+  });
+});
+
+describe("buildReplaceWindowDeletes", () => {
+  const win = { from: "2026-08-27", to: "2026-08-28" };
+
+  it("delivery: DELETE per dtgltrm dalam jendela", () => {
+    const out = buildReplaceWindowDeletes("delivery", 1, win);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sql).toContain('DELETE FROM "delivery"');
+    expect(out[0]!.sql).toContain('"dtgltrm" >= $2::date AND "dtgltrm" < $3::date');
+    expect(out[0]!.params).toEqual([1, "2026-08-27", "2026-08-28"]);
+  });
+
+  // Regresi kelas "terra_resmi tak punya jalur hapus" — orphan abadi di mirror
+  // setelah penghapusan permanen di POS. Tiga kejadian produksi: BL 13-08,
+  // 28 Oktober 29-08, IB 27-08 (NT202600055, Pertamax 4 L / Rp 65.200).
+  it("terra_resmi: DELETE per business_date dalam jendela", () => {
+    const out = buildReplaceWindowDeletes("terra_resmi", 1, win);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sql).toContain('DELETE FROM "terra_resmi"');
+    expect(out[0]!.sql).toContain(
+      '"business_date" >= $2::date AND "business_date" < $3::date',
+    );
+    expect(out[0]!.params).toEqual([1, "2026-08-27", "2026-08-28"]);
+  });
+
+  it("terra_resmi: di-scope per unit (tak pernah menyapu unit lain)", () => {
+    const out = buildReplaceWindowDeletes("terra_resmi", 5, win);
+    expect(out[0]!.sql).toContain('"unit_id" = $1');
+    expect(out[0]!.params[0]).toBe(5);
   });
 });
