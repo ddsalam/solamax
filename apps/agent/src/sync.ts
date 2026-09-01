@@ -74,6 +74,9 @@ async function dispatch(
     log.info("[dry-run] payload", {
       domain: payload.domain,
       watermark_high: payload.watermark_high,
+      // Jendela WAJIB tercetak: pada domain delete-capable, inilah rentang yang
+      // AKAN DIHAPUS. Pratinjau tanpa jendela tak bisa dinilai aman/tidaknya.
+      replace_window: payload.replace_window ?? null,
       counts: tableCounts(payload.tables),
     });
     return "dry";
@@ -1203,7 +1206,10 @@ async function sweepTerraResmi(
         replace_window: { from: lo, to: hiExcl },
         tables: rows.length > 0 ? { terra_resmi: rows } : {},
       });
-      return status === "ok";
+      // Dry-run TIDAK memutasi apa pun → lanjutkan agar pratinjau mencakup
+      // SELURUH rentang, bukan cuma jendela pertama. Tanpa ini `--dry-run`
+      // berhenti di window #1 dan menyesatkan (tampak "cuma sedikit").
+      return status === "ok" || status === "dry";
     }
     log.warn("sweep terra_resmi: jendela > kapasitas payload — replace_window dilewati", {
       lo, hiExcl, rows: rows.length,

@@ -429,6 +429,28 @@ describe("runCycle", () => {
     expect(tr[0]!.tables.terra_resmi![0]!.ckdterra).toBe("NT202600055");
   });
 
+  it("sweep terra_resmi --dry-run: pratinjau menyeluruh, TIDAK berhenti di jendela pertama", async () => {
+    const windows: Array<{ lo: string; hiExcl: string }> = [];
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("tr_hterra") && sql.includes("DTGLTERRA >= ?")) {
+          windows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: true },
+      "terra_resmi",
+      /* days */ 20,
+      /* chunkDays */ 5,
+    );
+    expect(sent).toHaveLength(0); // dry-run tak pernah mengirim
+    // Inti: rentang 20 hari @5 hari = 4+ jendela. Sebelum perbaikan hanya 1.
+    expect(windows.length).toBeGreaterThan(1);
+  });
+
   it("sweep terra_resmi: jendela KOSONG tetap dikirim (DELETE-only) — inti perbaikan", async () => {
     const conn = {
       async roQuery() {
