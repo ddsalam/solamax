@@ -23,6 +23,7 @@ const raw = {
   doAnomalies: [],
   doSuspects: [],
   shift: { shifts: 3, last_dtgljam: null },
+  hargaDeviasi: [],
   corrections: 0,
   cash: [],
   saldo: {
@@ -59,7 +60,9 @@ describe("buildLaporanModel", () => {
   it("DO Harian selalu 6 slot; alarm 11 cek", () => {
     const m = buildLaporanModel(raw, ctx);
     expect(m.doHarian.rows).toHaveLength(DO_PRODUCTS.length);
-    expect(m.checks).toHaveLength(11);
+    // 12 sejak 2026-08-24: "Harga Beli/Jual Benar" dipecah menjadi cek harga
+    // JUAL yang aktif + "Harga Beli Benar" yang tetap na (datanya belum ada).
+    expect(m.checks).toHaveLength(12);
   });
 
   it("Rekonsiliasi A = omset; G null saat kas kosong; glMonthly kosong tanpa opname", () => {
@@ -255,6 +258,67 @@ describe("alarm Laporan — U1 tersambung, U-lainnya tetap N/A", () => {
     const c = m.checks.find((x) => x.label === "Pengeluaran Sudah Disahkan");
     expect(c?.state).toBe("na");
     expect(c?.note).toContain("pengesahan");
+  });
+
+  /**
+   * Kejadian nyata yang membuka cek ini: Korek 23 Agu 2026 shift 3, Dexlite
+   * direkam Rp 7.850/L (harga produk PLK) alih-alih Rp 20.150/L.
+   */
+  const devKorek = [
+    {
+      unit_id: 6, d: "2026-08-23", ckdbbm: "BB-06", nama: "DEXLITE", nshift: 3,
+      harga: 7850, vol: 334.95, dom: 20150, dom_prev: 20150, dom_next: 20150,
+    },
+  ];
+
+  it("'Harga jual' FAIL saat harga produk lain nyasar ke satu shift", () => {
+    const m = buildLaporanModel(
+      { ...raw, hargaDeviasi: devKorek } as unknown as LaporanRaw,
+      ctx,
+    );
+    const c = m.checks.find((x) => x.label.startsWith("Harga jual"));
+    expect(c?.state).toBe("fail");
+    expect(c?.note).toContain("4.119.885"); // 334,95 L × (20.150 − 7.850)
+    expect(c?.note).toContain("Rekapan Per Shift"); // arahkan ke POS, bukan ke sini
+  });
+
+  it("'Harga jual' provisional saat hari berikutnya belum ada — bukan menuduh", () => {
+    const m = buildLaporanModel(
+      {
+        ...raw,
+        hargaDeviasi: [{ ...devKorek[0]!, dom_next: null }],
+      } as unknown as LaporanRaw,
+      ctx,
+    );
+    expect(m.checks.find((x) => x.label.startsWith("Harga jual"))?.state).toBe("provisional");
+  });
+
+  it("'Harga jual' ok saat deviasinya terjelaskan perubahan harga", () => {
+    const m = buildLaporanModel(
+      {
+        ...raw,
+        // 13.800 = harga dominan KEMARIN → shift yang masih memakai harga lama.
+        hargaDeviasi: [{ ...devKorek[0]!, harga: 13800, dom: 13900, dom_prev: 13800, dom_next: 13900 }],
+      } as unknown as LaporanRaw,
+      ctx,
+    );
+    expect(m.checks.find((x) => x.label.startsWith("Harga jual"))?.state).toBe("ok");
+  });
+
+  it("'Harga jual' na saat hari itu tak ada penjualan — bukan ok", () => {
+    const m = buildLaporanModel(
+      { ...raw, prodDay: [], hargaDeviasi: [] } as unknown as LaporanRaw,
+      ctx,
+    );
+    expect(m.checks.find((x) => x.label.startsWith("Harga jual"))?.state).toBe("na");
+  });
+
+  it("'Harga Beli Benar' tetap na — dipecah agar tak menghijau atas bukti separuh", () => {
+    const m = buildLaporanModel(
+      { ...raw, hargaDeviasi: [] } as unknown as LaporanRaw,
+      ctx,
+    );
+    expect(m.checks.find((x) => x.label === "Harga Beli Benar")?.state).toBe("na");
   });
 });
 

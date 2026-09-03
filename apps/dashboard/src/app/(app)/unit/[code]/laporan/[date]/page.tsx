@@ -15,6 +15,7 @@ import {
   getDoAnomalies,
   getDoHarian,
   getDoSuspectSO,
+  getHargaDeviasi,
   DO_STALE_DAYS,
   getSalesByProduct,
   getShiftInfo,
@@ -59,6 +60,7 @@ export default async function LaporanPage({
     doAnomalies,
     doSuspects,
     shift,
+    hargaDeviasi,
     corrections,
     cash,
     saldo,
@@ -85,6 +87,9 @@ export default async function LaporanPage({
     getDoAnomalies(unit.unit_id, date),
     getDoSuspectSO(unit.unit_id, date),
     getShiftInfo(unit.unit_id, date),
+    // Harga jual tidak wajar: rentang SATU hari — query sendiri yang melebarkan
+    // ±3 hari untuk mengisi harga dominan tetangga (lag/lead atas hari-jual).
+    getHargaDeviasi([unit.unit_id], date, date),
     getCorrections(unit.unit_id, date),
     getCashForDate(unit.unit_id, date),
     // Query TERBERAT halaman ini (terukur 104 dtk di KB) — lewat cache; lihat
@@ -123,6 +128,7 @@ export default async function LaporanPage({
       doAnomalies,
       doSuspects,
       shift,
+      hargaDeviasi,
       corrections,
       cash,
       saldo,

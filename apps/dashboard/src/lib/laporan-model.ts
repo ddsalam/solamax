@@ -21,6 +21,7 @@ import {
   type TetanggaHari,
 } from "@/lib/compliance";
 import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
+import { ringkasHarga } from "@/lib/harga-wajar";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import { uangTunai } from "@/lib/rekon";
@@ -45,6 +46,7 @@ type ZeroClosing = Awaited<ReturnType<typeof Q.getZeroClosingEvents>>[number];
 type Cash = Awaited<ReturnType<typeof Q.getCashForDate>>[number];
 type Saldo = Awaited<ReturnType<typeof Q.getSaldoPelanggan>>;
 type Manual = Awaited<ReturnType<typeof Q.getManualEntries>>[number];
+type HargaDev = Awaited<ReturnType<typeof Q.getHargaDeviasi>>[number];
 type RpRow = { rp: number };
 
 export type Tone = "success" | "warning" | "danger";
@@ -176,6 +178,12 @@ export interface LaporanRaw {
   doAnomalies: DoAnom[];
   doSuspects: DoSuspect[];
   shift: Shift;
+  /**
+   * Baris jual yang harganya menyimpang dari harga dominan hari itu (kandidat
+   * mentah — vonisnya `ringkasHarga`). Jendela D..D saja: query sendiri yang
+   * melebarkan ±3 hari untuk mengisi tetangganya.
+   */
+  hargaDeviasi: HargaDev[];
   corrections: number;
   cash: Cash[];
   saldo: Saldo;
@@ -215,6 +223,54 @@ export function alurSelisihNote(alurSelisih: number): string | null {
   if (alurSelisih < 0)
     return `${fmtL(-alurSelisih)} terserap lebih-terima lama · lihat panel Alokasi`;
   return null;
+}
+
+/**
+ * Cek alarm "Harga jual wajar" — penerjemah `ringkasHarga`, bukan pemutus.
+ * Aturan & batasnya ada di lib/harga-wajar.ts; jangan tulis ulang di sini.
+ *
+ * `na` bila hari itu memang tak ada penjualan — bukan `ok`. Hari kosong tidak
+ * membuktikan harganya benar, dan hijau palsu lebih buruk daripada `na` jujur
+ * (pola yang sama dengan "Pengeluaran Sudah Disahkan" di bawah).
+ *
+ * `provisional` bila ada kandidat yang belum punya hari-jual berikutnya: pada
+ * hari berjalan, harga baru yang sah dan harga salah terlihat SAMA PERSIS dari
+ * dalam hari itu sendiri. Menunggu sehari adalah harga yang dibayar untuk tidak
+ * menuduh pengawas atas perubahan harga Pertamina.
+ */
+export function hargaJualCheck(rows: HargaDev[], adaPenjualan: boolean): AlarmCheck {
+  if (!adaPenjualan)
+    return {
+      label: "Harga jual wajar",
+      state: "na",
+      note: "belum ada penjualan pada tanggal ini",
+    };
+
+  const r = ringkasHarga(rows);
+  if (r.cacat.length > 0) {
+    const t = r.cacat[0]!;
+    const lain = r.cacat.length - 1;
+    return {
+      label: "Harga jual TIDAK WAJAR — omzet salah hitung",
+      state: "fail",
+      note:
+        `${t.nama} shift ${t.nshift} memakai ${fmtRp(t.harga)}/L, harga hari ini ${fmtRp(t.dom)}/L` +
+        (lain > 0 ? ` (+${lain} baris lain)` : "") +
+        ` · omzet ${r.selisihRp >= 0 ? "kurang" : "lebih"} catat ${fmtRp(Math.abs(r.selisihRp))}` +
+        " · perbaiki di EasyMax (Rekapan Per Shift), bukan di sini",
+    };
+  }
+  if (r.menunggu.length > 0)
+    return {
+      label: "Harga jual — menunggu hari berikutnya",
+      state: "provisional",
+      note: `${r.menunggu.length} baris berharga beda; belum bisa dibedakan dari perubahan harga sampai ada penjualan hari berikutnya`,
+    };
+  return {
+    label: "Harga jual wajar",
+    state: "ok",
+    note: rows.length > 0 ? `${rows.length} baris beda harga · terjelaskan perubahan harga` : "seluruh shift memakai harga yang sama",
+  };
 }
 
 /**
@@ -437,7 +493,7 @@ export function buildLaporanModel(
   const gasMix = bauran(prodDay, "gasoline");
   const oilMix = bauran(prodDay, "gasoil");
 
-  // ── Alarm (3 aktif, 8 menunggu data) ──
+  // ── Alarm (4 aktif, 8 menunggu data) ──
   const targetGap = prodMonth.map((p) => {
     const perDay = targetVolumePerDay(unitCode, mi.month, p.nama);
     return perDay !== null ? p.vol - perDay * mi.dayOfMonth : null;
@@ -546,7 +602,15 @@ export function buildLaporanModel(
      * ownernya). Sampai itu ada, catatannya yang bicara.
      */
     na("Pengeluaran Sudah Disahkan", "belum ada data pengesahan — bukan sekadar belum tersambung"),
-    na("Harga Beli/Jual Benar", "master harga beli"),
+    /**
+     * DIPECAH dari `na("Harga Beli/Jual Benar")` 2026-08-24. Label lama
+     * menggabung dua pertanyaan yang datanya TIDAK sama-sama ada: harga JUAL
+     * bisa diuji dari `sales_detail` hari itu juga, harga BELI belum. Membiarkan
+     * satu label menghijau atas bukti separuh persis kesalahan yang dijaga
+     * catatan "Pengeluaran Sudah Disahkan" di bawah.
+     */
+    hargaJualCheck(raw.hargaDeviasi, prodDay.length > 0),
+    na("Harga Beli Benar", "master harga beli"),
     na("Saldo Hutang/Piutang Pelanggan Sesuai", "Domain deposit"),
     na("DO Untuk Penerimaan Besok Cukup", "Domain DO"),
     na("Permintaan Besok Sudah Cukup", "Domain DO"),

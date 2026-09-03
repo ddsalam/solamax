@@ -250,6 +250,108 @@ export async function getCorrectedNozzles(unit: ScopedUnitId, date: string): Pro
 }
 
 // ---------------------------------------------------------------------------
+// Kualitas data: harga jual tidak wajar (harga produk lain nyasar ke shift)
+// ---------------------------------------------------------------------------
+
+export interface HargaDeviasiRow {
+  unit_id: number;
+  d: string; // tanggal bisnis
+  ckdbbm: string;
+  nama: string;
+  nshift: number;
+  /** Harga yang dipakai baris-baris ini. */
+  harga: number;
+  /** Liter yang terjual pada harga itu (shift × produk × harga). */
+  vol: number;
+  /** Harga DOMINAN (by volume) produk ini pada hari itu. */
+  dom: number;
+  /** Harga dominan pada hari-jual SEBELUMNYA produk ini. null = tak ada. */
+  dom_prev: number | null;
+  /** Harga dominan pada hari-jual BERIKUTNYA. null = belum ada (hari terakhir). */
+  dom_next: number | null;
+}
+
+/**
+ * Baris penjualan yang harganya MENYIMPANG dari harga dominan hari itu.
+ *
+ * Mengembalikan KANDIDAT MENTAH, bukan vonis: yang memutuskan mana yang cacat
+ * dan mana yang sekadar hari perubahan harga adalah `vonisHarga()` di
+ * lib/harga-wajar.ts — satu aturan, satu tempat (pola `adminStatus`).
+ *
+ * Kenapa `dom_prev`/`dom_next` ikut dibawa: harga minoritas dalam satu hari
+ * TIDAK cukup untuk menuduh. Pada hari perubahan harga Pertamina, sebagian
+ * shift memang memakai harga lama dan sebagian harga baru — keduanya sah.
+ * Yang membedakan cacat dari perubahan sah adalah apakah harga minoritas itu
+ * PERNAH menjadi harga dominan di hari tetangganya. Terbukti pada data: dengan
+ * pembanding tetangga, 31 Jan / 30 Jun / 31 Jul 2026 (tiga hari perubahan harga
+ * serentak 7 unit) menghasilkan NOL tuduhan.
+ *
+ * Jendela dilebarkan ±3 hari di dalam query semata untuk mengisi lag/lead di
+ * tepi rentang; barisnya sendiri tetap disaring ke [from..to]. `lag`/`lead`
+ * berjalan atas HARI-JUAL, bukan tanggal kalender — produk yang libur sehari
+ * tetap dapat tetangga yang benar.
+ *
+ * Hanya `nvolume > 0` yang dinilai: baris nol-liter tak membawa rupiah, dan
+ * harga pada baris nol-liter kerap tertinggal basi tanpa akibat apa pun.
+ */
+export async function getHargaDeviasi(
+  unitIds: ScopedUnitId[],
+  from: string,
+  to: string,
+): Promise<HargaDeviasiRow[]> {
+  if (unitIds.length === 0) return [];
+  return qScoped<HargaDeviasiRow>(
+    unitIds,
+    `WITH baris AS (
+       SELECT sd.unit_id, h.dtgljual AS d, trim(sd.ckdbbm) AS ckdbbm, h.nshift,
+              sd.nvolume::float8 AS vol, sd.nhargajual::float8 AS harga
+       FROM sales_detail sd
+       JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
+       WHERE sd.unit_id = ANY($1::int[])
+         AND h.dtgljual BETWEEN ($2::date - 3) AND ($3::date + 3)
+         AND sd.nvolume > 0
+     ),
+     per_shift AS (
+       SELECT unit_id, d, ckdbbm, nshift, harga, sum(vol) AS vol
+       FROM baris GROUP BY 1,2,3,4,5
+     ),
+     per_hari AS (
+       SELECT unit_id, d, ckdbbm, harga, sum(vol) AS vol
+       FROM baris GROUP BY 1,2,3,4
+     ),
+     dominan AS (
+       SELECT DISTINCT ON (unit_id, ckdbbm, d) unit_id, ckdbbm, d, harga AS dom
+       FROM per_hari
+       ORDER BY unit_id, ckdbbm, d, vol DESC, harga DESC
+     ),
+     tetangga AS (
+       SELECT unit_id, ckdbbm, d, dom,
+              lag(dom)  OVER w AS dom_prev,
+              lead(dom) OVER w AS dom_next
+       FROM dominan
+       WINDOW w AS (PARTITION BY unit_id, ckdbbm ORDER BY d)
+     )
+     SELECT s.unit_id,
+            to_char(s.d,'YYYY-MM-DD') AS d,
+            s.ckdbbm,
+            COALESCE(max(p.vcnmbbm), s.ckdbbm) AS nama,
+            s.nshift::int AS nshift,
+            s.harga, s.vol, t.dom, t.dom_prev, t.dom_next
+     FROM per_shift s
+     JOIN tetangga t
+       ON t.unit_id = s.unit_id AND t.ckdbbm = s.ckdbbm AND t.d = s.d
+     LEFT JOIN product p
+       ON p.unit_id = s.unit_id AND trim(p.ckdbbm) = s.ckdbbm
+     WHERE s.d BETWEEN $2::date AND $3::date
+       AND s.harga <> t.dom
+     GROUP BY s.unit_id, s.d, s.ckdbbm, s.nshift, s.harga, s.vol,
+              t.dom, t.dom_prev, t.dom_next
+     ORDER BY s.unit_id, s.d, s.ckdbbm, s.nshift`,
+    [unitIds, from, to],
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Opname penutup (gain/loss SIGNED) — fix G/L
 // ---------------------------------------------------------------------------
 // Kualitas data: penutup opname bernilai NOL (blank entry)
