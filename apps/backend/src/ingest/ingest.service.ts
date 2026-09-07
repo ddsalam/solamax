@@ -34,7 +34,7 @@ export class IngestService {
     const totalRows = entries.reduce((n, [, rows]) => n + rows.length, 0);
     const watermark = payload.watermark_high; // ISO string; cast ::timestamptz di SQL
 
-    // replace_window (tebus/delivery): DELETE jendela [from,to) SEBELUM upsert —
+    // replace_window (tebus/delivery/terra_resmi): DELETE jendela [from,to) SEBELUM upsert —
     // mirror = snapshot sumber per jendela (tangkap DELETE/renumber di EasyMax).
     // Zod @solamax/shared sudah membatasi domain, tapi backend tetap menegakkan
     // whitelist sendiri (defense-in-depth; identifier tak pernah dari input).
@@ -45,7 +45,11 @@ export class IngestService {
       );
     }
     const windowDeletes = win
-      ? buildReplaceWindowDeletes(payload.domain as "tebus" | "delivery", unitId, win)
+      ? buildReplaceWindowDeletes(
+          payload.domain as "tebus" | "delivery" | "terra_resmi",
+          unitId,
+          win,
+        )
       : [];
 
     // REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale) → [DELETE, INSERT];

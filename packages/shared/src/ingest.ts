@@ -7,8 +7,17 @@ import { ROW_SCHEMA } from "./rows.js";
  * `tables` = peta nama-tabel-target → array baris. Semua tabel dalam satu
  * payload di-commit atomik dengan satu watermark.
  */
-/** Domain yang boleh membawa `replace_window` (mirror = snapshot sumber per jendela). */
-export const REPLACE_WINDOW_DOMAINS = ["tebus", "delivery"] as const;
+/**
+ * Domain yang boleh membawa `replace_window` (mirror = snapshot sumber per jendela).
+ *
+ * `terra_resmi` ditambahkan 2026-09-01 setelah **tiga** kejadian produksi di mana
+ * penghapusan permanen sesi tera di POS menjadi baris yatim ABADI di mirror —
+ * full-sync + UPSERT murni menangkap koreksi nilai dan flip `SBATAL`, tapi tak
+ * pernah menghapus. Kasus: BL `NT202600026` (13-08), 28 Oktober `NT202600074`
+ * (29-08), IB `NT202600055` (27-08, Pertamax 4 L / Rp 65.200). Ketiganya hanya
+ * bisa disembuhkan lewat DELETE manual ke Postgres produksi sebelum ini.
+ */
+export const REPLACE_WINDOW_DOMAINS = ["tebus", "delivery", "terra_resmi"] as const;
 
 export const IngestPayload = z
   .object({

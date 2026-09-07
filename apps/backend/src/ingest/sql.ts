@@ -232,7 +232,7 @@ export function buildReplace(
 
 /**
  * DELETE jendela tanggal-bisnis [from, to) untuk domain `replace_window`
- * (tebus/delivery) — dijalankan SEBELUM UPSERT baris payload dalam transaksi
+ * (tebus/delivery/terra_resmi) — dijalankan SEBELUM UPSERT baris payload dalam transaksi
  * yang sama, sehingga mirror = snapshot sumber per jendela: baris yang DIHAPUS
  * atau di-RENUMBER di EasyMax ikut hilang dari mirror (UPSERT saja tak pernah
  * membersihkan — akar phantom Sisa DO Bakau 2026-07-12). `tebus_detail` tak
@@ -240,11 +240,23 @@ export function buildReplace(
  * konstanta; nilai via parameter. RLS `unit_scope` tetap membatasi ke unit GUC.
  */
 export function buildReplaceWindowDeletes(
-  domain: "tebus" | "delivery",
+  domain: "tebus" | "delivery" | "terra_resmi",
   unitId: number,
   window: { from: string; to: string },
 ): Array<{ sql: string; params: unknown[] }> {
   const params = [unitId, window.from, window.to] as unknown[];
+  // terra_resmi: kolom tanggal-bisnis langsung, kasus paling sederhana. Tanpa ini
+  // penghapusan sesi tera di POS jadi baris yatim ABADI (3 kejadian produksi 2026).
+  if (domain === "terra_resmi") {
+    return [
+      {
+        sql:
+          `DELETE FROM "terra_resmi" WHERE "unit_id" = $1 ` +
+          `AND "business_date" >= $2::date AND "business_date" < $3::date`,
+        params,
+      },
+    ];
+  }
   if (domain === "delivery") {
     return [
       {

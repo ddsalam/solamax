@@ -97,6 +97,39 @@ describe("IngestPayload", () => {
     expect(r.success).toBe(true);
   });
 
+  // Regresi: terra_resmi TANPA jalur hapus = orphan abadi. Tiga kejadian produksi
+  // (BL 13-08, 28 Oktober 29-08, IB 27-08 2026) sebelum domain ini di-whitelist.
+  it("replace_window: sah untuk terra_resmi dengan baris", () => {
+    const r = IngestPayload.safeParse({
+      ...winBase,
+      domain: "terra_resmi",
+      tables: {
+        terra_resmi: [
+          {
+            business_date: "2026-01-05",
+            ckdterra: "NT202600055",
+            ckdnozzle: "NZ-17",
+            nshift: 3,
+            ckdtangki: "T-03",
+            ckdbbm: "BB-02",
+            nvolume: 4,
+            nharga: 16300,
+            ntotal: 65200,
+            dtgljam: "2026-01-05T16:21:14.000Z",
+            ckdjualbbm: "JB202600717",
+            sbatal: 0,
+          },
+        ],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("replace_window: terra_resmi DELETE-only (jendela kosong di sumber)", () => {
+    const r = IngestPayload.safeParse({ ...winBase, domain: "terra_resmi", tables: {} });
+    expect(r.success).toBe(true);
+  });
+
   it("replace_window: DITOLAK untuk domain di luar whitelist (sales)", () => {
     const r = IngestPayload.safeParse({ ...winBase, domain: "sales", tables: {} });
     expect(r.success).toBe(false);
