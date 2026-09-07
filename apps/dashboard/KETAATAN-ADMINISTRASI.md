@@ -71,6 +71,49 @@ Ditimbang dua sisi; kalau dibalik, sadari itu memaafkan satu hari per unit
 
 ---
 
+## 2b · Lebar jendela papan — satu sumber, dan satu ongkos yang BELUM diukur
+
+`KETAATAN_HARI` di [`src/lib/config.ts`](src/lib/config.ts). Saat ditulis: **30**
+(dinaikkan dari 14 atas permintaan owner, 2026-09-07). Kalau angka di kalimat ini
+tak lagi cocok dengan konstantanya, **konstantanya yang benar**.
+
+**Yang diperbaiki bersamaan, dan kenapa itu wajib.** Lebar jendela dulu hidup di
+TIGA tempat: `DAYS` di halamannya, `repeat(14, 30px)` di `.hm-grid`, dan kalimat
+"14 hari terakhir" di kartu Hub. Dua terakhir adalah SALINAN yang tak bisa
+berbunyi merah. Kerusakannya **diukur, bukan ditaksir** — kisi lama diberi 30
+hari: sel membungkus ke **3 baris**, lebarnya pecah jadi 30px & 130px, dan
+barisan label harinya membungkus sendiri. Papan yang masih *terlihat* seperti
+papan, jadi tak ada yang akan melaporkannya sebagai rusak. Sekarang halaman & Hub
+meng-impor konstantanya, dan CSS tak lagi menghitung kolom sama sekali
+(`grid-auto-flow: column`) — dijaga
+[`src/lib/ketaatan-jendela.test.ts`](src/lib/ketaatan-jendela.test.ts), yang
+ketiga penjaganya sudah dijalankan MERAH lebih dulu terhadap ketiga bentuk lama.
+
+**Yang TIDAK berubah:** aturan vonis. `adminStatus` menilai per-hari dan tak tahu
+lebar jendela; melebarkan jendela hanya memperbanyak hari yang ditampilkan, tak
+mengubah warna hari mana pun. Benih `iSebelumnya` (`KETAATAN_HARI + 1`, lalu
+`.slice(1)`) tetap ada — tanpanya aturan salin-setoran mati diam-diam di kolom
+paling kiri.
+
+**⚠️ Batas — ongkos render pada 30 hari BELUM DIUKUR.** Halaman ini kelas
+REALTIME: auto-refresh **60 detik** ([`refresh-cadence.ts`](src/lib/refresh-cadence.ts)),
+dan angka **2,35 dtk/poll** yang tercatat di sana diukur pada jendela **14 hari**
+— ia sekarang menggambarkan jendela yang sudah tidak dipakai. Kuerinya memuat dua
+sub-kueri **berkorelasi per hari** (`shifts` & `tanks`), jadi jumlah eksekusinya
+naik 15 → 31 per unit, ×7 unit tiap poll. Perkiraan naik ~2× itu **taksiran, dan
+taksiran ongkos di repo ini pernah meleset 37%** (lihat `ukur-kueri.ts`). Ukur di
+pilot sebelum menganggapnya beres; kalau mahal, tuas yang tersedia bukan
+mengecilkan jendela lagi melainkan menurunkan halaman ini ke kadensi analisa atau
+mengubah dua sub-kueri itu jadi `GROUP BY` seperti komponen A–D di sebelahnya.
+
+**Lantai adopsi ikut bergerak bersama jendela.** Jendela yang cukup lebar akan
+memuat tanggal sebelum sebuah unit memakai panel Rincian → sel bertitik-titik
+(`pra_adopsi`), yang **benar** dan bukan regresi. Pada 30 hari (per 2026-09-07)
+lantai terjauh — Imam Bonjol 2026-06-21 — belum tersentuh, jadi jendela ini belum
+memunculkan satu pun sel pra-adopsi baru.
+
+---
+
 ## 3 · Tiga gerbang — masing-masing menjaga hal yang BERBEDA
 
 Urutannya di `adminStatus()` bermakna. **Jangan hapus satu pun karena mengira ia
