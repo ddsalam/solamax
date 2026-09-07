@@ -561,7 +561,16 @@ body { background: var(--neutral-50); }
 .nz-chip.corr { color: var(--color-accent); background: var(--color-accent-tint); border-color: var(--color-info-border); }
 
 .hm-scroll { overflow-x: auto; }
-.hm-grid { display: grid; grid-template-columns: 130px repeat(14, 30px); gap: 5px; align-items: center; }
+/* Kisi ketaatan: kolom nama TETAP + satu kolom per hari, JUMLAHNYA TIDAK
+   DIHITUNG DI SINI. `repeat(14, 30px)` dulu adalah salinan diam-diam dari
+   KETAATAN_HARI (lib/config.ts). Kerusakannya DIUKUR, bukan ditaksir: kisi lama
+   diberi 30 hari → sel MEMBUNGKUS ke 3 baris dan lebarnya pecah jadi dua nilai
+   (30px & 130px), sementara barisan label harinya ikut membungkus sendiri —
+   papan yang terbaca seolah tiap unit punya tiga baris hari. `grid-auto-flow:
+   column` membuat CSS ini tak punya pendapat soal jumlah hari sama sekali:
+   diukur ulang pada 30 hari → 30 sel, 1 baris, lebar seragam 30px, meleset 0px
+   dari pusat label harinya. Dijaga: src/lib/ketaatan-jendela.test.ts. */
+.hm-grid { display: grid; grid-template-columns: 130px; grid-auto-flow: column; grid-auto-columns: 30px; gap: 5px; align-items: center; }
 .hm-daylabel { font-size: 12px; color: var(--color-text-tertiary); text-align: center; font-variant-numeric: tabular-nums; }
 .hm-cell { height: 30px; border-radius: 6px; cursor: pointer; border: 1px solid var(--color-border-hairline); }
 .hm-cell.success { background: var(--color-success); border-color: var(--color-success); }

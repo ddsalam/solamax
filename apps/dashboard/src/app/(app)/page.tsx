@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AgoLive } from "@/components/AgoLive";
+import { KETAATAN_HARI } from "@/lib/config";
 import { ago, dateShort } from "@/lib/format";
 import { getSyncByUnit } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
@@ -52,7 +53,7 @@ export default async function HubPage() {
           tag: "Realtime",
           title: "Ketaatan administrasi",
           desc: "Heatmap kepatuhan input penjualan, opname & administrasi (pendapatan lain, pengeluaran, setoran bank) per hari.",
-          ctx: `Semua unit dalam akses Anda (${scope.units.length}) · 14 hari terakhir`,
+          ctx: `Semua unit dalam akses Anda (${scope.units.length}) · ${KETAATAN_HARI} hari terakhir`,
           href: "/monitoring/ketaatan",
         },
       ],
