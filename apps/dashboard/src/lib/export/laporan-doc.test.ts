@@ -14,6 +14,7 @@ const raw = {
   doAnomalies: [],
   doSuspects: [],
   shift: { shifts: 3, last_dtgljam: null },
+  hargaDeviasi: [],
   corrections: 2,
   cash: [],
   saldo: {

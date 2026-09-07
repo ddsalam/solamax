@@ -90,6 +90,30 @@ export const UNIT_DISPLAY: Record<string, UnitDisplay> = {
 };
 
 /**
+ * Lebar jendela papan **Ketaatan administrasi** (`/monitoring/ketaatan`), dalam
+ * hari, termasuk hari ini. Dinaikkan 14 → 30 (permintaan owner, 2026-09-07).
+ *
+ * ⛔ SATU SUMBER, SENGAJA. Angka ini pernah hidup di TIGA tempat sekaligus:
+ * `DAYS` di halamannya, `repeat(14, 30px)` di `.hm-grid` (app.css), dan kalimat
+ * "14 hari terakhir" di kartu Hub. Dua di antaranya adalah SALINAN yang tak bisa
+ * berbunyi merah kalau yang ketiga berubah — kisi CSS akan tetap melebar 14
+ * kolom sementara datanya 30, dan Hub akan tetap menjanjikan 14 hari. Sekarang:
+ * halaman & Hub meng-IMPOR nilai ini, dan kisi CSS tidak lagi menghitung kolom
+ * sama sekali (`grid-auto-flow: column`) — dijaga `ketaatan-jendela.test.ts`.
+ *
+ * Yang ikut berubah kalau angka ini dinaikkan lagi:
+ *   · ongkos render. Halaman ini kelas REALTIME (auto-refresh 60 dtk, lihat
+ *     refresh-cadence.ts) dan terukur 2,35 dtk/poll pada 14 hari. Kuerinya
+ *     memakai dua sub-kueri BERKORELASI per hari (shifts & tanks), jadi ongkos
+ *     itu naik kira-kira sebanding dengan jendelanya — ukur ulang, jangan taksir.
+ *   · lantai adopsi. Jendela yang cukup lebar akan mulai memuat tanggal
+ *     SEBELUM sebuah unit memakai panel Rincian → sel bertitik-titik
+ *     (`pra_adopsi`), yang BENAR dan bukan regresi. Lantai terjauh saat ini
+ *     2026-06-21 (Imam Bonjol); pada jendela 30 hari ia belum tersentuh.
+ */
+export const KETAATAN_HARI = 30;
+
+/**
  * LANTAI PERIODE REKOR GRUP — tanggal saat SELURUH armada sudah punya data
  * penjualan di SolaMax (= `max(sales_min)` lintas KETUJUH unit; AS onboard
  * paling akhir, `sales_min` 2025-12-29).
@@ -162,10 +186,12 @@ export function unitLabel(code: string, fallbackName?: string): string {
  *
  * Konsekuensi nyata: Imam Bonjol 2026-06-21 — hari pertama IB memakai panel,
  * diisi Pendapatan Lain & Pengeluaran tapi TANPA setoran — dinilai MERAH
- * (`setoran_kosong`). Catatan akurasi: tanggal itu JATUH DI LUAR jendela 14 hari
- * yang berjalan sekarang, jadi ia BUKAN salah satu dari 8 sel merah terukur
- * (8 = 7 Adisucipto + 1 IB `kurang_setor` 2026-08-03). Ia akan menyala merah
- * pada jendela mana pun yang memuatnya.
+ * (`setoran_kosong`). Catatan akurasi: saat 8 sel merah itu diukur (2026-08-07,
+ * jendela masih 14 hari) tanggal 2026-06-21 JATUH DI LUAR jendela, jadi ia BUKAN
+ * salah satu dari 8 (8 = 7 Adisucipto + 1 IB `kurang_setor` 2026-08-03). Ia masih
+ * di luar setelah jendela dinaikkan ke `KETAATAN_HARI` = 30 hari (2026-09-07).
+ * Ia akan menyala merah pada jendela mana pun yang memuatnya — jadi jangan baca
+ * "8" sebagai angka yang berlaku untuk jendela seberapa pun lebarnya.
  *
  * Dua sisi yang sudah ditimbang (owner, 2026-08-07):
  *   PRO  hari itu panelnya memang dipakai, dan setoran memang tidak dicatat —

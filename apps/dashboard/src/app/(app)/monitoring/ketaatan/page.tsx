@@ -8,7 +8,7 @@ import {
   type AdminVerdict,
   type Status,
 } from "@/lib/compliance";
-import { adopsiRincian } from "@/lib/config";
+import { adopsiRincian, KETAATAN_HARI } from "@/lib/config";
 import { rp } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
 import { getComplianceMatrix, getTankCount } from "@/lib/queries";
@@ -17,7 +17,6 @@ import { getDataScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
-const DAYS = 14;
 const TONE: Record<Status, "success" | "warning" | "danger"> = {
   green: "success",
   yellow: "warning",
@@ -125,12 +124,12 @@ export default async function KetaatanPage() {
   const rows: HmRow[] = await Promise.all(
     units.map(async (u) => {
       // 2 query/unit. `getLastInputs` dilepas bersama strip kas dorman.
-      // DAYS + 1: hari TERTUA diambil semata sebagai benih `iSebelumnya` untuk
-      // sel terkiri, lalu dibuang dari tampilan. Tanpa itu, sel terkiri tak
+      // KETAATAN_HARI + 1: hari TERTUA diambil semata sebagai benih
+      // `iSebelumnya` untuk sel terkiri, lalu dibuang dari tampilan. Tanpa itu, sel terkiri tak
       // pernah bisa diperiksa aturan salin-setoran — lubang senyap yang
       // bergeser satu hari setiap hari, jadi tak akan pernah ada yang sadar.
       const [matrix, tanks] = await Promise.all([
-        getComplianceMatrix(u.unit_id, DAYS + 1),
+        getComplianceMatrix(u.unit_id, KETAATAN_HARI + 1),
         getTankCount(u.unit_id),
       ]);
       // Pemasangan tetangga (D−1 & D+1) dari lib/compliance.ts — SATU
@@ -199,7 +198,7 @@ export default async function KetaatanPage() {
     <div>
       <div className="section-h mt6">
         <span className="fs16 t-secondary">
-          {units.length} unit × {DAYS} hari · agregat modul input · klik sel untuk detail
+          {units.length} unit × {KETAATAN_HARI} hari · agregat modul input · klik sel untuk detail
         </span>
         <span className="hm-legendrow">
           {LEGENDA_NADA.map(([nada, teks]) => (
