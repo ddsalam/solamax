@@ -8,6 +8,7 @@ import {
 } from "./snapshot-config.js";
 import {
   ASSERT_VALID_SOURCE_KEYS_SQL,
+  BIND_WORK_GENERATION_SQL,
   COMPLETE_MANIFEST_SQL,
   COMPLETE_WORK_SQL,
   FAIL_MANIFEST_SQL,
@@ -44,6 +45,8 @@ export interface SnapshotBuildHooks {
   }) => Promise<void> | void;
   /** Fixed WIB minute used only by Vitest against an ephemeral negative unit. */
   syntheticWibMinutes?: number;
+  /** Worker-owned absolute deadline; every DB statement is capped by it. */
+  attemptDeadlineEpochMs?: number;
 }
 
 export interface PublishedGeneration {
@@ -194,9 +197,9 @@ export class SnapshotBuilderService {
     assertBuildRequest(request);
     this.assertSyntheticHooks(request, hooks);
 
-    await this.assertSourceCut(request, request.asOfDate);
+    await this.assertSourceCut(request, request.asOfDate, hooks);
     const baselineDate = previousMonthEnd(request.asOfDate);
-    let baseline = await this.findValidBaseline(request, baselineDate);
+    let baseline = await this.findValidBaseline(request, baselineDate, hooks);
     if (!baseline) {
       baseline = await this.buildGeneration(
         request,
@@ -234,10 +237,27 @@ export class SnapshotBuilderService {
     unitId: number,
     timeoutSql: string,
     run: (tx: SqlTransaction) => Promise<T>,
+    hooks: SnapshotBuildHooks = {},
   ): Promise<T> {
+    const acquireStartedAt = Date.now();
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
-      await tx.$executeRawUnsafe(timeoutSql);
+      if (Date.now() - acquireStartedAt > SNAPSHOT_OPERATIONAL_LIMITS.poolAcquireMilliseconds) {
+        throw new SnapshotBuildError("pool_acquire_timeout", "database connection took more than one second", true);
+      }
+      const phaseLimitMs = timeoutSql === SET_PUBLISH_TIMEOUT_SQL
+        ? SNAPSHOT_OPERATIONAL_LIMITS.publishSeconds * 1_000
+        : SNAPSHOT_OPERATIONAL_LIMITS.statementSeconds * 1_000;
+      const remainingMs = hooks.attemptDeadlineEpochMs === undefined
+        ? phaseLimitMs
+        : Math.min(phaseLimitMs, hooks.attemptDeadlineEpochMs - Date.now());
+      if (remainingMs <= 0) {
+        throw new SnapshotBuildError("attempt_timeout", "15 minute attempt deadline reached", true);
+      }
+      await tx.$queryRawUnsafe(
+        "SELECT set_config('statement_timeout', $1, true)",
+        `${Math.max(1, Math.floor(remainingMs))}ms`,
+      );
       return run(tx);
     });
   }
@@ -245,6 +265,7 @@ export class SnapshotBuilderService {
   private async assertSourceCut(
     request: SnapshotBuildRequest,
     asOfDate: string,
+    hooks: SnapshotBuildHooks,
   ): Promise<void> {
     await this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
       const evidence = await tx.$queryRawUnsafe<SourceEvidenceRow[]>(
@@ -273,12 +294,13 @@ export class SnapshotBuilderService {
           false,
         );
       }
-    });
+    }, hooks);
   }
 
   private async findValidBaseline(
     request: SnapshotBuildRequest,
     baselineDate: string,
+    hooks: SnapshotBuildHooks,
   ): Promise<PublishedGeneration | undefined> {
     return this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
       const rows = await tx.$queryRawUnsafe<BaselineRow[]>(
@@ -290,7 +312,7 @@ export class SnapshotBuilderService {
       );
       const generationId = rows[0]?.generation_id;
       return generationId ? { asOfDate: baselineDate, generationId } : undefined;
-    });
+    }, hooks);
   }
 
   private async buildGeneration(
@@ -300,7 +322,7 @@ export class SnapshotBuilderService {
     workId: string | undefined,
     hooks: SnapshotBuildHooks,
   ): Promise<PublishedGeneration> {
-    await this.assertSourceCut(request, asOfDate);
+    await this.assertSourceCut(request, asOfDate, hooks);
     const generationId = randomUUID();
     let manifestCreated = false;
     try {
@@ -320,7 +342,18 @@ export class SnapshotBuilderService {
         if (inserted.length !== 1) {
           throw new SnapshotBuildError("manifest_not_created", "building manifest was not created", true);
         }
-      });
+        if (workId) {
+          const bound = await tx.$queryRawUnsafe<ReturningIdRow[]>(
+            BIND_WORK_GENERATION_SQL,
+            request.unitId,
+            workId,
+            generationId,
+          );
+          if (bound.length !== 1) {
+            throw new SnapshotBuildError("work_binding_failed", "leased work was not bound to its generation", true);
+          }
+        }
+      }, hooks);
       manifestCreated = true;
 
       await this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
@@ -343,7 +376,7 @@ export class SnapshotBuilderService {
             request.sourceCycleId,
           );
         }
-      });
+      }, hooks);
 
       const published = await this.publishPreparedGeneration(
         { ...request, asOfDate, workId },
@@ -494,7 +527,7 @@ export class SnapshotBuilderService {
         }
       }
       return true;
-    });
+    }, hooks);
   }
 
   private async markManifestFailed(

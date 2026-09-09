@@ -102,6 +102,16 @@ WHERE c.unit_id = $1::smallint
 ON CONFLICT (unit_id, as_of_date, generation_id) DO NOTHING
 RETURNING generation_id`;
 
+/** $1 unit, $2 work id, $3 generation; called only for the target date. */
+export const BIND_WORK_GENERATION_SQL = `
+UPDATE app.saldo_pelanggan_build_work
+SET generation_id = $3::uuid,
+    updated_at = clock_timestamp()
+WHERE unit_id = $1::smallint
+  AND work_id = $2::uuid
+  AND state = 'leased'
+RETURNING work_id`;
+
 /** $1 unit, $2 target date, $3 generation, $4 source cycle. */
 export const MATERIALIZE_FULL_HISTORY_SQL = `
 WITH master_keys AS (
