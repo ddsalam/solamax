@@ -13,6 +13,10 @@
 -- 🔒 dashboard_app/ingest must be NOSUPERUSER NOBYPASSRLS (set by roles-provision.sql)
 --    or RLS (0016) is silently bypassed.
 
+\set ON_ERROR_STOP on
+
+BEGIN;
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard_app')
@@ -64,4 +68,89 @@ BEGIN
   IF to_regclass('app.audit_log')    IS NOT NULL THEN REVOKE UPDATE, DELETE ON app.audit_log    FROM dashboard_app; END IF;
   IF to_regclass('app.manual_entry') IS NOT NULL THEN REVOKE DELETE         ON app.manual_entry FROM dashboard_app; END IF;
   IF to_regclass('app.usulan_so')    IS NOT NULL THEN REVOKE DELETE         ON app.usulan_so    FROM dashboard_app; END IF;
+
+  -- B1 saldo-pelanggan snapshot: the blanket app-schema grant above must not
+  -- expose source cuts, invalidation/work state, or any write surface. Guards
+  -- keep this script usable before migration 0037 exists on an older instance.
+  IF to_regclass('app.saldo_pelanggan_source_cycle') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_source_cycle FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_source_pelanggan') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_source_pelanggan FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_source_bppiut') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_source_bppiut FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_source_bphut') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_source_bphut FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_source_change') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_source_change FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_dirty') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_dirty FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_build_work') IS NOT NULL THEN
+    REVOKE SELECT, INSERT, UPDATE, DELETE ON app.saldo_pelanggan_build_work FROM dashboard_app;
+  END IF;
+
+  IF to_regclass('app.saldo_pelanggan_snapshot_manifest') IS NOT NULL THEN
+    GRANT SELECT ON app.saldo_pelanggan_snapshot_manifest TO dashboard_app;
+    REVOKE INSERT, UPDATE, DELETE ON app.saldo_pelanggan_snapshot_manifest FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_snapshot_pointer') IS NOT NULL THEN
+    GRANT SELECT ON app.saldo_pelanggan_snapshot_pointer TO dashboard_app;
+    REVOKE INSERT, UPDATE, DELETE ON app.saldo_pelanggan_snapshot_pointer FROM dashboard_app;
+  END IF;
+  IF to_regclass('app.saldo_pelanggan_snapshot_row') IS NOT NULL THEN
+    GRANT SELECT ON app.saldo_pelanggan_snapshot_row TO dashboard_app;
+    REVOKE INSERT, UPDATE, DELETE ON app.saldo_pelanggan_snapshot_row FROM dashboard_app;
+  END IF;
 END $$;
+
+-- Fail loudly if a future saldo-pelanggan table inherits DML from the blanket
+-- grant and no matching invariant is added above. The direct-grant assertion
+-- preserves the audit-friendly grant inventory; the effective check also catches
+-- privileges inherited through another role or PUBLIC. The surrounding transaction
+-- makes either failure roll back every privilege change from this bootstrap run.
+DO $$
+DECLARE
+  direct_dml_count integer;
+  effective_dml_table_count integer;
+BEGIN
+  SELECT count(*)
+    INTO direct_dml_count
+  FROM information_schema.role_table_grants
+  WHERE grantee = 'dashboard_app'
+    AND table_schema = 'app'
+    AND table_name LIKE 'saldo\_pelanggan\_%' ESCAPE '\'
+    AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE');
+
+  IF direct_dml_count > 0 THEN
+    RAISE EXCEPTION
+      'dashboard_app masih memiliki % hak DML pada app.saldo_pelanggan_%%',
+      direct_dml_count;
+  END IF;
+
+  SELECT count(*)
+    INTO effective_dml_table_count
+  FROM pg_class AS table_class
+  JOIN pg_namespace AS table_namespace
+    ON table_namespace.oid = table_class.relnamespace
+  WHERE table_namespace.nspname = 'app'
+    AND table_class.relname LIKE 'saldo\_pelanggan\_%' ESCAPE '\'
+    AND table_class.relkind IN ('r', 'p')
+    AND (
+      has_table_privilege('dashboard_app', table_class.oid, 'INSERT')
+      OR has_table_privilege('dashboard_app', table_class.oid, 'UPDATE')
+      OR has_table_privilege('dashboard_app', table_class.oid, 'DELETE')
+    );
+
+  IF effective_dml_table_count > 0 THEN
+    RAISE EXCEPTION
+      'dashboard_app masih memiliki hak DML efektif pada % tabel app.saldo_pelanggan_%%',
+      effective_dml_table_count;
+  END IF;
+END $$;
+
+COMMIT;
