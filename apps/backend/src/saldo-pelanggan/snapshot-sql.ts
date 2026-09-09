@@ -1,3 +1,5 @@
+import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
+
 /**
  * Raw SQL for the saldo-pelanggan background builder.
  *
@@ -8,12 +10,6 @@
 
 export const SET_UNIT_SCOPE_SQL =
   "SELECT set_config('app.unit_ids', $1, true)";
-
-export const SET_BUILD_STATEMENT_TIMEOUT_SQL =
-  "SET LOCAL statement_timeout = '600s'";
-
-export const SET_PUBLISH_TIMEOUT_SQL =
-  "SET LOCAL statement_timeout = '30s'";
 
 export const SOURCE_CYCLE_EVIDENCE_SQL = `
 SELECT c.unit_id,
@@ -102,14 +98,27 @@ WHERE c.unit_id = $1::smallint
 ON CONFLICT (unit_id, as_of_date, generation_id) DO NOTHING
 RETURNING generation_id`;
 
-/** $1 unit, $2 work id, $3 generation; called only for the target date. */
+/** $1 unit, $2 work id, $3 lease owner. */
+export const ASSERT_WORK_LEASE_SQL = `
+SELECT work_id
+FROM app.saldo_pelanggan_build_work
+WHERE unit_id = $1::smallint
+  AND work_id = $2::uuid
+  AND lease_owner = $3::text
+  AND state = 'leased'
+  AND lease_expires_at >= clock_timestamp()
+FOR UPDATE`;
+
+/** $1 unit, $2 work id, $3 generation, $4 lease owner; target only. */
 export const BIND_WORK_GENERATION_SQL = `
 UPDATE app.saldo_pelanggan_build_work
 SET generation_id = $3::uuid,
     updated_at = clock_timestamp()
 WHERE unit_id = $1::smallint
   AND work_id = $2::uuid
+  AND lease_owner = $4::text
   AND state = 'leased'
+  AND lease_expires_at >= clock_timestamp()
 RETURNING work_id`;
 
 /** $1 unit, $2 target date, $3 generation, $4 source cycle. */
@@ -374,17 +383,10 @@ FROM app.saldo_pelanggan_snapshot_pointer
 WHERE unit_id = $1::smallint AND as_of_date = $2::date
 FOR UPDATE`;
 
-/** $1 unit, $2 optional work id. */
-export const LOCK_WORK_SQL = `
-SELECT work_id, state, lease_owner
-FROM app.saldo_pelanggan_build_work
-WHERE unit_id = $1::smallint AND work_id = $2::uuid
-FOR UPDATE`;
-
 /** Rechecked inside the final transaction. */
 export const PUBLICATION_OPERATIONAL_GATE_SQL = `
-SELECT (extract(hour FROM clock_timestamp() AT TIME ZONE 'Asia/Pontianak') * 60
-        + extract(minute FROM clock_timestamp() AT TIME ZONE 'Asia/Pontianak'))::int
+SELECT (extract(hour FROM clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}') * 60
+        + extract(minute FROM clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}'))::int
          AS wib_minutes,
        pg_database_size(current_database())::bigint AS database_bytes`;
 
@@ -462,7 +464,7 @@ WHERE (EXCLUDED.source_cycle_sequence, EXCLUDED.rebuild_epoch) >
    )
 RETURNING generation_id`;
 
-/** $1 unit, $2 work id, $3 generation. */
+/** $1 unit, $2 work id, $3 generation, $4 lease owner. */
 export const COMPLETE_WORK_SQL = `
 UPDATE app.saldo_pelanggan_build_work
 SET generation_id = $3::uuid,
@@ -475,7 +477,9 @@ SET generation_id = $3::uuid,
     completed_at = clock_timestamp()
 WHERE unit_id = $1::smallint
   AND work_id = $2::uuid
+  AND lease_owner = $4::text
   AND state = 'leased'
+  AND lease_expires_at >= clock_timestamp()
 RETURNING work_id`;
 
 /** $1 unit, $2 date, $3 generation, $4 code, $5 summary, $6 retryable. */

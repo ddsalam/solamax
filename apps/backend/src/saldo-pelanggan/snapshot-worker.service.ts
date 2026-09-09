@@ -48,6 +48,7 @@ export type SnapshotWorkerResult =
   | { status: "idle" }
   | { status: "busy" }
   | { status: "done"; workId: string; generationId: string }
+  | { status: "superseded"; workId: string }
   | { status: "retry_wait" | "dead_letter"; workId: string; error: string };
 
 function dateText(value: Date | string): string {
@@ -65,13 +66,6 @@ function isGlobalLeaseConflict(error: unknown): boolean {
   return record.code === "P2002" ||
     record.meta?.code === "23505" ||
     String(record.meta?.message ?? record.message ?? "").includes("sps_work_one_global_lease");
-}
-
-export function retryDelaySeconds(attempt: number, jitterFraction: number): number {
-  if (!Number.isInteger(attempt) || attempt < 1) throw new Error("attempt must be positive");
-  if (jitterFraction < 0 || jitterFraction > 0.25) throw new Error("jitter must be between 0 and 0.25");
-  const base = Math.min(30 * 2 ** (attempt - 1), 15 * 60);
-  return Math.ceil(base * (1 + jitterFraction));
 }
 
 @Injectable()
@@ -148,6 +142,7 @@ export class SnapshotWorkerService {
         work.work_id,
         leaseOwner,
         errorText(error),
+        !(error instanceof SnapshotBuildError) || error.retryable,
       );
       return rows[0];
     });
@@ -198,6 +193,7 @@ export class SnapshotWorkerService {
           sourceCycleSequence: BigInt(work.source_cycle_sequence),
           rebuildEpoch: BigInt(work.rebuild_epoch),
           workId: work.work_id,
+          leaseOwner,
         },
         {
           attemptDeadlineEpochMs:
@@ -208,6 +204,9 @@ export class SnapshotWorkerService {
         // Publication can only have committed if COMPLETE_WORK still owned the
         // lease; retain success but make the control-plane failure visible.
         process.stderr.write(`snapshot heartbeat warning: ${errorText(heartbeatFailure)}\n`);
+      }
+      if (built.outcome === "superseded") {
+        return { status: "superseded", workId: work.work_id };
       }
       return {
         status: "done",

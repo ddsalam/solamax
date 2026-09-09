@@ -7,6 +7,7 @@ import {
   SNAPSHOT_OPERATIONAL_LIMITS,
 } from "./snapshot-config.js";
 import {
+  ASSERT_WORK_LEASE_SQL,
   ASSERT_VALID_SOURCE_KEYS_SQL,
   BIND_WORK_GENERATION_SQL,
   COMPLETE_MANIFEST_SQL,
@@ -18,8 +19,6 @@ import {
   MATERIALIZE_DELTA_SQL,
   MATERIALIZE_FULL_HISTORY_SQL,
   PUBLICATION_OPERATIONAL_GATE_SQL,
-  SET_BUILD_STATEMENT_TIMEOUT_SQL,
-  SET_PUBLISH_TIMEOUT_SQL,
   SET_UNIT_SCOPE_SQL,
   SOURCE_CYCLE_EVIDENCE_SQL,
   UPSERT_POINTER_SQL,
@@ -34,6 +33,7 @@ export interface SnapshotBuildRequest {
   sourceCycleSequence: bigint;
   rebuildEpoch: bigint;
   workId?: string;
+  leaseOwner?: string;
 }
 
 export interface SnapshotBuildHooks {
@@ -57,10 +57,12 @@ export interface PublishedGeneration {
 export interface SnapshotBuildResult {
   baseline: PublishedGeneration;
   target: PublishedGeneration;
+  outcome: "published" | "superseded";
 }
 
 type SqlTransaction = Prisma.TransactionClient;
 type PublicationTuple = readonly [sourceSequence: bigint, rebuildEpoch: bigint];
+export type TransactionPhase = "build" | "publish";
 
 interface SourceEvidenceRow {
   source_cycle_id: string;
@@ -106,6 +108,18 @@ interface ValidationRow {
 interface ReturningIdRow {
   generation_id?: string;
   work_id?: string;
+}
+
+interface WorkLeaseContext {
+  workId: string;
+  leaseOwner: string;
+  bindGeneration: boolean;
+  completeOnPublish: boolean;
+}
+
+interface GenerationBuildResult {
+  generation: PublishedGeneration;
+  outcome: "published" | "superseded";
 }
 
 export class SnapshotBuildError extends Error {
@@ -165,6 +179,19 @@ export function evaluateOperationalGate(
   return { ok: true };
 }
 
+export function transactionBudgetMilliseconds(
+  phase: TransactionPhase,
+  attemptDeadlineEpochMs: number | undefined,
+  nowEpochMs: number,
+): number {
+  const phaseLimitMs = (phase === "publish"
+    ? SNAPSHOT_OPERATIONAL_LIMITS.publishSeconds
+    : SNAPSHOT_OPERATIONAL_LIMITS.statementSeconds) * 1_000;
+  return Math.floor(attemptDeadlineEpochMs === undefined
+    ? phaseLimitMs
+    : Math.min(phaseLimitMs, attemptDeadlineEpochMs - nowEpochMs));
+}
+
 function validCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -184,6 +211,12 @@ export function assertBuildRequest(request: SnapshotBuildRequest): void {
   if (request.workId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(request.workId)) {
     throw new Error("workId must be a UUID");
   }
+  if ((request.workId === undefined) !== (request.leaseOwner === undefined)) {
+    throw new Error("workId and leaseOwner must be provided together");
+  }
+  if (request.leaseOwner !== undefined && !request.leaseOwner.trim()) {
+    throw new Error("leaseOwner must not be blank");
+  }
 }
 
 @Injectable()
@@ -197,27 +230,41 @@ export class SnapshotBuilderService {
     assertBuildRequest(request);
     this.assertSyntheticHooks(request, hooks);
 
-    await this.assertSourceCut(request, request.asOfDate, hooks);
+    await this.assertSourceEvidence(request, hooks);
+    const lease = request.workId && request.leaseOwner
+      ? { workId: request.workId, leaseOwner: request.leaseOwner }
+      : undefined;
     const baselineDate = previousMonthEnd(request.asOfDate);
     let baseline = await this.findValidBaseline(request, baselineDate, hooks);
     if (!baseline) {
-      baseline = await this.buildGeneration(
+      const baselineBuild = await this.buildGeneration(
         request,
         baselineDate,
         undefined,
-        undefined,
+        lease ? { ...lease, bindGeneration: false, completeOnPublish: false } : undefined,
         hooks,
       );
+      baseline = baselineBuild.generation;
+      if (baselineBuild.outcome === "superseded") {
+        baseline = await this.findValidBaseline(request, baselineDate, hooks);
+        if (!baseline) {
+          throw new SnapshotBuildError(
+            "baseline_superseded",
+            "baseline lost publication ordering but no valid active baseline is available",
+            false,
+          );
+        }
+      }
     }
 
-    const target = await this.buildGeneration(
+    const targetBuild = await this.buildGeneration(
       request,
       request.asOfDate,
       baseline,
-      request.workId,
+      lease ? { ...lease, bindGeneration: true, completeOnPublish: true } : undefined,
       hooks,
     );
-    return { baseline, target };
+    return { baseline, target: targetBuild.generation, outcome: targetBuild.outcome };
   }
 
   private assertSyntheticHooks(
@@ -235,22 +282,33 @@ export class SnapshotBuilderService {
 
   private async inUnitTransaction<T>(
     unitId: number,
-    timeoutSql: string,
+    phase: TransactionPhase,
     run: (tx: SqlTransaction) => Promise<T>,
     hooks: SnapshotBuildHooks = {},
   ): Promise<T> {
     const acquireStartedAt = Date.now();
+    const transactionDeadline = acquireStartedAt + transactionBudgetMilliseconds(
+      phase,
+      undefined,
+      acquireStartedAt,
+    );
+    const transactionTimeoutMs = transactionBudgetMilliseconds(
+      phase,
+      hooks.attemptDeadlineEpochMs,
+      acquireStartedAt,
+    );
+    if (transactionTimeoutMs <= 0) {
+      throw new SnapshotBuildError("attempt_timeout", "15 minute attempt deadline reached", true);
+    }
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
       if (Date.now() - acquireStartedAt > SNAPSHOT_OPERATIONAL_LIMITS.poolAcquireMilliseconds) {
         throw new SnapshotBuildError("pool_acquire_timeout", "database connection took more than one second", true);
       }
-      const phaseLimitMs = timeoutSql === SET_PUBLISH_TIMEOUT_SQL
-        ? SNAPSHOT_OPERATIONAL_LIMITS.publishSeconds * 1_000
-        : SNAPSHOT_OPERATIONAL_LIMITS.statementSeconds * 1_000;
-      const remainingMs = hooks.attemptDeadlineEpochMs === undefined
-        ? phaseLimitMs
-        : Math.min(phaseLimitMs, hooks.attemptDeadlineEpochMs - Date.now());
+      const deadline = hooks.attemptDeadlineEpochMs === undefined
+        ? transactionDeadline
+        : Math.min(transactionDeadline, hooks.attemptDeadlineEpochMs);
+      const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
         throw new SnapshotBuildError("attempt_timeout", "15 minute attempt deadline reached", true);
       }
@@ -259,15 +317,17 @@ export class SnapshotBuilderService {
         `${Math.max(1, Math.floor(remainingMs))}ms`,
       );
       return run(tx);
+    }, {
+      maxWait: SNAPSHOT_OPERATIONAL_LIMITS.poolAcquireMilliseconds,
+      timeout: Math.max(1, transactionTimeoutMs),
     });
   }
 
-  private async assertSourceCut(
+  private async assertSourceEvidence(
     request: SnapshotBuildRequest,
-    asOfDate: string,
     hooks: SnapshotBuildHooks,
   ): Promise<void> {
-    await this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
+    await this.inUnitTransaction(request.unitId, "build", async (tx) => {
       const evidence = await tx.$queryRawUnsafe<SourceEvidenceRow[]>(
         SOURCE_CYCLE_EVIDENCE_SQL,
         request.unitId,
@@ -281,6 +341,15 @@ export class SnapshotBuilderService {
           false,
         );
       }
+    }, hooks);
+  }
+
+  private async assertValidSourceKeys(
+    request: SnapshotBuildRequest,
+    asOfDate: string,
+    hooks: SnapshotBuildHooks,
+  ): Promise<void> {
+    await this.inUnitTransaction(request.unitId, "build", async (tx) => {
       const invalid = await tx.$queryRawUnsafe<CountRow[]>(
         ASSERT_VALID_SOURCE_KEYS_SQL,
         request.unitId,
@@ -302,7 +371,7 @@ export class SnapshotBuilderService {
     baselineDate: string,
     hooks: SnapshotBuildHooks,
   ): Promise<PublishedGeneration | undefined> {
-    return this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
+    return this.inUnitTransaction(request.unitId, "build", async (tx) => {
       const rows = await tx.$queryRawUnsafe<BaselineRow[]>(
         VALIDATE_BASELINE_SQL,
         request.unitId,
@@ -319,14 +388,15 @@ export class SnapshotBuilderService {
     request: SnapshotBuildRequest,
     asOfDate: string,
     baseline: PublishedGeneration | undefined,
-    workId: string | undefined,
+    work: WorkLeaseContext | undefined,
     hooks: SnapshotBuildHooks,
-  ): Promise<PublishedGeneration> {
-    await this.assertSourceCut(request, asOfDate, hooks);
+  ): Promise<GenerationBuildResult> {
+    await this.assertValidSourceKeys(request, asOfDate, hooks);
     const generationId = randomUUID();
     let manifestCreated = false;
     try {
-      await this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
+      await this.inUnitTransaction(request.unitId, "build", async (tx) => {
+        if (work) await this.assertWorkLease(tx, request.unitId, work);
         const inserted = await tx.$queryRawUnsafe<ReturningIdRow[]>(
           INSERT_BUILDING_MANIFEST_SQL,
           request.unitId,
@@ -342,12 +412,13 @@ export class SnapshotBuilderService {
         if (inserted.length !== 1) {
           throw new SnapshotBuildError("manifest_not_created", "building manifest was not created", true);
         }
-        if (workId) {
+        if (work?.bindGeneration) {
           const bound = await tx.$queryRawUnsafe<ReturningIdRow[]>(
             BIND_WORK_GENERATION_SQL,
             request.unitId,
-            workId,
+            work.workId,
             generationId,
+            work.leaseOwner,
           );
           if (bound.length !== 1) {
             throw new SnapshotBuildError("work_binding_failed", "leased work was not bound to its generation", true);
@@ -356,7 +427,7 @@ export class SnapshotBuilderService {
       }, hooks);
       manifestCreated = true;
 
-      await this.inUnitTransaction(request.unitId, SET_BUILD_STATEMENT_TIMEOUT_SQL, async (tx) => {
+      await this.inUnitTransaction(request.unitId, "build", async (tx) => {
         if (baseline) {
           await tx.$executeRawUnsafe(
             MATERIALIZE_DELTA_SQL,
@@ -379,18 +450,15 @@ export class SnapshotBuilderService {
       }, hooks);
 
       const published = await this.publishPreparedGeneration(
-        { ...request, asOfDate, workId },
+        { ...request, asOfDate },
         generationId,
         hooks,
+        work,
       );
-      if (!published) {
-        throw new SnapshotBuildError(
-          "superseded",
-          "a newer or different equal publication tuple is already active",
-          false,
-        );
-      }
-      return { asOfDate, generationId };
+      return {
+        generation: { asOfDate, generationId },
+        outcome: published ? "published" : "superseded",
+      };
     } catch (error) {
       if (manifestCreated) await this.markManifestFailed(request.unitId, asOfDate, generationId, error);
       throw error;
@@ -406,10 +474,20 @@ export class SnapshotBuilderService {
     request: SnapshotBuildRequest,
     generationId: string,
     hooks: SnapshotBuildHooks = {},
+    work?: WorkLeaseContext,
   ): Promise<boolean> {
     assertBuildRequest(request);
     this.assertSyntheticHooks(request, hooks);
-    return this.inUnitTransaction(request.unitId, SET_PUBLISH_TIMEOUT_SQL, async (tx) => {
+    const publicationWork = work ?? (request.workId && request.leaseOwner
+      ? {
+          workId: request.workId,
+          leaseOwner: request.leaseOwner,
+          bindGeneration: true,
+          completeOnPublish: true,
+        }
+      : undefined);
+    return this.inUnitTransaction(request.unitId, "publish", async (tx) => {
+      if (publicationWork) await this.assertWorkLease(tx, request.unitId, publicationWork);
       const manifests = await tx.$queryRawUnsafe<ManifestLockRow[]>(
         LOCK_PUBLICATION_SQL,
         request.unitId,
@@ -449,13 +527,17 @@ export class SnapshotBuilderService {
             "a newer or different equal publication tuple is already active",
             false,
           );
-          if (request.workId) {
-            await tx.$queryRawUnsafe(
+          if (publicationWork?.completeOnPublish) {
+            const done = await tx.$queryRawUnsafe<ReturningIdRow[]>(
               COMPLETE_WORK_SQL,
               request.unitId,
-              request.workId,
+              publicationWork.workId,
               generationId,
+              publicationWork.leaseOwner,
             );
+            if (done.length !== 1) {
+              throw new SnapshotBuildError("lease_lost", "superseded work no longer owns its lease", true);
+            }
           }
           return false;
         }
@@ -515,12 +597,13 @@ export class SnapshotBuilderService {
       if (swapped.length !== 1) {
         throw new SnapshotBuildError("pointer_cas_lost", "pointer CAS did not select the generation", false);
       }
-      if (request.workId) {
+      if (publicationWork?.completeOnPublish) {
         const done = await tx.$queryRawUnsafe<ReturningIdRow[]>(
           COMPLETE_WORK_SQL,
           request.unitId,
-          request.workId,
+          publicationWork.workId,
           generationId,
+          publicationWork.leaseOwner,
         );
         if (done.length !== 1) {
           throw new SnapshotBuildError("work_completion_failed", "leased work was not completed atomically", true);
@@ -528,6 +611,22 @@ export class SnapshotBuilderService {
       }
       return true;
     }, hooks);
+  }
+
+  private async assertWorkLease(
+    tx: SqlTransaction,
+    unitId: number,
+    work: WorkLeaseContext,
+  ): Promise<void> {
+    const owned = await tx.$queryRawUnsafe<ReturningIdRow[]>(
+      ASSERT_WORK_LEASE_SQL,
+      unitId,
+      work.workId,
+      work.leaseOwner,
+    );
+    if (owned.length !== 1) {
+      throw new SnapshotBuildError("lease_lost", "builder no longer owns an unexpired work lease", true);
+    }
   }
 
   private async markManifestFailed(
@@ -540,7 +639,7 @@ export class SnapshotBuilderService {
       ? error
       : new SnapshotBuildError("builder_error", error instanceof Error ? error.message : String(error), true);
     try {
-      await this.inUnitTransaction(unitId, SET_PUBLISH_TIMEOUT_SQL, async (tx) => {
+      await this.inUnitTransaction(unitId, "publish", async (tx) => {
         await tx.$queryRawUnsafe(
           FAIL_MANIFEST_SQL,
           unitId,

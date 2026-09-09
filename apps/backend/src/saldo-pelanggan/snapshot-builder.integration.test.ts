@@ -5,12 +5,19 @@ import { PrismaService } from "../prisma.service.js";
 import { SnapshotBuilderService } from "./snapshot-builder.service.js";
 import { SNAPSHOT_FORMULA_VERSION } from "./snapshot-config.js";
 import {
+  BIND_WORK_GENERATION_SQL,
+  COMPLETE_WORK_SQL,
   INSERT_BUILDING_MANIFEST_SQL,
   MATERIALIZE_DELTA_SQL,
   MATERIALIZE_FULL_HISTORY_SQL,
   READ_READY_SNAPSHOT_SQL,
   SET_UNIT_SCOPE_SQL,
 } from "./snapshot-sql.js";
+import {
+  FAIL_EXPIRED_MANIFEST_SQL,
+  REAP_EXPIRED_WORK_SQL,
+  RETRY_WORK_SQL,
+} from "./snapshot-worker-sql.js";
 
 const LIVE = process.env.SNAPSHOT_B2_LIVE_DB === "1" && !!process.env.DATABASE_URL;
 const describeLive = LIVE ? describe.sequential : describe.skip;
@@ -565,22 +572,51 @@ describeLive("B2 synthetic snapshot equality on solamax-pg-rlsstg", () => {
 
   afterAll(async () => {
     const cleanup: CleanupRow[] = [];
-    for (const unitId of [unitA, unitB]) {
+    const cleanupErrors: unknown[] = [];
+    try {
+      for (const unitId of [unitA, unitB]) {
+        try {
+          cleanup.push(...await cleanupUnit(prisma, unitId));
+        } catch (error) {
+          cleanupErrors.push(new Error(
+            `B2 cleanup failed for ${unitId}: ${dbError(error).message}`,
+            { cause: error },
+          ));
+        }
+      }
       try {
-        cleanup.push(...await cleanupUnit(prisma, unitId));
+        await prisma.$executeRawUnsafe("DELETE FROM app.tenant WHERE id = $1::uuid", tenantId);
       } catch (error) {
-        process.stderr.write(`B2 cleanup failed for ${unitId}: ${dbError(error).message}\n`);
+        cleanupErrors.push(new Error(
+          `B2 tenant cleanup failed: ${dbError(error).message}`,
+          { cause: error },
+        ));
+      }
+    } finally {
+      try {
+        await prisma.onModuleDestroy();
+      } catch (error) {
+        cleanupErrors.push(new Error(
+          `B2 database disconnect failed: ${dbError(error).message}`,
+          { cause: error },
+        ));
       }
     }
-    await prisma.$executeRawUnsafe("DELETE FROM app.tenant WHERE id = $1::uuid", tenantId).catch(() => 0);
-    if (cleanup.length > 0) {
-      expect(cleanup).toHaveLength(28);
-      for (const row of cleanup) expect(row.row_count, row.relation).toBe(0n);
-      process.stdout.write(`B2_CLEANUP_REPORT=${JSON.stringify(
-        cleanup.map((row) => ({ relation: row.relation, row_count: String(row.row_count) })),
-      )}\n`);
+
+    if (cleanup.length !== 28) {
+      cleanupErrors.push(new Error(`B2 cleanup returned ${cleanup.length} counts; expected 28`));
     }
-    await prisma.onModuleDestroy();
+    for (const row of cleanup) {
+      if (row.row_count !== 0n) {
+        cleanupErrors.push(new Error(`B2 cleanup left ${row.row_count} rows in ${row.relation}`));
+      }
+    }
+    process.stdout.write(`B2_CLEANUP_REPORT=${JSON.stringify(
+      cleanup.map((row) => ({ relation: row.relation, row_count: String(row.row_count) })),
+    )}\n`);
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "B2 synthetic fixture cleanup was incomplete");
+    }
   }, 60_000);
 
   async function buildAndCompare(
@@ -876,6 +912,108 @@ describeLive("B2 synthetic snapshot equality on solamax-pg-rlsstg", () => {
       pointer_rejection: pointerError.code,
       ready_zero_rows: readyZeroRows.length,
       ready_zero_generation: bBaselineGeneration,
+    };
+
+    // Worker lifecycle: a pending successor makes both explicit retry and
+    // expired-lease recovery terminal without violating the pending-work index.
+    const retryOld = randomUUID();
+    const retrySuccessor = randomUUID();
+    await scoped(prisma, unitA, async (tx) => {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO app.saldo_pelanggan_build_work (
+           unit_id, work_id, as_of_date, source_cycle_id, source_cycle_sequence,
+           rebuild_epoch, state, attempt_count, lease_owner, lease_expires_at, heartbeat_at
+         ) VALUES
+           ($1::smallint,$2::uuid,'2026-03-12',$3::uuid,2,0,'leased',1,'retry-old',clock_timestamp()+interval '2 minutes',clock_timestamp()),
+           ($1::smallint,$4::uuid,'2026-03-12',$5::uuid,3,0,'queued',0,NULL,NULL,NULL)`,
+        unitA, retryOld, cycleA2, retrySuccessor, cycleA3,
+      );
+      const retried = await tx.$queryRawUnsafe<Array<{ work_id: string; state: string }>>(
+        RETRY_WORK_SQL, unitA, retryOld, "retry-old", "transient", true,
+      );
+      expect(retried).toEqual([{ work_id: retryOld, state: "dead_letter" }]);
+    });
+
+    const reapOld = randomUUID();
+    const reapSuccessor = randomUUID();
+    await scoped(prisma, unitA, async (tx) => {
+      await tx.$executeRawUnsafe(
+        `INSERT INTO app.saldo_pelanggan_build_work (
+           unit_id, work_id, as_of_date, source_cycle_id, source_cycle_sequence,
+           rebuild_epoch, state, attempt_count, lease_owner, lease_expires_at, heartbeat_at
+         ) VALUES
+           ($1::smallint,$2::uuid,'2026-03-13',$3::uuid,2,0,'leased',1,'reap-old',clock_timestamp()-interval '1 minute',clock_timestamp()-interval '2 minutes'),
+           ($1::smallint,$4::uuid,'2026-03-13',$5::uuid,3,0,'queued',0,NULL,NULL,NULL)`,
+        unitA, reapOld, cycleA2, reapSuccessor, cycleA3,
+      );
+      const reaped = await tx.$queryRawUnsafe<Array<{ work_id: string; state: string }>>(
+        REAP_EXPIRED_WORK_SQL, unitA,
+      );
+      expect(reaped).toEqual([{ work_id: reapOld, state: "dead_letter" }]);
+    });
+
+    // Every target work mutation is fenced by the current unexpired owner.
+    const fencedDate = "2026-03-14";
+    const fencedGeneration = randomUUID();
+    const fencedWork = randomUUID();
+    await scoped(prisma, unitA, async (tx) => {
+      await tx.$queryRawUnsafe(
+        INSERT_BUILDING_MANIFEST_SQL,
+        unitA, fencedDate, fencedGeneration, SNAPSHOT_FORMULA_VERSION,
+        cycleA3, 3n, 0n, null, null,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO app.saldo_pelanggan_build_work (
+           unit_id, work_id, as_of_date, source_cycle_id, source_cycle_sequence,
+           rebuild_epoch, state, attempt_count, lease_owner, lease_expires_at, heartbeat_at
+         ) VALUES ($1::smallint,$2::uuid,$3::date,$4::uuid,3,0,'leased',1,'new-owner',clock_timestamp()+interval '2 minutes',clock_timestamp())`,
+        unitA, fencedWork, fencedDate, cycleA3,
+      );
+      expect(await tx.$queryRawUnsafe(
+        BIND_WORK_GENERATION_SQL, unitA, fencedWork, fencedGeneration, "old-owner",
+      )).toHaveLength(0);
+      expect(await tx.$queryRawUnsafe(
+        BIND_WORK_GENERATION_SQL, unitA, fencedWork, fencedGeneration, "new-owner",
+      )).toHaveLength(1);
+      expect(await tx.$queryRawUnsafe(
+        COMPLETE_WORK_SQL, unitA, fencedWork, fencedGeneration, "old-owner",
+      )).toHaveLength(0);
+      expect(await tx.$queryRawUnsafe(
+        COMPLETE_WORK_SQL, unitA, fencedWork, fencedGeneration, "new-owner",
+      )).toHaveLength(1);
+    });
+
+    // An expired attempt also fails its unbound previous-month baseline; the
+    // work-to-manifest FK cannot bind a baseline dated before the target.
+    const expiredTargetDate = "2026-04-01";
+    const expiredBaselineDate = "2026-03-31";
+    const expiredBaseline = randomUUID();
+    const expiredWork = randomUUID();
+    await scoped(prisma, unitA, async (tx) => {
+      await tx.$queryRawUnsafe(
+        INSERT_BUILDING_MANIFEST_SQL,
+        unitA, expiredBaselineDate, expiredBaseline, SNAPSHOT_FORMULA_VERSION,
+        cycleA3, 3n, 7n, null, null,
+      );
+      await tx.$executeRawUnsafe(
+        `INSERT INTO app.saldo_pelanggan_build_work (
+           unit_id, work_id, as_of_date, source_cycle_id, source_cycle_sequence,
+           rebuild_epoch, state, attempt_count, lease_owner, lease_expires_at, heartbeat_at
+         ) VALUES ($1::smallint,$2::uuid,$3::date,$4::uuid,3,7,'leased',1,'expired-owner',clock_timestamp()-interval '1 minute',clock_timestamp()-interval '2 minutes')`,
+        unitA, expiredWork, expiredTargetDate, cycleA3,
+      );
+      const failed = await tx.$queryRawUnsafe<Array<{ generation_id: string }>>(
+        FAIL_EXPIRED_MANIFEST_SQL, unitA,
+      );
+      expect(failed).toEqual([{ generation_id: expiredBaseline }]);
+      await tx.$queryRawUnsafe(REAP_EXPIRED_WORK_SQL, unitA);
+    });
+    gateReport.worker_lifecycle = {
+      retry_with_successor: "dead_letter",
+      reap_with_successor: "dead_letter",
+      stale_owner_bind_rows: 0,
+      stale_owner_complete_rows: 0,
+      unbound_expired_baseline: "failed",
     };
 
     expect(equalityReport).toHaveLength(15);

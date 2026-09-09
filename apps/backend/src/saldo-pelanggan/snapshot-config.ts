@@ -19,6 +19,8 @@ export const SNAPSHOT_OPERATIONAL_LIMITS = Object.freeze({
   publishSeconds: 30,
   poolAcquireMilliseconds: 1_000,
   maxAttempts: 5,
+  retryInitialSeconds: 30,
+  retryJitterFraction: 0.25,
 } as const);
 
 export type SnapshotOperationalLimits = typeof SNAPSHOT_OPERATIONAL_LIMITS;

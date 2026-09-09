@@ -4,7 +4,9 @@ import {
   SNAPSHOT_OPERATIONAL_LIMITS,
 } from "./snapshot-config.js";
 import {
+  ASSERT_WORK_LEASE_SQL,
   ASSERT_VALID_SOURCE_KEYS_SQL,
+  BIND_WORK_GENERATION_SQL,
   COMPLETE_MANIFEST_SQL,
   COMPLETE_WORK_SQL,
   INSERT_BUILDING_MANIFEST_SQL,
@@ -35,6 +37,8 @@ describe("saldo pelanggan snapshot operational contract", () => {
       publishSeconds: 30,
       poolAcquireMilliseconds: 1_000,
       maxAttempts: 5,
+      retryInitialSeconds: 30,
+      retryJitterFraction: 0.25,
     });
     expect(Object.isFrozen(SNAPSHOT_OPERATIONAL_LIMITS)).toBe(true);
   });
@@ -102,6 +106,10 @@ describe("saldo pelanggan snapshot SQL contract", () => {
     expect(UPSERT_POINTER_SQL).toContain("source_cycle_sequence");
     expect(UPSERT_POINTER_SQL).toContain("rebuild_epoch");
     expect(COMPLETE_WORK_SQL).toContain("state = 'done'");
+    for (const sql of [ASSERT_WORK_LEASE_SQL, BIND_WORK_GENERATION_SQL, COMPLETE_WORK_SQL]) {
+      expect(sql).toContain("lease_owner");
+      expect(sql).toContain("lease_expires_at >= clock_timestamp()");
+    }
   });
 
   it("reads only pointer-selected complete generations in one statement", () => {

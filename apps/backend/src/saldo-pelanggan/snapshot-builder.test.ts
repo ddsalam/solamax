@@ -5,6 +5,7 @@ import {
   comparePublicationTuple,
   evaluateOperationalGate,
   previousMonthEnd,
+  transactionBudgetMilliseconds,
 } from "./snapshot-builder.service.js";
 
 describe("snapshot builder invariants", () => {
@@ -54,5 +55,19 @@ describe("snapshot builder invariants", () => {
     expect(() => assertBuildRequest({ ...valid, sourceCycleId: "not-uuid" })).toThrow(/sourceCycleId/);
     expect(() => assertBuildRequest({ ...valid, sourceCycleSequence: 0n })).toThrow(/sourceCycleSequence/);
     expect(() => assertBuildRequest({ ...valid, rebuildEpoch: -1n })).toThrow(/rebuildEpoch/);
+    expect(() => assertBuildRequest({ ...valid, workId: "11111111-1111-4111-8111-111111111111" })).toThrow(/together/);
+    expect(() => assertBuildRequest({ ...valid, leaseOwner: "worker-1" })).toThrow(/together/);
+    expect(() => assertBuildRequest({
+      ...valid,
+      workId: "11111111-1111-4111-8111-111111111111",
+      leaseOwner: "  ",
+    })).toThrow(/leaseOwner/);
+  });
+
+  it("sets Prisma transaction budgets to the accepted phase and attempt caps", () => {
+    expect(transactionBudgetMilliseconds("build", undefined, 1_000)).toBe(600_000);
+    expect(transactionBudgetMilliseconds("publish", undefined, 1_000)).toBe(30_000);
+    expect(transactionBudgetMilliseconds("build", 6_000, 1_000)).toBe(5_000);
+    expect(transactionBudgetMilliseconds("publish", 999, 1_000)).toBe(-1);
   });
 });
