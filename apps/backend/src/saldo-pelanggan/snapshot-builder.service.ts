@@ -10,21 +10,25 @@ import {
   ASSERT_WORK_LEASE_SQL,
   ASSERT_VALID_SOURCE_KEYS_SQL,
   BIND_WORK_GENERATION_SQL,
+  CLEAR_DIRTY_IF_COVERED_SQL,
   COMPLETE_MANIFEST_SQL,
   COMPLETE_WORK_SQL,
   FAIL_MANIFEST_SQL,
   INSERT_BUILDING_MANIFEST_SQL,
   LOCK_POINTER_SQL,
   LOCK_PUBLICATION_SQL,
+  LOCK_DIRTY_WATERMARK_SQL,
   MATERIALIZE_DELTA_SQL,
   MATERIALIZE_FULL_HISTORY_SQL,
   PUBLICATION_OPERATIONAL_GATE_SQL,
+  REASSERT_POINTER_DIRTY_SQL,
   SET_UNIT_SCOPE_SQL,
   SOURCE_CYCLE_EVIDENCE_SQL,
   UPSERT_POINTER_SQL,
   VALIDATE_BASELINE_SQL,
   VALIDATE_GENERATION_SQL,
 } from "./snapshot-sql.js";
+import { LOCK_SOURCE_CAPTURE_SQL } from "./source-capture-sql.js";
 
 export interface SnapshotBuildRequest {
   unitId: number;
@@ -87,6 +91,11 @@ interface PointerLockRow {
   generation_id: string;
   source_cycle_sequence: bigint | number | string;
   rebuild_epoch: bigint | number | string;
+}
+
+interface DirtyWatermarkRow {
+  dirty_invalid_from: Date | string | null;
+  dirty_source_cycle_sequence: bigint | number | string | null;
 }
 
 interface OperationalGateRow {
@@ -487,6 +496,10 @@ export class SnapshotBuilderService {
         }
       : undefined);
     return this.inUnitTransaction(request.unitId, "publish", async (tx) => {
+      await tx.$executeRawUnsafe(
+        LOCK_SOURCE_CAPTURE_SQL,
+        request.unitId,
+      );
       if (publicationWork) await this.assertWorkLease(tx, request.unitId, publicationWork);
       const manifests = await tx.$queryRawUnsafe<ManifestLockRow[]>(
         LOCK_PUBLICATION_SQL,
@@ -543,6 +556,45 @@ export class SnapshotBuilderService {
         }
       }
 
+      const dirtyRows = await tx.$queryRawUnsafe<DirtyWatermarkRow[]>(
+        LOCK_DIRTY_WATERMARK_SQL,
+        request.unitId,
+      );
+      const dirty = dirtyRows[0];
+      const dirtyDate = dirty?.dirty_invalid_from instanceof Date
+        ? dirty.dirty_invalid_from.toISOString().slice(0, 10)
+        : dirty?.dirty_invalid_from;
+      if (
+        dirty
+        && dirtyDate
+        && dirty.dirty_source_cycle_sequence !== null
+        && request.asOfDate >= dirtyDate
+        && request.sourceCycleSequence < asBigInt(dirty.dirty_source_cycle_sequence)
+      ) {
+        await tx.$queryRawUnsafe(
+          FAIL_MANIFEST_SQL,
+          request.unitId,
+          request.asOfDate,
+          generationId,
+          "superseded",
+          "a newer dirty source cut must replace this target",
+          false,
+        );
+        if (publicationWork?.completeOnPublish) {
+          const done = await tx.$queryRawUnsafe<ReturningIdRow[]>(
+            COMPLETE_WORK_SQL,
+            request.unitId,
+            publicationWork.workId,
+            generationId,
+            publicationWork.leaseOwner,
+          );
+          if (done.length !== 1) {
+            throw new SnapshotBuildError("lease_lost", "superseded work no longer owns its lease", true);
+          }
+        }
+        return false;
+      }
+
       const gateRows = await tx.$queryRawUnsafe<OperationalGateRow[]>(
         PUBLICATION_OPERATIONAL_GATE_SQL,
       );
@@ -597,6 +649,11 @@ export class SnapshotBuilderService {
       if (swapped.length !== 1) {
         throw new SnapshotBuildError("pointer_cas_lost", "pointer CAS did not select the generation", false);
       }
+      await tx.$queryRawUnsafe(
+        REASSERT_POINTER_DIRTY_SQL,
+        request.unitId,
+        request.asOfDate,
+      );
       if (publicationWork?.completeOnPublish) {
         const done = await tx.$queryRawUnsafe<ReturningIdRow[]>(
           COMPLETE_WORK_SQL,
@@ -609,6 +666,11 @@ export class SnapshotBuilderService {
           throw new SnapshotBuildError("work_completion_failed", "leased work was not completed atomically", true);
         }
       }
+      await tx.$queryRawUnsafe(
+        CLEAR_DIRTY_IF_COVERED_SQL,
+        request.unitId,
+        request.asOfDate,
+      );
       return true;
     }, hooks);
   }

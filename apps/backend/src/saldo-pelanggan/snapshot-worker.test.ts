@@ -16,6 +16,7 @@ import {
 } from "./snapshot-worker-sql.js";
 import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 import { SnapshotWorkerService } from "./snapshot-worker.service.js";
+import type { SnapshotSourceCaptureService } from "./source-capture.service.js";
 
 const work = {
   unit_id: 1,
@@ -55,11 +56,13 @@ function harness(options: HarnessOptions = {}) {
     }),
   };
   const builder = { build: vi.fn() };
+  const sourceCapture = { finalizeReady: vi.fn(async () => null) };
   const service = new SnapshotWorkerService(
     prisma as unknown as PrismaService,
     builder as unknown as SnapshotBuilderService,
+    sourceCapture as unknown as SnapshotSourceCaptureService,
   );
-  return { service, prisma, builder, txQuery };
+  return { service, prisma, builder, sourceCapture, txQuery };
 }
 
 describe("snapshot worker durable queue", () => {
@@ -94,19 +97,48 @@ describe("snapshot worker durable queue", () => {
   });
 
   it("stops at the operational gate before leasing", async () => {
-    const { service, builder, txQuery } = harness({ gateMinutes: 300 });
+    const { service, builder, sourceCapture, txQuery } = harness({ gateMinutes: 300 });
     await expect(service.runOnce(1, "worker-1")).resolves.toEqual({
       status: "skipped",
       reason: "outside_build_window",
     });
     expect(txQuery).not.toHaveBeenCalledWith(LEASE_WORK_SQL, expect.anything(), expect.anything());
+    expect(sourceCapture.finalizeReady).not.toHaveBeenCalled();
     expect(builder.build).not.toHaveBeenCalled();
   });
 
   it("returns idle when no exact-unit work can be leased", async () => {
-    const { service, builder } = harness();
+    const { service, builder, sourceCapture } = harness();
     await expect(service.runOnce(1, "worker-1")).resolves.toEqual({ status: "idle" });
+    expect(sourceCapture.finalizeReady).toHaveBeenCalledWith(1);
     expect(builder.build).not.toHaveBeenCalled();
+  });
+
+  it("keeps leasing queued work when ready-cut finalization fails", async () => {
+    const warning = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { service, builder, sourceCapture } = harness({ leased: work });
+      sourceCapture.finalizeReady.mockRejectedValueOnce(new Error("injected:diff_changes"));
+      builder.build.mockResolvedValue({
+        baseline: { asOfDate: "2026-01-31", generationId: randomUUID() },
+        target: {
+          asOfDate: "2026-02-01",
+          generationId: "33333333-3333-4333-8333-333333333333",
+        },
+        outcome: "published",
+      });
+
+      await expect(service.runOnce(1, "worker-1")).resolves.toMatchObject({ status: "done" });
+      expect(builder.build).toHaveBeenCalledOnce();
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("snapshot source finalization warning: injected:diff_changes"),
+      );
+
+      await service.runOnce(1, "worker-1");
+      expect(sourceCapture.finalizeReady).toHaveBeenCalledTimes(2);
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it("reports busy when the database global-one lease guard wins elsewhere", async () => {

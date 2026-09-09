@@ -1,13 +1,24 @@
-import { Injectable, UnprocessableEntityException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  Optional,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import type { IngestPayload, IngestResponse } from "@solamax/shared";
 import { REPLACE_WINDOW_DOMAINS } from "@solamax/shared";
 import { PrismaService } from "../prisma.service.js";
 import { buildReplace, buildReplaceWindowDeletes, buildUpsert } from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
+import { SnapshotSourceCaptureService } from "../saldo-pelanggan/source-capture.service.js";
 
 @Injectable()
 export class IngestService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(IngestService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly snapshotCapture?: SnapshotSourceCaptureService,
+  ) {}
 
   /**
    * UPSERT seluruh tabel payload + update sync_state dalam SATU transaksi —
@@ -132,6 +143,34 @@ export class IngestService {
       // timeout, hanya lebih lambat terdeteksi).
       { timeout: 15_000 },
     );
+
+    // Source-cut capture is intentionally fail-open for /ingest. The mirror transaction above
+    // has already committed; source-cut capture/diff gets a separate atomic
+    // transaction so any capture, diff, dirty, or enqueue failure cannot roll
+    // back mirror rows or turn a successful ingest into HTTP 500.
+    if (payload.source_cut && this.snapshotCapture) {
+      const startedAt = performance.now();
+      try {
+        const capture = await this.snapshotCapture.capture(unitId, payload);
+        this.logger.log({
+          event: "saldo_source_capture",
+          unitId,
+          domain: payload.source_cut.domain,
+          cycleId: payload.source_cut.cycle_id,
+          outcome: capture?.outcome,
+          addedLatencyMs: Math.round((performance.now() - startedAt) * 100) / 100,
+        });
+      } catch (error) {
+        this.logger.error({
+          event: "saldo_source_capture_failed_ingest_survived",
+          unitId,
+          domain: payload.source_cut.domain,
+          cycleId: payload.source_cut.cycle_id,
+          addedLatencyMs: Math.round((performance.now() - startedAt) * 100) / 100,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     const upserted: Record<string, number> = {};
     for (const [table, rows] of entries) upserted[table] = rows.length;

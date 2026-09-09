@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service.js";
 import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
+import { SnapshotSourceCaptureService } from "./source-capture.service.js";
 import {
   evaluateOperationalGate,
   SnapshotBuildError,
@@ -73,6 +74,7 @@ export class SnapshotWorkerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly builder: SnapshotBuilderService,
+    private readonly sourceCapture: SnapshotSourceCaptureService,
   ) {}
 
   private async scopedTransaction<T>(
@@ -168,6 +170,14 @@ export class SnapshotWorkerService {
       true,
     );
     if (!gate.ok) return { status: "skipped", reason: gate.reason };
+
+    // Finalization is durable and retryable: capture has already committed the
+    // complete inputs, while diff/promotion runs outside the HTTP ingest path.
+    try {
+      await this.sourceCapture.finalizeReady(unitId);
+    } catch (error) {
+      process.stderr.write(`snapshot source finalization warning: ${errorText(error)}\n`);
+    }
 
     const work = await this.lease(unitId, leaseOwner);
     if (work === null) return { status: "busy" };

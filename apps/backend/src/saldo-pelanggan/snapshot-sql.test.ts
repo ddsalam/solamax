@@ -10,15 +10,18 @@ import {
   COMPLETE_MANIFEST_SQL,
   COMPLETE_WORK_SQL,
   INSERT_BUILDING_MANIFEST_SQL,
+  LOCK_DIRTY_WATERMARK_SQL,
   LOCK_PUBLICATION_SQL,
   MATERIALIZE_DELTA_SQL,
   MATERIALIZE_FULL_HISTORY_SQL,
   READ_READY_SNAPSHOT_SQL,
+  REASSERT_POINTER_DIRTY_SQL,
   SET_UNIT_SCOPE_SQL,
   SOURCE_CYCLE_EVIDENCE_SQL,
   UPSERT_POINTER_SQL,
   VALIDATE_GENERATION_SQL,
 } from "./snapshot-sql.js";
+import { LOCK_SOURCE_CAPTURE_SQL } from "./source-capture-sql.js";
 
 describe("saldo pelanggan snapshot operational contract", () => {
   it("keeps the accepted B1 limits fixed in code", () => {
@@ -100,11 +103,17 @@ describe("saldo pelanggan snapshot SQL contract", () => {
     expect(INSERT_BUILDING_MANIFEST_SQL).toContain("status");
     expect(INSERT_BUILDING_MANIFEST_SQL).toContain("'building'");
     expect(LOCK_PUBLICATION_SQL).toContain("FOR UPDATE");
+    expect(LOCK_SOURCE_CAPTURE_SQL).toContain("saldo-pelanggan-source:");
+    expect(LOCK_DIRTY_WATERMARK_SQL).toContain("FOR UPDATE");
     expect(COMPLETE_MANIFEST_SQL).toContain("validation_passed = true");
     expect(COMPLETE_MANIFEST_SQL).toContain("published = true");
     expect(UPSERT_POINTER_SQL).toContain("ON CONFLICT (unit_id, as_of_date)");
     expect(UPSERT_POINTER_SQL).toContain("source_cycle_sequence");
     expect(UPSERT_POINTER_SQL).toContain("rebuild_epoch");
+    expect(REASSERT_POINTER_DIRTY_SQL).toContain("pending_replacement = true");
+    expect(REASSERT_POINTER_DIRTY_SQL).toContain(
+      "p.source_cycle_sequence < d.dirty_source_cycle_sequence",
+    );
     expect(COMPLETE_WORK_SQL).toContain("state = 'done'");
     for (const sql of [ASSERT_WORK_LEASE_SQL, BIND_WORK_GENERATION_SQL, COMPLETE_WORK_SQL]) {
       expect(sql).toContain("lease_owner");
