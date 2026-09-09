@@ -130,7 +130,7 @@ function kueriDalam(src: string): string[] {
 
 /** Nama yang bukan tabel: fungsi set-returning & katalog sistem. */
 const BUKAN_TABEL = new Set([
-  "unnest", "generate_series", "jsonb_to_recordset", "json_to_recordset",
+  "unnest", "generate_series", "jsonb_to_recordset", "json_to_recordset", "clock_timestamp",
   "pg_constraint", "pg_roles", "pg_type", "pg_namespace", "pg_class", "pg_index",
   "pg_indexes", "pg_tables", "pg_attribute", "information_schema", "pg_catalog",
 ]);
