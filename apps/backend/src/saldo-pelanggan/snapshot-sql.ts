@@ -310,27 +310,45 @@ WHERE unit_id = $1::smallint
   AND as_of_date = $2::date
   AND generation_id = $3::uuid`;
 
-/** $1 unit, $2 base date, $3 base generation, $4 formula, $5 source cycle. */
+/** $1 unit, $2 base date, $3 formula, $4 source cycle. */
 export const VALIDATE_BASELINE_SQL = `
-SELECT m.generation_id
+WITH candidate AS (
+  SELECT m.generation_id, m.row_count, m.row_keyed_checksum
 FROM app.saldo_pelanggan_snapshot_pointer p
 JOIN app.saldo_pelanggan_snapshot_manifest m
   ON m.unit_id = p.unit_id
  AND m.as_of_date = p.as_of_date
  AND m.generation_id = p.generation_id
-JOIN LATERAL (${VALIDATE_GENERATION_SQL.replaceAll("$1", "$1").replaceAll("$2", "$2").replaceAll("$3", "$3")}) v
-  ON true
 WHERE p.unit_id = $1::smallint
   AND p.as_of_date = $2::date
-  AND p.generation_id = $3::uuid
   AND NOT p.pending_replacement
   AND m.status = 'complete'
   AND m.published
   AND m.validation_passed
-  AND m.formula_version = $4::text
-  AND m.source_cycle_id = $5::uuid
-  AND m.row_count = v.row_count
-  AND m.row_keyed_checksum = v.row_keyed_checksum`;
+  AND m.formula_version = $3::text
+  AND m.source_cycle_id = $4::uuid
+), actual AS (
+  SELECT c.generation_id,
+         count(r.generation_id)::bigint AS row_count,
+         sha256(convert_to(COALESCE(string_agg(
+           concat_ws('|', r.unit_id::text, r.as_of_date::text, r.customer_code,
+             r.awal_piutang_lokal::text, r.akhir_piutang_lokal::text,
+             r.awal_piutang_online::text, r.akhir_piutang_online::text,
+             r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text),
+           E'\\n' ORDER BY r.customer_code
+         ), ''), 'UTF8')) AS row_keyed_checksum
+  FROM candidate c
+  LEFT JOIN app.saldo_pelanggan_snapshot_row r
+    ON r.unit_id = $1::smallint
+   AND r.as_of_date = $2::date
+   AND r.generation_id = c.generation_id
+  GROUP BY c.generation_id
+)
+SELECT c.generation_id
+FROM candidate c
+JOIN actual a USING (generation_id)
+WHERE c.row_count = a.row_count
+  AND c.row_keyed_checksum = a.row_keyed_checksum`;
 
 /** $1 unit, $2 date, $3 generation. */
 export const LOCK_PUBLICATION_SQL = `
