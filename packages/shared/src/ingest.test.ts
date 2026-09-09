@@ -121,4 +121,73 @@ describe("IngestPayload", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  // ── source_cut (snapshot lengkap saldo pelanggan) ──
+  const sourceCutBase = {
+    cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+    domain: "bppiut",
+    chunk_index: 0,
+    chunk_count: 1,
+    row_count: 0,
+  } as const;
+
+  it("source_cut: menerima marker full-sync kosong bila tabel sumber eksplisit", () => {
+    const r = IngestPayload.safeParse({
+      unit_code: "6378301",
+      domain: "piutang",
+      watermark_high: null,
+      source_cut: sourceCutBase,
+      tables: { bppiut: [] },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it.each([
+    {
+      name: "UUID siklus tidak sah",
+      payload: { source_cut: { ...sourceCutBase, cycle_id: "bukan-uuid" }, tables: { bppiut: [] } },
+    },
+    {
+      name: "chunk_index sama dengan chunk_count",
+      payload: { source_cut: { ...sourceCutBase, chunk_index: 1 }, tables: { bppiut: [] } },
+    },
+    {
+      name: "domain ingest tidak cocok",
+      payload: { domain: "hutang", source_cut: sourceCutBase, tables: { bppiut: [] } },
+    },
+    {
+      name: "tabel sumber tidak hadir",
+      payload: { source_cut: sourceCutBase, tables: {} },
+    },
+  ])("source_cut: menolak $name", ({ payload }) => {
+    const r = IngestPayload.safeParse({
+      unit_code: "6378301",
+      domain: "piutang",
+      watermark_high: null,
+      ...payload,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("source_cut pelanggan_master: hanya sah pada masters dengan key tabel pelanggan", () => {
+    const sourceCut = { ...sourceCutBase, domain: "pelanggan_master" };
+    expect(
+      IngestPayload.safeParse({
+        unit_code: "6378301",
+        domain: "masters",
+        watermark_high: null,
+        source_cut: sourceCut,
+        tables: { pelanggan_master: [] },
+      }).success,
+    ).toBe(true);
+    expect(
+      IngestPayload.safeParse({
+        unit_code: "6378301",
+        domain: "masters",
+        watermark_high: null,
+        source_cut: sourceCut,
+        tables: { product: [] },
+      }).success,
+    ).toBe(false);
+  });
 });
