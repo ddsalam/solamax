@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { IngestPayload } from "@solamax/shared";
 import { IngestService } from "./ingest.service.js";
 import { IngestController } from "./ingest.controller.js";
@@ -216,6 +216,25 @@ describe("IngestService", () => {
       expect(executed.at(-1)?.sql).toContain('"sync_state"');
     },
   );
+
+  it("agen lama tanpa source_cut tetap sukses dan menulis mirror tanpa memicu capture", async () => {
+    const { prisma, executed } = fakePrisma();
+    const capture = {
+      capture: vi.fn(),
+    } as unknown as SnapshotSourceCaptureService;
+    const service = new IngestService(prisma, capture);
+    const legacyPayload: IngestPayload = {
+      ...SOURCE_CUT_PAYLOAD,
+      source_cut: undefined,
+    };
+
+    const response = await service.ingest(1, legacyPayload);
+
+    expect(response).toEqual({ upserted: { bppiut: 1 }, new_watermark: null });
+    expect(executed.some((e) => e.sql.includes('INSERT INTO "bppiut"'))).toBe(true);
+    expect(executed.at(-1)?.sql).toContain('"sync_state"');
+    expect(capture.capture).not.toHaveBeenCalled();
+  });
 
   it("mengukur overhead orchestration source-cut lokal dengan n=30 (bukan rlsstg)", async () => {
     const baselinePayload: IngestPayload = {

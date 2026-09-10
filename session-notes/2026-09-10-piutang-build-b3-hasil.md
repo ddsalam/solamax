@@ -55,6 +55,22 @@ build global, dan tinjau ulang pada ukuran database 9 GB. Error finalisasi tidak
 menghalangi worker menyewa work lama yang sudah durable. Semua lock bersifat
 transaction-local dan terlepas pada commit maupun rollback.
 
+### Konsekuensi rollout dan kompatibilitas agen lama
+
+B3 mengubah kontrak agent: tiga full-sync pembentuk saldo sekarang berbagi
+`source_cut`, dan agent mengirim identitas itu pada setiap chunk. Karena itu,
+capture otomatis baru aktif setelah bundle agent diganti pada seluruh tujuh
+mesin. Verifikasi pasca-swap tujuh mesin menjadi prasyarat bersama untuk
+B3-agent, sinkronisasi tagihan, dan backlog 3b; rollout parsial tidak boleh
+ditafsirkan sebagai kesiapan snapshot semua unit.
+
+Kontrak `source_cut` tetap opsional untuk kompatibilitas mundur. Agen lama yang
+belum mengirimkannya tetap menerima respons sukses dan tetap menulis mirror
+serta `sync_state`; backend hanya tidak membentuk cut untuk ingest tersebut.
+Tes eksplisit mengikat perilaku ini dan memastikan capture tidak dipanggil.
+Konsekuensinya pada B4 juga eksplisit: unit yang belum pernah mempunyai cut
+lengkap/published harus dibaca sebagai **belum siap**, bukan sebagai saldo nol.
+
 ## 3. Gerbang kasus sulit dan kesetaraan
 
 Fixture sintetis PostgreSQL menjalankan 12 tes. Setiap tanggal yang dibangun
@@ -140,7 +156,7 @@ Asersi SQL default juga menjaga `min(invalid_from_date)` dan
 | `pnpm check` | lulus |
 | Dashboard | 1331 lulus, 193 opt-in skip |
 | Agent | 68 lulus |
-| Backend default | 84 lulus, 22 opt-in skip |
+| Backend default | 85 lulus, 22 opt-in skip |
 | Shared | 14 lulus |
 | Fixture B3 di `solamax:asia-southeast2:solamax-pg-rlsstg` | 12/12 lulus |
 | Matriks snapshot vs query langsung | 53/53, seluruh selisih nol |
@@ -180,6 +196,6 @@ PR B2 [#329](https://github.com/ddsalam/solamax/pull/329) sudah dibuka ke
 label PR masih kosong. Label tidak dipasang oleh Codex dan catatan sesi tidak
 dihapus.
 
-Build B3 selesai sampai gerbang laporan ini. Branch B3 tidak dipush, tidak
-dibukakan PR, tidak di-merge, dan tidak dipromosikan ke `main`. Jalur baca/cache
-B4, UI, tagihan, limit kredit, serta runtime B5 tetap di luar lingkup.
+Build B3 selesai sampai gerbang laporan ini. Branch B3 siap dipush dan dibukakan
+PR ke `staging`; branch tidak di-merge dan tidak dipromosikan ke `main`. Jalur
+baca/cache B4, UI, tagihan, limit kredit, serta runtime B5 tetap di luar lingkup.
