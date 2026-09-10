@@ -25,6 +25,8 @@ dist/
 build/
 .next/
 coverage/
+__pycache__/
+*.py[cod]
 
 # Bundle deploy Windows (artefak build — dibuat ulang via `pnpm bundle`)
 bundle-out/
