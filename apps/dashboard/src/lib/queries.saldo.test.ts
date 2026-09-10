@@ -4,7 +4,12 @@ import type { ScopedUnitId } from "./scope-rule";
 const { qScoped } = vi.hoisted(() => ({ qScoped: vi.fn() }));
 vi.mock("./db", () => ({ qScoped }));
 
-const { getSaldoPelanggan, getSaldoSnapshot } = await import("./queries");
+const {
+  getSaldoPelanggan,
+  getSaldoSnapshot,
+  readSaldoPelangganLegacy,
+  READ_SALDO_PELANGGAN_LEGACY_SQL,
+} = await import("./queries");
 const { READ_SALDO_SNAPSHOT_POINTER_SQL, READ_SALDO_SNAPSHOT_ROWS_SQL } = await import("./saldo-snapshot");
 const U = 7 as unknown as ScopedUnitId;
 const DATE = "2026-08-04";
@@ -20,6 +25,18 @@ const rows = [
   { customerCode: "21.999.0014", customerName: null, awalPiutangLokal: 10, akhirPiutangLokal: 20, awalPiutangOnline: 3, akhirPiutangOnline: 4, awalHutangLokal: -2, akhirHutangLokal: -5 },
 ];
 const verifiedRows = [{ integrityVerified: true, customerCode: null }, ...rows];
+const legacyRow = {
+  awalPiutangLokal: 10,
+  akhirPiutangLokal: 20,
+  awalPiutangOnline: 3,
+  akhirPiutangOnline: 4,
+  awalHutangLokal: -2,
+  akhirHutangLokal: -5,
+};
+const totals = {
+  awal: { piutangLokal: 10, piutangOnline: 3, hutangLokal: -2 },
+  akhir: { piutangLokal: 20, piutangOnline: 4, hutangLokal: -5 },
+};
 
 describe("snapshot-only saldo reader", () => {
   beforeEach(() => qScoped.mockReset());
@@ -58,9 +75,35 @@ describe("snapshot-only saldo reader", () => {
     await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({ status: "not_ready", asOfDate: DATE, reason: "incomplete_snapshot" });
   });
 
-  it("keeps the legacy totals wrapper nullable rather than fabricating zero", async () => {
-    qScoped.mockResolvedValueOnce([]);
-    await expect(getSaldoPelanggan(U, DATE)).resolves.toBeNull();
+  it("keeps the existing aggregate surface alive through the legacy ledger when no snapshot exists", async () => {
+    qScoped
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([legacyRow]);
+    await expect(getSaldoPelanggan(U, DATE)).resolves.toEqual(totals);
+    expect(qScoped).toHaveBeenNthCalledWith(2, U, READ_SALDO_PELANGGAN_LEGACY_SQL, [U, DATE]);
+  });
+
+  it("falls back when a published pointer cannot yield a complete immutable generation", async () => {
+    qScoped
+      .mockResolvedValueOnce([pointer])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([legacyRow]);
+    await expect(getSaldoPelanggan(U, DATE)).resolves.toEqual(totals);
+    expect(qScoped).toHaveBeenNthCalledWith(3, U, READ_SALDO_PELANGGAN_LEGACY_SQL, [U, DATE]);
+  });
+
+  it("uses a complete snapshot without touching the legacy ledgers", async () => {
+    qScoped.mockResolvedValueOnce([pointer]).mockResolvedValueOnce(verifiedRows);
+    await expect(getSaldoPelanggan(U, DATE)).resolves.toEqual(totals);
+    expect(qScoped).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps snapshot totals byte-equivalent to the legacy aggregate on the same fixture", async () => {
+    qScoped.mockResolvedValueOnce([pointer]).mockResolvedValueOnce(verifiedRows);
+    const fromSnapshot = await getSaldoPelanggan(U, DATE);
+    qScoped.mockReset().mockResolvedValueOnce([legacyRow]);
+    const fromLegacy = await readSaldoPelangganLegacy(U, DATE);
+    expect(fromSnapshot).toEqual(fromLegacy);
   });
 
   it("never scans direct ledgers and joins the master only as a label", () => {
@@ -86,5 +129,49 @@ describe("snapshot-only saldo reader", () => {
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL.match(/FROM app\.saldo_pelanggan_snapshot_row/g)).toHaveLength(1);
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL).toContain("LEFT JOIN snapshot_rows r");
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL).toContain('ORDER BY "integrityVerified" DESC, "customerCode"');
+  });
+});
+
+describe("legacy aggregate transition query", () => {
+  const sql = READ_SALDO_PELANGGAN_LEGACY_SQL.replace(/\s+/g, " ");
+
+  it("uses end-of-day <= in both ledgers and exactly three start-of-day < cuts", () => {
+    expect(sql).toContain("b.dtgl <= $2::date");
+    expect(sql).toContain("h.dtgl <= $2::date");
+    expect(sql).not.toMatch(/b\.dtgl <(?!=)/);
+    expect(sql).not.toMatch(/h\.dtgl <(?!=)/);
+    expect(sql.match(/(?<!\.)dtgl < \$2::date/g)).toHaveLength(3);
+  });
+
+  it("keeps local and online as separate code-format buckets", () => {
+    expect(sql.match(/WHERE lokal AND NOT dotted/g)).toHaveLength(2);
+    expect(sql.match(/sjenis IN \(1,5\)/g)).toHaveLength(1);
+    expect(sql).toContain("(m.ckdplg IS NOT NULL) AS lokal");
+    expect(sql.match(/WHERE dotted(?! AND sjenis)/g)).toHaveLength(2);
+    expect(sql).not.toMatch(/sjenis\s*=\s*3/);
+    expect(sql).toContain("position('.' in trim(b.ckdplg)) > 0");
+  });
+
+  it("preserves debit-credit signs and negative liability presentation", () => {
+    expect(sql).toContain("CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END");
+    expect(sql).toContain("CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END");
+    expect(sql.match(/\(-COALESCE\(\(SELECT sum\(v\) FROM hut/g)).toHaveLength(2);
+  });
+
+  it("scans each scoped non-cancelled ledger once and keeps online rows independent of master", () => {
+    expect(sql.match(/FROM public\.bppiut/g)).toHaveLength(1);
+    expect(sql.match(/FROM public\.bphut/g)).toHaveLength(1);
+    expect(sql).toContain("b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0");
+    expect(sql).toContain("h.unit_id = $1 AND COALESCE(h.sbatal,0) = 0");
+    expect(sql).toMatch(/LEFT JOIN \(SELECT unit_id, ckdplg FROM public\.pelanggan_master/);
+    expect(sql).not.toContain("INNER JOIN");
+  });
+
+  it("returns explicit six-zero totals when the aggregate query yields no row", async () => {
+    qScoped.mockReset().mockResolvedValueOnce([]);
+    await expect(readSaldoPelangganLegacy(U, DATE)).resolves.toEqual({
+      awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+      akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+    });
   });
 });

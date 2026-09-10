@@ -20,10 +20,10 @@ import type { ScopedUnitId } from "./scope-rule";
  * Laporan ini memakai saldo **AKHIR hari**, jadi yang dicocokkan `akhir`.
  * `awal` diuji relasional: saldo awal hari D ≡ saldo akhir hari D−1.
  *
- * Menjalankan implementasi SEBENARNYA (`getSaldoPelanggan` → snapshot-only
- * `qScoped` → RLS), bukan menyalin SQL-nya. Gold check ledger-hidup → EasyMax
- * ditunda ke B5; B4 hanya menilai tanggal yang sudah memiliki snapshot lengkap,
- * published, dan tervalidasi.
+ * Menjalankan implementasi SEBENARNYA (`getSaldoPelanggan` → snapshot complete
+ * bila tersedia, agregat ledger lama selama transisi → `qScoped` → RLS), bukan
+ * menyalin SQL-nya. Gold check B5 tetap wajib untuk snapshot per-pelanggan
+ * terhadap ekspor EasyMax baru yang prediksinya disegel terlebih dahulu.
  *
  * Jalan hanya bila SALDO_LIVE_DB=1 & DATABASE_URL di-set DAN unitnya ada beserta
  * datanya. Bila tidak, tiap test melapor **SKIP eksplisit** (`ctx.skip()`), BUKAN
@@ -90,12 +90,6 @@ function expected(unit: number, date: string): Trio {
   const o = ORACLE[unit]!.oracle[date]!;
   const k = KOREKSI[unit]?.[date];
   return k ? { ...o, ...Object.fromEntries(Object.entries(k).map(([f, v]) => [f, o[f as keyof Trio] + v!])) } : o;
-}
-
-function requireSaldo<T>(value: T | null): T {
-  expect(value).not.toBeNull();
-  if (value === null) throw new Error("snapshot saldo belum siap");
-  return value;
 }
 
 const pool = LIVE ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
@@ -169,7 +163,7 @@ for (const unit of [UNIT_28, UNIT_IB]) {
       it(`${date}: ketiga baris EKSAK (saldo akhir hari)`, async (ctx) => {
         if (!(await ready(unit, date))) ctx.skip();
         const { getSaldoPelanggan } = await loadQueries();
-        const got = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, date));
+        const got = await getSaldoPelanggan(unit as unknown as ScopedUnitId, date);
         expect(got.akhir).toEqual(expected(unit, date));
       });
     }
@@ -179,7 +173,7 @@ for (const unit of [UNIT_28, UNIT_IB]) {
       // Tanpa kontrol ini, "cocok" tak membuktikan apa pun: assertion yang toleran
       // akan cocok juga dengan angka tanggal sebelahnya.
       const { getSaldoPelanggan } = await loadQueries();
-      const got = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[1]!));
+      const got = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[1]!);
       expect(got.akhir).not.toEqual(expected(unit, dates[0]!));
       expect(got.akhir).not.toEqual(expected(unit, dates[2]!));
     }, 30_000);
@@ -195,8 +189,8 @@ for (const unit of [UNIT_28, UNIT_IB]) {
         // benar — tapi untuk D−1. Sekarang keduanya tampil berlabel.
         const { getSaldoPelanggan } = await loadQueries();
         for (let i = 1; i < dates.length; i++) {
-          const a = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i - 1]!));
-          const b = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i]!));
+          const a = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i - 1]!);
+          const b = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i]!);
           expect(b.awal).toEqual(a.akhir);
         }
       },
@@ -229,7 +223,7 @@ d("28 Oktober — jejak koreksi pasca-ekspor", () => {
   it("REKONSTRUKSI: buang koreksi → mendarat tepat di oracle asli", async (ctx) => {
     if (!(await ready(UNIT_28, "2026-08-04"))) ctx.skip();
     const { getSaldoPelanggan } = await loadQueries();
-    const live = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
+    const live = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
     expect(live.akhir.piutangLokal - 604_500).toBe(ORACLE[UNIT_28]!.oracle["2026-08-04"]!.piutangLokal);
   });
 
@@ -246,7 +240,7 @@ d("28 Oktober — jejak koreksi pasca-ekspor", () => {
           AND trim(b.ckdplg) = '21.999.0014' AND b.dtgl <= '2026-08-04'::date`,
     );
     expect(r[0]!.net).toBe(36_084); // kontrol: pelanggannya memang bersaldo
-    const got = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
+    const got = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
     expect(got.akhir.piutangOnline).toBe(10_796_518);
     expect(got.akhir.piutangOnline - 36_084).not.toBe(10_796_518);
   });
@@ -268,7 +262,7 @@ d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
     expect(r[0]!.debet).toBe(10_505_841);
     expect(r[0]!.kredit).toBe(9_305_841); // kontrol: jalur kredit memang ada isinya
     const { getSaldoPelanggan } = await loadQueries();
-    const got = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01"));
+    const got = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01");
     expect(got.akhir.piutangOnline).toBe(1_200_000);
     expect(got.akhir.piutangOnline).not.toBe(10_505_841); // yakni kredit TIDAK diabaikan
   });
@@ -297,7 +291,7 @@ d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
     for (const r of rows) expect(Number.isInteger(r.net)).toBe(false);
 
     const { getSaldoPelanggan } = await loadQueries();
-    const got = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01"));
+    const got = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01");
     expect(got.akhir.hutangLokal).toBe(-770_002_380);
     expect(Number.isInteger(got.akhir.hutangLokal)).toBe(true);
   });
@@ -305,8 +299,8 @@ d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
   it("tanda Hutang mengikuti data: IB negatif, 28 Oktober positif", async (ctx) => {
     if (!(await ready(UNIT_IB, "2026-08-04")) || !(await ready(UNIT_28, "2026-08-04"))) ctx.skip();
     const { getSaldoPelanggan } = await loadQueries();
-    const ib = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-04"));
-    const o28 = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
+    const ib = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-04");
+    const o28 = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
     expect(ib.akhir.hutangLokal).toBeLessThan(0);
     expect(o28.akhir.hutangLokal).toBeGreaterThan(0);
   }, 60_000);

@@ -650,27 +650,26 @@ export function buildLaporanModel(
   // Dua batas berdampingan: EasyMax "Laporan Penjualan Harian" memakai saldo AWAL
   // hari, "Daftar Saldo Hutang Piutang" memakai saldo AKHIR hari. Keduanya sah —
   // pengawas mencocokkan ke laporan yang kebetulan ia pegang.
-  // Tanpa snapshot tervalidasi tidak ada baris saldo; jangan mengarang angka nol.
-  const saldoRows = saldo === null
-    ? []
-    : [
-        {
-          label: "Saldo Piutang Pelanggan Lokal",
-          awal: saldo.awal.piutangLokal,
-          akhir: saldo.akhir.piutangLokal,
-        },
-        {
-          label: "Saldo Piutang Pelanggan Online",
-          awal: saldo.awal.piutangOnline,
-          akhir: saldo.akhir.piutangOnline,
-        },
-        {
-          label: "Saldo Hutang Pelanggan Lokal",
-          awal: saldo.awal.hutangLokal,
-          akhir: saldo.akhir.hutangLokal,
-          danger: true,
-        },
-      ];
+  // Permukaan agregat ini sudah hidup sebelum snapshot. Presence-gate di jalur
+  // baca menjamin ia selalu menerima snapshot complete atau agregat ledger lama.
+  const saldoRows = [
+    {
+      label: "Saldo Piutang Pelanggan Lokal",
+      awal: saldo.awal.piutangLokal,
+      akhir: saldo.akhir.piutangLokal,
+    },
+    {
+      label: "Saldo Piutang Pelanggan Online",
+      awal: saldo.awal.piutangOnline,
+      akhir: saldo.akhir.piutangOnline,
+    },
+    {
+      label: "Saldo Hutang Pelanggan Lokal",
+      awal: saldo.awal.hutangLokal,
+      akhir: saldo.akhir.hutangLokal,
+      danger: true,
+    },
+  ];
   const hasSaldo = saldoRows.some((r) => r.awal !== 0 || r.akhir !== 0);
   const hasRecap = hasSaldo || recapBoxes.some((b) => b.val !== 0);
 

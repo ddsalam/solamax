@@ -263,9 +263,3 @@ export async function getSaldoSnapshot(unit: ScopedUnitId, asOfDate: string): Pr
 
   return assembleReadySaldoSnapshot(asOfDate, pointer, generation);
 }
-
-/** Legacy totals view: lack of a validated snapshot remains null, never fabricated zero. */
-export async function getSaldoPelanggan(unit: ScopedUnitId, date: string): Promise<SaldoPelanggan | null> {
-  const snapshot = await getSaldoSnapshot(unit, date);
-  return snapshot.status === "ready" ? snapshot.metadata.totals : null;
-}

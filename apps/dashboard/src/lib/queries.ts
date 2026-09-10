@@ -1,10 +1,10 @@
 import { qScoped } from "./db";
 import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L } from "./derive";
 import type { ScopedUnitId } from "./scope";
-export {
-  getSaldoPelanggan,
-  getSaldoSnapshot,
-} from "./saldo-snapshot";
+import { getSaldoSnapshot, saldoFromSnapshotTotals } from "./saldo-snapshot";
+import type { SaldoPelanggan, SaldoTrio } from "./saldo-snapshot";
+export { getSaldoSnapshot };
+export type { SaldoPelanggan, SaldoTrio } from "./saldo-snapshot";
 
 /**
  * FASE 3b (RLS backstop, migration 0016): query data per-unit dijalankan lewat
@@ -1499,6 +1499,95 @@ export interface ManualEntryRow {
   keterangan: string;
   amount: number;
   urut: number;
+}
+
+interface LegacySaldoRow {
+  awalPiutangLokal: number;
+  akhirPiutangLokal: number;
+  awalPiutangOnline: number;
+  akhirPiutangOnline: number;
+  awalHutangLokal: number;
+  akhirHutangLokal: number;
+}
+
+/**
+ * Jalur agregat lama untuk permukaan yang sudah hidup sebelum snapshot ada.
+ *
+ * Query ini sengaja tetap satu agregasi tiga baris, bukan query rinci
+ * per-pelanggan. Ia menjadi jembatan rollout per unit/tanggal sampai generasi
+ * snapshot complete tersedia. Bucket dan batas tanggalnya sudah dibuktikan
+ * terhadap oracle EasyMax "DAFTAR SALDO HUTANG PIUTANG": awal `< D`, akhir
+ * `<= D`; Lokal = SJENIS {1,5} tanpa titik; Online = kode bertitik tanpa filter
+ * SJENIS; Hutang = seluruh bphut dan ditampilkan sebagai liabilitas negatif.
+ */
+export const READ_SALDO_PELANGGAN_LEGACY_SQL = `WITH piut AS (
+  SELECT b.dtgl,
+         b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS v,
+         COALESCE(position('.' in trim(b.ckdplg)) > 0, false) AS dotted,
+         (m.ckdplg IS NOT NULL) AS lokal
+    FROM public.bppiut b
+    LEFT JOIN (SELECT unit_id, ckdplg FROM public.pelanggan_master
+                WHERE unit_id = $1 AND sjenis IN (1,5)) m
+      ON m.unit_id = b.unit_id AND trim(m.ckdplg) = trim(b.ckdplg)
+   WHERE b.unit_id = $1 AND COALESCE(b.sbatal,0) = 0 AND b.dtgl <= $2::date
+), hut AS (
+  SELECT h.dtgl,
+         h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS v
+    FROM public.bphut h
+   WHERE h.unit_id = $1 AND COALESCE(h.sbatal,0) = 0 AND h.dtgl <= $2::date
+)
+SELECT
+  COALESCE((SELECT sum(v) FROM piut
+             WHERE lokal AND NOT dotted AND dtgl < $2::date),0)::float8
+    AS "awalPiutangLokal",
+  COALESCE((SELECT sum(v) FROM piut
+             WHERE lokal AND NOT dotted),0)::float8
+    AS "akhirPiutangLokal",
+  COALESCE((SELECT sum(v) FROM piut
+             WHERE dotted AND dtgl < $2::date),0)::float8
+    AS "awalPiutangOnline",
+  COALESCE((SELECT sum(v) FROM piut WHERE dotted),0)::float8
+    AS "akhirPiutangOnline",
+  (-COALESCE((SELECT sum(v) FROM hut WHERE dtgl < $2::date),0))::float8
+    AS "awalHutangLokal",
+  (-COALESCE((SELECT sum(v) FROM hut),0))::float8
+    AS "akhirHutangLokal"`;
+
+const EMPTY_SALDO_TRIO: SaldoTrio = {
+  piutangLokal: 0,
+  piutangOnline: 0,
+  hutangLokal: 0,
+};
+
+/** Dipakai hanya oleh wrapper transisi; jangan gunakan untuk fitur rinci baru. */
+export async function readSaldoPelangganLegacy(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<SaldoPelanggan> {
+  const rows = await qScoped<LegacySaldoRow>(
+    unit,
+    READ_SALDO_PELANGGAN_LEGACY_SQL,
+    [unit, date],
+  );
+  const row = rows[0];
+  if (!row) return { awal: EMPTY_SALDO_TRIO, akhir: EMPTY_SALDO_TRIO };
+  return saldoFromSnapshotTotals(row);
+}
+
+/**
+ * Permukaan agregat yang sudah hidup: menyeberang sendiri ketika snapshot
+ * complete tersedia untuk unit/tanggal ini, dan tetap memakai agregat ledger
+ * lama selama rollout belum sampai. `getSaldoSnapshot` sendiri tetap eksplisit
+ * `not_ready` untuk permukaan rinci baru.
+ */
+export async function getSaldoPelanggan(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<SaldoPelanggan> {
+  const snapshot = await getSaldoSnapshot(unit, date);
+  return snapshot.status === "ready"
+    ? snapshot.metadata.totals
+    : readSaldoPelangganLegacy(unit, date);
 }
 
 /** Seksi 4 (pendapatan_lain) & 6 (pengeluaran) — input pengawas, non-void. */

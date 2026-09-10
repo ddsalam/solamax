@@ -3,10 +3,12 @@
  *
  * Pointer selalu dibaca segar. Hanya rowset exact-generation yang di-cache,
  * dengan kunci `(unit,tanggal,generation_id)`, sehingga swap pointer tidak
- * pernah menghidupkan generasi lama. Tidak ada fallback ke ledger hidup.
+ * pernah menghidupkan generasi lama. Wrapper agregat lama boleh jatuh ke query
+ * ledger agregat selama rollout; reader rinci snapshot tidak pernah begitu.
  */
 import { unstable_cache } from "next/cache";
 import { addDays, todayWib } from "./periods";
+import { readSaldoPelangganLegacy } from "./queries";
 import {
   assembleReadySaldoSnapshot,
   getSaldoSnapshotGeneration,
@@ -29,6 +31,47 @@ export const SALDO_LIVE_REVALIDATE_S = 120;
  */
 export function saldoRevalidateSeconds(date: string, today: string): number {
   return date <= addDays(today, -2) ? SALDO_HIST_REVALIDATE_S : SALDO_LIVE_REVALIDATE_S;
+}
+
+/**
+ * Cache ledger all-zero tidak tepercaya: bisa tercipta ketika backfill unit
+ * belum selesai. Sama seperti jalur produksi lama, nol memaksa satu read segar.
+ */
+export function shouldBypassEmptySaldo(saldo: SaldoPelanggan): boolean {
+  return [saldo.awal, saldo.akhir].every(
+    (batas) => batas.piutangLokal === 0
+      && batas.piutangOnline === 0
+      && batas.hutangLokal === 0,
+  );
+}
+
+export async function resolveSaldo(
+  cached: () => Promise<SaldoPelanggan>,
+  fresh: () => Promise<SaldoPelanggan>,
+  cacheMiss: () => boolean = () => false,
+): Promise<SaldoPelanggan> {
+  const hit = await cached();
+  return cacheMiss() || !shouldBypassEmptySaldo(hit) ? hit : fresh();
+}
+
+function readLegacyCached(
+  unit: ScopedUnitId,
+  date: string,
+  revalidate: number,
+): Promise<SaldoPelanggan> {
+  let producedFresh = false;
+  return resolveSaldo(
+    unstable_cache(
+      () => {
+        producedFresh = true;
+        return readSaldoPelangganLegacy(unit, date);
+      },
+      ["saldo-pelanggan-legacy", String(unit), date],
+      { revalidate },
+    ),
+    () => readSaldoPelangganLegacy(unit, date),
+    () => producedFresh,
+  );
 }
 
 type GenerationRead = Awaited<ReturnType<typeof getSaldoSnapshotGeneration>>;
@@ -115,14 +158,18 @@ export async function getSaldoSnapshotCached(
 }
 
 /**
- * Compatibility totals view for existing callers. Missing/invalid snapshots
- * remain `null`; they are never converted to six numeric zeros.
+ * Compatibility totals view for existing callers. Setiap unit/tanggal memakai
+ * snapshot begitu complete, dan sebelum itu mempertahankan query agregat lama.
+ * Ini bukan fallback per-pelanggan dan tidak dipakai reader rinci baru.
  */
 export async function getSaldoPelangganCached(
   unit: ScopedUnitId,
   date: string,
   today: string = todayWib(),
-): Promise<SaldoPelanggan | null> {
+): Promise<SaldoPelanggan> {
+  const revalidate = saldoRevalidateSeconds(date, today);
   const snapshot = await getSaldoSnapshotCached(unit, date, today);
-  return snapshot.status === "ready" ? snapshot.metadata.totals : null;
+  return snapshot.status === "ready"
+    ? snapshot.metadata.totals
+    : readLegacyCached(unit, date, revalidate);
 }

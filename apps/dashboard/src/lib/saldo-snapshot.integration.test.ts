@@ -485,6 +485,8 @@ describeLive("B4 synthetic snapshot read proof on solamax-pg-rlsstg", () => {
   let dashboardRaw: Pool;
   let dashboardAppPool: Pool;
   let getSaldoSnapshot: typeof import("./saldo-snapshot").getSaldoSnapshot;
+  let getSaldoPelanggan: typeof import("./queries").getSaldoPelanggan;
+  let readSaldoPelangganLegacy: typeof import("./queries").readSaldoPelangganLegacy;
   let safeToClean = false;
 
   const U = (unit: number) => unit as unknown as ScopedUnitId;
@@ -640,6 +642,7 @@ describeLive("B4 synthetic snapshot read proof on solamax-pg-rlsstg", () => {
     await insertCycle(seed, unitB, cycleB1, 1, null, CUT_B_C1);
     await insertCycle(seed, unitC, cycleC1, 1, null, EMPTY_CUT);
     ({ getSaldoSnapshot } = await import("./saldo-snapshot"));
+    ({ getSaldoPelanggan, readSaldoPelangganLegacy } = await import("./queries"));
     ({ pool: dashboardAppPool } = await import("./db"));
   }, 60_000);
 
@@ -734,6 +737,30 @@ describeLive("B4 synthetic snapshot read proof on solamax-pg-rlsstg", () => {
     expect(equalityCases).toHaveLength(15);
     expect(Object.keys(hardCases).length).toBeGreaterThanOrEqual(10);
   }, 120_000);
+
+  it("cuts aggregate readers over per unit/date while keeping both sources equal", async () => {
+    await replaceMirror(seed, unitA, CUT_A_C3);
+
+    const completeDate = "2026-02-01";
+    const fromPublishedSnapshot = await getSaldoPelanggan(U(unitA), completeDate);
+    const sameLedgerTotals = await readSaldoPelangganLegacy(U(unitA), completeDate);
+    expect(fromPublishedSnapshot).toEqual(sameLedgerTotals);
+
+    const noSnapshotDate = "2026-03-10";
+    const fromFallback = await getSaldoPelanggan(U(unitA), noSnapshotDate);
+    const expectedFallback = await readSaldoPelangganLegacy(U(unitA), noSnapshotDate);
+    expect(fromFallback).toEqual(expectedFallback);
+    expect(fromFallback.akhir.piutangLokal).not.toBe(0);
+
+    Object.assign(equalityReport, {
+      transition: {
+        complete_snapshot_matches_legacy: true,
+        no_snapshot_uses_legacy_aggregate: true,
+        per_customer_fallback_used: false,
+        result: "pass",
+      },
+    });
+  }, 60_000);
 
   it("distinguishes readiness and rejects count, checksum, and manifest-total corruption", async () => {
     const noPointer = await getSaldoSnapshot(U(unitA), "2026-03-10");

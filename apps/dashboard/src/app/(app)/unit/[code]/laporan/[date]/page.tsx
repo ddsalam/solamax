@@ -93,7 +93,8 @@ export default async function LaporanPage({
     getCorrections(unit.unit_id, date),
     getCashForDate(unit.unit_id, date),
     // Pointer snapshot selalu segar; rowset immutable di-cache per generation_id.
-    // Bila snapshot belum siap, hasilnya null dan model tidak mengarang angka nol.
+    // Sebelum snapshot complete tersedia, permukaan agregat ini memakai query
+    // ledger lama sehingga tiga baris produksi tidak hilang selama rollout.
     getSaldoPelangganCached(unit.unit_id, date, today),
     getPelangganForDate(unit.unit_id, date),
     getEdcForDate(unit.unit_id, date),

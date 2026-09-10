@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SaldoSnapshotPointer, SaldoSnapshotRow } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope-rule";
 
-const { pointerRead, generationRead, cacheHits, cacheRegistrations } = vi.hoisted(() => ({
+const { pointerRead, generationRead, legacyRead, cacheHits, cacheRegistrations } = vi.hoisted(() => ({
   pointerRead: vi.fn(),
   generationRead: vi.fn(),
+  legacyRead: vi.fn(),
   cacheHits: [] as unknown[],
   cacheRegistrations: [] as Array<{ key: string[]; revalidate: number }>,
 }));
@@ -29,6 +30,8 @@ vi.mock("./saldo-snapshot", async (importOriginal) => ({
   getSaldoSnapshotPointer: pointerRead,
   getSaldoSnapshotGeneration: generationRead,
 }));
+
+vi.mock("./queries", () => ({ readSaldoPelangganLegacy: legacyRead }));
 
 import {
   SALDO_HIST_REVALIDATE_S,
@@ -96,6 +99,7 @@ const notReady = { status: "not_ready" as const, reason: "incomplete_snapshot" a
 beforeEach(() => {
   pointerRead.mockReset();
   generationRead.mockReset();
+  legacyRead.mockReset();
   cacheHits.length = 0;
   cacheRegistrations.length = 0;
 });
@@ -273,10 +277,67 @@ describe("getSaldoPelangganCached kompatibilitas", () => {
       awal: { piutangLokal: 10, piutangOnline: 12, hutangLokal: -14 },
       akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
     });
+    expect(legacyRead).not.toHaveBeenCalled();
   });
 
-  it("mempertahankan not-ready sebagai null, bukan angka nol", async () => {
+  it("jatuh ke agregat ledger lama ketika pointer snapshot belum ada", async () => {
     pointerRead.mockResolvedValue(null);
-    await expect(getSaldoPelangganCached(U, DATE, "2026-08-05")).resolves.toBeNull();
+    legacyRead.mockResolvedValue({
+      awal: { piutangLokal: 10, piutangOnline: 12, hutangLokal: -14 },
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+    await expect(getSaldoPelangganCached(U, DATE, "2026-08-05")).resolves.toEqual({
+      awal: { piutangLokal: 10, piutangOnline: 12, hutangLokal: -14 },
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+    expect(legacyRead).toHaveBeenCalledWith(U, DATE);
+    expect(cacheRegistrations).toEqual([{
+      key: ["saldo-pelanggan-legacy", "7", DATE],
+      revalidate: 86_400,
+    }]);
+  });
+
+  it("memakai cache agregat lama nonzero tanpa scan ledger ulang", async () => {
+    pointerRead.mockResolvedValue(null);
+    cacheHits.push({
+      awal: { piutangLokal: 10, piutangOnline: 12, hutangLokal: -14 },
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+
+    await expect(getSaldoPelangganCached(U, DATE, "2026-08-05")).resolves.toMatchObject({
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+    expect(legacyRead).not.toHaveBeenCalled();
+  });
+
+  it("mengabaikan cache agregat lama all-zero dan membaca ledger segar", async () => {
+    pointerRead.mockResolvedValue(null);
+    cacheHits.push({
+      awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+      akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+    });
+    legacyRead.mockResolvedValue({
+      awal: { piutangLokal: 10, piutangOnline: 12, hutangLokal: -14 },
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+
+    await expect(getSaldoPelangganCached(U, DATE, "2026-08-05")).resolves.toMatchObject({
+      akhir: { piutangLokal: 11, piutangOnline: 13, hutangLokal: -15 },
+    });
+    expect(legacyRead).toHaveBeenCalledOnce();
+  });
+
+  it("menerima cold-miss all-zero tanpa menjalankan scan ledger dua kali", async () => {
+    pointerRead.mockResolvedValue(null);
+    legacyRead.mockResolvedValue({
+      awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+      akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+    });
+
+    await expect(getSaldoPelangganCached(U, DATE, "2026-08-05")).resolves.toEqual({
+      awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+      akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+    });
+    expect(legacyRead).toHaveBeenCalledOnce();
   });
 });
