@@ -84,6 +84,36 @@ describe("saldo pelanggan snapshot SQL contract", () => {
     expect(MATERIALIZE_DELTA_SQL).not.toContain("::float8");
   });
 
+  it("keeps every signed saldo bucket and its local/online date boundary exact", () => {
+    // These are mutation guards for the accepted B2 formula. The reader no
+    // longer contains ledger SQL, so CI must protect the builder's exact
+    // bucket semantics here instead of only checking that fragments exist.
+    for (const sql of [MATERIALIZE_FULL_HISTORY_SQL, MATERIALIZE_DELTA_SQL]) {
+      const normalized = sql.replace(/\s+/g, " ");
+
+      expect(normalized).toContain(
+        "b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value",
+      );
+      expect(normalized).toContain(
+        "h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value",
+      );
+      expect(normalized).toContain("p.sjenis IN (1, 5)");
+      expect(normalized).not.toMatch(/sjenis\s*=\s*3/);
+
+      for (const boundary of ["<", "<="]) {
+        expect(normalized).toContain(
+          `WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl ${boundary} $2::date`,
+        );
+        expect(normalized).toContain(
+          `WHERE position('.' in p.customer_code) > 0 AND p.dtgl ${boundary} $2::date`,
+        );
+        expect(normalized).toContain(
+          `-COALESCE(sum(h.value) FILTER (WHERE h.dtgl ${boundary} $2::date), 0)`,
+        );
+      }
+    }
+  });
+
   it("validates row count, six totals, and a deterministic SHA-256 row checksum", () => {
     expect(VALIDATE_GENERATION_SQL).toContain("count(*)");
     expect(VALIDATE_GENERATION_SQL).toContain("sha256(convert_to(");

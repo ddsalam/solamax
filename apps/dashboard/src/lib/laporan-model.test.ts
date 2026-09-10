@@ -72,6 +72,22 @@ describe("buildLaporanModel", () => {
     expect(m.glMonthly.rows).toHaveLength(0);
   });
 
+  it("permukaan agregat tetap merender tiga baris selama transisi snapshot", () => {
+    const m = buildLaporanModel({
+      ...raw,
+      saldo: {
+        awal: { piutangLokal: 10, piutangOnline: 3, hutangLokal: -2 },
+        akhir: { piutangLokal: 20, piutangOnline: 4, hutangLokal: -5 },
+      },
+    }, ctx);
+    expect(m.recap.hasSaldo).toBe(true);
+    expect(m.recap.saldoRows).toEqual([
+      { label: "Saldo Piutang Pelanggan Lokal", awal: 10, akhir: 20 },
+      { label: "Saldo Piutang Pelanggan Online", awal: 3, akhir: 4 },
+      { label: "Saldo Hutang Pelanggan Lokal", awal: -2, akhir: -5, danger: true },
+    ]);
+  });
+
   it("Sisa DO tersegmentasi: sisaBerjalan + sisaMacet = sisa; totals ikut", () => {
     const withDo = {
       ...raw,
