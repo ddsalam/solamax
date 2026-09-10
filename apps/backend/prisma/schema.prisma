@@ -1084,3 +1084,226 @@ model AuditLog {
   @@map("audit_log")
   @@schema("app")
 }
+
+// Saldo pelanggan Fase 1 (0037/0038). Builder memakai SQL mentah, tetapi model
+// tetap dicatat agar schema.prisma menjadi inventaris lengkap tabel aplikasi.
+model SaldoPelangganSourceCycle {
+  unitId                 Int       @map("unit_id") @db.SmallInt
+  sourceCycleId          String    @map("source_cycle_id") @db.Uuid
+  sourceCycleSequence    BigInt    @map("source_cycle_sequence")
+  previousSourceCycleId  String?   @map("previous_source_cycle_id") @db.Uuid
+  status                 String    @default("staging")
+  startedAt              DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  sourceCompletedAt      DateTime? @map("source_completed_at") @db.Timestamptz()
+  promotedAt             DateTime? @map("promoted_at") @db.Timestamptz()
+  failedAt               DateTime? @map("failed_at") @db.Timestamptz()
+  pelangganRowCount      BigInt?   @map("pelanggan_row_count")
+  pelangganKeyedChecksum Bytes?    @map("pelanggan_keyed_checksum")
+  bppiutRowCount         BigInt?   @map("bppiut_row_count")
+  bppiutKeyedChecksum    Bytes?    @map("bppiut_keyed_checksum")
+  bphutRowCount          BigInt?   @map("bphut_row_count")
+  bphutKeyedChecksum     Bytes?    @map("bphut_keyed_checksum")
+  failureSummary         String?   @map("failure_summary")
+
+  @@id([unitId, sourceCycleId], map: "sps_cycle_pkey")
+  @@unique([unitId, sourceCycleId, sourceCycleSequence], map: "sps_cycle_unit_id_sequence_key")
+  @@unique([unitId, sourceCycleId, sourceCycleSequence, status], map: "sps_cycle_complete_target_key")
+  @@unique([unitId, sourceCycleSequence], map: "sps_cycle_unit_sequence_key")
+  @@map("saldo_pelanggan_source_cycle")
+  @@schema("app")
+}
+
+model SaldoPelangganSourcePelanggan {
+  unitId           Int     @map("unit_id") @db.SmallInt
+  sourceCycleId    String  @map("source_cycle_id") @db.Uuid
+  ckdplg           String  @db.Char(12)
+  vcnmplg          String?
+  sjenis           Int?    @db.SmallInt
+  saktif           Int?    @db.SmallInt
+  rowKeyedChecksum Bytes   @map("row_keyed_checksum")
+
+  @@id([unitId, sourceCycleId, ckdplg], map: "sps_pelanggan_pkey")
+  @@map("saldo_pelanggan_source_pelanggan")
+  @@schema("app")
+}
+
+model SaldoPelangganSourceBppiut {
+  unitId           Int      @map("unit_id") @db.SmallInt
+  sourceCycleId    String   @map("source_cycle_id") @db.Uuid
+  ckdbppiut        String   @db.Char(15)
+  dtgl             DateTime @db.Date
+  ckdplg           String?  @db.VarChar(12)
+  njumlah          Decimal? @db.Decimal
+  sjnsbp           Int?     @db.SmallInt
+  sbatal           Int?     @db.SmallInt
+  rowKeyedChecksum Bytes    @map("row_keyed_checksum")
+
+  @@id([unitId, sourceCycleId, ckdbppiut], map: "sps_bppiut_pkey")
+  @@index([unitId, sourceCycleId, dtgl, ckdplg], map: "sps_bppiut_cycle_date_customer_idx")
+  @@map("saldo_pelanggan_source_bppiut")
+  @@schema("app")
+}
+
+model SaldoPelangganSourceBphut {
+  unitId           Int      @map("unit_id") @db.SmallInt
+  sourceCycleId    String   @map("source_cycle_id") @db.Uuid
+  ckdbphut         String   @db.Char(15)
+  dtgl             DateTime @db.Date
+  ckdplg           String?  @db.VarChar(12)
+  njumlah          Decimal? @db.Decimal
+  sjnsbp           Int?     @db.SmallInt
+  sbatal           Int?     @db.SmallInt
+  rowKeyedChecksum Bytes    @map("row_keyed_checksum")
+
+  @@id([unitId, sourceCycleId, ckdbphut], map: "sps_bphut_pkey")
+  @@index([unitId, sourceCycleId, dtgl, ckdplg], map: "sps_bphut_cycle_date_customer_idx")
+  @@map("saldo_pelanggan_source_bphut")
+  @@schema("app")
+}
+
+model SaldoPelangganSourceChange {
+  unitId                Int       @map("unit_id") @db.SmallInt
+  sourceCycleId         String    @map("source_cycle_id") @db.Uuid
+  domain                String
+  sourceKey             String    @map("source_key")
+  changeKind            String    @map("change_kind")
+  oldBusinessDate       DateTime? @map("old_business_date") @db.Date
+  newBusinessDate       DateTime? @map("new_business_date") @db.Date
+  oldCustomerCode       String?   @map("old_customer_code") @db.VarChar(12)
+  newCustomerCode       String?   @map("new_customer_code") @db.VarChar(12)
+  oldRowKeyedChecksum   Bytes?    @map("old_row_keyed_checksum")
+  newRowKeyedChecksum   Bytes?    @map("new_row_keyed_checksum")
+  classificationChanged Boolean   @default(false) @map("classification_changed")
+  labelOnly             Boolean   @default(false) @map("label_only")
+  invalidFromDate       DateTime? @map("invalid_from_date") @db.Date
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@id([unitId, sourceCycleId, domain, sourceKey, changeKind], map: "sps_change_pkey")
+  @@index([unitId, invalidFromDate], map: "sps_change_invalid_from_idx")
+  @@map("saldo_pelanggan_source_change")
+  @@schema("app")
+}
+
+model SaldoPelangganSnapshotManifest {
+  unitId                       Int       @map("unit_id") @db.SmallInt
+  asOfDate                     DateTime  @map("as_of_date") @db.Date
+  generationId                 String    @map("generation_id") @db.Uuid
+  formulaVersion               String    @map("formula_version")
+  status                       String    @default("building")
+  baseMonthEnd                 DateTime? @map("base_month_end") @db.Date
+  baseGenerationId             String?   @map("base_generation_id") @db.Uuid
+  sourceCycleId                String    @map("source_cycle_id") @db.Uuid
+  sourceCycleSequence          BigInt    @map("source_cycle_sequence")
+  sourceCycleStatus            String    @default("complete") @map("source_cycle_status")
+  sourceCompletedAt            DateTime  @map("source_completed_at") @db.Timestamptz()
+  rebuildEpoch                 BigInt    @default(0) @map("rebuild_epoch")
+  startedAt                    DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  computedAt                   DateTime? @map("computed_at") @db.Timestamptz()
+  completedAt                  DateTime? @map("completed_at") @db.Timestamptz()
+  published                    Boolean   @default(false)
+  publishedAt                  DateTime? @map("published_at") @db.Timestamptz()
+  validationPassed             Boolean   @default(false) @map("validation_passed")
+  customerKeyCount             BigInt?   @map("customer_key_count")
+  rowCount                     BigInt?   @map("row_count")
+  rowKeyedChecksum             Bytes?    @map("row_keyed_checksum")
+  awalPiutangLokalTotal        Decimal?  @map("awal_piutang_lokal_total") @db.Decimal
+  akhirPiutangLokalTotal       Decimal?  @map("akhir_piutang_lokal_total") @db.Decimal
+  awalPiutangOnlineTotal       Decimal?  @map("awal_piutang_online_total") @db.Decimal
+  akhirPiutangOnlineTotal      Decimal?  @map("akhir_piutang_online_total") @db.Decimal
+  awalHutangLokalTotal         Decimal?  @map("awal_hutang_lokal_total") @db.Decimal
+  akhirHutangLokalTotal        Decimal?  @map("akhir_hutang_lokal_total") @db.Decimal
+  sourcePelangganRowCount      BigInt?   @map("source_pelanggan_row_count")
+  sourcePelangganKeyedChecksum Bytes?    @map("source_pelanggan_keyed_checksum")
+  sourceBppiutRowCount         BigInt?   @map("source_bppiut_row_count")
+  sourceBppiutKeyedChecksum    Bytes?    @map("source_bppiut_keyed_checksum")
+  sourceBphutRowCount          BigInt?   @map("source_bphut_row_count")
+  sourceBphutKeyedChecksum     Bytes?    @map("source_bphut_keyed_checksum")
+  failureCode                  String?   @map("failure_code")
+  failureSummary               String?   @map("failure_summary")
+  retryable                    Boolean   @default(false)
+
+  @@id([unitId, asOfDate, generationId], map: "sps_manifest_pkey")
+  @@unique([unitId, asOfDate, generationId, status, published, validationPassed, sourceCycleSequence, rebuildEpoch], map: "sps_manifest_pointer_target_key")
+  @@unique([unitId, asOfDate, generationId, sourceCycleSequence], map: "sps_manifest_coverage_target_key")
+  @@map("saldo_pelanggan_snapshot_manifest")
+  @@schema("app")
+}
+
+model SaldoPelangganSnapshotPointer {
+  unitId                     Int       @map("unit_id") @db.SmallInt
+  asOfDate                   DateTime  @map("as_of_date") @db.Date
+  generationId               String    @map("generation_id") @db.Uuid
+  generationStatus           String    @default("complete") @map("generation_status")
+  generationPublished        Boolean   @default(true) @map("generation_published")
+  generationValidationPassed Boolean   @default(true) @map("generation_validation_passed")
+  sourceCycleSequence        BigInt    @map("source_cycle_sequence")
+  rebuildEpoch               BigInt    @map("rebuild_epoch")
+  activatedAt                DateTime  @default(now()) @map("activated_at") @db.Timestamptz()
+  staleInvalidFrom           DateTime? @map("stale_invalid_from") @db.Date
+  pendingReplacement         Boolean   @default(false) @map("pending_replacement")
+  pendingSince               DateTime? @map("pending_since") @db.Timestamptz()
+
+  @@id([unitId, asOfDate], map: "sps_pointer_pkey")
+  @@map("saldo_pelanggan_snapshot_pointer")
+  @@schema("app")
+}
+
+model SaldoPelangganSnapshotRow {
+  unitId             Int      @map("unit_id") @db.SmallInt
+  asOfDate           DateTime @map("as_of_date") @db.Date
+  generationId       String   @map("generation_id") @db.Uuid
+  customerCode       String   @map("customer_code") @db.VarChar(12)
+  awalPiutangLokal   Decimal  @map("awal_piutang_lokal") @db.Decimal
+  akhirPiutangLokal  Decimal  @map("akhir_piutang_lokal") @db.Decimal
+  awalPiutangOnline  Decimal  @map("awal_piutang_online") @db.Decimal
+  akhirPiutangOnline Decimal  @map("akhir_piutang_online") @db.Decimal
+  awalHutangLokal    Decimal  @map("awal_hutang_lokal") @db.Decimal
+  akhirHutangLokal   Decimal  @map("akhir_hutang_lokal") @db.Decimal
+
+  @@id([unitId, asOfDate, generationId, customerCode], map: "sps_row_pkey")
+  @@map("saldo_pelanggan_snapshot_row")
+  @@schema("app")
+}
+
+model SaldoPelangganDirty {
+  unitId                     Int       @id(map: "sps_dirty_pkey") @map("unit_id") @db.SmallInt
+  dirtyInvalidFrom           DateTime? @map("dirty_invalid_from") @db.Date
+  dirtySourceCycleId         String?   @map("dirty_source_cycle_id") @db.Uuid
+  dirtySourceCycleSequence   BigInt?   @map("dirty_source_cycle_sequence")
+  dirtySince                 DateTime? @map("dirty_since") @db.Timestamptz()
+  coveredThroughDate         DateTime? @map("covered_through_date") @db.Date
+  coveredByGenerationId      String?   @map("covered_by_generation_id") @db.Uuid
+  coveredSourceCycleSequence BigInt?   @map("covered_source_cycle_sequence")
+  version                    BigInt    @default(0)
+  updatedAt                  DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@map("saldo_pelanggan_dirty")
+  @@schema("app")
+}
+
+model SaldoPelangganBuildWork {
+  unitId              Int       @map("unit_id") @db.SmallInt
+  workId              String    @map("work_id") @db.Uuid
+  asOfDate            DateTime  @map("as_of_date") @db.Date
+  sourceCycleId       String    @map("source_cycle_id") @db.Uuid
+  sourceCycleSequence BigInt    @map("source_cycle_sequence")
+  sourceCycleStatus   String    @default("complete") @map("source_cycle_status")
+  rebuildEpoch        BigInt    @default(0) @map("rebuild_epoch")
+  generationId        String?   @map("generation_id") @db.Uuid
+  state               String    @default("queued")
+  attemptCount        Int       @default(0) @map("attempt_count") @db.SmallInt
+  availableAt         DateTime  @default(now()) @map("available_at") @db.Timestamptz()
+  leaseOwner          String?   @map("lease_owner")
+  leaseExpiresAt      DateTime? @map("lease_expires_at") @db.Timestamptz()
+  heartbeatAt         DateTime? @map("heartbeat_at") @db.Timestamptz()
+  lastError           String?   @map("last_error")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz()
+
+  @@id([unitId, workId], map: "sps_work_pkey")
+  @@unique([unitId, asOfDate, sourceCycleId, rebuildEpoch], map: "sps_work_idempotency_key")
+  @@index([state, availableAt, createdAt], map: "sps_work_ready_idx")
+  @@map("saldo_pelanggan_build_work")
+  @@schema("app")
+}
