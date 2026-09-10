@@ -363,6 +363,24 @@ Temuan ini tidak menunggu satu baris kode pun dan harus ditriase secara
 operasional. Karena arah belum diketahui, **jangan menulis angka rupiah untuk
 “belum tertagih” atau arah sebaliknya** pada Korek maupun 28 Oktober.
 
+## Artefak penutup untuk kanari agent
+
+Bundle kanari dibangun setelah promosi dari `origin/main` persis pada commit
+`fb2d65cc5fe5678dced2c5f04f4b95afd0f36c09`, merge PR #332. Berkas yang
+diserahkan adalah `solamax-agent-main-fb2d65c.zip`, dengan SHA-256:
+
+```text
+6ec8b917909fb903eab4a2ea2007060127914029192c3619af93ccc10062176d
+```
+
+Berkas pendamping `solamax-agent-main-fb2d65c.zip.sha256` memuat checksum yang
+sama dalam format yang dapat diperiksa dengan `shasum -a 256 -c`. Arsip berisi
+11 berkas flat dan lulus `unzip -t`; suite agent lulus 77/77 dan typecheck agent
+lulus setelah prasyarat build `@solamax/shared`. `config.local.json` di dalamnya
+hanya template placeholder, bukan kredensial atau konfigurasi satu unit.
+Bundle yang dikompilasi membawa kontrak `source_cut` B3 dan jalur
+`replace_window`/sapuan `terra_resmi` hasil back-merge.
+
 ## Kondisi penutupan
 
 Arc Fase 1 ditutup dengan kode butir #1 sudah di produksi tetapi rollout sumber
