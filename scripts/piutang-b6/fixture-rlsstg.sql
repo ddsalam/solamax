@@ -14,12 +14,6 @@ BEGIN
     RAISE EXCEPTION
       'fixture requires solamax-pg-rlsstg (database=solamax, system_identifier=7659054651798528016)';
   END IF;
-  IF EXISTS (
-    SELECT 1 FROM public.pelanggan_master
-    WHERE ckdplg = 'NOL/02' AND unit_id = (SELECT unit_id FROM public.unit WHERE code = '6478111')
-  ) THEN
-    RAISE EXCEPTION 'fixture key NOL/02 already exists';
-  END IF;
 END $$;
 
 SELECT set_config(
@@ -28,6 +22,69 @@ SELECT set_config(
    FROM public.unit WHERE code IN ('6478111', '6378301', '6478101')),
   true
 );
+
+-- Refuse a duplicate or partial installation. A partial fixture is evidence to
+-- inspect, not state this script may silently overwrite.
+DO $$
+DECLARE
+  pointer_count bigint;
+  row_count bigint;
+  manifest_count bigint;
+  cycle_count bigint;
+  customer_count bigint;
+BEGIN
+  SELECT count(*) INTO pointer_count
+  FROM app.saldo_pelanggan_snapshot_pointer
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO row_count
+  FROM app.saldo_pelanggan_snapshot_row
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO manifest_count
+  FROM app.saldo_pelanggan_snapshot_manifest
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a112',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO cycle_count
+  FROM app.saldo_pelanggan_source_cycle
+  WHERE source_cycle_id IN (
+    'b6000000-0000-4000-8000-000000000111',
+    'b6000000-0000-4000-8000-000000000112',
+    'b6000000-0000-4000-8000-000000000311'
+  );
+  WITH fixture_customers AS (
+    SELECT u.unit_id, 'B6-' || lpad(n::text, 3, '0') AS customer_code
+    FROM public.unit u CROSS JOIN generate_series(1, 52) n
+    WHERE u.code = '6478111'
+    UNION ALL
+    SELECT u.unit_id, customer_code
+    FROM public.unit u
+    CROSS JOIN (VALUES ('B6.000.0001'), ('NOL/02')) fixture(customer_code)
+    WHERE u.code = '6478111'
+    UNION ALL
+    SELECT u.unit_id, 'AS-B6-' || lpad(n::text, 2, '0') AS customer_code
+    FROM public.unit u CROSS JOIN generate_series(1, 5) n
+    WHERE u.code = '6478101'
+  )
+  SELECT count(*) INTO customer_count
+  FROM public.pelanggan_master p
+  JOIN fixture_customers fixture
+    ON fixture.unit_id = p.unit_id
+   AND fixture.customer_code = btrim(p.ckdplg);
+
+  IF pointer_count + row_count + manifest_count + cycle_count + customer_count <> 0 THEN
+    RAISE EXCEPTION
+      'B6 fixture already or partially exists: pointer=%, rows=%, manifest=%, cycle=%, customers=%',
+      pointer_count, row_count, manifest_count, cycle_count, customer_count;
+  END IF;
+END $$;
 
 -- Labels remain in the live master because the strict reader uses it only as a label source.
 WITH ib AS (SELECT unit_id FROM public.unit WHERE code = '6478111')
@@ -183,5 +240,70 @@ SELECT unit_id, '2026-09-09'::date, 'b6000000-0000-4000-8000-00000000a111'::uuid
 UNION ALL
 SELECT unit_id, '2026-09-09'::date, 'b6000000-0000-4000-8000-00000000a311'::uuid, 900001, 0,
        false, NULL::date, NULL::timestamptz FROM ad;
+
+DO $$
+DECLARE
+  pointer_count bigint;
+  row_count bigint;
+  manifest_count bigint;
+  cycle_count bigint;
+  customer_count bigint;
+BEGIN
+  SELECT count(*) INTO pointer_count
+  FROM app.saldo_pelanggan_snapshot_pointer
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO row_count
+  FROM app.saldo_pelanggan_snapshot_row
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO manifest_count
+  FROM app.saldo_pelanggan_snapshot_manifest
+  WHERE generation_id IN (
+    'b6000000-0000-4000-8000-00000000a111',
+    'b6000000-0000-4000-8000-00000000a112',
+    'b6000000-0000-4000-8000-00000000a311'
+  );
+  SELECT count(*) INTO cycle_count
+  FROM app.saldo_pelanggan_source_cycle
+  WHERE source_cycle_id IN (
+    'b6000000-0000-4000-8000-000000000111',
+    'b6000000-0000-4000-8000-000000000112',
+    'b6000000-0000-4000-8000-000000000311'
+  );
+  WITH fixture_customers AS (
+    SELECT u.unit_id, 'B6-' || lpad(n::text, 3, '0') AS customer_code
+    FROM public.unit u CROSS JOIN generate_series(1, 52) n
+    WHERE u.code = '6478111'
+    UNION ALL
+    SELECT u.unit_id, customer_code
+    FROM public.unit u
+    CROSS JOIN (VALUES ('B6.000.0001'), ('NOL/02')) fixture(customer_code)
+    WHERE u.code = '6478111'
+    UNION ALL
+    SELECT u.unit_id, 'AS-B6-' || lpad(n::text, 2, '0') AS customer_code
+    FROM public.unit u CROSS JOIN generate_series(1, 5) n
+    WHERE u.code = '6478101'
+  )
+  SELECT count(*) INTO customer_count
+  FROM public.pelanggan_master p
+  JOIN fixture_customers fixture
+    ON fixture.unit_id = p.unit_id
+   AND fixture.customer_code = btrim(p.ckdplg);
+
+  IF (pointer_count, row_count, manifest_count, cycle_count, customer_count)
+     <> (2::bigint, 59::bigint, 3::bigint, 3::bigint, 59::bigint) THEN
+    RAISE EXCEPTION
+      'B6 fixture count mismatch: pointer=%, rows=%, manifest=%, cycle=%, customers=%',
+      pointer_count, row_count, manifest_count, cycle_count, customer_count;
+  END IF;
+  RAISE NOTICE
+    'B6_FIXTURE_OK pointer=% rows=% manifest=% cycle=% customers=%',
+    pointer_count, row_count, manifest_count, cycle_count, customer_count;
+END $$;
 
 COMMIT;
