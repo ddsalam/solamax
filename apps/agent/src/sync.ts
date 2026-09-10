@@ -16,6 +16,7 @@ import {
   TERA_DOMAIN,
   TERA_RESYNC,
   TERRA_RESMI_DOMAIN,
+  TERRA_RESMI_RESYNC,
   EDC_DOMAIN,
   EDC_RESYNC,
   MASTERS_DOMAIN,
@@ -75,6 +76,9 @@ async function dispatch(
       domain: payload.domain,
       watermark_high: payload.watermark_high,
       source_cut: payload.source_cut,
+      // Jendela WAJIB tercetak: pada domain delete-capable, inilah rentang yang
+      // AKAN DIHAPUS. Pratinjau tanpa jendela tak bisa dinilai aman/tidaknya.
+      replace_window: payload.replace_window ?? null,
       counts: tableCounts(payload.tables),
     });
     return "dry";
@@ -397,16 +401,59 @@ async function syncTerraResmi(d: SyncDeps): Promise<void> {
   const raw = await d.conn.roQuery(TERRA_RESMI_DOMAIN.sql);
   const rows = TERRA_RESMI_DOMAIN.map(raw, offset);
   if (rows.length === 0) {
+    // Sumber kosong: JANGAN kirim replace_window. Unit tanpa sesi tera sama sekali
+    // itu SAH (Adisucipto), dan pembacaan gagal-separuh tak boleh menghapus mirror.
     log.info("terra_resmi: 0 baris");
     return;
   }
-  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
-    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+
+  // Jendela-terkini delete-capable: baris dalam [from,toExcl) dikirim sebagai SATU
+  // payload `replace_window` — backend DELETE jendela lalu INSERT, sehingga sesi
+  // tera yang DIHAPUS PERMANEN di POS ikut hilang dari mirror dalam ~2 menit.
+  // UPSERT murni tak pernah bisa: 3 kejadian produksi 2026 (BL 13-08 NT202600026,
+  // 28 Oktober 29-08 NT202600074, IB 27-08 NT202600055) semuanya butuh DELETE
+  // manual ke Postgres. Ini juga menutup jalur orphan KEDUA (map() membuang baris
+  // ber-DTGLJAM NULL): bila pembatalan meng-NULL-kan detail, barisnya kini terhapus
+  // lewat jendela alih-alih tertinggal yatim.
+  const { from, toExcl } = recentWindow(d, d.cfg.sync.terraResmiReplaceDays);
+  const inWindow = rows.filter((r) => r.business_date >= from && r.business_date < toExcl);
+  const older = rows.filter((r) => !(r.business_date >= from && r.business_date < toExcl));
+
+  if (inWindow.length <= d.cfg.sync.batchSize) {
     const status = await dispatch(d, {
       unit_code: d.cfg.unitCode,
       domain: "terra_resmi",
       watermark_high: null, // full-sync; tanpa watermark
-      tables: { terra_resmi: chunk },
+      replace_window: { from, to: toExcl },
+      tables: inWindow.length > 0 ? { terra_resmi: inWindow } : {},
+    });
+    if (status !== "ok") return; // buffered/dry — siklus depan mengulang (idempoten)
+  } else {
+    // Jendela melebihi kapasitas satu payload → kontrak `replace_window` (jendela
+    // WAJIB utuh dalam SATU payload) tak terpenuhi. Turun ke UPSERT: mirror tetap
+    // benar untuk baris yang ADA, hanya penghapusan yang tak tertangkap siklus ini.
+    log.warn("terra_resmi: jendela > kapasitas payload — replace_window dilewati", {
+      from, toExcl, rows: inWindow.length,
+    });
+    for (let i = 0; i < inWindow.length; i += d.cfg.sync.batchSize) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "terra_resmi",
+        watermark_high: null,
+        tables: { terra_resmi: inWindow.slice(i, i + d.cfg.sync.batchSize) },
+      });
+      if (status !== "ok") return;
+    }
+  }
+
+  // Sejarah di luar jendela: UPSERT seperti sebelumnya (koreksi nilai & flip
+  // SBATAL tetap tertangkap). Penghapusan lama ditangani sapuan `terra_resmi`.
+  for (let i = 0; i < older.length; i += d.cfg.sync.batchSize) {
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "terra_resmi",
+      watermark_high: null,
+      tables: { terra_resmi: older.slice(i, i + d.cfg.sync.batchSize) },
     });
     if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
   }
@@ -884,7 +931,8 @@ async function syncPelanggan(d: SyncDeps): Promise<void> {
 // SEMUA domain berjendela, bukan cuma pelanggan. edc/pelanggan sudah REPLACE
 // (Track 1: advisory-lock pelanggan/voucher, ON CONFLICT edc); opname/delivery/
 // tera/cash/tebus UPSERT natural-key — re-pull SELALU idempoten by construction,
-// tak butuh kunci tambahan. Dua tier, KEDUANYA otomatis (tanpa manusia):
+// tak butuh kunci tambahan. Dua tier otomatis; terra_resmi baru ikut setelah
+// tangga rollout per-unit mengaktifkan `terraResmiAutoSweepEnabled`:
 //   Tier 1 — jendela-terkini per siklus (nightly/weekly, generalisasi
 //     syncSalesRescan yang sudah terbukti di produksi utk sales).
 //   Tier 2 — backstop full-history off-peak jarang (bulanan; pelanggan/edc dapat
@@ -1145,6 +1193,52 @@ async function sweepTera(
   });
 }
 
+/**
+ * Sapuan `terra_resmi` delete-capable — SATU payload `replace_window` per jendela,
+ * termasuk jendela KOSONG (DELETE-only) sehingga sesi tera yang dihapus permanen
+ * di POS ikut hilang dari mirror. Ini yang memperbaiki SEJARAH; hot-path
+ * `syncTerraResmi` hanya menutup `terraResmiReplaceDays` hari terakhir.
+ * Pola identik sweepDelivery.
+ */
+async function sweepTerraResmi(
+  d: SyncDeps,
+  fromDate: string,
+  toExcl: string,
+  chunkDays: number,
+): Promise<void> {
+  const offset = tzOffsetMinutes(d.cfg.timezone);
+  await walkDateWindowsForward(fromDate, toExcl, chunkDays, async (lo, hiExcl) => {
+    const raw = await d.conn.roQuery(TERRA_RESMI_RESYNC.sql, [lo, hiExcl]);
+    const rows = TERRA_RESMI_RESYNC.map(raw, offset);
+    if (rows.length <= d.cfg.sync.batchSize) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "terra_resmi",
+        watermark_high: null,
+        replace_window: { from: lo, to: hiExcl },
+        tables: rows.length > 0 ? { terra_resmi: rows } : {},
+      });
+      // Dry-run TIDAK memutasi apa pun → lanjutkan agar pratinjau mencakup
+      // SELURUH rentang, bukan cuma jendela pertama. Tanpa ini `--dry-run`
+      // berhenti di window #1 dan menyesatkan (tampak "cuma sedikit").
+      return status === "ok" || status === "dry";
+    }
+    log.warn("sweep terra_resmi: jendela > kapasitas payload — replace_window dilewati", {
+      lo, hiExcl, rows: rows.length,
+    });
+    for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
+      const status = await dispatch(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "terra_resmi",
+        watermark_high: null,
+        tables: { terra_resmi: rows.slice(i, i + d.cfg.sync.batchSize) },
+      });
+      if (status !== "ok") return false;
+    }
+    return true;
+  });
+}
+
 export type SweepDomain =
   | "pelanggan"
   | "edc"
@@ -1152,7 +1246,8 @@ export type SweepDomain =
   | "delivery"
   | "tera"
   | "cash"
-  | "tebus";
+  | "tebus"
+  | "terra_resmi";
 
 type SweepFn = (
   d: SyncDeps,
@@ -1169,7 +1264,15 @@ export const SWEEP_TABLE: Record<SweepDomain, SweepFn> = {
   tera: sweepTera,
   cash: sweepCash,
   tebus: sweepTebus,
+  terra_resmi: sweepTerraResmi,
 };
+
+/** Domain yang boleh masuk scheduler; sweep manual tetap memakai SWEEP_TABLE penuh. */
+export function automaticSweepDomains(cfg: AgentConfig): SweepDomain[] {
+  return (Object.keys(SWEEP_TABLE) as SweepDomain[]).filter(
+    (domain) => domain !== "terra_resmi" || cfg.sync.terraResmiAutoSweepEnabled,
+  );
+}
 
 /** Satu unit kerja sapuan terjadwal — rentang tanggal sudah dihitung di pemanggil. */
 export interface SweepJob {
@@ -1460,6 +1563,8 @@ export async function runForever(d: SyncDeps): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
+  const scheduledSweepDomains = automaticSweepDomains(d.cfg);
+
   // Track 2: sekali di start — konfirmasi jadwal ter-load tanpa menunggu off-peak
   // window pertama (operator bisa cek log segera setelah restart Task Scheduler).
   log.info("Track 2 sapuan terjadwal: konfigurasi dimuat", {
@@ -1472,9 +1577,12 @@ export async function runForever(d: SyncDeps): Promise<void> {
       tera: `${d.cfg.sync.teraDeepRescanDays}h/${d.cfg.sync.teraDeepRescanIntervalMs}ms`,
       cash: `${d.cfg.sync.cashDeepRescanDays}h/${d.cfg.sync.cashDeepRescanIntervalMs}ms`,
       tebus: `${d.cfg.sync.tebusDeepRescanDays}h/${d.cfg.sync.tebusDeepRescanIntervalMs}ms`,
+      terra_resmi: d.cfg.sync.terraResmiAutoSweepEnabled
+        ? `${d.cfg.sync.terraResmiDeepRescanDays}h/${d.cfg.sync.terraResmiDeepRescanIntervalMs}ms`
+        : "nonaktif (menunggu tangga rollout per unit)",
     },
     tier2Wide: `${d.cfg.sync.wideSweepDays}h/${d.cfg.sync.wideSweepIntervalMs}ms (pelanggan,edc)`,
-    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (semua 7 domain)`,
+    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (${scheduledSweepDomains.length} domain aktif)`,
   });
 
   let lastMasters = 0;
@@ -1487,9 +1595,10 @@ export async function runForever(d: SyncDeps): Promise<void> {
   // tindih lebar, jadi retry otomatis tanpa perlu pelacakan sukses/gagal terpisah).
   const lastTier1: Record<SweepDomain, number> = {
     pelanggan: 0, edc: 0, opname: 0, delivery: 0, tera: 0, cash: 0, tebus: 0,
+    terra_resmi: 0,
   };
   const lastTier2Wide: Record<"pelanggan" | "edc", number> = { pelanggan: 0, edc: 0 };
-  let lastTier2Full = 0; // satu penanda: tier2-full jalan utk SEMUA 7 domain bersamaan
+  let lastTier2Full = 0; // satu penanda: tier2-full jalan utk semua domain aktif bersamaan
 
   const TIER1_DAYS: Record<SweepDomain, (c: AgentConfig) => number> = {
     pelanggan: (c) => c.sync.pelangganDeepRescanDays,
@@ -1499,6 +1608,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
     tera: (c) => c.sync.teraDeepRescanDays,
     cash: (c) => c.sync.cashDeepRescanDays,
     tebus: (c) => c.sync.tebusDeepRescanDays,
+    terra_resmi: (c) => c.sync.terraResmiDeepRescanDays,
   };
   const TIER1_INTERVAL_MS: Record<SweepDomain, (c: AgentConfig) => number> = {
     pelanggan: (c) => c.sync.pelangganDeepRescanIntervalMs,
@@ -1508,6 +1618,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
     tera: (c) => c.sync.teraDeepRescanIntervalMs,
     cash: (c) => c.sync.cashDeepRescanIntervalMs,
     tebus: (c) => c.sync.tebusDeepRescanIntervalMs,
+    terra_resmi: (c) => c.sync.terraResmiDeepRescanIntervalMs,
   };
 
   while (!stopped) {
@@ -1529,7 +1640,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
     );
     const sweepJobs: SweepJob[] = [];
     if (offPeak) {
-      for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+      for (const domain of scheduledSweepDomains) {
         if (now - lastTier1[domain] >= TIER1_INTERVAL_MS[domain](d.cfg)) {
           const { from, toExcl } = recentWindow(d, TIER1_DAYS[domain](d.cfg));
           sweepJobs.push({ domain, tier: "tier1", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
@@ -1545,7 +1656,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
       }
       if (now - lastTier2Full >= d.cfg.sync.fullSweepIntervalMs) {
         const { from, toExcl } = recentWindow(d, d.cfg.sync.fullSweepFloorDays);
-        for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+        for (const domain of scheduledSweepDomains) {
           sweepJobs.push({ domain, tier: "tier2-full", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
         }
         lastTier2Full = now;
