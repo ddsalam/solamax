@@ -169,6 +169,91 @@ describe("runCycle", () => {
     expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
   });
 
+  it("source cut: satu UUID dipakai pelanggan/piutang/hutang dengan metadata chunk lengkap", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("FROM tm_plg")) {
+          return [
+            { CKDPLG: "P1", VCNMPLG: "Satu", SJENIS: "1", SAKTIF: "1" },
+            { CKDPLG: "P2", VCNMPLG: "Dua", SJENIS: "3", SAKTIF: "1" },
+            { CKDPLG: "P3", VCNMPLG: "Tiga", SJENIS: "5", SAKTIF: "1" },
+          ];
+        }
+        if (sql.includes("FROM tr_bppiut")) {
+          return [
+            { CKDBPPIUT: "PI1", DTGL: "2026-01-01", CKDPLG: "P1", NJUMLAH: "10", SJNSBP: "1", SBATAL: "0" },
+            { CKDBPPIUT: "PI2", DTGL: "2026-01-02", CKDPLG: "P2", NJUMLAH: "20", SJNSBP: "2", SBATAL: "0" },
+            { CKDBPPIUT: "PI3", DTGL: "2026-01-03", CKDPLG: "P3", NJUMLAH: "30", SJNSBP: "1", SBATAL: "0" },
+          ];
+        }
+        // Full-sync hutang kosong tetap harus mengirim marker cut.
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 2 } } as AgentConfig;
+
+    await runCycle(
+      { conn, client, store, cfg, dryRun: false },
+      { includeMasters: true, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const cuts = sent.filter((p) => p.source_cut !== undefined);
+    expect(new Set(cuts.map((p) => p.source_cut!.cycle_id)).size).toBe(1);
+
+    const pelanggan = cuts.filter((p) => p.source_cut!.domain === "pelanggan_master");
+    expect(pelanggan.map((p) => p.source_cut)).toMatchObject([
+      { chunk_index: 0, chunk_count: 2, row_count: 3 },
+      { chunk_index: 1, chunk_count: 2, row_count: 3 },
+    ]);
+    expect(pelanggan.map((p) => p.tables.pelanggan_master?.length)).toEqual([2, 1]);
+
+    const piutang = cuts.filter((p) => p.source_cut!.domain === "bppiut");
+    expect(piutang.map((p) => p.source_cut)).toMatchObject([
+      { chunk_index: 0, chunk_count: 2, row_count: 3 },
+      { chunk_index: 1, chunk_count: 2, row_count: 3 },
+    ]);
+    expect(piutang.map((p) => p.tables.bppiut?.length)).toEqual([2, 1]);
+
+    const hutang = cuts.filter((p) => p.source_cut!.domain === "bphut");
+    expect(hutang).toHaveLength(1);
+    expect(hutang[0]!.source_cut).toMatchObject({
+      chunk_index: 0,
+      chunk_count: 1,
+      row_count: 0,
+    });
+    expect(hutang[0]!.tables).toEqual({ bphut: [] });
+  });
+
+  it("source cut: query gagal tidak pernah direpresentasikan sebagai full-sync kosong", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (
+          sql.includes("FROM tm_plg") ||
+          sql.includes("FROM tr_bppiut") ||
+          sql.includes("FROM tr_bphut")
+        ) {
+          throw new Error("MySQL read gagal");
+        }
+        if (sql.includes("FROM tm_card")) {
+          return [{ CKDCARD: "C1", VCNMCARD: "Kartu", CKDBANK: null, CGL: null }];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+
+    await runCycle(
+      { conn, client, store, cfg: CFG, dryRun: false },
+      { includeMasters: true, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    expect(sent.some((p) => p.domain === "masters" && p.tables.card?.length === 1)).toBe(true);
+    expect(sent.some((p) => p.source_cut !== undefined)).toBe(false);
+  });
+
   it("pelanggan backfill: jalan-mundur per window, berhenti 3 window kosong, watermark di akhir", async () => {
     const PLG_ROW = {
       DTGL: "2026-06-14", CKDPLG: "PLG2952", VCNMPLG: "PT INDOMARCO P.",

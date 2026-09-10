@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { IngestPayload, MAX_ROWS_PER_TABLE } from "@solamax/shared";
 import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
@@ -73,6 +74,7 @@ async function dispatch(
     log.info("[dry-run] payload", {
       domain: payload.domain,
       watermark_high: payload.watermark_high,
+      source_cut: payload.source_cut,
       counts: tableCounts(payload.tables),
     });
     return "dry";
@@ -465,19 +467,28 @@ async function syncDeposit(d: SyncDeps): Promise<void> {
  * Tanpa watermark. Berat (~385k baris piutang) → dipanggil ber-interval (cadence
  * master), bukan tiap poll. Pola identik syncDeposit.
  */
-async function syncSaldoLedger(d: SyncDeps, def: SaldoLedgerDomain): Promise<void> {
+async function syncSaldoLedger(
+  d: SyncDeps,
+  def: SaldoLedgerDomain,
+  sourceCutCycleId: string,
+): Promise<void> {
   const raw = await d.conn.roQuery(def.sql);
   const rows = def.map(raw);
-  if (rows.length === 0) {
-    log.info(`${def.domain}: 0 baris`);
-    return;
-  }
-  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
-    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+  const chunkCount = Math.max(1, Math.ceil(rows.length / d.cfg.sync.batchSize));
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const offset = chunkIndex * d.cfg.sync.batchSize;
+    const chunk = rows.slice(offset, offset + d.cfg.sync.batchSize);
     const status = await dispatch(d, {
       unit_code: d.cfg.unitCode,
       domain: def.domain,
       watermark_high: null, // full-sync; tanpa watermark
+      source_cut: {
+        cycle_id: sourceCutCycleId,
+        domain: def.table,
+        chunk_index: chunkIndex,
+        chunk_count: chunkCount,
+        row_count: rows.length,
+      },
       tables: { [def.table]: chunk } as Tables,
     });
     if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
@@ -1207,25 +1218,66 @@ async function runSweepJobs(d: SyncDeps, jobs: readonly SweepJob[]): Promise<voi
   }
 }
 
-async function syncMasters(d: SyncDeps): Promise<void> {
+async function syncMasters(d: SyncDeps, sourceCutCycleId: string): Promise<void> {
   const tables: Tables = {};
+  let pelangganRows: NonNullable<Tables["pelanggan_master"]> | null = null;
   // Isolasi per tabel master: satu query gagal (mis. nama kolom beda antar
   // versi EasyMax) tak boleh memblokir master lain — log & lanjut.
   for (const q of MASTERS_DOMAIN.queries) {
     try {
       const raw = await d.conn.roQuery(q.sql);
-      (tables as Record<string, unknown[]>)[q.table as string] = q.map(raw);
+      const mapped = q.map(raw);
+      if (q.table === "pelanggan_master") {
+        pelangganRows = mapped as NonNullable<Tables["pelanggan_master"]>;
+      } else {
+        (tables as Record<string, unknown[]>)[q.table as string] = mapped;
+      }
     } catch (err) {
       log.error("master gagal — dilewati", { table: q.table, err: String(err) });
     }
   }
-  if (Object.values(tables).every((rows) => !rows || rows.length === 0)) return;
-  await dispatch(d, {
-    unit_code: d.cfg.unitCode,
-    domain: "masters",
-    watermark_high: null,
-    tables,
-  });
+
+  // Query pelanggan yang gagal tidak boleh tampak seperti snapshot kosong.
+  // Master lain yang berhasil tetap dikirim dengan perilaku lama, tanpa marker cut.
+  if (pelangganRows === null) {
+    if (Object.values(tables).every((rows) => !rows || rows.length === 0)) return;
+    await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "masters",
+      watermark_high: null,
+      tables,
+    });
+    return;
+  }
+
+  const chunkCount = Math.max(
+    1,
+    Math.ceil(pelangganRows.length / d.cfg.sync.batchSize),
+  );
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const offset = chunkIndex * d.cfg.sync.batchSize;
+    const chunk = pelangganRows.slice(offset, offset + d.cfg.sync.batchSize);
+    // Master non-pelanggan ikut potongan pertama saja; potongan berikutnya hanya
+    // melanjutkan pelanggan_master agar tidak mengulang UPSERT yang sama.
+    const chunkTables: Tables =
+      chunkIndex === 0
+        ? { ...tables, pelanggan_master: chunk }
+        : { pelanggan_master: chunk };
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "masters",
+      watermark_high: null,
+      source_cut: {
+        cycle_id: sourceCutCycleId,
+        domain: "pelanggan_master",
+        chunk_index: chunkIndex,
+        chunk_count: chunkCount,
+        row_count: pelangganRows.length,
+      },
+      tables: chunkTables,
+    });
+    if (status !== "ok") break;
+  }
 }
 
 async function syncRealTank(d: SyncDeps): Promise<void> {
@@ -1370,8 +1422,9 @@ export async function runCycle(
     });
   }
   if (opts.includeMasters) {
+    const sourceCutCycleId = randomUUID();
     try {
-      await syncMasters(d);
+      await syncMasters(d, sourceCutCycleId);
     } catch (err) {
       log.error("domain gagal — dilewati siklus ini", {
         domain: "masters",
@@ -1382,7 +1435,7 @@ export async function runCycle(
     // master (jarang), bukan tiap poll. pelanggan_master ikut di syncMasters.
     for (const def of [PIUTANG_DOMAIN, HUTANG_DOMAIN]) {
       try {
-        await syncSaldoLedger(d, def);
+        await syncSaldoLedger(d, def, sourceCutCycleId);
       } catch (err) {
         log.error("domain gagal — dilewati siklus ini", {
           domain: def.domain,

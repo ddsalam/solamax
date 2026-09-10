@@ -383,6 +383,13 @@ FROM app.saldo_pelanggan_snapshot_pointer
 WHERE unit_id = $1::smallint AND as_of_date = $2::date
 FOR UPDATE`;
 
+/** $1 unit. Read after the shared advisory lock. */
+export const LOCK_DIRTY_WATERMARK_SQL = `
+SELECT dirty_invalid_from, dirty_source_cycle_sequence
+FROM app.saldo_pelanggan_dirty
+WHERE unit_id = $1::smallint
+FOR UPDATE`;
+
 /** Rechecked inside the final transaction. */
 export const PUBLICATION_OPERATIONAL_GATE_SQL = `
 SELECT (extract(hour FROM clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}') * 60
@@ -464,6 +471,29 @@ WHERE (EXCLUDED.source_cycle_sequence, EXCLUDED.rebuild_epoch) >
    )
 RETURNING generation_id`;
 
+/**
+ * A leased older build may publish after a newer cut marked this date dirty.
+ * Reassert pending state in the same publication transaction so stale is never
+ * externally cleared by a generation that does not cover the dirty sequence.
+ * $1 unit, $2 date.
+ */
+export const REASSERT_POINTER_DIRTY_SQL = `
+UPDATE app.saldo_pelanggan_snapshot_pointer p
+SET stale_invalid_from = LEAST(
+      COALESCE(p.stale_invalid_from, d.dirty_invalid_from),
+      d.dirty_invalid_from
+    ),
+    pending_replacement = true,
+    pending_since = COALESCE(p.pending_since, clock_timestamp())
+FROM app.saldo_pelanggan_dirty d
+WHERE p.unit_id = $1::smallint
+  AND p.as_of_date = $2::date
+  AND d.unit_id = p.unit_id
+  AND d.dirty_invalid_from IS NOT NULL
+  AND p.as_of_date >= d.dirty_invalid_from
+  AND p.source_cycle_sequence < d.dirty_source_cycle_sequence
+RETURNING p.generation_id`;
+
 /** $1 unit, $2 work id, $3 generation, $4 lease owner. */
 export const COMPLETE_WORK_SQL = `
 UPDATE app.saldo_pelanggan_build_work
@@ -481,6 +511,47 @@ WHERE unit_id = $1::smallint
   AND state = 'leased'
   AND lease_expires_at >= clock_timestamp()
 RETURNING work_id`;
+
+/**
+ * Clear the durable watermark only after every stored target at/after the
+ * invalidation boundary points to a complete cut that covers it. The coverage
+ * tuple remains as durable evidence. $1 unit, $2 just-published target date.
+ */
+export const CLEAR_DIRTY_IF_COVERED_SQL = `
+WITH candidate AS (
+  SELECT p.unit_id, p.as_of_date, p.generation_id, p.source_cycle_sequence
+  FROM app.saldo_pelanggan_snapshot_pointer p
+  JOIN app.saldo_pelanggan_dirty d ON d.unit_id = p.unit_id
+  WHERE p.unit_id = $1::smallint
+    AND p.as_of_date = $2::date
+    AND d.dirty_invalid_from IS NOT NULL
+    AND p.as_of_date >= d.dirty_invalid_from
+    AND p.source_cycle_sequence >= d.dirty_source_cycle_sequence
+    AND NOT p.pending_replacement
+    AND NOT EXISTS (
+      SELECT 1
+      FROM app.saldo_pelanggan_snapshot_pointer pending
+      WHERE pending.unit_id = p.unit_id
+        AND pending.as_of_date >= d.dirty_invalid_from
+        AND (
+          pending.pending_replacement
+          OR pending.source_cycle_sequence < d.dirty_source_cycle_sequence
+        )
+    )
+)
+UPDATE app.saldo_pelanggan_dirty d
+SET dirty_invalid_from = NULL,
+    dirty_source_cycle_id = NULL,
+    dirty_source_cycle_sequence = NULL,
+    dirty_since = NULL,
+    covered_through_date = c.as_of_date,
+    covered_by_generation_id = c.generation_id,
+    covered_source_cycle_sequence = c.source_cycle_sequence,
+    version = d.version + 1,
+    updated_at = clock_timestamp()
+FROM candidate c
+WHERE d.unit_id = c.unit_id
+RETURNING d.unit_id`;
 
 /** $1 unit, $2 date, $3 generation, $4 code, $5 summary, $6 retryable. */
 export const FAIL_MANIFEST_SQL = `

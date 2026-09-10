@@ -10,6 +10,23 @@ import { ROW_SCHEMA } from "./rows.js";
 /** Domain yang boleh membawa `replace_window` (mirror = snapshot sumber per jendela). */
 export const REPLACE_WINDOW_DOMAINS = ["tebus", "delivery"] as const;
 
+/** Tiga sumber lengkap yang membentuk satu source-cut saldo pelanggan. */
+export const SOURCE_CUT_DOMAINS = ["pelanggan_master", "bppiut", "bphut"] as const;
+
+export const SourceCut = z
+  .object({
+    cycle_id: z.string().uuid(),
+    domain: z.enum(SOURCE_CUT_DOMAINS),
+    chunk_index: z.number().int().nonnegative(),
+    chunk_count: z.number().int().positive(),
+    row_count: z.number().int().nonnegative(),
+  })
+  .refine((cut) => cut.chunk_index < cut.chunk_count, {
+    path: ["chunk_index"],
+    message: "source_cut.chunk_index harus < chunk_count",
+  });
+export type SourceCut = z.infer<typeof SourceCut>;
+
 export const IngestPayload = z
   .object({
     unit_code: z.string().min(1),
@@ -32,6 +49,8 @@ export const IngestPayload = z
       })
       .refine((w) => w.from < w.to, { message: "replace_window: from harus < to" })
       .optional(),
+    /** Metadata potongan full-sync untuk capture snapshot saldo yang durable. */
+    source_cut: SourceCut.optional(),
     tables: z.object({
       sales_header: z.array(ROW_SCHEMA.sales_header).optional(),
       sales_detail: z.array(ROW_SCHEMA.sales_detail).optional(),
@@ -59,9 +78,9 @@ export const IngestPayload = z
     }),
   })
   .superRefine((p, ctx) => {
-    // Payload kosong hanya sah bila replace_window hadir (DELETE-only window).
+    // Payload kosong hanya sah untuk DELETE-only window atau marker full-sync.
     const hasRows = Object.values(p.tables).some((rows) => rows && rows.length > 0);
-    if (!hasRows && !p.replace_window) {
+    if (!hasRows && !p.replace_window && !p.source_cut) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["tables"],
@@ -77,6 +96,28 @@ export const IngestPayload = z
         path: ["replace_window"],
         message: `replace_window hanya untuk domain: ${REPLACE_WINDOW_DOMAINS.join(", ")}`,
       });
+    }
+    if (p.source_cut) {
+      const expected = {
+        pelanggan_master: { domain: "masters", table: "pelanggan_master" },
+        bppiut: { domain: "piutang", table: "bppiut" },
+        bphut: { domain: "hutang", table: "bphut" },
+      } as const;
+      const binding = expected[p.source_cut.domain];
+      if (p.domain !== binding.domain) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["source_cut", "domain"],
+          message: `source_cut ${p.source_cut.domain} hanya sah untuk domain ${binding.domain}`,
+        });
+      }
+      if (!Object.prototype.hasOwnProperty.call(p.tables, binding.table)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tables", binding.table],
+          message: `source_cut ${p.source_cut.domain} wajib membawa key tabel ${binding.table}`,
+        });
+      }
     }
   });
 export type IngestPayload = z.infer<typeof IngestPayload>;
