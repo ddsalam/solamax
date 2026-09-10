@@ -50,6 +50,8 @@ function pointer(generationId: string, n = 10): SaldoSnapshotPointer {
   return {
     generationId,
     rowCount: 1,
+    formulaVersion: "saldo-pelanggan-v1",
+    computedAt: "2026-08-03T02:01:00Z",
     sourceCycleId: "cycle-1",
     sourceCompletedAt: "2026-08-03T02:00:00Z",
     pendingReplacement: false,
@@ -174,6 +176,8 @@ describe("getSaldoSnapshotCached", () => {
       metadata: {
         generationId: "gen-a",
         rowCount: 1,
+        formulaVersion: "saldo-pelanggan-v1",
+        computedAt: "2026-08-03T02:01:00Z",
         sourceCycleId: "cycle-1",
         sourceCompletedAt: "2026-08-03T02:00:00Z",
         pendingReplacement: false,

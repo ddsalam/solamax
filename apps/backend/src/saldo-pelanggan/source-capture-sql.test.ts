@@ -75,6 +75,8 @@ describe("source-cut capture SQL contract", () => {
     expect(PROMOTE_SOURCE_CYCLE_SQL).toContain("bppiut_row_count IS NOT NULL");
     expect(PROMOTE_SOURCE_CYCLE_SQL).toContain("bphut_row_count IS NOT NULL");
     expect(SUPERSEDE_PENDING_WORK_SQL).toContain("state = 'dead_letter'");
+    expect(SUPERSEDE_PENDING_WORK_SQL).toContain("OR NOT EXISTS");
+    expect(SUPERSEDE_PENDING_WORK_SQL).toContain("p.as_of_date = w.as_of_date");
     expect(ENQUEUE_STALE_POINTERS_SQL).toContain("source_cycle_status");
     expect(ENQUEUE_STALE_POINTERS_SQL).toContain("'complete'");
     expect(SUPERSEDE_PENDING_WORK_SQL).not.toContain("RETURNING");
@@ -82,6 +84,17 @@ describe("source-cut capture SQL contract", () => {
     expect(FAIL_SUPERSEDED_STAGING_CYCLES_SQL).toContain("status = 'failed'");
     expect(PRUNE_RETIRED_SOURCE_ROWS_SQL).toHaveLength(3);
     expect(PRUNE_RETIRED_SOURCE_ROWS_SQL.join("\n")).toContain("w.state IN ('queued', 'leased', 'retry_wait')");
+  });
+
+  it("bootstraps the unit business date when the first complete cut has no pointer yet", () => {
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("FROM public.unit u");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("clock_timestamp() AT TIME ZONE u.timezone");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("NOT EXISTS");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("saldo_pelanggan_snapshot_pointer");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("UNION ALL");
+    expect(SUPERSEDE_PENDING_WORK_SQL).toMatch(
+      /OR NOT EXISTS \([\s\S]*saldo_pelanggan_snapshot_pointer[\s\S]*p\.as_of_date = w\.as_of_date/,
+    );
   });
 
   it("red control MAX is observably different from the accepted minimum", () => {

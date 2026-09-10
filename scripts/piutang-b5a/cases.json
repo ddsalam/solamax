@@ -1,0 +1,25 @@
+{
+  "schema": "solamax-piutang-b5a-cases/v1",
+  "instance": "solamax:asia-southeast2:solamax-pg",
+  "expected_system_identifier": "7650126488674766864",
+  "required_role": "dashboard_ro",
+  "required_domains": ["masters", "piutang", "hutang"],
+  "minimum_observation_gap_seconds": 180,
+  "comparison_tolerance_rupiah": "0.001",
+  "cases": [
+    {
+      "unit_id": 3,
+      "unit_code": "6478101",
+      "unit_name": "Adisucipto",
+      "dates": ["2026-09-01", "2026-09-04", "2026-09-09"],
+      "sections_expected_absent": ["piutang_online"]
+    },
+    {
+      "unit_id": 7,
+      "unit_code": "63781002",
+      "unit_name": "28 Oktober",
+      "dates": ["2026-09-01", "2026-09-04", "2026-09-09"],
+      "sections_expected_absent": []
+    }
+  ]
+}
