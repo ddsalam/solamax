@@ -10,7 +10,7 @@ Sumber merge: `origin/main` `9c69d4b5b256acd0f136a33d2167d49b1bc54e80`
 
 Merge-base: `84dda73fadd3526eaaf59432bfa2e10732620c64`
 
-Target PR: `staging`
+Target PR: #334 ke `staging`
 
 ## Hasil
 
@@ -161,8 +161,12 @@ Usulan, **belum dipasang** karena keputusan governance milik Dion:
   sengaja untuk membedakan sumber kosong sah/terpangkas dari penghapusan final;
   penghapusan terakhir ditutup oleh sapuan manual/terjadwal setelah opt-in.
 
-`git diff --check` lulus tanpa whitespace error. Status final GitHub dicatat saat
-PR dibuat, sesudah ref remote dibaca ulang.
+`git diff --check` lulus tanpa whitespace error. Pada pembacaan pertama setelah PR
+dibuat, GitHub melaporkan `MERGEABLE` terhadap `staging` yang tepat, tetapi
+`mergeStateStatus=BLOCKED`: G4 `arsip` merah karena dua berkas `session-notes/**`
+belum menerima label owner `arsip-siklus-kedua`. Label tidak dipasang dan catatan
+tidak dihapus oleh Codex; check akan berjalan ulang sendiri sesudah Dion menyatakan
+temuannya bertahan satu putaran.
 
 Tidak ada promosi atau PR baru ke `main`, tidak ada deployment, tidak ada akses data
 EasyMax/produksi, dan #332 tidak diubah. `apps/agent/solamax-agent-bundle/` tidak
