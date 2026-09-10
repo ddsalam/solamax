@@ -545,12 +545,31 @@ WHERE w.unit_id = $1::smallint
 
 /** $1 unit, $2 new cycle, $3 sequence. */
 export const ENQUEUE_STALE_POINTERS_SQL = `
+WITH target_dates AS (
+  SELECT p.unit_id, p.as_of_date
+  FROM app.saldo_pelanggan_snapshot_pointer p
+  WHERE p.unit_id = $1::smallint AND p.pending_replacement
+
+  UNION ALL
+
+  -- A first complete cut has no pointer to mark stale. Seed exactly the unit's
+  -- current business date once; later cuts flow through the pointer branch.
+  SELECT u.unit_id,
+         (clock_timestamp() AT TIME ZONE u.timezone)::date AS as_of_date
+  FROM public.unit u
+  WHERE u.unit_id = $1::smallint
+    AND NOT EXISTS (
+      SELECT 1
+      FROM app.saldo_pelanggan_snapshot_pointer p
+      WHERE p.unit_id = u.unit_id
+        AND p.as_of_date = (clock_timestamp() AT TIME ZONE u.timezone)::date
+    )
+)
 INSERT INTO app.saldo_pelanggan_build_work (
   unit_id, work_id, as_of_date, source_cycle_id,
   source_cycle_sequence, source_cycle_status, rebuild_epoch, state
 )
-SELECT p.unit_id, gen_random_uuid(), p.as_of_date, $2::uuid,
+SELECT t.unit_id, gen_random_uuid(), t.as_of_date, $2::uuid,
        $3::bigint, 'complete', 0, 'queued'
-FROM app.saldo_pelanggan_snapshot_pointer p
-WHERE p.unit_id = $1::smallint AND p.pending_replacement
+FROM target_dates t
 ON CONFLICT (unit_id, as_of_date, source_cycle_id, rebuild_epoch) DO NOTHING`;

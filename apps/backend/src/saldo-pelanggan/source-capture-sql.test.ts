@@ -84,6 +84,14 @@ describe("source-cut capture SQL contract", () => {
     expect(PRUNE_RETIRED_SOURCE_ROWS_SQL.join("\n")).toContain("w.state IN ('queued', 'leased', 'retry_wait')");
   });
 
+  it("bootstraps the unit business date when the first complete cut has no pointer yet", () => {
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("FROM public.unit u");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("clock_timestamp() AT TIME ZONE u.timezone");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("NOT EXISTS");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("saldo_pelanggan_snapshot_pointer");
+    expect(ENQUEUE_STALE_POINTERS_SQL).toContain("UNION ALL");
+  });
+
   it("red control MAX is observably different from the accepted minimum", () => {
     const changedDates = ["2026-01-10", "2026-03-10"];
     const green = changedDates.reduce((a, b) => (a < b ? a : b));
