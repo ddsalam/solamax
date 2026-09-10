@@ -8,6 +8,7 @@ import type { EasyMaxConnection } from "./db/mysql.js";
 import { IngestError, type IngestClient } from "./ingest-client.js";
 import { StateStore } from "./state/store.js";
 import {
+  automaticSweepDomains,
   batchByBusinessDate,
   isOffPeakWib,
   resyncSales,
@@ -58,6 +59,9 @@ const CFG = {
   timezone: "Asia/Pontianak",
   sync: {
     pollIntervalMs: 1, masterIntervalMs: 1, safetyWindowMin: 60,
+    terraResmiReplaceDays: 7,
+    terraResmiAutoSweepEnabled: false,
+    terraResmiDeepRescanDays: 30, terraResmiDeepRescanIntervalMs: 86_400_000,
     cashRescanDays: 7, batchSize: 1000,
     salesRescanDays: 7, salesResyncChunkDays: 3, salesRescanIntervalMs: 0,
   },
@@ -451,6 +455,209 @@ describe("runCycle", () => {
     expect(plg[0]!.watermark_high).toBeNull();
   });
 
+  // ── terra_resmi delete-capable (2026-09-01) ───────────────────────────────
+  // Regresi kelas "penghapusan permanen di POS = orphan ABADI di mirror".
+  // Tiga kejadian produksi 2026 sebelum ini: BL 13-08 NT202600026, 28 Oktober
+  // 29-08 NT202600074, IB 27-08 NT202600055 (Pertamax 4 L / Rp 65.200).
+  const TERRA_ROW = {
+    CKDTERRA: "NT202600055", DTGLTERRA: "2026-08-27 00:00:00", NSHIFT: "3",
+    CKDJUALBBM: "JB202600717", SBATAL: "0", CKDNOZZLE: "NZ-17", CKDTANGKI: "T-03",
+    CKDBBM: "BB-02", NVOLUME: "4", NHARGA: "16300", NTOTAL: "65200",
+    DTGLJAM: "2026-08-27 23:21:14",
+  };
+
+  it("hot-path terra_resmi: jendela-terkini dikirim ber-replace_window tiap siklus", async () => {
+    // Tanggal dihitung dinamis supaya tes tak busuk seiring waktu.
+    const todayWib = new Date(Date.now() + tzOffsetMinutes("Asia/Pontianak") * 60_000)
+      .toISOString()
+      .slice(0, 10);
+    const conn = {
+      async roQuery(sql: string) {
+        // Query hot-path terra_resmi = TANPA bind param tanggal (full-sync).
+        return sql.includes("tr_hterra") && !sql.includes("DTGLTERRA >= ?")
+          ? [{ ...TERRA_ROW, DTGLTERRA: `${todayWib} 00:00:00`, DTGLJAM: `${todayWib} 23:21:14` }]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(1);
+    // Inti perbaikan: siklus rutin kini membawa replace_window, bukan UPSERT murni.
+    expect(tr[0]!.replace_window).toBeDefined();
+    expect(tr[0]!.replace_window!.from <= todayWib).toBe(true);
+    expect(tr[0]!.replace_window!.to > todayWib).toBe(true);
+    expect(tr[0]!.tables.terra_resmi![0]!.ckdterra).toBe("NT202600055");
+  });
+
+  it("hot-path terra_resmi: sumber sepenuhnya kosong tetap menahan DELETE sebagai guard", async () => {
+    const conn = {
+      async roQuery() {
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    expect(sent.filter((p) => p.domain === "terra_resmi")).toHaveLength(0);
+  });
+
+  it("hot-path terra_resmi: jendela terkini kosong tetap REPLACE bila sejarah ada", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && !sql.includes("DTGLTERRA >= ?")
+          ? [{ ...TERRA_ROW, DTGLTERRA: "2020-01-02 00:00:00", DTGLJAM: "2020-01-02 10:00:00" }]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    expect(tr[0]!.replace_window).toBeDefined();
+    expect(tr[0]!.tables).toEqual({});
+    expect(tr[1]!.replace_window).toBeUndefined();
+    expect(tr[1]!.tables.terra_resmi?.[0]?.business_date).toBe("2020-01-02");
+  });
+
+  it("hot-path terra_resmi: overflow turun ke UPSERT chunked tanpa replace_window", async () => {
+    const todayWib = new Date(Date.now() + tzOffsetMinutes("Asia/Pontianak") * 60_000)
+      .toISOString()
+      .slice(0, 10);
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && !sql.includes("DTGLTERRA >= ?")
+          ? [
+              { ...TERRA_ROW, CKDTERRA: "TR-1", DTGLTERRA: todayWib, DTGLJAM: `${todayWib} 10:00:00` },
+              { ...TERRA_ROW, CKDTERRA: "TR-2", DTGLTERRA: todayWib, DTGLJAM: `${todayWib} 11:00:00` },
+            ]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 1 } } as AgentConfig;
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    for (const payload of tr) {
+      expect(payload.replace_window).toBeUndefined();
+      expect(payload.tables.terra_resmi).toHaveLength(1);
+    }
+  });
+
+  it("sweep terra_resmi: satu payload per jendela ber-replace_window (delete-capable)", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && sql.includes("DTGLTERRA >= ?")
+          ? [TERRA_ROW]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      "terra_resmi",
+      5,
+      5,
+    );
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr.length).toBeGreaterThan(0);
+    expect(tr[0]!.replace_window).toBeDefined();
+    expect(tr[0]!.replace_window!.from < tr[0]!.replace_window!.to).toBe(true);
+    expect(tr[0]!.watermark_high).toBeNull();
+    expect(tr[0]!.tables.terra_resmi![0]!.ckdterra).toBe("NT202600055");
+  });
+
+  it("sweep terra_resmi --dry-run: pratinjau menyeluruh, TIDAK berhenti di jendela pertama", async () => {
+    const windows: Array<{ lo: string; hiExcl: string }> = [];
+    const conn = {
+      async roQuery(sql: string, params: unknown[]) {
+        if (sql.includes("tr_hterra") && sql.includes("DTGLTERRA >= ?")) {
+          windows.push({ lo: String(params[0]), hiExcl: String(params[1]) });
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: true },
+      "terra_resmi",
+      /* days */ 20,
+      /* chunkDays */ 5,
+    );
+    expect(sent).toHaveLength(0); // dry-run tak pernah mengirim
+    // Inti: rentang 20 hari @5 hari = 4+ jendela. Sebelum perbaikan hanya 1.
+    expect(windows.length).toBeGreaterThan(1);
+  });
+
+  it("sweep terra_resmi: jendela KOSONG tetap dikirim (DELETE-only) — inti perbaikan", async () => {
+    const conn = {
+      async roQuery() {
+        return []; // sumber sudah tak punya sesi tera itu (dihapus permanen di POS)
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      "terra_resmi",
+      5,
+      5,
+    );
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    // Sebelum perbaikan: 0 payload ⇒ baris yatim bertahan selamanya di mirror.
+    expect(tr.length).toBeGreaterThan(0);
+    for (const p of tr) {
+      expect(p.replace_window).toBeDefined();
+      expect(p.tables.terra_resmi).toBeUndefined(); // DELETE-only
+    }
+  });
+
+  it("sweep terra_resmi: overflow turun ke UPSERT chunked tanpa replace_window", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && sql.includes("DTGLTERRA >= ?")
+          ? [
+              { ...TERRA_ROW, CKDTERRA: "TR-1" },
+              { ...TERRA_ROW, CKDTERRA: "TR-2" },
+            ]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 1 } } as AgentConfig;
+
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg, dryRun: false },
+      "terra_resmi",
+      5,
+      30,
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    for (const payload of tr) {
+      expect(payload.replace_window).toBeUndefined();
+      expect(payload.tables.terra_resmi).toHaveLength(1);
+    }
+  });
+
   it("sweep tebus: satu payload per jendela ber-replace_window (snapshot delete-capable)", async () => {
     const conn = {
       async roQuery(sql: string) {
@@ -556,6 +763,15 @@ describe("runCycle", () => {
     expect(isOffPeakWib(atWibHour(4), offset, 2, 5)).toBe(true); // 04:00 — masih
     expect(isOffPeakWib(atWibHour(5), offset, 2, 5)).toBe(false); // 05:00 — eksklusif
     expect(isOffPeakWib(atWibHour(14), offset, 2, 5)).toBe(false); // siang — jauh dari off-peak
+  });
+
+  it("terra_resmi: scheduler opt-in, registry manual tetap tersedia", () => {
+    expect(automaticSweepDomains(CFG)).not.toContain("terra_resmi");
+    const enabled = {
+      ...CFG,
+      sync: { ...CFG.sync, terraResmiAutoSweepEnabled: true },
+    } as AgentConfig;
+    expect(automaticSweepDomains(enabled)).toContain("terra_resmi");
   });
 
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {

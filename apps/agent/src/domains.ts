@@ -931,6 +931,25 @@ const TERRA_RESMI: TerraResmiDomain = {
   },
 };
 
+/**
+ * TERRA_RESMI berjendela — sapuan delete-capable (`replace_window`). Query identik
+ * TERRA_RESMI tapi BOUNDED by tanggal-bisnis header, dan reuse `map()` yang sama
+ * (kolom identik, cuma bound ditambah — pola EDC/CASH/TEBUS/TERA_RESYNC).
+ */
+export const TERRA_RESMI_RESYNC = {
+  sql: `
+    SELECT h.CKDTERRA AS CKDTERRA, h.DTGLTERRA AS DTGLTERRA, h.NSHIFT AS NSHIFT,
+           h.CKDJUALBBM AS CKDJUALBBM, COALESCE(h.SBATAL, 0) AS SBATAL,
+           d.CKDNOZZLE AS CKDNOZZLE, d.CKDTANGKI AS CKDTANGKI, d.CKDBBM AS CKDBBM,
+           d.NVOLUME AS NVOLUME, d.NHARGA AS NHARGA, d.NTOTAL AS NTOTAL,
+           d.DTGLJAM AS DTGLJAM
+    FROM tr_hterra h
+    JOIN tr_dterra d ON d.CKDTERRA = h.CKDTERRA
+    WHERE h.DTGLTERRA >= ? AND h.DTGLTERRA < ?
+    ORDER BY h.DTGLTERRA ASC, h.CKDTERRA ASC`,
+  map: TERRA_RESMI.map,
+} as const;
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const TEBUS_DOMAIN = TEBUS;

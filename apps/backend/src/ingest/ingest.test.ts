@@ -10,7 +10,7 @@ import type {
 } from "../saldo-pelanggan/source-capture.service.js";
 
 /** Prisma palsu: rekam executeRaw dalam transaksi. */
-function fakePrisma() {
+function fakePrisma(onCommit?: () => void) {
   const executed: Array<{ sql: string; params: unknown[] }> = [];
   const tx = {
     $executeRawUnsafe: async (sql: string, ...params: unknown[]) => {
@@ -19,7 +19,11 @@ function fakePrisma() {
     },
   };
   const prisma = {
-    $transaction: async (fn: (t: typeof tx) => Promise<void>) => fn(tx),
+    $transaction: async (fn: (t: typeof tx) => Promise<void>) => {
+      const result = await fn(tx);
+      onCommit?.();
+      return result;
+    },
   } as unknown as PrismaService;
   return { prisma, executed };
 }
@@ -168,6 +172,30 @@ describe("IngestService", () => {
     expect(sqls[sqls.length - 1]).toContain('"sync_state"');
   });
 
+  it("replace_window terra_resmi: sumber kosong menghapus baris mirror yang lenyap", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = {
+      unit_code: "6478111",
+      domain: "terra_resmi",
+      watermark_high: null,
+      replace_window: { from: "2026-08-27", to: "2026-08-28" },
+      tables: {},
+    };
+
+    const res = await new IngestService(prisma).ingest(7, payload);
+
+    expect(res.upserted).toEqual({});
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["replace_window:terra_resmi:7"]);
+    expect(sqls[2]).toContain('DELETE FROM "terra_resmi"');
+    expect(sqls[2]).toContain('"unit_id" = $1');
+    expect(executed[2]!.params).toEqual([7, "2026-08-27", "2026-08-28"]);
+    expect(sqls.some((sql) => sql.includes('INSERT INTO "terra_resmi"'))).toBe(false);
+    expect(sqls.at(-1)).toContain('"sync_state"');
+  });
+
   it("replace_window pada domain non-whitelist → 422 tanpa eksekusi", async () => {
     const { prisma, executed } = fakePrisma();
     const payload = {
@@ -216,6 +244,33 @@ describe("IngestService", () => {
       expect(executed.at(-1)?.sql).toContain('"sync_state"');
     },
   );
+
+  it("source_cut diterima dan diteruskan ke capture setelah mirror ter-commit", async () => {
+    let transactionCommitted = false;
+    let captureSawCommittedMirror = false;
+    const { prisma } = fakePrisma(() => {
+      transactionCommitted = true;
+    });
+    const capture = {
+      capture: vi.fn(async () => {
+        captureSawCommittedMirror = transactionCommitted;
+        return {
+          outcome: "staging" as const,
+          cycleId: SOURCE_CUT_PAYLOAD.source_cut!.cycle_id,
+          sourceCycleSequence: 1n,
+        };
+      }),
+    } as unknown as SnapshotSourceCaptureService;
+    const service = new IngestService(prisma, capture);
+    (service as unknown as { logger: { log(): void } }).logger = { log() {} };
+
+    const response = await service.ingest(1, SOURCE_CUT_PAYLOAD);
+
+    expect(response).toEqual({ upserted: { bppiut: 1 }, new_watermark: null });
+    expect(captureSawCommittedMirror).toBe(true);
+    expect(capture.capture).toHaveBeenCalledOnce();
+    expect(capture.capture).toHaveBeenCalledWith(1, SOURCE_CUT_PAYLOAD);
+  });
 
   it("agen lama tanpa source_cut tetap sukses dan menulis mirror tanpa memicu capture", async () => {
     const { prisma, executed } = fakePrisma();
