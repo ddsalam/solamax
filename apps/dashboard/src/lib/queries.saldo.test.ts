@@ -10,7 +10,11 @@ const {
   readSaldoPelangganLegacy,
   READ_SALDO_PELANGGAN_LEGACY_SQL,
 } = await import("./queries");
-const { READ_SALDO_SNAPSHOT_POINTER_SQL, READ_SALDO_SNAPSHOT_ROWS_SQL } = await import("./saldo-snapshot");
+const {
+  READ_SALDO_SNAPSHOT_POINTER_SQL,
+  READ_SALDO_SNAPSHOT_READINESS_SQL,
+  READ_SALDO_SNAPSHOT_ROWS_SQL,
+} = await import("./saldo-snapshot");
 const U = 7 as unknown as ScopedUnitId;
 const DATE = "2026-08-04";
 const pointer = {
@@ -56,13 +60,34 @@ describe("snapshot-only saldo reader", () => {
   });
 
   it("reports no published pointer without numeric fields", async () => {
-    qScoped.mockResolvedValueOnce([]);
-    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({ status: "not_ready", asOfDate: DATE, reason: "no_published_snapshot" });
+    qScoped.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({
+      status: "not_ready", asOfDate: DATE, reason: "no_published_snapshot",
+    });
+    expect(qScoped).toHaveBeenNthCalledWith(2, U, READ_SALDO_SNAPSHOT_READINESS_SQL, [U, DATE]);
+  });
+
+  it("reports a latest building manifest without numeric fields", async () => {
+    const latestAttempt = { status: "building", attemptedAt: "2026-08-04T02:00:00Z", failureSummary: null };
+    qScoped.mockResolvedValueOnce([]).mockResolvedValueOnce([latestAttempt]);
+    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({
+      status: "not_ready", asOfDate: DATE, reason: "building_snapshot", latestAttempt,
+    });
+  });
+
+  it("reports a latest failed manifest with useful failure metadata", async () => {
+    const latestAttempt = { status: "failed", attemptedAt: "2026-08-04T02:05:00Z", failureSummary: "checksum berbeda" };
+    qScoped.mockResolvedValueOnce([]).mockResolvedValueOnce([latestAttempt]);
+    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({
+      status: "not_ready", asOfDate: DATE, reason: "failed_snapshot", latestAttempt,
+    });
   });
 
   it("rejects an incomplete immutable generation", async () => {
     qScoped.mockResolvedValueOnce([pointer]).mockResolvedValueOnce([]);
-    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({ status: "not_ready", asOfDate: DATE, reason: "incomplete_snapshot" });
+    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({
+      status: "not_ready", asOfDate: DATE, reason: "incomplete_snapshot",
+    });
   });
 
   it("accepts a published zero-customer generation", async () => {
@@ -72,15 +97,18 @@ describe("snapshot-only saldo reader", () => {
 
   it("rejects a zero-customer generation when its checksum proof is absent", async () => {
     qScoped.mockResolvedValueOnce([{ ...pointer, rowCount: 0 }]).mockResolvedValueOnce([]);
-    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({ status: "not_ready", asOfDate: DATE, reason: "incomplete_snapshot" });
+    await expect(getSaldoSnapshot(U, DATE)).resolves.toEqual({
+      status: "not_ready", asOfDate: DATE, reason: "incomplete_snapshot",
+    });
   });
 
   it("keeps the existing aggregate surface alive through the legacy ledger when no snapshot exists", async () => {
     qScoped
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([legacyRow]);
     await expect(getSaldoPelanggan(U, DATE)).resolves.toEqual(totals);
-    expect(qScoped).toHaveBeenNthCalledWith(2, U, READ_SALDO_PELANGGAN_LEGACY_SQL, [U, DATE]);
+    expect(qScoped).toHaveBeenNthCalledWith(3, U, READ_SALDO_PELANGGAN_LEGACY_SQL, [U, DATE]);
   });
 
   it("falls back when a published pointer cannot yield a complete immutable generation", async () => {
@@ -114,6 +142,9 @@ describe("snapshot-only saldo reader", () => {
     expect(READ_SALDO_SNAPSHOT_POINTER_SQL).toContain("m.status = 'complete'");
     expect(READ_SALDO_SNAPSHOT_POINTER_SQL).toContain("m.published");
     expect(READ_SALDO_SNAPSHOT_POINTER_SQL).toContain("m.validation_passed");
+    expect(READ_SALDO_SNAPSHOT_READINESS_SQL).toContain("FROM app.saldo_pelanggan_snapshot_manifest");
+    expect(READ_SALDO_SNAPSHOT_READINESS_SQL).toContain("failure_summary");
+    expect(READ_SALDO_SNAPSHOT_READINESS_SQL).not.toMatch(/public\.(bppiut|bphut)/);
     // Six numeric fields are cast for rows; the integrity sentinel supplies six typed NULLs.
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL.match(/::float8/g)).toHaveLength(12);
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL).toContain("sha256(convert_to(COALESCE(string_agg(");

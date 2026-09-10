@@ -38,8 +38,26 @@ export interface SaldoSnapshotMetadata {
   totals: SaldoPelanggan;
 }
 
+export interface SaldoSnapshotAttempt {
+  status: "building" | "complete" | "failed";
+  attemptedAt: string;
+  failureSummary: string | null;
+}
+
+export type SaldoSnapshotNotReadyReason =
+  | "no_published_snapshot"
+  | "building_snapshot"
+  | "failed_snapshot"
+  | "incomplete_snapshot";
+
 export type SaldoSnapshot =
-  | { status: "not_ready"; asOfDate: string; reason: "no_published_snapshot" | "incomplete_snapshot" }
+  | {
+      status: "not_ready";
+      asOfDate: string;
+      reason: SaldoSnapshotNotReadyReason;
+      /** Present when a manifest attempt exists; omitted for no-cut/integrity-only states. */
+      latestAttempt?: SaldoSnapshotAttempt | null;
+    }
   | { status: "ready"; asOfDate: string; metadata: SaldoSnapshotMetadata; rows: SaldoSnapshotRow[]; hasOnlineCustomer: boolean };
 
 /** Pointer-first: only the published, validated immutable generation may be read. */
@@ -65,6 +83,19 @@ JOIN app.saldo_pelanggan_snapshot_manifest m
  AND m.published
  AND m.validation_passed
 WHERE p.unit_id = $1::smallint AND p.as_of_date = $2::date`;
+
+/** Latest build evidence is explanatory only; it can never make numeric rows readable. */
+export const READ_SALDO_SNAPSHOT_READINESS_SQL = `
+SELECT m.status,
+       to_char(COALESCE(m.completed_at, m.started_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "attemptedAt",
+       m.failure_summary AS "failureSummary"
+FROM app.saldo_pelanggan_snapshot_manifest m
+WHERE m.unit_id = $1::smallint AND m.as_of_date = $2::date
+ORDER BY m.source_cycle_sequence DESC,
+         m.rebuild_epoch DESC,
+         m.started_at DESC,
+         m.generation_id DESC
+LIMIT 1`;
 
 /** Exact generation rows only; the live master is labels-only and never numeric input. */
 export const READ_SALDO_SNAPSHOT_ROWS_SQL = `
@@ -188,6 +219,15 @@ export async function getSaldoSnapshotPointer(
   return rows[0] ?? null;
 }
 
+/** Read-only explanation for a missing published pointer. */
+export async function getSaldoSnapshotLatestAttempt(
+  unit: ScopedUnitId,
+  asOfDate: string,
+): Promise<SaldoSnapshotAttempt | null> {
+  const rows = await qScoped<SaldoSnapshotAttempt>(unit, READ_SALDO_SNAPSHOT_READINESS_SQL, [unit, asOfDate]);
+  return rows[0] ?? null;
+}
+
 /** Exact immutable generation stage; `not_ready` means an integrity proof failed. */
 export async function getSaldoSnapshotGeneration(
   unit: ScopedUnitId,
@@ -256,10 +296,23 @@ export function assembleReadySaldoSnapshot(
 
 export async function getSaldoSnapshot(unit: ScopedUnitId, asOfDate: string): Promise<SaldoSnapshot> {
   const pointer = await getSaldoSnapshotPointer(unit, asOfDate);
-  if (!pointer) return { status: "not_ready", asOfDate, reason: "no_published_snapshot" };
+  if (!pointer) {
+    const latestAttempt = await getSaldoSnapshotLatestAttempt(unit, asOfDate);
+    if (!latestAttempt) return { status: "not_ready", asOfDate, reason: "no_published_snapshot" };
+    const reason: SaldoSnapshotNotReadyReason = latestAttempt.status === "building"
+      ? "building_snapshot"
+      : latestAttempt.status === "failed"
+        ? "failed_snapshot"
+        : latestAttempt.status === "complete"
+          ? "incomplete_snapshot"
+          : "no_published_snapshot";
+    return { status: "not_ready", asOfDate, reason, latestAttempt };
+  }
 
   const generation = await getSaldoSnapshotGeneration(unit, asOfDate, pointer);
-  if (generation.status === "not_ready") return { status: "not_ready", asOfDate, reason: generation.reason };
+  if (generation.status === "not_ready") {
+    return { status: "not_ready", asOfDate, reason: generation.reason };
+  }
 
   return assembleReadySaldoSnapshot(asOfDate, pointer, generation);
 }
