@@ -52,12 +52,15 @@ Di mesin SPBU, **tanpa** menghentikan agent yang berjalan:
 
 ```
 cd C:\solamax-agent
-node solamax-agent.cjs --deep-sweep terra_resmi 2500 30 --dry-run
+node solamax-agent.cjs --deep-sweep terra_resmi 2500 7 --dry-run
 ```
 
-`--dry-run` tidak mengirim apa pun. Tiap baris log `[dry-run] payload` mencetak
-`replace_window` (rentang yang AKAN dihapus) dan `counts` (baris yang akan
-dimasukkan kembali). Jendela ber-`counts` kosong = **kandidat penghapusan**.
+`--dry-run` tidak mengirim apa pun. Gunakan lebar 7 hari yang sama dengan scheduler.
+Tiap baris log `[dry-run] payload` mencetak `replace_window` (rentang yang AKAN
+dihapus) dan `counts` (baris yang akan dimasukkan kembali). `counts` kosong adalah
+**batas bawah**, bukan daftar lengkap penghapusan: orphan di jendela yang juga punya
+baris hidup tidak terlihat dari log agent. Bandingkan count mirror per jendela dengan
+`counts` sebelum memutuskan lanjut.
 
 > Pratinjau ini menyeluruh sejak 2026-09-01. Sebelumnya `--dry-run` berhenti di jendela
 > pertama dan menyesatkan (tampak "cuma sedikit").
@@ -77,6 +80,8 @@ copy /Y C:\solamax-agent\solamax-agent.cjs C:\solamax-agent\solamax-agent.PREV.c
 lalu timpa **hanya** `solamax-agent.cjs`, kemudian **Task Scheduler → End**,
 **Task Manager → Details → akhiri sisa `node.exe`**, lalu **Task Scheduler → Run**.
 Verifikasi di `logs\agent-<tgl>.log` bahwa siklus baru jalan tanpa 422.
+Pastikan `sync.terraResmiAutoSweepEnabled` tetap `false`; default ini mencegah
+tier-1/tier-2 menyapu sebelum tangga manual di bawah selesai.
 
 ## Langkah 2 — sapuan sempit, ukur
 
@@ -119,7 +124,10 @@ GROUP BY u.unit_id, u.code ORDER BY u.unit_id;
 
 ## Setelah selesai
 
-Sapuan manual ini **sekali saja**. Sesudahnya penghapusan tertangkap otomatis:
+Setelah satu unit lulus seluruh tangga dan hasilnya masuk akal, set
+`sync.terraResmiAutoSweepEnabled` ke `true` di `config.local.json`, restart agent,
+dan verifikasi log memuat cadence `terra_resmi`. Sapuan manual ini **sekali saja**.
+Sesudah opt-in, penghapusan tertangkap otomatis:
 hot-path `replace_window` 7 hari (~2 menit) + sapuan terjadwal tier-1 (30 hari,
 harian) dan tier-2 (sejarah penuh, off-peak).
 

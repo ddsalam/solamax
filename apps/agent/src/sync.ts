@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { IngestPayload, MAX_ROWS_PER_TABLE } from "@solamax/shared";
 import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
@@ -74,6 +75,7 @@ async function dispatch(
     log.info("[dry-run] payload", {
       domain: payload.domain,
       watermark_high: payload.watermark_high,
+      source_cut: payload.source_cut,
       // Jendela WAJIB tercetak: pada domain delete-capable, inilah rentang yang
       // AKAN DIHAPUS. Pratinjau tanpa jendela tak bisa dinilai aman/tidaknya.
       replace_window: payload.replace_window ?? null,
@@ -512,19 +514,28 @@ async function syncDeposit(d: SyncDeps): Promise<void> {
  * Tanpa watermark. Berat (~385k baris piutang) → dipanggil ber-interval (cadence
  * master), bukan tiap poll. Pola identik syncDeposit.
  */
-async function syncSaldoLedger(d: SyncDeps, def: SaldoLedgerDomain): Promise<void> {
+async function syncSaldoLedger(
+  d: SyncDeps,
+  def: SaldoLedgerDomain,
+  sourceCutCycleId: string,
+): Promise<void> {
   const raw = await d.conn.roQuery(def.sql);
   const rows = def.map(raw);
-  if (rows.length === 0) {
-    log.info(`${def.domain}: 0 baris`);
-    return;
-  }
-  for (let i = 0; i < rows.length; i += d.cfg.sync.batchSize) {
-    const chunk = rows.slice(i, i + d.cfg.sync.batchSize);
+  const chunkCount = Math.max(1, Math.ceil(rows.length / d.cfg.sync.batchSize));
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const offset = chunkIndex * d.cfg.sync.batchSize;
+    const chunk = rows.slice(offset, offset + d.cfg.sync.batchSize);
     const status = await dispatch(d, {
       unit_code: d.cfg.unitCode,
       domain: def.domain,
       watermark_high: null, // full-sync; tanpa watermark
+      source_cut: {
+        cycle_id: sourceCutCycleId,
+        domain: def.table,
+        chunk_index: chunkIndex,
+        chunk_count: chunkCount,
+        row_count: rows.length,
+      },
       tables: { [def.table]: chunk } as Tables,
     });
     if (status !== "ok") break; // buffered/dry — sisa chunk dibaca ulang siklus depan
@@ -920,7 +931,8 @@ async function syncPelanggan(d: SyncDeps): Promise<void> {
 // SEMUA domain berjendela, bukan cuma pelanggan. edc/pelanggan sudah REPLACE
 // (Track 1: advisory-lock pelanggan/voucher, ON CONFLICT edc); opname/delivery/
 // tera/cash/tebus UPSERT natural-key — re-pull SELALU idempoten by construction,
-// tak butuh kunci tambahan. Dua tier, KEDUANYA otomatis (tanpa manusia):
+// tak butuh kunci tambahan. Dua tier otomatis; terra_resmi baru ikut setelah
+// tangga rollout per-unit mengaktifkan `terraResmiAutoSweepEnabled`:
 //   Tier 1 — jendela-terkini per siklus (nightly/weekly, generalisasi
 //     syncSalesRescan yang sudah terbukti di produksi utk sales).
 //   Tier 2 — backstop full-history off-peak jarang (bulanan; pelanggan/edc dapat
@@ -1255,6 +1267,13 @@ export const SWEEP_TABLE: Record<SweepDomain, SweepFn> = {
   terra_resmi: sweepTerraResmi,
 };
 
+/** Domain yang boleh masuk scheduler; sweep manual tetap memakai SWEEP_TABLE penuh. */
+export function automaticSweepDomains(cfg: AgentConfig): SweepDomain[] {
+  return (Object.keys(SWEEP_TABLE) as SweepDomain[]).filter(
+    (domain) => domain !== "terra_resmi" || cfg.sync.terraResmiAutoSweepEnabled,
+  );
+}
+
 /** Satu unit kerja sapuan terjadwal — rentang tanggal sudah dihitung di pemanggil. */
 export interface SweepJob {
   domain: SweepDomain;
@@ -1302,25 +1321,66 @@ async function runSweepJobs(d: SyncDeps, jobs: readonly SweepJob[]): Promise<voi
   }
 }
 
-async function syncMasters(d: SyncDeps): Promise<void> {
+async function syncMasters(d: SyncDeps, sourceCutCycleId: string): Promise<void> {
   const tables: Tables = {};
+  let pelangganRows: NonNullable<Tables["pelanggan_master"]> | null = null;
   // Isolasi per tabel master: satu query gagal (mis. nama kolom beda antar
   // versi EasyMax) tak boleh memblokir master lain — log & lanjut.
   for (const q of MASTERS_DOMAIN.queries) {
     try {
       const raw = await d.conn.roQuery(q.sql);
-      (tables as Record<string, unknown[]>)[q.table as string] = q.map(raw);
+      const mapped = q.map(raw);
+      if (q.table === "pelanggan_master") {
+        pelangganRows = mapped as NonNullable<Tables["pelanggan_master"]>;
+      } else {
+        (tables as Record<string, unknown[]>)[q.table as string] = mapped;
+      }
     } catch (err) {
       log.error("master gagal — dilewati", { table: q.table, err: String(err) });
     }
   }
-  if (Object.values(tables).every((rows) => !rows || rows.length === 0)) return;
-  await dispatch(d, {
-    unit_code: d.cfg.unitCode,
-    domain: "masters",
-    watermark_high: null,
-    tables,
-  });
+
+  // Query pelanggan yang gagal tidak boleh tampak seperti snapshot kosong.
+  // Master lain yang berhasil tetap dikirim dengan perilaku lama, tanpa marker cut.
+  if (pelangganRows === null) {
+    if (Object.values(tables).every((rows) => !rows || rows.length === 0)) return;
+    await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "masters",
+      watermark_high: null,
+      tables,
+    });
+    return;
+  }
+
+  const chunkCount = Math.max(
+    1,
+    Math.ceil(pelangganRows.length / d.cfg.sync.batchSize),
+  );
+  for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+    const offset = chunkIndex * d.cfg.sync.batchSize;
+    const chunk = pelangganRows.slice(offset, offset + d.cfg.sync.batchSize);
+    // Master non-pelanggan ikut potongan pertama saja; potongan berikutnya hanya
+    // melanjutkan pelanggan_master agar tidak mengulang UPSERT yang sama.
+    const chunkTables: Tables =
+      chunkIndex === 0
+        ? { ...tables, pelanggan_master: chunk }
+        : { pelanggan_master: chunk };
+    const status = await dispatch(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "masters",
+      watermark_high: null,
+      source_cut: {
+        cycle_id: sourceCutCycleId,
+        domain: "pelanggan_master",
+        chunk_index: chunkIndex,
+        chunk_count: chunkCount,
+        row_count: pelangganRows.length,
+      },
+      tables: chunkTables,
+    });
+    if (status !== "ok") break;
+  }
 }
 
 async function syncRealTank(d: SyncDeps): Promise<void> {
@@ -1465,8 +1525,9 @@ export async function runCycle(
     });
   }
   if (opts.includeMasters) {
+    const sourceCutCycleId = randomUUID();
     try {
-      await syncMasters(d);
+      await syncMasters(d, sourceCutCycleId);
     } catch (err) {
       log.error("domain gagal — dilewati siklus ini", {
         domain: "masters",
@@ -1477,7 +1538,7 @@ export async function runCycle(
     // master (jarang), bukan tiap poll. pelanggan_master ikut di syncMasters.
     for (const def of [PIUTANG_DOMAIN, HUTANG_DOMAIN]) {
       try {
-        await syncSaldoLedger(d, def);
+        await syncSaldoLedger(d, def, sourceCutCycleId);
       } catch (err) {
         log.error("domain gagal — dilewati siklus ini", {
           domain: def.domain,
@@ -1502,6 +1563,8 @@ export async function runForever(d: SyncDeps): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 
+  const scheduledSweepDomains = automaticSweepDomains(d.cfg);
+
   // Track 2: sekali di start — konfirmasi jadwal ter-load tanpa menunggu off-peak
   // window pertama (operator bisa cek log segera setelah restart Task Scheduler).
   log.info("Track 2 sapuan terjadwal: konfigurasi dimuat", {
@@ -1514,10 +1577,12 @@ export async function runForever(d: SyncDeps): Promise<void> {
       tera: `${d.cfg.sync.teraDeepRescanDays}h/${d.cfg.sync.teraDeepRescanIntervalMs}ms`,
       cash: `${d.cfg.sync.cashDeepRescanDays}h/${d.cfg.sync.cashDeepRescanIntervalMs}ms`,
       tebus: `${d.cfg.sync.tebusDeepRescanDays}h/${d.cfg.sync.tebusDeepRescanIntervalMs}ms`,
-      terra_resmi: `${d.cfg.sync.terraResmiDeepRescanDays}h/${d.cfg.sync.terraResmiDeepRescanIntervalMs}ms`,
+      terra_resmi: d.cfg.sync.terraResmiAutoSweepEnabled
+        ? `${d.cfg.sync.terraResmiDeepRescanDays}h/${d.cfg.sync.terraResmiDeepRescanIntervalMs}ms`
+        : "nonaktif (menunggu tangga rollout per unit)",
     },
     tier2Wide: `${d.cfg.sync.wideSweepDays}h/${d.cfg.sync.wideSweepIntervalMs}ms (pelanggan,edc)`,
-    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (semua 8 domain)`,
+    tier2Full: `${d.cfg.sync.fullSweepFloorDays}h/${d.cfg.sync.fullSweepIntervalMs}ms (${scheduledSweepDomains.length} domain aktif)`,
   });
 
   let lastMasters = 0;
@@ -1533,7 +1598,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
     terra_resmi: 0,
   };
   const lastTier2Wide: Record<"pelanggan" | "edc", number> = { pelanggan: 0, edc: 0 };
-  let lastTier2Full = 0; // satu penanda: tier2-full jalan utk SEMUA 7 domain bersamaan
+  let lastTier2Full = 0; // satu penanda: tier2-full jalan utk semua domain aktif bersamaan
 
   const TIER1_DAYS: Record<SweepDomain, (c: AgentConfig) => number> = {
     pelanggan: (c) => c.sync.pelangganDeepRescanDays,
@@ -1575,7 +1640,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
     );
     const sweepJobs: SweepJob[] = [];
     if (offPeak) {
-      for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+      for (const domain of scheduledSweepDomains) {
         if (now - lastTier1[domain] >= TIER1_INTERVAL_MS[domain](d.cfg)) {
           const { from, toExcl } = recentWindow(d, TIER1_DAYS[domain](d.cfg));
           sweepJobs.push({ domain, tier: "tier1", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
@@ -1591,7 +1656,7 @@ export async function runForever(d: SyncDeps): Promise<void> {
       }
       if (now - lastTier2Full >= d.cfg.sync.fullSweepIntervalMs) {
         const { from, toExcl } = recentWindow(d, d.cfg.sync.fullSweepFloorDays);
-        for (const domain of Object.keys(SWEEP_TABLE) as SweepDomain[]) {
+        for (const domain of scheduledSweepDomains) {
           sweepJobs.push({ domain, tier: "tier2-full", from, toExcl, chunkDays: d.cfg.sync.deepSweepChunkDays });
         }
         lastTier2Full = now;

@@ -6,6 +6,11 @@ import { unitRouteHref } from "./unit-route";
  * dilakukan TopbarPicker (regex per-rute), kini eksplisit & teruji.
  */
 describe("unitRouteHref", () => {
+  it("builds the exact piutang unit/date route and keeps its query", () => {
+    expect(unitRouteHref({ segment: "keuangan-piutang", code: "6478111", date: "2026-09-09", query: "filter=nol&page=2" })).toBe(
+      "/keuangan/unit/6478111/piutang/2026-09-09?filter=nol&page=2",
+    );
+  });
   it("rincian: unit + tanggal di path", () => {
     expect(unitRouteHref({ segment: "rincian", code: "6478111", date: "2026-07-27" })).toBe(
       "/unit/6478111/rincian/2026-07-27",

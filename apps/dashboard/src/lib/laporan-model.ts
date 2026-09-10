@@ -650,6 +650,8 @@ export function buildLaporanModel(
   // Dua batas berdampingan: EasyMax "Laporan Penjualan Harian" memakai saldo AWAL
   // hari, "Daftar Saldo Hutang Piutang" memakai saldo AKHIR hari. Keduanya sah —
   // pengawas mencocokkan ke laporan yang kebetulan ia pegang.
+  // Permukaan agregat ini sudah hidup sebelum snapshot. Presence-gate di jalur
+  // baca menjamin ia selalu menerima snapshot complete atau agregat ledger lama.
   const saldoRows = [
     {
       label: "Saldo Piutang Pelanggan Lokal",

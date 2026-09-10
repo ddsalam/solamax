@@ -75,6 +75,10 @@ const ConfigSchema = z.object({
     // ditangani sapuan `terra_resmi` (SWEEP_TABLE). Tabelnya mungil — sejendela
     // seminggu jauh di bawah batchSize, jadi selalu muat satu payload.
     terraResmiReplaceDays: z.number().int().default(7),
+    // Sapuan historis terra_resmi bersifat destruktif bila sumber pernah dipangkas.
+    // Tetap opt-in sampai tangga pratinjau + pengukuran runbook selesai per unit.
+    // Hot-path replace_window dan --deep-sweep manual tidak dipengaruhi flag ini.
+    terraResmiAutoSweepEnabled: z.boolean().default(false),
 
     // --- Track 2 (2026-07-02): sapuan lebar generik, menutup akar Transaksi
     // Pelanggan (koreksi EasyMax > window rescan hot-path tak ter-recapture)

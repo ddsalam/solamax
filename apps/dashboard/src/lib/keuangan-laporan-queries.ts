@@ -43,8 +43,8 @@ export interface BahanLaporan {
   hutangPiutangNonEasymax: number | null;
   /** ARUS hari itu — untuk cash flow. Bukan angka yang sama. */
   arusHutangPiutangNonEasymax: number | null;
-  piutangEasymax: number | null;
-  deltaPiutangEasymax: number | null;
+  piutangEasymax: number;
+  deltaPiutangEasymax: number;
   beban: BarisBeban[];
   pendapatanLain: number;
   penebusanSo: number | null;
@@ -135,7 +135,7 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
     getMutasiKas(unit, d),
     getSaldoPelanggan(unit, d),
   ]);
-  if (akun.length === 0 || saldo === null) return null;
+  if (akun.length === 0) return null;
 
   const hargaJual = new Map(sales.map((s) => [s.ckdbbm, s.harga]));
   const doPer = new Map(doRows.map((x) => [x.ckdbbm, x]));
@@ -240,10 +240,9 @@ async function bahanLaporan(
 
   // Piutang pelanggan EasyMax pada DUA batas (§ getSaldoPelanggan) — yang dipakai
   // neraca adalah akhir hari; arusnya = selisih terhadap awal hari.
-  const piutangEasymax = saldo === null ? null : saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
-  const piutangAwal = saldo === null ? null : saldo.awal.piutangLokal + saldo.awal.piutangOnline;
-  const deltaPiutangEasymax =
-    piutangEasymax === null || piutangAwal === null ? null : -(piutangEasymax - piutangAwal);
+  const piutangEasymax = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
+  const piutangAwal = saldo.awal.piutangLokal + saldo.awal.piutangOnline;
+  const deltaPiutangEasymax = -(piutangEasymax - piutangAwal);
 
   return {
     totals,

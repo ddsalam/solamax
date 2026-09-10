@@ -92,14 +92,16 @@ const RE_TABEL = /\b(?:FROM|JOIN|INTO|USING)\s+(?:"?(app|public)"?\.)?"?([a-z_][
  *
  * Sengaja longgar: bentuk `WITH x AS (` / `, y AS (` gagal begitu ada komentar
  * SQL di antara koma dan namanya — dan itu benar-benar terjadi di `queries.ts`.
- * Yang dipakai karena itu bentuk CTE apa adanya, `<nama> AS (`.
+ * Yang dipakai karena itu bentuk CTE apa adanya, `<nama> AS (`. PostgreSQL
+ * juga mengizinkan `<nama> AS [NOT] MATERIALIZED (`; modifier itu tetap CTE,
+ * bukan nama tabel fisik.
  *
  * ⚠️ Ongkosnya disebut: nama tabel yang salah tulis TAPI kebetulan juga muncul
  * sebagai `<nama> AS (` **di kueri yang sama** akan dimaafkan. Itu jauh lebih
  * sempit daripada bentuk lama (yang memaafkan kecocokan di mana pun dalam
  * BERKAS yang sama), dan tak butuh daftar-lewat yang dipatok tangan.
  */
-const RE_CTE = /\b([a-z_][a-z0-9_]*)\s+AS\s*\(/gi;
+const RE_CTE = /\b([a-z_][a-z0-9_]*)\s+AS\s+(?:(?:NOT\s+)?MATERIALIZED\s+)?\(/gi;
 
 /**
  * Buang komentar SQL `-- …` sampai akhir baris.
@@ -130,7 +132,7 @@ function kueriDalam(src: string): string[] {
 
 /** Nama yang bukan tabel: fungsi set-returning & katalog sistem. */
 const BUKAN_TABEL = new Set([
-  "unnest", "generate_series", "jsonb_to_recordset", "json_to_recordset",
+  "unnest", "generate_series", "jsonb_to_recordset", "json_to_recordset", "clock_timestamp",
   "pg_constraint", "pg_roles", "pg_type", "pg_namespace", "pg_class", "pg_index",
   "pg_indexes", "pg_tables", "pg_attribute", "information_schema", "pg_catalog",
 ]);
@@ -198,6 +200,22 @@ describe("nama tabel di kueri mentah harus ada di schema.prisma", () => {
     expect([...tanpaKomentar(campur).matchAll(RE_TABEL)].map((m) => m[2])).toEqual([
       "users",
       "membership",
+    ]);
+  });
+
+  it("CTE PostgreSQL MATERIALIZED tetap dikenali sebagai CTE", () => {
+    const q = `WITH biasa AS (
+      SELECT 1
+    ), cepat AS MATERIALIZED (
+      SELECT * FROM biasa
+    ), lentur AS NOT MATERIALIZED (
+      SELECT * FROM cepat
+    )
+    SELECT * FROM lentur`;
+    expect([...q.matchAll(RE_CTE)].map((m) => m[1])).toEqual([
+      "biasa",
+      "cepat",
+      "lentur",
     ]);
   });
 

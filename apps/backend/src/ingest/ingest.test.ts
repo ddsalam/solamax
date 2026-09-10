@@ -1,12 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { IngestPayload } from "@solamax/shared";
 import { IngestService } from "./ingest.service.js";
 import { IngestController } from "./ingest.controller.js";
 import { hashApiKey } from "../auth/api-key.guard.js";
 import type { PrismaService } from "../prisma.service.js";
+import type {
+  SnapshotCaptureStep,
+  SnapshotSourceCaptureService,
+} from "../saldo-pelanggan/source-capture.service.js";
 
 /** Prisma palsu: rekam executeRaw dalam transaksi. */
-function fakePrisma() {
+function fakePrisma(onCommit?: () => void) {
   const executed: Array<{ sql: string; params: unknown[] }> = [];
   const tx = {
     $executeRawUnsafe: async (sql: string, ...params: unknown[]) => {
@@ -15,7 +19,11 @@ function fakePrisma() {
     },
   };
   const prisma = {
-    $transaction: async (fn: (t: typeof tx) => Promise<void>) => fn(tx),
+    $transaction: async (fn: (t: typeof tx) => Promise<void>) => {
+      const result = await fn(tx);
+      onCommit?.();
+      return result;
+    },
   } as unknown as PrismaService;
   return { prisma, executed };
 }
@@ -38,6 +46,44 @@ const SALES_PAYLOAD: IngestPayload = {
     ],
   },
 };
+
+const SOURCE_CUT_PAYLOAD: IngestPayload = {
+  unit_code: "6478111",
+  domain: "piutang",
+  watermark_high: null,
+  source_cut: {
+    cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+    domain: "bppiut",
+    chunk_index: 0,
+    chunk_count: 1,
+    row_count: 1,
+  },
+  tables: {
+    bppiut: [{
+      ckdbppiut: "PI-1",
+      dtgl: "2026-01-10",
+      ckdplg: "P1",
+      vcref: null,
+      vcket: null,
+      njumlah: 100,
+      sjnsbp: 1,
+      sbatal: 0,
+    }],
+  },
+};
+
+const CAPTURE_STEPS: SnapshotCaptureStep[] = [
+  "ensure_cycle",
+  "stage_rows",
+  "complete_domain",
+  "verify_domains",
+  "diff_changes",
+  "dirty_watermark",
+  "mark_pointers",
+  "promote_cycle",
+  "enqueue_work",
+  "prune_source_cuts",
+];
 
 describe("IngestService", () => {
   it("upsert semua tabel + sync_state dalam satu transaksi, urutan header dulu", async () => {
@@ -126,6 +172,30 @@ describe("IngestService", () => {
     expect(sqls[sqls.length - 1]).toContain('"sync_state"');
   });
 
+  it("replace_window terra_resmi: sumber kosong menghapus baris mirror yang lenyap", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = {
+      unit_code: "6478111",
+      domain: "terra_resmi",
+      watermark_high: null,
+      replace_window: { from: "2026-08-27", to: "2026-08-28" },
+      tables: {},
+    };
+
+    const res = await new IngestService(prisma).ingest(7, payload);
+
+    expect(res.upserted).toEqual({});
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["replace_window:terra_resmi:7"]);
+    expect(sqls[2]).toContain('DELETE FROM "terra_resmi"');
+    expect(sqls[2]).toContain('"unit_id" = $1');
+    expect(executed[2]!.params).toEqual([7, "2026-08-27", "2026-08-28"]);
+    expect(sqls.some((sql) => sql.includes('INSERT INTO "terra_resmi"'))).toBe(false);
+    expect(sqls.at(-1)).toContain('"sync_state"');
+  });
+
   it("replace_window pada domain non-whitelist → 422 tanpa eksekusi", async () => {
     const { prisma, executed } = fakePrisma();
     const payload = {
@@ -152,6 +222,116 @@ describe("IngestService", () => {
       /melampaui limit/,
     );
     expect(executed).toHaveLength(0);
+  });
+
+  it.each(CAPTURE_STEPS)(
+    "capture gagal di %s: mirror+sync_state tetap commit dan ingest sukses",
+    async (step) => {
+      const { prisma, executed } = fakePrisma();
+      const capture = {
+        capture: async () => {
+          throw new Error(`injected:${step}`);
+        },
+      } as unknown as SnapshotSourceCaptureService;
+      const service = new IngestService(prisma, capture);
+      // Keep the matrix output concise; production still emits the error event.
+      (service as unknown as { logger: { error(): void } }).logger = { error() {} };
+
+      const response = await service.ingest(1, SOURCE_CUT_PAYLOAD);
+
+      expect(response).toEqual({ upserted: { bppiut: 1 }, new_watermark: null });
+      expect(executed.some((e) => e.sql.includes('INSERT INTO "bppiut"'))).toBe(true);
+      expect(executed.at(-1)?.sql).toContain('"sync_state"');
+    },
+  );
+
+  it("source_cut diterima dan diteruskan ke capture setelah mirror ter-commit", async () => {
+    let transactionCommitted = false;
+    let captureSawCommittedMirror = false;
+    const { prisma } = fakePrisma(() => {
+      transactionCommitted = true;
+    });
+    const capture = {
+      capture: vi.fn(async () => {
+        captureSawCommittedMirror = transactionCommitted;
+        return {
+          outcome: "staging" as const,
+          cycleId: SOURCE_CUT_PAYLOAD.source_cut!.cycle_id,
+          sourceCycleSequence: 1n,
+        };
+      }),
+    } as unknown as SnapshotSourceCaptureService;
+    const service = new IngestService(prisma, capture);
+    (service as unknown as { logger: { log(): void } }).logger = { log() {} };
+
+    const response = await service.ingest(1, SOURCE_CUT_PAYLOAD);
+
+    expect(response).toEqual({ upserted: { bppiut: 1 }, new_watermark: null });
+    expect(captureSawCommittedMirror).toBe(true);
+    expect(capture.capture).toHaveBeenCalledOnce();
+    expect(capture.capture).toHaveBeenCalledWith(1, SOURCE_CUT_PAYLOAD);
+  });
+
+  it("agen lama tanpa source_cut tetap sukses dan menulis mirror tanpa memicu capture", async () => {
+    const { prisma, executed } = fakePrisma();
+    const capture = {
+      capture: vi.fn(),
+    } as unknown as SnapshotSourceCaptureService;
+    const service = new IngestService(prisma, capture);
+    const legacyPayload: IngestPayload = {
+      ...SOURCE_CUT_PAYLOAD,
+      source_cut: undefined,
+    };
+
+    const response = await service.ingest(1, legacyPayload);
+
+    expect(response).toEqual({ upserted: { bppiut: 1 }, new_watermark: null });
+    expect(executed.some((e) => e.sql.includes('INSERT INTO "bppiut"'))).toBe(true);
+    expect(executed.at(-1)?.sql).toContain('"sync_state"');
+    expect(capture.capture).not.toHaveBeenCalled();
+  });
+
+  it("mengukur overhead orchestration source-cut lokal dengan n=30 (bukan rlsstg)", async () => {
+    const baselinePayload: IngestPayload = {
+      ...SOURCE_CUT_PAYLOAD,
+      source_cut: undefined,
+    };
+    const noCapture = new IngestService(fakePrisma().prisma);
+    const withCapture = new IngestService(fakePrisma().prisma, {
+      capture: async () => ({
+        outcome: "staging" as const,
+        cycleId: SOURCE_CUT_PAYLOAD.source_cut!.cycle_id,
+        sourceCycleSequence: 1n,
+      }),
+    } as unknown as SnapshotSourceCaptureService);
+    (withCapture as unknown as { logger: { log(): void } }).logger = { log() {} };
+
+    const measure = async (run: () => Promise<unknown>): Promise<number[]> => {
+      const samples: number[] = [];
+      for (let i = 0; i < 30; i += 1) {
+        const start = performance.now();
+        await run();
+        samples.push(performance.now() - start);
+      }
+      return samples.sort((a, b) => a - b);
+    };
+    const baseline = await measure(() => noCapture.ingest(1, baselinePayload));
+    const captured = await measure(() => withCapture.ingest(1, SOURCE_CUT_PAYLOAD));
+    const percentile = (samples: number[], p: number) =>
+      samples[Math.ceil(samples.length * p) - 1]!;
+    const report = {
+      environment: "local-fake-prisma-no-network",
+      n: 30,
+      baseline_p50_ms: Number(percentile(baseline, 0.5).toFixed(3)),
+      baseline_p95_ms: Number(percentile(baseline, 0.95).toFixed(3)),
+      capture_p50_ms: Number(percentile(captured, 0.5).toFixed(3)),
+      capture_p95_ms: Number(percentile(captured, 0.95).toFixed(3)),
+      added_p50_ms: Number((percentile(captured, 0.5) - percentile(baseline, 0.5)).toFixed(3)),
+      added_p95_ms: Number((percentile(captured, 0.95) - percentile(baseline, 0.95)).toFixed(3)),
+    };
+    console.info("B3_INGEST_LATENCY_LOCAL", JSON.stringify(report));
+    expect(baseline).toHaveLength(30);
+    expect(captured).toHaveLength(30);
   });
 });
 
@@ -183,6 +363,10 @@ describe("IngestController", () => {
     }).ingest(req("6478111"), SALES_PAYLOAD);
     expect(got).toEqual({ unitId: 1, domain: "sales" });
     expect(res.upserted).toEqual({});
+  });
+
+  it("kontrak endpoint /ingest tetap HTTP 200", () => {
+    expect(Reflect.getMetadata("__httpCode__", IngestController.prototype.ingest)).toBe(200);
   });
 });
 

@@ -13,7 +13,8 @@
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "gen-api-key": "node scripts/gen-api-key.mjs"
+    "gen-api-key": "node scripts/gen-api-key.mjs",
+    "snapshot:worker": "tsx src/saldo-pelanggan/run-worker.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",

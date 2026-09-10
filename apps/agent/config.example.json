@@ -24,6 +24,7 @@
     "cashRescanDays": 7,
     "edcRescanDays": 5,
     "pelangganRescanDays": 3,
+    "terraResmiAutoSweepEnabled": false,
     "batchSize": 1000
   },
   "dataDir": "./data"

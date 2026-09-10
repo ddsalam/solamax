@@ -8,6 +8,7 @@ import type { EasyMaxConnection } from "./db/mysql.js";
 import { IngestError, type IngestClient } from "./ingest-client.js";
 import { StateStore } from "./state/store.js";
 import {
+  automaticSweepDomains,
   batchByBusinessDate,
   isOffPeakWib,
   resyncSales,
@@ -59,6 +60,7 @@ const CFG = {
   sync: {
     pollIntervalMs: 1, masterIntervalMs: 1, safetyWindowMin: 60,
     terraResmiReplaceDays: 7,
+    terraResmiAutoSweepEnabled: false,
     terraResmiDeepRescanDays: 30, terraResmiDeepRescanIntervalMs: 86_400_000,
     cashRescanDays: 7, batchSize: 1000,
     salesRescanDays: 7, salesResyncChunkDays: 3, salesRescanIntervalMs: 0,
@@ -169,6 +171,91 @@ describe("runCycle", () => {
     expect(salesPayload).toBeDefined();
     expect(salesPayload!.tables.sales_detail).toHaveLength(1);
     expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
+  });
+
+  it("source cut: satu UUID dipakai pelanggan/piutang/hutang dengan metadata chunk lengkap", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("FROM tm_plg")) {
+          return [
+            { CKDPLG: "P1", VCNMPLG: "Satu", SJENIS: "1", SAKTIF: "1" },
+            { CKDPLG: "P2", VCNMPLG: "Dua", SJENIS: "3", SAKTIF: "1" },
+            { CKDPLG: "P3", VCNMPLG: "Tiga", SJENIS: "5", SAKTIF: "1" },
+          ];
+        }
+        if (sql.includes("FROM tr_bppiut")) {
+          return [
+            { CKDBPPIUT: "PI1", DTGL: "2026-01-01", CKDPLG: "P1", NJUMLAH: "10", SJNSBP: "1", SBATAL: "0" },
+            { CKDBPPIUT: "PI2", DTGL: "2026-01-02", CKDPLG: "P2", NJUMLAH: "20", SJNSBP: "2", SBATAL: "0" },
+            { CKDBPPIUT: "PI3", DTGL: "2026-01-03", CKDPLG: "P3", NJUMLAH: "30", SJNSBP: "1", SBATAL: "0" },
+          ];
+        }
+        // Full-sync hutang kosong tetap harus mengirim marker cut.
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 2 } } as AgentConfig;
+
+    await runCycle(
+      { conn, client, store, cfg, dryRun: false },
+      { includeMasters: true, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const cuts = sent.filter((p) => p.source_cut !== undefined);
+    expect(new Set(cuts.map((p) => p.source_cut!.cycle_id)).size).toBe(1);
+
+    const pelanggan = cuts.filter((p) => p.source_cut!.domain === "pelanggan_master");
+    expect(pelanggan.map((p) => p.source_cut)).toMatchObject([
+      { chunk_index: 0, chunk_count: 2, row_count: 3 },
+      { chunk_index: 1, chunk_count: 2, row_count: 3 },
+    ]);
+    expect(pelanggan.map((p) => p.tables.pelanggan_master?.length)).toEqual([2, 1]);
+
+    const piutang = cuts.filter((p) => p.source_cut!.domain === "bppiut");
+    expect(piutang.map((p) => p.source_cut)).toMatchObject([
+      { chunk_index: 0, chunk_count: 2, row_count: 3 },
+      { chunk_index: 1, chunk_count: 2, row_count: 3 },
+    ]);
+    expect(piutang.map((p) => p.tables.bppiut?.length)).toEqual([2, 1]);
+
+    const hutang = cuts.filter((p) => p.source_cut!.domain === "bphut");
+    expect(hutang).toHaveLength(1);
+    expect(hutang[0]!.source_cut).toMatchObject({
+      chunk_index: 0,
+      chunk_count: 1,
+      row_count: 0,
+    });
+    expect(hutang[0]!.tables).toEqual({ bphut: [] });
+  });
+
+  it("source cut: query gagal tidak pernah direpresentasikan sebagai full-sync kosong", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        if (
+          sql.includes("FROM tm_plg") ||
+          sql.includes("FROM tr_bppiut") ||
+          sql.includes("FROM tr_bphut")
+        ) {
+          throw new Error("MySQL read gagal");
+        }
+        if (sql.includes("FROM tm_card")) {
+          return [{ CKDCARD: "C1", VCNMCARD: "Kartu", CKDBANK: null, CGL: null }];
+        }
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const store = new StateStore(dir);
+
+    await runCycle(
+      { conn, client, store, cfg: CFG, dryRun: false },
+      { includeMasters: true, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    expect(sent.some((p) => p.domain === "masters" && p.tables.card?.length === 1)).toBe(true);
+    expect(sent.some((p) => p.source_cut !== undefined)).toBe(false);
   });
 
   it("pelanggan backfill: jalan-mundur per window, berhenti 3 window kosong, watermark di akhir", async () => {
@@ -406,6 +493,75 @@ describe("runCycle", () => {
     expect(tr[0]!.tables.terra_resmi![0]!.ckdterra).toBe("NT202600055");
   });
 
+  it("hot-path terra_resmi: sumber sepenuhnya kosong tetap menahan DELETE sebagai guard", async () => {
+    const conn = {
+      async roQuery() {
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    expect(sent.filter((p) => p.domain === "terra_resmi")).toHaveLength(0);
+  });
+
+  it("hot-path terra_resmi: jendela terkini kosong tetap REPLACE bila sejarah ada", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && !sql.includes("DTGLTERRA >= ?")
+          ? [{ ...TERRA_ROW, DTGLTERRA: "2020-01-02 00:00:00", DTGLJAM: "2020-01-02 10:00:00" }]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    expect(tr[0]!.replace_window).toBeDefined();
+    expect(tr[0]!.tables).toEqual({});
+    expect(tr[1]!.replace_window).toBeUndefined();
+    expect(tr[1]!.tables.terra_resmi?.[0]?.business_date).toBe("2020-01-02");
+  });
+
+  it("hot-path terra_resmi: overflow turun ke UPSERT chunked tanpa replace_window", async () => {
+    const todayWib = new Date(Date.now() + tzOffsetMinutes("Asia/Pontianak") * 60_000)
+      .toISOString()
+      .slice(0, 10);
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && !sql.includes("DTGLTERRA >= ?")
+          ? [
+              { ...TERRA_ROW, CKDTERRA: "TR-1", DTGLTERRA: todayWib, DTGLJAM: `${todayWib} 10:00:00` },
+              { ...TERRA_ROW, CKDTERRA: "TR-2", DTGLTERRA: todayWib, DTGLJAM: `${todayWib} 11:00:00` },
+            ]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 1 } } as AgentConfig;
+
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    for (const payload of tr) {
+      expect(payload.replace_window).toBeUndefined();
+      expect(payload.tables.terra_resmi).toHaveLength(1);
+    }
+  });
+
   it("sweep terra_resmi: satu payload per jendela ber-replace_window (delete-capable)", async () => {
     const conn = {
       async roQuery(sql: string) {
@@ -470,6 +626,35 @@ describe("runCycle", () => {
     for (const p of tr) {
       expect(p.replace_window).toBeDefined();
       expect(p.tables.terra_resmi).toBeUndefined(); // DELETE-only
+    }
+  });
+
+  it("sweep terra_resmi: overflow turun ke UPSERT chunked tanpa replace_window", async () => {
+    const conn = {
+      async roQuery(sql: string) {
+        return sql.includes("tr_hterra") && sql.includes("DTGLTERRA >= ?")
+          ? [
+              { ...TERRA_ROW, CKDTERRA: "TR-1" },
+              { ...TERRA_ROW, CKDTERRA: "TR-2" },
+            ]
+          : [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    const cfg = { ...CFG, sync: { ...CFG.sync, batchSize: 1 } } as AgentConfig;
+
+    await runManualSweep(
+      { conn, client, store: new StateStore(dir), cfg, dryRun: false },
+      "terra_resmi",
+      5,
+      30,
+    );
+
+    const tr = sent.filter((p) => p.domain === "terra_resmi");
+    expect(tr).toHaveLength(2);
+    for (const payload of tr) {
+      expect(payload.replace_window).toBeUndefined();
+      expect(payload.tables.terra_resmi).toHaveLength(1);
     }
   });
 
@@ -578,6 +763,15 @@ describe("runCycle", () => {
     expect(isOffPeakWib(atWibHour(4), offset, 2, 5)).toBe(true); // 04:00 — masih
     expect(isOffPeakWib(atWibHour(5), offset, 2, 5)).toBe(false); // 05:00 — eksklusif
     expect(isOffPeakWib(atWibHour(14), offset, 2, 5)).toBe(false); // siang — jauh dari off-peak
+  });
+
+  it("terra_resmi: scheduler opt-in, registry manual tetap tersedia", () => {
+    expect(automaticSweepDomains(CFG)).not.toContain("terra_resmi");
+    const enabled = {
+      ...CFG,
+      sync: { ...CFG.sync, terraResmiAutoSweepEnabled: true },
+    } as AgentConfig;
+    expect(automaticSweepDomains(enabled)).toContain("terra_resmi");
   });
 
   it("backend offline: payload di-buffer, lalu drain saat pulih", async () => {
