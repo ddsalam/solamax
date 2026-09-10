@@ -31,6 +31,15 @@ Alasan pemilihan:
 - **28 Oktober** dipilih sebagai kontrol positif lintas-seksi: unit ini mempunyai
   pelanggan berkode bertitik/Online yang nyata.
 
+### Kewaspadaan sebelum oracle dibuka
+
+Tanggal **9 September 2026 adalah hari-ini−1** saat prediksi disegel. Full-sync
+akan menarik koreksi back-dated, tetapi entri POS untuk tanggal itu masih dapat
+bertambah setelah seal. Jika kelak **hanya 9 September yang menyimpang** sementara
+1 dan 4 September cocok, hipotesis pertama adalah entri yang menyusul—bukan cacat
+formula atau reader. Prediksi tetap tidak boleh disunting; keadaan sumber harus
+dibaca ulang dan temuan dilaporkan sebagai bukti baru yang di-append.
+
 Mohon jangan mengubah angka, formula, tata letak, atau menggabungkan keenam
 ekspor. Nama berkas bebas; pemetaan unit/tanggal akan diberikan eksplisit ke alat.
 
