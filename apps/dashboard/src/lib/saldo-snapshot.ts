@@ -31,6 +31,8 @@ export interface SaldoSnapshotRow {
 export interface SaldoSnapshotMetadata {
   generationId: string;
   rowCount: number;
+  formulaVersion: string;
+  computedAt: string;
   sourceCycleId: string;
   sourceCompletedAt: string;
   pendingReplacement: boolean;
@@ -58,12 +60,22 @@ export type SaldoSnapshot =
       /** Present when a manifest attempt exists; omitted for no-cut/integrity-only states. */
       latestAttempt?: SaldoSnapshotAttempt | null;
     }
-  | { status: "ready"; asOfDate: string; metadata: SaldoSnapshotMetadata; rows: SaldoSnapshotRow[]; hasOnlineCustomer: boolean };
+  | {
+      status: "ready";
+      asOfDate: string;
+      metadata: SaldoSnapshotMetadata;
+      rows: SaldoSnapshotRow[];
+      hasOnlineCustomer: boolean;
+      /** Latest replacement attempt; explanatory only while the active pointer remains readable. */
+      latestAttempt?: SaldoSnapshotAttempt | null;
+    };
 
 /** Pointer-first: only the published, validated immutable generation may be read. */
 export const READ_SALDO_SNAPSHOT_POINTER_SQL = `
 SELECT p.generation_id::text AS "generationId",
        m.row_count::float8 AS "rowCount",
+       m.formula_version AS "formulaVersion",
+       to_char(m.computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "computedAt",
        m.source_cycle_id::text AS "sourceCycleId",
        to_char(m.source_completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "sourceCompletedAt",
        p.pending_replacement AS "pendingReplacement",
@@ -170,8 +182,13 @@ FROM verified v
 JOIN snapshot_rows r ON r.generation_id = v.generation_id
 LEFT JOIN (
   SELECT btrim(ckdplg) AS customer_code, max(vcnmplg) AS vcnmplg
-  FROM public.pelanggan_master
+  FROM public.pelanggan_master p
   WHERE unit_id = $1::smallint
+    AND EXISTS (
+      SELECT 1 FROM snapshot_rows candidate_row
+      WHERE candidate_row.generation_id = $3::uuid
+        AND btrim(candidate_row.customer_code) = btrim(p.ckdplg)
+    )
   GROUP BY btrim(ckdplg)
 ) p ON p.customer_code = btrim(r.customer_code)
 WHERE r.unit_id = $1::smallint AND r.as_of_date = $2::date AND r.generation_id = $3::uuid
@@ -265,6 +282,7 @@ export function assembleReadySaldoSnapshot(
   asOfDate: string,
   pointer: SaldoSnapshotPointer,
   generation: ReadyGeneration,
+  latestAttempt?: SaldoSnapshotAttempt | null,
 ): Extract<SaldoSnapshot, { status: "ready" }> {
   const {
     awalPiutangLokal,
@@ -291,6 +309,7 @@ export function assembleReadySaldoSnapshot(
     },
     rows: generation.rows,
     hasOnlineCustomer: generation.hasOnlineCustomer,
+    ...(latestAttempt === undefined ? {} : { latestAttempt }),
   };
 }
 
@@ -309,10 +328,27 @@ export async function getSaldoSnapshot(unit: ScopedUnitId, asOfDate: string): Pr
     return { status: "not_ready", asOfDate, reason, latestAttempt };
   }
 
-  const generation = await getSaldoSnapshotGeneration(unit, asOfDate, pointer);
+  const generationPromise = getSaldoSnapshotGeneration(unit, asOfDate, pointer);
+  const latestAttemptPromise = pointer.pendingReplacement
+    ? getSaldoSnapshotLatestAttempt(unit, asOfDate)
+    : Promise.resolve(undefined);
+  const [generation, latestAttempt] = await Promise.all([generationPromise, latestAttemptPromise]);
   if (generation.status === "not_ready") {
-    return { status: "not_ready", asOfDate, reason: generation.reason };
+    // Publication and retirement can land between the pointer and generation
+    // reads. Follow one changed pointer, but never weaken exact-generation
+    // integrity and never retry the same failed generation.
+    const refreshedPointer = await getSaldoSnapshotPointer(unit, asOfDate);
+    if (!refreshedPointer || refreshedPointer.generationId === pointer.generationId) {
+      return { status: "not_ready", asOfDate, reason: generation.reason };
+    }
+    const refreshedGeneration = await getSaldoSnapshotGeneration(unit, asOfDate, refreshedPointer);
+    if (refreshedGeneration.status === "not_ready") {
+      return { status: "not_ready", asOfDate, reason: refreshedGeneration.reason };
+    }
+    const refreshedAttempt = refreshedPointer.pendingReplacement
+      ? await getSaldoSnapshotLatestAttempt(unit, asOfDate)
+      : undefined;
+    return assembleReadySaldoSnapshot(asOfDate, refreshedPointer, refreshedGeneration, refreshedAttempt);
   }
-
-  return assembleReadySaldoSnapshot(asOfDate, pointer, generation);
+  return assembleReadySaldoSnapshot(asOfDate, pointer, generation, latestAttempt);
 }

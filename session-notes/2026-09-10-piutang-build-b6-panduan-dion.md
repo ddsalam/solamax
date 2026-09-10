@@ -118,11 +118,14 @@ Buka seluruh URL berikut satu per satu:
 6. Korek: `https://solamax-dashboard-staging-113869564052.asia-southeast2.run.app/keuangan/unit/6478311/piutang/2026-09-09`
 7. 28 Oktober: `https://solamax-dashboard-staging-113869564052.asia-southeast2.run.app/keuangan/unit/63781002/piutang/2026-09-09`
 
-Di setiap URL, lihat panel utama. Yang benar adalah tulisan manusiawi bahwa data
-saldo belum siap karena unit belum mengirim cut dan sedang menunggu pembaruan
-agent di mesin SPBU. Tidak boleh ada enam angka `Rp0`, grand total nol, atau
-tabel kosong yang menyamarkan ketidaksiapan. Tombol ekspor angka harus
-dinonaktifkan.
+Di setiap URL, lihat panel utama. Yang benar adalah tulisan manusiawi bahwa
+belum ada snapshot terpublikasi. Jalur baca sengaja tidak menebak apakah source
+cut belum terkirim atau worker belum selesai; tindakannya menyebut siklus agent
+dan worker serta meminta pengelola memeriksa pipeline. Dalam keadaan operasional
+tahap ini penyebabnya memang agent lama di mesin SPBU, tetapi layar tidak boleh
+mengarang status yang tidak dapat dibacanya. Tidak boleh ada enam angka `Rp0`,
+grand total nol, atau tabel kosong yang menyamarkan ketidaksiapan. Tombol ekspor
+angka harus dinonaktifkan.
 
 Yang berarti gagal: salah satu unit menampilkan nol/kosong seolah-olah itu data
 sah, menampilkan kode alasan internal, atau menjalankan lama lalu tetap mencoba
@@ -182,10 +185,10 @@ belum siap dan Tahap 3 belum boleh dinilai.
    - `https://solamax-dashboard-staging-113869564052.asia-southeast2.run.app/keuangan/unit/6478311/piutang/2026-09-09`
    - `https://solamax-dashboard-staging-113869564052.asia-southeast2.run.app/keuangan/unit/63781002/piutang/2026-09-09`
 
-   Yang harus terlihat: keenamnya masih **Data saldo belum siap** dan menyebut
-   bahwa unit menunggu pembaruan agent. Yang berarti gagal: salah satu memuat
-   angka rinci sebelum bundle unit itu pernah ditukar, atau menampilkan nol
-   sebagai pengganti status.
+   Yang harus terlihat: keenamnya masih **Data saldo belum siap**, menjelaskan
+   bahwa belum ada snapshot terpublikasi, dan memberi tindakan untuk memeriksa
+   siklus agent/worker. Yang berarti gagal: salah satu memuat angka rinci sebelum
+   bundle unit itu pernah ditukar, atau menampilkan nol sebagai pengganti status.
 
 ### Bandingkan baris pelanggan, bukan hanya total
 

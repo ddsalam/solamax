@@ -535,12 +535,20 @@ SET state = 'dead_letter',
     updated_at = clock_timestamp()
 WHERE w.unit_id = $1::smallint
   AND w.state IN ('queued', 'retry_wait')
-  AND EXISTS (
-    SELECT 1
-    FROM app.saldo_pelanggan_snapshot_pointer p
-    WHERE p.unit_id = w.unit_id
-      AND p.as_of_date = w.as_of_date
-      AND p.pending_replacement
+  AND (
+    EXISTS (
+      SELECT 1
+      FROM app.saldo_pelanggan_snapshot_pointer p
+      WHERE p.unit_id = w.unit_id
+        AND p.as_of_date = w.as_of_date
+        AND p.pending_replacement
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM app.saldo_pelanggan_snapshot_pointer p
+      WHERE p.unit_id = w.unit_id
+        AND p.as_of_date = w.as_of_date
+    )
   )`;
 
 /** $1 unit, $2 new cycle, $3 sequence. */

@@ -24,7 +24,7 @@ const ready = (o: Partial<Omit<ReadyProps, "state">> = {}): ReadyProps => ({
   hasOnlineCustomer: true,
   query: {
     search: "",
-    balance: "all",
+    filter: "semua",
     sort: "default",
     page: 1,
     pageSize: 50,
@@ -91,8 +91,8 @@ describe("PiutangPelangganView", () => {
       ready({
         query: {
           search: "andi",
-          balance: "nonzero",
-          sort: "name",
+          filter: "bersaldo",
+          sort: "nama",
           page: 2,
           pageSize: 50,
           totalRows: 121,
@@ -107,8 +107,8 @@ describe("PiutangPelangganView", () => {
     expect(h).toContain("121 pelanggan · 50 per halaman");
     expect(h).toContain("Halaman 2 dari 3");
     expect(h).toContain("page=3");
-    expect(h).toContain("balance=nonzero");
-    expect(h).toContain("sort=name");
+    expect(h).toContain("filter=bersaldo");
+    expect(h).toContain("sort=nama");
   });
 
   it("not-ready adalah keadaan utama tanpa angka, tabel, atau ekspor numerik", () => {

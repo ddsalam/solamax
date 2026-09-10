@@ -47,6 +47,8 @@ const SEC: ManualSection = "pengeluaran";
 const SNAPSHOT_POINTER: SaldoSnapshotPointer = {
   generationId: "00000000-0000-0000-0000-000000000001",
   rowCount: 0,
+  formulaVersion: "saldo-pelanggan-v1",
+  computedAt: "2026-07-01T00:01:00Z",
   sourceCycleId: "00000000-0000-0000-0000-000000000002",
   sourceCompletedAt: "2026-07-01T00:00:00Z",
   pendingReplacement: false,

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { todayWib } from "@/lib/periods";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { PanelLaporanKeuangan } from "@/components/keuangan/PanelLaporanKeuangan";
@@ -95,6 +96,9 @@ export default async function LaporanKeuanganPage({
       />
       <div className="section-h">
         <h1 className="text-h3 t-brand">Laporan keuangan harian</h1>
+        <Link className="btn-outline no-print" href={`/keuangan/unit/${unit.code}/piutang/${date}`}>
+          Saldo pelanggan
+        </Link>
         {/* "Cetak PDF" (mockup Layar 2). Panelnya diserahkan apa adanya —
             PDF tidak menghitung ulang apa pun. */}
         <LaporanKeuanganExportMount

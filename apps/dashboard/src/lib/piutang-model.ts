@@ -7,8 +7,19 @@ import type {
 
 export const PIUTANG_PAGE_SIZE = 50;
 
-export type PiutangFilter = "semua" | "bersaldo" | "nol";
-export type PiutangSort = "default" | "nama" | "kode";
+export const PIUTANG_FILTERS = ["semua", "bersaldo", "nol"] as const;
+export const PIUTANG_SORTS = ["default", "nama", "kode"] as const;
+
+export type PiutangFilter = (typeof PIUTANG_FILTERS)[number];
+export type PiutangSort = (typeof PIUTANG_SORTS)[number];
+
+export function isPiutangFilter(value: unknown): value is PiutangFilter {
+  return typeof value === "string" && PIUTANG_FILTERS.some((candidate) => candidate === value);
+}
+
+export function isPiutangSort(value: unknown): value is PiutangSort {
+  return typeof value === "string" && PIUTANG_SORTS.some((candidate) => candidate === value);
+}
 
 export interface PiutangViewInput {
   search?: string | null;
@@ -50,10 +61,23 @@ export interface PiutangReadyView {
 
 export type PiutangView = PiutangNotReadyView | PiutangReadyView;
 
+export interface PiutangExportView {
+  status: "ready";
+  asOfDate: string;
+  metadata: SaldoSnapshotMetadata;
+  rows: PiutangViewRow[];
+  hasOnlineCustomer: boolean;
+  totalCount: number;
+  resultCount: number;
+  filter: PiutangFilter;
+  sort: PiutangSort;
+  search: string;
+}
+
 const NOT_READY_COPY: Record<SaldoSnapshotNotReadyReason, { title: string; message: string }> = {
   no_published_snapshot: {
     title: "Data saldo belum siap",
-    message: "Unit ini masih menunggu pembaruan agent untuk mengirim source cut lengkap. Angka saldo belum ditampilkan.",
+    message: "Belum ada snapshot terpublikasi. Status pengiriman source cut dan pembangunan belum terlihat dari jalur baca ini. Angka saldo belum ditampilkan.",
   },
   building_snapshot: {
     title: "Data saldo sedang disiapkan",
@@ -92,15 +116,17 @@ function normalizeRow(row: SaldoSnapshotRow): PiutangViewRow {
 }
 
 function normalizeFilter(value: string | null | undefined): PiutangFilter {
-  return value === "bersaldo" || value === "nol" ? value : "semua";
+  return isPiutangFilter(value) ? value : "semua";
 }
 
 function normalizeSort(value: string | null | undefined): PiutangSort {
-  return value === "nama" || value === "kode" ? value : "default";
+  return isPiutangSort(value) ? value : "default";
 }
 
+const PIUTANG_COLLATOR = new Intl.Collator("id-ID", { sensitivity: "base", numeric: true });
+
 function compareText(left: string, right: string): number {
-  return left.localeCompare(right, "id-ID", { sensitivity: "base", numeric: true });
+  return PIUTANG_COLLATOR.compare(left, right);
 }
 
 function compareNameThenCode(left: PiutangViewRow, right: PiutangViewRow): number {
@@ -125,6 +151,26 @@ function normalizePage(value: string | number | null | undefined, totalPages: nu
   return Math.min(Math.max(parsed, 1), totalPages);
 }
 
+function selectRows(
+  snapshot: Extract<SaldoSnapshot, { status: "ready" }>,
+  input: PiutangViewInput,
+) {
+  const search = input.search?.trim() ?? "";
+  const searchKey = search.toLocaleLowerCase("id-ID");
+  const filter = normalizeFilter(input.filter);
+  const sort = normalizeSort(input.sort);
+  const normalizedRows = snapshot.rows.map(normalizeRow);
+  const rows = normalizedRows.filter((row) => {
+    const matchesSearch = searchKey.length === 0
+      || row.customerCode.toLocaleLowerCase("id-ID").includes(searchKey)
+      || (row.customerName?.toLocaleLowerCase("id-ID").includes(searchKey) ?? false);
+    const matchesFilter = filter === "semua"
+      || (filter === "nol" ? row.isZeroBalance : !row.isZeroBalance);
+    return matchesSearch && matchesFilter;
+  }).sort(compareRows(sort));
+  return { search, filter, sort, normalizedRows, rows };
+}
+
 /** Pure presentation boundary: no database reads and no derived cross-bucket amount. */
 export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInput): PiutangView {
   if (snapshot.status === "not_ready") {
@@ -139,19 +185,7 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
     };
   }
 
-  const search = input.search?.trim() ?? "";
-  const searchKey = search.toLocaleLowerCase("id-ID");
-  const filter = normalizeFilter(input.filter);
-  const sort = normalizeSort(input.sort);
-  const normalizedRows = snapshot.rows.map(normalizeRow);
-  const filteredRows = normalizedRows.filter((row) => {
-    const matchesSearch = searchKey.length === 0
-      || row.customerCode.toLocaleLowerCase("id-ID").includes(searchKey)
-      || (row.customerName?.toLocaleLowerCase("id-ID").includes(searchKey) ?? false);
-    const matchesFilter = filter === "semua"
-      || (filter === "nol" ? row.isZeroBalance : !row.isZeroBalance);
-    return matchesSearch && matchesFilter;
-  }).sort(compareRows(sort));
+  const { search, filter, sort, normalizedRows, rows: filteredRows } = selectRows(snapshot, input);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PIUTANG_PAGE_SIZE));
   const page = normalizePage(input.page, totalPages);
@@ -168,6 +202,27 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
     page,
     pageSize: PIUTANG_PAGE_SIZE,
     totalPages,
+    filter,
+    sort,
+    search,
+  };
+}
+
+/** Same filter/search/sort contract as the screen, deliberately without pagination. */
+export function buildPiutangExportView(
+  snapshot: SaldoSnapshot,
+  input: PiutangViewInput,
+): PiutangNotReadyView | PiutangExportView {
+  if (snapshot.status === "not_ready") return buildPiutangView(snapshot, input);
+  const { search, filter, sort, normalizedRows, rows } = selectRows(snapshot, input);
+  return {
+    status: "ready",
+    asOfDate: snapshot.asOfDate,
+    metadata: snapshot.metadata,
+    rows,
+    hasOnlineCustomer: snapshot.hasOnlineCustomer,
+    totalCount: normalizedRows.length,
+    resultCount: rows.length,
     filter,
     sort,
     search,

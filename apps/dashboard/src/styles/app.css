@@ -1426,6 +1426,9 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-next-step strong { display: block; }
 .b6-piutang-next-step p { margin: 3px 0 0; font-size: 16px; }
 .b6-piutang-not-zero { color: var(--color-text-secondary); font-weight: 600; }
+.b6-piutang-activity { padding: var(--space-5); }
+.b6-piutang-activity h2 { margin: 0; font-size: 18px; }
+.b6-piutang-activity p { margin: var(--space-2) 0 0; color: var(--color-text-secondary); font-size: 16px; }
 
 @media (max-width: 1080px) {
   .b6-piutang-controls { grid-template-columns: 1fr 1fr; }

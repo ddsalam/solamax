@@ -218,6 +218,34 @@ class OracleParserTests(unittest.TestCase):
             with self.assertRaisesRegex(goldcheck.GoldCheckError, "SALDO .* DEBET-KREDIT"):
                 goldcheck.parse_oracle(path)
 
+    def test_rejects_uncached_formula_in_customer_numeric_cell(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "formula-row.xlsx"
+            write_oracle(path)
+            workbook = goldcheck.load_workbook(path)
+            workbook.active["E5"] = "=C5-D5"
+            workbook.save(path)
+            workbook.close()
+            with self.assertRaisesRegex(
+                goldcheck.GoldCheckError,
+                r"formula XLSX tidak memiliki cached value: Saldo!E5",
+            ):
+                goldcheck.parse_oracle(path)
+
+    def test_rejects_uncached_formula_in_printed_total(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "formula-total.xlsx"
+            write_oracle(path)
+            workbook = goldcheck.load_workbook(path)
+            workbook.active["E7"] = "=SUM(E5:E6)"
+            workbook.save(path)
+            workbook.close()
+            with self.assertRaisesRegex(
+                goldcheck.GoldCheckError,
+                r"formula XLSX tidak memiliki cached value: Saldo!E7",
+            ):
+                goldcheck.parse_oracle(path)
+
     def test_rejects_laporan_penjualan_harian(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "wrong.xlsx"

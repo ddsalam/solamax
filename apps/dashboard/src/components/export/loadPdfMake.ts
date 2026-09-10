@@ -4,6 +4,9 @@
  * Menormalkan bentuk ekspor vfs_fonts yang berbeda antar-build.
  */
 import type { TDocumentDefinitions } from "pdfmake/interfaces";
+import { applyPdfDefaults } from "@/lib/export/pdf-defaults";
+
+export { applyPdfDefaults } from "@/lib/export/pdf-defaults";
 
 /** Subset yang kita pakai dari pdfmake 0.2.x (API berbasis callback). */
 export interface CreatedPdf {
@@ -35,31 +38,6 @@ function loadPdfMake(): Promise<PdfMakeLike> {
     })();
   }
   return cached;
-}
-
-/**
- * Nonaktifkan ligatur (fi/fl). Roboto memetakan "fi" ke SATU glyph ligatur yang
- * ToUnicode-nya jatuh ke satu char → teks ter-ekstrak "fsik"/"fnal" (copy, cari,
- * screen-reader rusak) walau CETAKAN terlihat benar. Objek {liga:false} diteruskan
- * pdfmake→pdfkit→fontkit (terbukti memisah glyph f+i, masing-masing ToUnicode benar).
- * @types mengetik fontFeatures sbg string[]; runtime menerima objek → cast.
- */
-const DISABLE_LIGATURES = { liga: false, dlig: false } as unknown as NonNullable<
-  TDocumentDefinitions["defaultStyle"]
->["fontFeatures"];
-
-/**
- * Terapkan default bersama SEKALI untuk SEMUA laporan (jalur render tunggal):
- * saat ini menonaktifkan ligatur via defaultStyle (diwariskan ke semua run).
- * Tidak menimpa bila laporan sudah menyetel fontFeatures sendiri.
- */
-export function applyPdfDefaults(doc: TDocumentDefinitions): TDocumentDefinitions {
-  const ds = (doc.defaultStyle ?? {}) as Record<string, unknown>;
-  if (ds.fontFeatures !== undefined) return doc;
-  return {
-    ...doc,
-    defaultStyle: { ...ds, fontFeatures: DISABLE_LIGATURES } as TDocumentDefinitions["defaultStyle"],
-  };
 }
 
 export async function createPdf(doc: TDocumentDefinitions): Promise<CreatedPdf> {

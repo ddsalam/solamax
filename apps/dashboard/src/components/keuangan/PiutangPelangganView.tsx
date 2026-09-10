@@ -1,3 +1,11 @@
+import {
+  PIUTANG_FILTERS,
+  PIUTANG_SORTS,
+  type PiutangFilter,
+  type PiutangSort,
+} from "@/lib/piutang-model";
+import type { PiutangPendingBanner } from "@/lib/piutang-route";
+
 export interface PiutangBalanceSet {
   piutangLokalAwal: number;
   piutangLokalAkhir: number;
@@ -15,8 +23,8 @@ export interface PiutangCustomerRow {
 
 export interface PiutangQueryState {
   search: string;
-  balance: "all" | "nonzero" | "zero";
-  sort: "default" | "name" | "code";
+  filter: PiutangFilter;
+  sort: PiutangSort;
   page: number;
   pageSize: 50;
   totalRows: number;
@@ -44,11 +52,7 @@ export type PiutangPelangganViewProps =
       rows: PiutangCustomerRow[];
       csvHref: string;
       pdfHref: string;
-      pendingBanner?: {
-        tone: "warning" | "danger";
-        title: string;
-        body: string;
-      };
+      pendingBanner?: PiutangPendingBanner;
     })
   | (PiutangCommonProps & {
       state: "not_ready";
@@ -76,6 +80,20 @@ const BULAN = [
   "Desember",
 ] as const;
 
+const PIUTANG_FILTER_LABELS: Record<PiutangFilter, string> = {
+  semua: "Semua",
+  bersaldo: "Bersaldo",
+  nol: "Saldo nol",
+};
+
+const PIUTANG_SORT_LABELS: Record<PiutangSort, string> = {
+  default: "Bersaldo dulu, nama A–Z",
+  nama: "Nama A–Z",
+  kode: "Kode A–Z",
+};
+
+const RUPIAH_NUMBER = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
+
 const tanggalPanjang = (iso: string): string => {
   const [year, month, day] = iso.split("-").map(Number);
   if (!year || !month || !day || BULAN[month - 1] === undefined) return iso;
@@ -86,7 +104,7 @@ const tanggalPanjang = (iso: string): string => {
 const rupiah = (amount: number): string => {
   const value = Math.round(amount) || 0;
   if (value === 0) return "Rp0";
-  const magnitude = Math.abs(value).toLocaleString("id-ID", { maximumFractionDigits: 0 });
+  const magnitude = RUPIAH_NUMBER.format(Math.abs(value));
   return value < 0 ? `−Rp ${magnitude}` : `Rp ${magnitude}`;
 };
 
@@ -95,12 +113,12 @@ const semuaNol = (balances: PiutangBalanceSet): boolean =>
 
 const queryHref = (
   query: PiutangQueryState,
-  changes: Partial<Pick<PiutangQueryState, "search" | "balance" | "sort" | "page">>,
+  changes: Partial<Pick<PiutangQueryState, "search" | "filter" | "sort" | "page">>,
 ): string => {
   const next = { ...query, ...changes };
   const params = new URLSearchParams();
   if (next.search) params.set("q", next.search);
-  params.set("balance", next.balance);
+  params.set("filter", next.filter);
   params.set("sort", next.sort);
   params.set("page", String(next.page));
   return `?${params.toString()}`;
@@ -223,7 +241,7 @@ function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state
   return (
     <div className="b6-piutang-controls no-print" aria-label="Cari dan saring pelanggan">
       <form method="get" className="b6-piutang-search">
-        <input type="hidden" name="balance" value={query.balance} />
+        <input type="hidden" name="filter" value={query.filter} />
         <input type="hidden" name="sort" value={query.sort} />
         <label htmlFor="b6-piutang-q">Cari kode atau nama pelanggan</label>
         <div>
@@ -235,30 +253,26 @@ function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state
       </form>
 
       <nav className="seg b6-piutang-balance-filter" aria-label="Filter saldo">
-        {([
-          ["all", "Semua"],
-          ["nonzero", "Bersaldo"],
-          ["zero", "Saldo nol"],
-        ] as const).map(([value, label]) => (
+        {PIUTANG_FILTERS.map((value) => (
           <a
             key={value}
-            href={queryHref(query, { balance: value, page: 1 })}
-            className={`seg-btn${query.balance === value ? " active" : ""}`}
-            aria-current={query.balance === value ? "page" : undefined}
+            href={queryHref(query, { filter: value, page: 1 })}
+            className={`seg-btn${query.filter === value ? " active" : ""}`}
+            aria-current={query.filter === value ? "page" : undefined}
           >
-            {label}
+            {PIUTANG_FILTER_LABELS[value]}
           </a>
         ))}
       </nav>
 
       <form method="get" className="b6-piutang-sort">
         {query.search && <input type="hidden" name="q" value={query.search} />}
-        <input type="hidden" name="balance" value={query.balance} />
+        <input type="hidden" name="filter" value={query.filter} />
         <label htmlFor="b6-piutang-sort">Urutkan</label>
         <select id="b6-piutang-sort" name="sort" defaultValue={query.sort}>
-          <option value="default">Bersaldo dulu, nama A–Z</option>
-          <option value="name">Nama A–Z</option>
-          <option value="code">Kode A–Z</option>
+          {PIUTANG_SORTS.map((value) => (
+            <option key={value} value={value}>{PIUTANG_SORT_LABELS[value]}</option>
+          ))}
         </select>
         <button type="submit" className="btn-outline">
           Terapkan

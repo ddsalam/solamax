@@ -28,9 +28,9 @@ function halaman(dir: string): string[] {
 
 const RUTE = halaman(KEU);
 
-describe("keenam rute keuangan punya pemilih unit/tanggal", () => {
-  it("penjaga ini punya SUBJEK — enam rute ditemukan", () => {
-    expect(RUTE.length).toBe(6);
+describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
+  it("penjaga ini punya SUBJEK — delapan rute ditemukan", () => {
+    expect(RUTE.length).toBe(8);
   });
 
   for (const f of RUTE) {
@@ -45,13 +45,13 @@ describe("keenam rute keuangan punya pemilih unit/tanggal", () => {
   it("🔴 papan memakai dimensiUnit=tak_berlaku — kontrol yang tak mengubah apa pun TIDAK dipasang", () => {
     const papan = readFileSync(join(KEU, "page.tsx"), "utf8");
     expect(papan).toMatch(/dimensiUnit="tak_berlaku"/);
-    // DAYA-BEDA: kelima rute lain TIDAK memakainya — kalau semuanya memakainya,
+    // DAYA-BEDA: ketujuh rute lain TIDAK memakainya — kalau semuanya memakainya,
     // pemilih unit lenyap dari seluruh modul dan penjaga di atas tetap hijau.
     const lain = RUTE.filter((f) => f !== join(KEU, "page.tsx"));
     for (const f of lain) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/dimensiUnit="tak_berlaku"/);
     }
-    expect(lain).toHaveLength(5);
+    expect(lain).toHaveLength(7);
   });
 });
 
@@ -61,6 +61,7 @@ describe("🔴 URL keuangan dibangun SATU tempat, dan menavigasi ke tempat yang 
     ["keuangan-input", "/keuangan/unit/6378301/2026-08-22/input"],
     ["keuangan-tutup-hari", "/keuangan/unit/6378301/tutup-hari/2026-08-22"],
     ["keuangan-akun-kas", "/keuangan/unit/6378301/akun-kas"],
+    ["keuangan-piutang", "/keuangan/unit/6378301/piutang/2026-08-22"],
   ];
 
   for (const [segment, harap] of kasus) {

@@ -834,6 +834,11 @@ def parse_oracle(
         raise GoldCheckError("oracle wajib .xlsx/.xlsm")
     source_hash = sha256_file(path)
     workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        formula_workbook = load_workbook(path, read_only=True, data_only=False)
+    except Exception:
+        workbook.close()
+        raise
     required_title_seen = False
     forbidden_title_seen = False
     parsed: dict[str, dict[str, dict[str, str]]] = {}
@@ -848,12 +853,34 @@ def parse_oracle(
     expected_date_tokens = date_tokens(expected_date) if expected_date else set()
     metadata_open = True
     try:
-        for sheet in workbook.worksheets:
+        if [sheet.title for sheet in workbook.worksheets] != [
+            sheet.title for sheet in formula_workbook.worksheets
+        ]:
+            raise GoldCheckError("struktur sheet oracle berubah saat sedang diparse")
+        for sheet, formula_sheet in zip(workbook.worksheets, formula_workbook.worksheets):
             pending_section: str | None = None
             pending_age = 0
             active_section: str | None = None
             columns: dict[str, int] | None = None
-            for row in sheet.iter_rows(values_only=True):
+            for row, formula_row in zip(
+                sheet.iter_rows(values_only=True),
+                formula_sheet.iter_rows(values_only=False),
+            ):
+                def numeric_cell(index: int) -> Decimal:
+                    cached_value = row[index] if index < len(row) else None
+                    formula_cell = formula_row[index] if index < len(formula_row) else None
+                    formula_value = formula_cell.value if formula_cell is not None else None
+                    if (
+                        cached_value is None
+                        and isinstance(formula_value, str)
+                        and formula_value.startswith("=")
+                    ):
+                        coordinate = formula_cell.coordinate if formula_cell is not None else "?"
+                        raise GoldCheckError(
+                            f"formula XLSX tidak memiliki cached value: {sheet.title}!{coordinate}"
+                        )
+                    return parse_decimal(cached_value)
+
                 row_text = normalize_text(" ".join(str(value) for value in row if value is not None))
                 row_compact = re.sub(r"[^A-Z0-9]", "", row_text)
                 required_title_seen = required_title_seen or REQUIRED_REPORT_TITLE in row_text
@@ -898,7 +925,7 @@ def parse_oracle(
                     continue
                 if first_text.startswith("TOTAL SALDO"):
                     total = {
-                        key: str(parse_decimal(row[index]))
+                        key: str(numeric_cell(index))
                         for key, index in columns.items()
                         if key in {"debit", "credit", "saldo"}
                     }
@@ -913,9 +940,9 @@ def parse_oracle(
                 code = normalize_text(row[code_index] if code_index < len(row) else None).replace(" ", "")
                 if not code or code in {"KODE", "KD"}:
                     continue
-                debit = parse_decimal(row[columns["debit"]] if columns["debit"] < len(row) else None)
-                credit = parse_decimal(row[columns["credit"]] if columns["credit"] < len(row) else None)
-                saldo = parse_decimal(row[columns["saldo"]] if columns["saldo"] < len(row) else None)
+                debit = numeric_cell(columns["debit"])
+                credit = numeric_cell(columns["credit"])
+                saldo = numeric_cell(columns["saldo"])
                 if saldo != debit - credit:
                     raise GoldCheckError(
                         f"oracle {active_section}/{code}: SALDO {saldo} != DEBET-KREDIT {debit-credit}"
@@ -934,6 +961,7 @@ def parse_oracle(
                 }
     finally:
         workbook.close()
+        formula_workbook.close()
     if forbidden_title_seen:
         raise GoldCheckError("oracle terlarang: Laporan Penjualan Harian")
     if not required_title_seen:

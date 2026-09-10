@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPiutangExportView,
   buildPiutangView,
   type PiutangFilter,
   type PiutangSort,
@@ -32,6 +33,8 @@ function ready(
     metadata: {
       generationId: "generation-1",
       rowCount: rows.length,
+      formulaVersion: "saldo-pelanggan-v1",
+      computedAt: "2026-09-09T03:01:00Z",
       sourceCycleId: "cycle-1",
       sourceCompletedAt: "2026-09-09T03:00:00Z",
       pendingReplacement: false,
@@ -58,7 +61,7 @@ describe("buildPiutangView", () => {
       asOfDate: "2026-09-09",
       reason: "no_published_snapshot",
       title: "Data saldo belum siap",
-      message: "Unit ini masih menunggu pembaruan agent untuk mengirim source cut lengkap. Angka saldo belum ditampilkan.",
+      message: "Belum ada snapshot terpublikasi. Status pengiriman source cut dan pembangunan belum terlihat dari jalur baca ini. Angka saldo belum ditampilkan.",
       attemptedAt: null,
       failureSummary: null,
     });
@@ -165,6 +168,10 @@ describe("buildPiutangView", () => {
     expect(buildPiutangView(ready(rows), { page: "wat" })).toMatchObject({ status: "ready", page: 1 });
     expect(buildPiutangView(ready(rows), { page: -7 })).toMatchObject({ status: "ready", page: 1 });
     expect(buildPiutangView(ready(rows), { page: 99 })).toMatchObject({ status: "ready", page: 2 });
+    const exported = buildPiutangExportView(ready(rows), { sort: "kode" });
+    expect(exported).toMatchObject({ status: "ready", resultCount: 51 });
+    if (exported.status !== "ready") throw new Error("expected ready");
+    expect(exported.rows).toHaveLength(51);
   });
 
   it("presence-gates Online only from snapshot metadata, not dotted row heuristics", () => {

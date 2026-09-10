@@ -122,6 +122,12 @@ function buildGroups(
           match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+$/.test(p),
         },
         {
+          href: unitCode ? `/keuangan/unit/${unitCode}/piutang/${date}` : null,
+          label: "Saldo pelanggan",
+          icon: "users",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/piutang\//.test(p),
+        },
+        {
           href: "/keuangan/sumber-data",
           label: "Sumber data",
           icon: "droplet",
