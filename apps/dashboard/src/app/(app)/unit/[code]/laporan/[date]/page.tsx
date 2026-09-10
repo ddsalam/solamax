@@ -92,8 +92,8 @@ export default async function LaporanPage({
     getHargaDeviasi([unit.unit_id], date, date),
     getCorrections(unit.unit_id, date),
     getCashForDate(unit.unit_id, date),
-    // Query TERBERAT halaman ini (terukur 104 dtk di KB) — lewat cache; lihat
-    // saldo-cache.ts. Nilai identik, hanya kapan ia menyentuh DB yang berubah.
+    // Pointer snapshot selalu segar; rowset immutable di-cache per generation_id.
+    // Bila snapshot belum siap, hasilnya null dan model tidak mengarang angka nol.
     getSaldoPelangganCached(unit.unit_id, date, today),
     getPelangganForDate(unit.unit_id, date),
     getEdcForDate(unit.unit_id, date),

@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { ManualSection } from "./queries";
+import type { SaldoSnapshotPointer } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope-rule";
 
 /**
@@ -43,6 +44,20 @@ type QMod = typeof import("./queries");
 const U = 30000 as unknown as ScopedUnitId; // sentinel: TIDAK ADA, && muat di SMALLINT (unit_id smallint)
 const D = "2026-07-01";
 const SEC: ManualSection = "pengeluaran";
+const SNAPSHOT_POINTER: SaldoSnapshotPointer = {
+  generationId: "00000000-0000-0000-0000-000000000001",
+  rowCount: 0,
+  sourceCycleId: "00000000-0000-0000-0000-000000000002",
+  sourceCompletedAt: "2026-07-01T00:00:00Z",
+  pendingReplacement: false,
+  staleInvalidFrom: null,
+  awalPiutangLokal: 0,
+  akhirPiutangLokal: 0,
+  awalPiutangOnline: 0,
+  akhirPiutangOnline: 0,
+  awalHutangLokal: 0,
+  akhirHutangLokal: 0,
+};
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
 const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
@@ -79,6 +94,7 @@ const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
   ["getEdcForDate", () => Q.getEdcForDate(U, D)],
   ["getEdcBlankCard", () => Q.getEdcBlankCard(U, D)],
   ["getDepositForDate", () => Q.getDepositForDate(U, D)],
+  ["getSaldoSnapshot", () => Q.getSaldoSnapshot(U, D)],
   ["getSaldoPelanggan", () => Q.getSaldoPelanggan(U, D)],
   ["getManualEntries", () => Q.getManualEntries(U, D, SEC)],
   ["getUsulanSo", () => Q.getUsulanSo(U, D)],
@@ -111,6 +127,16 @@ d("K1 · setiap query bisa dieksekusi Postgres (gerbang deploy)", () => {
     const covered = [...NAMES].sort();
     expect(exported.filter((n) => !covered.includes(n)), "query tak tercakup K1").toEqual([]);
   });
+
+  it("getSaldoSnapshotGeneration mengeksekusi SQL baris generation", async () => {
+    // Pointer sentinel membuat reader publik berhenti lebih awal; panggil tahap
+    // generation secara langsung agar PostgreSQL benar-benar memparse query CTE ini.
+    const { getSaldoSnapshotGeneration } = await import("./saldo-snapshot");
+    await expect(
+      getSaldoSnapshotGeneration(U, D, SNAPSHOT_POINTER),
+      "getSaldoSnapshotGeneration: SQL baris snapshot ditolak Postgres",
+    ).resolves.toMatchObject({ status: "not_ready" });
+  }, 30_000);
 
   for (const name of NAMES) {
     it(`${name} dieksekusi tanpa error Postgres`, async () => {

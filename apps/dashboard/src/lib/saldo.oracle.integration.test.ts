@@ -20,8 +20,10 @@ import type { ScopedUnitId } from "./scope-rule";
  * Laporan ini memakai saldo **AKHIR hari**, jadi yang dicocokkan `akhir`.
  * `awal` diuji relasional: saldo awal hari D ≡ saldo akhir hari D−1.
  *
- * Menjalankan implementasi SEBENARNYA (`getSaldoPelanggan` → `qScoped` → RLS),
- * bukan menyalin SQL-nya — supaya perubahan pada query benar-benar tertangkap.
+ * Menjalankan implementasi SEBENARNYA (`getSaldoPelanggan` → snapshot-only
+ * `qScoped` → RLS), bukan menyalin SQL-nya. Gold check ledger-hidup → EasyMax
+ * ditunda ke B5; B4 hanya menilai tanggal yang sudah memiliki snapshot lengkap,
+ * published, dan tervalidasi.
  *
  * Jalan hanya bila SALDO_LIVE_DB=1 & DATABASE_URL di-set DAN unitnya ada beserta
  * datanya. Bila tidak, tiap test melapor **SKIP eksplisit** (`ctx.skip()`), BUKAN
@@ -90,6 +92,12 @@ function expected(unit: number, date: string): Trio {
   return k ? { ...o, ...Object.fromEntries(Object.entries(k).map(([f, v]) => [f, o[f as keyof Trio] + v!])) } : o;
 }
 
+function requireSaldo<T>(value: T | null): T {
+  expect(value).not.toBeNull();
+  if (value === null) throw new Error("snapshot saldo belum siap");
+  return value;
+}
+
 const pool = LIVE ? new Pool({ connectionString: process.env.DATABASE_URL }) : null;
 afterAll(async () => {
   await pool?.end();
@@ -121,8 +129,8 @@ async function scoped<T extends object>(unit: number, sql: string): Promise<T[]>
   }
 }
 
-/** Unitnya ada DAN ledgernya terisi? (kalau tidak, SKIP, bukan PASS) */
-async function ready(unit: number): Promise<boolean> {
+/** Unit, ledger, dan seluruh snapshot yang hendak dibaca sudah siap? */
+async function ready(unit: number, snapshotDates: string | readonly string[] = []): Promise<boolean> {
   if (!pool) return false;
   const { code } = ORACLE[unit]!;
   const u = await pool.query("SELECT unit_id FROM public.unit WHERE code = $1", [code]);
@@ -131,7 +139,25 @@ async function ready(unit: number): Promise<boolean> {
     unit,
     `SELECT count(*)::int AS n FROM public.bppiut WHERE unit_id = ${unit}`,
   );
-  return (c[0]?.n ?? 0) > 0;
+  if ((c[0]?.n ?? 0) === 0) return false;
+
+  const requiredDates = typeof snapshotDates === "string" ? [snapshotDates] : [...snapshotDates];
+  if (requiredDates.length === 0) return true;
+  const published = await scoped<{ asOfDate: string }>(
+    unit,
+    `SELECT to_char(p.as_of_date, 'YYYY-MM-DD') AS "asOfDate"
+       FROM app.saldo_pelanggan_snapshot_pointer p
+       JOIN app.saldo_pelanggan_snapshot_manifest m
+         ON m.unit_id = p.unit_id
+        AND m.as_of_date = p.as_of_date
+        AND m.generation_id = p.generation_id
+      WHERE p.unit_id = ${unit}
+        AND m.status = 'complete'
+        AND m.published
+        AND m.validation_passed`,
+  );
+  const available = new Set(published.map((row) => row.asOfDate));
+  return requiredDates.every((date) => available.has(date));
 }
 
 for (const unit of [UNIT_28, UNIT_IB]) {
@@ -141,19 +167,19 @@ for (const unit of [UNIT_28, UNIT_IB]) {
   d(`Saldo ${nama} (unit ${unit}) — ${dates.length * 3} sel vs oracle EasyMax`, () => {
     for (const date of dates) {
       it(`${date}: ketiga baris EKSAK (saldo akhir hari)`, async (ctx) => {
-        if (!(await ready(unit))) ctx.skip();
+        if (!(await ready(unit, date))) ctx.skip();
         const { getSaldoPelanggan } = await loadQueries();
-        const got = await getSaldoPelanggan(unit as unknown as ScopedUnitId, date);
+        const got = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, date));
         expect(got.akhir).toEqual(expected(unit, date));
       });
     }
 
     it("KONTROL — oracle tanggal lain HARUS tidak cocok", async (ctx) => {
-      if (!(await ready(unit))) ctx.skip();
+      if (!(await ready(unit, dates[1]!))) ctx.skip();
       // Tanpa kontrol ini, "cocok" tak membuktikan apa pun: assertion yang toleran
       // akan cocok juga dengan angka tanggal sebelahnya.
       const { getSaldoPelanggan } = await loadQueries();
-      const got = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[1]!);
+      const got = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[1]!));
       expect(got.akhir).not.toEqual(expected(unit, dates[0]!));
       expect(got.akhir).not.toEqual(expected(unit, dates[2]!));
     }, 30_000);
@@ -164,13 +190,13 @@ for (const unit of [UNIT_28, UNIT_IB]) {
     it(
       "saldo AWAL hari D ≡ saldo AKHIR hari D−1",
       async (ctx) => {
-        if (!(await ready(unit))) ctx.skip();
+        if (!(await ready(unit, dates))) ctx.skip();
         // Invarian yang dulu bikin salah paham: nilai lama SolaMax untuk D sebenarnya
         // benar — tapi untuk D−1. Sekarang keduanya tampil berlabel.
         const { getSaldoPelanggan } = await loadQueries();
         for (let i = 1; i < dates.length; i++) {
-          const a = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i - 1]!);
-          const b = await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i]!);
+          const a = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i - 1]!));
+          const b = requireSaldo(await getSaldoPelanggan(unit as unknown as ScopedUnitId, dates[i]!));
           expect(b.awal).toEqual(a.akhir);
         }
       },
@@ -201,14 +227,14 @@ d("28 Oktober — jejak koreksi pasca-ekspor", () => {
   });
 
   it("REKONSTRUKSI: buang koreksi → mendarat tepat di oracle asli", async (ctx) => {
-    if (!(await ready(UNIT_28))) ctx.skip();
+    if (!(await ready(UNIT_28, "2026-08-04"))) ctx.skip();
     const { getSaldoPelanggan } = await loadQueries();
-    const live = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
+    const live = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
     expect(live.akhir.piutangLokal - 604_500).toBe(ORACLE[UNIT_28]!.oracle["2026-08-04"]!.piutangLokal);
   });
 
   it("HERWIN (21.999.0014, SJENIS 4, bertitik) IKUT di Piutang Online", async (ctx) => {
-    if (!(await ready(UNIT_28))) ctx.skip();
+    if (!(await ready(UNIT_28, "2026-08-04"))) ctx.skip();
     // Regresi nyata pemicu investigasi: filter `sjenis = 3` membuangnya dan Online
     // kurang Rp36.084 setiap hari. Dibuktikan dari data, bukan diasumsikan.
     const { getSaldoPelanggan } = await loadQueries();
@@ -220,7 +246,7 @@ d("28 Oktober — jejak koreksi pasca-ekspor", () => {
           AND trim(b.ckdplg) = '21.999.0014' AND b.dtgl <= '2026-08-04'::date`,
     );
     expect(r[0]!.net).toBe(36_084); // kontrol: pelanggannya memang bersaldo
-    const got = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
+    const got = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
     expect(got.akhir.piutangOnline).toBe(10_796_518);
     expect(got.akhir.piutangOnline - 36_084).not.toBe(10_796_518);
   });
@@ -228,7 +254,7 @@ d("28 Oktober — jejak koreksi pasca-ekspor", () => {
 
 d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
   it("KREDIT pada bucket Online ikut dihitung (28 Oktober kreditnya nol)", async (ctx) => {
-    if (!(await ready(UNIT_IB))) ctx.skip();
+    if (!(await ready(UNIT_IB, "2026-08-01"))) ctx.skip();
     // Online IB: debet 10.505.841 − kredit 9.305.841 = 1.200.000. Kalau `sjnsbp=2`
     // diabaikan pada bucket Online, hasilnya jadi 10.505.841 — bukan 1.200.000.
     const r = await scoped<{ debet: number; kredit: number }>(
@@ -242,13 +268,13 @@ d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
     expect(r[0]!.debet).toBe(10_505_841);
     expect(r[0]!.kredit).toBe(9_305_841); // kontrol: jalur kredit memang ada isinya
     const { getSaldoPelanggan } = await loadQueries();
-    const got = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01");
+    const got = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01"));
     expect(got.akhir.piutangOnline).toBe(1_200_000);
     expect(got.akhir.piutangOnline).not.toBe(10_505_841); // yakni kredit TIDAK diabaikan
   });
 
   it("pecahan ½ rupiah tetap eksak, dan totalnya bulat", async (ctx) => {
-    if (!(await ready(UNIT_IB))) ctx.skip();
+    if (!(await ready(UNIT_IB, "2026-08-01"))) ctx.skip();
     // Hutang IB memuat 4 pelanggan bernilai `,5`; pecahannya saling meniadakan
     // sehingga TOTAL-nya bulat. 28 Oktober seluruhnya bulat → jalur ini tak pernah
     // teruji di sana. Kalau muncul ±0,5 atau ±1, itu bukan "pembulatan kecil".
@@ -271,16 +297,16 @@ d("Imam Bonjol — jalur yang TIDAK tereksekusi di 28 Oktober", () => {
     for (const r of rows) expect(Number.isInteger(r.net)).toBe(false);
 
     const { getSaldoPelanggan } = await loadQueries();
-    const got = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01");
+    const got = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-01"));
     expect(got.akhir.hutangLokal).toBe(-770_002_380);
     expect(Number.isInteger(got.akhir.hutangLokal)).toBe(true);
   });
 
   it("tanda Hutang mengikuti data: IB negatif, 28 Oktober positif", async (ctx) => {
-    if (!(await ready(UNIT_IB)) || !(await ready(UNIT_28))) ctx.skip();
+    if (!(await ready(UNIT_IB, "2026-08-04")) || !(await ready(UNIT_28, "2026-08-04"))) ctx.skip();
     const { getSaldoPelanggan } = await loadQueries();
-    const ib = await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-04");
-    const o28 = await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04");
+    const ib = requireSaldo(await getSaldoPelanggan(UNIT_IB as unknown as ScopedUnitId, "2026-08-04"));
+    const o28 = requireSaldo(await getSaldoPelanggan(UNIT_28 as unknown as ScopedUnitId, "2026-08-04"));
     expect(ib.akhir.hutangLokal).toBeLessThan(0);
     expect(o28.akhir.hutangLokal).toBeGreaterThan(0);
   }, 60_000);

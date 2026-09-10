@@ -72,6 +72,12 @@ describe("buildLaporanModel", () => {
     expect(m.glMonthly.rows).toHaveLength(0);
   });
 
+  it("snapshot saldo belum siap tidak pernah diubah menjadi enam angka nol", () => {
+    const m = buildLaporanModel({ ...raw, saldo: null }, ctx);
+    expect(m.recap.hasSaldo).toBe(false);
+    expect(m.recap.saldoRows).toEqual([]);
+  });
+
   it("Sisa DO tersegmentasi: sisaBerjalan + sisaMacet = sisa; totals ikut", () => {
     const withDo = {
       ...raw,

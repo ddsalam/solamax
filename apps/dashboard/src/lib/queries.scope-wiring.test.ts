@@ -50,6 +50,7 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getEdcForDate", () => Q.getEdcForDate(U, D)],
   ["getEdcBlankCard", () => Q.getEdcBlankCard(U, D)],
   ["getDepositForDate", () => Q.getDepositForDate(U, D)],
+  ["getSaldoSnapshot", () => Q.getSaldoSnapshot(U, D)],
   ["getSaldoPelanggan", () => Q.getSaldoPelanggan(U, D)],
   ["getManualEntries", () => Q.getManualEntries(U, D, "pengeluaran")],
   ["getUsulanSo", () => Q.getUsulanSo(U, D)],
