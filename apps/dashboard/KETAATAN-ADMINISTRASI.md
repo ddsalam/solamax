@@ -432,6 +432,48 @@ sebaliknya.
 
 ---
 
+## 4b · …dan menyatukan VONIS tidak menyatukan MASUKAN (2026-09-11)
+
+Kalimat penutup §4 punya kembaran yang baru terbukti, arahnya terbalik:
+
+> **Menyatukan VONIS tidak menyatukan MASUKANNYA.**
+
+`adminStatus()` memang satu. Tapi **komponen C** yang disuapkan kepadanya hidup
+di **tiga query terpisah**, dan ketiganya menyalin aturan yang sama dengan
+tangan:
+
+| query | dipakai oleh |
+| --- | --- |
+| `getPelangganForDate` | Rincian Penjualan (layar + PDF), Laporan Harian |
+| `getComplianceMatrix` | panel **Ketaatan Administrasi** |
+| `getAdminDays` | anomali / board (se-armada) |
+
+Ketika sumber rupiah voucher diperbaiki (detail `vw_usevouc` → **posting**
+`bppiut` ∪ `bphut`, lihat `getPelangganForDate`), hanya yang pertama disunting.
+Hasilnya: **Rincian dan Ketaatan Administrasi menampilkan H yang berbeda untuk
+hari yang sama.** Bundaran Kotabaru 31-08-2026 — lembar Rincian sudah benar
+sementara panel Ketaatan masih membawa selisih Rp 48.900, cukup untuk
+menyalakan alarm setoran palsu di satu tempat dan tidak di tempat lain.
+
+**Obatnya: `komponenCSql()` di `lib/queries.ts`** — satu fragmen teks SQL, tiga
+pemanggil. Aturan C tidak boleh lagi ditulis ulang di query baru; panggil
+fragmennya.
+
+**Kenapa tidak tertangkap.** Invarian "dua jalur, satu H" SUDAH punya uji —
+`laporan-setoran.integration.test.ts` — dan uji itu justru dirancang persis
+untuk kasus ini. Tapi ia butuh DB live (`SCOPE_LIVE_DB=1` + `DATABASE_URL`) dan
+**CI tidak pernah menyetelnya**, jadi ia tak pernah berbunyi. Penjaga pengganti
+yang jalan tiap commit tanpa DB: `queries.komponen-c.test.ts` — ia membaca TEKS
+SQL ketiga query. Uji merahnya sudah dijalankan pada kode sebelum perbaikan:
+**5 dari 6 gagal**, dan satu yang lulus adalah `getPelangganForDate` yang memang
+sudah benar.
+
+⚠️ Penjaga teks SQL **tidak** menggantikan uji DB-live; ia hanya menjamin
+ketiganya menyebut predikat yang sama. Yang membuktikan angkanya sama tetap
+`laporan-setoran.integration.test.ts` — dan menyalakannya di CI masih terbuka.
+
+---
+
 ## 5 · Batas yang DIKETAHUI
 
 Ditulis supaya tak ada yang mengira indikator ini menjaga lebih dari yang ia jaga.
