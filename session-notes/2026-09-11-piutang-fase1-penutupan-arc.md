@@ -22,14 +22,15 @@ sudah lebih dahulu hidup di produksi sejak promosi PR #328. SHA-256 migrasi
 `0037_saldo_pelanggan_snapshot/migration.sql` tetap beku:
 `54d22821b1338a5ce5c9dfcac440d159e646277a11182e7039fce6ab8ed4bfbd`.
 
-**Yang hidup belum sama dengan yang menyala.** Agent di tujuh mesin SPBU belum
-ditukar, sehingga belum ada `source_cut` nyata yang lengkap dan belum ada
-snapshot produksi yang dapat dipublikasikan. Gerbang transisi B4 membuat
-permukaan agregat lama tetap membaca ledger; karena itu tiga baris RECAP Laporan
-Operasional dan angka piutang modul Keuangan tidak berubah. Layar butir #1 sudah
-terpasang tetapi masih menampilkan **belum siap** di ketujuh unit. Cutover terjadi
-sendiri per unit/tanggal hanya setelah snapshot valid berstatus `complete`
-tersedia.
+**Yang hidup belum sama dengan yang menyala.** Bundle dan proses agent baru
+sudah berjalan di Imam Bonjol; enam mesin SPBU lain belum ditukar. Kedatangan
+`source_cut` Imam Bonjol belum dapat dibedakan dari keadaan cut yang tidak pernah
+tiba, dan ketiga tabel snapshot masih kosong untuk seluruh tujuh unit karena
+builder tidak mempunyai pemicu. Gerbang transisi B4 membuat permukaan agregat
+lama tetap membaca ledger; karena itu tiga baris RECAP Laporan Operasional dan
+angka piutang modul Keuangan tidak berubah. Layar butir #1 masih menampilkan
+**belum siap** di ketujuh unit. Cutover terjadi per unit/tanggal hanya setelah
+snapshot valid berstatus `complete` tersedia.
 
 Butir #2/#3/#4 Dion—tagihan dibuat, dibayar, belum dibayar, dan jatuh tempo—belum
 dimulai. Peringatan atau kebijakan limit/tempo juga belum dimulai. B5a sudah
@@ -301,8 +302,10 @@ belum merupakan SLO produksi.
 
 ### Kemampuan yang terpasang tetapi belum menyala
 
-- **Layar butir #1 dorman di tujuh unit.** Agent lama belum mengirim
-  `source_cut`, sehingga snapshot belum ready dan layar menunjukkan belum siap.
+- **Layar butir #1 dorman di tujuh unit.** Agent baru hidup di Imam Bonjol,
+  tetapi status `source_cut`-nya belum terpisahkan; enam unit lain belum rollout.
+  Tidak ada pemicu builder, ketiga tabel snapshot kosong, dan layar menunjukkan
+  belum siap.
 - **B5a tersegel, oracle 0/6 belum dibuka.** Dua pembacaan `sync_state` stabil,
   300 prediksi per pelanggan, kontrol nol `PLG0458`, dan absennya seksi Online
   Adisucipto sudah tersegel. Tidak ada prediksi yang boleh disunting setelah
@@ -490,6 +493,7 @@ GRANT SELECT ON TABLE
   app.saldo_pelanggan_source_pelanggan,
   app.saldo_pelanggan_source_bppiut,
   app.saldo_pelanggan_source_bphut,
+  app.saldo_pelanggan_build_work,
   app.saldo_pelanggan_snapshot_manifest,
   app.saldo_pelanggan_snapshot_pointer,
   app.saldo_pelanggan_snapshot_row
@@ -519,11 +523,292 @@ terpisah dari paparan `.env.local` yang penundaannya sudah diputuskan sadar.
 Password `dashboard_ro` perlu dirotasi; waktu dan pelaksanaannya tetap keputusan
 Dion. Tidak ada kredensial yang diputar dalam pekerjaan penutupan ini.
 
+## Koreksi penutupan: snapshot belum pernah dipicu
+
+Bagian ini mengoreksi asumsi bahwa menunggu lewat jendela build akan dengan
+sendirinya menghasilkan snapshot. Pemeriksaan produksi dilakukan oleh
+orkestrator pada instance lengkap
+`solamax:asia-southeast2:solamax-pg`, sesudah identitas sistem database
+dipastikan lebih dahulu, memakai `dashboard_app` secara read-only. Pemeriksaan
+itu tidak diulang dari sesi ini.
+
+### Keadaan produksi yang terukur
+
+Ketiga permukaan snapshot kosong untuk seluruh tujuh unit:
+
+| Permukaan | Hasil |
+|---|---:|
+| `app.saldo_pelanggan_snapshot_manifest` | 0 baris |
+| `app.saldo_pelanggan_snapshot_pointer` | 0 baris |
+| `app.saldo_pelanggan_snapshot_row` | 0 baris |
+
+Nol tersebut sah, bukan akibat salah koneksi atau RLS yang diam-diam menutup
+hasil: kontrol positif pada sesi yang sama mengembalikan 7 baris
+`public.unit`, dan `public.bppiut` Imam Bonjol mengembalikan 407.508 baris.
+Dalam kontrak arc ini, awal **generasi build** adalah pembuatan manifest;
+`manifest = 0` berarti tidak ada generasi yang pernah mencapai titik mulai itu.
+Generasi yang sudah membuat manifest lalu gagal meninggalkan status `failed`.
+Nol manifest sendirian tidak membuktikan bahwa CLI worker tidak pernah dipanggil:
+`idle` atau kegagalan sebelum manifest dapat menghasilkan keadaan yang sama.
+Kesimpulan bahwa pemicu terjadwal memang hilang datang dari audit scheduler dan
+call-site di bawah, bukan dari hitungan manifest saja.
+
+Kanari agent tetap berhasil pada bagian yang memang diukur: bundle dan proses
+baru hidup, 14/14 domain maju, serta 1.000 request ingest seluruhnya HTTP 200.
+Snapshot kosong bukan vonis bahwa kanari itu gagal; ia membuktikan bahwa tidak
+ada pemicu pembangun yang berjalan.
+
+### Pemicu memang belum ada
+
+Satu-satunya job terjadwal yang ditemukan adalah `solamax-warm-board` pukul
+06.00 setiap hari. Satu-satunya pemanggil `SnapshotWorkerService.runOnce` adalah
+CLI manual `apps/backend/src/saldo-pelanggan/run-worker.ts`, yang didaftarkan
+sebagai `snapshot:worker` pada `apps/backend/package.json`. Backend tidak
+memasang Nest `ScheduleModule` atau `@Cron`. `setInterval` di worker hanya
+memperbarui heartbeat pekerjaan yang **sudah** memperoleh lease; ia bukan
+scheduler.
+
+Dengan demikian, jendela 02.00–05.00 WIB adalah pagar operasional yang
+diterapkan worker, bukan pemicu yang menjalankan worker. Builder telah
+ter-deploy tetapi tidak ada komponen yang membangunkannya.
+
+### Dua sebab masih belum terpisahkan
+
+Fakta saat ini belum membedakan dua keadaan berikut:
+
+1. `source_cut` Imam Bonjol tiba dan ditangkap, tetapi tidak ada trigger builder;
+2. `source_cut` tidak pernah tiba, dan trigger builder yang hilang adalah cacat
+   kedua yang independen.
+
+Pemisahnya adalah pemeriksaan read-only apakah Imam Bonjol mempunyai
+`app.saldo_pelanggan_source_cycle` sesudah waktu swap
+`2026-09-11T16:03:40Z`. Pemeriksaan ini adalah alasan nyata untuk role
+`solamax_pilot_verify_ro` yang diusulkan di atas. Jangan meminta kredensial
+ingest atau role lain yang mampu menulis produksi untuk menjawabnya.
+
+### Tiga jalur pemicu untuk diputuskan Dion
+
+Tabel ini membandingkan tiga rancangan; tidak ada yang dipilih atau dipasang
+dalam sesi penutupan ini. Pada ketiganya, unique lease di database tetap menjadi
+penjaga concurrency global `1`, sedangkan pagar waktu di worker memakai jam
+database: mulai hanya dalam 02.00–05.00 WIB dan tidak mengambil lease baru sejak
+04.45 WIB.
+
+| Jalur | Kuantifikasi dan concurrency `1` | Pagar 02.00–05.00 | Kegagalan per unit | Kegagalan terlihat |
+|---|---|---|---|---|
+| Cloud Scheduler → endpoint rahasia, mengikuti pola warm-board | 1 endpoint, 1 secret, dan 7 job Scheduler—satu per unit. Baseline sehat perlu sedikitnya 7 invocation. Contoh retry-capable: tiap job menembak setiap 20 menit, digeser 2 menit antarsatuan, dari 02.05 sampai 04.25: 8 invocation/unit atau 56 request per malam. Endpoint tetap memanggil `runOnce` satu unit; unique lease DB membuat panggilan yang bertabrakan berstatus `busy`, bukan builder kedua. | Scheduler membatasi waktu panggil; worker tetap menolak di luar jendela atau sesudah 04.45. Endpoint harus membedakan `done`, `idle`, `busy`, `retry_wait`, dan galat—bukan 2xx generik. | Job per unit memisahkan exception; invocation berikutnya untuk unit yang sama menghidupkan kembali `retry_wait`. Kegagalan satu unit tidak menghentikan jadwal unit lain. | Riwayat Scheduler, status HTTP yang memetakan hasil worker, log terstruktur per unit, dan alarm dead-man bila suatu unit tidak `done` sebelum 05.00. |
+| Cloud Scheduler → scheduled Cloud Run Job yang menjalankan `run-worker` | 1 Scheduler job, 1 Cloud Run Job, `tasks=1`, `parallelism=1`, ditambah wrapper kecil. Baseline sehat adalah 7 pemanggilan `runOnce` berurutan, berbatas buruk `7 × 15 = 105` menit. Wrapper harus mengunjungi lagi unit berstatus `retry_wait` setelah `available_at`, tanpa mengambil lease baru sejak 04.45. Unique lease DB tetap otoritatif bila dua execution bertumpang-tindih. | Scheduler menentukan awal; setiap `runOnce` memeriksa jam DB. Wrapper berhenti mengambil kerja baru pada 04.45 dan selesai paling lambat 05.00. | Wrapper menangkap galat per unit, melanjutkan unit lain, lalu exit nonzero dengan ringkasan bila ada unit yang belum `done`/`idle` sah saat cutoff. | Status execution Cloud Run Job, exit nonzero, log hasil setiap invocation, dan alarm dead-man bila tidak ada execution atau masih ada unit gagal pada 05.00. |
+| Scheduler di dalam proses backend | 0 resource scheduler/job eksternal, tetapi perlu kode scheduler, minimum instance `≥1`, **instance-based billing/CPU selalu dialokasikan**, dan loop retry. Request-based CPU dapat membekukan timer walau instance hangat. Baseline sehat tetap 7 pemanggilan dan berbatas buruk 105 menit; banyak replica boleh bangun, tetapi hanya satu memperoleh unique lease DB. | Scheduler proses menembak dalam jendela; gate worker tetap penjaga akhir dengan jam DB dan batas lease baru 04.45. Scale-to-zero, CPU yang ditrottle di luar request, atau restart dapat membuat tembakan tidak pernah terjadi. | Loop wajib `try/catch` per unit dan kembali ke unit `retry_wait`; satu exception tidak boleh menghentikan enam unit lain. | Log/metric aplikasi per unit serta alarm dead-man wajib; tanpa control-plane execution terpisah, proses yang tidak pernah bangun paling mudah gagal diam-diam. |
+
+Batas bersama ketiga opsi: concurrency lease mencegah dua builder menulis
+bersamaan, tetapi tidak membuktikan pemicu pernah berjalan; jendela waktu
+mencegah pekerjaan baru pada waktu salah, tetapi tidak menjadwalkannya; dan
+retry queue aplikasi tidak menggantikan trigger berikutnya atau alarm atas
+trigger yang sama sekali tidak muncul. Batas retry paling buruk adalah
+`7 unit × 5 attempt × 15 menit = 525 menit`, lebih panjang dari jendela 180
+menit. Tidak satu pun opsi dapat menjanjikan seluruh worst case selesai dalam
+satu malam; pekerjaan yang belum `done` saat cutoff harus terlihat sebagai
+kegagalan/incomplete dan dilanjutkan pada jendela berikutnya, bukan dihijaukan.
+
+### Usul runbook kanari builder satu kali — Imam Bonjol saja
+
+Ini **usul siap-tinjau, bukan perintah untuk dijalankan dari sesi ini**. Dion
+yang memutuskan dan menjalankannya. Tempat yang diusulkan adalah satu Cloud Run
+Job sementara di project `solamax`, region `asia-southeast2`, memakai image
+backend yang sedang dilayani `solamax-ingest-staging`, service account runtime
+yang sama, dan koneksi ke instance lengkap
+`solamax:asia-southeast2:solamax-pg`. Ini menjaga eksekusi di lingkungan
+terkelola dan tidak menyalin secret ke workstation.
+
+Kredensial runtime yang dibutuhkan adalah `DATABASE_URL` dari Secret Manager
+yang memang dipakai backend, karena builder harus menulis source/build,
+manifest, pointer, dan rows secara atomik. Service account runtime membutuhkan
+akses Secret Manager ke secret tersebut serta Cloud SQL Client. **Jangan buat
+grant IAM baru dari runbook ini.** Dion atau release identity yang sudah
+berwenang membuat job tetap; pasangan izin membuat job dan
+`serviceAccountUser` pada identity produksi setara dengan kemampuan menjalankan
+kode arbitrer memakai kewenangan identity tersebut. Bila eksekusi didelegasikan,
+Dion lebih dahulu membuat serta memeriksa job immutable, lalu memberi izin
+run/cancel pada resource itu saja tanpa configuration override. Nilai password
+database tidak perlu diminta atau dicetak. Ini adalah penggunaan kredensial
+tulis oleh builder yang dijalankan Dion, bukan permintaan kredensial produksi
+kepada Codex.
+
+**USUL — JANGAN JALANKAN TANPA PERSETUJUAN DION:**
+
+```bash
+set -euo pipefail
+
+PROJECT_ID=solamax
+REGION=asia-southeast2
+SERVICE=solamax-ingest-staging
+UNIT_ID=1
+INSTANCE=solamax:asia-southeast2:solamax-pg
+RUN_TAG=OWNER_APPROVED_UNIQUE_TAG
+JOB="solamax-snapshot-worker-ib-canary-${RUN_TAG}"
+DB_SECRET_REF=OWNER_APPROVED_SECRET_NAME:OWNER_APPROVED_NUMERIC_VERSION
+
+LATEST="$(gcloud run services describe "$SERVICE" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(status.latestCreatedRevisionName)')"
+SERVING="$(gcloud run services describe "$SERVICE" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(status.traffic[0].revisionName)')"
+PERCENT="$(gcloud run services describe "$SERVICE" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(status.traffic[0].percent)')"
+
+test -n "$LATEST" && test -n "$SERVING" && test -n "$PERCENT"
+test "$LATEST" = "$SERVING"
+test "$PERCENT" = 100
+
+IMAGE="$(gcloud run revisions describe "$SERVING" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(status.imageDigest)')"
+RUNTIME_SA="$(gcloud run revisions describe "$SERVING" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='value(spec.serviceAccountName)')"
+
+test -n "$IMAGE" && test -n "$RUNTIME_SA"
+case "$IMAGE" in *@sha256:*) ;; *) echo 'image belum digest-pinned' >&2; exit 1;; esac
+if gcloud run jobs describe "$JOB" \
+  --project="$PROJECT_ID" --region="$REGION" >/dev/null 2>&1; then
+  echo 'nama job sudah ada; jangan eksekusi job lama' >&2
+  exit 1
+fi
+
+gcloud run jobs create "$JOB" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --image="$IMAGE" --service-account="$RUNTIME_SA" \
+  --set-cloudsql-instances="$INSTANCE" \
+  --set-secrets="DATABASE_URL=${DB_SECRET_REF}" \
+  --command=node \
+  --args="dist/saldo-pelanggan/run-worker.js,${UNIT_ID}" \
+  --tasks=1 --parallelism=1 --max-retries=0 --task-timeout=45m
+
+gcloud run jobs describe "$JOB" \
+  --project="$PROJECT_ID" --region="$REGION" \
+  --format='yaml(spec.template.template.spec)'
+```
+
+`RUN_TAG` harus unik untuk persetujuan ini. `DB_SECRET_REF` adalah **nama dan
+versi numerik** yang Dion setujui setelah memastikan binding-nya sama dengan
+revisi yang menyajikan pilot LIVE; bukan nilai secret. `LATEST = SERVING` dan
+`PERCENT = 100` memakai penjaga yang sama dengan
+`.github/actions/verify-serving-revision/action.yml`, lalu job dipatok ke image
+digest revisi tersebut. Berhenti sesudah `describe` bila image, service account,
+argument unit `1`, instance lengkap, atau referensi secret berbeda dari nilai
+yang disetujui. Sebelum create, pemeriksaan read-only pada koneksi verifikator
+harus mengulang `system_identifier` instance pilot LIVE dan membuktikan
+`unit_id=1` adalah Imam Bonjol (`6478111`).
+
+`tasks=1`, `parallelism=1`, dan `max-retries=0` mencegah duplikasi dari lapisan
+Cloud Run. Timeout 45 menit membatasi keseluruhan proses, termasuk finalisasi
+source cut yang terjadi sebelum attempt builder 15 menit. Eksekusi harus dimulai
+di dalam 02.00–04.45 WIB; gate worker tetap menolak di luar batas itu.
+
+Sesudah Dion menerima hasil `describe`, jalankan dari terminal A dan tunggu
+execution selesai. **USUL — JANGAN JALANKAN TANPA PERSETUJUAN DION:**
+
+```bash
+gcloud run jobs execute "$JOB" \
+  --project="$PROJECT_ID" --region="$REGION" --wait
+
+EXECUTION="$(gcloud run jobs executions list \
+  --job="$JOB" --project="$PROJECT_ID" --region="$REGION" \
+  --sort-by='~metadata.creationTimestamp' --limit=1 \
+  --format='value(metadata.name)')"
+test -n "$EXECUTION"
+
+gcloud logging read \
+  "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${JOB}\" AND labels.\"run.googleapis.com/execution_name\"=\"${EXECUTION}\"" \
+  --project="$PROJECT_ID" --freshness=2h --limit=200 \
+  --order=asc --format='value(textPayload)'
+```
+
+Exit code nol saja **bukan** bukti berhasil: CLI juga dapat keluar nol untuk
+`idle`, `busy`, atau `skipped`. Output JSON harus berstatus `done` dan memuat
+`workId` serta `generationId`. `idle`, `busy`, `skipped`, `superseded`, atau
+`retry_wait` berarti kanari **belum lulus**, walaupun Cloud Run menulis
+`Succeeded`; `dead_letter` keluar nonzero. Tepat satu record JSON worker harus
+ditemukan dalam log execution. Pada `retry_wait`, tunggu sampai `available_at`,
+kemudian jalankan lagi job immutable yang sama di dalam jendela. Berhenti pada
+`done`, `dead_letter`, atau cutoff 04.45; jangan membiarkan status control-plane
+menggantikan hasil worker.
+
+`idle` juga tidak memilih salah satu dari dua sebab awal: `finalizeReady` dapat
+menulis warning ke stderr lalu worker tetap berakhir `idle`, sedangkan work
+`dead_letter` atau `retry_wait` yang belum mencapai `available_at` tidak dapat
+di-lease. Pada `idle`, baca log untuk
+`snapshot source finalization warning:` dan periksa secara read-only status
+`app.saldo_pelanggan_source_cycle` serta state/`last_error`/`available_at` pada
+`app.saldo_pelanggan_build_work` sebelum menyimpulkan cut tidak tiba.
+
+Setelah status `done`, verifikasi dengan role read-only yang diusulkan:
+
+1. ulangi `system_identifier`, set `app.unit_ids` transaction-local ke unit `1`,
+   dan buktikan kontrol positif `public.unit` mengembalikan Imam Bonjol
+   (`6478111`);
+2. ada `source_cycle` Imam Bonjol sesudah `2026-09-11T16:03:40Z`;
+3. manifest untuk `generationId` hasil worker berstatus `complete`, telah
+   dipublikasikan, validasinya lulus, dan `as_of_date`-nya dicatat;
+4. pointer pada **tanggal manifest tersebut** menunjuk generation yang sama;
+5. hitungan baris snapshot sama dengan `manifest.row_count`,
+   `customer_key_count`, dan jumlah pelanggan ternormalisasi unik pada source
+   cut;
+6. layar piutang tanggal manifest benar-benar ready dan keenam total snapshot
+   sama dengan perhitungan legacy/source-cut independen pada **tanggal yang
+   sama**;
+7. sebagai kontrol regresi tambahan, enam nilai RECAP tanggal 9 September 2026
+   tetap persis:
+
+| Baris | Awal hari | Akhir hari |
+|---|---:|---:|
+| Piutang Lokal | Rp 14.747.755.960 | Rp 13.850.356.389 |
+| Piutang Online | Rp 900.000 | Rp 900.000 |
+| Hutang Lokal | (Rp 768.511.557) | (Rp 703.204.678) |
+
+RECAP 9 September yang tetap sama **sendirian bukan bukti jalur snapshot
+terpakai**: bila tanggal manifest berbeda, tanggal 9 September tetap membaca
+legacy. Satu sel pada parity tanggal manifest atau kontrol RECAP bergeser
+berarti berhenti. Jangan menjalankan builder untuk enam unit lain.
+
+Untuk membatalkan execution yang masih berjalan, terminal B menetapkan kembali
+`PROJECT_ID=solamax`, `REGION=asia-southeast2`, dan nama `JOB` unik yang sama,
+lalu mencari nama execution dan membatalkannya. **USUL — JANGAN JALANKAN TANPA
+PERSETUJUAN DION:**
+
+```bash
+gcloud run jobs executions list \
+  --job="$JOB" --project="$PROJECT_ID" --region="$REGION"
+
+gcloud run jobs executions cancel EXECUTION \
+  --project="$PROJECT_ID" --region="$REGION"
+```
+
+Cancel bukan rollback transaksi. Heartbeat berhenti dan lease global akan
+kedaluwarsa sekitar dua menit. Karena reap bersifat per-unit dan terjadi pada
+awal `runOnce`, lease Imam Bonjol yang yatim dapat membuat enam unit lain terus
+memperoleh `busy`. Jangan hapus job setelah cancel. Sesudah lease kedaluwarsa,
+jalankan kembali **job unit 1 yang sama setelah 04.45 WIB**: reap berjalan lebih
+dulu, lalu gate waktu mencegah lease/build baru. Verifikasi read-only pada
+`app.saldo_pelanggan_build_work` bahwa tidak ada lagi state `leased` untuk unit
+1 sebelum job dihapus atau unit lain disentuh. Task timeout menimbulkan kewajiban
+cleanup yang sama.
+
+Publikasi pointer yang atomik mencegah rows parsial menjadi terbaca. Bila
+pointer sudah terbit, cancel sudah terlambat: jangan `DELETE` manual; verifikasi
+parity pada tanggal manifest serta enam nilai RECAP dan hentikan rollout bila
+ada drift. Sesudah kanari dan cleanup lease diterima, Dion dapat menghapus job
+sementara sebagai cleanup control-plane; tidak ada job yang dibuat, dijalankan,
+dibatalkan, atau dihapus dalam sesi penutupan ini.
+
 ## Kondisi penutupan
 
-Arc Fase 1 ditutup dengan kode butir #1 sudah di produksi tetapi rollout sumber
-belum dimulai. Kelanjutan yang sah bukan memperluas implementasi pada branch
-ini, melainkan tindakan Dion pada workbook B5a, kanari satu unit, cleanup
-fixture, dan keputusan governance. Catatan sesi lama tetap dipertahankan sebagai
-bukti per langkah; berkas ini hanya menjadi indeks naratif penutupnya. **Jangan
-mulai pekerjaan baru dari branch penutupan ini.**
+Arc Fase 1 ditutup dengan kode butir #1 sudah di produksi dan bundle baru sudah
+berjalan di satu unit, tetapi builder snapshot belum pernah dipicu. Kelanjutan
+yang sah bukan memperluas implementasi pada branch ini, melainkan keputusan
+Dion atas pemicu, kanari builder satu kali, workbook B5a, cleanup fixture, dan
+governance. Catatan sesi lama tetap dipertahankan sebagai bukti per langkah;
+berkas ini hanya menjadi indeks naratif penutupnya. **Jangan mulai pekerjaan
+baru dari branch penutupan ini.**
