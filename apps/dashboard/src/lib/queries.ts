@@ -1349,13 +1349,56 @@ export async function getCashForDate(unit: ScopedUnitId, date: string): Promise<
 export interface PelangganRow {
   ckdplg: string | null;
   nama: string | null;
+  /** Volume TERPAKAI di pompa (jualplg + detail voucher). */
   liter: number;
+  /** Rupiah TERTAGIH (jualplg + POSTING voucher) — inilah komponen C. */
   rp: number;
+  /**
+   * Rp voucher yang TERPAKAI di pompa tapi tidak terposting ke buku mana pun
+   * (detail − posting). 0 = normal. Positif = BBM keluar tanpa dibebankan ke
+   * siapa pun; negatif = posting melebihi pemakaian. Lihat komentar fungsi.
+   */
+  rpTanpaPosting: number;
 }
 
 /**
- * Seksi 2 Pelanggan (penjualan tempo) = UNION pelanggan_sale ∪ voucher_sale,
- * SUM per CKDPLG, non-batal. C = Σ rp; volume = Σ liter (lihat ADR-001).
+ * Seksi 2 Pelanggan (penjualan tempo).
+ *
+ * **Rupiah = jualplg + POSTING voucher, BUKAN detail pemakaian voucher.**
+ *
+ * Sampai 2026-09-11 fungsi ini menjumlah `voucher_sale.total` (= `vw_usevouc`
+ * `NJUMLAHUSE`, apa yang TERPAKAI di pompa). EasyMax menjumlah apa yang
+ * TERTAGIH: posting belanja voucher di buku `tr_bppiut` (pelanggan kredit,
+ * `vcket` "Voucher Kredit") ∪ `tr_bphut` (pelanggan prabayar, "Voucher Debet").
+ * Keduanya identik selama setiap baris pemakaian terposting — itulah kenapa
+ * rekon Imam Bonjol 14 Jun lolos dan ADR-001 RONDE 3d mengunci sumber yang
+ * salah. Begitu ada pemakaian yang TIDAK terposting, keduanya berpisah.
+ *
+ * Kasus yang menemukannya: Bundaran Kotabaru 2026-08-31, pelanggan BCA
+ * (`PLG0007`). Tujuh baris `vw_usevouc`; enam Pertalite (shift 1 Rp 1.085.600,
+ * shift 2 Rp 1.329.400 — keduanya terposting persis) dan satu baris **3,00 L
+ * PERTAMAX Rp 48.900 tanpa posting sama sekali** (kartu voucher Pertalite
+ * dipakai mengisi Pertamax). SolaMax melaporkan C = 37.892.038; EasyMax
+ * 37.843.138. Selisih 48.900 itu memalsukan alarm kas "setoran melebihi uang
+ * tunai" (Rp 49.496 → Rp 596 setelah koreksi).
+ *
+ * Bukti aturan (mirror, 31 Agu KB): jualplg 4.735.724 + posting dua-buku
+ * 33.107.414 = **37.843.138 = laporan EasyMax, selisih 0**; per pelanggan
+ * hanya BCA yang detail ≠ posting. Sapuan 7 unit sejak 1 Juli: 3 hari-unit
+ * menyimpang (28 Oktober 29-07 Rp 519.600 · KB 06-07 Rp 115.000 · KB 31-08
+ * Rp 48.900) — jarang, tapi setiap kejadian memalsukan alarm kas.
+ *
+ * Batas yang diketahui:
+ * - **LITER tetap dari detail** (`vw_usevouc.liter`) — volume tidak ada di buku.
+ *   Untuk baris menyimpang, liter dan rupiah memang tidak sepadan (BCA: 244,50 L
+ *   terpakai, Rp 2.415.000 tertagih). Itu disengaja; selisihnya dilaporkan lewat
+ *   `rpTanpaPosting` alih-alih disamarkan.
+ * - Posting dijumlah pada sisi **debit saja** (`sjnsbp = 1`) — bentuk yang
+ *   terverifikasi eksak ke laporan. Baris "- Pembalik" (`sjnsbp = 2`) yang
+ *   teramati SELALU `sbatal = 1` sehingga sudah gugur lewat filter batal.
+ *   Netting (`Σ debit − Σ kredit`) belum diuji dan BELUM dipakai: taksonomi
+ *   VCREF Gerbang 0A tidak memastikan bahwa `UV` pada sisi kredit `bphut`
+ *   selalu berarti pembalik (bisa jadi pembelian/top-up voucher).
  */
 export async function getPelangganForDate(
   unit: ScopedUnitId,
@@ -1363,22 +1406,46 @@ export async function getPelangganForDate(
 ): Promise<PelangganRow[]> {
   return qScoped<PelangganRow>(
     unit,
-    `SELECT u.ckdplg,
-            max(u.nama) AS nama,
-            COALESCE(sum(u.liter),0)::float8 AS liter,
-            COALESCE(sum(u.rp),0)::float8 AS rp
-     FROM (
-       SELECT trim(ps.ckdplg) AS ckdplg, ps.vcnmplg AS nama,
-              COALESCE(ps.liter,0) AS liter, COALESCE(ps.total,0) AS rp
+    `WITH jp AS (
+       SELECT trim(ps.ckdplg) AS k, max(ps.vcnmplg) AS nama,
+              COALESCE(sum(ps.liter),0) AS liter, COALESCE(sum(ps.total),0) AS rp
        FROM public.pelanggan_sale ps
        WHERE ps.unit_id = $1 AND ps.business_date = $2::date AND COALESCE(ps.sbatal,0) = 0
-       UNION ALL
-       SELECT trim(vs.ckdplg), vs.vcnmplg,
-              COALESCE(vs.liter,0), COALESCE(vs.total,0)
+       GROUP BY 1
+     ), vd AS (
+       SELECT trim(vs.ckdplg) AS k, max(vs.vcnmplg) AS nama,
+              COALESCE(sum(vs.liter),0) AS liter, COALESCE(sum(vs.total),0) AS rp
        FROM public.voucher_sale vs
        WHERE vs.unit_id = $1 AND vs.business_date = $2::date AND COALESCE(vs.sbatal,0) = 0
-     ) u
-     GROUP BY u.ckdplg
+       GROUP BY 1
+     ), vp AS (
+       SELECT trim(x.ckdplg) AS k, COALESCE(sum(x.njumlah),0) AS rp
+       FROM (
+         SELECT b.ckdplg, COALESCE(b.njumlah,0) AS njumlah
+         FROM public.bppiut b
+         WHERE b.unit_id = $1 AND b.dtgl = $2::date AND COALESCE(b.sbatal,0) = 0
+           AND b.sjnsbp = 1 AND b.vcref LIKE 'UV%'
+         UNION ALL
+         SELECT h.ckdplg, COALESCE(h.njumlah,0)
+         FROM public.bphut h
+         WHERE h.unit_id = $1 AND h.dtgl = $2::date AND COALESCE(h.sbatal,0) = 0
+           AND h.sjnsbp = 1 AND h.vcref LIKE 'UV%'
+       ) x
+       GROUP BY 1
+     ), ks AS (
+       SELECT k FROM jp UNION SELECT k FROM vd UNION SELECT k FROM vp
+     )
+     SELECT ks.k AS ckdplg,
+            COALESCE(jp.nama, vd.nama, m.vcnmplg) AS nama,
+            (COALESCE(jp.liter,0) + COALESCE(vd.liter,0))::float8 AS liter,
+            (COALESCE(jp.rp,0) + COALESCE(vp.rp,0))::float8 AS rp,
+            (COALESCE(vd.rp,0) - COALESCE(vp.rp,0))::float8 AS "rpTanpaPosting"
+     FROM ks
+     LEFT JOIN jp ON jp.k = ks.k
+     LEFT JOIN vd ON vd.k = ks.k
+     LEFT JOIN vp ON vp.k = ks.k
+     LEFT JOIN public.pelanggan_master m
+            ON m.unit_id = $1 AND trim(m.ckdplg) = ks.k
      ORDER BY rp DESC`,
     [unit, date],
   );

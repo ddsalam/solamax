@@ -41,6 +41,41 @@ Prasyarat tahap ini: fixture sintetis B6 sudah dipasang di database uji
 `solamax:asia-southeast2:solamax-pg-rlsstg`, dan alamat-alamat di bawah sudah
 dicatat oleh pembuat fixture. Fixture bukan salinan data produksi.
 
+Status pemasangan terakhir: **11 September 2026 01:27 WIB**, dengan hitungan
+terverifikasi `pointer=2`, `rows=59`, `manifest=3`, `cycle=3`, dan
+`customers=59`. Fixture boleh tinggal paling lama **72 jam**, sehingga harus
+dibersihkan paling lambat **14 September 2026 01:27 WIB** atau segera setelah
+Dion selesai—mana yang lebih dulu.
+
+Jejak tuple logis fixture hanya 10 kB. Ia tidak akan sendiri memenuhi disk 10 GB
+`db-f1-micro` karena datanya tetap dan tidak mempunyai proses penambah baris.
+Risiko bila ditinggalkan justru semantik: layar terus menampilkan data sintetis
+seolah masih menjadi keadaan uji mutakhir, key deterministik membuat pemasangan
+ulang sengaja gagal, dan pemeriksaan berikutnya dapat tercemar.
+
+Sesudah pemeriksaan, dari root repo dengan proxy yang sudah menunjuk
+`solamax:asia-southeast2:solamax-pg-rlsstg` dan URL `psql` DB uji tersedia dalam
+`SOLAMAX_RLSSTG_FIXTURE_URL`, Dion dapat menjalankan satu perintah:
+
+```bash
+psql "${SOLAMAX_RLSSTG_FIXTURE_URL:?kanal fixture DB uji belum disiapkan}" --set=ON_ERROR_STOP=1 --file scripts/piutang-b6/cleanup-rlsstg.sql
+```
+
+Pembersihan terbukti nol hanya bila perintah berakhir sukses dan mencetak tepat
+satu baris hasil ukur
+`B6_CLEANUP_OK pointer=0 rows=0 manifest=0 cycle=0 customers=0 assert_zero=1`.
+Skrip menolak cluster lain, scope tiga unit yang tidak eksak, serta pemasangan
+parsial atau pembersihan kedua; transaksi di-rollback bila jumlah baris yang
+dihapus tidak persis atau bila satu hitungan residu masih bukan nol.
+
+Saat dipasang ulang, ketujuh URL literal di bawah masih mencapai hostname
+kanonik dan mengarah ke login bila belum mempunyai sesi, bukan 404 atau hostname
+lama. Reader dashboard terhadap fixture hidup juga memverifikasi tujuh janji
+datanya: Imam Bonjol siap 54 baris; `NOL/02` ditemukan dengan enam nol; halaman
+kedua berisi 4 baris; Adisucipto siap 5 baris tanpa Online; Bakau belum siap;
+pembacaan antar-unit tetap terisolasi; dan `NOL/02` tersedia untuk detail. Ini
+tidak menggantikan pemeriksaan mata Dion sesudah login.
+
 1. **Keadaan siap dan tata letak.** Buka
    `https://solamax-dashboard-rlsstg-113869564052.asia-southeast2.run.app/keuangan/unit/6478111/piutang/2026-09-09`.
    Yang harus terlihat: judul Daftar Saldo Hutang Piutang per Pelanggan,
