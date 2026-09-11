@@ -221,6 +221,11 @@ liter=Rp/harga; (b) PK `tr_edc` tak bersih → surrogate id + dedup komposit kay
 
 ## Hasil probe RONDE 3d (FASE05e, 2026-06-20) — sumber volume voucher TERKUNCI
 
+> ⛔ **SEBAGIAN DIKOREKSI 2026-09-11.** Kesimpulan "Rp voucher = `vw_usevouc`" di bawah **tidak
+> berlaku lagi**; yang tetap berlaku adalah "volume voucher = `vw_usevouc.liter`". Lihat
+> [§Koreksi 2026-09-11](#koreksi-2026-09-11--rp-voucher-dari-posting-bukan-dari-pemakaian) di
+> akhir berkas.
+
 - **Sumber voucher = `vw_usevouc`** (header `tr_husevouc` 18.303 + detail `tr_dusevouc` 103.513).
   Kolom: `CKDUSEVOUC`, `DTGL` (business-date bersih), `CKDPLG`, `liter`, `NJUMLAHUSE` (Rp), `CKDBBM`,
   `VCNMPLG`, `SBATAL`, `NSHIFT`, `CNOVOUC`. (Bukan `TotalHarga` → query V2 error nama kolom saja.)
@@ -256,3 +261,53 @@ liter=Rp/harga; (b) PK `tr_edc` tak bersih → surrogate id + dedup komposit kay
 3. **Pengeluaran mati?** `MAX(DTGL)` `tr_hkasbank` + cari modul kas 2026 mana pun. Nihil → kunci MANUAL.
 4. **PK `tr_edc`** distinct `CNOTRACE` vs `(Tanggaljam,NoNozzle,CNOTRACE)` → tentukan UNIQUE key.
 5. **Business-date** `DATE(tr_edc.Tanggaljam)`/`tr_bppiut.DTGL` rekon ke PDF; cek spillover shift-3 lewat tengah malam.
+
+## Koreksi 2026-09-11 — Rp voucher dari POSTING, bukan dari pemakaian
+
+**Yang berubah.** Seksi 2 Pelanggan mengambil rupiah voucher dari **posting belanja voucher**
+`tr_bppiut` ∪ **`tr_bphut`** (`SJNSBP=1`, `SBATAL=0`, `VCREF LIKE 'UV%'`), bukan dari
+`vw_usevouc.NJUMLAHUSE`. **Volume tetap** dari `vw_usevouc.liter` — tak ada volume di buku.
+
+**Kenapa RONDE 3d keliru.** Probe V3 menguji `vw_usevouc` terhadap PDF di Imam Bonjol 14 Juni dan
+cocok persis, lalu menyimpulkan `vw_usevouc` = sumber Rp. Yang tidak diuji: hari di mana
+pemakaian voucher **tidak terposting**. Selama setiap baris pemakaian terposting, kedua sumber
+identik — jadi tes itu tidak bisa membedakan keduanya. Aturan posting di PASS-BAR FINAL sempat
+tampak kurang Rp 600.000 dan karena itu ditinggalkan; penyebabnya bukan aturannya melainkan
+**buku yang terlewat**: pelanggan voucher **prabayar** memposting ke `tr_bphut` (`vcket`
+"Pembelanjaan Voucher **Debet**"), bukan ke `tr_bppiut` ("Voucher **Kredit**").
+
+**Bukti (mirror Cloud SQL, Bundaran Kotabaru `unit_id=4`, 2026-08-31):**
+
+| besaran | nilai |
+|---|---:|
+| `jualplg` hidup | 4.735.724 |
+| voucher — detail `vw_usevouc` | 33.156.314 |
+| voucher — posting `bppiut` saja | 32.507.414 |
+| voucher — posting `bppiut ∪ bphut` | **33.107.414** |
+| C usulan = jualplg + posting dua buku | **37.843.138** |
+| C laporan EasyMax (cetak 01-09-2026 14:04) | **37.843.138** — selisih **0** |
+
+Per pelanggan, **tepat satu** yang detail ≠ posting: BCA `PLG0007`, 2.463.900 vs 2.415.000.
+Selisih Rp 48.900 = satu baris **3,00 L PERTAMAX @16.300** yang terpakai lewat kartu voucher
+Pertalite dan tidak pernah dibebankan ke buku mana pun. Enam baris lain (Pertalite) terposting
+persis: shift 1 `UV202608215` 1.085.600, shift 2 `UV202608236` 1.329.400.
+
+**Dampak:** C yang kelebihan menurunkan `E = A − (B+C+D)` dan `H`, sehingga memunculkan alarm kas
+palsu "setoran melebihi uang tunai" (31-08 KB: Rp 49.496 → Rp 596 setelah koreksi).
+
+**Seberapa luas.** Sapuan 7 unit sejak 2026-07-01 menemukan **3 hari-unit** menyimpang, total
+Rp 683.500: 28 Oktober 2026-07-29 (519.600) · Kotabaru 2026-07-06 (115.000) · Kotabaru 2026-08-31
+(48.900). Jarang — tapi tiap kejadian memalsukan alarm kas hari itu.
+
+**Batas yang diketahui.**
+
+- Posting dijumlah **sisi debit saja** (`SJNSBP=1`) — bentuk yang terverifikasi eksak. Netting
+  (`Σ debit − Σ kredit`) **belum dipakai**: taksonomi `VCREF` Gerbang 0A tidak memastikan `UV`
+  di sisi kredit `bphut` selalu berarti pembalik. Seluruh baris "- Pembalik" yang teramati
+  ber-`SBATAL=1`, jadi sudah gugur lewat filter batal.
+- Untuk baris menyimpang, liter dan rupiah **tidak sepadan** (BCA: 244,50 L terpakai vs
+  Rp 2.415.000 tertagih). Disengaja — selisihnya dilaporkan sebagai `rpTanpaPosting` dan ditandai
+  di layar/PDF, bukan disamarkan.
+
+**Sumber kebenaran kode:** `getPelangganForDate` di `apps/dashboard/src/lib/queries.ts`
+(uji regresi `queries.rincian.test.ts`).
