@@ -203,18 +203,79 @@ Agent berjalan **terus-menerus (loop)** lewat Windows Task Scheduler →
 1. **Cadangkan** biner lama (untuk rollback):
    ```bat
    copy /Y C:\solamax-agent\solamax-agent.cjs C:\solamax-agent\solamax-agent.PREV.cjs
+   copy /Y C:\solamax-agent\config.local.json C:\solamax-agent\config.local.PREV.json
    ```
-2. **Timpa HANYA** `solamax-agent.cjs` dengan file baru. **Jangan** sentuh
-   `config.local.json` (berisi password readonly_sync + API key asli) atau
-   `jalankan-agent.bat`.
-3. **RESTART loop:**
+2. **Jangan ekstrak zip langsung ke `C:\solamax-agent`.** Zip rilis memuat
+   `config.local.json` placeholder. Jika diekstrak ke folder hidup, file itu
+   menimpa `unitCode`, API key, password MySQL, backend URL, dan nama database
+   unit; khusus Korek, nilai template `easymax` juga menggantikan
+   `easymax_korek`.
+3. Simpan zip di folder sementara, misalnya `C:\solamax-update`, lalu periksa
+   hash **zip sebelum ekstrak**. Untuk bundle kanari Piutang 11 September 2026:
+   ```bat
+   certutil -hashfile C:\solamax-update\solamax-agent-main-fb2d65c.zip SHA256
+   ```
+   Hasilnya harus persis:
+   ```text
+   6ec8b917909fb903eab4a2ea2007060127914029192c3619af93ccc10062176d
+   ```
+   Nilai ini hanya berlaku untuk bundle kanari bertanggal 11 September 2026.
+   Rilis lain wajib memakai hash tertulis yang diserahkan bersama rilis itu;
+   jangan memakai ulang hash kanari ini.
+4. Ekstrak ke folder sementara baru, misalnya `C:\solamax-update\bundle`, lalu
+   salin dengan perintah berikut. Opsi `/XF` membuat pengecualian config hidup
+   eksplisit dan dapat diulang; jangan menyalin lewat pilihan file manual.
+   ```bat
+   robocopy C:\solamax-update\bundle C:\solamax-agent /E /XF config.local.json /R:1 /W:1
+   if errorlevel 8 exit /b %ERRORLEVEL%
+   ```
+   Kode keluar Robocopy 0–7 bukan kegagalan; kode 8 atau lebih berarti salin
+   gagal dan proses harus berhenti sebelum **Run**.
+5. Sebelum menekan **Run**, periksa config hidup dan API key efektif tanpa
+   mencetak nilainya. Bila Task Scheduler memakai `--config` atau
+   `SOLAMAX_AGENT_CONFIG`, ganti path pada perintah dengan path config efektif:
+   ```bat
+   node -e "const c=require('C:/solamax-agent/config.local.json');const k=process.env.SOLAMAX_API_KEY||(c.backend&&c.backend.apiKey);console.log('unitCode='+c.unitCode);console.log('apiKeyConfigured='+Boolean(typeof k==='string'&&k.trim()&&k!=='dummy-belum-dipakai-sampai-fase-2'));console.log('mysql.database='+(c.mysql&&c.mysql.database))"
+   ```
+   `unitCode` dan `mysql.database` harus cocok dengan unit, serta
+   `apiKeyConfigured=True`. Bila salah atau `False`, **jangan Run**; pulihkan
+   config unit yang dicadangkan.
+6. Periksa hash **`.cjs` setelah disalin**. Untuk bundle kanari yang sama:
+   ```bat
+   certutil -hashfile C:\solamax-agent\solamax-agent.cjs SHA256
+   ```
+   Hasilnya harus persis:
+   ```text
+   bf326a9f3c8ceb2690bbc63c57454d64537dd91ea0510c1fe73b82e7b1af538d
+   ```
+   Hash zip dan `.cjs` memang berbeda. Bandingkan hash zip hanya dengan zip,
+   dan hash `.cjs` hanya dengan `.cjs`; silang-banding memberi alarm palsu.
+7. **RESTART loop:**
    - **Task Scheduler** → task SolaMax agent → klik kanan → **End**.
    - **Task Manager → Details** → akhiri sisa **`node.exe`** yang menjalankan `solamax-agent.cjs`.
    - Task Scheduler → task → **Run**.
-4. **Verifikasi:** buka `C:\solamax-agent\logs\agent-<tgl>.log`, cari baris
+8. **Verifikasi:** buka `C:\solamax-agent\logs\agent-<tgl>.log`, cari baris
    `ingest ok … "domain":"realtank"` (dan **tak ada** `422`).
+9. Setelah verifikasi berhasil dan rollback config tidak lagi diperlukan, hapus
+   salinan kredensial tambahan:
+   ```bat
+   del /Q C:\solamax-agent\config.local.PREV.json
+   ```
 
-**Rollback:** kembalikan `solamax-agent.PREV.cjs` → `solamax-agent.cjs`, lalu ulangi langkah 3.
+**Rollback sebelum langkah 9:** kembalikan `solamax-agent.PREV.cjs` →
+`solamax-agent.cjs`. Bila config sempat tertimpa, kembalikan juga
+`config.local.PREV.json` → `config.local.json`, lalu ulangi langkah 7.
+
+> **Usul runbook onboarding, belum diterapkan:** ubah nama template dalam rilis
+> menjadi `config.local.json.contoh`. Dengan begitu ekstrak langsung tidak dapat
+> menimpa config hidup. Perubahan ini menyentuh kontrak onboarding kanonik dan
+> menunggu keputusan Dion.
+
+Zip kanari yang hash-nya sudah disegel tetap tidak berubah dan masih memuat
+runbook sebelum penguatan ini. Saat memakai zip tersebut, sertakan runbook
+kanonik ini secara terpisah. Penguatan baru otomatis ikut pada build bundle
+berikutnya; jangan membangun ulang zip kanari hanya untuk mengganti dokumentasi,
+karena itu menghasilkan objek dan hash baru.
 
 ### Task bulanan `resync-bulanan.bat` — STANDAR unit kelas NULL-by-default DTGLJAM
 

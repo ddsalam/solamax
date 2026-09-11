@@ -381,6 +381,144 @@ hanya template placeholder, bukan kredensial atau konfigurasi satu unit.
 Bundle yang dikompilasi membawa kontrak `source_cut` B3 dan jalur
 `replace_window`/sapuan `terra_resmi` hasil back-merge.
 
+## Tambahan penutupan sesudah kanari Imam Bonjol
+
+Bagian ini memperbarui keadaan setelah catatan awal ditulis; bagian lain tidak
+ditulis ulang. Dion menukar bundle di Imam Bonjol pada
+`2026-09-11T16:03:40Z`. Bukti yang tersedia: SHA-256 `.cjs` di mesin cocok,
+proses agent baru, 14/14 domain `sync_state` maju, dan 1.000 request ingest sejak
+swap seluruhnya HTTP 200 tanpa 4xx/5xx. Ini bukti negatif yang kuat bahwa
+payload yang diterima tidak rusak, tetapi belum membuktikan field opsional
+`source_cut` benar-benar dikirim.
+
+### Verifikasi DB ditunda secara sadar
+
+`source_cycle` sesudah swap, kelengkapan `pelanggan_master`/`bppiut`/`bphut`,
+generasi snapshot `complete`, dan kontrol negatif enam unit lain **belum diperiksa**.
+`SOLAMAX_PILOT_VERIFY_URL` tidak ada karena kanal read-only dengan
+akses ke schema `app` memang belum pernah dibuat. `dashboard_ro` ditolak pada
+schema tersebut, sedangkan `dashboard_app` hanya boleh membaca tiga permukaan
+snapshot; memakai role `ingest` akan memberi tugas baca kredensial yang mampu
+menulis produksi dan ditolak.
+
+Bukti penentu menunggu sesudah jendela build 02.00–05.00 WIB: enam angka RECAP
+Imam Bonjol tanggal 9 September 2026 harus tetap identik dengan dasar berikut.
+
+| Baris | Awal hari | Akhir hari |
+|---|---:|---:|
+| Piutang Pelanggan Lokal | Rp 14.747.755.960 | Rp 13.850.356.389 |
+| Piutang Pelanggan Online | Rp 900.000 | Rp 900.000 |
+| Hutang Pelanggan Lokal | (Rp 768.511.557) | (Rp 703.204.678) |
+
+Snapshot terbit dengan enam angka identik membuktikan rantai `source_cut` sampai,
+cycle tertangkap, snapshot dibangun dan dipublikasikan, jalur baca memakainya,
+serta nilainya setara ledger pada data nyata. Bila `source_cut` tidak sampai,
+mode gagalnya aman: snapshot tidak terbangun, layar tetap “belum siap”, dan
+RECAP tetap membaca jalur legacy. Satu angka bergeser menghentikan rollout enam
+unit lain.
+
+### Swap bundle tidak boleh menimpa config unit
+
+Zip `solamax-agent-main-fb2d65c.zip` memuat `config.local.json` placeholder.
+Ekstrak zip ke folder sementara, lalu salin semua file **kecuali**
+`config.local.json` ke `C:\solamax-agent`. Sebelum Task Scheduler menekan Run,
+verifikasi `unitCode`, keberadaan `apiKey` tanpa mencetak nilainya, dan
+`mysql.database`; Korek harus tetap memakai `easymax_korek`, bukan nilai template
+`easymax`.
+
+Dua checksum menjaga objek yang berbeda:
+
+| Objek | Saat diperiksa | SHA-256 |
+|---|---|---|
+| `solamax-agent-main-fb2d65c.zip` | sebelum ekstrak | `6ec8b917909fb903eab4a2ea2007060127914029192c3619af93ccc10062176d` |
+| `C:\solamax-agent\solamax-agent.cjs` | sesudah salin | `bf326a9f3c8ceb2690bbc63c57454d64537dd91ea0510c1fe73b82e7b1af538d` |
+
+Menyilang kedua hash menimbulkan alarm palsu. Usul untuk arc onboarding:
+ganti nama template menjadi `config.local.json.contoh` agar ekstraksi tidak
+dapat menimpa config hidup. Ini usul, bukan perubahan yang diterapkan, dan
+keputusannya milik Dion.
+
+### Sapuan `terra_resmi` belum pernah hidup di produksi
+
+Perbaikan #324 masih inert karena tiga lapis yang harus dibaca bersama:
+
+1. `apps/agent/src/config.ts` memberi
+   `terraResmiAutoSweepEnabled` default `false`; kunci yang hilang juga menjadi
+   `false`.
+2. `apps/agent/src/sync.ts` sengaja mengeluarkan `terra_resmi` dari scheduler
+   sampai tangga rollout per unit mengaktifkan flag. Opt-in ini disengaja karena
+   sapuan menghapus baris yang lenyap di sumber.
+3. Kode #324 mendarat di `main` pada 7 September, tetapi bundle agent baru
+   pertama kali ditukar di produksi pada kanari Imam Bonjol malam 11 September.
+   Sebelum itu kodenya belum ada di mesin; sesudah swap, config lama Imam Bonjol
+   hampir pasti tidak mempunyai kunci baru dan tetap memakai default `false`.
+
+Akibatnya, perbaikan penghapusan permanen sesi tera di POS—yang membutuhkan satu
+arc untuk ditemukan dan back-merge #334 untuk dipertahankan—belum pernah
+berjalan di produksi. Jangan menyalakannya dalam arc snapshot. Jadikan aktivasi
+arc terpisah setelah kanari snapshot tuntas: periksa flag setiap unit, lakukan
+pratinjau selisih sumber-versus-Postgres, aktifkan satu unit, amati satu siklus
+off-peak dan hasil hapusnya, lalu lanjutkan per unit hanya setelah hasilnya
+diterima.
+
+Pemeriksaan read-only di mesin, tanpa mengubah config. Bila Task Scheduler
+memakai `--config` atau `SOLAMAX_AGENT_CONFIG`, ganti path di bawah dengan path
+config efektif yang dipakai proses agent:
+
+```powershell
+powershell -NoProfile -Command "$s=[IO.File]::ReadAllText('C:\solamax-agent\config.local.json');$m=[regex]::Match($s,'["]terraResmiAutoSweepEnabled["]\s*:\s*(true|false)',[Text.RegularExpressions.RegexOptions]::IgnoreCase);if($m.Success){$m.Groups[1].Value}else{'MISSING => effective false'}"
+```
+
+### Usul role verifikasi khusus, belum dijalankan
+
+Usulkan role login tersendiri `solamax_pilot_verify_ro` dengan
+`NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`, tanpa
+keanggotaan pada role tulis. Nama tersebut adalah nama usulan; nama final dan
+secret ditentukan Dion. Pembuatan login adalah langkah owner dan sengaja tidak
+ada pada blok grant berikut, yang baru dijalankan setelah role final ada. Grant
+minimum siap-tinjau berikut cukup untuk pemeriksaan pasca-swap; **jangan
+jalankan dari sesi ini**:
+
+```sql
+ALTER ROLE solamax_pilot_verify_ro SET default_transaction_read_only = on;
+GRANT USAGE ON SCHEMA public, app TO solamax_pilot_verify_ro;
+GRANT SELECT (unit_id, code, name) ON public.unit
+TO solamax_pilot_verify_ro;
+GRANT SELECT ON TABLE
+  public.sync_state,
+  app.saldo_pelanggan_source_cycle,
+  app.saldo_pelanggan_source_pelanggan,
+  app.saldo_pelanggan_source_bppiut,
+  app.saldo_pelanggan_source_bphut,
+  app.saldo_pelanggan_snapshot_manifest,
+  app.saldo_pelanggan_snapshot_pointer,
+  app.saldo_pelanggan_snapshot_row
+TO solamax_pilot_verify_ro;
+```
+
+Grant kolom pada `public.unit` sengaja tidak mencakup `api_key_hash`; uji penerimaan
+role harus membuktikan pembacaan kolom itu ditolak. `public.unit` memang tidak
+terkena RLS, sehingga grant kolom ini memperlihatkan identitas seluruh unit tetapi
+tidak hash autentikasinya. Tabel `app.saldo_pelanggan_*` tetap terkena FORCE RLS.
+
+Verifikator harus membuka `BEGIN READ ONLY` dan menetapkan `app.unit_ids` secara
+transaction-local ke himpunan unit yang sedang diaudit. Sebelum menerima hasil
+nol sebagai kontrol negatif, buktikan dalam transaksi yang sama bahwa
+`current_setting('app.unit_ids', true)` persis berisi himpunan yang dimaksud dan
+`public.sync_state` mengembalikan baris untuk unit-unit itu. Baru setelah kontrol
+positif tersebut lulus, nol baris pada tabel sumber/snapshot menjadi bukti yang
+sah; unset atau nilai malformed sendiri juga fail-closed ke nol baris dan tidak
+boleh disalahartikan sebagai kontrol negatif yang lulus. Usul ini mengubah model
+akses produksi dan sepenuhnya menunggu keputusan Dion.
+
+### Paparan kredensial terpisah
+
+Saat menyiapkan verifikasi, orkestrator mencetak password role `dashboard_ro`
+ke transkrip. Ini kesalahan orkestrator, bukan Dion dan bukan Codex, serta
+terpisah dari paparan `.env.local` yang penundaannya sudah diputuskan sadar.
+Password `dashboard_ro` perlu dirotasi; waktu dan pelaksanaannya tetap keputusan
+Dion. Tidak ada kredensial yang diputar dalam pekerjaan penutupan ini.
+
 ## Kondisi penutupan
 
 Arc Fase 1 ditutup dengan kode butir #1 sudah di produksi tetapi rollout sumber
