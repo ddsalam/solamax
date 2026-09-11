@@ -156,6 +156,11 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
   const B = terra.reduce((s, r) => s + r.rp, 0);
   const pelLiter = pelanggan.reduce((s, r) => s + r.liter, 0);
   const C = pelanggan.reduce((s, r) => s + r.rp, 0);
+  // Pemakaian voucher yang tidak terposting ke buku mana pun — BBM keluar tanpa
+  // dibebankan. Bukan komponen C (EasyMax pun tak menagihnya); dilaporkan agar
+  // tak hilang diam-diam. Lihat getPelangganForDate.
+  const pelTanpaPosting = pelanggan.reduce((s, r) => s + (r.rpTanpaPosting ?? 0), 0);
+  const pelTanpaPostingN = pelanggan.filter((r) => (r.rpTanpaPosting ?? 0) !== 0).length;
   const D = edc.reduce((s, r) => s + r.rp, 0);
   const depTotal = deposit.reduce((s, r) => s + r.rp, 0);
   const F = pendapatanLain.reduce((s, r) => s + r.amount, 0);
@@ -216,10 +221,16 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
     {
       num: "3",
       title: "PELANGGAN",
-      meta: "penjualan tempo (RFID/deposit ⊎ voucher)",
+      meta:
+        pelTanpaPosting !== 0
+          ? `penjualan tempo (RFID/deposit ⊎ voucher) · ⚠ voucher terpakai tanpa posting ${rp(pelTanpaPosting)} (${pelTanpaPostingN} plg, di luar total)`
+          : "penjualan tempo (RFID/deposit ⊎ voucher)",
       rows: pelanggan.map((r, i) => ({
         no: String(i + 1),
-        ket: r.nama ?? r.ckdplg ?? "—",
+        ket:
+          (r.rpTanpaPosting ?? 0) !== 0
+            ? `${r.nama ?? r.ckdplg ?? "—"} · ⚠ ${rp(r.rpTanpaPosting)} tanpa posting`
+            : (r.nama ?? r.ckdplg ?? "—"),
         vol: idn(r.liter, 2),
         rpv: rp(r.rp),
       })),

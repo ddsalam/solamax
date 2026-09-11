@@ -25,16 +25,37 @@ const U = 6478 as unknown as ScopedUnitId;
 describe("F1c queries: scoped ($1=unit) + schema-qualified", () => {
   beforeEach(() => q.mockClear());
 
-  it("getPelangganForDate: UNION sale∪voucher, non-batal, scoped", async () => {
+  it("getPelangganForDate: liter dari detail, RUPIAH dari POSTING dua buku, scoped", async () => {
     await getPelangganForDate(U, "2026-06-14");
     const [sql, params] = q.mock.calls[0]!;
     expect(sql).toContain("public.pelanggan_sale");
     expect(sql).toContain("public.voucher_sale");
-    expect(sql).toContain("UNION ALL");
+    // Rupiah voucher HARUS datang dari posting di KEDUA buku — bukan dari
+    // voucher_sale.total. Regresi 2026-09-11 (BCA 31-08, Rp 48.900).
+    expect(sql).toContain("public.bppiut");
+    expect(sql).toContain("public.bphut");
+    expect(sql).toMatch(/vcref LIKE 'UV%'/);
+    expect(sql).toMatch(/sjnsbp = 1/);
+    // C = jualplg + posting; detail voucher HANYA menyumbang liter + selisih.
+    expect(sql).toMatch(/COALESCE\(jp\.rp,0\) \+ COALESCE\(vp\.rp,0\)/);
+    expect(sql).toMatch(/COALESCE\(jp\.liter,0\) \+ COALESCE\(vd\.liter,0\)/);
+    expect(sql).toMatch(/COALESCE\(vd\.rp,0\) - COALESCE\(vp\.rp,0\)/);
     expect(sql).toMatch(/COALESCE\(ps\.sbatal,0\) = 0/);
     expect(sql).toMatch(/COALESCE\(vs\.sbatal,0\) = 0/);
+    expect(sql).toMatch(/COALESCE\(b\.sbatal,0\) = 0/);
+    expect(sql).toMatch(/COALESCE\(h\.sbatal,0\) = 0/);
     expect(sql).toContain("unit_id = $1");
     expect(params).toEqual([U, "2026-06-14"]);
+  });
+
+  it("getPelangganForDate: TIDAK menjumlah voucher_sale.total ke rupiah", async () => {
+    // Penjaga arah-balik: bentuk lama `sum(u.rp)` atas UNION ALL dua tabel
+    // penjualan mengembalikan bug 31-08. Kalau seseorang menuliskannya lagi,
+    // uji ini merah.
+    await getPelangganForDate(U, "2026-06-14");
+    const [sql] = q.mock.calls[0]!;
+    expect(sql).not.toMatch(/COALESCE\(vs\.total,0\)\s*(?:AS\s+rp)?\s*$/m);
+    expect(sql).not.toMatch(/sum\(u\.rp\)/);
   });
 
   it("getEdcForDate: public.edc, blank-card DIKECUALIKAN, join master card", async () => {
