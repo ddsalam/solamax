@@ -1114,6 +1114,70 @@ export async function getAvgDailySales(
 // Kepatuhan & kas (struktur lama dipertahankan)
 // ---------------------------------------------------------------------------
 
+/**
+ * Fragmen SQL komponen **C (Pelanggan)** — SATU aturan untuk SEMUA pemakainya.
+ *
+ * Aturan (lihat `getPelangganForDate` untuk bukti & riwayatnya):
+ * **C = `pelanggan_sale` (detail, non-batal) + POSTING voucher `bppiut` ∪ `bphut`**
+ * (`sjnsbp = 1`, `sbatal = 0`, `vcref LIKE 'UV%'`). `voucher_sale` **tidak lagi
+ * menyumbang rupiah** — ia hanya sumber LITER, dan komponen C tak memakai liter.
+ *
+ * ⚠️ **Kenapa fragmen, bukan disalin.** Sampai 2026-09-11 aturan C hidup di TIGA
+ * tempat: `getPelangganForDate` (Rincian + Laporan), `getComplianceMatrix`
+ * (panel Ketaatan Administrasi), dan `getAdminDays` (anomali/board). Perbaikan
+ * aturan voucher hari itu hanya menyentuh yang pertama, sehingga **Rincian dan
+ * Ketaatan Administrasi menampilkan H yang berbeda untuk hari yang sama**
+ * (KB 31-08: Rincian benar, panel Ketaatan masih memakai selisih Rp 48.900 lama).
+ * KETAATAN-ADMINISTRASI.md §"SATU pembuat vonis" menjamin *aturan vonisnya*
+ * tunggal — bukan *masukannya*. Ini menutup lubang itu: satu sumber teks SQL,
+ * tiga pemanggil.
+ *
+ * ⚠️ **Bentuk argumennya dipaksa oleh penjaga `nama-tabel.guard.test.ts`.**
+ * Penjaga itu memotong sumber pada backtick dan memeriksa tiap literal secara
+ * terpisah, jadi (a) pemanggil tak boleh memakai template literal bersarang —
+ * itu memecah kueri induknya sehingga nama CTE-nya hilang dan `a`/`b`/`c`
+ * dilaporkan sebagai tabel tak dikenal; dan (b) argumen tak boleh memuat
+ * FROM <cte> — string berkutip apa pun yang memuatnya dipindai sendirian,
+ * tanpa definisi CTE-nya. Karena itu batas tanggal diserahkan sebagai
+ * **ekspresi tanpa FROM**, bukan sebagai sub-kueri ke CTE rentang.
+ * (Komentar ini sengaja tak memakai backtick: penjaga itu memindai teks
+ * berkas mentah, jadi contoh SQL di dalam backtick pun ikut dinilai.)
+ *
+ * @param unitPred predikat unit, mis. `"unit_id = $1"` atau `"unit_id = ANY($1::int[])"`
+ * @param d0       ekspresi SQL batas bawah inklusif (tanpa `FROM`)
+ * @param d1       ekspresi SQL batas atas inklusif (tanpa `FROM`)
+ * @param perUnit  true → hasil ber-`unit_id` (GROUP BY 1,2); false → per tanggal saja
+ */
+function komponenCSql(
+  unitPred: string,
+  d0: string,
+  d1: string,
+  perUnit: boolean,
+): string {
+  const rentang = (kolomTanggal: string) => `${kolomTanggal} BETWEEN ${d0} AND ${d1}`;
+  const pilih = perUnit ? "unit_id, " : "";
+  const groupDalam = perUnit ? "GROUP BY 1,2" : "GROUP BY 1";
+  const pilihLuar = perUnit ? "unit_id, d, sum(v) AS v" : "d, sum(v) AS v";
+  return `SELECT ${pilihLuar} FROM (
+             SELECT ${pilih}business_date AS d, COALESCE(total,0) AS v
+               FROM public.pelanggan_sale
+              WHERE ${unitPred} AND COALESCE(sbatal,0)=0
+                AND ${rentang("business_date")}
+             UNION ALL
+             SELECT ${pilih}dtgl AS d, COALESCE(njumlah,0)
+               FROM public.bppiut
+              WHERE ${unitPred} AND COALESCE(sbatal,0)=0
+                AND sjnsbp = 1 AND vcref LIKE 'UV%'
+                AND ${rentang("dtgl")}
+             UNION ALL
+             SELECT ${pilih}dtgl AS d, COALESCE(njumlah,0)
+               FROM public.bphut
+              WHERE ${unitPred} AND COALESCE(sbatal,0)=0
+                AND sjnsbp = 1 AND vcref LIKE 'UV%'
+                AND ${rentang("dtgl")}
+           ) u ${groupDalam}`;
+}
+
 export interface ComplianceDay {
   d: string;
   shifts: number;
@@ -1158,15 +1222,12 @@ export async function getComplianceMatrix(
             WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0)=0
               AND t.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
             GROUP BY 1),
-     c AS (SELECT d, sum(v) AS v FROM (
-             SELECT ps.business_date AS d, COALESCE(ps.total,0) AS v FROM pelanggan_sale ps
-              WHERE ps.unit_id = $1 AND COALESCE(ps.sbatal,0)=0
-                AND ps.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
-             UNION ALL
-             SELECT vs.business_date, COALESCE(vs.total,0) FROM voucher_sale vs
-              WHERE vs.unit_id = $1 AND COALESCE(vs.sbatal,0)=0
-                AND vs.business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
-           ) u GROUP BY 1),
+     c AS (${komponenCSql(
+       "unit_id = $1",
+       "(now() AT TIME ZONE '" + TZ + "')::date - ($2::int - 1)",
+       "(now() AT TIME ZONE '" + TZ + "')::date",
+       false,
+     )}),
      dd AS (SELECT e.business_date AS d, sum(COALESCE(e.total,0)) AS v
               FROM edc e
              WHERE e.unit_id = $1 AND e.ckdkartu IS NOT NULL AND trim(e.ckdkartu) <> ''
@@ -1244,14 +1305,12 @@ export async function getAdminDays(
      b AS (SELECT unit_id, business_date AS d, sum(COALESCE(ntotal,0)) AS v FROM terra_resmi
             WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
               AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2),
-     c AS (SELECT unit_id, d, sum(v) AS v FROM (
-             SELECT unit_id, business_date AS d, COALESCE(total,0) AS v FROM pelanggan_sale
-              WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
-                AND business_date BETWEEN $2::date AND $3::date
-             UNION ALL
-             SELECT unit_id, business_date, COALESCE(total,0) FROM voucher_sale
-              WHERE unit_id = ANY($1::int[]) AND COALESCE(sbatal,0)=0
-                AND business_date BETWEEN $2::date AND $3::date) u GROUP BY 1,2),
+     c AS (${komponenCSql(
+       "unit_id = ANY($1::int[])",
+       "$2::date",
+       "$3::date",
+       true,
+     )}),
      dd AS (SELECT unit_id, business_date AS d, sum(COALESCE(total,0)) AS v FROM edc
              WHERE unit_id = ANY($1::int[]) AND ckdkartu IS NOT NULL AND trim(ckdkartu) <> ''
                AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2),
