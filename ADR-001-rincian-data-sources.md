@@ -356,3 +356,39 @@ EasyMax menaruh Rp 439.500 di baris PT Cahaya Abda sedangkan SolaMax menaruhnya 
 
 **Sumber kebenaran kode:** `PELANGGAN.orphanSql` + `mapOrphan` (`apps/agent/src/domains.ts`),
 uji `apps/agent/src/domains.yatim.test.ts`.
+
+## Koreksi 2026-09-12 (malam) — voucher: posting PER REF dengan cadangan detail
+
+**Aturan final seksi Pelanggan, terbukti EKSAK ke laporan EasyMax:**
+
+```
+C = pelanggan_sale non-batal (termasuk baris YATIM ckdplg NULL)
+  + voucher PER REF: posting hidup bila ada, cadangan DETAIL bila tidak
+```
+
+**Kenapa bukan posting saja** (aturan 2026-09-11). EasyMax menulis ulang posting setiap kali
+laporan dicetak (pola posting + `- Pembalik`). Sebuah ref bisa berakhir **tanpa baris posting
+hidup** padahal transaksinya sah, dan laporan EasyMax tetap menghitungnya dari detailnya. Pada KB
+31-08 ada **lima** ref seperti itu senilai **Rp 1.987.978** — persis lubang yang tersisa.
+
+**Kenapa bukan detail saja.** Itu mengembalikan cacat 2026-09-11: baris voucher yang terpakai tapi
+tak pernah dibebankan (3 L Pertamax BCA Rp 48.900) ikut terhitung.
+
+⚠️ **Cadangan detail SENGAJA tanpa filter `sbatal`.** Empat dari lima ref tersebut juga ber-
+`sbatal=1` pada detailnya; menyaringnya menghilangkan **Rp 1.771.478**. Filter batal tetap berlaku
+pada `pelanggan_sale` dan pada sisi posting.
+
+**Bukti (mirror, unit 4, 2026-08-31, SQL produksi yang benar-benar dihasilkan fungsinya):**
+
+| | SolaMax | EasyMax | selisih |
+|---|---:|---:|---:|
+| Rupiah | **37.843.138** | 37.843.138 | **0** |
+| Liter | **2.448,06** | 2.448,06 | **0** |
+| Baris cocok | **28 / 35** | | |
+
+Jalur Ketaatan (`komponenCSql`) diuji terpisah dan juga memulangkan **37.843.138**.
+
+**Sisa yang diketahui.** Enam pelanggan masih di bawah nilai EasyMax karena uangnya duduk di baris
+kumpulan yatim (Rp 3.450.504 / 306,69 L): DKP Sekretariat, DLH PYPS, PT Cahaya Abda, DKUMP Kota,
+Emporium, PT Persada. Totalnya benar; atribusinya belum. Menutupnya butuh `CRFID` pada baris yatim
+`tr_djualplg` + master kartu — belum disinkron.
