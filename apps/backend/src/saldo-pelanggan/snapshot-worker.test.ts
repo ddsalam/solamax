@@ -76,7 +76,7 @@ describe("snapshot worker durable queue", () => {
     expect(LEASE_WORK_SQL).toContain("FOR UPDATE OF w SKIP LOCKED");
     expect(LEASE_WORK_SQL).toContain("unit_id = $1::smallint");
     expect(LEASE_WORK_SQL).toContain("Asia/Pontianak");
-    expect(LEASE_WORK_SQL).toContain("< 285");
+    expect(LEASE_WORK_SQL).toContain("< 1380");
     expect(LEASE_WORK_SQL).toContain("g.database_bytes < 9000000000");
     expect(LEASE_WORK_SQL).toContain("state = 'leased'");
     expect(LEASE_WORK_SQL).toContain("attempt_count = attempt_count + 1");
@@ -97,7 +97,7 @@ describe("snapshot worker durable queue", () => {
   });
 
   it("stops at the operational gate before leasing", async () => {
-    const { service, builder, sourceCapture, txQuery } = harness({ gateMinutes: 300 });
+    const { service, builder, sourceCapture, txQuery } = harness({ gateMinutes: 1440 });
     await expect(service.runOnce(1, "worker-1")).resolves.toEqual({
       status: "skipped",
       reason: "outside_build_window",
