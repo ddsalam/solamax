@@ -11,6 +11,8 @@ name: Deploy backend
 # Migrasi dijalankan sebagai role `ingest` (pemilik DDL sejak RLS 0016) via
 # Cloud SQL Auth Proxy di runner — cermin proses manual yang sudah terbukti
 # (apps/backend/DEPLOY-GCP.md), kini terstruktur + guard salah-target.
+# Deploy backend juga menegakkan timeout 20 menit dan binding Secret Manager
+# untuk endpoint pemicu snapshot. Cloud SQL dan scaling service tetap terjaga.
 
 on:
   push:
@@ -126,12 +128,14 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+      - name: Deploy image + konfigurasi endpoint snapshot
         run: |
           # Label rls-aware diturunkan dari source backend (ingest.service.ts).
           RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
+            --timeout=20m \
+            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest \
             --update-labels rls-aware=${RLS_AWARE}
       # WAJIB mendahului health check: `curl $URL/health` menguji revisi yang SEDANG
       # menyajikan — yang bisa saja revisi LAMA — jadi tanpa guard ini ia hijau justru
@@ -191,11 +195,13 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Deploy IMAGE-ONLY (env/secrets/cloudsql/scaling terjaga)
+      - name: Deploy image + konfigurasi endpoint snapshot
         run: |
           RLS_AWARE=$(grep -q "set_config('app.unit_ids'" apps/backend/src/ingest/ingest.service.ts && echo 1 || echo 0)
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
+            --timeout=20m \
+            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest \
             --update-labels rls-aware=${RLS_AWARE}
       # Insiden 2026-08-05→07 terjadi PERSIS di sini: traffic pilot ter-pin, deploy
       # membuat revisi baru tanpa memindahkan traffic, exit 0, job hijau, ~30 jam

@@ -44,7 +44,9 @@ migrasi via composite action [`prisma-migrate`](.github/actions/prisma-migrate/a
 2. Puas dengan hasil di rlsstg → PR **`staging` → `main`**. Merge ⇒ pipeline pilot
    jalan sampai gate `pilot`, lalu **berhenti menunggu approval**.
 3. Klik approve (reviewer: ddsalam). Backend: `prisma migrate deploy` ke DB live harus
-   **lulus penuh sebelum** revisi baru menerima traffic. Dashboard: deploy image-only.
+   **lulus penuh sebelum** revisi baru menerima traffic. Dashboard: deploy image-only;
+   backend juga menegakkan timeout dan binding secret endpoint snapshot yang tercatat
+   di workflow.
 
 ## ⚠️ Rollback memasang PIN — dan pin menelan deploy berikutnya secara senyap
 
@@ -92,7 +94,9 @@ run berikutnya melanjutkan dari migrasi yang belum ter-apply.
   menambah migrasi.
 - **Label `rls-aware` diturunkan dari source** oleh CD (dashboard: `src/lib/db.ts`;
   backend: `src/ingest/ingest.service.ts`), tidak pernah di-set manual.
-- **Deploy image-only** — env/secrets/cloudsql/scaling service tidak disentuh pipeline.
+- **Konfigurasi deploy dibatasi** — dashboard tetap image-only. Backend menegakkan
+  image, label `rls-aware`, timeout request, dan binding secret endpoint snapshot;
+  Cloud SQL, scaling, serta konfigurasi lain tidak disentuh pipeline.
 - **Auth WIF** (tanpa SA key); SA deploy `gh-deploy-dashboard@…` (nama historis —
   kini men-deploy kedua app).
 

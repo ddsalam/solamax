@@ -52,6 +52,11 @@ export type SnapshotWorkerResult =
   | { status: "superseded"; workId: string }
   | { status: "retry_wait" | "dead_letter"; workId: string; error: string };
 
+export interface SnapshotWorkerRunOptions {
+  /** Absolute request deadline supplied by an HTTP/control-plane caller. */
+  attemptDeadlineEpochMs?: number;
+}
+
 function dateText(value: Date | string): string {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }
@@ -154,7 +159,11 @@ export class SnapshotWorkerService {
    * One invocation leases and executes at most one item for one explicit unit.
    * Database uniqueness on `state='leased'` is the cross-instance global-1 net.
    */
-  async runOnce(unitId: number, leaseOwner: string): Promise<SnapshotWorkerResult> {
+  async runOnce(
+    unitId: number,
+    leaseOwner: string,
+    options: SnapshotWorkerRunOptions = {},
+  ): Promise<SnapshotWorkerResult> {
     if (!Number.isInteger(unitId) || unitId < -32_768 || unitId > 32_767) {
       throw new Error("unitId must be a SMALLINT");
     }
@@ -206,8 +215,10 @@ export class SnapshotWorkerService {
           leaseOwner,
         },
         {
-          attemptDeadlineEpochMs:
+          attemptDeadlineEpochMs: Math.min(
             Date.now() + SNAPSHOT_OPERATIONAL_LIMITS.attemptSeconds * 1_000,
+            options.attemptDeadlineEpochMs ?? Number.POSITIVE_INFINITY,
+          ),
         },
       );
       if (heartbeatFailure) {
