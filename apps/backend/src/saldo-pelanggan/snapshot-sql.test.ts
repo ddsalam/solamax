@@ -28,10 +28,9 @@ describe("saldo pelanggan snapshot operational contract", () => {
     expect(SNAPSHOT_FORMULA_VERSION).toBe("saldo-pelanggan-v1");
     expect(SNAPSHOT_OPERATIONAL_LIMITS).toEqual({
       timezone: "Asia/Pontianak",
-      // SEMENTARA 2026-09-12: kembalikan ke 120 / 300 / 285 bersama config.
-      buildWindowStartMinutes: 0,
-      buildWindowEndMinutes: 1440,
-      latestLeaseMinutes: 1380,
+      buildWindowStartMinutes: 120,
+      buildWindowEndMinutes: 300,
+      latestLeaseMinutes: 285,
       globalConcurrency: 1,
       databaseReviewBytes: 9_000_000_000,
       leaseSeconds: 120,
