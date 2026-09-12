@@ -53,15 +53,21 @@ describe("komponen C — satu aturan di tiga query", () => {
     });
   }
 
-  // Untuk kedua jalur agregat, `voucher_sale` TIDAK boleh muncul sama sekali:
-  // ia hanya sumber LITER, dan komponen C tak memakai liter. Kalau seseorang
-  // mengembalikannya ke sana, rupiahnya akan dobel-hitung diam-diam.
+  // `voucher_sale` KEMBALI dipakai sejak 2026-09-12 — tetapi hanya sebagai
+  // CADANGAN per ref, bukan sumber utama. Sebuah ref yang kehilangan baris
+  // posting hidup (akibat siklus posting+pembalik saat laporan dicetak ulang)
+  // tetap dihitung EasyMax dari detailnya; memakai posting saja membuat SolaMax
+  // kurang catat Rp 1.987.978 pada KB 2026-08-31.
   for (const nama of ["getComplianceMatrix", "getAdminDays"] as const) {
-    it(`${nama}: TIDAK menyentuh voucher_sale sama sekali`, async () => {
+    it(`${nama}: voucher memakai CADANGAN per-ref, bukan detail mentah`, async () => {
       const panggil = PRODUSEN.find(([n]) => n === nama)![1];
       await panggil();
       const [sql] = q.mock.calls[0]!;
-      expect(sql).not.toContain("voucher_sale");
+      expect(sql).toContain("public.voucher_sale");
+      expect(sql).toMatch(/COALESCE\(p\.rp, dt\.rp, 0\)/);
+      expect(sql).toContain("FULL JOIN");
+      // Cadangan detail TANPA filter sbatal — lihat komentar komponenCSql.
+      expect(sql).not.toMatch(/voucher_sale[\s\S]{0,200}COALESCE\(sbatal,0\)=0/);
     });
   }
 
