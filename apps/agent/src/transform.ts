@@ -77,6 +77,36 @@ export function ctglToBusinessDate(ctgl: string | null | undefined): string | nu
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
+/**
+ * `JrnKey` EasyMax → tanggal bisnis. Bentuknya `YYYYMMDD` + satu digit SHIFT,
+ * mis. `202608311` = 31 Agustus 2026 shift 1, `202608312` = shift 2.
+ *
+ * Dipakai untuk **baris detail yatim** (`tr_djualplg.CKDJUALPLG IS NULL`), yang
+ * tak punya header sehingga tak punya `DTGL`. `JrnKey` lebih benar daripada
+ * `DATE(TanggalJam)` karena ia membawa tanggal BISNIS — shift yang melewati
+ * tengah malam tetap jatuh pada harinya sendiri.
+ *
+ * Null bila bentuknya tak dikenal; pemanggil wajib menyediakan cadangan.
+ */
+export function jrnKeyToBusinessDate(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const m = /^(\d{4})(\d{2})(\d{2})(\d)$/.exec(String(value).trim());
+  if (!m) return null;
+  const [, y, mo, da] = m;
+  const yy = Number(y);
+  const mm = Number(mo);
+  const dd = Number(da);
+  if (yy < 2000 || yy > 2099 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `${y}-${mo}-${da}`;
+}
+
+/** Nomor shift dari `JrnKey` (digit terakhir). Null bila bentuknya tak dikenal. */
+export function jrnKeyToShift(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const m = /^\d{8}(\d)$/.exec(String(value).trim());
+  return m ? Number(m[1]) : null;
+}
+
 /** Tanggal bisnis "YYYY-MM-DD" → `ctgl` "YYYYMMDD" (untuk bind ke vw_edc3.ctgl). */
 export function businessDateToCtgl(date: string): string {
   return date.replace(/-/g, "");
