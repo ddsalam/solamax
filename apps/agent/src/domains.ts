@@ -1,6 +1,8 @@
 import type { Domain, IngestPayload } from "@solamax/shared";
 import {
   businessDate,
+  jrnKeyToBusinessDate,
+  jrnKeyToShift,
   ctglToBusinessDate,
   int,
   num,
@@ -125,6 +127,9 @@ export interface PelangganDomain {
     rows: NonNullable<Tables["voucher_sale"]>;
     dtglHigh: string | null;
   };
+  /** Baris detail YATIM — lihat `orphanSql`. Tak memajukan watermark. */
+  orphanSql: string;
+  mapOrphan(raw: Raw[]): { rows: NonNullable<Tables["pelanggan_sale"]> };
 }
 
 /** Domain master — full sync, tanpa watermark. */
@@ -589,6 +594,60 @@ const PELANGGAN: PelangganDomain = {
     FROM vw_usevouc
     WHERE DTGL >= ? AND DTGL < ?
     ORDER BY DTGL ASC`,
+  /**
+   * **Baris detail YATIM** — `tr_djualplg` yang `CKDJUALPLG`-nya NULL/kosong.
+   *
+   * 🔑 KENAPA ADA (2026-09-12). Membatalkan atau menyunting transaksi pelanggan
+   * di EasyMax **menyetel `CKDJUALPLG = NULL` tanpa menghapus barisnya** — liter
+   * dan rupiahnya utuh, tautannya ke header yang diputus. `vw_jualplg` menjoin
+   * detail⋈header, jadi baris itu **jatuh sebelum agent melihatnya**; laporan
+   * Rincian EasyMax membaca detail tanpa lewat header, jadi ia tetap
+   * menghitungnya. Akibatnya seksi Pelanggan SolaMax **kurang catat**.
+   *
+   * Kasus penemunya Bundaran Kotabaru 31-08-2026: 238.000 + 201.500 (PT Cahaya
+   * Abda, kartu kedua `002040E004`) + 235.554 (PT Persada) = **Rp 675.054 /
+   * 56,69 L** — persis selisih laporan EasyMax (37.843.138) vs SolaMax
+   * (37.168.084). Dion memvalidasi ketiganya sebagai penjualan SAH: transaksinya
+   * diinput manual saat rekapan akhir shift karena tap kartu RFID gagal.
+   *
+   * ⚠️ **TANPA JOIN KE HEADER.** Base-table + join `tr_hjualplg` pernah dicoba
+   * (probe FASE05f) dan DI-REVERT karena lock: `tr_djualplg` tak punya index
+   * `CKDJUALPLG`. Kueri ini memindai satu tabel dengan rentang tanggal saja.
+   *
+   * Batas yang diketahui, dan ditulis alih-alih didiamkan:
+   * - **Tak ada pelanggan.** `CKDPLG` hidup di header; baris yatim tak punya
+   *   header ⇒ `ckdplg` NULL. Ia tampil sebagai satu baris kumpulan di seksi
+   *   Pelanggan, bukan pada baris pelanggannya. Atribusi lewat `CRFID` → kartu →
+   *   pelanggan adalah fase berikutnya dan butuh master kartu yang belum disinkron.
+   * - **Tak ada `SBATAL`.** Juga milik header ⇒ diisi 0 (hidup). Ini menyamai
+   *   perlakuan laporan EasyMax, yang ikut menghitungnya.
+   * - **Tanggal bisnis dari `JrnKey`** (`YYYYMMDD`+shift), cadangan `TanggalJam`.
+   */
+  orphanSql: `
+    SELECT TanggalJam, CRFID, CKDBBM, HargaSatuan, Liter, TotalHarga, JrnKey, NoNozle
+    FROM tr_djualplg
+    WHERE (CKDJUALPLG IS NULL OR CKDJUALPLG = '')
+      AND TanggalJam >= ? AND TanggalJam < ?
+    ORDER BY TanggalJam ASC`,
+  mapOrphan(raw) {
+    const rows: NonNullable<Tables["pelanggan_sale"]> = [];
+    for (const r of raw) {
+      const bd = jrnKeyToBusinessDate(r.JrnKey) ?? businessDate(str(r.TanggalJam));
+      if (bd === null) continue; // tanpa tanggal bisnis, baris tak bisa ditempatkan
+      rows.push({
+        business_date: bd,
+        ckdplg: null,
+        vcnmplg: null,
+        ckdjualplg: null,
+        ckdbbm: str(r.CKDBBM),
+        nshift: jrnKeyToShift(r.JrnKey),
+        liter: num(r.Liter),
+        total: num(r.TotalHarga),
+        sbatal: 0,
+      });
+    }
+    return { rows };
+  },
   mapSale(raw) {
     const rows: NonNullable<Tables["pelanggan_sale"]> = [];
     let dtglHigh: string | null = null;

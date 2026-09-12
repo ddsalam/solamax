@@ -816,8 +816,21 @@ async function pullPelangganWindow(
 }> {
   const saleRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.saleSql, [lo, hiExcl]);
   const vouRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.voucherSql, [lo, hiExcl]);
+  const orphanRaw = await d.conn.roQuery(PELANGGAN_DOMAIN.orphanSql, [lo, hiExcl]);
+  const sale = PELANGGAN_DOMAIN.mapSale(saleRaw);
+  const orphan = PELANGGAN_DOMAIN.mapOrphan(orphanRaw);
+  if (orphan.rows.length > 0) {
+    log.info("pelanggan: baris yatim", { rows: orphan.rows.length, lo, hiExcl });
+  }
   return {
-    sale: PELANGGAN_DOMAIN.mapSale(saleRaw),
+    // Baris yatim MASUK ke payload `pelanggan_sale` yang sama. Backend REPLACE
+    // per (unit_id, business_date) ⇒ satu business_date TAK BOLEH terpecah antar
+    // payload: mengirimnya terpisah akan membuat kiriman kedua menghapus yang
+    // pertama. Digabung di sini, sebelum dispatch.
+    //
+    // `dtglHigh` sengaja TETAP dari baris ber-header saja: watermark tak boleh
+    // dimajukan oleh baris yang tanggal bisnisnya diturunkan dari `JrnKey`.
+    sale: { rows: [...sale.rows, ...orphan.rows], dtglHigh: sale.dtglHigh },
     vou: PELANGGAN_DOMAIN.mapVoucher(vouRaw),
   };
 }

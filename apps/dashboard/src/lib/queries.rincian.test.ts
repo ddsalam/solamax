@@ -48,6 +48,22 @@ describe("F1c queries: scoped ($1=unit) + schema-qualified", () => {
     expect(params).toEqual([U, "2026-06-14"]);
   });
 
+  it("getPelangganForDate: baris YATIM (ckdplg NULL) dikumpulkan, tidak hilang", async () => {
+    // Regresi 2026-09-12. `pelanggan_sale` ber-ckdplg NULL adalah pengisian yang
+    // tautannya ke transaksi diputus di POS. Tanpa COALESCE ke sentinel, kunci
+    // NULL tak pernah cocok di LEFT JOIN (NULL = NULL bukan true) sehingga
+    // barisnya HILANG dari seksi Pelanggan — persis kekurangan Rp 675.054 di
+    // Bundaran Kotabaru 31-08-2026.
+    await getPelangganForDate(U, "2026-08-31");
+    const [sql] = q.mock.calls[0]!;
+    expect(sql).toMatch(/COALESCE\(trim\(ps\.ckdplg\), '\(tanpa transaksi\)'\)/);
+    expect(sql).toMatch(/COALESCE\(trim\(vs\.ckdplg\), '\(tanpa transaksi\)'\)/);
+    expect(sql).toContain("PENGISIAN KARTU TANPA TRANSAKSI");
+    // Penjaga arah-balik: kunci telanjang `trim(ps.ckdplg)` mengembalikan bug.
+    expect(sql).not.toMatch(/SELECT trim\(ps\.ckdplg\) AS k/);
+    expect(sql).not.toMatch(/SELECT trim\(vs\.ckdplg\) AS k/);
+  });
+
   it("getPelangganForDate: TIDAK menjumlah voucher_sale.total ke rupiah", async () => {
     // Penjaga arah-balik: bentuk lama `sum(u.rp)` atas UNION ALL dua tabel
     // penjualan mengembalikan bug 31-08. Kalau seseorang menuliskannya lagi,
