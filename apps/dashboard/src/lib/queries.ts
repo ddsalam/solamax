@@ -1405,6 +1405,20 @@ export async function getCashForDate(unit: ScopedUnitId, date: string): Promise<
 // (ADR-001). Query schema-qualified; tiap fungsi per-unit lewat ScopedUnitId.
 // ===========================================================================
 
+/**
+ * Kunci & label kelompok **baris detail YATIM** — `pelanggan_sale` ber-`ckdplg`
+ * NULL, yaitu pengisian yang tautannya ke transaksi pelanggan diputus di POS
+ * (`tr_djualplg.CKDJUALPLG = NULL`; lihat `orphanSql` di agent). Baris itu tak
+ * punya pelanggan, jadi tak bisa ditempelkan ke baris pelanggan mana pun — ia
+ * tampil sebagai SATU baris kumpulan dan tetap dihitung ke `C`, menyamai
+ * perlakuan laporan Rincian EasyMax.
+ *
+ * Sentinel berkurung dipilih supaya mustahil bertabrakan dengan kode EasyMax
+ * yang berbentuk `PLG####`.
+ */
+const KODE_YATIM = "(tanpa transaksi)";
+const NAMA_YATIM = "PENGISIAN KARTU TANPA TRANSAKSI";
+
 export interface PelangganRow {
   ckdplg: string | null;
   nama: string | null;
@@ -1466,13 +1480,13 @@ export async function getPelangganForDate(
   return qScoped<PelangganRow>(
     unit,
     `WITH jp AS (
-       SELECT trim(ps.ckdplg) AS k, max(ps.vcnmplg) AS nama,
+       SELECT COALESCE(trim(ps.ckdplg), '${KODE_YATIM}') AS k, max(ps.vcnmplg) AS nama,
               COALESCE(sum(ps.liter),0) AS liter, COALESCE(sum(ps.total),0) AS rp
        FROM public.pelanggan_sale ps
        WHERE ps.unit_id = $1 AND ps.business_date = $2::date AND COALESCE(ps.sbatal,0) = 0
        GROUP BY 1
      ), vd AS (
-       SELECT trim(vs.ckdplg) AS k, max(vs.vcnmplg) AS nama,
+       SELECT COALESCE(trim(vs.ckdplg), '${KODE_YATIM}') AS k, max(vs.vcnmplg) AS nama,
               COALESCE(sum(vs.liter),0) AS liter, COALESCE(sum(vs.total),0) AS rp
        FROM public.voucher_sale vs
        WHERE vs.unit_id = $1 AND vs.business_date = $2::date AND COALESCE(vs.sbatal,0) = 0
@@ -1495,7 +1509,8 @@ export async function getPelangganForDate(
        SELECT k FROM jp UNION SELECT k FROM vd UNION SELECT k FROM vp
      )
      SELECT ks.k AS ckdplg,
-            COALESCE(jp.nama, vd.nama, m.vcnmplg) AS nama,
+            CASE WHEN ks.k = '${KODE_YATIM}' THEN '${NAMA_YATIM}'
+                 ELSE COALESCE(jp.nama, vd.nama, m.vcnmplg) END AS nama,
             (COALESCE(jp.liter,0) + COALESCE(vd.liter,0))::float8 AS liter,
             (COALESCE(jp.rp,0) + COALESCE(vp.rp,0))::float8 AS rp,
             (COALESCE(vd.rp,0) - COALESCE(vp.rp,0))::float8 AS "rpTanpaPosting"

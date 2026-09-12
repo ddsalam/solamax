@@ -311,3 +311,48 @@ Rp 683.500: 28 Oktober 2026-07-29 (519.600) · Kotabaru 2026-07-06 (115.000) · 
 
 **Sumber kebenaran kode:** `getPelangganForDate` di `apps/dashboard/src/lib/queries.ts`
 (uji regresi `queries.rincian.test.ts`).
+
+## Koreksi 2026-09-12 — leg ketiga: baris detail YATIM
+
+**Yang berubah.** Domain `pelanggan` kini punya **tiga** leg, bukan dua:
+`vw_jualplg` ⊎ `vw_usevouc` ⊎ **`tr_djualplg` yang `CKDJUALPLG`-nya NULL/kosong**.
+
+**Kenapa.** Membatalkan atau menyunting transaksi pelanggan di EasyMax **menyetel
+`tr_djualplg.CKDJUALPLG = NULL tanpa menghapus barisnya`** — liter dan rupiahnya utuh, tautannya ke
+header yang diputus. `vw_jualplg` menjoin detail⋈header, jadi baris itu **jatuh sebelum agent
+melihatnya**. Laporan Rincian EasyMax membaca detail tanpa lewat header, jadi ia tetap
+menghitungnya. Akibatnya seksi Pelanggan SolaMax **kurang catat**, dan dua laporan atas hari yang
+sama tak pernah bisa sama.
+
+**Bukti (Bundaran Kotabaru 2026-08-31).** Tiga baris yatim: 238.000 (35 L) + 201.500 (10 L) pada
+kartu `002040E004` milik PT Cahaya Abda — pelanggan itu punya dua kartu, yang tertaut
+`002040E003` — plus 235.554 (11,69 L) milik PT Persada. **Rp 675.054 / 56,69 L**, persis selisih
+laporan EasyMax (37.843.138) vs SolaMax (37.168.084).
+
+**Status operasional:** Dion memvalidasi ketiganya sebagai **penjualan SAH** — transaksinya diinput
+manual pada rekapan akhir shift karena tap kartu RFID gagal. Karena itu baris yatim **DIHITUNG** ke
+`C`, menyamai laporan EasyMax, dan rekonsiliasi kas 31-08 kembali menutup (+Rp 596).
+
+**Bentuk implementasi:**
+
+- Kueri yatim **tidak menjoin header**. Base-table + join `tr_hjualplg` pernah dicoba (probe
+  FASE05f) dan DI-REVERT karena lock — `tr_djualplg` tak punya index `CKDJUALPLG`. Leg ini memindai
+  satu tabel dengan rentang `TanggalJam` saja.
+- Barisnya masuk ke payload `pelanggan_sale` **yang sama** dengan baris ber-header. Backend REPLACE
+  per `(unit_id, business_date)` ⇒ satu tanggal tak boleh terpecah antar payload; digabung di agent
+  sebelum dispatch.
+- `ckdplg`, `vcnmplg`, `ckdjualplg` **NULL** (ketiganya hidup di header); `sbatal` diisi **0**.
+- **Tanggal bisnis dari `JrnKey`** (`YYYYMMDD` + digit shift, mis. `202608311`), cadangan
+  `DATE(TanggalJam)`. `JrnKey` lebih benar karena membawa tanggal BISNIS — shift lewat tengah malam
+  tetap jatuh pada harinya sendiri. Baris tanpa tanggal yang terbaca dibuang, tidak ditebak.
+- **Watermark tidak dimajukan** oleh baris yatim.
+- Di layar & PDF ia tampil sebagai **satu baris kumpulan** "PENGISIAN KARTU TANPA TRANSAKSI".
+
+**Batas yang diketahui.** Baris yatim **tak punya pelanggan** — `CKDPLG` hidup di header. Atribusi
+per-pelanggan lewat `CRFID` → kartu → pelanggan adalah fase berikutnya dan butuh master kartu yang
+belum disinkron (`vw_plgarm` memetakan `CRFID` → `VCNMPLG`, tetapi tanpa `CKDPLG`). Sampai itu
+dibangun, **total `C` cocok dengan EasyMax tetapi rincian per-pelanggan tidak**: pada KB 31-08,
+EasyMax menaruh Rp 439.500 di baris PT Cahaya Abda sedangkan SolaMax menaruhnya di baris kumpulan.
+
+**Sumber kebenaran kode:** `PELANGGAN.orphanSql` + `mapOrphan` (`apps/agent/src/domains.ts`),
+uji `apps/agent/src/domains.yatim.test.ts`.
