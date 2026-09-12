@@ -25,7 +25,9 @@ describe("snapshot builder invariants", () => {
     const cap = SNAPSHOT_OPERATIONAL_LIMITS.databaseReviewBytes;
     expect(evaluateOperationalGate(120, cap - 1, false)).toEqual({ ok: true });
     expect(evaluateOperationalGate(299, cap - 1, false)).toEqual({ ok: true });
-    expect(evaluateOperationalGate(300, cap - 1, false)).toEqual({
+    // SEMENTARA 2026-09-12: batas 299/300 dipulihkan bersama pengembalian config.
+    expect(evaluateOperationalGate(1071, cap - 1, false)).toEqual({ ok: true });
+    expect(evaluateOperationalGate(1440, cap - 1, false)).toEqual({
       ok: false,
       reason: "outside_build_window",
     });
