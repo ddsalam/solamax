@@ -198,7 +198,15 @@ export class SnapshotSourceCaptureService {
         cycleId: sourceCut.cycle_id,
         sourceCycleSequence: sequence,
       };
-    }, { maxWait: 500, timeout: 3_000 });
+    // Anggaran per-chunk. Ukuran 3 detik yang lama TERBUKTI menghancurkan fitur:
+    // pada cut IB 12-09 p50 hanya 256 ms tetapi p95 1.470 ms dan max 4.762 ms,
+    // sehingga 9 dari 712 chunk (1,26%) kedaluwarsa. Karena capture fail-open di
+    // /ingest, chunk yang gagal HILANG DIAM-DIAM dan cut tak pernah mencapai
+    // jumlah baris yang dideklarasikan agent — satu cut utuh butuh 709 chunk
+    // lolos semua, peluangnya ~0,013%. Menaikkan plafon tidak memperlambat
+    // permintaan yang sehat: p50 tetap 256 ms, hanya ekor yang kini selesai
+    // alih-alih dibuang.
+    }, { maxWait: 5_000, timeout: 30_000 });
   }
 
   /**
