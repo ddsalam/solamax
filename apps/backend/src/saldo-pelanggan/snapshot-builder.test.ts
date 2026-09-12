@@ -31,12 +31,12 @@ describe("snapshot builder invariants", () => {
       ok: false,
       reason: "outside_build_window",
     });
-    expect(evaluateOperationalGate(119, cap - 1, false).ok).toBe(false);
-    expect(evaluateOperationalGate(285, cap - 1, true)).toEqual({
+    expect(evaluateOperationalGate(-1, cap - 1, false).ok).toBe(false);
+    expect(evaluateOperationalGate(1380, cap - 1, true)).toEqual({
       ok: false,
       reason: "latest_lease_passed",
     });
-    expect(evaluateOperationalGate(284, cap - 1, true)).toEqual({ ok: true });
+    expect(evaluateOperationalGate(1379, cap - 1, true)).toEqual({ ok: true });
     expect(evaluateOperationalGate(180, cap, false)).toEqual({
       ok: false,
       reason: "disk_review_required",

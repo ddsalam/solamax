@@ -14,7 +14,7 @@ export const SNAPSHOT_OPERATIONAL_LIMITS = Object.freeze({
   // WAJIB DIKEMBALIKAN ke 2*60 / 5*60 / 4*60+45 segera setelah kanari selesai.
   buildWindowStartMinutes: 0,
   buildWindowEndMinutes: 24 * 60,
-  latestLeaseMinutes: 24 * 60,
+  latestLeaseMinutes: 23 * 60,
   globalConcurrency: 1,
   databaseReviewBytes: 9_000_000_000,
   leaseSeconds: 2 * 60,
