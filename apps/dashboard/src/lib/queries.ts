@@ -1117,36 +1117,35 @@ export async function getAvgDailySales(
 /**
  * Fragmen SQL komponen **C (Pelanggan)** — SATU aturan untuk SEMUA pemakainya.
  *
- * Aturan (lihat `getPelangganForDate` untuk bukti & riwayatnya):
- * **C = `pelanggan_sale` (detail, non-batal) + POSTING voucher `bppiut` ∪ `bphut`**
- * (`sjnsbp = 1`, `sbatal = 0`, `vcref LIKE 'UV%'`). `voucher_sale` **tidak lagi
- * menyumbang rupiah** — ia hanya sumber LITER, dan komponen C tak memakai liter.
+ * **Aturan (terbukti eksak ke laporan EasyMax, KB 2026-08-31):**
  *
- * ⚠️ **Kenapa fragmen, bukan disalin.** Sampai 2026-09-11 aturan C hidup di TIGA
- * tempat: `getPelangganForDate` (Rincian + Laporan), `getComplianceMatrix`
- * (panel Ketaatan Administrasi), dan `getAdminDays` (anomali/board). Perbaikan
- * aturan voucher hari itu hanya menyentuh yang pertama, sehingga **Rincian dan
- * Ketaatan Administrasi menampilkan H yang berbeda untuk hari yang sama**
- * (KB 31-08: Rincian benar, panel Ketaatan masih memakai selisih Rp 48.900 lama).
- * KETAATAN-ADMINISTRASI.md §"SATU pembuat vonis" menjamin *aturan vonisnya*
- * tunggal — bukan *masukannya*. Ini menutup lubang itu: satu sumber teks SQL,
- * tiga pemanggil.
+ *   C = `pelanggan_sale` non-batal (termasuk baris YATIM `ckdplg` NULL)
+ *     + voucher PER REF: posting hidup bila ada, **cadangan detail** bila tidak
  *
- * ⚠️ **Bentuk argumennya dipaksa oleh penjaga `nama-tabel.guard.test.ts`.**
- * Penjaga itu memotong sumber pada backtick dan memeriksa tiap literal secara
- * terpisah, jadi (a) pemanggil tak boleh memakai template literal bersarang —
- * itu memecah kueri induknya sehingga nama CTE-nya hilang dan `a`/`b`/`c`
- * dilaporkan sebagai tabel tak dikenal; dan (b) argumen tak boleh memuat
- * FROM <cte> — string berkutip apa pun yang memuatnya dipindai sendirian,
- * tanpa definisi CTE-nya. Karena itu batas tanggal diserahkan sebagai
- * **ekspresi tanpa FROM**, bukan sebagai sub-kueri ke CTE rentang.
- * (Komentar ini sengaja tak memakai backtick: penjaga itu memindai teks
- * berkas mentah, jadi contoh SQL di dalam backtick pun ikut dinilai.)
+ * ⚠️ **Kenapa per-ref dengan cadangan, bukan posting saja.** EasyMax menulis ulang
+ * posting tiap kali laporan dicetak (pola posting + `- Pembalik`). Sebuah ref bisa
+ * berakhir **tanpa baris posting hidup** padahal transaksinya sah — laporan EasyMax
+ * tetap menghitungnya dari detailnya. Memakai posting saja membuat SolaMax kurang
+ * catat; memakai detail saja mengembalikan bug 2026-09-11 (baris voucher terpakai
+ * tapi tak tertagih, mis. 3 L Pertamax BCA Rp 48.900). Cadangan per-ref memenuhi
+ * keduanya.
  *
- * @param unitPred predikat unit, mis. `"unit_id = $1"` atau `"unit_id = ANY($1::int[])"`
- * @param d0       ekspresi SQL batas bawah inklusif (tanpa `FROM`)
- * @param d1       ekspresi SQL batas atas inklusif (tanpa `FROM`)
- * @param perUnit  true → hasil ber-`unit_id` (GROUP BY 1,2); false → per tanggal saja
+ * ⚠️ **Cadangan detail SENGAJA tanpa filter `sbatal`.** Empat dari lima ref yang
+ * kehilangan posting juga ber-`sbatal=1` di detailnya; menyaringnya membuat
+ * Rp 1.771.478 hilang. Filter batal tetap berlaku pada jalur `pelanggan_sale` dan
+ * pada sisi posting.
+ *
+ * Bukti (mirror, unit 4, 2026-08-31): jualplg 4.735.724 + voucher 33.107.414 =
+ * **37.843.138 = laporan EasyMax, selisih 0**, dan liter **2.448,06** juga eksak.
+ *
+ * ⚠️ **Bentuk argumennya dipaksa oleh `nama-tabel.guard.test.ts`** — tanpa template
+ * literal bersarang dan tanpa FROM <cte> di dalam argumen; komentar ini pun tak
+ * memakai backtick karena penjaga itu memindai teks berkas mentah.
+ *
+ * @param unitPred predikat unit, mis. "unit_id = $1" atau "unit_id = ANY($1::int[])"
+ * @param d0       ekspresi SQL batas bawah inklusif (tanpa FROM)
+ * @param d1       ekspresi SQL batas atas inklusif (tanpa FROM)
+ * @param perUnit  true -> hasil ber-unit_id (GROUP BY 1,2); false -> per tanggal saja
  */
 function komponenCSql(
   unitPred: string,
@@ -1155,27 +1154,42 @@ function komponenCSql(
   perUnit: boolean,
 ): string {
   const rentang = (kolomTanggal: string) => `${kolomTanggal} BETWEEN ${d0} AND ${d1}`;
-  const pilih = perUnit ? "unit_id, " : "";
-  const groupDalam = perUnit ? "GROUP BY 1,2" : "GROUP BY 1";
-  const pilihLuar = perUnit ? "unit_id, d, sum(v) AS v" : "d, sum(v) AS v";
-  return `SELECT ${pilihLuar} FROM (
-             SELECT ${pilih}business_date AS d, COALESCE(total,0) AS v
+  const u = perUnit ? "unit_id, " : "";
+  const grpRef = perUnit ? "GROUP BY 1,2,3" : "GROUP BY 1,2";
+  const usingCols = perUnit ? "(unit_id, d, ref)" : "(d, ref)";
+  const selOut = perUnit ? "unit_id, d, sum(v) AS v" : "d, sum(v) AS v";
+  const grpOut = perUnit ? "GROUP BY 1,2" : "GROUP BY 1";
+
+  return `SELECT ${selOut} FROM (
+             SELECT ${u}business_date AS d, COALESCE(total,0) AS v
                FROM public.pelanggan_sale
               WHERE ${unitPred} AND COALESCE(sbatal,0)=0
                 AND ${rentang("business_date")}
              UNION ALL
-             SELECT ${pilih}dtgl AS d, COALESCE(njumlah,0)
-               FROM public.bppiut
-              WHERE ${unitPred} AND COALESCE(sbatal,0)=0
-                AND sjnsbp = 1 AND vcref LIKE 'UV%'
-                AND ${rentang("dtgl")}
-             UNION ALL
-             SELECT ${pilih}dtgl AS d, COALESCE(njumlah,0)
-               FROM public.bphut
-              WHERE ${unitPred} AND COALESCE(sbatal,0)=0
-                AND sjnsbp = 1 AND vcref LIKE 'UV%'
-                AND ${rentang("dtgl")}
-           ) u ${groupDalam}`;
+             SELECT ${u}d, COALESCE(p.rp, dt.rp, 0) AS v
+               FROM (
+                 SELECT ${u}business_date AS d, trim(ckdusevouc) AS ref,
+                        COALESCE(sum(total),0) AS rp
+                   FROM public.voucher_sale
+                  WHERE ${unitPred} AND ${rentang("business_date")}
+                  ${grpRef}
+               ) dt
+               FULL JOIN (
+                 SELECT ${u}d, ref, COALESCE(sum(njumlah),0) AS rp FROM (
+                   SELECT ${u}dtgl AS d, trim(vcref) AS ref, njumlah
+                     FROM public.bppiut
+                    WHERE ${unitPred} AND COALESCE(sbatal,0)=0
+                      AND sjnsbp = 1 AND vcref LIKE 'UV%'
+                      AND ${rentang("dtgl")}
+                   UNION ALL
+                   SELECT ${u}dtgl AS d, trim(vcref) AS ref, njumlah
+                     FROM public.bphut
+                    WHERE ${unitPred} AND COALESCE(sbatal,0)=0
+                      AND sjnsbp = 1 AND vcref LIKE 'UV%'
+                      AND ${rentang("dtgl")}
+                 ) z ${grpRef}
+               ) p USING ${usingCols}
+           ) u ${grpOut}`;
 }
 
 export interface ComplianceDay {
@@ -1485,39 +1499,45 @@ export async function getPelangganForDate(
        FROM public.pelanggan_sale ps
        WHERE ps.unit_id = $1 AND ps.business_date = $2::date AND COALESCE(ps.sbatal,0) = 0
        GROUP BY 1
-     ), vd AS (
-       SELECT COALESCE(trim(vs.ckdplg), '${KODE_YATIM}') AS k, max(vs.vcnmplg) AS nama,
+     ), vdet AS (
+       SELECT trim(vs.ckdusevouc) AS ref,
+              max(COALESCE(trim(vs.ckdplg), '${KODE_YATIM}')) AS k, max(vs.vcnmplg) AS nama,
               COALESCE(sum(vs.liter),0) AS liter, COALESCE(sum(vs.total),0) AS rp
        FROM public.voucher_sale vs
-       WHERE vs.unit_id = $1 AND vs.business_date = $2::date AND COALESCE(vs.sbatal,0) = 0
+       WHERE vs.unit_id = $1 AND vs.business_date = $2::date
        GROUP BY 1
-     ), vp AS (
-       SELECT trim(x.ckdplg) AS k, COALESCE(sum(x.njumlah),0) AS rp
+     ), vpos AS (
+       SELECT trim(x.vcref) AS ref, max(trim(x.ckdplg)) AS k,
+              COALESCE(sum(x.njumlah),0) AS rp
        FROM (
-         SELECT b.ckdplg, COALESCE(b.njumlah,0) AS njumlah
-         FROM public.bppiut b
+         SELECT b.vcref, b.ckdplg, b.njumlah FROM public.bppiut b
          WHERE b.unit_id = $1 AND b.dtgl = $2::date AND COALESCE(b.sbatal,0) = 0
            AND b.sjnsbp = 1 AND b.vcref LIKE 'UV%'
          UNION ALL
-         SELECT h.ckdplg, COALESCE(h.njumlah,0)
-         FROM public.bphut h
+         SELECT h.vcref, h.ckdplg, h.njumlah FROM public.bphut h
          WHERE h.unit_id = $1 AND h.dtgl = $2::date AND COALESCE(h.sbatal,0) = 0
            AND h.sjnsbp = 1 AND h.vcref LIKE 'UV%'
        ) x
        GROUP BY 1
+     ), vg AS (
+       SELECT COALESCE(vpos.k, vdet.k) AS k, max(vdet.nama) AS nama,
+              COALESCE(sum(vdet.liter),0) AS liter,
+              COALESCE(sum(COALESCE(vpos.rp, vdet.rp, 0)),0) AS rp,
+              COALESCE(sum(COALESCE(vdet.rp,0) - COALESCE(vpos.rp, vdet.rp, 0)),0) AS selisih
+       FROM vdet FULL JOIN vpos USING (ref)
+       GROUP BY 1
      ), ks AS (
-       SELECT k FROM jp UNION SELECT k FROM vd UNION SELECT k FROM vp
+       SELECT k FROM jp UNION SELECT k FROM vg
      )
      SELECT ks.k AS ckdplg,
             CASE WHEN ks.k = '${KODE_YATIM}' THEN '${NAMA_YATIM}'
-                 ELSE COALESCE(jp.nama, vd.nama, m.vcnmplg) END AS nama,
-            (COALESCE(jp.liter,0) + COALESCE(vd.liter,0))::float8 AS liter,
-            (COALESCE(jp.rp,0) + COALESCE(vp.rp,0))::float8 AS rp,
-            (COALESCE(vd.rp,0) - COALESCE(vp.rp,0))::float8 AS "rpTanpaPosting"
+                 ELSE COALESCE(jp.nama, vg.nama, m.vcnmplg) END AS nama,
+            (COALESCE(jp.liter,0) + COALESCE(vg.liter,0))::float8 AS liter,
+            (COALESCE(jp.rp,0) + COALESCE(vg.rp,0))::float8 AS rp,
+            COALESCE(vg.selisih,0)::float8 AS "rpTanpaPosting"
      FROM ks
      LEFT JOIN jp ON jp.k = ks.k
-     LEFT JOIN vd ON vd.k = ks.k
-     LEFT JOIN vp ON vp.k = ks.k
+     LEFT JOIN vg ON vg.k = ks.k
      LEFT JOIN public.pelanggan_master m
             ON m.unit_id = $1 AND trim(m.ckdplg) = ks.k
      ORDER BY rp DESC`,

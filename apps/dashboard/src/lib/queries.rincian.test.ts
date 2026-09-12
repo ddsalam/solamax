@@ -37,13 +37,18 @@ describe("F1c queries: scoped ($1=unit) + schema-qualified", () => {
     expect(sql).toMatch(/vcref LIKE 'UV%'/);
     expect(sql).toMatch(/sjnsbp = 1/);
     // C = jualplg + posting; detail voucher HANYA menyumbang liter + selisih.
-    expect(sql).toMatch(/COALESCE\(jp\.rp,0\) \+ COALESCE\(vp\.rp,0\)/);
-    expect(sql).toMatch(/COALESCE\(jp\.liter,0\) \+ COALESCE\(vd\.liter,0\)/);
-    expect(sql).toMatch(/COALESCE\(vd\.rp,0\) - COALESCE\(vp\.rp,0\)/);
+    expect(sql).toMatch(/COALESCE\(jp\.rp,0\) \+ COALESCE\(vg\.rp,0\)/);
+    expect(sql).toMatch(/COALESCE\(jp\.liter,0\) \+ COALESCE\(vg\.liter,0\)/);
+    // Cadangan PER REF: posting hidup bila ada, detail bila tidak.
+    expect(sql).toMatch(/COALESCE\(vpos\.rp, vdet\.rp, 0\)/);
+    expect(sql).toContain("FULL JOIN vpos USING (ref)");
     expect(sql).toMatch(/COALESCE\(ps\.sbatal,0\) = 0/);
-    expect(sql).toMatch(/COALESCE\(vs\.sbatal,0\) = 0/);
     expect(sql).toMatch(/COALESCE\(b\.sbatal,0\) = 0/);
     expect(sql).toMatch(/COALESCE\(h\.sbatal,0\) = 0/);
+    // Cadangan detail SENGAJA tanpa filter sbatal: empat dari lima ref yang
+    // kehilangan posting juga ber-sbatal=1, dan menyaringnya menghilangkan
+    // Rp 1.771.478 (KB 2026-08-31).
+    expect(sql).not.toMatch(/COALESCE\(vs\.sbatal,0\) = 0/);
     expect(sql).toContain("unit_id = $1");
     expect(params).toEqual([U, "2026-06-14"]);
   });
