@@ -170,6 +170,25 @@ describe("snapshot worker durable queue", () => {
     }), expect.objectContaining({ attemptDeadlineEpochMs: expect.any(Number) }));
   });
 
+  it("caps the build to an earlier deadline supplied by the HTTP caller", async () => {
+    const { service, builder } = harness({ leased: work });
+    const callerDeadline = Date.now() + 60_000;
+    builder.build.mockResolvedValue({
+      baseline: { asOfDate: "2026-01-31", generationId: randomUUID() },
+      target: { asOfDate: "2026-02-01", generationId: "33333333-3333-4333-8333-333333333333" },
+      outcome: "published",
+    });
+
+    await expect(service.runOnce(1, "worker-1", {
+      attemptDeadlineEpochMs: callerDeadline,
+    })).resolves.toMatchObject({ status: "done" });
+
+    expect(builder.build).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ attemptDeadlineEpochMs: callerDeadline }),
+    );
+  });
+
   it("reports a superseded publication as a successful terminal outcome", async () => {
     const { service, builder } = harness({ leased: work });
     builder.build.mockResolvedValue({
