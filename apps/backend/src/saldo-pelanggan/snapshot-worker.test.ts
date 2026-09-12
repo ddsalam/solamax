@@ -30,6 +30,7 @@ const work = {
 
 interface HarnessOptions {
   gateMinutes?: number;
+  databaseBytes?: bigint;
   leased?: typeof work | null;
   leaseError?: unknown;
   retryRow?: { work_id: string; state: "retry_wait" | "dead_letter" };
@@ -52,11 +53,17 @@ function harness(options: HarnessOptions = {}) {
     $transaction: vi.fn(async (run: (client: typeof tx) => Promise<unknown>) => run(tx)),
     $queryRawUnsafe: vi.fn(async (sql: string) => {
       if (sql !== PUBLICATION_OPERATIONAL_GATE_SQL) throw new Error("unexpected direct SQL");
-      return [{ wib_minutes: options.gateMinutes ?? 180, database_bytes: 1n }];
+      return [{
+        wib_minutes: options.gateMinutes ?? 180,
+        database_bytes: options.databaseBytes ?? 1n,
+      }];
     }),
   };
   const builder = { build: vi.fn() };
-  const sourceCapture = { finalizeReady: vi.fn(async () => null) };
+  const sourceCapture = {
+    finalizeReady: vi.fn(async () => null),
+    collectRetiredSources: vi.fn(async () => undefined),
+  };
   const service = new SnapshotWorkerService(
     prisma as unknown as PrismaService,
     builder as unknown as SnapshotBuilderService,
@@ -105,6 +112,30 @@ describe("snapshot worker durable queue", () => {
     expect(txQuery).not.toHaveBeenCalledWith(LEASE_WORK_SQL, expect.anything(), expect.anything());
     expect(sourceCapture.finalizeReady).not.toHaveBeenCalled();
     expect(builder.build).not.toHaveBeenCalled();
+    // Retirement is not gated: it is what keeps the database under the cap.
+    expect(sourceCapture.collectRetiredSources).toHaveBeenCalledWith(1);
+  });
+
+  it("still retires staging cuts when the disk gate refuses", async () => {
+    // The deadlock this guards: retirement used to live only behind the gate,
+    // so staging rows that blew past the cap could never be released, and the
+    // gate that refused because of them kept refusing forever.
+    const { service, sourceCapture, builder } = harness({
+      databaseBytes: BigInt(SNAPSHOT_OPERATIONAL_LIMITS.databaseReviewBytes),
+    });
+    await expect(service.runOnce(1, "worker-1")).resolves.toEqual({
+      status: "skipped",
+      reason: "disk_review_required",
+    });
+    expect(sourceCapture.collectRetiredSources).toHaveBeenCalledWith(1);
+    expect(builder.build).not.toHaveBeenCalled();
+  });
+
+  it("keeps running when retirement fails", async () => {
+    const { service, sourceCapture } = harness();
+    sourceCapture.collectRetiredSources.mockRejectedValueOnce(new Error("injected:retire"));
+    await expect(service.runOnce(1, "worker-1")).resolves.toEqual({ status: "idle" });
+    expect(sourceCapture.finalizeReady).toHaveBeenCalledWith(1);
   });
 
   it("returns idle when no exact-unit work can be leased", async () => {

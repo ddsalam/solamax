@@ -18,6 +18,7 @@ import {
   PRUNE_RETIRED_SOURCE_ROWS_SQL,
   PROMOTE_SOURCE_CYCLE_SQL,
   READ_LATEST_COMPLETE_SEQUENCE_SQL,
+  READ_LATEST_SOURCE_SEQUENCE_SQL,
   READ_READY_SOURCE_CYCLE_SQL,
   READ_SOURCE_CYCLE_SQL,
   REFRESH_PREVIOUS_CYCLE_SQL,
@@ -207,6 +208,43 @@ export class SnapshotSourceCaptureService {
     // permintaan yang sehat: p50 tetap 256 ms, hanya ekor yang kini selesai
     // alih-alih dibuang.
     }, { maxWait: 5_000, timeout: 30_000 });
+  }
+
+  /**
+   * Retire staging cuts the agent has already moved past, and release their
+   * rows. Deliberately independent of promotion and of every operational gate.
+   *
+   * Before this existed, the only path that marked a staging cut `failed` was
+   * `finalizeReady`, and the only caller of `finalizeReady` sits *behind* the
+   * capacity gate. That made the two mutually dependent: once staging rows
+   * pushed the database past `databaseReviewBytes`, the gate refused, the
+   * collector never ran, the disk never shrank, and the gate refused again.
+   * Observed 2026-09-12 on production: 7.2 GB of 9.66 GB were staging rows
+   * from cuts that could never win, and no cut had ever been pruned.
+   *
+   * Retirement is safe without a winner: any cut strictly below the newest
+   * allocated sequence has already lost, whether or not a later one completed.
+   * The newest cut is never touched, so an in-flight capture keeps its rows.
+   */
+  async collectRetiredSources(unitId: number): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+      await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
+
+      const latestRows = await tx.$queryRawUnsafe<SequenceRow[]>(
+        READ_LATEST_SOURCE_SEQUENCE_SQL,
+        unitId,
+      );
+      const latest = latestRows[0];
+      if (!latest) return;
+
+      await tx.$executeRawUnsafe(
+        FAIL_SUPERSEDED_STAGING_CYCLES_SQL,
+        unitId,
+        BigInt(latest.source_cycle_sequence),
+      );
+      await this.pruneRetiredSourceRows(tx, unitId);
+    }, { timeout: 120_000 });
   }
 
   /**

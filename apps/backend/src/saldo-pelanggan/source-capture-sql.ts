@@ -68,6 +68,21 @@ WHERE unit_id = $1::smallint AND status = 'complete'
 ORDER BY source_cycle_sequence DESC
 LIMIT 1`;
 
+/**
+ * $1 unit. Highest sequence the unit has allocated, whatever its status.
+ *
+ * Retirement must not depend on a cut ever reaching `complete`: when promotion
+ * is broken, staging cuts accumulate and nothing else ever marks them failed.
+ * Any cut strictly below the newest allocation has already lost — the agent
+ * moved on — so it is safe to retire without waiting for a winner.
+ */
+export const READ_LATEST_SOURCE_SEQUENCE_SQL = `
+SELECT source_cycle_sequence
+FROM app.saldo_pelanggan_source_cycle
+WHERE unit_id = $1::smallint
+ORDER BY source_cycle_sequence DESC
+LIMIT 1`;
+
 /** $1 unit, $2 cycle UUID, $3 rows JSON. */
 export const STAGE_PELANGGAN_SQL = `
 INSERT INTO app.saldo_pelanggan_source_pelanggan (

@@ -170,6 +170,17 @@ export class SnapshotWorkerService {
     if (!leaseOwner.trim()) throw new Error("leaseOwner must not be blank");
 
     await this.reap(unitId);
+
+    // Runs BEFORE the gate on purpose. Retiring staging cuts is what keeps the
+    // database under `databaseReviewBytes`; gating it on that same limit made
+    // the collector unreachable exactly when it was needed. Failure here is
+    // never fatal — the invocation proceeds and the next one retries.
+    try {
+      await this.sourceCapture.collectRetiredSources(unitId);
+    } catch (error) {
+      process.stderr.write(`snapshot source retirement warning: ${errorText(error)}\n`);
+    }
+
     const gateRows = await this.prisma.$queryRawUnsafe<GateRow[]>(PUBLICATION_OPERATIONAL_GATE_SQL);
     const gateRow = gateRows[0];
     if (!gateRow) return { status: "skipped", reason: "operational_gate_unavailable" };
