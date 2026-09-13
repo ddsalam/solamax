@@ -1,0 +1,25 @@
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	﻿2026-09-13T17:41:46.6240346Z ##[group]Run bash scripts/ci/check-piutang-freshness-probe.sh
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6240855Z ^[[36;1mbash scripts/ci/check-piutang-freshness-probe.sh^[[0m
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6277636Z shell: /usr/bin/bash -e {0}
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6277919Z env:
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6278190Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6279065Z   MIGRATE_DEPLOY_ADMIN_URL: ***127.0.0.1:5433/postgres
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6279431Z   MIGRATE_DEPLOY_HOST: 127.0.0.1
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6279712Z   MIGRATE_DEPLOY_PORT: 5433
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.6279960Z ##[endgroup]
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:46.7125933Z NOTICE:  database "piutang_probe_gate" does not exist, skipping
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.7998242Z == kontrol: hanya perubahan non-material + empat bentuk ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.8476905Z piutang_lokal|3|-8000000|2026-09-13 02:20:00+00|4
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.8545225Z   OK — pembatalan, pindah-keluar, pindah-masuk terhitung; kelas 4 dan
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.8546475Z        baris bertanggal 20-09 (Rp 500.000.000!) TIDAK menyalakan apa pun.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.8547261Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.8547614Z == skenario A · koreksi mundur 08:34 / 08:38 WIB ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9365717Z hutang_lokal|1|1405000|2026-09-13 01:38:05+00|1
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9366966Z piutang_lokal|9|27979362|2026-09-13 02:20:00+00|10
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9444108Z   OK — Rp 35.979.362 piutang dan Rp 1.405.000 hutang terdeteksi,
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9445092Z        waktu perubahan terakhir 08:38:05 WIB.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9445453Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:47.9446007Z == kontrol: cut sesudah semua perubahan → probe harus diam ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:48.0262399Z   OK — nol baris, dengan 12 baris bppiut yang benar-benar terlihat.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:48.0820881Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-piutang-freshness-probe.sh	2026-09-13T17:41:48.0822326Z GERBANG PROBE F1 HIJAU — material menyala dengan rupiah yang benar, non-material diam.
