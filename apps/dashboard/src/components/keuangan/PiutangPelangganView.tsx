@@ -48,6 +48,7 @@ export type PiutangPelangganViewProps =
       csvHref: string;
       pdfHref: string;
       pendingBanner?: PiutangPendingBanner;
+      historicalNote?: string | null;
     })
   | (PiutangCommonProps & {
       state: "not_ready";
@@ -373,6 +374,7 @@ export function PiutangPelangganView(props: PiutangPelangganViewProps) {
             </div>
           )}
 
+          <PiutangHistoricalNote note={props.historicalNote} />
           <aside className="banner info b6-piutang-rule" aria-label="Aturan membaca bucket">
             <span className="dot info" aria-hidden="true" />
             <strong>Tiga bucket berbeda; jangan dijumlahkan atau dinetokan.</strong>
@@ -397,4 +399,12 @@ export function PiutangPelangganView(props: PiutangPelangganViewProps) {
       )}
     </div>
   );
+}
+
+export function PiutangHistoricalNote({ note }: { note: string | null | undefined }) {
+  if (!note) return null;
+  return <aside className="banner info" aria-label="Tentang tanggal historis">
+    <span className="dot info" aria-hidden="true" />
+    <div><strong>Posisi historis dari data terbaru</strong><p>{note}</p></div>
+  </aside>;
 }

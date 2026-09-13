@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   ASSERT_VALID_SOURCE_SIDES_SQL,
+  SOURCE_CYCLE_EVIDENCE_SQL,
   COMPLETE_MANIFEST_SQL,
   INSERT_BUILDING_MANIFEST_SQL,
   MATERIALIZE_DELTA_SQL,
@@ -13,6 +14,8 @@ import {
   VALIDATE_BASELINE_SQL,
   VALIDATE_GENERATION_SQL,
 } from "./snapshot-sql.js";
+
+import { ENQUEUE_STALE_POINTERS_SQL, ENQUEUE_BACKFILL_SQL, READ_BACKFILL_SOURCE_CYCLE_SQL, SUPERSEDE_BACKFILL_WORK_SQL } from "./source-capture-sql.js";
 
 // This suite never reads DATABASE_URL or local credential files. The opt-in URL
 // names the disposable CI service, not either Cloud SQL tier. The old B2 live
@@ -345,6 +348,74 @@ ${bind(MATERIALIZE_FULL_HISTORY_SQL,[2,"2026-09-13",emptyGeneration,emptyCut])};
     expectSqlFailure(migration39(), "P0001", marker);
     expect(rows("SELECT generation_id FROM app.saldo_pelanggan_snapshot_pointer ORDER BY as_of_date").map(r => r.generation_id)).toEqual([oldBase,oldTarget]);
     expect(rows(schemaReadySql)).toEqual([{ready:false}]);
+  });
+
+  it("accepts a later cut for an earlier target and rejects targets beyond its WIB date", () => {
+    resetV1();
+    expect(rows(bind(SOURCE_CYCLE_EVIDENCE_SQL,[1,cut,1,"2026-09-10"]))).toHaveLength(1);
+    expect(rows(bind(SOURCE_CYCLE_EVIDENCE_SQL,[1,cut,1,"2026-09-13"]))).toHaveLength(1);
+    expect(rows(bind(SOURCE_CYCLE_EVIDENCE_SQL,[1,cut,1,"2026-09-14"]))).toHaveLength(0);
+  });
+
+  it("enqueues seven or 31 prior dates once, respecting cut date and same-cut dead letters", () => {
+    resetV1();
+    sql(migration39());
+    sql(`DELETE FROM app.saldo_pelanggan_build_work;
+      DELETE FROM app.saldo_pelanggan_snapshot_pointer;
+      UPDATE app.saldo_pelanggan_source_cycle SET source_completed_at=
+        ((clock_timestamp() AT TIME ZONE 'Asia/Pontianak')::date - 1)::timestamp AT TIME ZONE 'Asia/Pontianak';`);
+    expect(rows(bind(READ_BACKFILL_SOURCE_CYCLE_SQL,[1]))).toEqual([{source_cycle_id:cut,source_cycle_sequence:1}]);
+    const enqueue = (days: number) => sql(bind(ENQUEUE_BACKFILL_SQL,[1,days,cut,1]));
+    enqueue(7);
+    expect(rows("SELECT count(*) AS n FROM app.saldo_pelanggan_build_work")[0]!.n).toBe(7);
+    expect(rows("SELECT w.as_of_date FROM app.saldo_pelanggan_build_work w JOIN app.saldo_pelanggan_source_cycle c USING (unit_id,source_cycle_id) WHERE w.as_of_date > (c.source_completed_at AT TIME ZONE 'Asia/Pontianak')::date")).toHaveLength(0);
+    const ids = rows("SELECT work_id FROM app.saldo_pelanggan_build_work ORDER BY work_id");
+    sql("UPDATE app.saldo_pelanggan_build_work SET state='dead_letter',completed_at=now();");
+    enqueue(7);
+    expect(rows("SELECT work_id FROM app.saldo_pelanggan_build_work ORDER BY work_id")).toEqual(ids);
+    expect(rows("SELECT work_id FROM app.saldo_pelanggan_build_work WHERE state<>'dead_letter'")).toHaveLength(0);
+    // Exercise the promotion enqueue SQL too: today is beyond this yesterday cut.
+    sql("ALTER TABLE public.unit ADD COLUMN timezone text NOT NULL DEFAULT 'Asia/Pontianak';");
+    sql(bind(ENQUEUE_STALE_POINTERS_SQL,[1,cut,1]));
+    expect(rows("SELECT count(*) AS n FROM app.saldo_pelanggan_build_work")[0]!.n).toBe(7);
+    enqueue(31);
+    expect(rows("SELECT count(*) AS n FROM app.saldo_pelanggan_build_work")[0]!.n).toBe(31);
+    expect(rows("SELECT as_of_date FROM app.saldo_pelanggan_build_work WHERE as_of_date < (clock_timestamp() AT TIME ZONE 'Asia/Pontianak')::date - 31")).toHaveLength(0);
+    enqueue(32);
+    expect(rows("SELECT count(*) AS n FROM app.saldo_pelanggan_build_work")[0]!.n).toBe(31);
+    sql("SET app.unit_ids='2'; " + bind(ENQUEUE_BACKFILL_SQL,[1,31,cut,1]));
+    expect(rows("SELECT count(*) AS n FROM app.saldo_pelanggan_build_work")[0]!.n).toBe(31);
+  });
+
+  it("keeps healthy pointers, repairs stale dates, and never falls back from an invalid latest cut", () => {
+    resetV1();
+    sql(migration39());
+    const nextCut = "00000000-0000-4000-8000-000000000020";
+    const latestComplete = `INSERT INTO app.saldo_pelanggan_source_cycle
+      (unit_id,source_cycle_id,source_cycle_sequence,status,source_completed_at,promoted_at,pelanggan_row_count,pelanggan_keyed_checksum,bppiut_row_count,bppiut_keyed_checksum,bphut_row_count,bphut_keyed_checksum)
+      VALUES(1,'${nextCut}',2,'complete',clock_timestamp(),now(),0,sha256(''::bytea),0,sha256(''::bytea),0,sha256(''::bytea));`;
+    sql(latestComplete);
+    expect(rows(bind(READ_BACKFILL_SOURCE_CYCLE_SQL,[1]))[0]!.source_cycle_id).toBe(nextCut);
+    sql("UPDATE app.saldo_pelanggan_source_cycle SET pelanggan_row_count=1 WHERE source_cycle_sequence=2;");
+    expect(rows(bind(READ_BACKFILL_SOURCE_CYCLE_SQL,[1]))).toHaveLength(0);
+    sql("UPDATE app.saldo_pelanggan_source_cycle SET pelanggan_row_count=0 WHERE source_cycle_sequence=2;");
+    const today = rows("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Pontianak')::date::text AS date")[0]!.date as string;
+    // Build a real empty generation today with production SQL, then publish its pointer.
+    sql(bind(INSERT_BUILDING_MANIFEST_SQL,[1,today,full,"saldo-pelanggan-v2",nextCut,2,0,null,null]));
+    sql(bind(MATERIALIZE_FULL_HISTORY_SQL,[1,today,full,nextCut]));
+    const validation = rows(bind(VALIDATE_GENERATION_SQL,[1,today,full,nextCut]))[0]!;
+    sql(bind(COMPLETE_MANIFEST_SQL,[1,today,full,0,validation.row_keyed_checksum as string,...eighteen.map(() => 0)]));
+    sql(bind(UPSERT_POINTER_SQL,[1,today,full,2,0]));
+    sql(bind(ENQUEUE_BACKFILL_SQL,[1,0,nextCut,2]));
+    expect(rows(`SELECT work_id FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toHaveLength(0);
+    sql(`UPDATE app.saldo_pelanggan_snapshot_pointer SET pending_replacement=true WHERE as_of_date='${today}';`);
+    sql(bind(ENQUEUE_BACKFILL_SQL,[1,0,nextCut,2]));
+    expect(rows(`SELECT work_id FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toHaveLength(1);
+    sql(`INSERT INTO app.saldo_pelanggan_build_work(unit_id,work_id,as_of_date,source_cycle_id,source_cycle_sequence,state)
+      VALUES(1,gen_random_uuid(),'${today}','${cut}',1,'queued');`);
+    sql(bind(SUPERSEDE_BACKFILL_WORK_SQL,[1,2]));
+    expect(rows(`SELECT state,last_error FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${cut}'`)).toEqual([{state:"dead_letter",last_error:"superseded_by_new_source_cut"}]);
+    expect(rows(`SELECT state FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toEqual([{state:"queued"}]);
   });
 
 });

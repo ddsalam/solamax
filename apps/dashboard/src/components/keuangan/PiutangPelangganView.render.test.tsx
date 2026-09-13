@@ -228,3 +228,10 @@ it("shows turnover in an inactive book once while retaining its saldo-based sect
   expect(local).toContain("Hutang Lokal · buku bersaldo nol");
   expect(h.slice(h.indexOf('id="piutang-hutang"'))).not.toContain("Rp 71,25");
 });
+
+it("shows the historical correction caveat above the amounts", () => {
+  const note = "Posisi 2026-09-10 dihitung dari data sumber per 2026-09-13 WIB. Termasuk koreksi bertanggal mundur; tidak identik dengan laporan EasyMax yang dicetak pada 2026-09-10.";
+  const rendered = html(ready({ historicalNote: note }));
+  expect(rendered).toContain(note);
+  expect(rendered.indexOf(note)).toBeLessThan(rendered.indexOf('class="b6-piutang-summaries'));
+});

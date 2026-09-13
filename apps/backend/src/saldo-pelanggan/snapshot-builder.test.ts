@@ -85,7 +85,10 @@ describe("snapshot source population failures", () => {
       if ([ASSERT_VALID_SOURCE_KEYS_SQL, ASSERT_VALID_SOURCE_SIDES_SQL, ASSERT_VALID_SOURCE_AMOUNTS_SQL].includes(sql)) {
         expect(values).toEqual([-32100, "11111111-1111-4111-8111-111111111111", "2026-08-31"]);
       }
-      if (sql === SOURCE_CYCLE_EVIDENCE_SQL) return [{ source_cycle_id: "11111111-1111-4111-8111-111111111111" }];
+      if (sql === SOURCE_CYCLE_EVIDENCE_SQL) {
+        expect(values).toEqual([-32100, "11111111-1111-4111-8111-111111111111", 1n, "2026-09-13"]);
+        return [{ source_cycle_id: "11111111-1111-4111-8111-111111111111" }];
+      }
       if (sql === VALIDATE_BASELINE_SQL) return [];
       if (sql === ASSERT_VALID_SOURCE_KEYS_SQL) return [{ invalid_key_count: 0n }];
       if (sql === ASSERT_VALID_SOURCE_SIDES_SQL) return [{ invalid_side_count: side }];

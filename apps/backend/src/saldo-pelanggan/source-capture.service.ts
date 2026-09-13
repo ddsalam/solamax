@@ -9,6 +9,9 @@ import {
   DIFF_PELANGGAN_SQL,
   DOMAIN_EVIDENCE_SQL,
   ENQUEUE_STALE_POINTERS_SQL,
+  ENQUEUE_BACKFILL_SQL,
+  READ_BACKFILL_SOURCE_CYCLE_SQL,
+  SUPERSEDE_BACKFILL_WORK_SQL,
   ENSURE_SOURCE_CYCLE_SQL,
   FAIL_OBSOLETE_SOURCE_CYCLE_SQL,
   FAIL_SUPERSEDED_STAGING_CYCLES_SQL,
@@ -28,6 +31,7 @@ import {
   SUPERSEDE_PENDING_WORK_SQL,
   UPSERT_DIRTY_WATERMARK_SQL,
 } from "./source-capture-sql.js";
+import { SNAPSHOT_BACKFILL_LIMITS } from "./snapshot-config.js";
 import { SET_UNIT_SCOPE_SQL } from "./snapshot-sql.js";
 
 export type SourceCutDomain = SourceCut["domain"];
@@ -422,6 +426,23 @@ export class SnapshotSourceCaptureService {
         cycleId,
         sourceCycleSequence: sequence,
       };
+    }, { timeout: 120_000 });
+  }
+
+  /** Seed missing historical dates from the retained latest complete cut. */
+  async enqueueBackfill(unitId: number, priorDays: number): Promise<void> {
+    if (!Number.isInteger(priorDays) || priorDays < 0 || priorDays > SNAPSHOT_BACKFILL_LIMITS.maxDays) {
+      throw new Error(`priorDays must be an integer from 0 to ${SNAPSHOT_BACKFILL_LIMITS.maxDays}`);
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+      await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
+      const cuts = await tx.$queryRawUnsafe<ReturningCycleRow[]>(READ_BACKFILL_SOURCE_CYCLE_SQL, unitId);
+      const cut = cuts[0];
+      if (!cut || cut.source_cycle_sequence === undefined) return;
+      await tx.$executeRawUnsafe(SUPERSEDE_BACKFILL_WORK_SQL, unitId, cut.source_cycle_sequence);
+      await tx.$executeRawUnsafe(ENQUEUE_BACKFILL_SQL, unitId, priorDays,
+        cut.source_cycle_id, cut.source_cycle_sequence);
     }, { timeout: 120_000 });
   }
 

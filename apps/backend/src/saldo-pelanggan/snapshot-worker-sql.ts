@@ -2,7 +2,7 @@ import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 
 /** Durable single-item worker SQL. Values remain positional parameters. */
 
-/** $1 unit, $2 lease owner. */
+/** $1 unit, $2 lease owner, $3 optional absolute request deadline (Unix milliseconds). */
 export const LEASE_WORK_SQL = `
 WITH operational_gate AS (
   SELECT (extract(hour FROM clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}') * 60
@@ -16,10 +16,12 @@ WITH operational_gate AS (
   WHERE w.unit_id = $1::smallint
     AND w.state IN ('queued', 'retry_wait')
     AND w.available_at <= clock_timestamp()
+    AND ($3::double precision IS NULL OR clock_timestamp() < to_timestamp($3::double precision / 1000))
     AND g.wib_minutes >= ${SNAPSHOT_OPERATIONAL_LIMITS.buildWindowStartMinutes}
     AND g.wib_minutes < ${SNAPSHOT_OPERATIONAL_LIMITS.latestLeaseMinutes}
     AND g.database_bytes < ${SNAPSHOT_OPERATIONAL_LIMITS.databaseReviewBytes}
-  ORDER BY w.as_of_date, w.created_at
+  ORDER BY (w.as_of_date = (clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date) DESC,
+           w.as_of_date, w.created_at
   LIMIT 1
   FOR UPDATE OF w SKIP LOCKED
 )

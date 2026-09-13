@@ -12,9 +12,10 @@ import {
   Res,
 } from "@nestjs/common";
 import type { Response } from "express";
+import { SNAPSHOT_BACKFILL_LIMITS } from "./snapshot-config.js";
 import { PrismaService } from "../prisma.service.js";
 import {
-  type SnapshotWorkerResult,
+  type SnapshotWorkerBatchResult,
   SnapshotWorkerService,
 } from "./snapshot-worker.service.js";
 
@@ -22,7 +23,7 @@ import {
  * Cloud Run is configured to stop requests after 20 minutes. Keep two minutes
  * for HTTP/framework cleanup after source finalization plus the bounded build.
  */
-export const SNAPSHOT_TRIGGER_REQUEST_MILLISECONDS = 18 * 60 * 1_000;
+export const SNAPSHOT_TRIGGER_REQUEST_MILLISECONDS = SNAPSHOT_BACKFILL_LIMITS.requestMilliseconds;
 
 function isAuthorized(given: string | undefined, secret: string | undefined): boolean {
   if (!secret || secret.length < 32 || !given) return false;
@@ -32,13 +33,18 @@ function isAuthorized(given: string | undefined, secret: string | undefined): bo
   return timingSafeEqual(supplied, expected);
 }
 
-function parseUnitId(body: unknown): number | null {
-  if (!body || typeof body !== "object" || !("unit_id" in body)) return null;
-  const unitId = (body as { unit_id?: unknown }).unit_id;
-  if (!Number.isInteger(unitId) || Number(unitId) < -32_768 || Number(unitId) > 32_767) {
+function parseOptions(body: unknown): { unitId: number; backfillDays: number; maxItems: number } | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const input = body as Record<string, unknown>;
+  const unitId = input.unit_id;
+  const backfillDays = input.backfill_days === undefined ? SNAPSHOT_BACKFILL_LIMITS.defaultDays : input.backfill_days;
+  const maxItems = input.max_items === undefined ? SNAPSHOT_BACKFILL_LIMITS.defaultItems : input.max_items;
+  if (!Number.isInteger(unitId) || Number(unitId) < -32_768 || Number(unitId) > 32_767
+    || !Number.isInteger(backfillDays) || Number(backfillDays) < 0 || Number(backfillDays) > SNAPSHOT_BACKFILL_LIMITS.maxDays
+    || !Number.isInteger(maxItems) || Number(maxItems) < 1 || Number(maxItems) > SNAPSHOT_BACKFILL_LIMITS.maxItems) {
     return null;
   }
-  return Number(unitId);
+  return { unitId: Number(unitId), backfillDays: Number(backfillDays), maxItems: Number(maxItems) };
 }
 
 function rejectWithoutOracle(): never {
@@ -47,11 +53,16 @@ function rejectWithoutOracle(): never {
   throw new NotFoundException();
 }
 
-function throwWorkerOutcome(result: SnapshotWorkerResult, status: number): never {
+function throwWorkerOutcome(result: SnapshotWorkerBatchResult, status: number): never {
   const body = result.status === "skipped"
     ? { status: result.status, reason: result.reason }
     : { status: result.status };
-  throw new HttpException(body, status);
+  throw new HttpException({
+    ...body,
+    processedCount: result.processedCount,
+    completedCount: result.completedCount,
+    supersededCount: result.supersededCount,
+  }, status);
 }
 
 @Controller("snapshot-worker")
@@ -68,13 +79,15 @@ export class SnapshotTriggerController {
     @Headers("x-snapshot-secret") suppliedSecret: string | undefined,
     @Body() body: unknown,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<SnapshotWorkerResult | undefined> {
+  ): Promise<SnapshotWorkerBatchResult | undefined> {
+    const startedAt = Date.now();
     if (!isAuthorized(suppliedSecret, process.env.SNAPSHOT_TRIGGER_SECRET)) {
       rejectWithoutOracle();
     }
 
-    const unitId = parseUnitId(body);
-    if (unitId === null) rejectWithoutOracle();
+    const options = parseOptions(body);
+    if (!options) rejectWithoutOracle();
+    const { unitId, backfillDays, maxItems } = options;
 
     let activeUnit: { unitId: number } | null;
     try {
@@ -91,11 +104,12 @@ export class SnapshotTriggerController {
     }
     if (!activeUnit) rejectWithoutOracle();
 
-    const startedAt = Date.now();
     const leaseOwner = `snapshot-http:${hostname()}:${randomUUID()}`;
-    let result: SnapshotWorkerResult;
+    let result: SnapshotWorkerBatchResult;
     try {
-      result = await this.worker.runOnce(unitId, leaseOwner, {
+      result = await this.worker.runBatch(unitId, leaseOwner, {
+        backfillDays,
+        maxItems,
         attemptDeadlineEpochMs: startedAt + SNAPSHOT_TRIGGER_REQUEST_MILLISECONDS,
       });
     } catch {
@@ -111,6 +125,9 @@ export class SnapshotTriggerController {
       msg: "snapshot-worker invocation finished",
       unit_id: unitId,
       status: result.status,
+      processed_count: result.processedCount,
+      completed_count: result.completedCount,
+      superseded_count: result.supersededCount,
       ms: Date.now() - startedAt,
       ...(result.status === "done" ? {
         work_id: result.workId,

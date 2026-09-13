@@ -6,6 +6,10 @@ Status: pelaksanaan D → C → B berjalan. Berkas ini diperbarui per commit, bu
 
 H1 masih menunggu laporan EasyMax IB per 12-09-2026. Ekspektasi total dan per pelanggan sudah dikunci di ralat Gerbang A. Tidak ada laporan yang dicetak/dicetak ulang oleh worker. Bukti diagnosis yatim ditulis dalam `2026-09-13-piutang-fase2-diagnosis-yatim.md` beserta SQL dan hasil mentah.
 
+Diagnosis read-only menemukan 747 kode yatim unik; tidak satu pun beririsan dengan 328 kode EasyMax. Semua 14.479 baris adalah debet `sjnsbp=1`, tanpa kredit dan tanpa nominal NULL; seluruh kode hadir di master dengan `sjenis=4`. Total debet 6.411.357.535. Key berawalan PP, sedangkan sampel 20 baris terbesar pada mirror yang lebih baru berlabel VCREF JP / Penjualan Pelanggan Tunai. Hipotesis SALDO AWAL tidak didukung sampel tersebut; mirror dipakai hanya untuk nama kelas, bukan bukti nominal cut. Di hutang, 44.683 baris/188 pelanggan master nonlokal tanpa titik tetap termasuk formula. Formula tidak diubah. Himpunan nonnol identik membuktikan konsistensi kedua sistem, belum membuktikan keduanya benar.
+
+H1 belum dicentang: laporan EasyMax 12 September harus cocok dengan piutang lokal 13.052.684.187,50, online 900.000, hutang lokal −673.010.538, dan seluruh pelanggan CSV snapshot. Snapshot 13 September efektif posisi tutup 12 September: semua 2.973 row AWAL=AKHIR, tidak ada posting tanggal 13 di dalam cut.
+
 ## Default Dion dan keputusan pelaksanaan
 
 | Keputusan | Pelaksanaan |
@@ -39,7 +43,7 @@ Sesudah skema dan biaya lulus, bangun penautan faktur/pembayaran, baru sisa tagi
 
 ## Bukti pengiriman
 
-Diisi setelah review, commit, dan CI tiap PR. Belum ada klaim CI atau deployment berhasil.
+Bukti setiap tahap dicatat setelah eksekusi. Tidak ada deployment yang dijalankan oleh pembuat PR.
 
 ### D selesai secara lokal dan CI
 
@@ -60,3 +64,26 @@ Catatan rollout C: migration dan aplikasi baru harus diselesaikan melalui pipeli
 Selesaikan merge/deployment C di luar jendela worker02.00–05.00WIB. Jangan memicu worker sampai revision backendv2 melayani; writer v1 tidak dapat memenuhi NOTNULL kolom baru. Migrasi menolak builder/lease aktif secara atomik. Jeda pembacaan menjadi not_ready adalah konsekuensi pilihan checksumtunggal+rebuildatomik, bukan angka nol atau saldo baru.
 
 Promosi pilot adalah keputusan Dion di luar tugas ini. Bila kelak diotorisasi, selesaikan approval dan job backend `migrate-pilot` lalu `deploy-pilot` terlebih dahulu, baru approve `deploy-pilot` dashboard. K1 dashboard memakai DB TEST rlsstg bahkan pada alur promosi; keberhasilan K1 bukan bukti schema pilot sudah0039. Penantian skema baru menyelesaikan perlombaan tier TEST yang diotorisasi sekarang; tidak ada promosi main yang dijalankan.
+
+
+### C selesai dan CI PostgreSQL 14 lulus
+
+Commit `53f4411`, PR [#357](https://github.com/ddsalam/solamax/pull/357) ke staging. Review `ce-code-review` selesai dengan tujuh persona independen, nol temuan terbuka; receipt `20260913-C-142556`. Dua run CI 34745716685 dan 34745728295 lulus `check` serta `snapshot-postgres-14`; G4 juga hijau. Semua 15 tes database benar-benar dieksekusi pada PostgreSQL 14 terisolasi, bukan Cloud SQL dan bukan Docker lokal.
+
+Fixture v1/v2 yang sama mempunyai 10 row: payload 757 B → 1.201 B (1,5865×), relation tetap 32.768 B karena masih dalam alokasi halaman awal. Bukti ini melengkapi ukuran produksi read-only, tidak menggantikannya. Rebuild mengganti generation dan waktu komputasi/publikasi, mempertahankan waktu source cut asli. Enam saldo lama tidak berubah.
+
+### B: pelaksanaan dan batasnya
+
+Kode menerima `backfill_days` 0–31, default 7 untuk kanari, serta `max_items` 1–8, default 8. Nilai 31 berarti 31 hari sebelum hari ini, ditambah hari ini bila tanggal cut mencukupi. Enqueue juga memperbaiki pointer stale di luar rentang tersebut. Hari ini diprioritaskan, kemudian tanggal lama tertua. Satu request menyemai dari cut lengkap terbaru walaupun tidak ada finalisasi baru; pointer sehat dan dead-letter cut yang sama tidak dibuat ulang.
+
+Batas global satu lease, 02.00–05.00 WIB, lease terakhir sebelum 04.45, gerbang 9 GB, serta collector sebelum gate tetap dipertahankan. Deadline request 18 menit diuji lagi saat SQL lease dijalankan, sehingga menunggu koneksi tidak menjadi jalan melampaui batas. Tiap build tetap paling lama 15 menit. Beberapa hasil sukses lalu gagal tetap menghasilkan HTTP gagal dengan hitungan parsial; status sukses tidak menyatakan seluruh 31 tanggal sudah terisi.
+
+Semua jalur daftar/detail/CSV/PDF tetap memakai snapshot yang sama. Catatan historis memakai tanggal WIB source cut: posisi 10 September dari sumber 13 September memuat koreksi bertanggal mundur sampai sumber itu, sehingga tidak identik dengan cetakan EasyMax pada tanggal lama. Uji menegaskan pergantian tanggal UTC→WIB dan bahwa nilai saldo tetap. Fixture browser diperiksa pada 390 dan 1440 px; tidak ada luapan horizontal, catatan terlihat di atas angka. Ekspor PDF benar-benar dirender dan teks catatannya diperiksa.
+
+Penyederhanaan B menjalankan tiga persona terpisah (serial karena batas slot). Satu temuan kualitas diterapkan: pesan validasi memakai konstanta batas yang sama dengan pemeriksaan. Pemisahan tambahan metode persiapan tidak dipakai karena menambah perpindahan kontrol gate/deadline tanpa mengurangi cacat yang terukur. Tiga saran efisiensi tidak diambil: reap per item tetap mengantisipasi kerja antar-request; pemeriksaan jumlah source dipertahankan sebagai penjaga; pembacaan gate sesudah lease kosong sengaja menangkap gerbang yang baru menutup. Tidak ada penjaga dikurangi demi efisiensi.
+
+Peninjau reuse menemukan argumen SQL salah tempat pada finalisasi. Root membuktikan tes parameter finalisasi merah, memperbaiki argumennya, lalu memastikan tes hijau. Ini diperbaiki sebelum commit B. Unit test backend 100 lulus sebelum perbaikan ini, menunjukkan mengapa penelusuran komposisi diperlukan; tes regresi kini memeriksa kontrak panggilan yang sebelumnya tidak teramati.
+
+Runbook `2026-09-13-piutang-fase2-backfill-runbook.md` memuat ukuran produksi, cadangan snapshot 444.530.688 B (termasuk tanggal kini/baseline, tidak termasuk source baru enam unit atau metadata), ukuran fixture CI, kontrol positif SQL read-only, empat blok perintah Scheduler untuk Dion dan batas monitoring. Sintaks empat blok shell serta dua blok SQL diperiksa tanpa eksekusi. Tidak ada job dibuat/diubah. H1 tetap satu-satunya bukti bisnis yang menunggu laporan.
+
+Review B `ce-code-review` selesai tanpa temuan terbuka, receipt `20260913-piutang-b-53f4411`. Sembilan sudut tinjau dijalankan oleh reviewer utama karena host menolak child tambahan pada batas slot; tidak diklaim sebagai sembilan peninjau independen atau corroboration lintas model. `pnpm check` dan `pnpm lint` lulus. Tiga skenario PostgreSQL tambahan sudah ditulis; hasil eksekusinya di CI dicatat setelah PR B terbuka.

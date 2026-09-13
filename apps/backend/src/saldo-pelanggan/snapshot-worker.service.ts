@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service.js";
-import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
+import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 import { SnapshotSourceCaptureService } from "./source-capture.service.js";
 import {
   evaluateOperationalGate,
@@ -55,7 +55,19 @@ export type SnapshotWorkerResult =
 export interface SnapshotWorkerRunOptions {
   /** Absolute request deadline supplied by an HTTP/control-plane caller. */
   attemptDeadlineEpochMs?: number;
+  /** Number of prior business dates, in addition to today. */
+  backfillDays?: number;
 }
+
+export interface SnapshotWorkerBatchOptions extends SnapshotWorkerRunOptions {
+  maxItems?: number;
+}
+
+export type SnapshotWorkerBatchResult = SnapshotWorkerResult & {
+  processedCount: number;
+  completedCount: number;
+  supersededCount: number;
+};
 
 function dateText(value: Date | string): string {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
@@ -107,6 +119,7 @@ export class SnapshotWorkerService {
   private async lease(
     unitId: number,
     leaseOwner: string,
+    requestDeadline?: number,
   ): Promise<LeasedWorkRow | undefined | null> {
     try {
       return await this.scopedTransaction(unitId, async (tx) => {
@@ -114,6 +127,7 @@ export class SnapshotWorkerService {
           LEASE_WORK_SQL,
           unitId,
           leaseOwner,
+          requestDeadline ?? null,
         );
         return rows[0];
       });
@@ -164,10 +178,64 @@ export class SnapshotWorkerService {
     leaseOwner: string,
     options: SnapshotWorkerRunOptions = {},
   ): Promise<SnapshotWorkerResult> {
+    return this.runItem(unitId, leaseOwner, options, true);
+  }
+
+  /** Sequential requests keep the same database global-one lease constraint. */
+  async runBatch(
+    unitId: number,
+    leaseOwner: string,
+    options: SnapshotWorkerBatchOptions = {},
+  ): Promise<SnapshotWorkerBatchResult> {
+    const maxItems = options.maxItems ?? SNAPSHOT_BACKFILL_LIMITS.defaultItems;
+    if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > SNAPSHOT_BACKFILL_LIMITS.maxItems) {
+      throw new Error(`maxItems must be an integer from 1 to ${SNAPSHOT_BACKFILL_LIMITS.maxItems}`);
+    }
+    const deadline = Math.min(
+      Date.now() + SNAPSHOT_BACKFILL_LIMITS.requestMilliseconds,
+      options.attemptDeadlineEpochMs ?? Number.POSITIVE_INFINITY,
+    );
+    let processedCount = 0;
+    let completedCount = 0;
+    let supersededCount = 0;
+    let last: SnapshotWorkerResult = { status: "idle" };
+    for (let index = 0; index < maxItems; index += 1) {
+      const result = await this.runItem(unitId, leaseOwner, {
+        ...options,
+        attemptDeadlineEpochMs: deadline,
+      }, index === 0);
+      if ("workId" in result) processedCount += 1;
+      if (result.status === "done") completedCount += 1;
+      if (result.status === "superseded") supersededCount += 1;
+      // An empty queue following success does not erase completed work. Other
+      // terminal outcomes retain their status, including partial failures.
+      if (result.status === "idle" && processedCount > 0) break;
+      last = result;
+      if (result.status !== "done" && result.status !== "superseded") break;
+    }
+    return { ...last, processedCount, completedCount, supersededCount };
+  }
+
+  private async runItem(
+    unitId: number,
+    leaseOwner: string,
+    options: SnapshotWorkerRunOptions,
+    prepareSource: boolean,
+  ): Promise<SnapshotWorkerResult> {
     if (!Number.isInteger(unitId) || unitId < -32_768 || unitId > 32_767) {
       throw new Error("unitId must be a SMALLINT");
     }
     if (!leaseOwner.trim()) throw new Error("leaseOwner must not be blank");
+
+    const backfillDays = options.backfillDays ?? SNAPSHOT_BACKFILL_LIMITS.defaultDays;
+    if (!Number.isInteger(backfillDays) || backfillDays < 0 || backfillDays > SNAPSHOT_BACKFILL_LIMITS.maxDays) {
+      throw new Error(`backfillDays must be an integer from 0 to ${SNAPSHOT_BACKFILL_LIMITS.maxDays}`);
+    }
+    if (options.attemptDeadlineEpochMs !== undefined && !Number.isFinite(options.attemptDeadlineEpochMs)) {
+      throw new Error("attemptDeadlineEpochMs must be finite");
+    }
+    const deadlineExpired = () => Date.now() >= (options.attemptDeadlineEpochMs ?? Number.POSITIVE_INFINITY);
+    if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
 
     await this.reap(unitId);
 
@@ -191,17 +259,32 @@ export class SnapshotWorkerService {
     );
     if (!gate.ok) return { status: "skipped", reason: gate.reason };
 
-    // Finalization is durable and retryable: capture has already committed the
-    // complete inputs, while diff/promotion runs outside the HTTP ingest path.
-    try {
-      await this.sourceCapture.finalizeReady(unitId);
-    } catch (error) {
-      process.stderr.write(`snapshot source finalization warning: ${errorText(error)}\n`);
+    if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
+    if (prepareSource) {
+      // Finalization is durable and retryable. Backfill also runs against an
+      // existing complete cut when no new source domain arrived this request.
+      try {
+        await this.sourceCapture.finalizeReady(unitId);
+      } catch (error) {
+        process.stderr.write(`snapshot source finalization warning: ${errorText(error)}\n`);
+      }
+      if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
+      await this.sourceCapture.enqueueBackfill(unitId, backfillDays);
     }
+    if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
 
-    const work = await this.lease(unitId, leaseOwner);
+    const work = await this.lease(unitId, leaseOwner, options.attemptDeadlineEpochMs);
     if (work === null) return { status: "busy" };
-    if (!work) return { status: "idle" };
+    if (!work) {
+      if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
+      // SQL rechecks time/disk after connection acquisition. Surface a gate
+      // that closed during finalization rather than reporting an empty queue.
+      const rows = await this.prisma.$queryRawUnsafe<GateRow[]>(PUBLICATION_OPERATIONAL_GATE_SQL);
+      if (!rows[0]) return { status: "skipped", reason: "operational_gate_unavailable" };
+      const afterLease = evaluateOperationalGate(rows[0].wib_minutes, Number(rows[0].database_bytes), true);
+      if (!afterLease.ok) return { status: "skipped", reason: afterLease.reason };
+      return { status: "idle" };
+    }
 
     let heartbeatFailure: unknown;
     let heartbeatRunning = false;
