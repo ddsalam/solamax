@@ -206,3 +206,91 @@ ditambal.
 2. **`storageAutoResizeLimit`** (§1.5) — angka berapa?
 3. **Pemisahan secret** (§3) — butir tersendiri, silakan dijadwalkan.
 4. Promosi ke `main` tetap beku sampai §1 pulih. Tidak diusulkan.
+
+---
+
+# Adendum 14-09-2026 ~01:30 WIB — keadaan berubah saat sesi berjalan
+
+## A · `VACUUM FULL` sedang berjalan, dan ia SEHAT
+
+Log Cloud SQL pid `1583585`, 01:29 WIB: `VACUUM FULL VERBOSE
+app.saldo_pelanggan_source_bphut` sedang pada fase membangun ulang indeks —
+pesan yang menyertainya `LOG: temporary file … size 53100544` (≈50–64 MB per
+berkas) adalah luberan sort untuk indeks, **bukan galat**. Empat baris
+`STATEMENT:` yang menyertainya sempat terlihat seperti kegagalan; ternyata
+lampiran biasa dari pesan `LOG`. Tidak ada ERROR pada sesi itu.
+
+## B · ⚠️ Risiko yang harus dibaca SEBELUM 02:05 WIB
+
+**`VACUUM FULL` hanya membuang tuple MATI. Ia tidak membuang baris cycle
+`failed` yang belum pernah di-`DELETE` — baris itu HIDUP, dan ia akan
+menulisnya ulang, bukan melepasnya.**
+
+Angka Anda: `source_bppiut` 17,6jt hidup / 15,1jt mati; `source_bphut` 2,3jt /
+11,1jt. Kalau angka "hidup" itu benar, sebagian besarnya justru baris milik 84
+cycle `failed` yang belum terkuras. Perkiraan hasilnya:
+
+| | sebelum | ditulis ulang (baris hidup) |
+|---|---:|---:|
+| `source_bppiut` | 8.074 MB | ~4.400 MB |
+| `source_bphut` | 3.285 MB | ~600 MB |
+| **database** | **13,97 GB** | **~8 GB** |
+
+⇒ **~8 GB melawan gerbang 9 GB: lolos, tetapi dengan kepala ruang ~1 GB.**
+Dengan ~24 cut/hari, satu sampai dua hari sudah cukup untuk menutupnya lagi.
+
+Bila sebaliknya "17,6jt hidup" ternyata `n_live_tup` yang meleset dan yang
+sebenarnya ~8jt, hasilnya ~6 GB dan kepala ruangnya nyaman. **`01-ukur.sql`
+yang memutuskan mana dari keduanya**, dan ia read-only.
+
+**Akibat urutan yang terpakai.** Runbook menuntut `02-prune-bertahap` DULU baru
+`03-reclaim`; malam ini urutannya terbalik. Konsekuensinya bukan kerusakan,
+melainkan ongkos: bila baris `failed` memang masih hidup, ia baru bisa dibuang
+sesudah ini, dan pelepasan ruangnya menuntut reclaim **kedua**. Itu bukan
+alasan menjalankan reclaim kedua malam ini — lihat peringatan lock.
+
+## C · Yang saya sarankan untuk malam ini
+
+1. **Jangan menjalankan reclaim kedua menjelang 02:05.** Kunci ACCESS EXCLUSIVE
+   dipegang sampai vacuum commit; malam ini ia sudah menahan lima backend agent
+   9–14 menit. Cron 02:05 yang menabraknya akan menghabiskan timeout Cloud Run
+   20 menit. Kehilangan satu malam build jauh lebih murah daripada menahan
+   agent lagi.
+2. **Biarkan cron 02:05 berjalan.** Bila §B benar, gerbang byte kini TERBUKA
+   dan ini menjadi build pertama sejak pembekuan. Sebabnya akan terbaca:
+   dengan perubahan di PR #359 belum ter-deploy, lognya masih hanya menulis
+   `status`, jadi periksa **status HTTP**-nya — 425 berarti gerbang jam
+   (normal), apa pun selain 2xx/425 layak dibaca.
+3. **Sesudah itu**, pada jam sepi: `01-ukur.sql` → bila baris `failed` masih
+   hidup, `02-prune-bertahap.sql` → baru pertimbangkan reclaim kedua.
+
+## D · Posisi skrip diperbarui
+
+`scripts/piutang-kapasitas/README.md` menuliskan peran barunya: **mekanisme
+berjalan, bukan obat sekali pakai**, dengan dua sumbu yang eksplisit tidak
+saling menggantikan — pemicu per jam menahan **LAJU** dan tidak mengembalikan
+satu byte pun; `VACUUM FULL` memulihkan **STOK** dan tidak menahan laju apa pun.
+
+## E · Batas disk — perintah siap, angkanya milik Dion
+
+Ada di `README.md`. Dua batas yang saling menarik, dan yang satu mudah
+terlupakan: **batas yang terlalu ketat mengubah masalah biaya menjadi masalah
+ketersediaan**, karena puncak `VACUUM FULL` = lama + baru (terpantau 13,97 →
+16 GB). Batas di bawah ~2× tabel terbesar berisiko membuat auto-resize mentok
+di tengah vacuum. Biaya PD_SSD ditulis sebagai **orde US$0,20–0,30/GB/bulan —
+perkiraan, bukan kutipan**, dengan tautan halaman harga untuk dikonfirmasi.
+
+## F · Observabilitas gerbang (§4) — selesai
+
+- `reason` masuk baris log (putaran sebelumnya).
+- **HTTP dibedakan**: `disk_review_required` → **507**, `operational_gate_unavailable`
+  → 503, sebab normal tetap **425** supaya arti lamanya tidak bergeser.
+- **Severity dibedakan**: skip insiden ditulis `logger.warn`, sehingga penyaring
+  severity Cloud Logging melihatnya.
+- **Sebab tak dikenal = insiden (500)**, bukan normal.
+- Ujinya **membaca literal `reason:` dari sumber**, jadi sebab baru yang lupa
+  diklasifikasikan menjatuhkan CI — bukan daftar salinan tangan. Ia juga membawa
+  kontrol atas dirinya sendiri, supaya regex yang berhenti cocok tidak membuat
+  seluruh pemeriksaan lulus hampa.
+- Dibuktikan MERAH dua arah (disk dikembalikan ke 425 → 2 uji jatuh; sebab baru
+  tanpa klasifikasi → 1 uji jatuh), hijau lagi sesudah dipulihkan.
