@@ -27,6 +27,23 @@ berhenti jadi kebutuhan rutin.
 
 ---
 
+## ⚠️ Koreksi 14-09-2026 01:40 — yang menumpuk adalah STAGING, bukan `failed`
+
+Diukur langsung ke produksi: 84 cycle `failed` memegang **NOL baris**.
+Pemensiunannya bekerja. Yang menumpuk adalah **`staging`** — 17.674.653 dari
+18.082.443 baris `source_bppiut` (**97,7%**), tersebar di 22 cut berumur ±27
+jam.
+
+Akibatnya untuk direktori ini: **`02-prune-bertahap.sql` bukan alat utamanya.**
+Ia hanya menyentuh cycle `failed`, dan itu memang sudah bersih. Alat utamanya
+adalah **pemicu pemensiunan per jam**, yang menandai `staging` → `failed`
+sesering cut ditangkap. Rancangannya di
+`session-notes/2026-09-14-laju-staging-dan-pemicu-retirement.md`.
+
+`02` tetap berguna sebagai jaring: bila pemensiunan mati beberapa hari lalu
+menandai banyak cycle sekaligus, baris `failed`-nya dapat dikuras bertahap
+tanpa menabrak budget transaksi aplikasi.
+
 ## Kapan menjalankan apa
 
 **`01-ukur.sql` — read-only, jalankan kapan saja, terutama sebelum memutuskan.**

@@ -44,6 +44,17 @@ export const SNAPSHOT_RETIREMENT_LIMITS = Object.freeze({
   batchRows: 20_000,
   batchMilliseconds: 30_000,
   budgetMilliseconds: 90_000,
+  /**
+   * Di atas ini, laju pemensiunan tidak mengejar laju penangkapan.
+   *
+   * Dasarnya bukan selera: hanya cut ber-sequence tertinggi yang masih bisa
+   * menang, jadi keadaan sehat = 1, dan 2 ketika satu cut sedang diunggah.
+   * Ambang 4 memberi kelonggaran dua kali lipat sebelum berbunyi — cukup
+   * longgar untuk tidak jadi alarm yang selalu menyala, cukup ketat untuk
+   * berbunyi jauh sebelum 22 (keadaan produksi 14-09-2026, ±27 jam tanpa
+   * pemensiunan, 3,38 GB/hari).
+   */
+  stagingReviewCount: 4,
 } as const);
 
 /** First rollout covers seven prior dates; operators may explicitly widen to 31. */

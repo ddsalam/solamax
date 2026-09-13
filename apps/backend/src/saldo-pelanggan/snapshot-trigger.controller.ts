@@ -12,8 +12,9 @@ import {
   Res,
 } from "@nestjs/common";
 import type { Response } from "express";
-import { SNAPSHOT_BACKFILL_LIMITS } from "./snapshot-config.js";
+import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import { PrismaService } from "../prisma.service.js";
+import type { RetirementSummary } from "./source-capture.service.js";
 import {
   type SnapshotWorkerBatchResult,
   SnapshotWorkerService,
@@ -83,6 +84,13 @@ function isAuthorized(given: string | undefined, secret: string | undefined): bo
   return timingSafeEqual(supplied, expected);
 }
 
+function parseUnitIdOnly(body: unknown): number | null {
+  if (!body || typeof body !== "object" || !("unit_id" in body)) return null;
+  const unitId = (body as { unit_id?: unknown }).unit_id;
+  if (!Number.isInteger(unitId) || Number(unitId) < -32_768 || Number(unitId) > 32_767) return null;
+  return Number(unitId);
+}
+
 function parseOptions(body: unknown): { unitId: number; backfillDays: number; maxItems: number } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const input = body as Record<string, unknown>;
@@ -123,6 +131,69 @@ export class SnapshotTriggerController {
     private readonly prisma: PrismaService,
     private readonly worker: SnapshotWorkerService,
   ) {}
+
+  /**
+   * Pemensiunan saja. Dipicu Cloud Scheduler per jam, dan SELALU memulangkan
+   * 200 bila ia berjalan — termasuk ketika tidak ada yang perlu dipensiunkan.
+   *
+   * Kenapa bukan menjadwalkan `/snapshot-worker` per jam: endpoint itu
+   * memulangkan 425 di luar jendela build, sehingga job-nya tercatat gagal
+   * 20-an kali sehari. Alarm yang selalu menyala berhenti dibaca — kelas
+   * kegagalan yang sama dengan yang menyembunyikan insiden 12-14 Sep 2026.
+   *
+   * Baris lognya memuat angka yang dibutuhkan operator TANPA membuka psql:
+   * berapa cut staging sebelum dan sesudah, dan berapa baris terhapus.
+   */
+  @Post("retire")
+  async retire(
+    @Headers("x-snapshot-secret") suppliedSecret: string | undefined,
+    @Body() body: unknown,
+  ): Promise<RetirementSummary & { status: "retired"; staging_review: boolean }> {
+    const startedAt = Date.now();
+    if (!isAuthorized(suppliedSecret, process.env.SNAPSHOT_TRIGGER_SECRET)) {
+      rejectWithoutOracle();
+    }
+    const unitId = parseUnitIdOnly(body);
+    if (unitId === null) rejectWithoutOracle();
+
+    let activeUnit: { unitId: number } | null;
+    try {
+      activeUnit = await this.prisma.unit.findFirst({
+        where: { unitId, active: true },
+        select: { unitId: true },
+      });
+    } catch {
+      this.logger.error(JSON.stringify({ msg: "snapshot-retire unit lookup failed", unit_id: unitId }));
+      throw new HttpException({ status: "failed" }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    if (!activeUnit) rejectWithoutOracle();
+
+    let summary: RetirementSummary;
+    try {
+      summary = await this.worker.retireOnly(unitId);
+    } catch {
+      this.logger.error(JSON.stringify({
+        msg: "snapshot-retire failed", unit_id: unitId, ms: Date.now() - startedAt,
+      }));
+      throw new HttpException({ status: "failed" }, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    // Di atas ambang, lajunya tidak terkejar — ditulis WARN supaya penyaring
+    // severity Cloud Logging melihatnya tanpa ada yang perlu membuka psql.
+    const review = summary.stagingAfter > SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount;
+    const line = JSON.stringify({
+      msg: "snapshot-retire finished",
+      unit_id: unitId,
+      staging_before: summary.stagingBefore,
+      staging_after: summary.stagingAfter,
+      rows_deleted: summary.rowsDeleted,
+      staging_review: review,
+      ms: Date.now() - startedAt,
+    });
+    if (review) this.logger.warn(line); else this.logger.log(line);
+
+    return { status: "retired", ...summary, staging_review: review };
+  }
 
   @Post()
   async trigger(

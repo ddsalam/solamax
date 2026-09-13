@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service.js";
 import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
-import { SnapshotSourceCaptureService } from "./source-capture.service.js";
+import { type RetirementSummary, SnapshotSourceCaptureService } from "./source-capture.service.js";
 import {
   evaluateOperationalGate,
   SnapshotBuildError,
@@ -106,6 +106,28 @@ export class SnapshotWorkerService {
       }
       return run(tx);
     });
+  }
+
+  /**
+   * Pemensiunan SAJA — tanpa gerbang, tanpa lease, tanpa membangun.
+   *
+   * Ada karena laju penangkapan (±1 cut/jam, mengikuti masterIntervalMs) jauh
+   * melampaui laju pemensiunan (1×/hari, terikat pada cron build 02:05).
+   * Terukur 14-09-2026: 22 cut staging menumpuk dalam ±27 jam, 3,38 GB/hari,
+   * dan gerbang 9 GB menutup — yang MEMBEKUKAN seluruh publikasi snapshot.
+   *
+   * Dipisahkan dari `runBatch` dengan sengaja: memanggil `runBatch` tiap jam
+   * memang ikut memensiunkan, tetapi ia memulangkan 425 di luar jendela build,
+   * sehingga job Scheduler-nya tercatat GAGAL 20-an kali sehari. Alarm yang
+   * selalu menyala berhenti dibaca orang — dan itu persis kelas kegagalan yang
+   * membuat insiden ini tidak terlihat berhari-hari.
+   */
+  async retireOnly(unitId: number): Promise<RetirementSummary> {
+    if (!Number.isInteger(unitId) || unitId < -32_768 || unitId > 32_767) {
+      throw new Error("unitId must be a SMALLINT");
+    }
+    await this.reap(unitId);
+    return this.sourceCapture.collectRetiredSources(unitId);
   }
 
   private async reap(unitId: number): Promise<void> {

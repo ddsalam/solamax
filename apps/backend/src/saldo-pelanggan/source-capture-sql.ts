@@ -485,6 +485,23 @@ WHERE c.unit_id = $1::smallint
 RETURNING source_cycle_id`;
 
 /** $1 unit, $2 winning sequence. Any older incomplete cut can no longer win. */
+/**
+ * $1 unit. Berapa cut yang masih `staging`.
+ *
+ * Angka inilah tanda kesehatan LAJU. Hanya cut ber-sequence TERTINGGI yang
+ * masih bisa menang (lihat READ_LATEST_SOURCE_SEQUENCE_SQL), jadi dalam keadaan
+ * sehat jumlahnya 1 — paling banyak 2 bila satu cut sedang diunggah. Terukur
+ * di produksi 14-09-2026: **22 cut staging** menumpuk selama ±27 jam, memegang
+ * 17.674.653 dari 18.082.443 baris `source_bppiut` (97,7%). Yang menumpuk
+ * bukan cycle `failed` — yang itu memegang NOL baris; pemensiunannya bekerja.
+ * Yang tidak bekerja adalah CADENCE-nya: penandaan staging->failed hanya
+ * terjadi saat snapshot worker berjalan, yaitu sekali sehari.
+ */
+export const COUNT_STAGING_CYCLES_SQL = `
+SELECT count(*)::bigint AS staging_count
+FROM app.saldo_pelanggan_source_cycle
+WHERE unit_id = $1::smallint AND status = 'staging'`;
+
 export const FAIL_SUPERSEDED_STAGING_CYCLES_SQL = `
 UPDATE app.saldo_pelanggan_source_cycle
 SET status = 'failed',
