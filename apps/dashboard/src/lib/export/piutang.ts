@@ -1,5 +1,5 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import type { PiutangExportView, PiutangViewRow } from "@/lib/piutang-model";
+import { PIUTANG_BOOKS, piutangBookLabel, type PiutangExportView, type PiutangSection, type PiutangViewRow } from "@/lib/piutang-model";
 import { susunCsv } from "./csv";
 import { footerKeuangan, gayaKeuangan, kopKeuangan, type KopKeuangan } from "./keuangan-kop";
 import { pdfText } from "./glyphs";
@@ -42,27 +42,28 @@ export function piutangCsv(input: {
     ["Dibuat", text(input.generatedLabel)],
     ["Dicetak oleh", text(input.generatedBy)],
     ["Catatan", text(piutangProvenance(view))],
+    ["Pelanggan unik", String(view.resultCount)],
+    ["Kemunculan dalam seksi", String(view.occurrenceCount)],
+    ["Catatan seksi nol", "Tanpa saldo di ketiga buku berarti keenam saldo Awal/Akhir nol; setiap pelanggan dicantumkan sekali dalam seksi ini."],
     [],
     [
       "Kode unit", "Nama unit", "Tanggal", "Batas awal", "Batas akhir",
-      "Kode pelanggan", "Nama pelanggan", "Piutang Lokal Awal", "Piutang Lokal Akhir",
-      "Piutang Online Awal", "Piutang Online Akhir", "Hutang Lokal Awal", "Hutang Lokal Akhir",
+      "Seksi", "Buku", "Keanggotaan buku", "Kode pelanggan", "Nama pelanggan", "Awal", "Akhir",
     ],
-    ...view.rows.map((row) => [
+    ...view.sections.flatMap((section) => section.rows.map((row) => [
       text(unit.code),
       text(unit.name),
       view.asOfDate,
       "dtgl < D · s.d. D−1",
       "dtgl <= D · s.d. D",
+      section.title,
+      section.book?.title ?? "Ketiga buku",
+      piutangBookLabel(row.bookCount) ?? "",
       text(row.customerCode),
       text(row.customerName ?? "Nama belum tersedia"),
-      numeric(row.awalPiutangLokal),
-      numeric(row.akhirPiutangLokal),
-      numeric(row.awalPiutangOnline),
-      numeric(row.akhirPiutangOnline),
-      numeric(row.awalHutangLokal),
-      numeric(row.akhirHutangLokal),
-    ]),
+      numeric(section.book ? row[section.book.awal] : 0),
+      numeric(section.book ? row[section.book.akhir] : 0),
+    ])),
   ];
   return susunCsv(rows);
 }
@@ -80,29 +81,36 @@ function header(text: string): TableCell {
   return { text: pdfText(text), bold: true, color: PDF.onNavy, fillColor: PDF.navy, fontSize: 7 };
 }
 
-function rowCells(row: PiutangViewRow, online: boolean): TableCell[] {
-  const cells: TableCell[] = [
+function rowCells(row: PiutangViewRow, section: PiutangSection): TableCell[] {
+  const label = piutangBookLabel(row.bookCount);
+  const books = section.book ? [section.book] : PIUTANG_BOOKS;
+  return [
     { text: pdfText(row.customerCode), fontSize: 7 },
-    { text: pdfText(row.customerName ?? "Nama belum tersedia"), fontSize: 7 },
-    moneyCell(row.awalPiutangLokal),
-    moneyCell(row.akhirPiutangLokal),
+    { text: pdfText(`${row.customerName ?? "Nama belum tersedia"}${label ? `\n${label}` : ""}`), fontSize: 7 },
+    ...books.flatMap((book) => [moneyCell(row[book.awal]), moneyCell(row[book.akhir])]),
   ];
-  if (online) cells.push(moneyCell(row.awalPiutangOnline), moneyCell(row.akhirPiutangOnline));
-  cells.push(moneyCell(row.awalHutangLokal), moneyCell(row.akhirHutangLokal));
-  return cells;
+}
+
+function sectionContent(section: PiutangSection): Content[] {
+  const books = section.book ? [section.book] : PIUTANG_BOOKS;
+  const headers = [header("Kode"), header("Pelanggan"), ...books.flatMap((book) => [
+    header(`${book.title} awal`), header(`${book.title} akhir`),
+  ])];
+  return [
+    { text: pdfText(`${section.title} · ${section.rows.length.toLocaleString("id-ID")} pelanggan`), bold: true, fontSize: 10, margin: [0, 12, 0, 6] },
+    ...(section.rows.length ? [{
+      table: {
+        headerRows: 1,
+        widths: section.book ? [55, "*", 120, 120] : [48, "*", 58, 58, 58, 58, 58, 58],
+        body: [headers, ...section.rows.map((row) => rowCells(row, section))],
+      },
+      layout: "lightHorizontalLines",
+    } as Content] : [{ text: "Tidak ada pelanggan dalam hasil filter.", fontSize: 8 } as Content]),
+  ];
 }
 
 export function buildPiutangDoc(input: { kop: KopKeuangan; view: PiutangExportView }): TDocumentDefinitions {
   const { view } = input;
-  const online = view.hasOnlineCustomer;
-  const headers = [
-    header("Kode"), header("Pelanggan"), header("Lokal awal"), header("Lokal akhir"),
-    ...(online ? [header("Online awal"), header("Online akhir")] : []),
-    header("Hutang awal"), header("Hutang akhir"),
-  ];
-  const widths = online
-    ? [48, "*", 58, 58, 58, 58, 58, 58]
-    : [55, "*", 70, 70, 70, 70];
   const note: Content = { text: pdfText(piutangProvenance(view)), fontSize: 7.5, color: PDF.textSecondary, margin: [0, 8, 0, 0] };
   return {
     pageSize: "A4",
@@ -112,11 +120,8 @@ export function buildPiutangDoc(input: { kop: KopKeuangan; view: PiutangExportVi
     styles: gayaKeuangan,
     content: [
       ...kopKeuangan(input.kop),
-      { text: `${view.resultCount.toLocaleString("id-ID")} pelanggan dalam hasil filter`, fontSize: 8, margin: [0, 0, 0, 8] },
-      {
-        table: { headerRows: 1, widths, body: [headers, ...view.rows.map((row) => rowCells(row, online))] },
-        layout: "lightHorizontalLines",
-      },
+      { text: `${view.resultCount.toLocaleString("id-ID")} pelanggan unik · ${view.occurrenceCount.toLocaleString("id-ID")} kemunculan dalam seksi`, fontSize: 8, margin: [0, 0, 0, 8] },
+      ...view.sections.flatMap(sectionContent),
       note,
     ],
   };

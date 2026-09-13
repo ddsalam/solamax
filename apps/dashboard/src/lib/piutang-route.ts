@@ -1,7 +1,9 @@
 import {
+  PIUTANG_SECTION_IDS,
   isPiutangFilter,
   isPiutangSort,
   type PiutangReadyView,
+  type PiutangSectionId,
   type PiutangViewInput,
   type PiutangViewRow,
 } from "./piutang-model";
@@ -9,7 +11,26 @@ import type { SaldoSnapshot, SaldoSnapshotRow } from "./saldo-snapshot";
 
 export function piutangViewInput(params: Record<string, string | string[] | undefined>): PiutangViewInput {
   const one = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
-  return { search: one(params.q), filter: one(params.filter), sort: one(params.sort), page: one(params.page) };
+  return {
+    search: one(params.q), filter: one(params.filter), sort: one(params.sort),
+    pages: Object.fromEntries(PIUTANG_SECTION_IDS.map((id) => [id, one(params[`page_${id}`])])),
+  };
+}
+
+/** Section navigation retains every other section page; filter changes omit all pages. */
+export function piutangQueryHref(
+  input: Pick<PiutangReadyView, "search" | "filter" | "sort">,
+  pages: Partial<Record<PiutangSectionId, number>> = {},
+  sectionId?: PiutangSectionId,
+): string {
+  const params = new URLSearchParams();
+  if (input.search) params.set("q", input.search);
+  params.set("filter", input.filter);
+  params.set("sort", input.sort);
+  for (const id of PIUTANG_SECTION_IDS) {
+    if (pages[id] !== undefined) params.set(`page_${id}`, String(pages[id]));
+  }
+  return `?${params}${sectionId ? `#piutang-${sectionId}` : ""}`;
 }
 
 /** Export handlers reject unknown enum values rather than silently normalising them. */

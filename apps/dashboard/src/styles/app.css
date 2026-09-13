@@ -1385,6 +1385,12 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-ledger-head, .b6-piutang-ledger-row { display: grid; grid-template-columns: minmax(210px, 1.5fr) repeat(2, minmax(250px, 2fr)); min-width: 850px; }
 .b6-piutang-ledger-head.has-online, .b6-piutang-ledger-row.has-online { grid-template-columns: minmax(210px, 1.5fr) repeat(3, minmax(250px, 2fr)); min-width: 1100px; }
 .b6-piutang-ledger { overflow-x: auto; }
+.b6-piutang-ledger-head.single-book, .b6-piutang-ledger-row.single-book { grid-template-columns: minmax(210px, 1.5fr) minmax(250px, 2fr); min-width: 520px; }
+.b6-piutang-sections { display: grid; gap: var(--space-5); }
+.b6-piutang-result-count { margin: 0; color: var(--color-text-secondary); }
+.b6-piutang-zero-section > summary { cursor: pointer; padding-left: var(--space-5); }
+.b6-piutang-zero-section > summary .b6-piutang-list-meta { display: inline-flex; width: calc(100% - 24px); padding-left: var(--space-2); }
+.b6-piutang-book-badge { color: var(--color-text-secondary); font-size: 13px; }
 .b6-piutang-ledger-head { background: var(--neutral-50); border-bottom: 1px solid var(--color-border); }
 .b6-piutang-customer-head { display: flex; align-items: center; padding: var(--space-4) var(--space-5); color: var(--color-text-tertiary); font-size: 15px; font-weight: 700; }
 .b6-piutang-head-bucket { border-left: 2px solid var(--color-border); text-align: center; }
@@ -1447,7 +1453,7 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
   .b6-piutang-list-meta { align-items: flex-start; flex-direction: column; }
   .b6-piutang-ledger { overflow: visible; }
   .b6-piutang-ledger-head { display: none; }
-  .b6-piutang-ledger-row, .b6-piutang-ledger-row.has-online { display: grid; grid-template-columns: 1fr; min-width: 0; padding: var(--space-4); gap: var(--space-3); }
+  .b6-piutang-ledger-row, .b6-piutang-ledger-row.has-online, .b6-piutang-ledger-row.single-book { display: grid; grid-template-columns: 1fr; min-width: 0; padding: var(--space-4); gap: var(--space-3); }
   .b6-piutang-ledger-row + .b6-piutang-ledger-row { border-top: 5px solid var(--neutral-100); }
   .b6-piutang-customer { padding: 0 0 var(--space-2); }
   .b6-piutang-bucket { overflow: hidden; border: 1px solid var(--color-border-hairline); border-radius: var(--radius-md); }

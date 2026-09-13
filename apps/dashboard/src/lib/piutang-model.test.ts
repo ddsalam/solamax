@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPiutangExportView,
   buildPiutangView,
+  groupPiutangRows,
   type PiutangFilter,
   type PiutangSort,
 } from "./piutang-model";
@@ -102,9 +103,11 @@ describe("buildPiutangView", () => {
       rows: [],
       resultCount: 0,
       totalCount: 0,
-      page: 1,
-      pageSize: 50,
-      totalPages: 1,
+      sections: [
+        { id: "lokal", page: 1, pageSize: 50, totalPages: 1 },
+        { id: "hutang", page: 1, pageSize: 50, totalPages: 1 },
+        { id: "nol", page: 1, pageSize: 50, totalPages: 1 },
+      ],
     });
   });
 
@@ -160,14 +163,14 @@ describe("buildPiutangView", () => {
 
   it("paginates 51 rows at 50 and clamps malformed or excessive pages", () => {
     const rows = Array.from({ length: 51 }, (_, index) => withSaldo(String(index + 1).padStart(2, "0"), `Nama ${index + 1}`));
-    const page2 = buildPiutangView(ready(rows), { sort: "kode", page: "2" });
-    expect(page2).toMatchObject({ status: "ready", resultCount: 51, totalCount: 51, page: 2, pageSize: 50, totalPages: 2 });
+    const page2 = buildPiutangView(ready(rows), { sort: "kode", pages: { lokal: "2" } });
+    expect(page2).toMatchObject({ status: "ready", resultCount: 51, totalCount: 51, sections: [{ id: "lokal", page: 2, pageSize: 50, totalPages: 2 }, { id: "hutang" }, { id: "nol" }] });
     if (page2.status !== "ready") throw new Error("expected ready");
-    expect(page2.rows.map((row) => row.customerCode)).toEqual(["51"]);
+    expect(page2.sections[0]!.rows.map((row) => row.customerCode)).toEqual(["51"]);
 
-    expect(buildPiutangView(ready(rows), { page: "wat" })).toMatchObject({ status: "ready", page: 1 });
-    expect(buildPiutangView(ready(rows), { page: -7 })).toMatchObject({ status: "ready", page: 1 });
-    expect(buildPiutangView(ready(rows), { page: 99 })).toMatchObject({ status: "ready", page: 2 });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: "wat" } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 1 }, { id: "hutang" }, { id: "nol" }] });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: -7 } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 1 }, { id: "hutang" }, { id: "nol" }] });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: 99 } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 2 }, { id: "hutang" }, { id: "nol" }] });
     const exported = buildPiutangExportView(ready(rows), { sort: "kode" });
     expect(exported).toMatchObject({ status: "ready", resultCount: 51 });
     if (exported.status !== "ready") throw new Error("expected ready");
@@ -179,4 +182,75 @@ describe("buildPiutangView", () => {
     expect(buildPiutangView(ready([dotted], false), {})).toMatchObject({ status: "ready", hasOnlineCustomer: false });
     expect(buildPiutangView(ready([dotted], true), {})).toMatchObject({ status: "ready", hasOnlineCustomer: true });
   });
+});
+
+
+describe("section membership and pagination", () => {
+  it("keeps opening-only and offsetting balances in each relevant book, with unchanged amounts", () => {
+    const rows = [
+      { ...zeroRow("A", "Awal"), awalPiutangLokal: 12.5 },
+      { ...zeroRow("B", "Dua"), awalPiutangLokal: 5, akhirHutangLokal: -5 },
+      { ...zeroRow("C", "Online"), akhirPiutangOnline: 9 },
+      zeroRow("Z", "Nol"),
+    ];
+    const view = buildPiutangView(ready(rows, true), {});
+    if (view.status !== "ready") throw new Error("expected ready");
+    expect(view.sections.map((s) => [s.id, s.rows.map((r) => r.customerCode)])).toEqual([
+      ["lokal", ["A", "B"]], ["online", ["C"]], ["hutang", ["B"]], ["nol", ["Z"]],
+    ]);
+    expect(view.resultCount).toBe(4);
+    expect(view.occurrenceCount).toBe(5);
+    expect(view.sections[0]!.rows[1]!.bookCount).toBe(2);
+    for (const section of view.sections) for (const row of section.rows) {
+      expect(row).toMatchObject(rows.find((r) => r.customerCode === row.customerCode)!);
+    }
+    expect(groupPiutangRows(view.rows, false).map((s) => s.id)).toEqual(["lokal", "hutang", "nol"]);
+  });
+
+  it("pages each section independently and exports every result in the same section order", () => {
+    const rows = Array.from({ length: 51 }, (_, i) => [
+      withSaldo(`L${i}`, `Pelanggan ${i}`),
+      { ...zeroRow(`H${i}`, `Pelanggan ${i}`), awalHutangLokal: -1 },
+      { ...zeroRow(`O${i}`, `Pelanggan ${i}`), akhirPiutangOnline: 1 },
+      zeroRow(`Z${i}`, `Pelanggan ${i}`),
+    ]).flat();
+    const view = buildPiutangView(ready(rows, true), { sort: "kode", pages: { lokal: 2, online: 2, hutang: 1, nol: 2 } });
+    const exported = buildPiutangExportView(ready(rows, true), { sort: "kode" });
+    if (view.status !== "ready" || exported.status !== "ready") throw new Error("expected ready");
+    expect(view.sections.map((s) => [s.id, s.page, s.rows.length, s.resultCount])).toEqual([
+      ["lokal", 2, 1, 51], ["online", 2, 1, 51], ["hutang", 1, 50, 51], ["nol", 2, 1, 51],
+    ]);
+    expect(view.zeroSectionOpen).toBe(true);
+    expect(exported.sections.map((s) => s.rows.length)).toEqual([51, 51, 51, 51]);
+    for (const section of view.sections) {
+      const all = exported.sections.find((s) => s.id === section.id)!;
+      expect(section.rows).toEqual(all.rows.slice((section.page - 1) * 50, section.page * 50));
+    }
+  });
+
+  it("keeps the zero section present and opens it for search or the zero filter", () => {
+    for (const input of [{}, { search: "Nol" }, { filter: "nol" }, { filter: "bersaldo" }]) {
+      const view = buildPiutangView(ready([zeroRow("Z", "Nol")]), input);
+      if (view.status !== "ready") throw new Error("expected ready");
+      expect(view.sections.at(-1)?.id).toBe("nol");
+      expect(view.zeroSectionOpen).toBe(Boolean(input.search || input.filter === "nol"));
+      expect(view.sections.at(-1)?.resultCount).toBe(input.filter === "bersaldo" ? 0 : 1);
+    }
+  });
+});
+
+
+it("sorts search results within books before zero rows, identically for screen and export", () => {
+  const snapshot = ready([
+    withSaldo("L2", "Cari Zulu"), withSaldo("L1", "Cari Alpha"),
+    { ...zeroRow("H2", "Cari Zulu"), awalHutangLokal: -0.4 },
+    { ...zeroRow("H1", "Cari Alpha"), akhirHutangLokal: -1 },
+    zeroRow("Z1", "Cari Nol"), withSaldo("X", "Excluded"),
+  ]);
+  const screen = buildPiutangView(snapshot, { search: "cari", sort: "nama" });
+  const exported = buildPiutangExportView(snapshot, { search: "cari", sort: "nama" });
+  if (screen.status !== "ready" || exported.status !== "ready") throw new Error("expected ready");
+  const codes = (sections: typeof exported.sections) => sections.map((s) => s.rows.map((r) => r.customerCode));
+  expect(codes(screen.sections)).toEqual([["L1", "L2"], ["H1", "H2"], ["Z1"]]);
+  expect(codes(screen.sections)).toEqual(codes(exported.sections));
 });

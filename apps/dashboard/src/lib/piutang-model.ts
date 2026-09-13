@@ -25,12 +25,13 @@ export interface PiutangViewInput {
   search?: string | null;
   filter?: string | null;
   sort?: string | null;
-  page?: string | number | null;
+  pages?: Partial<Record<PiutangSectionId, string | number | null>>;
 }
 
 export interface PiutangViewRow extends SaldoSnapshotRow {
   /** Presentation-only predicate; it never adds or nets the three buckets. */
   isZeroBalance: boolean;
+  bookCount: number;
 }
 
 export interface PiutangNotReadyView {
@@ -51,9 +52,9 @@ export interface PiutangReadyView {
   hasOnlineCustomer: boolean;
   totalCount: number;
   resultCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+  sections: PiutangPageSection[];
+  occurrenceCount: number;
+  zeroSectionOpen: boolean;
   filter: PiutangFilter;
   sort: PiutangSort;
   search: string;
@@ -62,6 +63,8 @@ export interface PiutangReadyView {
 export type PiutangView = PiutangNotReadyView | PiutangReadyView;
 
 export interface PiutangExportView {
+  sections: PiutangSection[];
+  occurrenceCount: number;
   status: "ready";
   asOfDate: string;
   metadata: SaldoSnapshotMetadata;
@@ -72,6 +75,50 @@ export interface PiutangExportView {
   filter: PiutangFilter;
   sort: PiutangSort;
   search: string;
+}
+
+/** Fixed presentation order, shared by the screen and both export formats. */
+export const PIUTANG_BOOKS = [
+  { id: "lokal", title: "Piutang Lokal", awal: "awalPiutangLokal", akhir: "akhirPiutangLokal" },
+  { id: "online", title: "Piutang Online", awal: "awalPiutangOnline", akhir: "akhirPiutangOnline" },
+  { id: "hutang", title: "Hutang Lokal", awal: "awalHutangLokal", akhir: "akhirHutangLokal" },
+] as const;
+
+export type PiutangBook = (typeof PIUTANG_BOOKS)[number];
+export type PiutangSectionId = PiutangBook["id"] | "nol";
+export const PIUTANG_SECTION_IDS: readonly PiutangSectionId[] = [...PIUTANG_BOOKS.map((book) => book.id), "nol"];
+
+export interface PiutangSection {
+  id: PiutangSectionId;
+  title: string;
+  book: PiutangBook | null;
+  rows: PiutangViewRow[];
+}
+
+export interface PiutangPageSection extends PiutangSection {
+  page: number;
+  totalPages: number;
+  resultCount: number;
+  pageSize: number;
+}
+
+export function piutangBookLabel(bookCount: number): string | null {
+  return bookCount === 2 ? "satu pelanggan, dua buku"
+    : bookCount === 3 ? "satu pelanggan, tiga buku" : null;
+}
+
+/** Rows are already filtered and sorted; membership never nets or rounds amounts. */
+export function groupPiutangRows(rows: PiutangViewRow[], hasOnlineCustomer: boolean): PiutangSection[] {
+  const sections: PiutangSection[] = PIUTANG_BOOKS
+    .filter((book) => book.id !== "online" || hasOnlineCustomer)
+    .map((book) => ({
+      id: book.id,
+      title: book.title,
+      book,
+      rows: rows.filter((row) => row[book.awal] !== 0 || row[book.akhir] !== 0),
+    }));
+  sections.push({ id: "nol", title: "Tanpa saldo di ketiga buku", book: null, rows: rows.filter((row) => row.isZeroBalance) });
+  return sections;
 }
 
 const NOT_READY_COPY: Record<SaldoSnapshotNotReadyReason, { title: string; message: string }> = {
@@ -112,7 +159,11 @@ function normalizeRow(row: SaldoSnapshotRow): PiutangViewRow {
     customerCode: row.customerCode.trim(),
     customerName: row.customerName?.trim() || null,
   };
-  return { ...normalized, isZeroBalance: isZeroBalance(normalized) };
+  return {
+    ...normalized,
+    isZeroBalance: isZeroBalance(normalized),
+    bookCount: PIUTANG_BOOKS.filter((book) => normalized[book.awal] !== 0 || normalized[book.akhir] !== 0).length,
+  };
 }
 
 function normalizeFilter(value: string | null | undefined): PiutangFilter {
@@ -187,21 +238,26 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
 
   const { search, filter, sort, normalizedRows, rows: filteredRows } = selectRows(snapshot, input);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PIUTANG_PAGE_SIZE));
-  const page = normalizePage(input.page, totalPages);
-  const start = (page - 1) * PIUTANG_PAGE_SIZE;
+  const groups = groupPiutangRows(filteredRows, snapshot.hasOnlineCustomer);
+  const sections = groups.map((section): PiutangPageSection => {
+    const totalPages = Math.max(1, Math.ceil(section.rows.length / PIUTANG_PAGE_SIZE));
+    const page = normalizePage(input.pages?.[section.id], totalPages);
+    const start = (page - 1) * PIUTANG_PAGE_SIZE;
+    return { ...section, rows: section.rows.slice(start, start + PIUTANG_PAGE_SIZE),
+      resultCount: section.rows.length, page, totalPages, pageSize: PIUTANG_PAGE_SIZE };
+  });
 
   return {
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
-    rows: filteredRows.slice(start, start + PIUTANG_PAGE_SIZE),
+    rows: filteredRows,
+    sections,
+    occurrenceCount: groups.reduce((count, section) => count + section.rows.length, 0),
+    zeroSectionOpen: Boolean(search || filter === "nol" || input.pages?.nol != null),
     hasOnlineCustomer: snapshot.hasOnlineCustomer,
     totalCount: normalizedRows.length,
     resultCount: filteredRows.length,
-    page,
-    pageSize: PIUTANG_PAGE_SIZE,
-    totalPages,
     filter,
     sort,
     search,
@@ -215,11 +271,14 @@ export function buildPiutangExportView(
 ): PiutangNotReadyView | PiutangExportView {
   if (snapshot.status === "not_ready") return buildPiutangView(snapshot, input);
   const { search, filter, sort, normalizedRows, rows } = selectRows(snapshot, input);
+  const sections = groupPiutangRows(rows, snapshot.hasOnlineCustomer);
   return {
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
     rows,
+    sections,
+    occurrenceCount: sections.reduce((count, section) => count + section.rows.length, 0),
     hasOnlineCustomer: snapshot.hasOnlineCustomer,
     totalCount: normalizedRows.length,
     resultCount: rows.length,
