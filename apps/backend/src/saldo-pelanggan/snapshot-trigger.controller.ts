@@ -134,6 +134,12 @@ export class SnapshotTriggerController {
         generation_id: result.generationId,
       } : {}),
       ...("workId" in result && result.status !== "done" ? { work_id: result.workId } : {}),
+      // Sebabnya WAJIB ikut. Tanpa ini log hanya berbunyi status:"skipped", dan
+      // `disk_review_required` (pipeline BEKU, insiden) tidak dapat dibedakan
+      // dari `outside_build_window` (normal, 21 dari 24 jam). Dibayar 13-14 Sep
+      // 2026: produksi 13,97 GB melewati gerbang 9 GB dan setiap invokasi
+      // di-skip selama berhari-hari tanpa satu baris log pun menyebutkan disk.
+      ...(result.status === "skipped" ? { reason: result.reason } : {}),
     }));
 
     switch (result.status) {

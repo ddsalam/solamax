@@ -25,6 +25,27 @@ export const SNAPSHOT_OPERATIONAL_LIMITS = Object.freeze({
 
 export type SnapshotOperationalLimits = typeof SNAPSHOT_OPERATIONAL_LIMITS;
 
+/**
+ * Batas pemensiunan source cut. Ada karena mode kegagalannya SENYAP DAN TOTAL:
+ * prune yang tak berbatas berjalan di dalam satu transaksi ber-budget, jadi
+ * sekali ia melewati budget, SELURUHNYA di-rollback dan pemanggilnya hanya
+ * menulis satu baris peringatan ke stderr (`snapshot-worker.service.ts`).
+ * Tidak ada kemajuan yang tersimpan, dan tumpukannya membesar — yang membuat
+ * percobaan berikutnya lebih pasti gagal lagi.
+ *
+ * Terukur di produksi 12-13 September 2026: invokasi 114.521 ms dan 99.784 ms
+ * terhadap budget 120.000 ms — 95% dan 83%. Keduanya masih commit, jadi tidak
+ * ada peringatan; tebingnya tidak terlihat sampai dilewati.
+ *
+ * Dengan batch: tiap batch commit sendiri, jadi budget yang habis berarti
+ * KEMAJUAN SEBAGIAN yang tersimpan, bukan nol.
+ */
+export const SNAPSHOT_RETIREMENT_LIMITS = Object.freeze({
+  batchRows: 20_000,
+  batchMilliseconds: 30_000,
+  budgetMilliseconds: 90_000,
+} as const);
+
 /** First rollout covers seven prior dates; operators may explicitly widen to 31. */
 export const SNAPSHOT_BACKFILL_LIMITS = Object.freeze({
   defaultDays: 7,

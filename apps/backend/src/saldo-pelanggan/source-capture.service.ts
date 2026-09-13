@@ -31,7 +31,7 @@ import {
   SUPERSEDE_PENDING_WORK_SQL,
   UPSERT_DIRTY_WATERMARK_SQL,
 } from "./source-capture-sql.js";
-import { SNAPSHOT_BACKFILL_LIMITS } from "./snapshot-config.js";
+import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import { SET_UNIT_SCOPE_SQL } from "./snapshot-sql.js";
 
 export type SourceCutDomain = SourceCut["domain"];
@@ -231,7 +231,8 @@ export class SnapshotSourceCaptureService {
    * The newest cut is never touched, so an in-flight capture keeps its rows.
    */
   async collectRetiredSources(unitId: number): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    // Tahap 1 — menandai. Murni UPDATE metadata, selalu murah.
+    const marked = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
       await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
 
@@ -240,15 +241,35 @@ export class SnapshotSourceCaptureService {
         unitId,
       );
       const latest = latestRows[0];
-      if (!latest) return;
+      if (!latest) return false;
 
       await tx.$executeRawUnsafe(
         FAIL_SUPERSEDED_STAGING_CYCLES_SQL,
         unitId,
         BigInt(latest.source_cycle_sequence),
       );
-      await this.pruneRetiredSourceRows(tx, unitId);
-    }, { timeout: 120_000 });
+      return true;
+    }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+    if (!marked) return;
+
+    // Tahap 2 — pengurasan. Tiap batch COMMIT sendiri, jadi budget yang habis
+    // meninggalkan kemajuan yang tersimpan, bukan nol. Ini yang membedakannya
+    // dari bentuk lama: di sana satu pernyataan tak berbatas melewati budget
+    // dan seluruhnya di-rollback, diam-diam, berulang kali.
+    const deadline = Date.now() + SNAPSHOT_RETIREMENT_LIMITS.budgetMilliseconds;
+    for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
+      while (Date.now() < deadline) {
+        const deleted = await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+          await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
+          return tx.$executeRawUnsafe(sql, unitId, SNAPSHOT_RETIREMENT_LIMITS.batchRows);
+        }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+        // Batch yang tidak penuh berarti tabel ini sudah terkuras. Berhenti di
+        // sini, bukan pada `deleted === 0`, supaya tidak ada lintasan kosong
+        // tambahan per tabel setiap kali pemensiunan berjalan.
+        if (deleted < SNAPSHOT_RETIREMENT_LIMITS.batchRows) break;
+      }
+    }
   }
 
   /**
@@ -446,10 +467,13 @@ export class SnapshotSourceCaptureService {
     }, { timeout: 120_000 });
   }
 
-  private async pruneRetiredSourceRows(tx: Tx, unitId: number): Promise<void> {
+  /** Satu lintasan berbatas per tabel. Memulangkan jumlah baris yang terhapus. */
+  private async pruneRetiredSourceRows(tx: Tx, unitId: number): Promise<number> {
+    let deleted = 0;
     for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
-      await tx.$executeRawUnsafe(sql, unitId);
+      deleted += await tx.$executeRawUnsafe(sql, unitId, SNAPSHOT_RETIREMENT_LIMITS.batchRows);
     }
+    return deleted;
   }
 
   private async readCycle(

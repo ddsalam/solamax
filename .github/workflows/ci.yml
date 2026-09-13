@@ -54,11 +54,11 @@ jobs:
       - run: bash scripts/ci/check-sql-syntax.selftest.sh
       - run: pnpm check
 
-  snapshot-postgres-14:
+  snapshot-postgres-16:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:14
+        image: postgres:16
         env:
           POSTGRES_DB: solamax_snapshot_ci
           POSTGRES_USER: snapshot_ci_admin
@@ -90,7 +90,7 @@ jobs:
 
   # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
   #
-  # Job `snapshot-postgres-14` di atas membuktikan SQL migrasi 0039 benar. Pada
+  # Job `snapshot-postgres-16` di atas membuktikan SQL migrasi 0039 benar. Pada
   # 13 September 2026 migrasi itu tetap gagal di DB test, dua kali, pada dua
   # guard berbeda — karena uji itu menyuntik SQL lewat psql per pernyataan,
   # sebagai peran pemilik, ke database yang uji itu sendiri baru siapkan. Job
@@ -98,10 +98,9 @@ jobs:
   # berisi seluruh berkas) sebagai peran NOSUPERUSER NOBYPASSRLS, terhadap
   # database yang SUDAH berisi keadaan sebelumnya. Rinciannya di skripnya.
   #
-  # ⚠️ postgres:16, bukan 14. `gcloud sql instances describe` menjawab
-  # POSTGRES_16 untuk KEDUA tier (solamax-pg dan solamax-pg-rlsstg); job
-  # `snapshot-postgres-14` menguji mesin yang tidak berjalan di tier mana pun.
-  # Perbedaan itu dilaporkan terpisah; job ini memilih paritas produksi.
+  # postgres:16 = paritas produksi; kedua tier Cloud SQL menjawab POSTGRES_16.
+  # Sejak 2026-09-14 job snapshot di atas juga memakai 16, jadi seluruh gerbang
+  # berbasis Postgres di repo ini berjalan pada satu versi mayor yang sama.
   migrate-deploy-postgres-16:
     runs-on: ubuntu-latest
     services:
