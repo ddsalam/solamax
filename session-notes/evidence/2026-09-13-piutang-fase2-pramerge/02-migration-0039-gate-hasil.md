@@ -13,6 +13,6 @@ Keduanya menunjuk cut lengkap yang sama; status cycle `complete`, waktu `source_
 
 Ini adalah bukti keadaan unit 1 pada pukul 16:14 WIB, bukan jaminan keadaan pada waktu deployment mendatang. Unit 1 adalah satu-satunya unit rollout snapshot saat bukti diambil, tetapi migrasi memindai seluruh `public.unit`; pemeriksaan deployment harus mencakup semua unit yang sudah mempunyai snapshot/work. Dion perlu mengulang pemeriksaan builder/work serta lock penulis collector tepat sebelum deployment dan menjalankan merge/deploy C dalam jendela 05:15–01:30 WIB; cron unit 1 dimulai 02:05 WIB.
 
-Karena O2 kemudian terbukti dan memicu aturan berhenti, hasil gerbang ini belum ditulis ke badan PR #357 pada sesi ini. Tidak ada migrasi atau tindakan produksi yang dijalankan.
+Pada sesi awal, O2 sempat memicu aturan berhenti sehingga hasil gerbang belum ditulis ke badan PR #357. Setelah H1′ dirumuskan dan diterima, tindak lanjut ini menambahkan hasil gerbang beserta batas waktu pengamatannya ke badan PR. Tidak ada migrasi atau tindakan produksi yang dijalankan.
 
 Bukti lengkap: `02-migration-0039-gate.sql` dan hasil mentah `02-migration-0039-gate.txt`.
