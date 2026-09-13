@@ -1,0 +1,92 @@
+# Kapasitas source cut — MEKANISME BERJALAN, bukan obat sekali pakai
+
+Berkas di direktori ini awalnya ditulis sebagai pemulihan darurat. **Statusnya
+berubah 14-09-2026**: pemulihan stok pertama sudah dijalankan Dion lewat
+`VACUUM FULL` langsung. Yang tersisa di sini adalah perkakas yang dipakai
+**berulang**, dan dokumen ini menjelaskan kapan masing-masing dipakai.
+
+---
+
+## Dua sumbu yang TIDAK saling menggantikan
+
+| | Menahan **LAJU** | Memulihkan **STOK** |
+|---|---|---|
+| Apa | tumpukan berhenti bertambah | berkas mengecil, ruang kembali ke OS |
+| Alat | pemicu retirement per jam (Cloud Scheduler) | `03-reclaim.sql` (`VACUUM FULL`) |
+| Tanpa yang satunya | berkas tetap besar selamanya; gerbang 9 GB tetap tertutup | tumpukan naik lagi, dan gerbang tertutup lagi beberapa minggu kemudian |
+
+**Ini harus dibaca eksplisit**: pemicu per jam **tidak mengembalikan satu byte
+pun** ke OS. `DELETE` hanya menandai tuple mati; `pg_database_size` — persis
+angka yang dibaca `databaseReviewBytes` — tidak turun karenanya. Dan sebaliknya,
+`VACUUM FULL` tidak menahan laju apa pun: ia hanya menurunkan tanda-air sekali.
+
+Yang membuat 11 GB terjadi adalah tanda-air yang dibiarkan naik berminggu-minggu.
+Sesudah lajunya benar, ruang mati dipakai ulang INSERT berikutnya di tabel yang
+sama, sehingga berkasnya mengendap di tanda-air barunya dan `VACUUM FULL`
+berhenti jadi kebutuhan rutin.
+
+---
+
+## Kapan menjalankan apa
+
+**`01-ukur.sql` — read-only, jalankan kapan saja, terutama sebelum memutuskan.**
+Ia memisahkan `n_live_tup` (PERKIRAAN, di-update autovacuum) dari `count(*)` per
+status cycle (SEBENARNYA). Angka "17,6 juta hidup" berasal dari perkiraan; kalau
+yang sebenarnya jauh lebih kecil, tidak ada yang perlu dikerjakan.
+
+**`02-prune-bertahap.sql` — ketika tumpukan `failed` menumpuk** (mis. sesudah
+pemicu retirement mati, atau sesudah jeda panjang). Ia hanya menyentuh baris
+milik cycle `failed`; `complete` dan `staging` tidak tersentuh. Bertahap dan
+commit per batch, jadi aman diulang dan aman dihentikan Ctrl-C.
+
+**`03-reclaim.sql` — JARANG.** Hanya bila `01` menunjukkan berkasnya jauh lebih
+besar daripada baris hidupnya DAN gerbang 9 GB tertutup. Dalam keadaan sehat,
+ini tidak perlu dijalankan lagi.
+
+> ⛔ **JANGAN mendekati 02:00 WIB.** `VACUUM FULL` mengambil ACCESS EXCLUSIVE
+> pada tabel yang sedang menerima cut. Pada 14-09-2026 01:02 WIB ia menahan
+> **tujuh sesi**, termasuk **lima backend agent di `pg_advisory_xact_lock`
+> selama 9-14 menit**. Cron unit 1 mulai 02:05.
+>
+> ⚠️ **Puncak ruangnya = lama + baru.** `VACUUM FULL` menulis salinan baru
+> sebelum melepas yang lama; terpantau 13,97 GB → **16 GB** saat berjalan.
+> Kepala ruang harus memuat itu — lihat catatan batas disk di bawah.
+
+**Urutan mengikat**: `02` dulu, baru `03`. Terbalik berarti menulis ulang
+seluruh bangkai ke berkas baru, mengunci jauh lebih lama, tanpa hasil tambahan.
+
+---
+
+## Batas pertumbuhan disk — perintah siap-jalan, ANGKANYA MILIK DION
+
+Keadaan sekarang: `dataDiskSizeGb = 25`, `storageAutoResize = True`,
+`storageAutoResizeLimit = **0** (tanpa batas)`, `PD_SSD`, `db-g1-small`.
+
+Cloud SQL **tidak pernah mengecilkan** disk. `VACUUM FULL` mengembalikan ruang
+ke dalam database, tetapi 25 GB tetap ter-provision dan tetap ditagih. Tanpa
+batas, pertumbuhan berikutnya menaikkan tagihan **diam-diam** alih-alih
+berbunyi.
+
+```bash
+# GANTI <GB> dengan angka yang Anda putuskan. Skrip ini sengaja TIDAK memilih.
+gcloud sql instances patch solamax-pg \
+  --project=solamax \
+  --storage-auto-increase-limit=<GB> \
+  --storage-auto-increase
+```
+
+Memilih angkanya — dua batas yang saling menarik:
+
+- **Batas bawah yang aman.** Harus memuat puncak `VACUUM FULL` = ukuran lama +
+  salinan baru. Terpantau 16 GB saat memvakum tabel terbesar. Batas di bawah
+  ~2× tabel terbesar berisiko membuat auto-resize mentok **di tengah** vacuum,
+  dan vacuum-nya gagal. Batas yang terlalu ketat mengubah masalah biaya menjadi
+  masalah ketersediaan.
+- **Biaya.** PD_SSD Cloud SQL di `asia-southeast2` berada pada orde
+  **US$0,20–0,30 per GB per bulan** — ⚠️ **perkiraan, bukan kutipan**; konfirmasi
+  di <https://cloud.google.com/sql/pricing#asia-southeast2>. Pada orde itu,
+  25 GB ≈ US$5–7,50/bulan, dan setiap +10 GB ≈ **US$2–3/bulan**. Selisih antara
+  batas 40 GB dan 100 GB karena itu berada di orde belasan dolar per bulan —
+  kecil, tetapi ia berulang dan tidak pernah turun sendiri.
+
+Batas ini bukan pengganti perbaikan laju; ia alarm, bukan rem.

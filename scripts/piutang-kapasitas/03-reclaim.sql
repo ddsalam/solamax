@@ -17,6 +17,11 @@
 -- 25 GB dengan database ~14 GB, jadi kepala ruangnya cukup — tetapi periksa
 -- keluaran §1 sebelum menjalankan.
 --
+-- ⛔ JANGAN mendekati 02:00 WIB. 14-09-2026 01:02 WIB ia menahan tujuh sesi,
+-- termasuk LIMA backend agent di pg_advisory_xact_lock selama 9-14 menit.
+-- ⚠️ Puncak ruang = lama + baru; terpantau 13,97 GB -> 16 GB saat berjalan.
+-- Peran berkas ini JARANG dipakai; lihat README.md di direktori ini.
+--
 -- Jalankan TANPA transaksi pembungkus (VACUUM tidak sah di dalam transaksi).
 \set ON_ERROR_STOP on
 \timing on

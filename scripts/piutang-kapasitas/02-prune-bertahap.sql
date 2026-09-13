@@ -11,6 +11,11 @@
 -- menggembungkan WAL, dan bila gagal mengembalikan NOL kemajuan. Tiap batch
 -- COMMIT sendiri; berhenti di tengah tetap meninggalkan kemajuan.
 --
+-- Peran berkas ini BERULANG, bukan sekali pakai: dijalankan ketika tumpukan
+-- cycle `failed` menumpuk (pemicu retirement mati, atau jeda panjang).
+-- Ia menahan/membersihkan LAJU; ia TIDAK mengembalikan ruang ke OS — lihat
+-- README.md di direktori ini.
+--
 -- Jalankan TANPA membungkusnya dalam transaksi (COMMIT di dalam DO hanya sah
 -- di level teratas). Aman diulang; aman dihentikan Ctrl-C.
 \set ON_ERROR_STOP on

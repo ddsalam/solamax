@@ -167,6 +167,13 @@ describe("SnapshotTriggerController", () => {
     [{ status: "idle" } as const, 204],
     [{ status: "busy" } as const, 409],
     [{ status: "skipped", reason: "outside_build_window" } as const, 425],
+    // Skip karena DISK bukan skip karena JAM. Selama keduanya memulangkan 425,
+    // insiden 12-14 Sep 2026 (build beku berhari-hari) tidak dapat dibedakan
+    // dari keadaan normal 21 dari 24 jam — di request log Cloud Run yang hanya
+    // menyimpan status, keduanya satu baris yang sama.
+    [{ status: "skipped", reason: "disk_review_required" } as const, 507],
+    [{ status: "skipped", reason: "operational_gate_unavailable" } as const, 503],
+    [{ status: "skipped", reason: "sebab_yang_belum_diklasifikasikan" } as const, 500],
     [{ status: "superseded", workId: "work-1" } as const, 208],
     [{ status: "retry_wait", workId: "work-1", error: "retry" } as const, 503],
     [{ status: "dead_letter", workId: "work-1", error: "fatal" } as const, 500],

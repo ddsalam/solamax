@@ -20,6 +20,56 @@ import {
 } from "./snapshot-worker.service.js";
 
 /**
+ * Klasifikasi sebab skip: INSIDEN atau NORMAL.
+ *
+ * ⚠️ KENAPA INI ADA. Antara 12 dan 14 September 2026 build snapshot BEKU
+ * berhari-hari: `pg_database_size` melewati `databaseReviewBytes`, dan karena
+ * batas byte diperiksa PALING AWAL (`snapshot-builder.service.ts:192-194`)
+ * setiap invokasi memulangkan `disk_review_required` pada jam berapa pun.
+ * Tidak ada yang melihatnya, karena:
+ *   · baris lognya hanya memuat `status:"skipped"`, tanpa sebab; dan
+ *   · HTTP-nya 425 — SAMA PERSIS dengan `outside_build_window`, yang normal
+ *     terjadi 21 dari 24 jam.
+ * Dua keadaan yang sangat berbeda derajatnya tidak dapat dibedakan dari luar,
+ * jadi yang berbahaya bersembunyi di balik yang wajar.
+ *
+ * Bentuk perbaikannya, bukan sekadar kejadiannya: sebab skip dipetakan ke
+ * status HTTP DAN tingkat log yang berbeda, sehingga ia terbaca di request log
+ * Cloud Run (yang hanya menyimpan status) maupun di penyaring severity
+ * Cloud Logging (yang dipakai alarm).
+ *
+ * Sebab yang TIDAK dikenal diperlakukan sebagai INSIDEN, bukan normal. Sebab
+ * baru yang lupa diklasifikasikan adalah persis kelas kegagalan di atas; ia
+ * harus berisik, bukan diam. `snapshot-trigger.classification.test.ts`
+ * membaca literal `reason:` dari sumbernya dan menjatuhkan uji bila ada yang
+ * belum terdaftar di sini.
+ */
+export const SNAPSHOT_SKIP_CLASSIFICATION: Readonly<Record<string, { http: number; incident: boolean }>> =
+  Object.freeze({
+    // Gerbang kapasitas tertutup: TIDAK ADA snapshot yang bisa terbit, jam
+    // berapa pun. 507 Insufficient Storage menamai sebabnya di status itu
+    // sendiri, sehingga request log saja sudah cukup untuk melihatnya.
+    disk_review_required: { http: 507, incident: true },
+    // Baris gerbang tidak terbaca — keadaan tak dapat dinilai, bukan normal.
+    operational_gate_unavailable: { http: HttpStatus.SERVICE_UNAVAILABLE, incident: true },
+    // Normal: 21 dari 24 jam berada di luar jendela 02.00-05.00 WIB.
+    outside_build_window: { http: 425, incident: false },
+    // Normal: lewat 04:45 WIB lease baru memang tidak diambil lagi.
+    latest_lease_passed: { http: 425, incident: false },
+    // Normal per invokasi: sisa pekerjaan dilanjutkan invokasi berikutnya.
+    request_deadline_exhausted: { http: 425, incident: false },
+  });
+
+export const SNAPSHOT_UNKNOWN_SKIP = Object.freeze({
+  http: HttpStatus.INTERNAL_SERVER_ERROR,
+  incident: true,
+});
+
+export function classifySkip(reason: string): { http: number; incident: boolean } {
+  return SNAPSHOT_SKIP_CLASSIFICATION[reason] ?? SNAPSHOT_UNKNOWN_SKIP;
+}
+
+/**
  * Cloud Run is configured to stop requests after 20 minutes. Keep two minutes
  * for HTTP/framework cleanup after source finalization plus the bounded build.
  */
@@ -121,7 +171,13 @@ export class SnapshotTriggerController {
       throw new HttpException({ status: "failed" }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    this.logger.log(JSON.stringify({
+    const skip = result.status === "skipped" ? classifySkip(result.reason) : undefined;
+    // Insiden ditulis sebagai WARN supaya penyaring severity Cloud Logging
+    // melihatnya; skip normal tetap LOG dan tidak menimbulkan kebisingan.
+    const write = skip?.incident
+      ? (line: string) => this.logger.warn(line)
+      : (line: string) => this.logger.log(line);
+    write(JSON.stringify({
       msg: "snapshot-worker invocation finished",
       unit_id: unitId,
       status: result.status,
@@ -139,7 +195,7 @@ export class SnapshotTriggerController {
       // dari `outside_build_window` (normal, 21 dari 24 jam). Dibayar 13-14 Sep
       // 2026: produksi 13,97 GB melewati gerbang 9 GB dan setiap invokasi
       // di-skip selama berhari-hari tanpa satu baris log pun menyebutkan disk.
-      ...(result.status === "skipped" ? { reason: result.reason } : {}),
+      ...(result.status === "skipped" ? { reason: result.reason, incident: skip!.incident } : {}),
     }));
 
     switch (result.status) {
@@ -155,7 +211,7 @@ export class SnapshotTriggerController {
       case "busy":
         throwWorkerOutcome(result, HttpStatus.CONFLICT);
       case "skipped":
-        throwWorkerOutcome(result, 425);
+        throwWorkerOutcome(result, skip!.http);
       case "retry_wait":
         throwWorkerOutcome(result, HttpStatus.SERVICE_UNAVAILABLE);
       case "dead_letter":
