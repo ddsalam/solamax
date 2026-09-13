@@ -409,12 +409,13 @@ ${bind(MATERIALIZE_FULL_HISTORY_SQL,[2,"2026-09-13",emptyGeneration,emptyCut])};
     sql(bind(ENQUEUE_BACKFILL_SQL,[1,0,nextCut,2]));
     expect(rows(`SELECT work_id FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toHaveLength(0);
     sql(`UPDATE app.saldo_pelanggan_snapshot_pointer SET pending_replacement=true, stale_invalid_from=as_of_date, pending_since=clock_timestamp() WHERE as_of_date='${today}';`);
-    sql(bind(ENQUEUE_BACKFILL_SQL,[1,0,nextCut,2]));
-    expect(rows(`SELECT work_id FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toHaveLength(1);
     const olderQueuedWork = "00000000-0000-4000-8000-000000000030";
     sql(`INSERT INTO app.saldo_pelanggan_build_work(unit_id,work_id,as_of_date,source_cycle_id,source_cycle_sequence,state)
       VALUES(1,'${olderQueuedWork}','${today}','${cut}',1,'queued');`);
     sql(bind(SUPERSEDE_BACKFILL_WORK_SQL,[1,2]));
+    // Match service order: retire the old pending item before enqueueing its successor.
+    sql(bind(ENQUEUE_BACKFILL_SQL,[1,0,nextCut,2]));
+    expect(rows(`SELECT work_id FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toHaveLength(1);
     expect(rows(`SELECT state,last_error FROM app.saldo_pelanggan_build_work WHERE work_id='${olderQueuedWork}'`)).toEqual([{state:"dead_letter",last_error:"superseded_by_new_source_cut"}]);
     expect(rows(`SELECT state FROM app.saldo_pelanggan_build_work WHERE as_of_date='${today}' AND source_cycle_id='${nextCut}'`)).toEqual([{state:"queued"}]);
     expect(rows("SELECT state FROM app.saldo_pelanggan_build_work WHERE work_id='00000000-0000-4000-8000-000000000006'")).toEqual([{state:"done"}]);
