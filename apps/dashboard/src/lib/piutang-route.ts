@@ -5,9 +5,8 @@ import {
   type PiutangReadyView,
   type PiutangSectionId,
   type PiutangViewInput,
-  type PiutangViewRow,
 } from "./piutang-model";
-import type { SaldoSnapshot, SaldoSnapshotRow } from "./saldo-snapshot";
+import type { SaldoSnapshot } from "./saldo-snapshot";
 
 export function piutangViewInput(params: Record<string, string | string[] | undefined>): PiutangViewInput {
   const one = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
@@ -53,28 +52,6 @@ export function piutangExportHref(
   params.set("filter", input.filter);
   params.set("sort", input.sort);
   return `/api/keuangan/unit/${encodeURIComponent(unitCode)}/piutang/${date}/${format}?${params}`;
-}
-
-export function balanceSetFromRow(row: PiutangViewRow | SaldoSnapshotRow) {
-  return {
-    piutangLokalAwal: row.awalPiutangLokal,
-    piutangLokalAkhir: row.akhirPiutangLokal,
-    piutangOnlineAwal: row.awalPiutangOnline,
-    piutangOnlineAkhir: row.akhirPiutangOnline,
-    hutangLokalAwal: row.awalHutangLokal,
-    hutangLokalAkhir: row.akhirHutangLokal,
-  };
-}
-
-export function balanceSetFromTotals(view: PiutangReadyView) {
-  return {
-    piutangLokalAwal: view.metadata.totals.awal.piutangLokal,
-    piutangLokalAkhir: view.metadata.totals.akhir.piutangLokal,
-    piutangOnlineAwal: view.metadata.totals.awal.piutangOnline,
-    piutangOnlineAkhir: view.metadata.totals.akhir.piutangOnline,
-    hutangLokalAwal: view.metadata.totals.awal.hutangLokal,
-    hutangLokalAkhir: view.metadata.totals.akhir.hutangLokal,
-  };
 }
 
 export function formatWib(iso: string): string {

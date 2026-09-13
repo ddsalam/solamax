@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { PrismaService } from "../prisma.service.js";
+import { ASSERT_VALID_SOURCE_KEYS_SQL, ASSERT_VALID_SOURCE_SIDES_SQL, ASSERT_VALID_SOURCE_AMOUNTS_SQL, SOURCE_CYCLE_EVIDENCE_SQL, VALIDATE_BASELINE_SQL, INSERT_BUILDING_MANIFEST_SQL } from "./snapshot-sql.js";
 import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 import {
   assertBuildRequest,
+  SnapshotBuilderService,
   comparePublicationTuple,
   evaluateOperationalGate,
   previousMonthEnd,
@@ -69,5 +72,32 @@ describe("snapshot builder invariants", () => {
     expect(transactionBudgetMilliseconds("publish", undefined, 1_000)).toBe(30_000);
     expect(transactionBudgetMilliseconds("build", 6_000, 1_000)).toBe(5_000);
     expect(transactionBudgetMilliseconds("publish", 999, 1_000)).toBe(-1);
+  });
+});
+
+
+describe("snapshot source population failures", () => {
+  it.each([
+    { side: 1n, amount: 0n, code: "invalid_sjnsbp" },
+    { side: 0n, amount: 1n, code: "invalid_source_amount" },
+  ])("fails visibly before creating a generation: $code", async ({ side, amount, code }) => {
+    const query = vi.fn(async (sql: string, ...values: unknown[]) => {
+      if ([ASSERT_VALID_SOURCE_KEYS_SQL, ASSERT_VALID_SOURCE_SIDES_SQL, ASSERT_VALID_SOURCE_AMOUNTS_SQL].includes(sql)) {
+        expect(values).toEqual([-32100, "11111111-1111-4111-8111-111111111111", "2026-08-31"]);
+      }
+      if (sql === SOURCE_CYCLE_EVIDENCE_SQL) return [{ source_cycle_id: "11111111-1111-4111-8111-111111111111" }];
+      if (sql === VALIDATE_BASELINE_SQL) return [];
+      if (sql === ASSERT_VALID_SOURCE_KEYS_SQL) return [{ invalid_key_count: 0n }];
+      if (sql === ASSERT_VALID_SOURCE_SIDES_SQL) return [{ invalid_side_count: side }];
+      if (sql === ASSERT_VALID_SOURCE_AMOUNTS_SQL) return [{ invalid_amount_count: amount }];
+      return [];
+    });
+    const prisma = { $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ $queryRawUnsafe: query }) } as unknown as PrismaService;
+    await expect(new SnapshotBuilderService(prisma).build({
+      unitId: -32100, asOfDate: "2026-09-13",
+      sourceCycleId: "11111111-1111-4111-8111-111111111111",
+      sourceCycleSequence: 1n, rebuildEpoch: 0n,
+    })).rejects.toMatchObject({ code, retryable: false });
+    expect(query.mock.calls.some(([sql]) => sql === INSERT_BUILDING_MANIFEST_SQL)).toBe(false);
   });
 });

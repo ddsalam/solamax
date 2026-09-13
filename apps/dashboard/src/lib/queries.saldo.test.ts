@@ -192,8 +192,8 @@ describe("snapshot-only saldo reader", () => {
     expect(READ_SALDO_SNAPSHOT_READINESS_SQL).toContain("FROM app.saldo_pelanggan_snapshot_manifest");
     expect(READ_SALDO_SNAPSHOT_READINESS_SQL).toContain("failure_summary");
     expect(READ_SALDO_SNAPSHOT_READINESS_SQL).not.toMatch(/public\.(bppiut|bphut)/);
-    // Six numeric fields are cast for rows; the integrity sentinel supplies six typed NULLs.
-    expect(READ_SALDO_SNAPSHOT_ROWS_SQL.match(/::float8/g)).toHaveLength(12);
+    // Eighteen numeric fields are cast for rows; the integrity sentinel supplies eighteen typed NULLs.
+    expect(READ_SALDO_SNAPSHOT_ROWS_SQL.match(/::float8/g)).toHaveLength(36);
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL).toContain("sha256(convert_to(COALESCE(string_agg(");
     expect(READ_SALDO_SNAPSHOT_ROWS_SQL).toContain("c.row_keyed_checksum = a.row_keyed_checksum");
     for (const total of [

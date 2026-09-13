@@ -6,6 +6,8 @@ import {
 import {
   ASSERT_WORK_LEASE_SQL,
   ASSERT_VALID_SOURCE_KEYS_SQL,
+  ASSERT_VALID_SOURCE_SIDES_SQL,
+  VALIDATE_BASELINE_SQL,
   BIND_WORK_GENERATION_SQL,
   COMPLETE_MANIFEST_SQL,
   COMPLETE_WORK_SQL,
@@ -25,7 +27,7 @@ import { LOCK_SOURCE_CAPTURE_SQL } from "./source-capture-sql.js";
 
 describe("saldo pelanggan snapshot operational contract", () => {
   it("keeps the accepted B1 limits fixed in code", () => {
-    expect(SNAPSHOT_FORMULA_VERSION).toBe("saldo-pelanggan-v1");
+    expect(SNAPSHOT_FORMULA_VERSION).toBe("saldo-pelanggan-v2");
     expect(SNAPSHOT_OPERATIONAL_LIMITS).toEqual({
       timezone: "Asia/Pontianak",
       buildWindowStartMinutes: 120,
@@ -127,6 +129,31 @@ describe("saldo pelanggan snapshot SQL contract", () => {
       "awal_hutang_lokal",
       "akhir_hutang_lokal",
     ]) expect(VALIDATE_GENERATION_SQL).toContain(`sum(${name})`);
+  });
+
+  it("carries cumulative sides through the baseline and protects all eighteen amounts", () => {
+    const old = ["awal_piutang_lokal", "akhir_piutang_lokal", "awal_piutang_online", "akhir_piutang_online", "awal_hutang_lokal", "akhir_hutang_lokal"];
+    const sides = old.flatMap((name) => [`${name}_debet`, `${name}_kredit`]);
+    for (const name of sides) {
+      expect(MATERIALIZE_FULL_HISTORY_SQL).toContain(`AS ${name}`);
+      expect(MATERIALIZE_DELTA_SQL).toContain(`COALESCE(b.${name.replace("awal_", "akhir_")}, 0) +`);
+      expect(VALIDATE_GENERATION_SQL).toContain(`${name}::text`);
+      expect(VALIDATE_BASELINE_SQL).toContain(`r.${name}::text`);
+      expect(READ_READY_SNAPSHOT_SQL).toContain(`r.${name}::text`);
+      expect(COMPLETE_MANIFEST_SQL).toContain(`${name}_total =`);
+    }
+    expect(READ_READY_SNAPSHOT_SQL).toContain("a.row_keyed_checksum = m.row_keyed_checksum");
+    expect(READ_READY_SNAPSHOT_SQL).toContain("m.formula_version = 'saldo-pelanggan-v2'");
+    // A zero-row baseline hashes the empty payload, not a synthetic LEFT JOIN row.
+    expect(VALIDATE_BASELINE_SQL).toContain("FILTER (WHERE r.generation_id IS NOT NULL)");
+  });
+
+  it("rejects unknown sides only in the included bucket population", () => {
+    expect(ASSERT_VALID_SOURCE_SIDES_SQL).toContain("b.sjnsbp IS NULL OR b.sjnsbp NOT IN (1, 2)");
+    expect(ASSERT_VALID_SOURCE_SIDES_SQL).toContain("h.sjnsbp IS NULL OR h.sjnsbp NOT IN (1, 2)");
+    expect(ASSERT_VALID_SOURCE_SIDES_SQL).toContain("position('.' in btrim(b.ckdplg)) > 0 OR EXISTS");
+    expect(ASSERT_VALID_SOURCE_SIDES_SQL).toContain("p.sjenis IN (1, 5)");
+    expect(ASSERT_VALID_SOURCE_SIDES_SQL).toContain("COALESCE(b.sbatal, 0) = 0");
   });
 
   it("keeps publication transaction pieces ordered around a lexicographic CAS", () => {

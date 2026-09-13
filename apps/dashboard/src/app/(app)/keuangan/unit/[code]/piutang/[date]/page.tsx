@@ -5,7 +5,6 @@ import { unitDotted } from "@/lib/config";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { buildPiutangView } from "@/lib/piutang-model";
 import {
-  balanceSetFromTotals,
   formatWib,
   pendingBanner,
   piutangExportHref,
@@ -75,7 +74,7 @@ export default async function PiutangPelangganPage({
             computedAtLabel: formatWib(view.metadata.computedAt),
             sourceCutLabel: `Siklus sumber ${view.metadata.sourceCycleId} selesai ${formatWib(view.metadata.sourceCompletedAt)}`,
           }}
-          totals={balanceSetFromTotals(view)}
+          summary={view.metadata}
           sections={view.sections}
           zeroSectionOpen={view.zeroSectionOpen}
           csvHref={piutangExportHref("csv", unit.code, date, view)}

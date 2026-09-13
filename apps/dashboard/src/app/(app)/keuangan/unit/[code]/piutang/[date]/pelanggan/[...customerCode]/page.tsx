@@ -1,27 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
-import { PiutangPelangganView } from "@/components/keuangan/PiutangPelangganView";
+import { PiutangPelangganView, PiutangSummaryBucket } from "@/components/keuangan/PiutangPelangganView";
 import { unitDotted } from "@/lib/config";
 import { rp } from "@/lib/format";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
-import { balanceSetFromRow, formatWib, pendingBanner, readinessProps } from "@/lib/piutang-route";
+import { formatWib, pendingBanner, readinessProps } from "@/lib/piutang-route";
+import { PIUTANG_BOOKS, piutangBookAmounts } from "@/lib/piutang-model";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
 import { DATE_RE } from "@/lib/selection-keys";
 import { todayWib } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
-
-const bucket = (name: string, awal: number, akhir: number) => (
-  <section className="card b6-piutang-summary-card" aria-label={name}>
-    <h3>{name}</h3>
-    <div className="b6-piutang-summary-pair">
-      <div><span>Awal · dtgl &lt; D · s.d. D−1</span><strong className="num">{rp(awal)}</strong></div>
-      <div><span>Akhir · dtgl ≤ D · s.d. D</span><strong className="num">{rp(akhir)}</strong></div>
-    </div>
-  </section>
-);
 
 export default async function PiutangPelangganDetailPage({
   params,
@@ -59,7 +50,6 @@ export default async function PiutangPelangganDetailPage({
     // joined form above remains the authoritative first match.
   }
   if (!row) notFound();
-  const b = balanceSetFromRow(row);
   const banner = pendingBanner(snapshot);
 
   return (
@@ -77,10 +67,11 @@ export default async function PiutangPelangganDetailPage({
         {banner && <div className={`banner ${banner.tone}`} role="status"><span className={`dot ${banner.tone}`} aria-hidden="true" /><div><strong>{banner.title}</strong><p>{banner.body}</p></div></div>}
         <aside className="banner info b6-piutang-rule"><span className="dot info" aria-hidden="true" /><strong>Tiga bucket berbeda; jangan dijumlahkan atau dinetokan.</strong></aside>
         <div className={`b6-piutang-summaries${snapshot.hasOnlineCustomer ? " has-online" : ""}`}>
-          {bucket("Piutang Lokal", b.piutangLokalAwal, b.piutangLokalAkhir)}
-          {snapshot.hasOnlineCustomer && bucket("Piutang Online", b.piutangOnlineAwal, b.piutangOnlineAkhir)}
-          {bucket("Hutang Lokal", b.hutangLokalAwal, b.hutangLokalAkhir)}
+          {PIUTANG_BOOKS.filter((book) => book.id !== "online" || snapshot.hasOnlineCustomer).map((book) => (
+            <PiutangSummaryBucket key={book.id} name={book.title} amounts={piutangBookAmounts(row, book)} saldoFormat={rp} />
+          ))}
         </div>
+        <p className="t-secondary">Debet/Kredit adalah akumulasi transaksi pada setiap batas tanggal.</p>
         <p className="b6-piutang-provenance">Formula {snapshot.metadata.formulaVersion} · dihitung {formatWib(snapshot.metadata.computedAt)} · siklus sumber {snapshot.metadata.sourceCycleId} selesai {formatWib(snapshot.metadata.sourceCompletedAt)}</p>
         <section className="card b6-piutang-activity" aria-labelledby="b6-activity-title">
           <h2 id="b6-activity-title">Aktivitas pelanggan</h2>

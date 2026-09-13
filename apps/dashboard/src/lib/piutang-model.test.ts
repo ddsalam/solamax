@@ -3,12 +3,16 @@ import {
   buildPiutangExportView,
   buildPiutangView,
   groupPiutangRows,
+  booksForPiutangRow,
   type PiutangFilter,
   type PiutangSort,
 } from "./piutang-model";
 import type { SaldoSnapshot, SaldoSnapshotRow } from "./saldo-snapshot";
 
 const zeroRow = (code: string, name: string | null): SaldoSnapshotRow => ({
+  awalPiutangLokalDebet: 0, awalPiutangLokalKredit: 0, akhirPiutangLokalDebet: 0, akhirPiutangLokalKredit: 0,
+  awalPiutangOnlineDebet: 0, awalPiutangOnlineKredit: 0, akhirPiutangOnlineDebet: 0, akhirPiutangOnlineKredit: 0,
+  awalHutangLokalDebet: 0, awalHutangLokalKredit: 0, akhirHutangLokalDebet: 0, akhirHutangLokalKredit: 0,
   customerCode: code,
   customerName: name,
   awalPiutangLokal: 0,
@@ -40,6 +44,8 @@ function ready(
       sourceCompletedAt: "2026-09-09T03:00:00Z",
       pendingReplacement: false,
       staleInvalidFrom: null,
+      debetTotals: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 }, akhir: { piutangLokal: 1, piutangOnline: 0, hutangLokal: 0 } },
+      kreditTotals: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 }, akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 } },
       totals: {
         awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
         akhir: { piutangLokal: 1, piutangOnline: 0, hutangLokal: 0 },
@@ -253,4 +259,22 @@ it("sorts search results within books before zero rows, identically for screen a
   const codes = (sections: typeof exported.sections) => sections.map((s) => s.rows.map((r) => r.customerCode));
   expect(codes(screen.sections)).toEqual([["L1", "L2"], ["H1", "H2"], ["Z1"]]);
   expect(codes(screen.sections)).toEqual(codes(exported.sections));
+});
+
+
+it("retains zero-saldo gross turnover once without changing section membership", () => {
+  const row = { ...zeroRow("TURN", "Pelunasan"),
+    akhirPiutangLokal: 10, akhirPiutangLokalDebet: 10,
+    akhirPiutangOnline: 5, akhirPiutangOnlineDebet: 5,
+    awalHutangLokalDebet: 71.25, awalHutangLokalKredit: 71.25,
+    akhirHutangLokalDebet: 71.25, akhirHutangLokalKredit: 71.25 };
+  const view = buildPiutangExportView(ready([row], true), {});
+  if (view.status !== "ready") throw new Error("expected ready");
+  expect(view.sections.map((section) => [section.id, section.rows.length])).toEqual([
+    ["lokal", 1], ["online", 1], ["hutang", 0], ["nol", 0],
+  ]);
+  expect(view.sections.flatMap((section) => section.rows.flatMap((entry) =>
+    booksForPiutangRow(section, entry).map((book) => [section.id, book.id])))).toEqual([
+      ["lokal", "lokal"], ["lokal", "hutang"], ["online", "online"],
+    ]);
 });

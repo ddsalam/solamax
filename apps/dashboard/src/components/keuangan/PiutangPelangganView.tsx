@@ -1,8 +1,13 @@
 import {
   PIUTANG_BOOKS,
+  piutangBookTotalAmounts,
   PIUTANG_PAGE_SIZE,
   PIUTANG_FILTERS,
   piutangBookLabel,
+  piutangBookAmounts,
+  booksForPiutangRow,
+  type PiutangBookAmounts,
+  type PiutangBoundaryAmounts,
   type PiutangPageSection,
   PIUTANG_SORTS,
   type PiutangFilter,
@@ -10,14 +15,7 @@ import {
 } from "@/lib/piutang-model";
 import { piutangQueryHref, type PiutangPendingBanner } from "@/lib/piutang-route";
 
-export interface PiutangBalanceSet {
-  piutangLokalAwal: number;
-  piutangLokalAkhir: number;
-  piutangOnlineAwal: number;
-  piutangOnlineAkhir: number;
-  hutangLokalAwal: number;
-  hutangLokalAkhir: number;
-}
+import type { SaldoSnapshotMetadata } from "@/lib/saldo-snapshot";
 
 export interface PiutangQueryState {
   search: string;
@@ -44,7 +42,7 @@ export type PiutangPelangganViewProps =
         computedAtLabel: string;
         sourceCutLabel: string;
       };
-      totals: PiutangBalanceSet;
+      summary: Pick<SaldoSnapshotMetadata, "totals" | "debetTotals" | "kreditTotals">;
       sections: PiutangPageSection[];
       zeroSectionOpen: boolean;
       csvHref: string;
@@ -105,37 +103,36 @@ const rupiah = (amount: number): string => {
   return value < 0 ? `−Rp ${magnitude}` : `Rp ${magnitude}`;
 };
 
-function Nilai({ value }: { value: number }) {
+const DEBET_KREDIT_NUMBER = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
+const rupiahPrecise = (value: number): string => value === 0 ? "Rp0"
+  : `${value < 0 ? "−" : ""}Rp ${DEBET_KREDIT_NUMBER.format(Math.abs(value))}`;
+
+function Nilai({ value, format = rupiah }: { value: number; format?: (value: number) => string }) {
   return (
     <span className={`b6-piutang-value num${value < 0 ? " t-danger" : ""}`} data-piutang-numeric>
-      {rupiah(value)}
+      {format(value)}
     </span>
   );
 }
 
-function BucketPair({
-  name,
-  awal,
-  akhir,
-  role = "cell",
-}: {
-  name: string;
-  awal: number;
-  akhir: number;
-  role?: "cell" | "presentation";
+function BoundaryAmounts({ amounts, saldoFormat = rupiah }: {
+  amounts: PiutangBoundaryAmounts;
+  saldoFormat?: (value: number) => string;
 }) {
+  return <dl className="b6-piutang-triplet">
+    <div><dt>Debet</dt><dd><Nilai value={amounts.debet} format={rupiahPrecise} /></dd></div>
+    <div><dt>Kredit</dt><dd><Nilai value={amounts.kredit} format={rupiahPrecise} /></dd></div>
+    <div className="b6-piutang-saldo"><dt>Saldo</dt><dd><Nilai value={amounts.saldo} format={saldoFormat} /></dd></div>
+  </dl>;
+}
+
+function BucketPair({ name, amounts }: { name: string; amounts: PiutangBookAmounts }) {
   return (
-    <div className="b6-piutang-bucket" role={role}>
+    <div className="b6-piutang-bucket" role="cell">
       <div className="b6-piutang-bucket-name">{name}</div>
       <div className="b6-piutang-pair">
-        <div>
-          <span className="b6-piutang-mobile-bound">Awal</span>
-          <Nilai value={awal} />
-        </div>
-        <div>
-          <span className="b6-piutang-mobile-bound">Akhir</span>
-          <Nilai value={akhir} />
-        </div>
+        <div><span className="b6-piutang-mobile-bound">Awal</span><BoundaryAmounts amounts={amounts.awal} /></div>
+        <div><span className="b6-piutang-mobile-bound">Akhir</span><BoundaryAmounts amounts={amounts.akhir} /></div>
       </div>
     </div>
   );
@@ -146,40 +143,24 @@ function HeaderBucket({ name }: { name: string }) {
     <div className="b6-piutang-head-bucket" role="columnheader">
       <strong>{name}</strong>
       <div className="b6-piutang-head-pair">
-        <span>
-          <b>Awal</b>
-          <small>dtgl &lt; D · s.d. D−1</small>
-        </span>
-        <span>
-          <b>Akhir</b>
-          <small>dtgl ≤ D · s.d. D</small>
-        </span>
+        <span><b>Awal</b><small>dtgl &lt; D · s.d. D−1</small></span>
+        <span><b>Akhir</b><small>dtgl ≤ D · s.d. D</small></span>
       </div>
     </div>
   );
 }
 
-function RingkasanBucket({
-  name,
-  awal,
-  akhir,
-}: {
+export function PiutangSummaryBucket({ name, amounts, saldoFormat }: {
   name: string;
-  awal: number;
-  akhir: number;
+  amounts: PiutangBookAmounts;
+  saldoFormat?: (value: number) => string;
 }) {
   return (
     <section className="card b6-piutang-summary-card" aria-label={`Ringkasan ${name}`}>
       <h3>{name}</h3>
       <div className="b6-piutang-summary-pair">
-        <div>
-          <span>Awal</span>
-          <Nilai value={awal} />
-        </div>
-        <div>
-          <span>Akhir</span>
-          <Nilai value={akhir} />
-        </div>
+        <div><span>Awal · dtgl &lt; D · s.d. D−1</span><BoundaryAmounts amounts={amounts.awal} saldoFormat={saldoFormat} /></div>
+        <div><span>Akhir · dtgl ≤ D · s.d. D</span><BoundaryAmounts amounts={amounts.akhir} saldoFormat={saldoFormat} /></div>
       </div>
     </section>
   );
@@ -271,7 +252,8 @@ function SectionLedger({
   detailBaseUrl: string;
 }) {
   const books = section.book ? [section.book] : PIUTANG_BOOKS;
-  const columns = section.book ? "single-book" : "has-online";
+  const stackedBooks = !section.book || section.rows.some((row) => booksForPiutangRow(section, row).length > 1);
+  const columns = stackedBooks ? "zero-books" : "single-book";
   if (section.rows.length === 0) return (
     <div className="empty-inline b6-piutang-empty">Tidak ada pelanggan yang cocok dengan pencarian dan filter ini.</div>
   );
@@ -294,8 +276,8 @@ function SectionLedger({
               {row.isZeroBalance && <span className="b6-piutang-zero-badge">Saldo nol pada kedua batas</span>}
               {bookLabel && <span className="b6-piutang-book-badge">{bookLabel}</span>}
             </div>
-            {books.map((book) => (
-              <BucketPair key={book.id} name={book.title} awal={row[book.awal]} akhir={row[book.akhir]} />
+            {booksForPiutangRow(section, row).map((book) => (
+              <BucketPair key={book.id} name={`${book.title}${section.book && book.id !== section.book.id ? " · buku bersaldo nol" : ""}`} amounts={piutangBookAmounts(row, book)} />
             ))}
           </div>
         ); })}
@@ -397,25 +379,12 @@ export function PiutangPelangganView(props: PiutangPelangganViewProps) {
           </aside>
 
           <section className={`b6-piutang-summaries${props.hasOnlineCustomer ? " has-online" : ""}`} aria-label="Ringkasan per bucket">
-            <RingkasanBucket
-              name="Piutang Lokal"
-              awal={props.totals.piutangLokalAwal}
-              akhir={props.totals.piutangLokalAkhir}
-            />
-            {props.hasOnlineCustomer && (
-              <RingkasanBucket
-                name="Piutang Online"
-                awal={props.totals.piutangOnlineAwal}
-                akhir={props.totals.piutangOnlineAkhir}
-              />
-            )}
-            <RingkasanBucket
-              name="Hutang Lokal"
-              awal={props.totals.hutangLokalAwal}
-              akhir={props.totals.hutangLokalAkhir}
-            />
+            {PIUTANG_BOOKS.filter((book) => book.id !== "online" || props.hasOnlineCustomer).map((book) => (
+              <PiutangSummaryBucket key={book.id} name={book.title} amounts={piutangBookTotalAmounts(props.summary, book)} />
+            ))}
           </section>
 
+          <p className="t-secondary">Debet/Kredit adalah akumulasi transaksi pada setiap batas tanggal. Buku bersaldo nol dengan Debet/Kredit tetap ditampilkan pada seksi aktif pertama pelanggan.</p>
           <div className="b6-piutang-provenance">
             <span>Formula {props.provenance.formulaVersion}</span>
             <span>Dihitung {props.provenance.computedAtLabel}</span>

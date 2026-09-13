@@ -9,6 +9,8 @@ import {
 import {
   ASSERT_WORK_LEASE_SQL,
   ASSERT_VALID_SOURCE_KEYS_SQL,
+  ASSERT_VALID_SOURCE_SIDES_SQL,
+  ASSERT_VALID_SOURCE_AMOUNTS_SQL,
   BIND_WORK_GENERATION_SQL,
   CLEAR_DIRTY_IF_COVERED_SQL,
   COMPLETE_MANIFEST_SQL,
@@ -112,6 +114,18 @@ interface ValidationRow {
   akhir_piutang_online_total: unknown;
   awal_hutang_lokal_total: unknown;
   akhir_hutang_lokal_total: unknown;
+  awal_piutang_lokal_debet_total: unknown;
+  awal_piutang_lokal_kredit_total: unknown;
+  akhir_piutang_lokal_debet_total: unknown;
+  akhir_piutang_lokal_kredit_total: unknown;
+  awal_piutang_online_debet_total: unknown;
+  awal_piutang_online_kredit_total: unknown;
+  akhir_piutang_online_debet_total: unknown;
+  akhir_piutang_online_kredit_total: unknown;
+  awal_hutang_lokal_debet_total: unknown;
+  awal_hutang_lokal_kredit_total: unknown;
+  akhir_hutang_lokal_debet_total: unknown;
+  akhir_hutang_lokal_kredit_total: unknown;
 }
 
 interface ReturningIdRow {
@@ -147,7 +161,9 @@ function asBigInt(value: bigint | number | string): bigint {
 }
 
 function numericText(value: unknown): string {
-  if (value === null || value === undefined) return "0";
+  if (value === null || value === undefined) {
+    throw new SnapshotBuildError("missing_numeric_proof", "generation validation omitted a required numeric total", false);
+  }
   return String(value);
 }
 
@@ -353,7 +369,7 @@ export class SnapshotBuilderService {
     }, hooks);
   }
 
-  private async assertValidSourceKeys(
+  private async assertValidSourcePopulation(
     request: SnapshotBuildRequest,
     asOfDate: string,
     hooks: SnapshotBuildHooks,
@@ -370,6 +386,22 @@ export class SnapshotBuilderService {
           "invalid_customer_key",
           "complete source cut contains a blank customer key in the target population",
           false,
+        );
+      }
+      const sides = await tx.$queryRawUnsafe<Array<{ invalid_side_count: bigint | number | string }>>(
+        ASSERT_VALID_SOURCE_SIDES_SQL, request.unitId, request.sourceCycleId, asOfDate,
+      );
+      if (asBigInt(sides[0]?.invalid_side_count ?? 0) !== 0n) {
+        throw new SnapshotBuildError(
+          "invalid_sjnsbp", "included source population contains sjnsbp NULL or outside 1/2", false,
+        );
+      }
+      const amounts = await tx.$queryRawUnsafe<Array<{ invalid_amount_count: bigint | number | string }>>(
+        ASSERT_VALID_SOURCE_AMOUNTS_SQL, request.unitId, request.sourceCycleId, asOfDate,
+      );
+      if (asBigInt(amounts[0]?.invalid_amount_count ?? 0) !== 0n) {
+        throw new SnapshotBuildError(
+          "invalid_source_amount", "included source population contains a NULL amount", false,
         );
       }
     }, hooks);
@@ -400,7 +432,7 @@ export class SnapshotBuilderService {
     work: WorkLeaseContext | undefined,
     hooks: SnapshotBuildHooks,
   ): Promise<GenerationBuildResult> {
-    await this.assertValidSourceKeys(request, asOfDate, hooks);
+    await this.assertValidSourcePopulation(request, asOfDate, hooks);
     const generationId = randomUUID();
     let manifestCreated = false;
     try {
@@ -627,6 +659,18 @@ export class SnapshotBuilderService {
         numericText(proof.akhir_piutang_online_total),
         numericText(proof.awal_hutang_lokal_total),
         numericText(proof.akhir_hutang_lokal_total),
+        numericText(proof.awal_piutang_lokal_debet_total),
+        numericText(proof.awal_piutang_lokal_kredit_total),
+        numericText(proof.akhir_piutang_lokal_debet_total),
+        numericText(proof.akhir_piutang_lokal_kredit_total),
+        numericText(proof.awal_piutang_online_debet_total),
+        numericText(proof.awal_piutang_online_kredit_total),
+        numericText(proof.akhir_piutang_online_debet_total),
+        numericText(proof.akhir_piutang_online_kredit_total),
+        numericText(proof.awal_hutang_lokal_debet_total),
+        numericText(proof.awal_hutang_lokal_kredit_total),
+        numericText(proof.akhir_hutang_lokal_debet_total),
+        numericText(proof.akhir_hutang_lokal_kredit_total),
       );
       if (completed.length !== 1) {
         throw new SnapshotBuildError("manifest_completion_failed", "manifest completion lost provenance", false);

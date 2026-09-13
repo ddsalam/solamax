@@ -3,7 +3,7 @@
  * constants on purpose: an environment variable must not widen the build
  * window, raise concurrency, or postpone the 9 GB capacity review.
  */
-export const SNAPSHOT_FORMULA_VERSION = "saldo-pelanggan-v1";
+export const SNAPSHOT_FORMULA_VERSION = "saldo-pelanggan-v2";
 
 export const SNAPSHOT_OPERATIONAL_LIMITS = Object.freeze({
   timezone: "Asia/Pontianak",
