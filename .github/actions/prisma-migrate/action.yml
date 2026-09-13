@@ -71,6 +71,27 @@ runs:
         fi
         echo "Target OK: ${INSTANCE}"
 
+    # Preflight 0039 — SEBELUM migrasi menyentuh database. Ketika 0039 ditolak
+    # penjaganya sendiri, Prisma sudah menulis baris `_prisma_migrations` yang
+    # belum selesai dan database itu terkunci P3009: setiap migrasi berikutnya
+    # ditolak sampai seorang manusia menjalankan `migrate resolve`. Itu terjadi
+    # pada solamax-pg-rlsstg 13 September 2026. Menolak di sini membuat
+    # migrasinya tidak pernah MULAI — pada tier pilot biayanya jatuh di DB live.
+    # Skrip ini read-only (REPEATABLE READ READ ONLY + ROLLBACK), melewati diri
+    # sendiri bila 0039 sudah terpasang, dan men-scope `app.unit_ids` ke SELURUH
+    # unit (scope sempit memulangkan nol tanpa galat — itu bukan "bersih").
+    - name: Preflight snapshot quiescent (read-only)
+      shell: bash
+      env:
+        DATABASE_URL: ${{ steps.db.outputs.url }}
+      run: |
+        command -v psql >/dev/null || {
+          echo "DITOLAK: psql tidak ada di runner — preflight tidak dapat berjalan."
+          echo "Pemeriksa yang tak bisa berjalan tidak boleh lulus diam-diam."
+          exit 1
+        }
+        bash scripts/ci/check-snapshot-quiescent.sh
+
     - name: prisma migrate deploy
       shell: bash
       env:

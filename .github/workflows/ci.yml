@@ -87,3 +87,52 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+
+  # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
+  #
+  # Job `snapshot-postgres-14` di atas membuktikan SQL migrasi 0039 benar. Pada
+  # 13 September 2026 migrasi itu tetap gagal di DB test, dua kali, pada dua
+  # guard berbeda — karena uji itu menyuntik SQL lewat psql per pernyataan,
+  # sebagai peran pemilik, ke database yang uji itu sendiri baru siapkan. Job
+  # ini menjalankan `prisma migrate deploy` yang SEBENARNYA (satu simple query
+  # berisi seluruh berkas) sebagai peran NOSUPERUSER NOBYPASSRLS, terhadap
+  # database yang SUDAH berisi keadaan sebelumnya. Rinciannya di skripnya.
+  #
+  # ⚠️ postgres:16, bukan 14. `gcloud sql instances describe` menjawab
+  # POSTGRES_16 untuk KEDUA tier (solamax-pg dan solamax-pg-rlsstg); job
+  # `snapshot-postgres-14` menguji mesin yang tidak berjalan di tier mana pun.
+  # Perbedaan itu dilaporkan terpisah; job ini memilih paritas produksi.
+  migrate-deploy-postgres-16:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: migrate_gate_admin
+          # Kredensial layanan sekali pakai; tidak pernah dipakai tier mana pun.
+          POSTGRES_PASSWORD: migrate_gate_only
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U migrate_gate_admin -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: bash scripts/ci/check-migrate-deploy.sh
+        env:
+          MIGRATE_DEPLOY_ADMIN_URL: postgresql://migrate_gate_admin:migrate_gate_only@127.0.0.1:5433/postgres
+          MIGRATE_DEPLOY_HOST: 127.0.0.1
+          MIGRATE_DEPLOY_PORT: "5433"
