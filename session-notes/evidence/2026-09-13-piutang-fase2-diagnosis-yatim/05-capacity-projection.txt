@@ -1,0 +1,8 @@
+Projection from measured v1 snapshot relation allocation, not a measured v2 size:
+933888 bytes / 2 generations = 466944 bytes/generation average physical allocation.
+7 additional generations: 3268608 bytes.
+31 additional generations: 14475264 bytes.
+This is a rough v1 allocation extrapolation only; C adds 12 numerics and constraints, so v2 row payload/storage and extra baseline generations need an explicit additional allowance.
+Source relations 5566316544 bytes are shared; reuse one immutable cut rather than multiply this allocation by backfill dates.
+Database headroom: 9000000000 - 7595179031 = 1404820969 bytes at 2026-09-13 07:06:40 UTC.
+Do not count reclaimable source space until actual cleanup has completed; cleanup must stay callable independently of the 9 GB gate.

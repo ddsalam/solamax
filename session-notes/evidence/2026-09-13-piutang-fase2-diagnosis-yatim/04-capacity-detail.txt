@@ -1,0 +1,30 @@
+BEGIN
+SET
+ unit_id |  code   |    name     
+---------+---------+-------------
+       1 | 6478111 | Imam Bonjol
+(1 row)
+
+ heap_bytes | table_bytes | index_bytes | total_bytes 
+------------+-------------+-------------+-------------
+     507904 |      548864 |      385024 |      933888
+(1 row)
+
+ visible_snapshot_rows | visible_generations | visible_units 
+-----------------------+---------------------+---------------
+                  5946 |                   2 |             1
+(1 row)
+
+  status  | visible_source_cycles 
+----------+-----------------------
+ complete |                     1
+ failed   |                    41
+ staging  |                    18
+(3 rows)
+
+ source_relations_total_bytes 
+------------------------------
+                   5566316544
+(1 row)
+
+ROLLBACK
