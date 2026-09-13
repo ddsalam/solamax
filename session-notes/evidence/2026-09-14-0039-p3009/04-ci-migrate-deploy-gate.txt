@@ -1,0 +1,1336 @@
+migrate-deploy-postgres-16	Set up job	﻿2026-09-13T17:27:47.4658556Z Current runner version: '2.337.0'
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4687057Z ##[group]Runner Image Provisioner
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4688284Z Hosted Compute Agent
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4689141Z Version: 20260828.587
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4689884Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4690978Z Build Date: 2026-08-28T16:44:25Z
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4691676Z Worker ID: {e637506b-0e5f-41dc-9701-82b2e8cbb3f5}
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4692498Z Azure Region: centralus
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4693473Z ##[endgroup]
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4695424Z ##[group]Operating System
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4696133Z Ubuntu
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4696671Z 24.04.5
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4697277Z LTS
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4697828Z ##[endgroup]
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4698437Z ##[group]Runner Image
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4699118Z Image: ubuntu-24.04
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4699716Z Version: 20260907.300.1
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4701154Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/Ubuntu2404-Readme.md
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4703040Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260907.300
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4704100Z ##[endgroup]
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4705393Z ##[group]GITHUB_TOKEN Permissions
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4708023Z Contents: read
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4708990Z Metadata: read
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4710037Z Packages: read
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4711068Z ##[endgroup]
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4713853Z Secret source: Actions
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4715332Z Cache mode: write
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.4716839Z Prepare workflow directory
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.5182678Z Prepare all required actions
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.5233177Z Getting action download info
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.7971334Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:47.9104157Z Download action repository 'pnpm/action-setup@v4' (SHA:b906affcce14559ad1aafd4ab0e942779e9f58b1)
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:48.6162886Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+migrate-deploy-postgres-16	Set up job	2026-09-13T17:27:48.8826758Z Complete job name: migrate-deploy-postgres-16
+migrate-deploy-postgres-16	Initialize containers	﻿2026-09-13T17:27:48.9349386Z ##[group]Checking docker version
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:48.9362723Z ##[command]/usr/bin/docker version --format '{{.Server.APIVersion}}'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:48.9989774Z '1.48'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0003096Z Docker daemon API version: '1.48'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0003955Z ##[command]/usr/bin/docker version --format '{{.Client.APIVersion}}'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0176889Z '1.48'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0192390Z Docker client API version: '1.48'
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0198571Z ##[endgroup]
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0201400Z ##[group]Clean up resources from previous jobs
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0206970Z ##[command]/usr/bin/docker ps --all --quiet --no-trunc --filter "label=3c138e"
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0361820Z ##[command]/usr/bin/docker network prune --force --filter "label=3c138e"
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0505399Z ##[endgroup]
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0506069Z ##[group]Create local container network
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.0517022Z ##[command]/usr/bin/docker network create --label 3c138e github_network_c5e8b7b5ad0340ddb9f53d41d4c8b076
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.1069905Z 970eb818987599e6c81c502dd17695eb083ccab5e4c2f97b89331f2713c6e52a
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.1091345Z ##[endgroup]
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.1116736Z ##[group]Starting postgres service container
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.1139107Z ##[command]/usr/bin/docker pull postgres:16
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.6783494Z 16: Pulling from library/postgres
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8337473Z 6310eb16bf42: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8339059Z 4d710b756578: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8340299Z 3fa541d8cac9: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8341739Z b3ffe1fd6e79: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8342796Z f122bc3261fc: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8343720Z 5322d81b9b21: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8344658Z 9bd242f25e75: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8345690Z 9d1e9c1e61f4: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8346705Z 48dd761b6bfe: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8347832Z 00034b17b963: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8349289Z 8a082189cfe1: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8350327Z 988d57697ad2: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8351556Z 9f809ec5ff35: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8352629Z af7708f26521: Pulling fs layer
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8353659Z 9d1e9c1e61f4: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8354643Z 48dd761b6bfe: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8355911Z 00034b17b963: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8357220Z 8a082189cfe1: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8358548Z 988d57697ad2: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8359900Z 9f809ec5ff35: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8361516Z af7708f26521: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8362894Z f122bc3261fc: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8364249Z 5322d81b9b21: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8365612Z 9bd242f25e75: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.8366973Z b3ffe1fd6e79: Waiting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:49.9982069Z 4d710b756578: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.1278789Z 3fa541d8cac9: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.1282423Z 3fa541d8cac9: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.1640223Z 6310eb16bf42: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.1647638Z 6310eb16bf42: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.2514137Z b3ffe1fd6e79: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.2532555Z b3ffe1fd6e79: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.3917236Z 9bd242f25e75: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.3968312Z f122bc3261fc: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.4095991Z 5322d81b9b21: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.4098800Z 5322d81b9b21: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.5329953Z 00034b17b963: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.5330890Z 00034b17b963: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.5424230Z 9d1e9c1e61f4: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.5424911Z 9d1e9c1e61f4: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.6836592Z 988d57697ad2: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.6837947Z 988d57697ad2: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.7062270Z 8a082189cfe1: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.7062868Z 8a082189cfe1: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.8449615Z 9f809ec5ff35: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.8452219Z 9f809ec5ff35: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.8479912Z af7708f26521: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:50.8481325Z af7708f26521: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.0379166Z 48dd761b6bfe: Verifying Checksum
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.0379755Z 48dd761b6bfe: Download complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.2623136Z 6310eb16bf42: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.5435909Z 4d710b756578: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.7136789Z 3fa541d8cac9: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:51.7537218Z b3ffe1fd6e79: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:52.0525714Z f122bc3261fc: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:52.1277462Z 5322d81b9b21: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:52.1351953Z 9bd242f25e75: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:52.1439918Z 9d1e9c1e61f4: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.1572947Z 48dd761b6bfe: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.1688795Z 00034b17b963: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.1770183Z 8a082189cfe1: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.1846261Z 988d57697ad2: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.1945181Z 9f809ec5ff35: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2020572Z af7708f26521: Pull complete
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2053884Z Digest: sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2062335Z Status: Downloaded newer image for postgres:16
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2082127Z docker.io/library/postgres:16
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2148070Z ##[command]/usr/bin/docker create --name c65b8caba6d04fffa1fa418988bd80cb_postgres16_9ee205 --label 3c138e --network github_network_c5e8b7b5ad0340ddb9f53d41d4c8b076 --network-alias postgres -p 5433:5432 --health-cmd "pg_isready -U migrate_gate_admin -d postgres" --health-interval 5s --health-timeout 5s --health-retries 12 -e "POSTGRES_DB=postgres" -e "POSTGRES_USER=migrate_gate_admin" -e "POSTGRES_PASSWORD=migrate_gate_only" -e GITHUB_ACTIONS=true -e CI=true postgres:16
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2400078Z 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.2425727Z ##[command]/usr/bin/docker start 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4337181Z 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4368754Z ##[command]/usr/bin/docker ps --all --filter id=70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab --filter status=running --no-trunc --format "{{.ID}} {{.Status}}"
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4516021Z 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab Up Less than a second (health: starting)
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4537155Z ##[command]/usr/bin/docker port 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4689402Z 5432/tcp -> 0.0.0.0:5433
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4689904Z 5432/tcp -> [::]:5433
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4730317Z ##[endgroup]
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4739093Z ##[group]Waiting for all services to be ready
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4754387Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4898442Z starting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:55.4925785Z postgres service is starting, waiting 2 seconds before checking again.
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:57.4927210Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:57.5058355Z starting
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:27:57.5072259Z postgres service is starting, waiting 4 seconds before checking again.
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:28:01.8182565Z ##[command]/usr/bin/docker inspect --format="{{if .Config.Healthcheck}}{{print .State.Health.Status}}{{end}}" 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:28:01.8317607Z healthy
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:28:01.8336819Z postgres service is healthy.
+migrate-deploy-postgres-16	Initialize containers	2026-09-13T17:28:01.8337558Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	﻿2026-09-13T17:28:01.8715015Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8723278Z ##[group]Run actions/checkout@v4
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8723706Z with:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8723941Z   repository: ddsalam/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8726852Z   token: ***
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8727080Z   ssh-strict: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8727300Z   ssh-user: git
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8727520Z   persist-credentials: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8727766Z   clean: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8727985Z   sparse-checkout-cone-mode: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8728246Z   fetch-depth: 1
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8728456Z   fetch-tags: false
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8728674Z   show-progress: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8728897Z   lfs: false
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8729096Z   submodules: false
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8729381Z   set-safe-directory: true
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8729644Z   allow-unsafe-pr-checkout: false
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.8730040Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9756280Z Syncing repository: ddsalam/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9758217Z ##[group]Getting Git version info
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9758796Z Working directory is '/home/runner/work/solamax/solamax'
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9759664Z [command]/usr/bin/git version
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9816054Z git version 2.55.0
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9842899Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9875030Z Temporarily overriding HOME='/home/runner/work/_temp/8f06759d-e068-4220-9386-787f666294c4' before making global git config changes
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9876428Z Adding repository directory to the temporary git global config as a safe directory
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9880825Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/solamax/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9932089Z Deleting the contents of '/home/runner/work/solamax/solamax'
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9936496Z ##[group]Initializing the repository
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:01.9941171Z [command]/usr/bin/git init /home/runner/work/solamax/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0018259Z hint: Using 'master' as the name for the initial branch. This default branch name
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0022301Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0023166Z hint: to use in all of your new repositories, which will suppress this warning,
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0023791Z hint: call:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0024085Z hint:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0024508Z hint: 	git config --global init.defaultBranch <name>
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0025030Z hint:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0025537Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0026393Z hint: 'development'. The just-created branch can be renamed via this command:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0027020Z hint:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0027338Z hint: 	git branch -m <name>
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0027883Z hint:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0028467Z hint: Disable this message with "git config set advice.defaultBranchName false"
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0029440Z Initialized empty Git repository in /home/runner/work/solamax/solamax/.git/
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0032495Z [command]/usr/bin/git remote add origin https://github.com/ddsalam/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0077027Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0077747Z ##[group]Disabling automatic garbage collection
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0081909Z [command]/usr/bin/git config --local gc.auto 0
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0117116Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0117781Z ##[group]Setting up auth
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0124816Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0162212Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0521793Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0562639Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0842383Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.0883122Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.1129169Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.1174830Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.1175478Z ##[group]Fetching the repository
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:02.1185665Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +6ee8c17ce428676e56b789749bc5d7fab9bf7f28:refs/remotes/origin/codex/piutang-0039-p3009
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1772128Z From https://github.com/ddsalam/solamax
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1773150Z  * [new ref]         6ee8c17ce428676e56b789749bc5d7fab9bf7f28 -> origin/codex/piutang-0039-p3009
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1776818Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1777541Z ##[group]Determining the checkout info
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1779524Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1786020Z [command]/usr/bin/git sparse-checkout disable
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1837522Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1872015Z ##[group]Checking out the ref
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.1884600Z [command]/usr/bin/git checkout --progress --force -B codex/piutang-0039-p3009 refs/remotes/origin/codex/piutang-0039-p3009
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.2641103Z Switched to a new branch 'codex/piutang-0039-p3009'
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.2644738Z branch 'codex/piutang-0039-p3009' set up to track 'origin/codex/piutang-0039-p3009'.
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.2652685Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.2701921Z [command]/usr/bin/git log -1 --format=%H
+migrate-deploy-postgres-16	Run actions/checkout@v4	2026-09-13T17:28:03.2734839Z 6ee8c17ce428676e56b789749bc5d7fab9bf7f28
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	﻿2026-09-13T17:28:03.2953009Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2954831Z ##[group]Run pnpm/action-setup@v4
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2955105Z with:
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2955312Z   version: 9.12.0
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2955539Z   dest: ~/setup-pnpm
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2955764Z   run_install: null
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2955976Z   cache: false
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2956207Z   cache_dependency_path: pnpm-lock.yaml
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2956511Z   package_json_file: package.json
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2956778Z   standalone: false
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.2956992Z ##[endgroup]
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.4412637Z ##[group]Running self-installer...
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.8617728Z (node:2732) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:03.8619892Z (Use `node --trace-deprecation ...` to show where the warning was created)
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.0478379Z Progress: resolved 1, reused 0, downloaded 0, added 0
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.0560561Z Packages: +1
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.0560981Z +
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4416966Z Progress: resolved 1, reused 0, downloaded 1, added 1, done
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4775505Z 
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4776143Z dependencies:
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4776551Z + pnpm 9.12.0 (12.4.1 is available)
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4776864Z 
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4795755Z Done in 835ms
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4986570Z ##[endgroup]
+migrate-deploy-postgres-16	Run pnpm/action-setup@v4	2026-09-13T17:28:04.4986979Z Installation Completed!
+migrate-deploy-postgres-16	Run actions/setup-node@v4	﻿2026-09-13T17:28:04.5160010Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5161476Z ##[group]Run actions/setup-node@v4
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5161738Z with:
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5161954Z   node-version: 20
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5162179Z   cache: pnpm
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5162389Z   always-auth: false
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5162621Z   check-latest: false
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5165419Z   token: ***
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5165631Z env:
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5165893Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.5166225Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.7014763Z Attempting to download 20...
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.7125695Z (node:2746) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:04.7126950Z (Use `node --trace-deprecation ...` to show where the warning was created)
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:05.4419608Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:05.9999734Z Extracting ...
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:06.0123099Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/e8fee4ef-36ab-4b38-ad06-4916e70b89ed -f /home/runner/work/_temp/b593fc0a-5401-44ba-a34c-05acc0138c00
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:07.0900968Z Adding to the cache ...
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:08.6801944Z ##[group]Environment details
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.0629383Z node: v20.20.2
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.0629819Z npm: 10.8.2
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.0630107Z yarn: 1.22.22
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.0630949Z ##[endgroup]
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.0649097Z [command]/home/runner/setup-pnpm/node_modules/.bin/pnpm store path --silent
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.4535466Z /home/runner/setup-pnpm/node_modules/.bin/store/v3
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.6146373Z Cache hit for: node-cache-Linux-x64-pnpm-dbfdf59e8c2998da3283dd30e55decf884e352e79c920af2560d3a7c68b9e714
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:09.6253746Z (node:2746) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:10.7902398Z Received 109051904 of 192443958 (56.7%), 104.0 MBs/sec
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:11.2097282Z Received 192443958 of 192443958 (100.0%), 129.2 MBs/sec
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:11.2098425Z Cache Size: ~184 MB (192443958 B)
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:11.2129223Z [command]/usr/bin/tar -xf /home/runner/work/_temp/dcccaa38-4141-4b99-84e1-a0b99a29ed14/cache.tzst -P -C /home/runner/work/solamax/solamax --use-compress-program unzstd
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:12.6097414Z Cache restored successfully
+migrate-deploy-postgres-16	Run actions/setup-node@v4	2026-09-13T17:28:12.6193171Z Cache restored from key: node-cache-Linux-x64-pnpm-dbfdf59e8c2998da3283dd30e55decf884e352e79c920af2560d3a7c68b9e714
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	﻿2026-09-13T17:28:12.6471356Z ##[group]Run pnpm install --frozen-lockfile
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:12.6471802Z ^[[36;1mpnpm install --frozen-lockfile^[[0m
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:12.6516556Z shell: /usr/bin/bash -e {0}
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:12.6516846Z env:
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:12.6517122Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:12.6517470Z ##[endgroup]
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.0783009Z Scope: all 5 workspace projects
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.1357002Z Lockfile is up to date, resolution step is skipped
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.1751576Z Progress: resolved 1, reused 0, downloaded 0, added 0
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.2441932Z Packages: +317
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.2442964Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:13.9712567Z Progress: resolved 317, reused 317, downloaded 0, added 317, done
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:14.4843337Z 
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:14.4844126Z devDependencies:
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:14.4844642Z + pg-query-emscripten 5.1.0
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:14.4844958Z 
+migrate-deploy-postgres-16	Run pnpm install --frozen-lockfile	2026-09-13T17:28:14.5909669Z Done in 1.9s
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	﻿2026-09-13T17:28:14.6204080Z ##[group]Run pnpm --filter @solamax/shared build
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:14.6204506Z ^[[36;1mpnpm --filter @solamax/shared build^[[0m
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:14.6248229Z shell: /usr/bin/bash -e {0}
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:14.6248645Z env:
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:14.6249064Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:14.6249601Z ##[endgroup]
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:15.0452393Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:15.0453648Z > @solamax/shared@0.0.0 build /home/runner/work/solamax/solamax/packages/shared
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:15.0454436Z > tsc -p tsconfig.json
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/shared build	2026-09-13T17:28:15.0454708Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	﻿2026-09-13T17:28:16.8376223Z ##[group]Run pnpm --filter @solamax/backend prisma:generate
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:16.8376709Z ^[[36;1mpnpm --filter @solamax/backend prisma:generate^[[0m
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:16.8420928Z shell: /usr/bin/bash -e {0}
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:16.8421233Z env:
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:16.8421518Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:16.8421853Z ##[endgroup]
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:17.2644166Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:17.2645438Z > @solamax/backend@0.0.0 prisma:generate /home/runner/work/solamax/solamax/apps/backend
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:17.2646439Z > prisma generate
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:17.2646660Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:17.5981489Z Prisma schema loaded from prisma/schema.prisma
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7312309Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7314628Z ✔ Generated Prisma Client (v5.22.0) to ./../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/@prisma/client in 363ms
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7320925Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7338417Z Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7339283Z 
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7340326Z Tip: Want to react to database changes in your app as they happen? Discover how with Pulse: https://pris.ly/tip-1-pulse
+migrate-deploy-postgres-16	Run pnpm --filter @solamax/backend prisma:generate	2026-09-13T17:28:18.7341453Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	﻿2026-09-13T17:28:18.9607622Z ##[group]Run bash scripts/ci/check-migrate-deploy.sh
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9608065Z ^[[36;1mbash scripts/ci/check-migrate-deploy.sh^[[0m
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9647825Z shell: /usr/bin/bash -e {0}
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9648087Z env:
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9648368Z   PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9649088Z   MIGRATE_DEPLOY_ADMIN_URL: ***127.0.0.1:5433/postgres
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9649439Z   MIGRATE_DEPLOY_HOST: 127.0.0.1
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9649717Z   MIGRATE_DEPLOY_PORT: 5433
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9650144Z ##[endgroup]
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:18.9823000Z == server ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:19.1926141Z PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:19.2328543Z server_version_num=160015
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:19.2777385Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:19.2778807Z == A · generasi v1 konsisten → 0039 terpasang tanpa mengubah saldo ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:19.3157088Z NOTICE:  database "migrate_deploy_gate" does not exist, skipping
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:20.5441256Z subjek sebelum: 01.000.0003=0/900000/0 HUT=0/0/-673010538 IBLOCAL=13052684187.5/0/0 N4=0/0/0 ZERO=0/0/0
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:20.6011300Z NOTICE:  PREFLIGHT_SCOPE app.unit_ids=1
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:20.6011919Z NOTICE:  PREFLIGHT_SUBJEK manifest terlihat=1, work terlihat=0
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:20.6012397Z NOTICE:  PREFLIGHT_OK nol pemblokir pada 1 unit
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:21.4878012Z A OK — saldo identik, 12 sisi merekonstruksinya, IBLOCAL debet-kredit = 122345938294-109293254106.50.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:21.4879035Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:21.4879952Z == B · sisa manifest 'building' (bentuk fixture B6) ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:22.6529504Z NOTICE:  PREFLIGHT_BLOCKER building_manifest unit=1 tanggal=2026-09-09 ref=b6000000-0000-4000-8000-00000000a112
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:22.6530623Z Setiap baris PREFLIGHT_BLOCKER di atas menyebut unit, tanggal, dan referensinya.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:23.2494825Z   (catatan: sebabnya TIDAK terekam di _prisma_migrations.logs — lihat 2026-09-14-0039-p3009-diagnosis.md §5.2)
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:23.2944643Z B OK — preflight menolak lebih dulu, migrasi juga menolak, nol kolom tertinggal.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:23.2945229Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:23.2946059Z == C · manifest 'complete' yang tidak lolos rebuild-and-verify ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:24.4860918Z   preflight LULUS (memang buta terhadap kelas ini — batas yang diketahui)
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:25.0848572Z C OK — ditolak oleh guard rebuild-and-verify, nol kolom tertinggal.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:25.0849167Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:25.0849481Z == D · pemulihan sesudah C ==
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:26.5956507Z D OK — pemulihan terbukti, bukan dijanjikan.
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:26.7317054Z 
+migrate-deploy-postgres-16	Run bash scripts/ci/check-migrate-deploy.sh	2026-09-13T17:28:26.7319103Z GERBANG DEPLOY HIJAU pada server_version_num=160015 — A/D hijau, B/C terbukti bisa merah.
+migrate-deploy-postgres-16	Post Run actions/setup-node@v4	﻿2026-09-13T17:28:26.7455221Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Post Run actions/setup-node@v4	2026-09-13T17:28:26.7456470Z Post job cleanup.
+migrate-deploy-postgres-16	Post Run actions/setup-node@v4	2026-09-13T17:28:26.8768434Z (node:3492) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+migrate-deploy-postgres-16	Post Run actions/setup-node@v4	2026-09-13T17:28:26.8769335Z (Use `node --trace-deprecation ...` to show where the warning was created)
+migrate-deploy-postgres-16	Post Run actions/setup-node@v4	2026-09-13T17:28:26.8772846Z Cache hit occurred on the primary key node-cache-Linux-x64-pnpm-dbfdf59e8c2998da3283dd30e55decf884e352e79c920af2560d3a7c68b9e714, not saving cache.
+migrate-deploy-postgres-16	Post Run pnpm/action-setup@v4	﻿2026-09-13T17:28:26.8896538Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Post Run pnpm/action-setup@v4	2026-09-13T17:28:26.8898381Z Post job cleanup.
+migrate-deploy-postgres-16	Post Run pnpm/action-setup@v4	2026-09-13T17:28:27.0374725Z Pruning is unnecessary.
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	﻿2026-09-13T17:28:27.0675508Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.0677585Z Post job cleanup.
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1719329Z [command]/usr/bin/git version
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1761865Z git version 2.55.0
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1801061Z Temporarily overriding HOME='/home/runner/work/_temp/fcf91b5b-1cde-47f7-9949-7f1faa2ee36c' before making global git config changes
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1803165Z Adding repository directory to the temporary git global config as a safe directory
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1811500Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/solamax/solamax
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1849604Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.1888349Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2161254Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2346477Z http.https://github.com/.extraheader
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2364008Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2413135Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2689880Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+migrate-deploy-postgres-16	Post Run actions/checkout@v4	2026-09-13T17:28:27.2735465Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+migrate-deploy-postgres-16	Stop containers	﻿2026-09-13T17:28:27.3107119Z Print service container logs: c65b8caba6d04fffa1fa418988bd80cb_postgres16_9ee205
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3112188Z ##[command]/usr/bin/docker logs --details 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3252504Z  initdb: warning: enabling "trust" authentication for local connections
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3253578Z  The files belonging to this database system will be owned by user "postgres".
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3254349Z  This user must also own the server process.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3254836Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3255345Z  The database cluster will be initialized with locale "en_US.utf8".
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3256075Z  The default database encoding has accordingly been set to "UTF8".
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3256816Z  The default text search configuration will be set to "english".
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3257366Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3257693Z  Data page checksums are disabled.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3258103Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3258605Z  fixing permissions on existing directory /var/lib/postgresql/data ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3259369Z  creating subdirectories ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3259879Z  selecting dynamic shared memory implementation ... posix
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3260601Z  selecting default max_connections ... 100
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3261099Z  selecting default shared_buffers ... 128MB
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3261581Z  selecting default time zone ... Etc/UTC
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3262072Z  creating configuration files ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3262522Z  running bootstrap script ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3263041Z  performing post-bootstrap initialization ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3263567Z  syncing data to disk ... ok
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3263939Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3264188Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3265039Z  initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3266601Z  2026-09-13 17:27:56.318 UTC [1] LOG:  starting PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3267763Z  2026-09-13 17:27:56.318 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3268526Z  2026-09-13 17:27:56.318 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3269389Z  2026-09-13 17:27:56.319 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3270317Z  2026-09-13 17:27:56.321 UTC [62] LOG:  database system was shut down at 2026-09-13 17:27:56 UTC
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3271990Z  2026-09-13 17:27:56.325 UTC [1] LOG:  database system is ready to accept connections
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3272777Z  2026-09-13 17:28:21.526 UTC [60] LOG:  checkpoint starting: immediate force wait
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3274567Z  2026-09-13 17:28:21.532 UTC [60] LOG:  checkpoint complete: wrote 15 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.006 s; sync files=12, longest=0.001 s, average=0.001 s; distance=6565 kB, estimate=6565 kB; lsn=0/1B5C1B8, redo lsn=0/1B5C180
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3276635Z  2026-09-13 17:28:23.197 UTC [133] ERROR:  snapshot_v2_active_builder: finish or retire active builds before upgrade (unit 1)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3278505Z  2026-09-13 17:28:23.197 UTC [133] CONTEXT:  PL/pgSQL function inline_code_block line 13 at RAISE
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3279591Z  2026-09-13 17:28:23.197 UTC [133] STATEMENT:  -- Reconstruct every stored generation from its OWN immutable source cut.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3280794Z  	-- This upgrade is atomic: no reader can observe nullable sides, old checksums,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3281686Z  	-- or mixed generation references. No defaults stand in for missing evidence.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3282527Z  	-- FORCE RLS stays enabled; the migration scopes one existing unit at a time.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3283146Z  	BEGIN;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3283489Z  	SET LOCAL lock_timeout = '10s';
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3284121Z  	-- Bound lock acquisition, not reconstruction duration. Deployment runs this
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3285325Z  	-- migration before serving v2 readers/builders; never execute it manually.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3286036Z  	LOCK TABLE app.saldo_pelanggan_source_cycle,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3286532Z  	  app.saldo_pelanggan_source_pelanggan,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3287001Z  	  app.saldo_pelanggan_source_bppiut,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3287496Z  	  app.saldo_pelanggan_source_bphut IN SHARE MODE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3288038Z  	LOCK TABLE app.saldo_pelanggan_snapshot_manifest,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3288531Z  	  app.saldo_pelanggan_snapshot_row,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3288987Z  	  app.saldo_pelanggan_snapshot_pointer,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3289458Z  	  app.saldo_pelanggan_build_work,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3289955Z  	  app.saldo_pelanggan_dirty IN ACCESS EXCLUSIVE MODE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3290585Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3290955Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3291478Z  	  ADD COLUMN awal_piutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3292001Z  	  ADD COLUMN awal_piutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3292523Z  	  ADD COLUMN akhir_piutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3293051Z  	  ADD COLUMN akhir_piutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3293582Z  	  ADD COLUMN awal_piutang_online_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3294091Z  	  ADD COLUMN awal_piutang_online_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3294607Z  	  ADD COLUMN akhir_piutang_online_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3295135Z  	  ADD COLUMN akhir_piutang_online_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3295650Z  	  ADD COLUMN awal_hutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3296176Z  	  ADD COLUMN awal_hutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3296685Z  	  ADD COLUMN akhir_hutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3297198Z  	  ADD COLUMN akhir_hutang_lokal_kredit NUMERIC;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3297654Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3298002Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3298555Z  	  ADD COLUMN awal_piutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3299138Z  	  ADD COLUMN awal_piutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3299680Z  	  ADD COLUMN akhir_piutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3300238Z  	  ADD COLUMN akhir_piutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3302066Z  	  ADD COLUMN awal_piutang_online_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3302650Z  	  ADD COLUMN awal_piutang_online_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3303233Z  	  ADD COLUMN akhir_piutang_online_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3303806Z  	  ADD COLUMN akhir_piutang_online_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3304632Z  	  ADD COLUMN awal_hutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3305186Z  	  ADD COLUMN awal_hutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3305749Z  	  ADD COLUMN akhir_hutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3306295Z  	  ADD COLUMN akhir_hutang_lokal_kredit_total NUMERIC;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3306768Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3307491Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3308685Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3309733Z  	ALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3310992Z  	ALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3312079Z  	ALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3313661Z  	SET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey DEFERRED;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3314575Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3314793Z  	CREATE TEMP TABLE sps_v2_map (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3315204Z  	  unit_id SMALLINT NOT NULL, as_of_date DATE NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3315993Z  	  old_generation_id UUID NOT NULL, new_generation_id UUID NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3316424Z  	  new_epoch BIGINT NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3316798Z  	  PRIMARY KEY (unit_id, as_of_date, old_generation_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3317126Z  	) ON COMMIT DROP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3317597Z  	CREATE TEMP TABLE sps_v2_rows (LIKE app.saldo_pelanggan_snapshot_row) ON COMMIT DROP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3318060Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3318310Z  	DO $upgrade$
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3318528Z  	DECLARE
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3318743Z  	  scoped_unit SMALLINT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3319087Z  	  g RECORD;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3319402Z  	  invalid_count BIGINT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3319757Z  	  proof RECORD;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3320198Z  	  previous_scope TEXT := current_setting('app.unit_ids', true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3320875Z  	BEGIN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3321385Z  	  FOR scoped_unit IN SELECT unit_id FROM public.unit ORDER BY unit_id LOOP
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3322084Z  	    PERFORM set_config('app.unit_ids', scoped_unit::text, true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3323045Z  	    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND status = 'building')
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3324258Z  	       OR EXISTS (SELECT 1 FROM app.saldo_pelanggan_build_work WHERE unit_id = scoped_unit AND state = 'leased') THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3325465Z  	      RAISE EXCEPTION 'snapshot_v2_active_builder: finish or retire active builds before upgrade (unit %)', scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3326278Z  	    END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3327139Z  	    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND formula_version <> 'saldo-pelanggan-v1') THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3327879Z  	      RAISE EXCEPTION 'snapshot_v2_unexpected_formula: unit %', scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3328255Z  	    END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3328586Z  	    -- An offset above ALL previous work/manifest epochs avoids collision with
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3329094Z  	    -- unfinished queue tuples and retains the existing publication ordering.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3329496Z  	    INSERT INTO sps_v2_map
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3329898Z  	    SELECT m.unit_id, m.as_of_date, m.generation_id, gen_random_uuid(),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3330281Z  	      GREATEST(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3331045Z  	        (SELECT COALESCE(max(x.rebuild_epoch), 0) FROM app.saldo_pelanggan_snapshot_manifest x WHERE x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3331958Z  	        (SELECT COALESCE(max(w.rebuild_epoch), 0) FROM app.saldo_pelanggan_build_work w WHERE w.unit_id = m.unit_id AND w.as_of_date = m.as_of_date)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3332947Z  	      ) + row_number() OVER (PARTITION BY m.unit_id, m.as_of_date ORDER BY m.rebuild_epoch, m.generation_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3334380Z  	    FROM app.saldo_pelanggan_snapshot_manifest m WHERE m.unit_id = scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3335023Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3335300Z  	    FOR g IN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3335676Z  	      SELECT m.*, x.new_generation_id, x.new_epoch
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3336197Z  	      FROM app.saldo_pelanggan_snapshot_manifest m
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3336726Z  	      JOIN sps_v2_map x ON x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date AND x.old_generation_id = m.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3337309Z  	      WHERE m.unit_id = scoped_unit ORDER BY m.as_of_date, m.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3337682Z  	    LOOP
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3337890Z  	      IF NOT EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3338172Z  	        SELECT 1 FROM app.saldo_pelanggan_source_cycle c
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3338606Z  	        WHERE c.unit_id = g.unit_id AND c.source_cycle_id = g.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3339124Z  	          AND c.source_cycle_sequence = g.source_cycle_sequence AND c.status = 'complete'
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3339594Z  	          AND c.source_completed_at = g.source_completed_at
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3340177Z  	          AND c.pelanggan_keyed_checksum IS NOT NULL AND c.bppiut_keyed_checksum IS NOT NULL AND c.bphut_keyed_checksum IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3341841Z  	          AND c.pelanggan_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_pelanggan p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3343237Z  	          AND c.bppiut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bppiut p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3344185Z  	          AND c.bphut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bphut h WHERE h.unit_id = c.unit_id AND h.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3344794Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3345264Z  	        RAISE EXCEPTION 'snapshot_v2_source_cut_incomplete: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3345744Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3345953Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3346165Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3346435Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3346651Z  	  SELECT p.ckdplg::text
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3346945Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3347284Z  	  WHERE p.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3347634Z  	    AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3347986Z  	    AND NULLIF(btrim(p.ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3348272Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3348487Z  	  SELECT b.ckdplg
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3348741Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3349047Z  	  WHERE b.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3349363Z  	    AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3349677Z  	    AND b.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3349978Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3350255Z  	    AND NULLIF(btrim(ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3350736Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3350939Z  	  SELECT h.ckdplg
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3351182Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3351475Z  	  WHERE h.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3351787Z  	    AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3352088Z  	    AND h.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3352354Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3352620Z  	    AND NULLIF(btrim(ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3352882Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3353246Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_customer_key'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3353673Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3353889Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3354332Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3354540Z  	  SELECT b.sjnsbp
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3354783Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3355137Z  Success. You can now start the database server using:
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3355446Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3355706Z      pg_ctl -D /var/lib/postgresql/data -l logfile start
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3356013Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3356654Z  waiting for server to start....2026-09-13 17:27:56.078 UTC [48] LOG:  starting PostgreSQL 16.15 (Debian 16.15-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3357524Z  2026-09-13 17:27:56.078 UTC [48] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3358091Z  2026-09-13 17:27:56.081 UTC [51] LOG:  database system was shut down at 2026-09-13 17:27:55 UTC
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3358591Z  2026-09-13 17:27:56.084 UTC [48] LOG:  database system is ready to accept connections
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3358977Z   done
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3359187Z  server started
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3359401Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3359741Z  /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3360139Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3360582Z  2026-09-13 17:27:56.195 UTC [48] LOG:  received fast shutdown request
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3361106Z  waiting for server to shut down....2026-09-13 17:27:56.196 UTC [48] LOG:  aborting any active transactions
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3361947Z  2026-09-13 17:27:56.197 UTC [48] LOG:  background worker "logical replication launcher" (PID 54) exited with exit code 1
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3362475Z  2026-09-13 17:27:56.198 UTC [49] LOG:  shutting down
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3362872Z  2026-09-13 17:27:56.199 UTC [49] LOG:  checkpoint starting: shutdown immediate
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3363886Z  2026-09-13 17:27:56.201 UTC [49] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.003 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/14F2AF0, redo lsn=0/14F2AF0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3364870Z  2026-09-13 17:27:56.205 UTC [48] LOG:  database system is shut down
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3365207Z   done
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3365428Z  server stopped
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3365642Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3365901Z  PostgreSQL init process complete; ready for start up.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3366227Z  
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3366702Z  	  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3367202Z  	    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3367587Z  	    AND (b.sjnsbp IS NULL OR b.sjnsbp NOT IN (1, 2))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3367955Z  	    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3368335Z  	      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3368753Z  	      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3369215Z  	        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3369559Z  	    ))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3369753Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3369967Z  	  SELECT h.sjnsbp
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3370218Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3370815Z  	  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3371319Z  	    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3371724Z  	    AND (h.sjnsbp IS NULL OR h.sjnsbp NOT IN (1, 2))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3372028Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3372363Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_sjnsbp'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3372867Z  	      IF g.status = 'complete' AND g.row_keyed_checksum IS DISTINCT FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3373272Z  	        SELECT sha256(convert_to(COALESCE(string_agg(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3373651Z  	          concat_ws('|', unit_id::text, as_of_date::text, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3374661Z  	            awal_piutang_lokal::text, akhir_piutang_lokal::text, awal_piutang_online::text, akhir_piutang_online::text, awal_hutang_lokal::text, akhir_hutang_lokal::text),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3375353Z  	          E'\n' ORDER BY customer_code), ''), 'UTF8'))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3375686Z  	        FROM app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3376145Z  	        WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3376577Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3377001Z  	        RAISE EXCEPTION 'snapshot_v2_old_checksum_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3377479Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3377682Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3377889Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3378154Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3378365Z  	  SELECT b.njumlah
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3378619Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3379047Z  	  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3379528Z  	    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3379872Z  	    AND b.njumlah IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3380162Z  	    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3380777Z  	      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3381233Z  	      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3381816Z  	        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3382162Z  	    ))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3382353Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3382558Z  	  SELECT h.njumlah
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3382803Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3383222Z  	  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3383694Z  	    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3384039Z  	    AND h.njumlah IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3384277Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3384634Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_source_amount'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3385060Z  	      TRUNCATE sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3385307Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3385507Z  	WITH master_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3385758Z  	  SELECT btrim(p.ckdplg) AS customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3386083Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3386511Z  	  WHERE p.unit_id = g.unit_id::smallint AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3386911Z  	), local_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3387146Z  	  SELECT btrim(p.ckdplg) AS customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3387455Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3387762Z  	  WHERE p.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3388077Z  	    AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3388405Z  	    AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3388650Z  	), live_piut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3388890Z  	  SELECT btrim(b.ckdplg) AS customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3389190Z  	         b.dtgl, b.sjnsbp, b.njumlah,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3389574Z  	         b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3389984Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3390276Z  	  WHERE b.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3390814Z  	    AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3391122Z  	    AND b.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3391399Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3391665Z  	), live_hut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3391905Z  	  SELECT btrim(h.ckdplg) AS customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3392186Z  	         h.dtgl, h.sjnsbp, h.njumlah,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3392546Z  	         h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3393090Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3393379Z  	  WHERE h.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3393678Z  	    AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3393984Z  	    AND h.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3394252Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3394508Z  	), customer_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3394761Z  	  SELECT customer_code FROM master_keys
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3395069Z  	  UNION SELECT customer_code FROM live_piut
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3395372Z  	  UNION SELECT customer_code FROM live_hut
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3395649Z  	), piut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3395865Z  	  SELECT p.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3396122Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3396397Z  	      WHERE l.customer_code IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3396700Z  	        AND position('.' in p.customer_code) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3397006Z  	        AND p.dtgl < g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3397282Z  	    ), 0) AS awal_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3397555Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3397821Z  	      WHERE l.customer_code IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3398108Z  	        AND position('.' in p.customer_code) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3398410Z  	        AND p.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3398692Z  	    ), 0) AS akhir_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3399396Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3400901Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3402009Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3403102Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3403798Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3404086Z  	      WHERE position('.' in p.customer_code) > 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3404394Z  	        AND p.dtgl < g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3404671Z  	    ), 0) AS awal_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3404937Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3405214Z  	      WHERE position('.' in p.customer_code) > 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3405514Z  	        AND p.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3405793Z  	    ), 0) AS akhir_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3406378Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3407360Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3408280Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3409177Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_online_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3409776Z  	  FROM live_piut p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3410075Z  	  LEFT JOIN local_keys l ON l.customer_code = p.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3410594Z  	  GROUP BY p.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3410851Z  	), hut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3411068Z  	  SELECT h.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3411411Z  	    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl < g.as_of_date::date), 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3411960Z  	      AS awal_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3412311Z  	    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl <= g.as_of_date::date), 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3412696Z  	      AS akhir_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3413170Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 1), 0) AS awal_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3413884Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 2), 0) AS awal_hutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3414593Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 1), 0) AS akhir_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3415281Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 2), 0) AS akhir_hutang_lokal_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3415753Z  	  FROM live_hut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3415979Z  	  GROUP BY h.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3416221Z  	)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3416425Z  	INSERT INTO sps_v2_rows (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3416712Z  	  unit_id, as_of_date, generation_id, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3417047Z  	  awal_piutang_lokal, akhir_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3417369Z  	  awal_piutang_online, akhir_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3417678Z  	  awal_hutang_lokal, akhir_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3417965Z  	  awal_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3418230Z  	  awal_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3418484Z  	  akhir_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3418866Z  	  akhir_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3419121Z  	  awal_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3419379Z  	  awal_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3419626Z  	  akhir_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3419876Z  	  akhir_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3420145Z  	  awal_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3420550Z  	  awal_hutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3420819Z  	  akhir_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3421070Z  	  akhir_hutang_lokal_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3421298Z  	)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3421651Z  	SELECT g.unit_id::smallint, g.as_of_date::date, g.new_generation_id::uuid, k.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3422190Z  	       COALESCE(p.awal_piutang_lokal, 0), COALESCE(p.akhir_piutang_lokal, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3422688Z  	       COALESCE(p.awal_piutang_online, 0), COALESCE(p.akhir_piutang_online, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3423166Z  	       COALESCE(h.awal_hutang_lokal, 0), COALESCE(h.akhir_hutang_lokal, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3423568Z  	       COALESCE(p.awal_piutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3423893Z  	       COALESCE(p.awal_piutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3424213Z  	       COALESCE(p.akhir_piutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3424528Z  	       COALESCE(p.akhir_piutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3424858Z  	       COALESCE(p.awal_piutang_online_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3425164Z  	       COALESCE(p.awal_piutang_online_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3425476Z  	       COALESCE(p.akhir_piutang_online_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3425804Z  	       COALESCE(p.akhir_piutang_online_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3426129Z  	       COALESCE(h.awal_hutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3426445Z  	       COALESCE(h.awal_hutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3426759Z  	       COALESCE(h.akhir_hutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3427058Z  	       COALESCE(h.akhir_hutang_lokal_kredit, 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3427341Z  	FROM customer_keys k
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3427632Z  	LEFT JOIN piut p ON p.customer_code = k.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3427992Z  	LEFT JOIN hut h ON h.customer_code = k.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3428289Z  	;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3428589Z  	      -- Complete generations must retain every key and every old amount.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3429083Z  	      -- Failed generations are rebuilt but remain failed and cannot be read.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3429480Z  	      IF g.status = 'complete' AND EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3429907Z  	        SELECT 1 FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3430198Z  	          SELECT * FROM app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3430892Z  	          WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3431386Z  	        ) old FULL JOIN sps_v2_rows fresh USING (customer_code)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3431807Z  	        WHERE old.customer_code IS NULL OR fresh.customer_code IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3433079Z  	          OR ROW(old.awal_piutang_lokal, old.akhir_piutang_lokal, old.awal_piutang_online, old.akhir_piutang_online, old.awal_hutang_lokal, old.akhir_hutang_lokal) IS DISTINCT FROM ROW(fresh.awal_piutang_lokal, fresh.akhir_piutang_lokal, fresh.awal_piutang_online, fresh.akhir_piutang_online, fresh.awal_hutang_lokal, fresh.akhir_hutang_lokal)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3434260Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3434694Z  	        RAISE EXCEPTION 'snapshot_v2_legacy_balance_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3435181Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3435414Z  	      SELECT count(*)::bigint AS row_count,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3435721Z  	        sha256(convert_to(COALESCE(string_agg(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3436086Z  	          concat_ws('|', unit_id::text, as_of_date::text, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3436448Z  	            awal_piutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3436740Z  	            akhir_piutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3437019Z  	            awal_piutang_online::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3437428Z  	            akhir_piutang_online::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3437710Z  	            awal_hutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3437990Z  	            akhir_hutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3438267Z  	            awal_piutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3438557Z  	            awal_piutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3438858Z  	            akhir_piutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3439145Z  	            akhir_piutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3439442Z  	            awal_piutang_online_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3439733Z  	            awal_piutang_online_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3440021Z  	            akhir_piutang_online_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3440313Z  	            akhir_piutang_online_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3440812Z  	            awal_hutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3441104Z  	            awal_hutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3441384Z  	            akhir_hutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3441679Z  	            akhir_hutang_lokal_kredit::text),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3442024Z  	          E'\n' ORDER BY customer_code), ''), 'UTF8')) AS checksum,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3442444Z  	        COALESCE(sum(awal_piutang_lokal), 0) AS awal_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3442896Z  	        COALESCE(sum(akhir_piutang_lokal), 0) AS akhir_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3443351Z  	        COALESCE(sum(awal_piutang_online), 0) AS awal_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3443802Z  	        COALESCE(sum(akhir_piutang_online), 0) AS akhir_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3444251Z  	        COALESCE(sum(awal_hutang_lokal), 0) AS awal_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3444691Z  	        COALESCE(sum(akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3445199Z  	        COALESCE(sum(awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3445724Z  	        COALESCE(sum(awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3446257Z  	        COALESCE(sum(akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3446782Z  	        COALESCE(sum(akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3447308Z  	        COALESCE(sum(awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3447830Z  	        COALESCE(sum(awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3448537Z  	        COALESCE(sum(akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3449082Z  	        COALESCE(sum(akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3449620Z  	        COALESCE(sum(awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3450125Z  	        COALESCE(sum(awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3450843Z  	        COALESCE(sum(akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3451363Z  	        COALESCE(sum(akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3451770Z  	      INTO proof FROM sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3452054Z  	      IF g.status = 'complete' AND (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3452375Z  	        g.row_count IS DISTINCT FROM proof.row_count OR
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3453771Z  	        ROW(g.awal_piutang_lokal_total, g.akhir_piutang_lokal_total, g.awal_piutang_online_total, g.akhir_piutang_online_total, g.awal_hutang_lokal_total, g.akhir_hutang_lokal_total) IS DISTINCT FROM ROW(proof.awal_piutang_lokal_total, proof.akhir_piutang_lokal_total, proof.awal_piutang_online_total, proof.akhir_piutang_online_total, proof.awal_hutang_lokal_total, proof.akhir_hutang_lokal_total)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3455133Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3455541Z  	        RAISE EXCEPTION 'snapshot_v2_manifest_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3456161Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3456677Z  	      DELETE FROM app.saldo_pelanggan_snapshot_row WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3457367Z  	      INSERT INTO app.saldo_pelanggan_snapshot_row SELECT * FROM sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3457796Z  	      UPDATE app.saldo_pelanggan_snapshot_manifest SET
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3458205Z  	        generation_id = g.new_generation_id, rebuild_epoch = g.new_epoch,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3458607Z  	        formula_version = 'saldo-pelanggan-v2',
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3459062Z  	        computed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE computed_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3459644Z  	        completed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE completed_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3460276Z  	        published_at = CASE WHEN status = 'complete' AND published THEN clock_timestamp() ELSE published_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3461039Z  	        customer_key_count = proof.row_count, row_count = proof.row_count,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3461440Z  	        row_keyed_checksum = proof.checksum,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3461804Z  	        awal_piutang_lokal_total = proof.awal_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3462224Z  	        akhir_piutang_lokal_total = proof.akhir_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3462644Z  	        awal_piutang_online_total = proof.awal_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3463079Z  	        akhir_piutang_online_total = proof.akhir_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3463508Z  	        awal_hutang_lokal_total = proof.awal_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3463902Z  	        akhir_hutang_lokal_total = proof.akhir_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3464348Z  	        awal_piutang_lokal_debet_total = proof.awal_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3464837Z  	        awal_piutang_lokal_kredit_total = proof.awal_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3465326Z  	        akhir_piutang_lokal_debet_total = proof.akhir_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3465822Z  	        akhir_piutang_lokal_kredit_total = proof.akhir_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3466310Z  	        awal_piutang_online_debet_total = proof.awal_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3466788Z  	        awal_piutang_online_kredit_total = proof.awal_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3467277Z  	        akhir_piutang_online_debet_total = proof.akhir_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3467932Z  	        akhir_piutang_online_kredit_total = proof.akhir_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3468433Z  	        awal_hutang_lokal_debet_total = proof.awal_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3468907Z  	        awal_hutang_lokal_kredit_total = proof.awal_hutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3469373Z  	        akhir_hutang_lokal_debet_total = proof.akhir_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3469841Z  	        akhir_hutang_lokal_kredit_total = proof.akhir_hutang_lokal_kredit_total
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3470562Z  	      WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3471002Z  	    END LOOP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3471417Z  	    UPDATE app.saldo_pelanggan_snapshot_manifest m SET base_generation_id = x.new_generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3472213Z  	    FROM sps_v2_map x WHERE m.unit_id = scoped_unit AND x.unit_id = m.unit_id AND x.as_of_date = m.base_month_end AND x.old_generation_id = m.base_generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3473173Z  	    UPDATE app.saldo_pelanggan_snapshot_pointer p SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, activated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3474082Z  	    FROM sps_v2_map x WHERE p.unit_id = scoped_unit AND x.unit_id = p.unit_id AND x.as_of_date = p.as_of_date AND x.old_generation_id = p.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3474943Z  	    UPDATE app.saldo_pelanggan_build_work w SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, updated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3475953Z  	    FROM sps_v2_map x WHERE w.unit_id = scoped_unit AND x.unit_id = w.unit_id AND x.as_of_date = w.as_of_date AND x.old_generation_id = w.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3476823Z  	    UPDATE app.saldo_pelanggan_dirty d SET covered_by_generation_id = x.new_generation_id, version = d.version + 1, updated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3477771Z  	    FROM sps_v2_map x WHERE d.unit_id = scoped_unit AND x.unit_id = d.unit_id AND x.as_of_date = d.covered_through_date AND x.old_generation_id = d.covered_by_generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3478419Z  	  END LOOP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3478759Z  	  PERFORM set_config('app.unit_ids', COALESCE(previous_scope, ''), true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3479137Z  	END
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3479335Z  	$upgrade$;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3479542Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3490878Z  	-- Validate all reference moves before restoring the original immediate FKs.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3491842Z  	SET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey IMMEDIATE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3492882Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3493622Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3494329Z  	ALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3495025Z  	ALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3495702Z  	ALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3496173Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3496412Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3496767Z  	  ALTER COLUMN awal_piutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3497133Z  	  ALTER COLUMN awal_piutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3497482Z  	  ALTER COLUMN akhir_piutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3497837Z  	  ALTER COLUMN akhir_piutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3498188Z  	  ALTER COLUMN awal_piutang_online_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3498523Z  	  ALTER COLUMN awal_piutang_online_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3499066Z  	  ALTER COLUMN akhir_piutang_online_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3499419Z  	  ALTER COLUMN akhir_piutang_online_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3499776Z  	  ALTER COLUMN awal_hutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3500125Z  	  ALTER COLUMN awal_hutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3500652Z  	  ALTER COLUMN akhir_hutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3500983Z  	  ALTER COLUMN akhir_hutang_lokal_kredit SET NOT NULL;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3501331Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3501923Z  	  ADD CONSTRAINT sps_row_awal_piutang_lokal_sides CHECK (awal_piutang_lokal = awal_piutang_lokal_debet - awal_piutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3502782Z  	  ADD CONSTRAINT sps_row_akhir_piutang_lokal_sides CHECK (akhir_piutang_lokal = akhir_piutang_lokal_debet - akhir_piutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3503632Z  	  ADD CONSTRAINT sps_row_awal_piutang_online_sides CHECK (awal_piutang_online = awal_piutang_online_debet - awal_piutang_online_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3504484Z  	  ADD CONSTRAINT sps_row_akhir_piutang_online_sides CHECK (akhir_piutang_online = akhir_piutang_online_debet - akhir_piutang_online_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3505317Z  	  ADD CONSTRAINT sps_row_awal_hutang_lokal_sides CHECK (awal_hutang_lokal = awal_hutang_lokal_debet - awal_hutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3506122Z  	  ADD CONSTRAINT sps_row_akhir_hutang_lokal_sides CHECK (akhir_hutang_lokal = akhir_hutang_lokal_debet - akhir_hutang_lokal_kredit);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3506798Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3507045Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3508073Z  	  ADD CONSTRAINT sps_manifest_awal_piutang_lokal_sides CHECK (status <> 'complete' OR (awal_piutang_lokal_debet_total IS NOT NULL AND awal_piutang_lokal_kredit_total IS NOT NULL AND awal_piutang_lokal_total = awal_piutang_lokal_debet_total - awal_piutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3509745Z  	  ADD CONSTRAINT sps_manifest_akhir_piutang_lokal_sides CHECK (status <> 'complete' OR (akhir_piutang_lokal_debet_total IS NOT NULL AND akhir_piutang_lokal_kredit_total IS NOT NULL AND akhir_piutang_lokal_total = akhir_piutang_lokal_debet_total - akhir_piutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3511644Z  	  ADD CONSTRAINT sps_manifest_awal_piutang_online_sides CHECK (status <> 'complete' OR (awal_piutang_online_debet_total IS NOT NULL AND awal_piutang_online_kredit_total IS NOT NULL AND awal_piutang_online_total = awal_piutang_online_debet_total - awal_piutang_online_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3513353Z  	  ADD CONSTRAINT sps_manifest_akhir_piutang_online_sides CHECK (status <> 'complete' OR (akhir_piutang_online_debet_total IS NOT NULL AND akhir_piutang_online_kredit_total IS NOT NULL AND akhir_piutang_online_total = akhir_piutang_online_debet_total - akhir_piutang_online_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3515017Z  	  ADD CONSTRAINT sps_manifest_awal_hutang_lokal_sides CHECK (status <> 'complete' OR (awal_hutang_lokal_debet_total IS NOT NULL AND awal_hutang_lokal_kredit_total IS NOT NULL AND awal_hutang_lokal_total = awal_hutang_lokal_debet_total - awal_hutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3516628Z  	  ADD CONSTRAINT sps_manifest_akhir_hutang_lokal_sides CHECK (status <> 'complete' OR (akhir_hutang_lokal_debet_total IS NOT NULL AND akhir_hutang_lokal_kredit_total IS NOT NULL AND akhir_hutang_lokal_total = akhir_hutang_lokal_debet_total - akhir_hutang_lokal_kredit_total));
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3517576Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3517763Z  	COMMIT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3517950Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3518379Z  2026-09-13 17:28:23.198 UTC [133] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3519057Z  2026-09-13 17:28:23.198 UTC [133] STATEMENT:  UPDATE "_prisma_migrations" SET "logs" = $1 WHERE "id" = $2
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3519594Z  2026-09-13 17:28:23.333 UTC [60] LOG:  checkpoint starting: immediate force wait
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3520849Z  2026-09-13 17:28:23.336 UTC [60] LOG:  checkpoint complete: wrote 8 buffers (0.0%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.001 s, sync=0.001 s, total=0.004 s; sync files=8, longest=0.001 s, average=0.001 s; distance=6497 kB, estimate=6558 kB; lsn=0/21B4978, redo lsn=0/21B4940
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3522186Z  2026-09-13 17:28:25.025 UTC [145] ERROR:  snapshot_v2_legacy_balance_mismatch: unit 1, generation aaaaaaaa-0000-4000-8000-00000000a001
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3522864Z  2026-09-13 17:28:25.025 UTC [145] CONTEXT:  PL/pgSQL function inline_code_block line 250 at RAISE
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3523522Z  2026-09-13 17:28:25.025 UTC [145] STATEMENT:  -- Reconstruct every stored generation from its OWN immutable source cut.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3524137Z  	-- This upgrade is atomic: no reader can observe nullable sides, old checksums,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3524660Z  	-- or mixed generation references. No defaults stand in for missing evidence.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3525160Z  	-- FORCE RLS stays enabled; the migration scopes one existing unit at a time.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3525531Z  	BEGIN;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3525743Z  	SET LOCAL lock_timeout = '10s';
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3526132Z  	-- Bound lock acquisition, not reconstruction duration. Deployment runs this
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3526629Z  	-- migration before serving v2 readers/builders; never execute it manually.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3527049Z  	LOCK TABLE app.saldo_pelanggan_source_cycle,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3527381Z  	  app.saldo_pelanggan_source_pelanggan,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3527862Z  	  app.saldo_pelanggan_source_bppiut,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3528175Z  	  app.saldo_pelanggan_source_bphut IN SHARE MODE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3528516Z  	LOCK TABLE app.saldo_pelanggan_snapshot_manifest,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3528837Z  	  app.saldo_pelanggan_snapshot_row,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3529121Z  	  app.saldo_pelanggan_snapshot_pointer,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3529408Z  	  app.saldo_pelanggan_build_work,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3529730Z  	  app.saldo_pelanggan_dirty IN ACCESS EXCLUSIVE MODE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3530041Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3530268Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3530857Z  	  ADD COLUMN awal_piutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3531185Z  	  ADD COLUMN awal_piutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3531504Z  	  ADD COLUMN akhir_piutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3531826Z  	  ADD COLUMN akhir_piutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3532143Z  	  ADD COLUMN awal_piutang_online_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3532453Z  	  ADD COLUMN awal_piutang_online_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3532762Z  	  ADD COLUMN akhir_piutang_online_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3533078Z  	  ADD COLUMN akhir_piutang_online_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3533396Z  	  ADD COLUMN awal_hutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3533703Z  	  ADD COLUMN awal_hutang_lokal_kredit NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3534012Z  	  ADD COLUMN akhir_hutang_lokal_debet NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3534314Z  	  ADD COLUMN akhir_hutang_lokal_kredit NUMERIC;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3534593Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3534829Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3535167Z  	  ADD COLUMN awal_piutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3535516Z  	  ADD COLUMN awal_piutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3535852Z  	  ADD COLUMN akhir_piutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3536198Z  	  ADD COLUMN akhir_piutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3536541Z  	  ADD COLUMN awal_piutang_online_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3536871Z  	  ADD COLUMN awal_piutang_online_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3537229Z  	  ADD COLUMN akhir_piutang_online_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3537576Z  	  ADD COLUMN akhir_piutang_online_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3537925Z  	  ADD COLUMN awal_hutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3538294Z  	  ADD COLUMN awal_hutang_lokal_kredit_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3538632Z  	  ADD COLUMN akhir_hutang_lokal_debet_total NUMERIC,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3539127Z  	  ADD COLUMN akhir_hutang_lokal_kredit_total NUMERIC;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3539430Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3539880Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3540872Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3541554Z  	ALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3542225Z  	ALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3542873Z  	ALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3543843Z  	SET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey DEFERRED;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3544600Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3544808Z  	CREATE TEMP TABLE sps_v2_map (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3545161Z  	  unit_id SMALLINT NOT NULL, as_of_date DATE NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3545561Z  	  old_generation_id UUID NOT NULL, new_generation_id UUID NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3545928Z  	  new_epoch BIGINT NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3546229Z  	  PRIMARY KEY (unit_id, as_of_date, old_generation_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3546530Z  	) ON COMMIT DROP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3547027Z  	CREATE TEMP TABLE sps_v2_rows (LIKE app.saldo_pelanggan_snapshot_row) ON COMMIT DROP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3547431Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3547626Z  	DO $upgrade$
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3547830Z  	DECLARE
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3548031Z  	  scoped_unit SMALLINT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3548272Z  	  g RECORD;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3548476Z  	  invalid_count BIGINT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3548700Z  	  proof RECORD;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3548998Z  	  previous_scope TEXT := current_setting('app.unit_ids', true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3549357Z  	BEGIN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3549668Z  	  FOR scoped_unit IN SELECT unit_id FROM public.unit ORDER BY unit_id LOOP
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3550124Z  	    PERFORM set_config('app.unit_ids', scoped_unit::text, true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3550925Z  	    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND status = 'building')
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3551662Z  	       OR EXISTS (SELECT 1 FROM app.saldo_pelanggan_build_work WHERE unit_id = scoped_unit AND state = 'leased') THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3552402Z  	      RAISE EXCEPTION 'snapshot_v2_active_builder: finish or retire active builds before upgrade (unit %)', scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3552904Z  	    END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3553424Z  	    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND formula_version <> 'saldo-pelanggan-v1') THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3554105Z  	      RAISE EXCEPTION 'snapshot_v2_unexpected_formula: unit %', scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3554481Z  	    END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3554790Z  	    -- An offset above ALL previous work/manifest epochs avoids collision with
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3555284Z  	    -- unfinished queue tuples and retains the existing publication ordering.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3555676Z  	    INSERT INTO sps_v2_map
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3556019Z  	    SELECT m.unit_id, m.as_of_date, m.generation_id, gen_random_uuid(),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3556371Z  	      GREATEST(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3556937Z  	        (SELECT COALESCE(max(x.rebuild_epoch), 0) FROM app.saldo_pelanggan_snapshot_manifest x WHERE x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3557839Z  	        (SELECT COALESCE(max(w.rebuild_epoch), 0) FROM app.saldo_pelanggan_build_work w WHERE w.unit_id = m.unit_id AND w.as_of_date = m.as_of_date)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3558585Z  	      ) + row_number() OVER (PARTITION BY m.unit_id, m.as_of_date ORDER BY m.rebuild_epoch, m.generation_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3559165Z  	    FROM app.saldo_pelanggan_snapshot_manifest m WHERE m.unit_id = scoped_unit;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3559692Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3559874Z  	    FOR g IN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3560125Z  	      SELECT m.*, x.new_generation_id, x.new_epoch
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3560572Z  	      FROM app.saldo_pelanggan_snapshot_manifest m
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3561081Z  	      JOIN sps_v2_map x ON x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date AND x.old_generation_id = m.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3561648Z  	      WHERE m.unit_id = scoped_unit ORDER BY m.as_of_date, m.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3562010Z  	    LOOP
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3562211Z  	      IF NOT EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3562490Z  	        SELECT 1 FROM app.saldo_pelanggan_source_cycle c
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3562893Z  	        WHERE c.unit_id = g.unit_id AND c.source_cycle_id = g.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3563395Z  	          AND c.source_cycle_sequence = g.source_cycle_sequence AND c.status = 'complete'
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3563854Z  	          AND c.source_completed_at = g.source_completed_at
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3564445Z  	          AND c.pelanggan_keyed_checksum IS NOT NULL AND c.bppiut_keyed_checksum IS NOT NULL AND c.bphut_keyed_checksum IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3565360Z  	          AND c.pelanggan_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_pelanggan p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3566337Z  	          AND c.bppiut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bppiut p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3567435Z  	          AND c.bphut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bphut h WHERE h.unit_id = c.unit_id AND h.source_cycle_id = c.source_cycle_id)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3568022Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3568448Z  	        RAISE EXCEPTION 'snapshot_v2_source_cut_incomplete: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3568919Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3569124Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3569328Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3569597Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3569801Z  	  SELECT p.ckdplg::text
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3570081Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3570565Z  	  WHERE p.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3570883Z  	    AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3571210Z  	    AND NULLIF(btrim(p.ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3571499Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3571699Z  	  SELECT b.ckdplg
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3571945Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3572242Z  	  WHERE b.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3572530Z  	    AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3572828Z  	    AND b.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3573104Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3573374Z  	    AND NULLIF(btrim(ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3573644Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3573837Z  	  SELECT h.ckdplg
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3574073Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3574351Z  	  WHERE h.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3574639Z  	    AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3574936Z  	    AND h.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3575191Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3575442Z  	    AND NULLIF(btrim(ckdplg), '') IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3575701Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3576059Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_customer_key'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3576477Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3576675Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3576935Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3577124Z  	  SELECT b.sjnsbp
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3577353Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3577777Z  	  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3578409Z  	    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3578793Z  	    AND (b.sjnsbp IS NULL OR b.sjnsbp NOT IN (1, 2))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3579148Z  	    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3579518Z  	      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3579929Z  	      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3580477Z  	        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3580813Z  	    ))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3580997Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3581194Z  	  SELECT h.sjnsbp
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3581430Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3581831Z  	  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3582293Z  	    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3582667Z  	    AND (h.sjnsbp IS NULL OR h.sjnsbp NOT IN (1, 2))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3582954Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3583278Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_sjnsbp'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3583767Z  	      IF g.status = 'complete' AND g.row_keyed_checksum IS DISTINCT FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3584159Z  	        SELECT sha256(convert_to(COALESCE(string_agg(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3584527Z  	          concat_ws('|', unit_id::text, as_of_date::text, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3585384Z  	            awal_piutang_lokal::text, akhir_piutang_lokal::text, awal_piutang_online::text, akhir_piutang_online::text, awal_hutang_lokal::text, akhir_hutang_lokal::text),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3586070Z  	          E'\n' ORDER BY customer_code), ''), 'UTF8'))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3586384Z  	        FROM app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3586834Z  	        WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3587255Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3587665Z  	        RAISE EXCEPTION 'snapshot_v2_old_checksum_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3588130Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3588325Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3588525Z  	SELECT count(*) INTO invalid_count
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3588776Z  	FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3588971Z  	  SELECT b.njumlah
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3589214Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3589627Z  	  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3590090Z  	    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3590540Z  	    AND b.njumlah IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3590821Z  	    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3591190Z  	      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3591604Z  	      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3592038Z  	        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3592371Z  	    ))
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3592559Z  	  UNION ALL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3592756Z  	  SELECT h.njumlah
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3592992Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3593392Z  	  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3593840Z  	    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3594162Z  	    AND h.njumlah IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3594385Z  	) invalid;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3594728Z  	      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_source_amount'; END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3595150Z  	      TRUNCATE sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3595383Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3595580Z  	WITH master_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3595821Z  	  SELECT btrim(p.ckdplg) AS customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3596266Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3596681Z  	  WHERE p.unit_id = g.unit_id::smallint AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3597063Z  	), local_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3597288Z  	  SELECT btrim(p.ckdplg) AS customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3597582Z  	  FROM app.saldo_pelanggan_source_pelanggan p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3597880Z  	  WHERE p.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3598185Z  	    AND p.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3598495Z  	    AND p.sjenis IN (1, 5)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3598731Z  	), live_piut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3598962Z  	  SELECT btrim(b.ckdplg) AS customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3599250Z  	         b.dtgl, b.sjnsbp, b.njumlah,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3599630Z  	         b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3600030Z  	  FROM app.saldo_pelanggan_source_bppiut b
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3600325Z  	  WHERE b.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3600782Z  	    AND b.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3601101Z  	    AND b.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3601376Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3601633Z  	), live_hut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3601874Z  	  SELECT btrim(h.ckdplg) AS customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3602169Z  	         h.dtgl, h.sjnsbp, h.njumlah,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3602545Z  	         h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3603088Z  	  FROM app.saldo_pelanggan_source_bphut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3603384Z  	  WHERE h.unit_id = g.unit_id::smallint
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3603689Z  	    AND h.source_cycle_id = g.source_cycle_id::uuid
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3603994Z  	    AND h.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3604260Z  	    AND COALESCE(sbatal, 0) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3604509Z  	), customer_keys AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3604757Z  	  SELECT customer_code FROM master_keys
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3605058Z  	  UNION SELECT customer_code FROM live_piut
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3605358Z  	  UNION SELECT customer_code FROM live_hut
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3605626Z  	), piut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3605844Z  	  SELECT p.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3606099Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3606365Z  	      WHERE l.customer_code IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3606664Z  	        AND position('.' in p.customer_code) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3606971Z  	        AND p.dtgl < g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3607239Z  	    ), 0) AS awal_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3607502Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3607764Z  	      WHERE l.customer_code IS NOT NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3608044Z  	        AND position('.' in p.customer_code) = 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3608343Z  	        AND p.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3608643Z  	    ), 0) AS akhir_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3609345Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3610591Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3611688Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3612794Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3613506Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3613809Z  	      WHERE position('.' in p.customer_code) > 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3614119Z  	        AND p.dtgl < g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3614566Z  	    ), 0) AS awal_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3614834Z  	    COALESCE(sum(p.value) FILTER (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3615118Z  	      WHERE position('.' in p.customer_code) > 0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3615422Z  	        AND p.dtgl <= g.as_of_date::date
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3615694Z  	    ), 0) AS akhir_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3616276Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3617195Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3618100Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3618993Z  	    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_online_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3619585Z  	  FROM live_piut p
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3619888Z  	  LEFT JOIN local_keys l ON l.customer_code = p.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3620235Z  	  GROUP BY p.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3620595Z  	), hut AS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3620808Z  	  SELECT h.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3621156Z  	    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl < g.as_of_date::date), 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3621667Z  	      AS awal_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3622010Z  	    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl <= g.as_of_date::date), 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3622377Z  	      AS akhir_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3622841Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 1), 0) AS awal_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3623545Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 2), 0) AS awal_hutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3624243Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 1), 0) AS akhir_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3624922Z  	    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 2), 0) AS akhir_hutang_lokal_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3625395Z  	  FROM live_hut h
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3625620Z  	  GROUP BY h.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3625851Z  	)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3626066Z  	INSERT INTO sps_v2_rows (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3626347Z  	  unit_id, as_of_date, generation_id, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3626675Z  	  awal_piutang_lokal, akhir_piutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3626991Z  	  awal_piutang_online, akhir_piutang_online,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3627300Z  	  awal_hutang_lokal, akhir_hutang_lokal,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3627580Z  	  awal_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3627836Z  	  awal_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3628081Z  	  akhir_piutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3628333Z  	  akhir_piutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3628598Z  	  awal_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3628845Z  	  awal_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3629087Z  	  akhir_piutang_online_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3629332Z  	  akhir_piutang_online_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3629597Z  	  awal_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3629837Z  	  awal_hutang_lokal_kredit,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3630076Z  	  akhir_hutang_lokal_debet,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3630326Z  	  akhir_hutang_lokal_kredit
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3630688Z  	)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3631044Z  	SELECT g.unit_id::smallint, g.as_of_date::date, g.new_generation_id::uuid, k.customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3631582Z  	       COALESCE(p.awal_piutang_lokal, 0), COALESCE(p.akhir_piutang_lokal, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3632086Z  	       COALESCE(p.awal_piutang_online, 0), COALESCE(p.akhir_piutang_online, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3632560Z  	       COALESCE(h.awal_hutang_lokal, 0), COALESCE(h.akhir_hutang_lokal, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3633090Z  	       COALESCE(p.awal_piutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3633418Z  	       COALESCE(p.awal_piutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3633734Z  	       COALESCE(p.akhir_piutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3634046Z  	       COALESCE(p.akhir_piutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3634366Z  	       COALESCE(p.awal_piutang_online_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3634683Z  	       COALESCE(p.awal_piutang_online_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3635017Z  	       COALESCE(p.akhir_piutang_online_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3635352Z  	       COALESCE(p.akhir_piutang_online_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3635681Z  	       COALESCE(h.awal_hutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3635994Z  	       COALESCE(h.awal_hutang_lokal_kredit, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3636303Z  	       COALESCE(h.akhir_hutang_lokal_debet, 0),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3636611Z  	       COALESCE(h.akhir_hutang_lokal_kredit, 0)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3636892Z  	FROM customer_keys k
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3637176Z  	LEFT JOIN piut p ON p.customer_code = k.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3637538Z  	LEFT JOIN hut h ON h.customer_code = k.customer_code
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3637833Z  	;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3638139Z  	      -- Complete generations must retain every key and every old amount.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3638641Z  	      -- Failed generations are rebuilt but remain failed and cannot be read.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3639061Z  	      IF g.status = 'complete' AND EXISTS (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3639484Z  	        SELECT 1 FROM (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3639775Z  	          SELECT * FROM app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3640254Z  	          WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3640859Z  	        ) old FULL JOIN sps_v2_rows fresh USING (customer_code)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3641282Z  	        WHERE old.customer_code IS NULL OR fresh.customer_code IS NULL
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3642566Z  	          OR ROW(old.awal_piutang_lokal, old.akhir_piutang_lokal, old.awal_piutang_online, old.akhir_piutang_online, old.awal_hutang_lokal, old.akhir_hutang_lokal) IS DISTINCT FROM ROW(fresh.awal_piutang_lokal, fresh.akhir_piutang_lokal, fresh.awal_piutang_online, fresh.akhir_piutang_online, fresh.awal_hutang_lokal, fresh.akhir_hutang_lokal)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3643751Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3644193Z  	        RAISE EXCEPTION 'snapshot_v2_legacy_balance_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3644679Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3644909Z  	      SELECT count(*)::bigint AS row_count,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3645255Z  	        sha256(convert_to(COALESCE(string_agg(
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3645619Z  	          concat_ws('|', unit_id::text, as_of_date::text, customer_code,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3645978Z  	            awal_piutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3646262Z  	            akhir_piutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3646546Z  	            awal_piutang_online::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3646821Z  	            akhir_piutang_online::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3647096Z  	            awal_hutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3647373Z  	            akhir_hutang_lokal::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3647650Z  	            awal_piutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3647942Z  	            awal_piutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3648243Z  	            akhir_piutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3648531Z  	            akhir_piutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3648833Z  	            awal_piutang_online_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3649123Z  	            awal_piutang_online_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3649410Z  	            akhir_piutang_online_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3649699Z  	            akhir_piutang_online_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3649999Z  	            awal_hutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3650294Z  	            awal_hutang_lokal_kredit::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3650697Z  	            akhir_hutang_lokal_debet::text,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3651132Z  	            akhir_hutang_lokal_kredit::text),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3651491Z  	          E'\n' ORDER BY customer_code), ''), 'UTF8')) AS checksum,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3651921Z  	        COALESCE(sum(awal_piutang_lokal), 0) AS awal_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3652387Z  	        COALESCE(sum(akhir_piutang_lokal), 0) AS akhir_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3652844Z  	        COALESCE(sum(awal_piutang_online), 0) AS awal_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3653306Z  	        COALESCE(sum(akhir_piutang_online), 0) AS akhir_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3653773Z  	        COALESCE(sum(awal_hutang_lokal), 0) AS awal_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3654219Z  	        COALESCE(sum(akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3654697Z  	        COALESCE(sum(awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3655219Z  	        COALESCE(sum(awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3655759Z  	        COALESCE(sum(akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3656291Z  	        COALESCE(sum(akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3656819Z  	        COALESCE(sum(awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3657341Z  	        COALESCE(sum(awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3658018Z  	        COALESCE(sum(akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3658552Z  	        COALESCE(sum(akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3659089Z  	        COALESCE(sum(awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3659593Z  	        COALESCE(sum(awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3660088Z  	        COALESCE(sum(akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3660697Z  	        COALESCE(sum(akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3661109Z  	      INTO proof FROM sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3661389Z  	      IF g.status = 'complete' AND (
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3661710Z  	        g.row_count IS DISTINCT FROM proof.row_count OR
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3663118Z  	        ROW(g.awal_piutang_lokal_total, g.akhir_piutang_lokal_total, g.awal_piutang_online_total, g.akhir_piutang_online_total, g.awal_hutang_lokal_total, g.akhir_hutang_lokal_total) IS DISTINCT FROM ROW(proof.awal_piutang_lokal_total, proof.akhir_piutang_lokal_total, proof.awal_piutang_online_total, proof.akhir_piutang_online_total, proof.awal_hutang_lokal_total, proof.akhir_hutang_lokal_total)
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3664470Z  	      ) THEN
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3664893Z  	        RAISE EXCEPTION 'snapshot_v2_manifest_mismatch: unit %, generation %', g.unit_id, g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3665356Z  	      END IF;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3665868Z  	      DELETE FROM app.saldo_pelanggan_snapshot_row WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3666550Z  	      INSERT INTO app.saldo_pelanggan_snapshot_row SELECT * FROM sps_v2_rows;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3666981Z  	      UPDATE app.saldo_pelanggan_snapshot_manifest SET
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3667386Z  	        generation_id = g.new_generation_id, rebuild_epoch = g.new_epoch,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3667794Z  	        formula_version = 'saldo-pelanggan-v2',
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3668248Z  	        computed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE computed_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3668833Z  	        completed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE completed_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3669466Z  	        published_at = CASE WHEN status = 'complete' AND published THEN clock_timestamp() ELSE published_at END,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3670241Z  	        customer_key_count = proof.row_count, row_count = proof.row_count,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3670731Z  	        row_keyed_checksum = proof.checksum,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3671105Z  	        awal_piutang_lokal_total = proof.awal_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3671521Z  	        akhir_piutang_lokal_total = proof.akhir_piutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3671935Z  	        awal_piutang_online_total = proof.awal_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3672358Z  	        akhir_piutang_online_total = proof.akhir_piutang_online_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3672780Z  	        awal_hutang_lokal_total = proof.awal_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3673172Z  	        akhir_hutang_lokal_total = proof.akhir_hutang_lokal_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3673610Z  	        awal_piutang_lokal_debet_total = proof.awal_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3674098Z  	        awal_piutang_lokal_kredit_total = proof.awal_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3674574Z  	        akhir_piutang_lokal_debet_total = proof.akhir_piutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3675074Z  	        akhir_piutang_lokal_kredit_total = proof.akhir_piutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3675561Z  	        awal_piutang_online_debet_total = proof.awal_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3676039Z  	        awal_piutang_online_kredit_total = proof.awal_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3676543Z  	        akhir_piutang_online_debet_total = proof.akhir_piutang_online_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3677198Z  	        akhir_piutang_online_kredit_total = proof.akhir_piutang_online_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3677689Z  	        awal_hutang_lokal_debet_total = proof.awal_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3678174Z  	        awal_hutang_lokal_kredit_total = proof.awal_hutang_lokal_kredit_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3678642Z  	        akhir_hutang_lokal_debet_total = proof.akhir_hutang_lokal_debet_total,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3679111Z  	        akhir_hutang_lokal_kredit_total = proof.akhir_hutang_lokal_kredit_total
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3679653Z  	      WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3680078Z  	    END LOOP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3680583Z  	    UPDATE app.saldo_pelanggan_snapshot_manifest m SET base_generation_id = x.new_generation_id
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3681369Z  	    FROM sps_v2_map x WHERE m.unit_id = scoped_unit AND x.unit_id = m.unit_id AND x.as_of_date = m.base_month_end AND x.old_generation_id = m.base_generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3682327Z  	    UPDATE app.saldo_pelanggan_snapshot_pointer p SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, activated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3683219Z  	    FROM sps_v2_map x WHERE p.unit_id = scoped_unit AND x.unit_id = p.unit_id AND x.as_of_date = p.as_of_date AND x.old_generation_id = p.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3684085Z  	    UPDATE app.saldo_pelanggan_build_work w SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, updated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3684936Z  	    FROM sps_v2_map x WHERE w.unit_id = scoped_unit AND x.unit_id = w.unit_id AND x.as_of_date = w.as_of_date AND x.old_generation_id = w.generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3685798Z  	    UPDATE app.saldo_pelanggan_dirty d SET covered_by_generation_id = x.new_generation_id, version = d.version + 1, updated_at = clock_timestamp()
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3686745Z  	    FROM sps_v2_map x WHERE d.unit_id = scoped_unit AND x.unit_id = d.unit_id AND x.as_of_date = d.covered_through_date AND x.old_generation_id = d.covered_by_generation_id;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3687379Z  	  END LOOP;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3687707Z  	  PERFORM set_config('app.unit_ids', COALESCE(previous_scope, ''), true);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3688074Z  	END
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3688273Z  	$upgrade$;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3688473Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3688803Z  	-- Validate all reference moves before restoring the original immediate FKs.
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3689834Z  	SET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey IMMEDIATE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3690970Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3691692Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3692392Z  	ALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3693081Z  	ALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3693748Z  	ALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey NOT DEFERRABLE;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3694215Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3694451Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3694811Z  	  ALTER COLUMN awal_piutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3695178Z  	  ALTER COLUMN awal_piutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3695525Z  	  ALTER COLUMN akhir_piutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3695880Z  	  ALTER COLUMN akhir_piutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3696226Z  	  ALTER COLUMN awal_piutang_online_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3696592Z  	  ALTER COLUMN awal_piutang_online_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3697092Z  	  ALTER COLUMN akhir_piutang_online_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3697450Z  	  ALTER COLUMN akhir_piutang_online_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3697803Z  	  ALTER COLUMN awal_hutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3698148Z  	  ALTER COLUMN awal_hutang_lokal_kredit SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3698487Z  	  ALTER COLUMN akhir_hutang_lokal_debet SET NOT NULL,
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3698830Z  	  ALTER COLUMN akhir_hutang_lokal_kredit SET NOT NULL;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3699184Z  	ALTER TABLE app.saldo_pelanggan_snapshot_row
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3699772Z  	  ADD CONSTRAINT sps_row_awal_piutang_lokal_sides CHECK (awal_piutang_lokal = awal_piutang_lokal_debet - awal_piutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3700733Z  	  ADD CONSTRAINT sps_row_akhir_piutang_lokal_sides CHECK (akhir_piutang_lokal = akhir_piutang_lokal_debet - akhir_piutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3701595Z  	  ADD CONSTRAINT sps_row_awal_piutang_online_sides CHECK (awal_piutang_online = awal_piutang_online_debet - awal_piutang_online_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3702483Z  	  ADD CONSTRAINT sps_row_akhir_piutang_online_sides CHECK (akhir_piutang_online = akhir_piutang_online_debet - akhir_piutang_online_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3703316Z  	  ADD CONSTRAINT sps_row_awal_hutang_lokal_sides CHECK (awal_hutang_lokal = awal_hutang_lokal_debet - awal_hutang_lokal_kredit),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3704122Z  	  ADD CONSTRAINT sps_row_akhir_hutang_lokal_sides CHECK (akhir_hutang_lokal = akhir_hutang_lokal_debet - akhir_hutang_lokal_kredit);
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3704663Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3704898Z  	ALTER TABLE app.saldo_pelanggan_snapshot_manifest
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3705921Z  	  ADD CONSTRAINT sps_manifest_awal_piutang_lokal_sides CHECK (status <> 'complete' OR (awal_piutang_lokal_debet_total IS NOT NULL AND awal_piutang_lokal_kredit_total IS NOT NULL AND awal_piutang_lokal_total = awal_piutang_lokal_debet_total - awal_piutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3707606Z  	  ADD CONSTRAINT sps_manifest_akhir_piutang_lokal_sides CHECK (status <> 'complete' OR (akhir_piutang_lokal_debet_total IS NOT NULL AND akhir_piutang_lokal_kredit_total IS NOT NULL AND akhir_piutang_lokal_total = akhir_piutang_lokal_debet_total - akhir_piutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3709295Z  	  ADD CONSTRAINT sps_manifest_awal_piutang_online_sides CHECK (status <> 'complete' OR (awal_piutang_online_debet_total IS NOT NULL AND awal_piutang_online_kredit_total IS NOT NULL AND awal_piutang_online_total = awal_piutang_online_debet_total - awal_piutang_online_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3711290Z  	  ADD CONSTRAINT sps_manifest_akhir_piutang_online_sides CHECK (status <> 'complete' OR (akhir_piutang_online_debet_total IS NOT NULL AND akhir_piutang_online_kredit_total IS NOT NULL AND akhir_piutang_online_total = akhir_piutang_online_debet_total - akhir_piutang_online_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3712984Z  	  ADD CONSTRAINT sps_manifest_awal_hutang_lokal_sides CHECK (status <> 'complete' OR (awal_hutang_lokal_debet_total IS NOT NULL AND awal_hutang_lokal_kredit_total IS NOT NULL AND awal_hutang_lokal_total = awal_hutang_lokal_debet_total - awal_hutang_lokal_kredit_total)),
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3714605Z  	  ADD CONSTRAINT sps_manifest_akhir_hutang_lokal_sides CHECK (status <> 'complete' OR (akhir_hutang_lokal_debet_total IS NOT NULL AND akhir_hutang_lokal_kredit_total IS NOT NULL AND akhir_hutang_lokal_total = akhir_hutang_lokal_debet_total - akhir_hutang_lokal_kredit_total));
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3715554Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3715754Z  	COMMIT;
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3715949Z  	
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3716378Z  2026-09-13 17:28:25.025 UTC [145] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3717062Z  2026-09-13 17:28:25.025 UTC [145] STATEMENT:  UPDATE "_prisma_migrations" SET "logs" = $1 WHERE "id" = $2
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3717602Z  2026-09-13 17:28:26.635 UTC [60] LOG:  checkpoint starting: immediate force wait
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3718785Z  2026-09-13 17:28:26.684 UTC [60] LOG:  checkpoint complete: wrote 52 buffers (0.3%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.042 s, sync=0.002 s, total=0.050 s; sync files=18, longest=0.002 s, average=0.001 s; distance=6870 kB, estimate=6870 kB; lsn=0/286A408, redo lsn=0/286A3D0
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3725908Z Stop and remove container: c65b8caba6d04fffa1fa418988bd80cb_postgres16_9ee205
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.3731394Z ##[command]/usr/bin/docker rm --force 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.8859725Z 70e9c0c3985cf462ba63e94700ca48b3e365ae2d8993a1f1be6dd68347b106ab
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.8886898Z Remove container network: github_network_c5e8b7b5ad0340ddb9f53d41d4c8b076
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.8891372Z ##[command]/usr/bin/docker network rm github_network_c5e8b7b5ad0340ddb9f53d41d4c8b076
+migrate-deploy-postgres-16	Stop containers	2026-09-13T17:28:27.9936514Z github_network_c5e8b7b5ad0340ddb9f53d41d4c8b076
+migrate-deploy-postgres-16	Complete job	﻿2026-09-13T17:28:28.0011175Z Cleaning up orphan processes
+migrate-deploy-postgres-16	Complete job	2026-09-13T17:28:28.0406656Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4, pnpm/action-setup@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
