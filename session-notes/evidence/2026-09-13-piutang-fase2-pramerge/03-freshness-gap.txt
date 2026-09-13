@@ -1,0 +1,79 @@
+BEGIN
+SET
+SET
+         observed_at         |     observed_at_wib      | current_user  | transaction_read_only
+-----------------------------+--------------------------+---------------+-----------------------
+ 2026-09-13 09:28:43.5726+00 | 2026-09-13 16:28:43.5726 | dashboard_app | on
+(1 row)
+
+ unit_id |  code   |    name     |    timezone
+---------+---------+-------------+----------------
+       1 | 6478111 | Imam Bonjol | Asia/Pontianak
+(1 row)
+
+                  failure_summary                  | cycle_count | min_sequence | max_sequence |       first_started_at        |        last_started_at        |        first_failed_at        |        last_failed_at         |  youngest_age   |      oldest_age
+---------------------------------------------------+-------------+--------------+--------------+-------------------------------+-------------------------------+-------------------------------+-------------------------------+-----------------+-----------------------
+ superseded by a newer complete-input source cycle |          41 |            1 |           41 | 2026-09-11 15:56:12.437811+00 | 2026-09-12 18:08:01.364998+00 | 2026-09-12 16:24:07.002189+00 | 2026-09-12 19:05:01.004978+00 | 15:20:42.207602 | 1 day 17:32:31.134789
+(1 row)
+
+           source_cycle_id            | source_cycle_sequence |          started_at           |       age       | is_latest_allocation | pelanggan_row_count | pelanggan_claimed | bppiut_row_count | bppiut_claimed | bphut_row_count | bphut_claimed |        observed_class
+--------------------------------------+-----------------------+-------------------------------+-----------------+----------------------+---------------------+-------------------+------------------+----------------+-----------------+---------------+-------------------------------
+ 283639b0-9a82-45de-93d2-b553e8bafcf9 |                    43 | 2026-09-12 20:59:21.492474+00 | 12:29:22.080126 | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ eea03cc5-84cf-4084-99a8-07a70e852c01 |                    44 | 2026-09-12 20:59:21.570589+00 | 12:29:22.002011 | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ 68a0f7f2-93fa-4ac7-babe-67573a6ff78e |                    45 | 2026-09-12 22:06:48.86026+00  | 11:21:54.71234  | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ e3ff9ac5-9e0f-4937-bd6b-29821b303e18 |                    46 | 2026-09-12 22:06:54.352095+00 | 11:21:49.220505 | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ 46023c3c-cdb6-4786-829c-bad5fb66c029 |                    47 | 2026-09-12 23:15:03.839226+00 | 10:13:39.733374 | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ 59df4a36-0b00-40d7-92ed-0035d51092ab |                    48 | 2026-09-12 23:15:19.848604+00 | 10:13:23.723996 | f                    |                2973 | t                 |           407790 | t              |          300257 | t             | superseded_waiting_retirement
+ f36974c1-7354-40a5-bca8-f214963af614 |                    49 | 2026-09-13 00:23:02.63797+00  | 09:05:40.93463  | f                    |                2973 | t                 |           407800 | t              |          300262 | t             | superseded_waiting_retirement
+ 067c014b-c447-4845-8077-16f8b2c35639 |                    50 | 2026-09-13 00:23:13.388075+00 | 09:05:30.184525 | f                    |                2973 | t                 |           407800 | t              |          300262 | t             | superseded_waiting_retirement
+ a9bdec98-69ed-4f60-9e3d-c421d390a57b |                    51 | 2026-09-13 01:32:00.156709+00 | 07:56:43.415891 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 6678adfa-1d61-4c68-a969-cac2ec686b0c |                    52 | 2026-09-13 01:32:04.405907+00 | 07:56:39.166693 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ e3a3b3ef-ee4b-49e9-bebd-96e861ab7e21 |                    53 | 2026-09-13 02:38:47.097066+00 | 06:49:56.475534 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ bd3308ca-f924-4f58-a630-843cef3fc050 |                    54 | 2026-09-13 02:38:49.144636+00 | 06:49:54.427964 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ ec7b6fac-210c-45a4-90f3-1f79df059f9d |                    55 | 2026-09-13 03:46:31.904033+00 | 05:42:11.668567 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ b4d92f04-ea87-414a-9b27-55b60a4a4b7e |                    56 | 2026-09-13 03:46:31.992641+00 | 05:42:11.579959 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 2b409610-c182-4fe6-801b-267e6f6ba8df |                    57 | 2026-09-13 04:54:00.136508+00 | 04:34:43.436092 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 3bbd18dc-0468-448c-ad8e-fd060c9f0677 |                    58 | 2026-09-13 04:54:02.6332+00   | 04:34:40.9394   | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 17ddf50d-5e17-4bcb-9720-20559b551cf5 |                    59 | 2026-09-13 06:00:19.776766+00 | 03:28:23.795834 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 9d32093c-aec7-439d-8b59-8560f5ec84f2 |                    60 | 2026-09-13 06:00:20.721214+00 | 03:28:22.851386 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 030d3b2f-ad65-42df-af71-5299809dba61 |                    61 | 2026-09-13 07:07:50.660389+00 | 02:20:52.912211 | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ 64ab6cdb-7e22-4f75-a380-c05770d371bc |                    62 | 2026-09-13 07:07:51.41111+00  | 02:20:52.16149  | f                    |                2973 | t                 |           407858 | t              |          300270 | t             | superseded_waiting_retirement
+ ddb71a3c-a90f-4add-8c68-23917a3cc27b |                    63 | 2026-09-13 08:19:15.856864+00 | 01:09:27.715736 | f                    |                2973 | t                 |           407897 | t              |          300282 | t             | superseded_waiting_retirement
+ f5a49dae-bd6c-4d54-ab62-44e18dd1c8fc |                    64 | 2026-09-13 08:19:15.930545+00 | 01:09:27.642055 | f                    |                2973 | t                 |           407897 | t              |          300282 | t             | superseded_waiting_retirement
+ 0d7c01df-e459-4cf4-8ba9-bb598e5290f4 |                    65 | 2026-09-13 09:26:36.035209+00 | 00:02:07.537391 | f                    |                2973 | t                 |           407897 | t              |                 | f             | superseded_waiting_retirement
+ 60320955-c89f-4de4-86b5-5170185cbb42 |                    66 | 2026-09-13 09:26:36.10903+00  | 00:02:07.46357  | t                    |                2973 | t                 |           407897 | t              |                 | f             | latest_partial_or_in_flight
+(24 rows)
+
+  status  | cycle_count | min_sequence | max_sequence |       first_started_at        |        last_started_at
+----------+-------------+--------------+--------------+-------------------------------+-------------------------------
+ complete |           1 |           42 |           42 | 2026-09-12 18:23:28.253065+00 | 2026-09-12 18:23:28.253065+00
+ failed   |          41 |            1 |           41 | 2026-09-11 15:56:12.437811+00 | 2026-09-12 18:08:01.364998+00
+ staging  |          24 |           43 |           66 | 2026-09-12 20:59:21.492474+00 | 2026-09-13 09:26:36.10903+00
+(3 rows)
+
+ source_cycle_id | domain | change_kind | change_count | invalidating_count | earliest_invalid_from | latest_change_at
+-----------------+--------+-------------+--------------+--------------------+-----------------------+------------------
+(0 rows)
+
+ source_change_count | invalidating_change_count | latest_change_at
+---------------------+---------------------------+------------------
+                   0 |                         0 |
+(1 row)
+
+ unit_id | dirty_invalid_from | dirty_source_cycle_id | dirty_source_cycle_sequence | dirty_since | covered_through_date | covered_by_generation_id | covered_source_cycle_sequence | version | updated_at
+---------+--------------------+-----------------------+-----------------------------+-------------+----------------------+--------------------------+-------------------------------+---------+------------
+(0 rows)
+
+ unit_id | as_of_date |            generation_id             | source_cycle_sequence |         activated_at          | stale_invalid_from | pending_replacement | pending_since
+---------+------------+--------------------------------------+-----------------------+-------------------------------+--------------------+---------------------+---------------
+       1 | 2026-08-31 | 31f2f0cf-d5c3-4920-9496-1db61215d03c |                    42 | 2026-09-12 19:05:24.891314+00 |                    | f                   |
+       1 | 2026-09-13 | c45a4da2-5d16-4e8f-bf67-37343e02eb47 |                    42 | 2026-09-12 19:05:26.057897+00 |                    | f                   |
+(2 rows)
+
+ ledger | active_rows_on_13_sep | ingested_by_report_time | amount_all | amount_by_report_time |       first_ingested_at       |   first_ingested_at_wib    |       last_ingested_at        |    last_ingested_at_wib
+--------+-----------------------+-------------------------+------------+-----------------------+-------------------------------+----------------------------+-------------------------------+----------------------------
+ bphut  |                     1 |                       0 |    1436300 |                       | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491 | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491
+ bppiut |                     5 |                       0 |   69044338 |                       | 2026-09-13 08:20:58.596383+00 | 2026-09-13 15:20:58.596383 | 2026-09-13 08:20:58.596383+00 | 2026-09-13 15:20:58.596383
+(2 rows)
+
+ROLLBACK
