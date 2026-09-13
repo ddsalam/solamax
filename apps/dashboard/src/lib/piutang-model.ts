@@ -1,3 +1,4 @@
+import { todayWib } from "./periods";
 import type {
   SaldoSnapshot,
   SaldoSnapshotMetadata,
@@ -48,6 +49,7 @@ export interface PiutangReadyView {
   status: "ready";
   asOfDate: string;
   metadata: SaldoSnapshotMetadata;
+  historicalNote: string | null;
   rows: PiutangViewRow[];
   hasOnlineCustomer: boolean;
   totalCount: number;
@@ -68,6 +70,7 @@ export interface PiutangExportView {
   status: "ready";
   asOfDate: string;
   metadata: SaldoSnapshotMetadata;
+  historicalNote: string | null;
   rows: PiutangViewRow[];
   hasOnlineCustomer: boolean;
   totalCount: number;
@@ -284,6 +287,7 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
+    historicalNote: piutangHistoricalNote(snapshot.asOfDate, snapshot.metadata.sourceCompletedAt),
     rows: filteredRows,
     sections,
     occurrenceCount: groups.reduce((count, section) => count + section.rows.length, 0),
@@ -309,6 +313,7 @@ export function buildPiutangExportView(
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
+    historicalNote: piutangHistoricalNote(snapshot.asOfDate, snapshot.metadata.sourceCompletedAt),
     rows,
     sections,
     occurrenceCount: sections.reduce((count, section) => count + section.rows.length, 0),
@@ -319,4 +324,13 @@ export function buildPiutangExportView(
     sort,
     search,
   };
+}
+
+/** A later source cut can include corrections entered after the target date. */
+export function piutangHistoricalNote(asOfDate: string, sourceCompletedAt: string): string | null {
+  const sourceDate = todayWib(new Date(sourceCompletedAt));
+  if (sourceDate <= asOfDate) return null;
+  return `Posisi ${asOfDate} dihitung dari data sumber per ${sourceDate} WIB. ` +
+    `Termasuk koreksi bertanggal mundur yang tercatat sampai saat itu; ` +
+    `tidak identik dengan laporan EasyMax yang dicetak pada ${asOfDate}.`;
 }

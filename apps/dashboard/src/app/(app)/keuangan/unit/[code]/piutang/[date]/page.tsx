@@ -74,6 +74,7 @@ export default async function PiutangPelangganPage({
             computedAtLabel: formatWib(view.metadata.computedAt),
             sourceCutLabel: `Siklus sumber ${view.metadata.sourceCycleId} selesai ${formatWib(view.metadata.sourceCompletedAt)}`,
           }}
+          historicalNote={view.historicalNote}
           summary={view.metadata}
           sections={view.sections}
           zeroSectionOpen={view.zeroSectionOpen}

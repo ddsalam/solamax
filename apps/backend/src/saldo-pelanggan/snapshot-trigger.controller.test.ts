@@ -19,7 +19,9 @@ function harness(result: SnapshotWorkerResult = {
   generationId: "22222222-2222-4222-8222-222222222222",
 }) {
   const worker = {
-    runOnce: vi.fn(async () => result),
+    runBatch: vi.fn(async () => ({ ...result, processedCount: "workId" in result ? 1 : 0,
+      completedCount: result.status === "done" ? 1 : 0,
+      supersededCount: result.status === "superseded" ? 1 : 0 })),
   } as unknown as SnapshotWorkerService;
   const prisma = {
     unit: {
@@ -55,14 +57,14 @@ describe("SnapshotTriggerController", () => {
       const wrong = await rejected(
         wrongSecret.controller.trigger("salah", { unit_id: 1 }, wrongSecret.response),
       );
-      expect(wrongSecret.worker.runOnce).not.toHaveBeenCalled();
+      expect(wrongSecret.worker.runBatch).not.toHaveBeenCalled();
 
       const unknownUnit = harness();
       vi.mocked(unknownUnit.prisma.unit.findFirst).mockResolvedValueOnce(null);
       const unknown = await rejected(
         unknownUnit.controller.trigger(SECRET, { unit_id: 99 }, unknownUnit.response),
       );
-      expect(unknownUnit.worker.runOnce).not.toHaveBeenCalled();
+      expect(unknownUnit.worker.runBatch).not.toHaveBeenCalled();
 
       expect(wrong).toEqual(unknown);
       expect(wrong.status).toBe(404);
@@ -83,8 +85,8 @@ describe("SnapshotTriggerController", () => {
         invalid.controller.trigger(SECRET, { unit_id: 40_000 }, invalid.response),
       );
       expect(missingResult).toEqual(invalidResult);
-      expect(missing.worker.runOnce).not.toHaveBeenCalled();
-      expect(invalid.worker.runOnce).not.toHaveBeenCalled();
+      expect(missing.worker.runBatch).not.toHaveBeenCalled();
+      expect(invalid.worker.runBatch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -99,7 +101,7 @@ describe("SnapshotTriggerController", () => {
         await expect(
           rejected(controller.trigger(SECRET, { unit_id: 1 }, response)),
         ).resolves.toMatchObject({ status: 404 });
-        expect(worker.runOnce).not.toHaveBeenCalled();
+        expect(worker.runBatch).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
       }
@@ -114,7 +116,7 @@ describe("SnapshotTriggerController", () => {
       await expect(
         rejected(controller.trigger(SECRET, { unit_id: 1 }, response)),
       ).resolves.toEqual({ status: 500, response: { status: "failed" } });
-      expect(worker.runOnce).not.toHaveBeenCalled();
+      expect(worker.runBatch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -124,7 +126,7 @@ describe("SnapshotTriggerController", () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
     try {
       const { controller, response, worker } = harness();
-      vi.mocked(worker.runOnce).mockRejectedValueOnce(new Error("detail builder"));
+      vi.mocked(worker.runBatch).mockRejectedValueOnce(new Error("detail builder"));
       await expect(
         rejected(controller.trigger(SECRET, { unit_id: 1 }, response)),
       ).resolves.toEqual({ status: 500, response: { status: "failed" } });
@@ -142,11 +144,13 @@ describe("SnapshotTriggerController", () => {
         status: "done",
         workId: "11111111-1111-4111-8111-111111111111",
         generationId: "22222222-2222-4222-8222-222222222222",
+        processedCount: 1, completedCount: 1, supersededCount: 0,
       });
       expect(response.status).toHaveBeenCalledWith(200);
-      expect(worker.runOnce).toHaveBeenCalledOnce();
-      const [unitId, leaseOwner, options] = vi.mocked(worker.runOnce).mock.calls[0]!;
+      expect(worker.runBatch).toHaveBeenCalledOnce();
+      const [unitId, leaseOwner, options] = vi.mocked(worker.runBatch).mock.calls[0]!;
       expect(unitId).toBe(1);
+      expect(options).toMatchObject({ backfillDays: 7, maxItems: 8 });
       expect(leaseOwner).toMatch(/^snapshot-http:/);
       expect(options?.attemptDeadlineEpochMs).toBeGreaterThanOrEqual(
         before + SNAPSHOT_TRIGGER_REQUEST_MILLISECONDS,
@@ -181,5 +185,33 @@ describe("SnapshotTriggerController", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+
+describe("bounded trigger options", () => {
+  it.each([
+    { backfill_days: 32 }, { backfill_days: -1 }, { backfill_days: 1.5 },
+    { backfill_days: "7" }, { backfill_days: null },
+    { max_items: 0 }, { max_items: 9 }, { max_items: 1.5 }, { max_items: "2" }, { max_items: null },
+  ])("rejects invalid options before looking up the unit: %j", async (options) => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    try {
+      const { controller, response, prisma, worker } = harness();
+      await expect(rejected(controller.trigger(SECRET, { unit_id: 1, ...options }, response)))
+        .resolves.toMatchObject({ status: 404 });
+      expect(prisma.unit.findFirst).not.toHaveBeenCalled();
+      expect(worker.runBatch).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it.each([0, 31])("accepts explicit backfill bound %i", async (days) => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    try {
+      const { controller, response, worker } = harness();
+      await controller.trigger(SECRET, { unit_id: 1, backfill_days: days, max_items: 2 }, response);
+      expect(worker.runBatch).toHaveBeenCalledWith(1, expect.any(String),
+        expect.objectContaining({ backfillDays: days, maxItems: 2 }));
+    } finally { vi.unstubAllEnvs(); }
   });
 });

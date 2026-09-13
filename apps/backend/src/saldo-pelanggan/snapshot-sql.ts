@@ -11,6 +11,7 @@ import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 export const SET_UNIT_SCOPE_SQL =
   "SELECT set_config('app.unit_ids', $1, true)";
 
+/** $1 unit, $2 source cut, $3 sequence, $4 target date. */
 export const SOURCE_CYCLE_EVIDENCE_SQL = `
 SELECT c.unit_id,
        c.source_cycle_id,
@@ -28,6 +29,7 @@ WHERE c.unit_id = $1::smallint
   AND c.source_cycle_sequence = $3::bigint
   AND c.status = 'complete'
   AND c.source_completed_at IS NOT NULL
+  AND $4::date <= (c.source_completed_at AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date
   AND c.pelanggan_row_count IS NOT NULL
   AND c.pelanggan_keyed_checksum IS NOT NULL
   AND c.bppiut_row_count IS NOT NULL

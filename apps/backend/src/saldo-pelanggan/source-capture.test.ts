@@ -6,6 +6,10 @@ import {
   COMPLETE_DOMAIN_SQL,
   DOMAIN_EVIDENCE_SQL,
   ENQUEUE_STALE_POINTERS_SQL,
+  ENQUEUE_BACKFILL_SQL,
+  READ_BACKFILL_SOURCE_CYCLE_SQL,
+  SUPERSEDE_BACKFILL_WORK_SQL,
+  LOCK_SOURCE_CAPTURE_SQL,
   FAIL_OBSOLETE_SOURCE_CYCLE_SQL,
   FAIL_SUPERSEDED_STAGING_CYCLES_SQL,
   PRUNE_RETIRED_SOURCE_ROWS_SQL,
@@ -108,12 +112,12 @@ function successfulPrisma(latestSequence = 1n) {
   const prisma = {
     $transaction: async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx),
   } as unknown as PrismaService;
-  return { prisma, calls };
+  return { prisma, calls, tx };
 }
 
 describe("SnapshotSourceCaptureService", () => {
   it("captures quickly, then finalizes diff, dirty, promotion, and enqueue in a worker transaction", async () => {
-    const { prisma, calls } = successfulPrisma();
+    const { prisma, calls, tx } = successfulPrisma();
     const steps: SnapshotCaptureStep[] = [];
     const service = new SnapshotSourceCaptureService(prisma);
     const captured = await service.capture(1, PAYLOAD, {
@@ -127,6 +131,7 @@ describe("SnapshotSourceCaptureService", () => {
       },
     });
 
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(ENQUEUE_STALE_POINTERS_SQL, 1, CYCLE_ID, 2n);
     expect(captured).toEqual({
       outcome: "ready",
       cycleId: CYCLE_ID,
@@ -218,5 +223,42 @@ describe("SnapshotSourceCaptureService", () => {
       run(),
     ).rejects.toThrow(`injected:${injected}`);
     expect(reached).toContain(injected);
+  });
+});
+
+
+describe("historical enqueue from a retained complete cut", () => {
+  it("scopes and locks before reading, superseding, and enqueueing", async () => {
+    const calls: Array<[string, ...unknown[]]> = [];
+    const tx = {
+      $executeRawUnsafe: vi.fn(async (sql: string, ...params: unknown[]) => { calls.push([sql, ...params]); return 1; }),
+      $queryRawUnsafe: vi.fn(async (sql: string, ...params: unknown[]) => {
+        calls.push([sql, ...params]);
+        return [{ source_cycle_id: CYCLE_ID, source_cycle_sequence: 2n }];
+      }),
+    };
+    const prisma = { $transaction: vi.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)) };
+    await new SnapshotSourceCaptureService(prisma as unknown as PrismaService).enqueueBackfill(1, 31);
+    expect(calls[0]).toEqual([expect.stringContaining("set_config"), "1"]);
+    expect(calls.slice(1)).toEqual([
+      [LOCK_SOURCE_CAPTURE_SQL, 1],
+      [READ_BACKFILL_SOURCE_CYCLE_SQL, 1],
+      [SUPERSEDE_BACKFILL_WORK_SQL, 1, 2n],
+      [ENQUEUE_BACKFILL_SQL, 1, 31, CYCLE_ID, 2n],
+    ]);
+  });
+
+  it("does not enqueue without a valid retained complete source cut", async () => {
+    const tx = { $executeRawUnsafe: vi.fn(async () => 1), $queryRawUnsafe: vi.fn(async () => []) };
+    const prisma = { $transaction: vi.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)) };
+    await new SnapshotSourceCaptureService(prisma as unknown as PrismaService).enqueueBackfill(1, 7);
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([-1, 32, 0.5, NaN])("rejects invalid backfill width %s before database access", async (days) => {
+    const prisma = { $transaction: vi.fn() };
+    await expect(new SnapshotSourceCaptureService(prisma as unknown as PrismaService).enqueueBackfill(1, days))
+      .rejects.toThrow("priorDays");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

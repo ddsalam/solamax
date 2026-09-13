@@ -62,6 +62,7 @@ function harness(options: HarnessOptions = {}) {
   const builder = { build: vi.fn() };
   const sourceCapture = {
     finalizeReady: vi.fn(async () => null),
+    enqueueBackfill: vi.fn(async () => undefined),
     collectRetiredSources: vi.fn(async () => undefined),
   };
   const service = new SnapshotWorkerService(
@@ -310,5 +311,135 @@ describe("snapshot worker durable queue", () => {
       status: "dead_letter",
       error: "lease lost while handling: transient",
     });
+  });
+});
+
+
+describe("bounded snapshot backfill batch", () => {
+  it("does not lease when the absolute request deadline has expired", async () => {
+    const { service, txQuery, sourceCapture } = harness({ leased: work });
+    await expect(service.runOnce(1, "worker", { attemptDeadlineEpochMs: Date.now() - 1 }))
+      .resolves.toMatchObject({ status: "skipped", reason: "request_deadline_exhausted" });
+    expect(txQuery.mock.calls.some(([sql]) => sql === LEASE_WORK_SQL)).toBe(false);
+    expect(sourceCapture.enqueueBackfill).not.toHaveBeenCalled();
+  });
+
+  it("seeds an already complete cut even when finalization finds nothing", async () => {
+    const { service, sourceCapture } = harness();
+    await service.runOnce(1, "worker", { backfillDays: 31 });
+    expect(sourceCapture.enqueueBackfill).toHaveBeenCalledWith(1, 31);
+    expect(sourceCapture.finalizeReady.mock.invocationCallOrder[0])
+      .toBeLessThan(sourceCapture.enqueueBackfill.mock.invocationCallOrder[0]!);
+  });
+
+  it("runs multiple items sequentially, seeds once, and gates every item", async () => {
+    const { service, builder, sourceCapture, prisma } = harness({ leased: work });
+    builder.build.mockResolvedValue({ outcome: "published", target: { generationId: "generation" } });
+    await expect(service.runBatch(1, "worker", { maxItems: 2, backfillDays: 7 }))
+      .resolves.toMatchObject({ status: "done", processedCount: 2, completedCount: 2, supersededCount: 0 });
+    expect(builder.build).toHaveBeenCalledTimes(2);
+    expect(sourceCapture.finalizeReady).toHaveBeenCalledOnce();
+    expect(sourceCapture.enqueueBackfill).toHaveBeenCalledOnce();
+    expect(sourceCapture.collectRetiredSources).toHaveBeenCalledTimes(2);
+    expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains a partial failure status after an earlier success", async () => {
+    const { service, builder } = harness({ leased: work, retryRow: { work_id: work.work_id, state: "retry_wait" } });
+    builder.build.mockResolvedValueOnce({ outcome: "published", target: { generationId: "generation" } })
+      .mockRejectedValueOnce(new Error("transient"));
+    await expect(service.runBatch(1, "worker", { maxItems: 8 }))
+      .resolves.toMatchObject({ status: "retry_wait", processedCount: 2, completedCount: 1 });
+    expect(builder.build).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after crossing the lease window without starting another item", async () => {
+    const { service, builder, prisma, sourceCapture } = harness({ leased: work });
+    builder.build.mockResolvedValue({ outcome: "published", target: { generationId: "generation" } });
+    prisma.$queryRawUnsafe.mockResolvedValueOnce([{ wib_minutes: 284, database_bytes: 1n }])
+      .mockResolvedValueOnce([{ wib_minutes: 285, database_bytes: 1n }]);
+    await expect(service.runBatch(1, "worker"))
+      .resolves.toMatchObject({ status: "skipped", completedCount: 1 });
+    expect(builder.build).toHaveBeenCalledOnce();
+    expect(sourceCapture.collectRetiredSources.mock.invocationCallOrder[1])
+      .toBeLessThan(prisma.$queryRawUnsafe.mock.invocationCallOrder[1]!);
+  });
+});
+
+
+describe("batch termination and deadline limits", () => {
+  it("keeps a completed result when the next lease finds an empty queue", async () => {
+    const options: HarnessOptions = { leased: work };
+    const { service, builder } = harness(options);
+    builder.build.mockImplementation(async () => {
+      options.leased = null;
+      return { outcome: "published", target: { generationId: "generation" } };
+    });
+    await expect(service.runBatch(1, "worker"))
+      .resolves.toMatchObject({ status: "done", processedCount: 1, completedCount: 1 });
+    expect(builder.build).toHaveBeenCalledOnce();
+  });
+
+  it("does not lease again when the request expires during the previous build", async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, builder, txQuery } = harness({ leased: work });
+      const deadline = Date.now() + 1000;
+      builder.build.mockImplementation(async () => {
+        vi.setSystemTime(deadline);
+        return { outcome: "published", target: { generationId: "generation" } };
+      });
+      await expect(service.runBatch(1, "worker", { attemptDeadlineEpochMs: deadline }))
+        .resolves.toMatchObject({ status: "skipped", reason: "request_deadline_exhausted", completedCount: 1 });
+      expect(txQuery.mock.calls.filter(([sql]) => sql === LEASE_WORK_SQL)).toHaveLength(1);
+      expect(txQuery).toHaveBeenCalledWith(LEASE_WORK_SQL, 1, "worker", deadline);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each([0, 9, 1.5, NaN])("rejects invalid batch item limit %s", async (maxItems) => {
+    const { service, prisma } = harness();
+    await expect(service.runBatch(1, "worker", { maxItems })).rejects.toThrow("maxItems");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("enforces the absolute deadline again inside the lease SQL", () => {
+    expect(LEASE_WORK_SQL).toContain("clock_timestamp() < to_timestamp($3::double precision / 1000)");
+  });
+});
+
+
+describe("batch fixed request budget", () => {
+  it("caps a supplied longer deadline at eighteen minutes and eight items", async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, builder } = harness({ leased: work });
+      const startedAt = Date.now();
+      builder.build.mockImplementation(async () => {
+        vi.setSystemTime(startedAt + 4 * 60_000);
+        return { outcome: "published", target: { generationId: "generation" } };
+      });
+      await expect(service.runBatch(1, "worker", { attemptDeadlineEpochMs: startedAt + 3_600_000 }))
+        .resolves.toMatchObject({ status: "done", completedCount: 8 });
+      expect(builder.build).toHaveBeenCalledTimes(8);
+      expect(builder.build.mock.calls[0]![1].attemptDeadlineEpochMs).toBe(startedAt + 15 * 60_000);
+      expect(builder.build.mock.calls[1]![1].attemptDeadlineEpochMs).toBe(startedAt + 18 * 60_000);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("stops the batch on a global lease conflict", async () => {
+    const { service, builder, txQuery } = harness({ leaseError: { code: "P2002" } });
+    await expect(service.runBatch(1, "worker"))
+      .resolves.toMatchObject({ status: "busy", processedCount: 0, completedCount: 0 });
+    expect(builder.build).not.toHaveBeenCalled();
+    expect(txQuery.mock.calls.filter(([sql]) => sql === LEASE_WORK_SQL)).toHaveLength(1);
+  });
+
+  it("stops the batch on a nonretryable build failure", async () => {
+    const { service, builder } = harness({ leased: work,
+      retryRow: { work_id: work.work_id, state: "dead_letter" } });
+    builder.build.mockRejectedValue(new SnapshotBuildError("invalid_sjnsbp", "bad side", false));
+    await expect(service.runBatch(1, "worker"))
+      .resolves.toMatchObject({ status: "dead_letter", processedCount: 1, completedCount: 0 });
+    expect(builder.build).toHaveBeenCalledOnce();
   });
 });

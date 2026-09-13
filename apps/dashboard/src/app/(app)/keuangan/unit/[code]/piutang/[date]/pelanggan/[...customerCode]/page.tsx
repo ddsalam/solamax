@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
-import { PiutangPelangganView, PiutangSummaryBucket } from "@/components/keuangan/PiutangPelangganView";
+import { PiutangPelangganView, PiutangSummaryBucket, PiutangHistoricalNote } from "@/components/keuangan/PiutangPelangganView";
 import { unitDotted } from "@/lib/config";
 import { rp } from "@/lib/format";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { formatWib, pendingBanner, readinessProps } from "@/lib/piutang-route";
-import { PIUTANG_BOOKS, piutangBookAmounts } from "@/lib/piutang-model";
+import { PIUTANG_BOOKS, piutangBookAmounts, piutangHistoricalNote } from "@/lib/piutang-model";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -65,6 +65,7 @@ export default async function PiutangPelangganDetailPage({
           <Link className="btn-outline no-print" href={listUrl}>← Kembali ke daftar</Link>
         </header>
         {banner && <div className={`banner ${banner.tone}`} role="status"><span className={`dot ${banner.tone}`} aria-hidden="true" /><div><strong>{banner.title}</strong><p>{banner.body}</p></div></div>}
+        <PiutangHistoricalNote note={piutangHistoricalNote(date, snapshot.metadata.sourceCompletedAt)} />
         <aside className="banner info b6-piutang-rule"><span className="dot info" aria-hidden="true" /><strong>Tiga bucket berbeda; jangan dijumlahkan atau dinetokan.</strong></aside>
         <div className={`b6-piutang-summaries${snapshot.hasOnlineCustomer ? " has-online" : ""}`}>
           {PIUTANG_BOOKS.filter((book) => book.id !== "online" || snapshot.hasOnlineCustomer).map((book) => (

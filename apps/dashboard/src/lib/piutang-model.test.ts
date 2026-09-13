@@ -278,3 +278,23 @@ it("retains zero-saldo gross turnover once without changing section membership",
       ["lokal", "lokal"], ["lokal", "hutang"], ["online", "online"],
     ]);
 });
+
+describe("historical snapshot provenance", () => {
+  it("warns using the source business date in WIB, identically in screen and export", () => {
+    const snapshot = ready([withSaldo("A", "A")]);
+    snapshot.asOfDate = "2026-09-10";
+    snapshot.metadata.sourceCompletedAt = "2026-09-12T19:05:15Z";
+    for (const build of [buildPiutangView, buildPiutangExportView]) {
+      const result = build(snapshot, {});
+      expect(result).toHaveProperty("historicalNote", "Posisi 2026-09-10 dihitung dari data sumber per 2026-09-13 WIB. Termasuk koreksi bertanggal mundur yang tercatat sampai saat itu; tidak identik dengan laporan EasyMax yang dicetak pada 2026-09-10.");
+      if (result.status !== "ready") throw new Error("expected ready");
+      expect(result.rows).toEqual(expect.arrayContaining([expect.objectContaining({ akhirPiutangLokal: 1 })]));
+    }
+  });
+  it("does not warn for a cut on the target business date", () => {
+    const snapshot = ready([]);
+    snapshot.asOfDate = "2026-09-13";
+    snapshot.metadata.sourceCompletedAt = "2026-09-12T19:05:15Z";
+    expect(buildPiutangView(snapshot, {})).toHaveProperty("historicalNote", null);
+  });
+});

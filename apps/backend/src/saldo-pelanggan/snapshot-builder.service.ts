@@ -358,11 +358,12 @@ export class SnapshotBuilderService {
         request.unitId,
         request.sourceCycleId,
         request.sourceCycleSequence,
+        request.asOfDate,
       );
       if (evidence.length !== 1) {
         throw new SnapshotBuildError(
           "source_cut_incomplete",
-          "source cut is absent, incomplete, or its row-count evidence disagrees",
+          "source cut is absent/incomplete, target exceeds its business date, or row-count evidence disagrees",
           false,
         );
       }

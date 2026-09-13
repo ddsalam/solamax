@@ -21,7 +21,8 @@ const PDF_NUMBER = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 function piutangProvenance(view: PiutangExportView): string {
   return `${PIUTANG_BOUNDARY_NOTE} Snapshot formula ${view.metadata.formulaVersion}, dihitung ` +
     `${view.metadata.computedAt} setelah siklus sumber ` +
-    `${view.metadata.sourceCycleId}/${view.metadata.sourceCompletedAt}.`;
+    `${view.metadata.sourceCycleId}/${view.metadata.sourceCompletedAt}.` +
+    (view.historicalNote ? ` ${view.historicalNote}` : "");
 }
 
 export function piutangCsv(input: {

@@ -198,3 +198,17 @@ it("preserves audited IB gross half units in PDF and exact CSV totals", () => {
   expect(doc).toContain("109.293.254.106,5"); expect(doc).toContain("53.549.062.678,5");
   expect(doc).toContain("54.222.073.216,5"); expect(doc).toContain("13.052.684.188");
 });
+
+it("carries the same historical correction caveat into CSV and the actual PDF", async () => {
+  const historical = exportView({ ...snapshot, asOfDate: "2026-09-10", metadata: {
+    ...snapshot.metadata, sourceCompletedAt: "2026-09-12T19:05:15Z",
+  } });
+  const csv = piutangCsv({ unit: { code: "IB", name: "Imam Bonjol" }, ptLabel: "PT", view: historical, generatedLabel: "sekarang", generatedBy: "Dion" });
+  expect(csv).toContain(historical.historicalNote);
+  const doc = buildPiutangDoc({ kop: { ptLabel: "PT", judul: "Piutang", subjudul: "IB", generatedLabel: "sekarang", dicetakOleh: "Dion" }, view: historical });
+  expect(JSON.stringify(doc)).toContain(historical.historicalNote);
+  if (hasPdftotext) {
+    const text = pdfText(await renderPdfBuffer(doc)).replace(/\s+/g, " ");
+    expect(text).toContain(historical.historicalNote);
+  }
+});

@@ -24,3 +24,12 @@ export const SNAPSHOT_OPERATIONAL_LIMITS = Object.freeze({
 } as const);
 
 export type SnapshotOperationalLimits = typeof SNAPSHOT_OPERATIONAL_LIMITS;
+
+/** First rollout covers seven prior dates; operators may explicitly widen to 31. */
+export const SNAPSHOT_BACKFILL_LIMITS = Object.freeze({
+  defaultDays: 7,
+  maxDays: 31,
+  defaultItems: 8,
+  maxItems: 8,
+  requestMilliseconds: 18 * 60 * 1_000,
+} as const);
