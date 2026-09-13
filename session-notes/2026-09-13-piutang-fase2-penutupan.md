@@ -1,6 +1,6 @@
 # Piutang Fase 2 — keputusan, verifikasi, dan usulan Fase 3
 
-Status: pelaksanaan D → C → B berjalan. Berkas ini diperbarui per commit, bukan klaim bahwa seluruh fase selesai.
+Status: implementasi D → C → B selesai, masing-masing telah di-commit dan memiliki PR ke `staging` dengan CI hijau. Dion yang merge berurutan D → C → B. H1 tetap menunggu laporan EasyMax 12 September; tidak ada deployment, migrasi manual, atau perubahan Scheduler yang dijalankan dalam tugas ini.
 
 ## H1 dan diagnosis
 
@@ -17,11 +17,11 @@ H1 belum dicentang: laporan EasyMax 12 September harus cocok dengan piutang loka
 | Nol: seksi keempat collapsed | Dipakai; tetap hadir dan diekspor tanpa filter. Pencarian dan pagination nol membuka seksi agar hasil bisa ditemukan. |
 | Pagination per-seksi 50 | Dipakai; filter dan sort global, halaman seksi independen. |
 | Pelanggan dua buku | Dipakai; keanggotaan dari AWAL atau AKHIR nonnol, label “satu pelanggan, dua buku”. |
-| C rebuild, v2 | Rancangan ditulis sebelum kode: 12+12 NUMERIC, CHECK, checksum18angka, rebuild dari cut asli dan verifikasi enam saldo tetap. |
-| B31hari / kanari7 | Rancangan memakai default request7, batas konfigurasi31, tanpa menaikkan gerbang9GB. |
-| Unit2–7 tanpa job | Tidak membuat job; perintah akan diserahkan lewat runbook. |
+| C rebuild, v2 | Diterapkan: 12+12 NUMERIC, CHECK, checksum 18 angka, rebuild dari cut asli dan verifikasi enam saldo tetap; rancangan mendahului kode. |
+| B31hari / kanari7 | Diterapkan: default request 7, batas konfigurasi 31, tanpa menaikkan gerbang 9 GB. |
+| Unit2–7 tanpa job | Tidak membuat job; perintah persis untuk Dion sudah tersedia di runbook backfill. |
 
-CSV D dipilih berbentuk satu pasangan Awal/Akhir per kemunculan buku, dengan penanda seksi/buku dan label lintas buku. Mengulang keenam saldo lengkap pada setiap kemunculan ditolak karena berisiko menghitung nominal buku lain dua kali. Seksi nol D memiliki satu kemunculan per pelanggan, pasangan0/0 berarti ketiga buku bersaldo nol. C harus memperluas rincian nol untuk tetap mengungkap debet/kredit kumulatif riil pada buku yang saldonya telah lunas. Ini perubahan bentuk ekspor yang diminta, tanpa mengubah nilai buku.
+CSV D dipilih berbentuk satu pasangan Awal/Akhir per kemunculan buku, dengan penanda seksi/buku dan label lintas buku. Mengulang keenam saldo lengkap pada setiap kemunculan ditolak karena berisiko menghitung nominal buku lain dua kali. Seksi nol D memiliki satu kemunculan per pelanggan, pasangan0/0 berarti ketiga buku bersaldo nol. C memperluas rincian nol untuk tetap mengungkap debet/kredit kumulatif riil pada buku yang saldonya telah lunas. Ini perubahan bentuk ekspor yang diminta, tanpa mengubah nilai buku.
 
 ## Usulan Fase 3 — tidak dibangun pada branch ini
 
@@ -86,4 +86,8 @@ Peninjau reuse menemukan argumen SQL salah tempat pada finalisasi. Root membukti
 
 Runbook `2026-09-13-piutang-fase2-backfill-runbook.md` memuat ukuran produksi, cadangan snapshot 444.530.688 B (termasuk tanggal kini/baseline, tidak termasuk source baru enam unit atau metadata), ukuran fixture CI, kontrol positif SQL read-only, empat blok perintah Scheduler untuk Dion dan batas monitoring. Sintaks empat blok shell serta dua blok SQL diperiksa tanpa eksekusi. Tidak ada job dibuat/diubah. H1 tetap satu-satunya bukti bisnis yang menunggu laporan.
 
-Review B `ce-code-review` selesai tanpa temuan terbuka, receipt `20260913-piutang-b-53f4411`. Sembilan sudut tinjau dijalankan oleh reviewer utama karena host menolak child tambahan pada batas slot; tidak diklaim sebagai sembilan peninjau independen atau corroboration lintas model. `pnpm check` dan `pnpm lint` lulus. Tiga skenario PostgreSQL tambahan sudah ditulis; hasil eksekusinya di CI dicatat setelah PR B terbuka.
+Review B `ce-code-review` selesai tanpa temuan terbuka, receipt `20260913-piutang-b-53f4411`. Sembilan sudut tinjau dijalankan oleh reviewer utama karena host menolak child tambahan pada batas slot; tidak diklaim sebagai sembilan peninjau independen atau corroboration lintas model. `pnpm check` dan `pnpm lint` lulus. Tiga skenario PostgreSQL tambahan benar-benar dieksekusi bersama 15 tes C; bukti CI dicatat di bawah.
+
+B di-commit sebagai `e97c793` dan dibuka pada PR [#358](https://github.com/ddsalam/solamax/pull/358) menuju staging. Dua eksekusi awal PostgreSQL masing-masing lulus 17/18 tes: fixture terakhir melanggar kelengkapan status stale, kemudian keunikan satu pending per tanggal. Commit `b1cdeab` melengkapi metadata stale serta memakai ID kerja eksplisit agar tidak bertabrakan dengan fixture bertanggal hari ini; `18cdffd` menyesuaikan urutan fixture dengan service: supersede dahulu, baru enqueue. Penjaga database dan kode aplikasi tidak dilonggarkan. Reviewer memeriksa ulang seluruh constraint kerja dan menerbitkan addendum; celah fixture yang terlewat pada review awal dicatat apa adanya.
+
+Pada head `18cdffd`, run push [34746583720](https://github.com/ddsalam/solamax/actions/runs/34746583720) dan PR [34746586297](https://github.com/ddsalam/solamax/actions/runs/34746586297) lulus `check` serta `snapshot-postgres-14`; seluruh **18/18 tes database** lulus. Arsip [34746586293](https://github.com/ddsalam/solamax/actions/runs/34746586293) juga lulus. Docker lokal tidak dijalankan; PostgreSQL 14 terisolasi di CI adalah bukti eksekusinya. Ketiga PR tetap terbuka menuju `staging`: D [#356](https://github.com/ddsalam/solamax/pull/356), C [#357](https://github.com/ddsalam/solamax/pull/357), lalu B [#358](https://github.com/ddsalam/solamax/pull/358). Commit penutupan ini hanya memperbarui dokumentasi hasil; CI pada head akhirnya diperiksa lagi sesudah push.
