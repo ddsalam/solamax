@@ -1212,6 +1212,18 @@ model SaldoPelangganSnapshotManifest {
   akhirPiutangOnlineTotal      Decimal?  @map("akhir_piutang_online_total") @db.Decimal
   awalHutangLokalTotal         Decimal?  @map("awal_hutang_lokal_total") @db.Decimal
   akhirHutangLokalTotal        Decimal?  @map("akhir_hutang_lokal_total") @db.Decimal
+  awalPiutangLokalDebetTotal Decimal? @map("awal_piutang_lokal_debet_total") @db.Decimal
+  awalPiutangLokalKreditTotal Decimal? @map("awal_piutang_lokal_kredit_total") @db.Decimal
+  akhirPiutangLokalDebetTotal Decimal? @map("akhir_piutang_lokal_debet_total") @db.Decimal
+  akhirPiutangLokalKreditTotal Decimal? @map("akhir_piutang_lokal_kredit_total") @db.Decimal
+  awalPiutangOnlineDebetTotal Decimal? @map("awal_piutang_online_debet_total") @db.Decimal
+  awalPiutangOnlineKreditTotal Decimal? @map("awal_piutang_online_kredit_total") @db.Decimal
+  akhirPiutangOnlineDebetTotal Decimal? @map("akhir_piutang_online_debet_total") @db.Decimal
+  akhirPiutangOnlineKreditTotal Decimal? @map("akhir_piutang_online_kredit_total") @db.Decimal
+  awalHutangLokalDebetTotal Decimal? @map("awal_hutang_lokal_debet_total") @db.Decimal
+  awalHutangLokalKreditTotal Decimal? @map("awal_hutang_lokal_kredit_total") @db.Decimal
+  akhirHutangLokalDebetTotal Decimal? @map("akhir_hutang_lokal_debet_total") @db.Decimal
+  akhirHutangLokalKreditTotal Decimal? @map("akhir_hutang_lokal_kredit_total") @db.Decimal
   sourcePelangganRowCount      BigInt?   @map("source_pelanggan_row_count")
   sourcePelangganKeyedChecksum Bytes?    @map("source_pelanggan_keyed_checksum")
   sourceBppiutRowCount         BigInt?   @map("source_bppiut_row_count")
@@ -1259,6 +1271,18 @@ model SaldoPelangganSnapshotRow {
   akhirPiutangOnline Decimal  @map("akhir_piutang_online") @db.Decimal
   awalHutangLokal    Decimal  @map("awal_hutang_lokal") @db.Decimal
   akhirHutangLokal   Decimal  @map("akhir_hutang_lokal") @db.Decimal
+  awalPiutangLokalDebet Decimal @map("awal_piutang_lokal_debet") @db.Decimal
+  awalPiutangLokalKredit Decimal @map("awal_piutang_lokal_kredit") @db.Decimal
+  akhirPiutangLokalDebet Decimal @map("akhir_piutang_lokal_debet") @db.Decimal
+  akhirPiutangLokalKredit Decimal @map("akhir_piutang_lokal_kredit") @db.Decimal
+  awalPiutangOnlineDebet Decimal @map("awal_piutang_online_debet") @db.Decimal
+  awalPiutangOnlineKredit Decimal @map("awal_piutang_online_kredit") @db.Decimal
+  akhirPiutangOnlineDebet Decimal @map("akhir_piutang_online_debet") @db.Decimal
+  akhirPiutangOnlineKredit Decimal @map("akhir_piutang_online_kredit") @db.Decimal
+  awalHutangLokalDebet Decimal @map("awal_hutang_lokal_debet") @db.Decimal
+  awalHutangLokalKredit Decimal @map("awal_hutang_lokal_kredit") @db.Decimal
+  akhirHutangLokalDebet Decimal @map("akhir_hutang_lokal_debet") @db.Decimal
+  akhirHutangLokalKredit Decimal @map("akhir_hutang_lokal_kredit") @db.Decimal
 
   @@id([unitId, asOfDate, generationId, customerCode], map: "sps_row_pkey")
   @@map("saldo_pelanggan_snapshot_row")

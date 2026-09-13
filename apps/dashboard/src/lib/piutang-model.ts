@@ -79,12 +79,34 @@ export interface PiutangExportView {
 
 /** Fixed presentation order, shared by the screen and both export formats. */
 export const PIUTANG_BOOKS = [
-  { id: "lokal", title: "Piutang Lokal", awal: "awalPiutangLokal", akhir: "akhirPiutangLokal" },
-  { id: "online", title: "Piutang Online", awal: "awalPiutangOnline", akhir: "akhirPiutangOnline" },
-  { id: "hutang", title: "Hutang Lokal", awal: "awalHutangLokal", akhir: "akhirHutangLokal" },
+  { id: "lokal", title: "Piutang Lokal", totalKey: "piutangLokal", awal: "awalPiutangLokal", akhir: "akhirPiutangLokal",
+    awalDebet: "awalPiutangLokalDebet", awalKredit: "awalPiutangLokalKredit", akhirDebet: "akhirPiutangLokalDebet", akhirKredit: "akhirPiutangLokalKredit" },
+  { id: "online", title: "Piutang Online", totalKey: "piutangOnline", awal: "awalPiutangOnline", akhir: "akhirPiutangOnline",
+    awalDebet: "awalPiutangOnlineDebet", awalKredit: "awalPiutangOnlineKredit", akhirDebet: "akhirPiutangOnlineDebet", akhirKredit: "akhirPiutangOnlineKredit" },
+  { id: "hutang", title: "Hutang Lokal", totalKey: "hutangLokal", awal: "awalHutangLokal", akhir: "akhirHutangLokal",
+    awalDebet: "awalHutangLokalDebet", awalKredit: "awalHutangLokalKredit", akhirDebet: "akhirHutangLokalDebet", akhirKredit: "akhirHutangLokalKredit" },
 ] as const;
 
 export type PiutangBook = (typeof PIUTANG_BOOKS)[number];
+
+export interface PiutangBoundaryAmounts { debet: number; kredit: number; saldo: number }
+export interface PiutangBookAmounts { awal: PiutangBoundaryAmounts; akhir: PiutangBoundaryAmounts }
+
+/** Project stored values only; never derive a debit/credit pair from a net saldo. */
+export function piutangBookAmounts(row: SaldoSnapshotRow, book: PiutangBook): PiutangBookAmounts {
+  return {
+    awal: { debet: row[book.awalDebet], kredit: row[book.awalKredit], saldo: row[book.awal] },
+    akhir: { debet: row[book.akhirDebet], kredit: row[book.akhirKredit], saldo: row[book.akhir] },
+  };
+}
+
+export function piutangBookTotalAmounts(metadata: Pick<SaldoSnapshotMetadata, "totals" | "debetTotals" | "kreditTotals">, book: PiutangBook): PiutangBookAmounts {
+  return {
+    awal: { debet: metadata.debetTotals.awal[book.totalKey], kredit: metadata.kreditTotals.awal[book.totalKey], saldo: metadata.totals.awal[book.totalKey] },
+    akhir: { debet: metadata.debetTotals.akhir[book.totalKey], kredit: metadata.kreditTotals.akhir[book.totalKey], saldo: metadata.totals.akhir[book.totalKey] },
+  };
+}
+
 export type PiutangSectionId = PiutangBook["id"] | "nol";
 export const PIUTANG_SECTION_IDS: readonly PiutangSectionId[] = [...PIUTANG_BOOKS.map((book) => book.id), "nol"];
 
@@ -93,6 +115,17 @@ export interface PiutangSection {
   title: string;
   book: PiutangBook | null;
   rows: PiutangViewRow[];
+}
+
+/** A zero-saldo book can still carry gross turnover. Attach it once, at the
+ * customer's first active book, while preserving saldo-based section membership. */
+export function booksForPiutangRow(section: PiutangSection, row: PiutangViewRow): readonly PiutangBook[] {
+  if (!section.book) return PIUTANG_BOOKS;
+  const firstActive = PIUTANG_BOOKS.find((book) => row[book.awal] !== 0 || row[book.akhir] !== 0);
+  if (firstActive?.id !== section.book.id) return [section.book];
+  return [section.book, ...PIUTANG_BOOKS.filter((book) =>
+    row[book.awal] === 0 && row[book.akhir] === 0 &&
+    [row[book.awalDebet], row[book.awalKredit], row[book.akhirDebet], row[book.akhirKredit]].some((value) => value !== 0))];
 }
 
 export interface PiutangPageSection extends PiutangSection {

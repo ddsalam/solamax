@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { SNAPSHOT_V2_SCHEMA_READY_SQL, waitForSnapshotV2Schema } from "./wait-snapshot-schema";
 import type { ManualSection } from "./queries";
 import type { SaldoSnapshotPointer } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope-rule";
@@ -47,12 +48,24 @@ const SEC: ManualSection = "pengeluaran";
 const SNAPSHOT_POINTER: SaldoSnapshotPointer = {
   generationId: "00000000-0000-0000-0000-000000000001",
   rowCount: 0,
-  formulaVersion: "saldo-pelanggan-v1",
+  formulaVersion: "saldo-pelanggan-v2",
   computedAt: "2026-07-01T00:01:00Z",
   sourceCycleId: "00000000-0000-0000-0000-000000000002",
   sourceCompletedAt: "2026-07-01T00:00:00Z",
   pendingReplacement: false,
   staleInvalidFrom: null,
+  awalPiutangLokalDebet: 0,
+  awalPiutangLokalKredit: 0,
+  akhirPiutangLokalDebet: 0,
+  akhirPiutangLokalKredit: 0,
+  awalPiutangOnlineDebet: 0,
+  awalPiutangOnlineKredit: 0,
+  akhirPiutangOnlineDebet: 0,
+  akhirPiutangOnlineKredit: 0,
+  awalHutangLokalDebet: 0,
+  awalHutangLokalKredit: 0,
+  akhirHutangLokalDebet: 0,
+  akhirHutangLokalKredit: 0,
   awalPiutangLokal: 0,
   akhirPiutangLokal: 0,
   awalPiutangOnline: 0,
@@ -60,6 +73,17 @@ const SNAPSHOT_POINTER: SaldoSnapshotPointer = {
   awalHutangLokal: 0,
   akhirHutangLokal: 0,
 };
+
+// Both deployment workflows start on the same push. Wait before any K1 query
+// can reference v2 columns; migrations remain exclusively in the backend CI path.
+beforeAll(async () => {
+  if (!LIVE) return;
+  const { qScoped } = await import("./db");
+  await waitForSnapshotV2Schema(async () => {
+    const result = await qScoped<{ ready: boolean }>(U, SNAPSHOT_V2_SCHEMA_READY_SQL, []);
+    return result[0]?.ready === true;
+  });
+}, 11 * 60 * 1000);
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
 const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [

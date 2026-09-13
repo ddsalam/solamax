@@ -17,7 +17,22 @@ export interface SaldoPelanggan {
   akhir: SaldoTrio;
 }
 
-export interface SaldoSnapshotRow {
+export interface SaldoSnapshotSides {
+  awalPiutangLokalDebet: number;
+  awalPiutangLokalKredit: number;
+  akhirPiutangLokalDebet: number;
+  akhirPiutangLokalKredit: number;
+  awalPiutangOnlineDebet: number;
+  awalPiutangOnlineKredit: number;
+  akhirPiutangOnlineDebet: number;
+  akhirPiutangOnlineKredit: number;
+  awalHutangLokalDebet: number;
+  awalHutangLokalKredit: number;
+  akhirHutangLokalDebet: number;
+  akhirHutangLokalKredit: number;
+}
+
+export interface SaldoSnapshotRow extends SaldoSnapshotSides {
   customerCode: string;
   customerName: string | null;
   awalPiutangLokal: number;
@@ -38,6 +53,8 @@ export interface SaldoSnapshotMetadata {
   pendingReplacement: boolean;
   staleInvalidFrom: string | null;
   totals: SaldoPelanggan;
+  debetTotals: SaldoPelanggan;
+  kreditTotals: SaldoPelanggan;
 }
 
 export interface SaldoSnapshotAttempt {
@@ -85,7 +102,19 @@ SELECT p.generation_id::text AS "generationId",
        m.awal_piutang_online_total::float8 AS "awalPiutangOnline",
        m.akhir_piutang_online_total::float8 AS "akhirPiutangOnline",
        m.awal_hutang_lokal_total::float8 AS "awalHutangLokal",
-       m.akhir_hutang_lokal_total::float8 AS "akhirHutangLokal"
+       m.akhir_hutang_lokal_total::float8 AS "akhirHutangLokal",
+       m.awal_piutang_lokal_debet_total::float8 AS "awalPiutangLokalDebet",
+       m.awal_piutang_lokal_kredit_total::float8 AS "awalPiutangLokalKredit",
+       m.akhir_piutang_lokal_debet_total::float8 AS "akhirPiutangLokalDebet",
+       m.akhir_piutang_lokal_kredit_total::float8 AS "akhirPiutangLokalKredit",
+       m.awal_piutang_online_debet_total::float8 AS "awalPiutangOnlineDebet",
+       m.awal_piutang_online_kredit_total::float8 AS "awalPiutangOnlineKredit",
+       m.akhir_piutang_online_debet_total::float8 AS "akhirPiutangOnlineDebet",
+       m.akhir_piutang_online_kredit_total::float8 AS "akhirPiutangOnlineKredit",
+       m.awal_hutang_lokal_debet_total::float8 AS "awalHutangLokalDebet",
+       m.awal_hutang_lokal_kredit_total::float8 AS "awalHutangLokalKredit",
+       m.akhir_hutang_lokal_debet_total::float8 AS "akhirHutangLokalDebet",
+       m.akhir_hutang_lokal_kredit_total::float8 AS "akhirHutangLokalKredit"
 FROM app.saldo_pelanggan_snapshot_pointer p
 JOIN app.saldo_pelanggan_snapshot_manifest m
   ON m.unit_id = p.unit_id
@@ -94,6 +123,7 @@ JOIN app.saldo_pelanggan_snapshot_manifest m
  AND m.status = 'complete'
  AND m.published
  AND m.validation_passed
+ AND m.formula_version = 'saldo-pelanggan-v2'
 WHERE p.unit_id = $1::smallint AND p.as_of_date = $2::date`;
 
 /** Latest build evidence is explanatory only; it can never make numeric rows readable. */
@@ -115,15 +145,40 @@ WITH candidate AS (
   SELECT m.generation_id, m.row_count, m.row_keyed_checksum,
          m.awal_piutang_lokal_total, m.akhir_piutang_lokal_total,
          m.awal_piutang_online_total, m.akhir_piutang_online_total,
-         m.awal_hutang_lokal_total, m.akhir_hutang_lokal_total
+         m.awal_hutang_lokal_total, m.akhir_hutang_lokal_total,
+         m.awal_piutang_lokal_debet_total,
+         m.awal_piutang_lokal_kredit_total,
+         m.akhir_piutang_lokal_debet_total,
+         m.akhir_piutang_lokal_kredit_total,
+         m.awal_piutang_online_debet_total,
+         m.awal_piutang_online_kredit_total,
+         m.akhir_piutang_online_debet_total,
+         m.akhir_piutang_online_kredit_total,
+         m.awal_hutang_lokal_debet_total,
+         m.awal_hutang_lokal_kredit_total,
+         m.akhir_hutang_lokal_debet_total,
+         m.akhir_hutang_lokal_kredit_total
   FROM app.saldo_pelanggan_snapshot_manifest m
   WHERE m.unit_id = $1::smallint AND m.as_of_date = $2::date AND m.generation_id = $3::uuid
     AND m.status = 'complete' AND m.published AND m.validation_passed
+    AND m.formula_version = 'saldo-pelanggan-v2'
 ), snapshot_rows AS MATERIALIZED (
   SELECT unit_id, as_of_date, generation_id, customer_code,
          awal_piutang_lokal, akhir_piutang_lokal,
          awal_piutang_online, akhir_piutang_online,
-         awal_hutang_lokal, akhir_hutang_lokal
+         awal_hutang_lokal, akhir_hutang_lokal,
+         awal_piutang_lokal_debet,
+         awal_piutang_lokal_kredit,
+         akhir_piutang_lokal_debet,
+         akhir_piutang_lokal_kredit,
+         awal_piutang_online_debet,
+         awal_piutang_online_kredit,
+         akhir_piutang_online_debet,
+         akhir_piutang_online_kredit,
+         awal_hutang_lokal_debet,
+         awal_hutang_lokal_kredit,
+         akhir_hutang_lokal_debet,
+         akhir_hutang_lokal_kredit
   FROM app.saldo_pelanggan_snapshot_row
   WHERE unit_id = $1::smallint
     AND as_of_date = $2::date
@@ -135,15 +190,39 @@ WITH candidate AS (
            concat_ws('|', r.unit_id::text, r.as_of_date::text, r.customer_code,
              r.awal_piutang_lokal::text, r.akhir_piutang_lokal::text,
              r.awal_piutang_online::text, r.akhir_piutang_online::text,
-             r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text),
+             r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text,
+             r.awal_piutang_lokal_debet::text,
+             r.awal_piutang_lokal_kredit::text,
+             r.akhir_piutang_lokal_debet::text,
+             r.akhir_piutang_lokal_kredit::text,
+             r.awal_piutang_online_debet::text,
+             r.awal_piutang_online_kredit::text,
+             r.akhir_piutang_online_debet::text,
+             r.akhir_piutang_online_kredit::text,
+             r.awal_hutang_lokal_debet::text,
+             r.awal_hutang_lokal_kredit::text,
+             r.akhir_hutang_lokal_debet::text,
+             r.akhir_hutang_lokal_kredit::text),
            E'\\n' ORDER BY r.customer_code
-         ), ''), 'UTF8')) AS row_keyed_checksum,
+         ) FILTER (WHERE r.generation_id IS NOT NULL), ''), 'UTF8')) AS row_keyed_checksum,
          COALESCE(sum(r.awal_piutang_lokal), 0) AS awal_piutang_lokal_total,
          COALESCE(sum(r.akhir_piutang_lokal), 0) AS akhir_piutang_lokal_total,
          COALESCE(sum(r.awal_piutang_online), 0) AS awal_piutang_online_total,
          COALESCE(sum(r.akhir_piutang_online), 0) AS akhir_piutang_online_total,
          COALESCE(sum(r.awal_hutang_lokal), 0) AS awal_hutang_lokal_total,
-         COALESCE(sum(r.akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total
+         COALESCE(sum(r.akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,
+         COALESCE(sum(r.awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,
+         COALESCE(sum(r.awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,
+         COALESCE(sum(r.akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,
+         COALESCE(sum(r.akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,
+         COALESCE(sum(r.awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,
+         COALESCE(sum(r.awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,
+         COALESCE(sum(r.akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,
+         COALESCE(sum(r.akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,
+         COALESCE(sum(r.awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,
+         COALESCE(sum(r.awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,
+         COALESCE(sum(r.akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,
+         COALESCE(sum(r.akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total
   FROM candidate c
   LEFT JOIN snapshot_rows r ON r.generation_id = c.generation_id
   GROUP BY c.generation_id
@@ -157,6 +236,18 @@ WITH candidate AS (
     AND c.akhir_piutang_online_total = a.akhir_piutang_online_total
     AND c.awal_hutang_lokal_total = a.awal_hutang_lokal_total
     AND c.akhir_hutang_lokal_total = a.akhir_hutang_lokal_total
+    AND c.awal_piutang_lokal_debet_total = a.awal_piutang_lokal_debet_total
+    AND c.awal_piutang_lokal_kredit_total = a.awal_piutang_lokal_kredit_total
+    AND c.akhir_piutang_lokal_debet_total = a.akhir_piutang_lokal_debet_total
+    AND c.akhir_piutang_lokal_kredit_total = a.akhir_piutang_lokal_kredit_total
+    AND c.awal_piutang_online_debet_total = a.awal_piutang_online_debet_total
+    AND c.awal_piutang_online_kredit_total = a.awal_piutang_online_kredit_total
+    AND c.akhir_piutang_online_debet_total = a.akhir_piutang_online_debet_total
+    AND c.akhir_piutang_online_kredit_total = a.akhir_piutang_online_kredit_total
+    AND c.awal_hutang_lokal_debet_total = a.awal_hutang_lokal_debet_total
+    AND c.awal_hutang_lokal_kredit_total = a.awal_hutang_lokal_kredit_total
+    AND c.akhir_hutang_lokal_debet_total = a.akhir_hutang_lokal_debet_total
+    AND c.akhir_hutang_lokal_kredit_total = a.akhir_hutang_lokal_kredit_total
 )
 SELECT true AS "integrityVerified",
        NULL::text AS "customerCode",
@@ -166,7 +257,19 @@ SELECT true AS "integrityVerified",
        NULL::float8 AS "awalPiutangOnline",
        NULL::float8 AS "akhirPiutangOnline",
        NULL::float8 AS "awalHutangLokal",
-       NULL::float8 AS "akhirHutangLokal"
+       NULL::float8 AS "akhirHutangLokal",
+       NULL::float8 AS "awalPiutangLokalDebet",
+       NULL::float8 AS "awalPiutangLokalKredit",
+       NULL::float8 AS "akhirPiutangLokalDebet",
+       NULL::float8 AS "akhirPiutangLokalKredit",
+       NULL::float8 AS "awalPiutangOnlineDebet",
+       NULL::float8 AS "awalPiutangOnlineKredit",
+       NULL::float8 AS "akhirPiutangOnlineDebet",
+       NULL::float8 AS "akhirPiutangOnlineKredit",
+       NULL::float8 AS "awalHutangLokalDebet",
+       NULL::float8 AS "awalHutangLokalKredit",
+       NULL::float8 AS "akhirHutangLokalDebet",
+       NULL::float8 AS "akhirHutangLokalKredit"
 FROM verified
 UNION ALL
 SELECT false AS "integrityVerified",
@@ -177,7 +280,19 @@ SELECT false AS "integrityVerified",
        r.awal_piutang_online::float8 AS "awalPiutangOnline",
        r.akhir_piutang_online::float8 AS "akhirPiutangOnline",
        r.awal_hutang_lokal::float8 AS "awalHutangLokal",
-       r.akhir_hutang_lokal::float8 AS "akhirHutangLokal"
+       r.akhir_hutang_lokal::float8 AS "akhirHutangLokal",
+       r.awal_piutang_lokal_debet::float8 AS "awalPiutangLokalDebet",
+       r.awal_piutang_lokal_kredit::float8 AS "awalPiutangLokalKredit",
+       r.akhir_piutang_lokal_debet::float8 AS "akhirPiutangLokalDebet",
+       r.akhir_piutang_lokal_kredit::float8 AS "akhirPiutangLokalKredit",
+       r.awal_piutang_online_debet::float8 AS "awalPiutangOnlineDebet",
+       r.awal_piutang_online_kredit::float8 AS "awalPiutangOnlineKredit",
+       r.akhir_piutang_online_debet::float8 AS "akhirPiutangOnlineDebet",
+       r.akhir_piutang_online_kredit::float8 AS "akhirPiutangOnlineKredit",
+       r.awal_hutang_lokal_debet::float8 AS "awalHutangLokalDebet",
+       r.awal_hutang_lokal_kredit::float8 AS "awalHutangLokalKredit",
+       r.akhir_hutang_lokal_debet::float8 AS "akhirHutangLokalDebet",
+       r.akhir_hutang_lokal_kredit::float8 AS "akhirHutangLokalKredit"
 FROM verified v
 JOIN snapshot_rows r ON r.generation_id = v.generation_id
 LEFT JOIN (
@@ -194,7 +309,7 @@ LEFT JOIN (
 WHERE r.unit_id = $1::smallint AND r.as_of_date = $2::date AND r.generation_id = $3::uuid
 ORDER BY "integrityVerified" DESC, "customerCode"`;
 
-export interface SaldoSnapshotPointer extends Omit<SaldoSnapshotMetadata, "totals"> {
+export interface SaldoSnapshotPointer extends SaldoSnapshotSides, Omit<SaldoSnapshotMetadata, "totals" | "debetTotals" | "kreditTotals"> {
   awalPiutangLokal: number;
   akhirPiutangLokal: number;
   awalPiutangOnline: number;
@@ -291,6 +406,18 @@ export function assembleReadySaldoSnapshot(
     akhirPiutangOnline,
     awalHutangLokal,
     akhirHutangLokal,
+    awalPiutangLokalDebet,
+    awalPiutangLokalKredit,
+    akhirPiutangLokalDebet,
+    akhirPiutangLokalKredit,
+    awalPiutangOnlineDebet,
+    awalPiutangOnlineKredit,
+    akhirPiutangOnlineDebet,
+    akhirPiutangOnlineKredit,
+    awalHutangLokalDebet,
+    awalHutangLokalKredit,
+    akhirHutangLokalDebet,
+    akhirHutangLokalKredit,
     ...metadata
   } = pointer;
   return {
@@ -306,6 +433,14 @@ export function assembleReadySaldoSnapshot(
         awalHutangLokal,
         akhirHutangLokal,
       }),
+      debetTotals: {
+        awal: { piutangLokal: awalPiutangLokalDebet, piutangOnline: awalPiutangOnlineDebet, hutangLokal: awalHutangLokalDebet },
+        akhir: { piutangLokal: akhirPiutangLokalDebet, piutangOnline: akhirPiutangOnlineDebet, hutangLokal: akhirHutangLokalDebet },
+      },
+      kreditTotals: {
+        awal: { piutangLokal: awalPiutangLokalKredit, piutangOnline: awalPiutangOnlineKredit, hutangLokal: awalHutangLokalKredit },
+        akhir: { piutangLokal: akhirPiutangLokalKredit, piutangOnline: akhirPiutangOnlineKredit, hutangLokal: akhirHutangLokalKredit },
+      },
     },
     rows: generation.rows,
     hasOnlineCustomer: generation.hasOnlineCustomer,

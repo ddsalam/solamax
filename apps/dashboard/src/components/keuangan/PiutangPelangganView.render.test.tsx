@@ -7,22 +7,24 @@ import {
 } from "./PiutangPelangganView";
 
 const angka = {
-  piutangLokalAwal: 125_000,
-  piutangLokalAkhir: 100_000,
-  piutangOnlineAwal: 50_000,
-  piutangOnlineAkhir: 75_000,
-  hutangLokalAwal: -20_000,
-  hutangLokalAkhir: -10_000,
+  awal: { piutangLokal: 125_000, piutangOnline: 50_000, hutangLokal: -20_000 },
+  akhir: { piutangLokal: 100_000, piutangOnline: 75_000, hutangLokal: -10_000 },
 };
 
 type ReadyProps = Extract<PiutangPelangganViewProps, { state: "ready" }>;
 
 const rows: PiutangViewRow[] = [
-  { customerCode: "A-001", customerName: "Andi", isZeroBalance: false, bookCount: 2,
+  { awalPiutangLokalDebet: 125000, awalPiutangLokalKredit: 0, akhirPiutangLokalDebet: 125000, akhirPiutangLokalKredit: 25000,
+    awalPiutangOnlineDebet: 0, awalPiutangOnlineKredit: 0, akhirPiutangOnlineDebet: 0, akhirPiutangOnlineKredit: 0,
+    awalHutangLokalDebet: 0, awalHutangLokalKredit: 20000, akhirHutangLokalDebet: 10000, akhirHutangLokalKredit: 20000,
+    customerCode: "A-001", customerName: "Andi", isZeroBalance: false, bookCount: 2,
     awalPiutangLokal: 125_000, akhirPiutangLokal: 100_000,
     awalPiutangOnline: 0, akhirPiutangOnline: 0,
     awalHutangLokal: -20_000, akhirHutangLokal: -10_000 },
-  { customerCode: "NOL/02", customerName: "Budi Saldo Nol", isZeroBalance: true, bookCount: 0,
+  { awalPiutangLokalDebet: 7.25, awalPiutangLokalKredit: 7.25, akhirPiutangLokalDebet: 7.25, akhirPiutangLokalKredit: 7.25,
+    awalPiutangOnlineDebet: 8.5, awalPiutangOnlineKredit: 8.5, akhirPiutangOnlineDebet: 8.5, akhirPiutangOnlineKredit: 8.5,
+    awalHutangLokalDebet: 9.75, awalHutangLokalKredit: 9.75, akhirHutangLokalDebet: 9.75, akhirHutangLokalKredit: 9.75,
+    customerCode: "NOL/02", customerName: "Budi Saldo Nol", isZeroBalance: true, bookCount: 0,
     awalPiutangLokal: 0, akhirPiutangLokal: 0, awalPiutangOnline: 0,
     akhirPiutangOnline: 0, awalHutangLokal: 0, akhirHutangLokal: 0 },
 ];
@@ -38,7 +40,17 @@ const ready = (o: Partial<Omit<ReadyProps, "state">> = {}): ReadyProps => ({
     computedAtLabel: "9 September 2026, 23.17 WIB",
     sourceCutLabel: "Siklus sumber selesai 9 September 2026, 23.10 WIB",
   },
-  totals: angka,
+  summary: {
+    totals: angka,
+    debetTotals: {
+      awal: { piutangLokal: 125_000, piutangOnline: 50_000, hutangLokal: 0 },
+      akhir: { piutangLokal: 100_000, piutangOnline: 75_000, hutangLokal: 0 },
+    },
+    kreditTotals: {
+      awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 20_000 },
+      akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 10_000 },
+    },
+  },
   sections: groupPiutangRows(rows, o.hasOnlineCustomer ?? true).map((section) => ({
     ...section, page: 1, pageSize: 50, totalPages: 1, resultCount: section.rows.length,
   })),
@@ -68,7 +80,11 @@ describe("PiutangPelangganView", () => {
     const h = html(ready());
     expect(h).toContain("Budi Saldo Nol");
     expect(h).toContain("Saldo nol pada kedua batas");
-    expect(h.match(/Rp0/g)).toHaveLength(6);
+    const zeroSection = h.slice(h.indexOf('id="piutang-nol"'));
+    expect(zeroSection.match(/Rp0/g)).toHaveLength(6);
+    expect(zeroSection).toContain("Rp 7,25");
+    expect(zeroSection).toContain("Rp 8,5");
+    expect(zeroSection).toContain("Rp 9,75");
   });
 
   it("menghilangkan seluruh blok Online saat presence gate false", () => {
@@ -166,7 +182,49 @@ it("labels multi-book customers and distinguishes unique count from appearances"
 
 it("preserves the existing integer rupiah rounding and negative sign", () => {
   const props = ready();
-  const h = html({ ...props, totals: { ...angka, piutangLokalAwal: 13_052_684_187.5 } });
+  const h = html({ ...props, summary: { ...props.summary, totals: { ...angka, awal: { ...angka.awal, piutangLokal: 13_052_684_187.5 } } } });
   expect(h).toContain("Rp 13.052.684.188");
   expect(h).toContain("−Rp 20.000");
+});
+
+
+it("shows the audited IB debit/credit totals exactly while keeping saldo rounding", () => {
+  // Source: tracked Gerbang A 01-audit.txt, rows 68–70.
+  const h = html(ready({
+    summary: {
+      totals: {
+        awal: { piutangLokal: 13052684187.5, piutangOnline: 900000, hutangLokal: -673010538 },
+        akhir: { piutangLokal: 13052684187.5, piutangOnline: 900000, hutangLokal: -673010538 },
+      },
+      debetTotals: {
+        awal: { piutangLokal: 122345938294, piutangOnline: 10505841, hutangLokal: 53549062678.5 },
+        akhir: { piutangLokal: 122345938294, piutangOnline: 10505841, hutangLokal: 53549062678.5 },
+      },
+      kreditTotals: {
+        awal: { piutangLokal: 109293254106.5, piutangOnline: 9605841, hutangLokal: 54222073216.5 },
+        akhir: { piutangLokal: 109293254106.5, piutangOnline: 9605841, hutangLokal: 54222073216.5 },
+      },
+    },
+  }));
+  expect(h).toContain("Rp 122.345.938.294");
+  expect(h).toContain("Rp 109.293.254.106,5");
+  expect(h).toContain("Rp 53.549.062.678,5");
+  expect(h).toContain("Rp 54.222.073.216,5");
+  expect(h).toContain("Rp 13.052.684.188");
+  expect(h).toContain("−Rp 673.010.538");
+  expect(h).toContain("Debet"); expect(h).toContain("Kredit"); expect(h).toContain("Saldo");
+});
+
+it("shows turnover in an inactive book once while retaining its saldo-based section", () => {
+  const row = { ...rows[0]!, awalHutangLokal: 0, akhirHutangLokal: 0,
+    awalHutangLokalDebet: 71.25, awalHutangLokalKredit: 71.25,
+    akhirHutangLokalDebet: 71.25, akhirHutangLokalKredit: 71.25, bookCount: 1 };
+  const props = ready({ sections: groupPiutangRows([row], true).map((section) => ({
+    ...section, page: 1, totalPages: 1, pageSize: 50, resultCount: section.rows.length,
+  })) });
+  const h = html(props);
+  expect(h.match(/Rp 71,25/g)).toHaveLength(4);
+  const local = h.slice(h.indexOf('id="piutang-lokal"'), h.indexOf('id="piutang-online"'));
+  expect(local).toContain("Hutang Lokal · buku bersaldo nol");
+  expect(h.slice(h.indexOf('id="piutang-hutang"'))).not.toContain("Rp 71,25");
 });

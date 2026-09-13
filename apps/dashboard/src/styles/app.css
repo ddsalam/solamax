@@ -1466,3 +1466,31 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
   .b6-piutang-pagination > :last-child { grid-column: 2; }
   .b6-piutang-not-ready { padding: var(--space-5); }
 }
+
+
+/* Phase 2: stored debit/credit and the original saldo remain separate. */
+.b6-piutang-summaries, .b6-piutang-summaries.has-online { grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr)); }
+.b6-piutang-summary-pair > div { align-items: stretch; min-width: 0; }
+.b6-piutang-summary-pair > div > span { font-size: 13px; }
+.b6-piutang-summary-pair .b6-piutang-value { font-size: 16px; }
+.b6-piutang-ledger-head.single-book, .b6-piutang-ledger-row.single-book { grid-template-columns: minmax(210px, 1fr) minmax(560px, 3fr); min-width: 800px; }
+.b6-piutang-pair > div { flex-direction: column; align-items: stretch; justify-content: center; }
+.b6-piutang-triplet { display: grid; gap: 6px; width: 100%; margin: 0; }
+.b6-piutang-triplet > div { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 12px; }
+.b6-piutang-triplet dt { color: var(--color-text-tertiary); font-size: 13px; }
+.b6-piutang-triplet dd { margin: 0; text-align: right; min-width: 0; }
+.b6-piutang-triplet .b6-piutang-saldo { border-top: 1px solid var(--color-border-hairline); padding-top: 6px; }
+.b6-piutang-saldo dt, .b6-piutang-saldo .b6-piutang-value { font-weight: 600; }
+.b6-piutang-ledger-head.zero-books { display: none; }
+.b6-piutang-ledger-row.zero-books { grid-template-columns: 1fr; min-width: 0; padding: var(--space-4); gap: var(--space-3); }
+.b6-piutang-ledger-row.zero-books .b6-piutang-bucket { border: 1px solid var(--color-border-hairline); border-radius: var(--radius-md); overflow: hidden; }
+.b6-piutang-ledger-row.zero-books .b6-piutang-bucket-name { display: block; padding: var(--space-2) var(--space-3); font-weight: 600; }
+.b6-piutang-ledger-row.zero-books .b6-piutang-mobile-bound { display: block; color: var(--color-text-tertiary); font-size: 13px; margin-bottom: 6px; }
+@media (max-width: 768px) {
+  .b6-piutang-ledger-row.single-book { grid-template-columns: 1fr; min-width: 0; }
+  .b6-piutang-pair > div { align-items: stretch; }
+}
+@media (max-width: 560px) {
+  .b6-piutang-summary-pair, .b6-piutang-pair { grid-template-columns: 1fr; }
+  .b6-piutang-summary-pair > div + div, .b6-piutang-pair > div + div { border-left: 0; border-top: 1px solid var(--color-border-hairline); }
+}

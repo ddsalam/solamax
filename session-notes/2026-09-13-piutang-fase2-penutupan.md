@@ -40,3 +40,23 @@ Sesudah skema dan biaya lulus, bangun penautan faktur/pembayaran, baru sisa tagi
 ## Bukti pengiriman
 
 Diisi setelah review, commit, dan CI tiap PR. Belum ada klaim CI atau deployment berhasil.
+
+### D selesai secara lokal dan CI
+
+Commit diagnosis/desain `d78b4e9`; commit D `dd56b16`. PR D [#356](https://github.com/ddsalam/solamax/pull/356) menuju staging. `pnpm check` lokal lulus; setelah tiga penyederhanaan kecil, typecheck dashboard dan 62 tes terkait lulus lagi. CI `check` push dan PR serta `arsip` semuanya SUCCESS pada head `dd56b16` (run PR34744848450, arsip34744917528). Review `ce-code-review` selesai, run `20260913-piutang-d-ea96aa94`, nol actionable. Enam persona independen; keamanan ditelusuri reviewer utama. Model eksternal tidak dipakai karena jalurnya tidak dapat dibatasi pada diff D tanpa akses berkas lain; fallback adversarial lokal selesai.
+
+Penyederhanaan D menerapkan satu sumber ID buku, konstanta halaman bersama, dan satu perhitungan label per row. Usulan membuang rowset unik/bookCount atau mengganti pengelompokan menjadi satu loop tidak diambil: tidak ada masalah terukur pada 2.973 row, dan kontrak unik memudahkan rincian C. Tidak ada bukti browser langsung yang diklaim; PDF benar-benar dibuat dan teksnya diperiksa oleh tes.
+
+G4 awalnya merah karena label arsip belum terpasang. Label diterapkan dengan alasan tertulis pada PR: audit awal telah diterima setelah pemeriksaan independen Dion, catatan merekam keputusan yang sudah ditetapkan, dan instruksi lanjutan §6 mengotorisasi penyelesaian tanpa gerbang tambahan. Diagnosis baru tetap dibatasi oleh bukti dan H1 belum lulus. Dion tetap pemilik keputusan merge.
+
+### Penajaman C saat menelusuri tampilan
+
+Keanggotaan seksi tetap memakai enam saldo. Bila pelanggan bersaldo lokal tetapi hutangnya sudah nol dengan debet=kredit nonnol, volume hutangnya tetap harus terlihat. Helper bersama menambahkan buku bersaldo nol yang mempunyai volume pada kemunculan pertama pelanggan tersebut; ia tampil sekali dalam layar/CSV/PDF, ditandai “buku bersaldo nol”. Seksi nol tetap menampilkan tiga buku untuk setiap pelanggan. Dengan demikian setiap angka debet/kredit diekspor sekali tanpa menambahkan atau meniadakan saldo lintas buku.
+
+C lulus `pnpm check` lokal sebelum penyederhanaan akhir. Penyederhanaan menerapkan helper total buku yang sama untuk layar/CSV/PDF dan membuang proyeksi saldo row yang tak lagi dipanggil; typecheck serta tes tampilan/ekspor diulang. Dua usulan efisiensi tidak diterapkan: penggabungan assert source belum memiliki bukti biaya yang mengalahkan kejelasan urutan kegagalan, sedangkan pengelompokan tiga buku sudah dinilai memadai di D. Semua penjaga sumber dan integritas tetap ada.
+
+Catatan rollout C: migration dan aplikasi baru harus diselesaikan melalui pipeline yang sama. Selama sela waktu antara upgrade checksum dan penggantian revision dashboard, pembaca lama dapat menampilkan `not_ready` (tidak mengarang nol). Workflow dashboard memiliki SQLCHECK sebelum deployment; K1 kini menunggu maksimal10menit sampai kolom NUMERIC NOTNULL unik0039 terlihat, baru menguji seluruh query. Karena migrasi atomik, kolom ini tidak terlihat sebelum rebuild dan perpindahan referensi commit. Ini memperbaiki perlombaan pipeline yang ditemukan review; koneksi/izin gagal tetap gagal langsung. Jika migrasi tidak selesai dalam batas itu, pipeline berhenti dengan alasan eksplisit. Tidak menjalankan SQL migrasi manual. Revert aplikasi ke v1 sesudah migrasi bukan rollback yang memulihkan pembacaan; kegagalan aplikasi v2 perlu perbaikan maju melalui PR.
+
+Selesaikan merge/deployment C di luar jendela worker02.00–05.00WIB. Jangan memicu worker sampai revision backendv2 melayani; writer v1 tidak dapat memenuhi NOTNULL kolom baru. Migrasi menolak builder/lease aktif secara atomik. Jeda pembacaan menjadi not_ready adalah konsekuensi pilihan checksumtunggal+rebuildatomik, bukan angka nol atau saldo baru.
+
+Promosi pilot adalah keputusan Dion di luar tugas ini. Bila kelak diotorisasi, selesaikan approval dan job backend `migrate-pilot` lalu `deploy-pilot` terlebih dahulu, baru approve `deploy-pilot` dashboard. K1 dashboard memakai DB TEST rlsstg bahkan pada alur promosi; keberhasilan K1 bukan bukti schema pilot sudah0039. Penantian skema baru menyelesaikan perlombaan tier TEST yang diotorisasi sekarang; tidak ada promosi main yang dijalankan.

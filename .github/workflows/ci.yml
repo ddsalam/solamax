@@ -53,3 +53,37 @@ jobs:
       # menjalankan checker-nya; ini yang membuktikan checker itu bisa gagal.
       - run: bash scripts/ci/check-sql-syntax.selftest.sh
       - run: pnpm check
+
+  snapshot-postgres-14:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_DB: solamax_snapshot_ci
+          POSTGRES_USER: snapshot_ci_admin
+          # Disposable service credentials, never used by either deployment tier.
+          POSTGRES_PASSWORD: snapshot_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U snapshot_ci_admin -d solamax_snapshot_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/snapshot-v2.postgres.test.ts
+        env:
+          SNAPSHOT_POSTGRES_CI: "1"
+          SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
