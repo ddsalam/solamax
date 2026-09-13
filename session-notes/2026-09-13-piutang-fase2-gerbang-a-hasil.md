@@ -1,6 +1,7 @@
 # Piutang Fase 2 — Gerbang A
 
-Status akhir: **BERHENTI — Gerbang A belum lulus; pemicu wajib berhenti berupa piutang yatim nonnol ditemukan.**
+Status audit pertama: **BERHENTI — Gerbang A belum lulus; pemicu wajib berhenti berupa piutang yatim nonnol ditemukan.**
+Status lanjutan: **Gerbang A dibuka bersyarat oleh Dion; diagnosis yatim tidak lagi menahan D/C/B. H1 tetap menunggu oracle.** Lihat ralat berikut; hasil audit pertama dan bukti mentah tidak ditulis ulang.
 Bagian hipotesis di bawah ditulis saat praregistrasi, sebelum kueri pertama.
 Waktu penguncian: 2026-09-13 06:39:16 UTC (13:39:16 Asia/Pontianak).
 Worker: Codex, eksekusi langsung dalam sesi yang diminta.
@@ -113,3 +114,13 @@ SQL salinan mempertahankan path ekspor `/tmp/solamax-piutang-fase2-gerbang-a/per
 1. **Tanggapan atas piutang yatim:** mohon arahkan investigasi baca-saja berikutnya untuk menentukan kode pelanggan, jenis master, jenis transaksi, nominal kredit/NULL, dan perlakuan EasyMax terhadap 14.479 baris tersebut. Belum ada usulan koreksi formula; tidak ada izin koreksi yang diasumsikan.
 2. **Oracle H1:** mohon cetak **Laporan Hutang Piutang IB per 12-09-2026** dan berikan hasilnya. Sesuai catatan pengguna, minta cetak untuk tanggal ini; **jangan cetak ulang laporan lama**, karena EasyMax dapat memicu posting dan pembalik. Risiko itu juga harus dicatat saat menafsirkan waktu pengambilan oracle.
 3. Setelah Dion menanggapi Gerbang A, lanjutkan penyelesaian H3 seluruh ledger dan atribusi transaksi tujuh pelanggan tadi. Rancangan B/C/D, keputusan tampilan pelanggan nol, usulan Fase 3, dan PR **belum dikerjakan** karena gerbang ini mendahului semuanya. Persetujuan Gerbang A kelak tidak otomatis menggantikan persetujuan rancangan/migrasi berikutnya.
+
+## Ralat dan otorisasi lanjutan 13 September
+
+Instruksi lanjutan Dion (`a4826a57-b38f-4540-9f57-1e4d4cd21958/pasted-text.txt`, §1–3) menerima reproduksi independen rekonsiliasi, mengubah aturan berhenti, dan menetapkan desain default D/C/B. Bagian “Yang memerlukan Dion” di atas merekam keadaan audit pertama; kini pekerjaan dilanjutkan sesuai instruksi baru.
+
+Frasa **“AWAL dan AKHIR kebetulan sama” diralat**: pemeriksaan independen yang Dion tetapkan sebagai fakta membuktikan kesamaan pada semua 2.973 pelanggan dan tidak adanya baris ledger `dtgl=2026-09-13` dalam cut. Snapshot 13-09 secara efektif adalah posisi tutup 12-09. Oracle H1 yang diharapkan adalah Piutang Lokal **13.052.684.187,50**, Piutang Online **900.000**, Hutang Lokal **−673.010.538**, dengan seluruh saldo per pelanggan sama dengan `per-pelanggan.csv`. H1 tetap **belum diuji** sampai laporan per 12-09 diterima; prediksi tidak disebut hasil.
+
+Pembedaan status dipertahankan: **manifest `complete`; pemicu/work `done`**. Kedua istilah tidak saling menggantikan.
+
+Fakta pemeriksaan independen lain diterima tanpa menghitung ulang: semua 328 kode EasyMax hadir di snapshot; himpunan nonnol identik 189 pelanggan, per bucket 45 Piutang Lokal, 1 Piutang Online, 143 Hutang Lokal. Berdasarkan keputusan Dion, kelas yatim diturunkan menjadi diagnosis paralel. Konsistensi kedua sistem bukan bukti bahwa keduanya benar; kesalahan bersama tidak terdeteksi oleh kesamaan himpunan. Irisan satu kode yatim saja dengan daftar 328 kode membatalkan dasar keputusan ini dan menghentikan pekerjaan sesuai §6.1 instruksi lanjutan.
