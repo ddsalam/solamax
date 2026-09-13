@@ -1,22 +1,22 @@
 BEGIN
 SET
 SET
-          observed_at          |      observed_at_wib       | current_user  | transaction_read_only 
+          observed_at          |      observed_at_wib       | current_user  | transaction_read_only
 -------------------------------+----------------------------+---------------+-----------------------
  2026-09-13 09:15:28.274787+00 | 2026-09-13 16:15:28.274787 | dashboard_app | on
 (1 row)
 
- unit_id |  code   |    name     |    timezone    
+ unit_id |  code   |    name     |    timezone
 ---------+---------+-------------+----------------
        1 | 6478111 | Imam Bonjol | Asia/Pontianak
 (1 row)
 
-           source_cycle_id            | source_cycle_sequence |  status  |      source_completed_at      |  source_completed_at_wib   
+           source_cycle_id            | source_cycle_sequence |  status  |      source_completed_at      |  source_completed_at_wib
 --------------------------------------+-----------------------+----------+-------------------------------+----------------------------
  c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff |                    42 | complete | 2026-09-12 19:05:15.271178+00 | 2026-09-13 02:05:15.271178
 (1 row)
 
- ledger |    entry_key    | customer_code |    dtgl    | njumlah  | sjnsbp | sbatal |      vcref      |                               vcket                                |          ingested_at          
+ ledger |    entry_key    | customer_code |    dtgl    | njumlah  | sjnsbp | sbatal |      vcref      |                               vcket                                |          ingested_at
 --------+-----------------+---------------+------------+----------+--------+--------+-----------------+--------------------------------------------------------------------+-------------------------------
  bphut  | PH2026091200207 | PLG2641       | 2026-09-12 |  1005000 |      1 |      1 | JP2026000010372 | Penjualan Pelanggan Debet  Tanggal 12-09-2026 Shift 3              | 2026-09-13 00:30:23.354751+00
  bphut  | PH2026091200208 | PLG2641       | 2026-09-12 |  1005000 |      2 |      1 | JP2026000010372 | Penjualan Pelanggan Debet  Tanggal 12-09-2026 Shift 3 - Pembalik   | 2026-09-13 00:30:23.354751+00
@@ -119,7 +119,7 @@ SET
  bppiut | PP2026091300020 | PLG2960       | 2026-09-13 |   616000 |      1 |      0 | UV202603901     | Pembelanjaan Voucher Kredit  Tanggal 13-09-2026 Shift 1            | 2026-09-13 08:20:58.596383+00
 (99 rows)
 
- ledger | customer_code | row_count |  min_dtgl  |  max_dtgl  | gross_amount | debet_minus_kredit | rows_on_13_sep | rows_on_or_before_12_sep |       first_ingested_at       |       last_ingested_at        | cancelled_rows 
+ ledger | customer_code | row_count |  min_dtgl  |  max_dtgl  | gross_amount | debet_minus_kredit | rows_on_13_sep | rows_on_or_before_12_sep |       first_ingested_at       |       last_ingested_at        | cancelled_rows
 --------+---------------+-----------+------------+------------+--------------+--------------------+----------------+--------------------------+-------------------------------+-------------------------------+----------------
  bphut  | PLG2641       |        16 | 2026-09-12 | 2026-09-13 |     19373900 |            2841300 |              3 |                       13 | 2026-09-13 00:30:23.354751+00 | 2026-09-13 08:25:31.874491+00 |             14
  bppiut | PLG0032       |         9 | 2026-09-12 | 2026-09-12 |       225000 |              25000 |              0 |                        9 | 2026-09-13 01:34:10.075711+00 | 2026-09-13 01:34:10.075711+00 |              8
@@ -130,13 +130,13 @@ SET
  bppiut | PLG2960       |        12 | 2026-09-12 | 2026-09-13 |      2314200 |             667800 |              3 |                        9 | 2026-09-13 01:34:10.075711+00 | 2026-09-13 08:20:58.596383+00 |             10
 (7 rows)
 
- ledger | row_count |  min_dtgl  |  max_dtgl  | gross_amount | debet_minus_kredit | rows_on_13_sep | rows_on_or_before_12_sep |       first_ingested_at       |       last_ingested_at        | cancelled_rows 
+ ledger | row_count |  min_dtgl  |  max_dtgl  | gross_amount | debet_minus_kredit | rows_on_13_sep | rows_on_or_before_12_sep |       first_ingested_at       |       last_ingested_at        | cancelled_rows
 --------+-----------+------------+------------+--------------+--------------------+----------------+--------------------------+-------------------------------+-------------------------------+----------------
  bphut  |        16 | 2026-09-12 | 2026-09-13 |     19373900 |            2841300 |              3 |                       13 | 2026-09-13 00:30:23.354751+00 | 2026-09-13 08:25:31.874491+00 |             14
  bppiut |        83 | 2026-09-12 | 2026-09-13 |    609169472 |          105023700 |             15 |                       68 | 2026-09-13 00:25:07.610948+00 | 2026-09-13 08:20:58.596383+00 |             72
 (2 rows)
 
- ledger | customer_code |    dtgl    | active_row_count | active_debet_minus_kredit |       first_ingested_at       |   first_ingested_at_wib    |       last_ingested_at        |    last_ingested_at_wib    
+ ledger | customer_code |    dtgl    | active_row_count | active_debet_minus_kredit |       first_ingested_at       |   first_ingested_at_wib    |       last_ingested_at        |    last_ingested_at_wib
 --------+---------------+------------+------------------+---------------------------+-------------------------------+----------------------------+-------------------------------+----------------------------
  bphut  | PLG2641       | 2026-09-12 |                1 |                   1405000 | 2026-09-13 01:38:05.064919+00 | 2026-09-13 08:38:05.064919 | 2026-09-13 01:38:05.064919+00 | 2026-09-13 08:38:05.064919
  bphut  | PLG2641       | 2026-09-13 |                1 |                   1436300 | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491 | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491
@@ -153,7 +153,7 @@ SET
  bppiut | PLG2960       | 2026-09-13 |                1 |                    616000 | 2026-09-13 08:20:58.596383+00 | 2026-09-13 15:20:58.596383 | 2026-09-13 08:20:58.596383+00 | 2026-09-13 15:20:58.596383
 (13 rows)
 
- ledger |    dtgl    | active_row_count | active_debet_minus_kredit |       first_ingested_at       |   first_ingested_at_wib    |       last_ingested_at        |    last_ingested_at_wib    
+ ledger |    dtgl    | active_row_count | active_debet_minus_kredit |       first_ingested_at       |   first_ingested_at_wib    |       last_ingested_at        |    last_ingested_at_wib
 --------+------------+------------------+---------------------------+-------------------------------+----------------------------+-------------------------------+----------------------------
  bphut  | 2026-09-12 |                1 |                   1405000 | 2026-09-13 01:38:05.064919+00 | 2026-09-13 08:38:05.064919 | 2026-09-13 01:38:05.064919+00 | 2026-09-13 08:38:05.064919
  bphut  | 2026-09-13 |                1 |                   1436300 | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491 | 2026-09-13 08:25:31.874491+00 | 2026-09-13 15:25:31.874491

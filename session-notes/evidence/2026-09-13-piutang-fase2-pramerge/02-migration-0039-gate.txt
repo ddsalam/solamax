@@ -1,33 +1,33 @@
 BEGIN
 SET
 SET
-          observed_at          |      observed_at_wib       | current_user  | transaction_read_only 
+          observed_at          |      observed_at_wib       | current_user  | transaction_read_only
 -------------------------------+----------------------------+---------------+-----------------------
  2026-09-13 09:14:39.193958+00 | 2026-09-13 16:14:39.193958 | dashboard_app | on
 (1 row)
 
- unit_id |  code   |    name     |    timezone    
+ unit_id |  code   |    name     |    timezone
 ---------+---------+-------------+----------------
        1 | 6478111 | Imam Bonjol | Asia/Pontianak
 (1 row)
 
- unit_id | as_of_date |            generation_id             |  formula_version   | manifest_status |           source_cycle_id            | source_cycle_sequence | cycle_status | manifest_source_completed_at  |   cycle_source_completed_at   | source_completed_at_equal | pelanggan_checksum_present | bppiut_checksum_present | bphut_checksum_present | pelanggan_expected | pelanggan_actual | bppiut_expected | bppiut_actual | bphut_expected | bphut_actual | exact_source_cut_predicate_pass 
+ unit_id | as_of_date |            generation_id             |  formula_version   | manifest_status |           source_cycle_id            | source_cycle_sequence | cycle_status | manifest_source_completed_at  |   cycle_source_completed_at   | source_completed_at_equal | pelanggan_checksum_present | bppiut_checksum_present | bphut_checksum_present | pelanggan_expected | pelanggan_actual | bppiut_expected | bppiut_actual | bphut_expected | bphut_actual | exact_source_cut_predicate_pass
 ---------+------------+--------------------------------------+--------------------+-----------------+--------------------------------------+-----------------------+--------------+-------------------------------+-------------------------------+---------------------------+----------------------------+-------------------------+------------------------+--------------------+------------------+-----------------+---------------+----------------+--------------+---------------------------------
        1 | 2026-08-31 | 31f2f0cf-d5c3-4920-9496-1db61215d03c | saldo-pelanggan-v1 | complete        | c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff |                    42 | complete     | 2026-09-12 19:05:15.271178+00 | 2026-09-12 19:05:15.271178+00 | t                         | t                          | t                       | t                      |               2973 |             2973 |          407790 |        407790 |         300257 |       300257 | t
        1 | 2026-09-13 | c45a4da2-5d16-4e8f-bf67-37343e02eb47 | saldo-pelanggan-v1 | complete        | c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff |                    42 | complete     | 2026-09-12 19:05:15.271178+00 | 2026-09-12 19:05:15.271178+00 | t                         | t                          | t                       | t                      |               2973 |             2973 |          407790 |        407790 |         300257 |       300257 | t
 (2 rows)
 
- manifest_count | building_manifest_count | unexpected_formula_count 
+ manifest_count | building_manifest_count | unexpected_formula_count
 ----------------+-------------------------+--------------------------
               2 |                       0 |                        0
 (1 row)
 
- work_count | leased_work_count 
+ work_count | leased_work_count
 ------------+-------------------
           1 |                 0
 (1 row)
 
- state | work_count 
+ state | work_count
 -------+------------
  done  |          1
 (1 row)
