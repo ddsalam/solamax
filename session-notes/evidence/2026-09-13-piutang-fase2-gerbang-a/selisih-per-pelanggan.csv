@@ -1,0 +1,8 @@
+bucket,customer_code,nama,easymax_saldo,snapshot_akhir,selisih,easymax_row,snapshot_row
+piutang_lokal,PLG0032,SETDA PROV-KB,195835530,195810530,25000,True,True
+piutang_lokal,PLG0036,JNE - KB,859634190,858393390,1240800,True,True
+piutang_lokal,PLG2234,DCK TRK KKR-DEX,1231497914,1230287914,1210000,True,True
+piutang_lokal,PLG2707,SETDA KOTA,425219016,425153816,65200,True,True
+piutang_lokal,PLG2952,PT INDOMARCO P.,-530742549,-564129111.00,33386562.00,True,True
+piutang_lokal,PLG2960,INDOMARCO P.,134106299,134054499,51800,True,True
+hutang_lokal,PLG2641,PT GLOBAL JET EX,-61710351,-63115351,1405000,True,True

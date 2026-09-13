@@ -1,0 +1,74 @@
+BEGIN
+SET
+=== 0. KONTROL POSITIF (identitas + RLS) ===
+ current_user  | sysid | unit_count 
+---------------+-------+------------
+ dashboard_app |       |          7
+(1 row)
+
+ unit_scope 
+------------
+ 1
+(1 row)
+
+ unit_id |  code   |    name     |    timezone    
+---------+---------+-------------+----------------
+       1 | 6478111 | Imam Bonjol | Asia/Pontianak
+(1 row)
+
+ bppiut_ib 
+-----------
+    407858
+(1 row)
+
+=== 1. POINTER + MANIFEST, unit 1, 10..13 Sep ===
+ as_of_date |            generation_id             | pending_replacement |  status  |  formula_version   | row_count | customer_key_count | source_cycle_sequence |         published_at          
+------------+--------------------------------------+---------------------+----------+--------------------+-----------+--------------------+-----------------------+-------------------------------
+ 2026-09-13 | c45a4da2-5d16-4e8f-bf67-37343e02eb47 | f                   | complete | saldo-pelanggan-v1 |      2973 |               2973 |                    42 | 2026-09-12 19:05:26.055002+00
+(1 row)
+
+=== 1b. SEMUA manifest unit 1 (termasuk failed/building) ===
+ as_of_date |  status  | failure_code | why |          started_at           |         completed_at          
+------------+----------+--------------+-----+-------------------------------+-------------------------------
+ 2026-08-31 | complete |              |     | 2026-09-12 19:05:24.207018+00 | 2026-09-12 19:05:24.885858+00
+ 2026-09-13 | complete |              |     | 2026-09-12 19:05:25.122405+00 | 2026-09-12 19:05:26.055002+00
+(2 rows)
+
+=== 1c. ANTREAN build_work unit 1 ===
+ as_of_date | state | attempt_count |         available_at          | err 
+------------+-------+---------------+-------------------------------+-----
+ 2026-09-13 | done  |             1 | 2026-09-12 19:05:13.629107+00 | 
+(1 row)
+
+=== 2. TOTAL MANIFEST 13-09 vs EasyMax ===
+     bucket     | easymax_saldo | solamax_akhir |  selisih   
+----------------+---------------+---------------+------------
+ piutang_lokal  | 13088663549.5 | 13052684187.5 | 35979362.0
+ piutang_online |        900000 |        900000 |          0
+ hutang_lokal   |    -671605538 |    -673010538 |    1405000
+(3 rows)
+
+=== 2b. SOURCE IDENTITY, SIX TOTALS, COUNTS ===
+            generation_id             |           source_cycle_id            |      source_completed_at      |          started_at           |         completed_at          | awal_piutang_lokal_total | akhir_piutang_lokal_total | awal_piutang_online_total | akhir_piutang_online_total | awal_hutang_lokal_total | akhir_hutang_lokal_total | source_pelanggan_row_count | source_bppiut_row_count | source_bphut_row_count 
+--------------------------------------+--------------------------------------+-------------------------------+-------------------------------+-------------------------------+--------------------------+---------------------------+---------------------------+----------------------------+-------------------------+--------------------------+----------------------------+-------------------------+------------------------
+ c45a4da2-5d16-4e8f-bf67-37343e02eb47 | c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff | 2026-09-12 19:05:15.271178+00 | 2026-09-12 19:05:25.122405+00 | 2026-09-12 19:05:26.055002+00 |            13052684187.5 |             13052684187.5 |                    900000 |                     900000 |              -673010538 |               -673010538 |                       2973 |                  407790 |                 300257
+(1 row)
+
+ actual_rows | awal_piutang_lokal | akhir_piutang_lokal | awal_piutang_online | akhir_piutang_online | awal_hutang_lokal | akhir_hutang_lokal | overlap_awal | overlap_akhir | zero_all_six 
+-------------+--------------------+---------------------+---------------------+----------------------+-------------------+--------------------+--------------+---------------+--------------
+        2973 |     13052684187.50 |      13052684187.50 |              900000 |               900000 |      -673010538.0 |       -673010538.0 |            0 |             0 |         2784
+(1 row)
+
+=== 2c. ROW EXPORT ===
+Output format is csv.
+Output format is aligned.
+=== 3. DEBET/KREDIT diturunkan dari SOURCE CUT manifest 13-09 ===
+             bucket             |  awal_debet   |   awal_kredit   |  akhir_debet  |  akhir_kredit   | baris_sjnsbp_lain 
+--------------------------------+---------------+-----------------+---------------+-----------------+-------------------
+ piutang_lokal                  |  122345938294 | 109293254106.50 |  122345938294 | 109293254106.50 |                 0
+ piutang_online                 |      10505841 |         9605841 |      10505841 |         9605841 |                 0
+ hutang_lokal                   | 53549062678.5 |   54222073216.5 | 53549062678.5 |   54222073216.5 |                 0
+ piutang_YATIM_tak_masuk_bucket |               |                 |    6411357535 |                 |             14479
+(4 rows)
+
+ROLLBACK

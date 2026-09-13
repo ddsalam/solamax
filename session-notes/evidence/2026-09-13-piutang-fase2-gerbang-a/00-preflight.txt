@@ -1,0 +1,30 @@
+BEGIN
+SET
+          observed_at          | current_user  | current_database | read_only | unit_scope 
+-------------------------------+---------------+------------------+-----------+------------
+ 2026-09-13 06:39:48.095259+00 | dashboard_app | solamax          | on        | 1
+(1 row)
+
+ unit_id |  code   |    name     |    timezone    
+---------+---------+-------------+----------------
+       1 | 6478111 | Imam Bonjol | Asia/Pontianak
+(1 row)
+
+ bppiut_ib 
+-----------
+    407858
+(1 row)
+
+               relation                | can_select 
+---------------------------------------+------------
+ app.saldo_pelanggan_build_work        | t
+ app.saldo_pelanggan_snapshot_manifest | t
+ app.saldo_pelanggan_snapshot_pointer  | t
+ app.saldo_pelanggan_snapshot_row      | t
+ app.saldo_pelanggan_source_bphut      | t
+ app.saldo_pelanggan_source_bppiut     | t
+ app.saldo_pelanggan_source_cycle      | t
+ app.saldo_pelanggan_source_pelanggan  | t
+(8 rows)
+
+ROLLBACK
