@@ -51,10 +51,15 @@ JOB_NAME=uji JOB_URI="https://x/snapshot-worker" JOB_CONTENT_TYPE="application/j
   JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=false \
   jalankan ok "endpoint belum ada, job sementara masih sah"
 
-# 6 · MERAH — endpoint sudah ada, job masih di endpoint build.
+# 6 · MERAH — job PEMENSIUNAN masih di endpoint build padahal /retire sudah ada.
+#     JOB_ROLE=retire WAJIB di sini: aturan job-sementara hanya berlaku untuk
+#     job pemensiunan, karena job BUILD memang menunjuk /snapshot-worker
+#     selamanya (kasus 12). Tanpa peran ini, kasus 6 lulus secara hampa —
+#     dan itu memang terjadi: CI menangkapnya, bukan pemeriksaan lokal saya,
+#     karena saya menyalurkan keluarannya ke `tail` dan kehilangan exit code.
 JOB_NAME=uji JOB_URI="https://x/snapshot-worker" JOB_CONTENT_TYPE="application/json" \
-  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true \
-  jalankan merah "endpoint sudah ada, job masih di endpoint build"
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true JOB_ROLE=retire \
+  jalankan merah "job pemensiunan masih di endpoint build"
 
 # 7 · HIJAU — sudah dipindah. Host SENGAJA berbeda dari kasus 6: Cloud Run punya
 #     beberapa bentuk URL yang sama-sama sah, jadi keputusannya harus atas PATH.
@@ -98,4 +103,14 @@ JOB_NAME=uji JOB_URI="https://x/snapshot-worker/retire" JOB_CONTENT_TYPE="applic
   JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=false JOB_ROLE=retire JOB_BODY_UNIT=1 \
   jalankan ok "body mematok unit sementara revisi belum mendukung semua-unit"
 
-[ "$gagal" -eq 0 ] && echo "check-snapshot-scheduler-jobs: 13 keadaan sesuai harapan." || exit 1
+# 14 · HIJAU — job BUILD menunjuk /snapshot-worker SEMENTARA /retire sudah ada.
+#      Ini keadaan produksi yang sebenarnya sesudah #359 dipromosikan, dan
+#      kasus 12 TIDAK mengujinya (ia memakai ENDPOINT_ADA=false, sehingga lulus
+#      lewat cabang lain). Tanpa kasus ini, aturan "job build dikecualikan"
+#      tidak punya uji yang dapat menjatuhkannya — dan gerbangnya memang sempat
+#      menjatuhkan solamax-snapshot-unit-1 secara keliru.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=true JOB_ROLE=build JOB_BODY_UNIT=1 \
+  jalankan ok "job build tetap sah sesudah /retire ter-deploy"
+
+[ "$gagal" -eq 0 ] && echo "check-snapshot-scheduler-jobs: 14 keadaan sesuai harapan." || exit 1
