@@ -142,3 +142,91 @@ terdaftar, penjaga lama hijau — ia hanya memeriksa **bentuk**, bukan **rujukan
    titik. Prediksi masih terkunci (mendatar ≤ 6 jam pada ≤ ~1 GB).
 3. Batas disk (`README` kapasitas) — angkanya milik Anda; puncak terukur 22,15 GB.
 4. F1 menyusul sesudah (b) stabil.
+
+---
+
+# Adendum — lubang KEDUA: penjadwal BUILD juga per-unit
+
+## 9 · Kembaran persis, di sisi yang tidak saya periksa
+
+Sesudah cakupan pemensiunan ditemukan, sisi **build** ternyata punya lubang yang
+sama bentuknya:
+
+```
+unit 4 (Bundaran Kotabaru): 39 cycle, complete = 0, sejak 12 September
+cut seq 38 LENGKAP: 935.132 bppiut / 95.969 bphut
+sebabnya: hanya solamax-snapshot-unit-1 yang ada
+```
+
+Dua hari snapshot hilang. Cut-nya lengkap dan benar — tidak pernah ada yang
+membangunnya. **Saya merancang cakupan otomatis untuk `/retire` dan tidak
+menanyakan apakah sisi build punya masalah yang sama.** Perbaikan yang berhenti
+di satu sisi meninggalkan sisi lain persis seperti semula.
+
+## 10 · Kenapa build TIDAK bisa ikut mengiterasi
+
+Build memegang **lease global-1** dan anggaran 18 menit per permintaan. Tujuh
+build dalam satu permintaan tidak muat di jendela Cloud Run 20 menit. Jadi build
+**tetap per-unit**, di-stagger di dalam jendela 02:00–05:00 WIB — dan karena itu
+cakupannya tetap bergantung pada job, yang berarti tetap butuh gerbang.
+
+Asimetri ini disengaja dan perlu ditulis: pemensiunan murah dan idempoten,
+sehingga mengiterasinya aman; build mahal dan saling mengunci, sehingga tidak.
+
+## 11 · Gerbangnya, dan premis pertama saya yang salah
+
+`scripts/ci/check-snapshot-unit-coverage.sh` — dua sisi, tujuh keadaan
+di-self-test, berjalan di tier **pilot** (input `coverage-check`).
+
+**Percobaan pertama saya memakai registry `ADOPSI_RINCIAN` (tujuh kode) sebagai
+"unit yang harus punya job". Itu salah.** Unit 3, 5, 6, 7 belum menukar bundle
+agent, jadi mereka belum mengirim cut dan belum boleh dituntut punya job build.
+Gerbang berbasis registry akan menyala **tiap hari sampai unit terakhir
+di-onboard** — alarm yang selalu menyala, kelas yang sama dengan 425 yang
+menyamarkan `disk_review_required`.
+
+Sumber yang benar: **unit yang BENAR-BENAR mengirim cut**, dibaca dari
+`app.saldo_pelanggan_source_cycle`. Karena itu gerbangnya ditaruh di
+`prisma-migrate` — satu-satunya tempat yang punya kredensial DB **dan** gcloud.
+
+**Kontrol anti-vakum** ditambahkan karena kejadiannya nyata saat pengembangan:
+`sed` BSD tidak mengenal `\+`, daftar job jadi kosong, dan gerbangnya berbunyi
+atas nol. Kalau arah salahnya kebetulan terbalik, ia akan **lulus** atas nol.
+Kini `UNIT_BERCUT` kosong ditolak sebagai **galat**, bukan dibaca sebagai
+"tidak ada unit".
+
+Dijalankan end-to-end terhadap penjadwal produksi nyata: cut dari unit 1, 2, 4
+dan build job untuk 1, 2, 4 → **HIJAU**.
+
+## 12 · Nilai #362, diargumentasikan ulang
+
+Tujuh job retire per-unit sudah dibuat, jadi #362 **bukan lagi penahan
+kapasitas**. Nilainya kini:
+
+1. **Menghapus ketergantungan pada ingatan.** Unit ke-8 dan seterusnya tercakup
+   pemensiunan otomatis pada hari ia mulai mengirim cut — tanpa siapa pun perlu
+   ingat. Itu tepat ketergantungan yang gagal dua kali hari ini.
+2. **Menghapus tujuh objek infrastruktur.** Tujuh job = tujuh header ber-secret
+   yang harus ikut setiap rotasi. Rotasi 14-09 sudah membuktikan satu header
+   yang tertinggal cukup untuk menghabiskan semalam build.
+3. **Alarm per-unit.** `staging_review` dinilai per unit lalu di-OR, sehingga
+   satu unit yang tertinggal berbunyi walau enam lainnya sehat.
+
+Ia tetap tidak mendesak. Ia hanya membuat kelas kegagalan hari ini tidak dapat
+terulang lewat pintu yang sama.
+
+## 13 · Kurva kapasitas — titik awal, bukan kesimpulan
+
+Sesudah `VACUUM FULL` kedua selesai 18:30 WIB, dengan job pemensiunan per jam
+hidup untuk seluruh unit:
+
+```
+18:44 WIB  8,33 GB
+18:59 WIB  8,41 GB   +88 MB
+19:14 WIB  8,38 GB   −35 MB
+```
+
+Mendatar — **tetapi 30 menit bukan 6 jam**, dan prediksi yang saya kunci
+berbicara tentang `pg_relation_size` selama ≤ 6 jam, bukan tentang disk selama
+setengah jam. Ini titik awal kurva, bukan konfirmasinya. `05-kurva.sh` tetap
+alat yang menjawabnya.
