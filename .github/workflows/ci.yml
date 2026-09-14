@@ -33,6 +33,10 @@ jobs:
       # Penjaga berkas cadangan ter-track. Sebabnya nyata: compliance.ts.bak —
       # sisa uji mutasi, yatim, salinan BASI logika vonis — sempat TAYANG di
       # `main`. Menjaga akhiran, bukan konsep; batasnya ditulis di skripnya.
+      # Self-test gerbang job Scheduler snapshot — DELAPAN keadaan, termasuk
+      # semua jalur hijau. Gerbang yang hanya pernah dibuktikan merah tak dapat
+      # dibedakan dari gerbang yang rusak.
+      - run: bash scripts/ci/check-snapshot-scheduler-jobs.selftest.sh
       - run: bash scripts/ci/check-backup-files.selftest.sh
       - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4
@@ -54,11 +58,11 @@ jobs:
       - run: bash scripts/ci/check-sql-syntax.selftest.sh
       - run: pnpm check
 
-  snapshot-postgres-14:
+  snapshot-postgres-16:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:14
+        image: postgres:16
         env:
           POSTGRES_DB: solamax_snapshot_ci
           POSTGRES_USER: snapshot_ci_admin
@@ -87,3 +91,60 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+
+  # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
+  #
+  # Job `snapshot-postgres-16` di atas membuktikan SQL migrasi 0039 benar. Pada
+  # 13 September 2026 migrasi itu tetap gagal di DB test, dua kali, pada dua
+  # guard berbeda — karena uji itu menyuntik SQL lewat psql per pernyataan,
+  # sebagai peran pemilik, ke database yang uji itu sendiri baru siapkan. Job
+  # ini menjalankan `prisma migrate deploy` yang SEBENARNYA (satu simple query
+  # berisi seluruh berkas) sebagai peran NOSUPERUSER NOBYPASSRLS, terhadap
+  # database yang SUDAH berisi keadaan sebelumnya. Rinciannya di skripnya.
+  #
+  # postgres:16 = paritas produksi; kedua tier Cloud SQL menjawab POSTGRES_16.
+  # Sejak 2026-09-14 job snapshot di atas juga memakai 16, jadi seluruh gerbang
+  # berbasis Postgres di repo ini berjalan pada satu versi mayor yang sama.
+  migrate-deploy-postgres-16:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: migrate_gate_admin
+          # Kredensial layanan sekali pakai; tidak pernah dipakai tier mana pun.
+          POSTGRES_PASSWORD: migrate_gate_only
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U migrate_gate_admin -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @solamax/shared build
+      - run: pnpm --filter @solamax/backend prisma:generate
+      - run: bash scripts/ci/check-migrate-deploy.sh
+        env:
+          MIGRATE_DEPLOY_ADMIN_URL: postgresql://migrate_gate_admin:migrate_gate_only@127.0.0.1:5433/postgres
+          MIGRATE_DEPLOY_HOST: 127.0.0.1
+          MIGRATE_DEPLOY_PORT: "5433"
+      # Semantik probe kesegaran F1 dikunci SEBELUM ia menyentuh jalur baca:
+      # material menyala dengan rupiah yang benar, non-material diam. Kontrol
+      # negatifnya (baris bertanggal masa depan senilai Rp 500 juta, kelas
+      # sjenis=4, baris yang tak berubah sejak cut) adalah setengah gerbangnya.
+      - run: bash scripts/ci/check-piutang-freshness-probe.sh
+        env:
+          MIGRATE_DEPLOY_ADMIN_URL: postgresql://migrate_gate_admin:migrate_gate_only@127.0.0.1:5433/postgres
+          MIGRATE_DEPLOY_HOST: 127.0.0.1
+          MIGRATE_DEPLOY_PORT: "5433"

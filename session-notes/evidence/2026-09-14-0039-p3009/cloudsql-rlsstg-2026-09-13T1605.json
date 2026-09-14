@@ -1,0 +1,224 @@
+[
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a7",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "INFO",
+    "textPayload": "2026-09-13 16:05:56.565 UTC [27]: [14817-1] db=,user= LOG:  checkpoint starting: time",
+    "timestamp": "2026-09-13T16:05:56.565703Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a6",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "INFO",
+    "textPayload": "2026-09-13 16:05:39.934 UTC [1533337]: [5-1] db=solamax,user=ingest STATEMENT:  UPDATE \"_prisma_migrations\" SET \"logs\" = $1 WHERE \"id\" = $2",
+    "timestamp": "2026-09-13T16:05:39.936065Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a5",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "ERROR",
+    "textPayload": "2026-09-13 16:05:39.934 UTC [1533337]: [4-1] db=solamax,user=ingest ERROR:  current transaction is aborted, commands ignored until end of transaction block",
+    "timestamp": "2026-09-13T16:05:39.935948Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a4",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "INFO",
+    "textPayload": "2026-09-13 16:05:39.696 UTC [1533337]: [3-1] db=solamax,user=ingest STATEMENT:  -- Reconstruct every stored generation from its OWN immutable source cut.\n-- This upgrade is atomic: no reader can observe nullable sides, old checksums,\n-- or mixed generation references. No defaults stand in for missing evidence.\n-- FORCE RLS stays enabled; the migration scopes one existing unit at a time.\nBEGIN;\nSET LOCAL lock_timeout = '10s';\n-- Bound lock acquisition, not reconstruction duration. Deployment runs this\n-- migration before serving v2 readers/builders; never execute it manually.\nLOCK TABLE app.saldo_pelanggan_source_cycle,\n  app.saldo_pelanggan_source_pelanggan,\n  app.saldo_pelanggan_source_bppiut,\n  app.saldo_pelanggan_source_bphut IN SHARE MODE;\nLOCK TABLE app.saldo_pelanggan_snapshot_manifest,\n  app.saldo_pelanggan_snapshot_row,\n  app.saldo_pelanggan_snapshot_pointer,\n  app.saldo_pelanggan_build_work,\n  app.saldo_pelanggan_dirty IN ACCESS EXCLUSIVE MODE;\n\nALTER TABLE app.saldo_pelanggan_snapshot_row\n  ADD COLUMN awal_piutang_lokal_debet NUMERIC,\n  ADD COLUMN awal_piutang_lokal_kredit NUMERIC,\n  ADD COLUMN akhir_piutang_lokal_debet NUMERIC,\n  ADD COLUMN akhir_piutang_lokal_kredit NUMERIC,\n  ADD COLUMN awal_piutang_online_debet NUMERIC,\n  ADD COLUMN awal_piutang_online_kredit NUMERIC,\n  ADD COLUMN akhir_piutang_online_debet NUMERIC,\n  ADD COLUMN akhir_piutang_online_kredit NUMERIC,\n  ADD COLUMN awal_hutang_lokal_debet NUMERIC,\n  ADD COLUMN awal_hutang_lokal_kredit NUMERIC,\n  ADD COLUMN akhir_hutang_lokal_debet NUMERIC,\n  ADD COLUMN akhir_hutang_lokal_kredit NUMERIC;\n\nALTER TABLE app.saldo_pelanggan_snapshot_manifest\n  ADD COLUMN awal_piutang_lokal_debet_total NUMERIC,\n  ADD COLUMN awal_piutang_lokal_kredit_total NUMERIC,\n  ADD COLUMN akhir_piutang_lokal_debet_total NUMERIC,\n  ADD COLUMN akhir_piutang_lokal_kredit_total NUMERIC,\n  ADD COLUMN awal_piutang_online_debet_total NUMERIC,\n  ADD COLUMN awal_piutang_online_kredit_total NUMERIC,\n  ADD COLUMN akhir_piutang_online_debet_total NUMERIC,\n  ADD COLUMN akhir_piutang_online_kredit_total NUMERIC,\n  ADD COLUMN awal_hutang_lokal_debet_total NUMERIC,\n  ADD COLUMN awal_hutang_lokal_kredit_total NUMERIC,\n  ADD COLUMN akhir_hutang_lokal_debet_total NUMERIC,\n  ADD COLUMN akhir_hutang_lokal_kredit_total NUMERIC;\n\nALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey DEFERRABLE;\nSET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey DEFERRED;\n\nCREATE TEMP TABLE sps_v2_map (\n  unit_id SMALLINT NOT NULL, as_of_date DATE NOT NULL,\n  old_generation_id UUID NOT NULL, new_generation_id UUID NOT NULL,\n  new_epoch BIGINT NOT NULL,\n  PRIMARY KEY (unit_id, as_of_date, old_generation_id)\n) ON COMMIT DROP;\nCREATE TEMP TABLE sps_v2_rows (LIKE app.saldo_pelanggan_snapshot_row) ON COMMIT DROP;\n\nDO $upgrade$\nDECLARE\n  scoped_unit SMALLINT;\n  g RECORD;\n  invalid_count BIGINT;\n  proof RECORD;\n  previous_scope TEXT := current_setting('app.unit_ids', true);\nBEGIN\n  FOR scoped_unit IN SELECT unit_id FROM public.unit ORDER BY unit_id LOOP\n    PERFORM set_config('app.unit_ids', scoped_unit::text, true);\n    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND status = 'building')\n       OR EXISTS (SELECT 1 FROM app.saldo_pelanggan_build_work WHERE unit_id = scoped_unit AND state = 'leased') THEN\n      RAISE EXCEPTION 'snapshot_v2_active_builder: finish or retire active builds before upgrade (unit %)', scoped_unit;\n    END IF;\n    IF EXISTS (SELECT 1 FROM app.saldo_pelanggan_snapshot_manifest WHERE unit_id = scoped_unit AND formula_version <> 'saldo-pelanggan-v1') THEN\n      RAISE EXCEPTION 'snapshot_v2_unexpected_formula: unit %', scoped_unit;\n    END IF;\n    -- An offset above ALL previous work/manifest epochs avoids collision with\n    -- unfinished queue tuples and retains the existing publication ordering.\n    INSERT INTO sps_v2_map\n    SELECT m.unit_id, m.as_of_date, m.generation_id, gen_random_uuid(),\n      GREATEST(\n        (SELECT COALESCE(max(x.rebuild_epoch), 0) FROM app.saldo_pelanggan_snapshot_manifest x WHERE x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date),\n        (SELECT COALESCE(max(w.rebuild_epoch), 0) FROM app.saldo_pelanggan_build_work w WHERE w.unit_id = m.unit_id AND w.as_of_date = m.as_of_date)\n      ) + row_number() OVER (PARTITION BY m.unit_id, m.as_of_date ORDER BY m.rebuild_epoch, m.generation_id)\n    FROM app.saldo_pelanggan_snapshot_manifest m WHERE m.unit_id = scoped_unit;\n\n    FOR g IN\n      SELECT m.*, x.new_generation_id, x.new_epoch\n      FROM app.saldo_pelanggan_snapshot_manifest m\n      JOIN sps_v2_map x ON x.unit_id = m.unit_id AND x.as_of_date = m.as_of_date AND x.old_generation_id = m.generation_id\n      WHERE m.unit_id = scoped_unit ORDER BY m.as_of_date, m.generation_id\n    LOOP\n      IF NOT EXISTS (\n        SELECT 1 FROM app.saldo_pelanggan_source_cycle c\n        WHERE c.unit_id = g.unit_id AND c.source_cycle_id = g.source_cycle_id\n          AND c.source_cycle_sequence = g.source_cycle_sequence AND c.status = 'complete'\n          AND c.source_completed_at = g.source_completed_at\n          AND c.pelanggan_keyed_checksum IS NOT NULL AND c.bppiut_keyed_checksum IS NOT NULL AND c.bphut_keyed_checksum IS NOT NULL\n          AND c.pelanggan_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_pelanggan p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)\n          AND c.bppiut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bppiut p WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id)\n          AND c.bphut_row_count = (SELECT count(*) FROM app.saldo_pelanggan_source_bphut h WHERE h.unit_id = c.unit_id AND h.source_cycle_id = c.source_cycle_id)\n      ) THEN\n        RAISE EXCEPTION 'snapshot_v2_source_cut_incomplete: unit %, generation %', g.unit_id, g.generation_id;\n      END IF;\n\nSELECT count(*) INTO invalid_count\nFROM (\n  SELECT p.ckdplg::text\n  FROM app.saldo_pelanggan_source_pelanggan p\n  WHERE p.unit_id = g.unit_id::smallint\n    AND p.source_cycle_id = g.source_cycle_id::uuid\n    AND NULLIF(btrim(p.ckdplg), '') IS NULL\n  UNION ALL\n  SELECT b.ckdplg\n  FROM app.saldo_pelanggan_source_bppiut b\n  WHERE b.unit_id = g.unit_id::smallint\n    AND b.source_cycle_id = g.source_cycle_id::uuid\n    AND b.dtgl <= g.as_of_date::date\n    AND COALESCE(sbatal, 0) = 0\n    AND NULLIF(btrim(ckdplg), '') IS NULL\n  UNION ALL\n  SELECT h.ckdplg\n  FROM app.saldo_pelanggan_source_bphut h\n  WHERE h.unit_id = g.unit_id::smallint\n    AND h.source_cycle_id = g.source_cycle_id::uuid\n    AND h.dtgl <= g.as_of_date::date\n    AND COALESCE(sbatal, 0) = 0\n    AND NULLIF(btrim(ckdplg), '') IS NULL\n) invalid;\n      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_customer_key'; END IF;\n\nSELECT count(*) INTO invalid_count\nFROM (\n  SELECT b.sjnsbp\n  FROM app.saldo_pelanggan_source_bppiut b\n  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid\n    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0\n    AND (b.sjnsbp IS NULL OR b.sjnsbp NOT IN (1, 2))\n    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (\n      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p\n      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id\n        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)\n    ))\n  UNION ALL\n  SELECT h.sjnsbp\n  FROM app.saldo_pelanggan_source_bphut h\n  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid\n    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0\n    AND (h.sjnsbp IS NULL OR h.sjnsbp NOT IN (1, 2))\n) invalid;\n      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_sjnsbp'; END IF;\n      IF g.status = 'complete' AND g.row_keyed_checksum IS DISTINCT FROM (\n        SELECT sha256(convert_to(COALESCE(string_agg(\n          concat_ws('|', unit_id::text, as_of_date::text, customer_code,\n            awal_piutang_lokal::text, akhir_piutang_lokal::text, awal_piutang_online::text, akhir_piutang_online::text, awal_hutang_lokal::text, akhir_hutang_lokal::text),\n          E'\\n' ORDER BY customer_code), ''), 'UTF8'))\n        FROM app.saldo_pelanggan_snapshot_row\n        WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id\n      ) THEN\n        RAISE EXCEPTION 'snapshot_v2_old_checksum_mismatch: unit %, generation %', g.unit_id, g.generation_id;\n      END IF;\n\nSELECT count(*) INTO invalid_count\nFROM (\n  SELECT b.njumlah\n  FROM app.saldo_pelanggan_source_bppiut b\n  WHERE b.unit_id = g.unit_id::smallint AND b.source_cycle_id = g.source_cycle_id::uuid\n    AND b.dtgl <= g.as_of_date::date AND COALESCE(b.sbatal, 0) = 0\n    AND b.njumlah IS NULL\n    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (\n      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p\n      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id\n        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)\n    ))\n  UNION ALL\n  SELECT h.njumlah\n  FROM app.saldo_pelanggan_source_bphut h\n  WHERE h.unit_id = g.unit_id::smallint AND h.source_cycle_id = g.source_cycle_id::uuid\n    AND h.dtgl <= g.as_of_date::date AND COALESCE(h.sbatal, 0) = 0\n    AND h.njumlah IS NULL\n) invalid;\n      IF invalid_count <> 0 THEN RAISE EXCEPTION 'snapshot_v2_invalid_source_amount'; END IF;\n      TRUNCATE sps_v2_rows;\n\nWITH master_keys AS (\n  SELECT btrim(p.ckdplg) AS customer_code\n  FROM app.saldo_pelanggan_source_pelanggan p\n  WHERE p.unit_id = g.unit_id::smallint AND p.source_cycle_id = g.source_cycle_id::uuid\n), local_keys AS (\n  SELECT btrim(p.ckdplg) AS customer_code\n  FROM app.saldo_pelanggan_source_pelanggan p\n  WHERE p.unit_id = g.unit_id::smallint\n    AND p.source_cycle_id = g.source_cycle_id::uuid\n    AND p.sjenis IN (1, 5)\n), live_piut AS (\n  SELECT btrim(b.ckdplg) AS customer_code,\n         b.dtgl, b.sjnsbp, b.njumlah,\n         b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value\n  FROM app.saldo_pelanggan_source_bppiut b\n  WHERE b.unit_id = g.unit_id::smallint\n    AND b.source_cycle_id = g.source_cycle_id::uuid\n    AND b.dtgl <= g.as_of_date::date\n    AND COALESCE(sbatal, 0) = 0\n), live_hut AS (\n  SELECT btrim(h.ckdplg) AS customer_code,\n         h.dtgl, h.sjnsbp, h.njumlah,\n         h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value\n  FROM app.saldo_pelanggan_source_bphut h\n  WHERE h.unit_id = g.unit_id::smallint\n    AND h.source_cycle_id = g.source_cycle_id::uuid\n    AND h.dtgl <= g.as_of_date::date\n    AND COALESCE(sbatal, 0) = 0\n), customer_keys AS (\n  SELECT customer_code FROM master_keys\n  UNION SELECT customer_code FROM live_piut\n  UNION SELECT customer_code FROM live_hut\n), piut AS (\n  SELECT p.customer_code,\n    COALESCE(sum(p.value) FILTER (\n      WHERE l.customer_code IS NOT NULL\n        AND position('.' in p.customer_code) = 0\n        AND p.dtgl < g.as_of_date::date\n    ), 0) AS awal_piutang_lokal,\n    COALESCE(sum(p.value) FILTER (\n      WHERE l.customer_code IS NOT NULL\n        AND position('.' in p.customer_code) = 0\n        AND p.dtgl <= g.as_of_date::date\n    ), 0) AS akhir_piutang_lokal,\n    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_lokal_debet,\n    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_lokal_kredit,\n    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_lokal_debet,\n    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_lokal_kredit,\n    COALESCE(sum(p.value) FILTER (\n      WHERE position('.' in p.customer_code) > 0\n        AND p.dtgl < g.as_of_date::date\n    ), 0) AS awal_piutang_online,\n    COALESCE(sum(p.value) FILTER (\n      WHERE position('.' in p.customer_code) > 0\n        AND p.dtgl <= g.as_of_date::date\n    ), 0) AS akhir_piutang_online,\n    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 1), 0) AS awal_piutang_online_debet,\n    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < g.as_of_date::date AND p.sjnsbp = 2), 0) AS awal_piutang_online_kredit,\n    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 1), 0) AS akhir_piutang_online_debet,\n    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= g.as_of_date::date AND p.sjnsbp = 2), 0) AS akhir_piutang_online_kredit\n  FROM live_piut p\n  LEFT JOIN local_keys l ON l.customer_code = p.customer_code\n  GROUP BY p.customer_code\n), hut AS (\n  SELECT h.customer_code,\n    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl < g.as_of_date::date), 0)\n      AS awal_hutang_lokal,\n    -COALESCE(sum(h.value) FILTER (WHERE h.dtgl <= g.as_of_date::date), 0)\n      AS akhir_hutang_lokal,\n    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 1), 0) AS awal_hutang_lokal_debet,\n    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < g.as_of_date::date AND h.sjnsbp = 2), 0) AS awal_hutang_lokal_kredit,\n    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 1), 0) AS akhir_hutang_lokal_debet,\n    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= g.as_of_date::date AND h.sjnsbp = 2), 0) AS akhir_hutang_lokal_kredit\n  FROM live_hut h\n  GROUP BY h.customer_code\n)\nINSERT INTO sps_v2_rows (\n  unit_id, as_of_date, generation_id, customer_code,\n  awal_piutang_lokal, akhir_piutang_lokal,\n  awal_piutang_online, akhir_piutang_online,\n  awal_hutang_lokal, akhir_hutang_lokal,\n  awal_piutang_lokal_debet,\n  awal_piutang_lokal_kredit,\n  akhir_piutang_lokal_debet,\n  akhir_piutang_lokal_kredit,\n  awal_piutang_online_debet,\n  awal_piutang_online_kredit,\n  akhir_piutang_online_debet,\n  akhir_piutang_online_kredit,\n  awal_hutang_lokal_debet,\n  awal_hutang_lokal_kredit,\n  akhir_hutang_lokal_debet,\n  akhir_hutang_lokal_kredit\n)\nSELECT g.unit_id::smallint, g.as_of_date::date, g.new_generation_id::uuid, k.customer_code,\n       COALESCE(p.awal_piutang_lokal, 0), COALESCE(p.akhir_piutang_lokal, 0),\n       COALESCE(p.awal_piutang_online, 0), COALESCE(p.akhir_piutang_online, 0),\n       COALESCE(h.awal_hutang_lokal, 0), COALESCE(h.akhir_hutang_lokal, 0),\n       COALESCE(p.awal_piutang_lokal_debet, 0),\n       COALESCE(p.awal_piutang_lokal_kredit, 0),\n       COALESCE(p.akhir_piutang_lokal_debet, 0),\n       COALESCE(p.akhir_piutang_lokal_kredit, 0),\n       COALESCE(p.awal_piutang_online_debet, 0),\n       COALESCE(p.awal_piutang_online_kredit, 0),\n       COALESCE(p.akhir_piutang_online_debet, 0),\n       COALESCE(p.akhir_piutang_online_kredit, 0),\n       COALESCE(h.awal_hutang_lokal_debet, 0),\n       COALESCE(h.awal_hutang_lokal_kredit, 0),\n       COALESCE(h.akhir_hutang_lokal_debet, 0),\n       COALESCE(h.akhir_hutang_lokal_kredit, 0)\nFROM customer_keys k\nLEFT JOIN piut p ON p.customer_code = k.customer_code\nLEFT JOIN hut h ON h.customer_code = k.customer_code\n;\n      -- Complete generations must retain every key and every old amount.\n      -- Failed generations are rebuilt but remain failed and cannot be read.\n      IF g.status = 'complete' AND EXISTS (\n        SELECT 1 FROM (\n          SELECT * FROM app.saldo_pelanggan_snapshot_row\n          WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id\n        ) old FULL JOIN sps_v2_rows fresh USING (customer_code)\n        WHERE old.customer_code IS NULL OR fresh.customer_code IS NULL\n          OR ROW(old.awal_piutang_lokal, old.akhir_piutang_lokal, old.awal_piutang_online, old.akhir_piutang_online, old.awal_hutang_lokal, old.akhir_hutang_lokal) IS DISTINCT FROM ROW(fresh.awal_piutang_lokal, fresh.akhir_piutang_lokal, fresh.awal_piutang_online, fresh.akhir_piutang_online, fresh.awal_hutang_lokal, fresh.akhir_hutang_lokal)\n      ) THEN\n        RAISE EXCEPTION 'snapshot_v2_legacy_balance_mismatch: unit %, generation %', g.unit_id, g.generation_id;\n      END IF;\n      SELECT count(*)::bigint AS row_count,\n        sha256(convert_to(COALESCE(string_agg(\n          concat_ws('|', unit_id::text, as_of_date::text, customer_code,\n            awal_piutang_lokal::text,\n            akhir_piutang_lokal::text,\n            awal_piutang_online::text,\n            akhir_piutang_online::text,\n            awal_hutang_lokal::text,\n            akhir_hutang_lokal::text,\n            awal_piutang_lokal_debet::text,\n            awal_piutang_lokal_kredit::text,\n            akhir_piutang_lokal_debet::text,\n            akhir_piutang_lokal_kredit::text,\n            awal_piutang_online_debet::text,\n            awal_piutang_online_kredit::text,\n            akhir_piutang_online_debet::text,\n            akhir_piutang_online_kredit::text,\n            awal_hutang_lokal_debet::text,\n            awal_hutang_lokal_kredit::text,\n            akhir_hutang_lokal_debet::text,\n            akhir_hutang_lokal_kredit::text),\n          E'\\n' ORDER BY customer_code), ''), 'UTF8')) AS checksum,\n        COALESCE(sum(awal_piutang_lokal), 0) AS awal_piutang_lokal_total,\n        COALESCE(sum(akhir_piutang_lokal), 0) AS akhir_piutang_lokal_total,\n        COALESCE(sum(awal_piutang_online), 0) AS awal_piutang_online_total,\n        COALESCE(sum(akhir_piutang_online), 0) AS akhir_piutang_online_total,\n        COALESCE(sum(awal_hutang_lokal), 0) AS awal_hutang_lokal_total,\n        COALESCE(sum(akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,\n        COALESCE(sum(awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,\n        COALESCE(sum(awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,\n        COALESCE(sum(akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,\n        COALESCE(sum(akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,\n        COALESCE(sum(awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,\n        COALESCE(sum(awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,\n        COALESCE(sum(akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,\n        COALESCE(sum(akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,\n        COALESCE(sum(awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,\n        COALESCE(sum(awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,\n        COALESCE(sum(akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,\n        COALESCE(sum(akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total\n      INTO proof FROM sps_v2_rows;\n      IF g.status = 'complete' AND (\n        g.row_count IS DISTINCT FROM proof.row_count OR\n        ROW(g.awal_piutang_lokal_total, g.akhir_piutang_lokal_total, g.awal_piutang_online_total, g.akhir_piutang_online_total, g.awal_hutang_lokal_total, g.akhir_hutang_lokal_total) IS DISTINCT FROM ROW(proof.awal_piutang_lokal_total, proof.akhir_piutang_lokal_total, proof.awal_piutang_online_total, proof.akhir_piutang_online_total, proof.awal_hutang_lokal_total, proof.akhir_hutang_lokal_total)\n      ) THEN\n        RAISE EXCEPTION 'snapshot_v2_manifest_mismatch: unit %, generation %', g.unit_id, g.generation_id;\n      END IF;\n      DELETE FROM app.saldo_pelanggan_snapshot_row WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;\n      INSERT INTO app.saldo_pelanggan_snapshot_row SELECT * FROM sps_v2_rows;\n      UPDATE app.saldo_pelanggan_snapshot_manifest SET\n        generation_id = g.new_generation_id, rebuild_epoch = g.new_epoch,\n        formula_version = 'saldo-pelanggan-v2',\n        computed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE computed_at END,\n        completed_at = CASE WHEN status = 'complete' THEN clock_timestamp() ELSE completed_at END,\n        published_at = CASE WHEN status = 'complete' AND published THEN clock_timestamp() ELSE published_at END,\n        customer_key_count = proof.row_count, row_count = proof.row_count,\n        row_keyed_checksum = proof.checksum,\n        awal_piutang_lokal_total = proof.awal_piutang_lokal_total,\n        akhir_piutang_lokal_total = proof.akhir_piutang_lokal_total,\n        awal_piutang_online_total = proof.awal_piutang_online_total,\n        akhir_piutang_online_total = proof.akhir_piutang_online_total,\n        awal_hutang_lokal_total = proof.awal_hutang_lokal_total,\n        akhir_hutang_lokal_total = proof.akhir_hutang_lokal_total,\n        awal_piutang_lokal_debet_total = proof.awal_piutang_lokal_debet_total,\n        awal_piutang_lokal_kredit_total = proof.awal_piutang_lokal_kredit_total,\n        akhir_piutang_lokal_debet_total = proof.akhir_piutang_lokal_debet_total,\n        akhir_piutang_lokal_kredit_total = proof.akhir_piutang_lokal_kredit_total,\n        awal_piutang_online_debet_total = proof.awal_piutang_online_debet_total,\n        awal_piutang_online_kredit_total = proof.awal_piutang_online_kredit_total,\n        akhir_piutang_online_debet_total = proof.akhir_piutang_online_debet_total,\n        akhir_piutang_online_kredit_total = proof.akhir_piutang_online_kredit_total,\n        awal_hutang_lokal_debet_total = proof.awal_hutang_lokal_debet_total,\n        awal_hutang_lokal_kredit_total = proof.awal_hutang_lokal_kredit_total,\n        akhir_hutang_lokal_debet_total = proof.akhir_hutang_lokal_debet_total,\n        akhir_hutang_lokal_kredit_total = proof.akhir_hutang_lokal_kredit_total\n      WHERE unit_id = g.unit_id AND as_of_date = g.as_of_date AND generation_id = g.generation_id;\n    END LOOP;\n    UPDATE app.saldo_pelanggan_snapshot_manifest m SET base_generation_id = x.new_generation_id\n    FROM sps_v2_map x WHERE m.unit_id = scoped_unit AND x.unit_id = m.unit_id AND x.as_of_date = m.base_month_end AND x.old_generation_id = m.base_generation_id;\n    UPDATE app.saldo_pelanggan_snapshot_pointer p SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, activated_at = clock_timestamp()\n    FROM sps_v2_map x WHERE p.unit_id = scoped_unit AND x.unit_id = p.unit_id AND x.as_of_date = p.as_of_date AND x.old_generation_id = p.generation_id;\n    UPDATE app.saldo_pelanggan_build_work w SET generation_id = x.new_generation_id, rebuild_epoch = x.new_epoch, updated_at = clock_timestamp()\n    FROM sps_v2_map x WHERE w.unit_id = scoped_unit AND x.unit_id = w.unit_id AND x.as_of_date = w.as_of_date AND x.old_generation_id = w.generation_id;\n    UPDATE app.saldo_pelanggan_dirty d SET covered_by_generation_id = x.new_generation_id, version = d.version + 1, updated_at = clock_timestamp()\n    FROM sps_v2_map x WHERE d.unit_id = scoped_unit AND x.unit_id = d.unit_id AND x.as_of_date = d.covered_through_date AND x.old_generation_id = d.covered_by_generation_id;\n  END LOOP;\n  PERFORM set_config('app.unit_ids', COALESCE(previous_scope, ''), true);\nEND\n$upgrade$;\n\n-- Validate all reference moves before restoring the original immediate FKs.\nSET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey IMMEDIATE;\nALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey NOT DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey NOT DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey NOT DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey NOT DEFERRABLE;\nALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey NOT DEFERRABLE;\n\nALTER TABLE app.saldo_pelanggan_snapshot_row\n  ALTER COLUMN awal_piutang_lokal_debet SET NOT NULL,\n  ALTER COLUMN awal_piutang_lokal_kredit SET NOT NULL,\n  ALTER COLUMN akhir_piutang_lokal_debet SET NOT NULL,\n  ALTER COLUMN akhir_piutang_lokal_kredit SET NOT NULL,\n  ALTER COLUMN awal_piutang_online_debet SET NOT NULL,\n  ALTER COLUMN awal_piutang_online_kredit SET NOT NULL,\n  ALTER COLUMN akhir_piutang_online_debet SET NOT NULL,\n  ALTER COLUMN akhir_piutang_online_kredit SET NOT NULL,\n  ALTER COLUMN awal_hutang_lokal_debet SET NOT NULL,\n  ALTER COLUMN awal_hutang_lokal_kredit SET NOT NULL,\n  ALTER COLUMN akhir_hutang_lokal_debet SET NOT NULL,\n  ALTER COLUMN akhir_hutang_lokal_kredit SET NOT NULL;\nALTER TABLE app.saldo_pelanggan_snapshot_row\n  ADD CONSTRAINT sps_row_awal_piutang_lokal_sides CHECK (awal_piutang_lokal = awal_piutang_lokal_debet - awal_piutang_lokal_kredit),\n  ADD CONSTRAINT sps_row_akhir_piutang_lokal_sides CHECK (akhir_piutang_lokal = akhir_piutang_lokal_debet - akhir_piutang_lokal_kredit),\n  ADD CONSTRAINT sps_row_awal_piutang_online_sides CHECK (awal_piutang_online = awal_piutang_online_debet - awal_piutang_online_kredit),\n  ADD CONSTRAINT sps_row_akhir_piutang_online_sides CHECK (akhir_piutang_online = akhir_piutang_online_debet - akhir_piutang_online_kredit),\n  ADD CONSTRAINT sps_row_awal_hutang_lokal_sides CHECK (awal_hutang_lokal = awal_hutang_lokal_debet - awal_hutang_lokal_kredit),\n  ADD CONSTRAINT sps_row_akhir_hutang_lokal_sides CHECK (akhir_hutang_lokal = akhir_hutang_lokal_debet - akhir_hutang_lokal_kredit);\n\nALTER TABLE app.saldo_pelanggan_snapshot_manifest\n  ADD CONSTRAINT sps_manifest_awal_piutang_lokal_sides CHECK (status <> 'complete' OR (awal_piutang_lokal_debet_total IS NOT NULL AND awal_piutang_lokal_kredit_total IS NOT NULL AND awal_piutang_lokal_total = awal_piutang_lokal_debet_total - awal_piutang_lokal_kredit_total)),\n  ADD CONSTRAINT sps_manifest_akhir_piutang_lokal_sides CHECK (status <> 'complete' OR (akhir_piutang_lokal_debet_total IS NOT NULL AND akhir_piutang_lokal_kredit_total IS NOT NULL AND akhir_piutang_lokal_total = akhir_piutang_lokal_debet_total - akhir_piutang_lokal_kredit_total)),\n  ADD CONSTRAINT sps_manifest_awal_piutang_online_sides CHECK (status <> 'complete' OR (awal_piutang_online_debet_total IS NOT NULL AND awal_piutang_online_kredit_total IS NOT NULL AND awal_piutang_online_total = awal_piutang_online_debet_total - awal_piutang_online_kredit_total)),\n  ADD CONSTRAINT sps_manifest_akhir_piutang_online_sides CHECK (status <> 'complete' OR (akhir_piutang_online_debet_total IS NOT NULL AND akhir_piutang_online_kredit_total IS NOT NULL AND akhir_piutang_online_total = akhir_piutang_online_debet_total - akhir_piutang_online_kredit_total)),\n  ADD CONSTRAINT sps_manifest_awal_hutang_lokal_sides CHECK (status <> 'complete' OR (awal_hutang_lokal_debet_total IS NOT NULL AND awal_hutang_lokal_kredit_total IS NOT NULL AND awal_hutang_lokal_total = awal_hutang_lokal_debet_total - awal_hutang_lokal_kredit_total)),\n  ADD CONSTRAINT sps_manifest_akhir_hutang_lokal_sides CHECK (status <> 'complete' OR (akhir_hutang_lokal_debet_total IS NOT NULL AND akhir_hutang_lokal_kredit_total IS NOT NULL AND akhir_hutang_lokal_total = akhir_hutang_lokal_debet_total - akhir_hutang_lokal_kredit_total));\n\nCOMMIT;\n",
+    "timestamp": "2026-09-13T16:05:39.698519Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a3",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "INFO",
+    "textPayload": "2026-09-13 16:05:39.696 UTC [1533337]: [2-1] db=solamax,user=ingest CONTEXT:  PL/pgSQL function inline_code_block line 13 at RAISE",
+    "timestamp": "2026-09-13T16:05:39.698437Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a2",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "ERROR",
+    "textPayload": "2026-09-13 16:05:39.696 UTC [1533337]: [1-1] db=solamax,user=ingest ERROR:  snapshot_v2_active_builder: finish or retire active builds before upgrade (unit 1)",
+    "timestamp": "2026-09-13T16:05:39.697905Z"
+  },
+  {
+    "insertId": "s=a1f718af35dd42f78ec605b04c0b1ebf;i=34f4c2;b=7785301d7e964912a40da758340abc61;m=205c27f1bf7;t=65b5f7cd92eaa;x=cef470bfab5f6d31-0@a1",
+    "labels": {
+      "INSTANCE_UID": "30-bd4deb5c-925b-44cf-821d-bf3d2d47526f",
+      "LOG_BUCKET_NUM": "79",
+      "PROJECT_NUMBER": "113869564052",
+      "SOURCE_ID": "30376438303462646332303236343132e3b0c442"
+    },
+    "logName": "projects/solamax/logs/cloudsql.googleapis.com%2Fpostgres.log",
+    "receiveTimestamp": "2026-09-13T16:06:06.436277243Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "INFO",
+    "textPayload": "2026-09-13 16:05:34.892 UTC [1533331]: [1-1] db=solamax,user=ingest LOG:  could not receive data from client: Connection reset by peer",
+    "timestamp": "2026-09-13T16:05:34.892714Z"
+  },
+  {
+    "insertId": "-ijxjple1xrza",
+    "logName": "projects/solamax/logs/cloudaudit.googleapis.com%2Factivity",
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "oauthInfo": {
+          "oauthClientId": "115494007013787155776"
+        },
+        "principalEmail": "gh-deploy-dashboard@solamax.iam.gserviceaccount.com",
+        "principalSubject": "serviceAccount:gh-deploy-dashboard@solamax.iam.gserviceaccount.com",
+        "serviceAccountDelegationInfo": [
+          {
+            "principalSubject": "principal://iam.googleapis.com/projects/113869564052/locations/global/workloadIdentityPools/github-actions/subject/repo:ddsalam/solamax:environment:testing"
+          }
+        ]
+      },
+      "authorizationInfo": [
+        {
+          "granted": true,
+          "permission": "cloudsql.instances.connect",
+          "permissionType": "ADMIN_WRITE",
+          "resource": "projects/solamax/instances/solamax-pg-rlsstg",
+          "resourceAttributes": {
+            "name": "projects/solamax/instances/solamax-pg-rlsstg",
+            "service": "sqladmin.googleapis.com",
+            "type": "sqladmin.googleapis.com/Instance"
+          }
+        }
+      ],
+      "methodName": "cloudsql.instances.connect",
+      "request": {
+        "@type": "type.googleapis.com/google.cloud.sql.v1.GenerateEphemeralCertRequest",
+        "instance": "solamax-pg-rlsstg",
+        "project": "solamax"
+      },
+      "requestMetadata": {
+        "callerIp": "74.235.127.161",
+        "destinationAttributes": {},
+        "requestAttributes": {
+          "auth": {},
+          "time": "2026-09-13T16:05:30.937301Z"
+        }
+      },
+      "resourceName": "projects/solamax/instances/solamax-pg-rlsstg",
+      "response": {
+        "@type": "type.googleapis.com/google.cloud.sql.v1.GenerateEphemeralCertResponse",
+        "ephemeralCert": {
+          "kind": "sql#sslCert"
+        }
+      },
+      "serviceName": "cloudsql.googleapis.com",
+      "status": {
+        "message": "OK"
+      }
+    },
+    "receiveTimestamp": "2026-09-13T16:05:31.012881690Z",
+    "resource": {
+      "labels": {
+        "database_id": "solamax:solamax-pg-rlsstg",
+        "project_id": "solamax",
+        "region": "asia-southeast2"
+      },
+      "type": "cloudsql_database"
+    },
+    "severity": "NOTICE",
+    "timestamp": "2026-09-13T16:05:30.918850Z"
+  }
+]

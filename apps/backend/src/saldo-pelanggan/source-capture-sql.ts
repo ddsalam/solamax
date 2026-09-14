@@ -485,6 +485,23 @@ WHERE c.unit_id = $1::smallint
 RETURNING source_cycle_id`;
 
 /** $1 unit, $2 winning sequence. Any older incomplete cut can no longer win. */
+/**
+ * $1 unit. Berapa cut yang masih `staging`.
+ *
+ * Angka inilah tanda kesehatan LAJU. Hanya cut ber-sequence TERTINGGI yang
+ * masih bisa menang (lihat READ_LATEST_SOURCE_SEQUENCE_SQL), jadi dalam keadaan
+ * sehat jumlahnya 1 — paling banyak 2 bila satu cut sedang diunggah. Terukur
+ * di produksi 14-09-2026: **22 cut staging** menumpuk selama ±27 jam, memegang
+ * 17.674.653 dari 18.082.443 baris `source_bppiut` (97,7%). Yang menumpuk
+ * bukan cycle `failed` — yang itu memegang NOL baris; pemensiunannya bekerja.
+ * Yang tidak bekerja adalah CADENCE-nya: penandaan staging->failed hanya
+ * terjadi saat snapshot worker berjalan, yaitu sekali sehari.
+ */
+export const COUNT_STAGING_CYCLES_SQL = `
+SELECT count(*)::bigint AS staging_count
+FROM app.saldo_pelanggan_source_cycle
+WHERE unit_id = $1::smallint AND status = 'staging'`;
+
 export const FAIL_SUPERSEDED_STAGING_CYCLES_SQL = `
 UPDATE app.saldo_pelanggan_source_cycle
 SET status = 'failed',
@@ -499,10 +516,7 @@ WHERE unit_id = $1::smallint
  * rows once a cut failed or an older complete cut has no active consumer.
  * The newest complete cut is retained as the predecessor for the next diff.
  */
-const retiredSourceRowsPredicate = `
-  AND c.unit_id = $1::smallint
-  AND c.source_cycle_id = s.source_cycle_id
-  AND (
+const retiredCyclePredicate = `(
     c.status = 'failed'
     OR (
       c.status = 'complete'
@@ -531,16 +545,39 @@ const retiredSourceRowsPredicate = `
     )
   )`;
 
+/**
+ * $1 unit, $2 batas baris per batch. BERBATAS DENGAN SENGAJA.
+ *
+ * Versi tak-berbatas menghapus seluruh sisa dalam SATU pernyataan di dalam satu
+ * transaksi ber-budget. Melewati budget berarti rollback TOTAL: nol kemajuan,
+ * satu baris peringatan stderr, dan tumpukan yang membesar sehingga percobaan
+ * berikutnya lebih pasti gagal. Terukur 95% budget di produksi 12 Sep 2026.
+ *
+ * Bentuk berbatas membuat kegagalan menjadi KEMAJUAN SEBAGIAN. Predikatnya
+ * dievaluasi ulang tiap batch, jadi cut yang statusnya berubah di tengah
+ * pengurasan diperlakukan menurut keadaan terbarunya — lebih benar, bukan
+ * kurang. `ctid` aman di sini: baris milik cut yang sudah mati tidak ditulis
+ * siapa pun, dan CTE serta DELETE berbagi satu snapshot pernyataan.
+ */
+const boundedPrune = (table: string) => `
+WITH doomed AS (
+  SELECT s.ctid AS row_ctid
+  FROM ${table} s
+  JOIN app.saldo_pelanggan_source_cycle c
+    ON c.unit_id = $1::smallint
+   AND c.source_cycle_id = s.source_cycle_id
+  WHERE s.unit_id = $1::smallint
+    AND ${retiredCyclePredicate}
+  LIMIT $2::int
+)
+DELETE FROM ${table} s
+USING doomed d
+WHERE s.ctid = d.row_ctid`;
+
 export const PRUNE_RETIRED_SOURCE_ROWS_SQL = [
-  `DELETE FROM app.saldo_pelanggan_source_pelanggan s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
-  `DELETE FROM app.saldo_pelanggan_source_bppiut s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
-  `DELETE FROM app.saldo_pelanggan_source_bphut s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
+  boundedPrune("app.saldo_pelanggan_source_pelanggan"),
+  boundedPrune("app.saldo_pelanggan_source_bppiut"),
+  boundedPrune("app.saldo_pelanggan_source_bphut"),
 ] as const;
 
 /** $1 unit. Retire unleased work before inserting the latest source cut. */

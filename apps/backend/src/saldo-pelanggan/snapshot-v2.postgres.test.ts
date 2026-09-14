@@ -154,13 +154,17 @@ describe("snapshot PostgreSQL CI target guard", () => {
   });
 });
 
-suite("saldo v2 migration and SQL on disposable PostgreSQL 14", () => {
+suite("saldo v2 migration and SQL on disposable PostgreSQL 16", () => {
   beforeAll(async () => {
     connection = ciConnection(process.env.SNAPSHOT_POSTGRES_CI_URL);
     const identity = JSON.parse(sql("SELECT json_build_object('version',current_setting('server_version_num')::int,'database',current_database(),'user',current_user);", false));
     expect(identity).toMatchObject({ database: "solamax_snapshot_ci", user: "snapshot_ci_admin" });
-    expect(identity.version).toBeGreaterThanOrEqual(140000);
-    expect(identity.version).toBeLessThan(150000);
+    // Dipatok ke 16 (2026-09-14, keputusan owner): `gcloud sql instances
+    // describe` menjawab POSTGRES_16 untuk solamax-pg DAN solamax-pg-rlsstg.
+    // Sebelumnya suite ini menegaskan 14 — versi yang tidak berjalan di tier
+    // mana pun, sehingga setiap "lulus di PostgreSQL" menguji mesin yang salah.
+    expect(identity.version).toBeGreaterThanOrEqual(160000);
+    expect(identity.version).toBeLessThan(170000);
     sql("DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='snapshot_ci_owner') THEN CREATE ROLE snapshot_ci_owner NOSUPERUSER NOBYPASSRLS NOLOGIN; END IF; END $$;", false);
     const dashboardPath = resolve(__dirname, "../../../dashboard/src/lib/saldo-snapshot.ts");
     vi.doMock(resolve(__dirname, "../../../dashboard/src/lib/db.ts"), () => ({ qScoped: vi.fn() }));
