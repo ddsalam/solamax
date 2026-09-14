@@ -209,6 +209,7 @@ jobs:
           instance: solamax:asia-southeast2:solamax-pg
           db-secret: solamax-db-url-staging
           forbid: rlsstg
+          coverage-check: "true"
 
   deploy-pilot:
     if: github.ref == 'refs/heads/main'

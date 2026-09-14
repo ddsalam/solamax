@@ -37,6 +37,8 @@ jobs:
       # semua jalur hijau. Gerbang yang hanya pernah dibuktikan merah tak dapat
       # dibedakan dari gerbang yang rusak.
       - run: bash scripts/ci/check-snapshot-scheduler-jobs.selftest.sh
+      # Gerbang cakupan unit — tujuh keadaan, dua sisi (build & pemensiunan).
+      - run: bash scripts/ci/check-snapshot-unit-coverage.selftest.sh
       - run: bash scripts/ci/check-backup-files.selftest.sh
       - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4
