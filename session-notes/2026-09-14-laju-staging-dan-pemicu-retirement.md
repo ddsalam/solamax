@@ -299,8 +299,21 @@ gcloud scheduler jobs update http solamax-snapshot-retire-unit-1 \
   --format='value(name)'
 ```
 
-Jadwal dan header dipertahankan; hanya uri dan deskripsi berubah. Sesudahnya
-job memulangkan **200** dan berhenti tampil merah, dan gerbang §8 menjadi hijau.
+Perintah itu **tidak** menyebut `--update-headers`, jadi header *seharusnya*
+terpelihara — tetapi **itu klaim yang belum diuji pada job ini**, dan kelas
+klaim yang sama baru saja menghabiskan satu malam build (§17). **Verifikasi
+sesudah menjalankannya**:
+
+```bash
+gcloud scheduler jobs describe solamax-snapshot-retire-unit-1 \
+  --project=solamax --location=asia-southeast2 --format=json \
+  | python3 scripts/ci/scheduler-job-facts.py
+```
+
+Harus memulangkan `JOB_CONTENT_TYPE=application/json` dan `JOB_HEADER_KEYS`
+yang memuat `x-snapshot-secret`. Bila salah satu hilang, pasang ulang
+**SELURUH** header sekaligus (§17). Sesudah benar, job memulangkan **200** dan
+gerbang §8 menjadi hijau.
 
 ## 10 · LUBANG BERNAMA — hal yang TIDAK saya ketahui
 
@@ -427,3 +440,85 @@ psql "$DATABASE_URL_PILOT" -X -At -c \
 3. Bila < 9 GB: tidak perlu tindakan DB; job §2 yang menjaganya tetap di bawah.
 
 Langkah 1 dan 2 **tidak saling menunggu**.
+
+---
+
+# Adendum 3 — jebakan header, dan premis plateau yang belum saya buktikan
+
+## 17 · `--update-headers` MENGGANTI set header, bukan menambah
+
+Terbukti dua arah di job produksi 14-09-2026:
+
+| Tindakan | Akibat |
+|---|---|
+| pasang `x-snapshot-secret` saja | `Content-Type` kembali ke default `application/octet-stream` → NestJS berhenti mem-parse body → `unit_id` tak terbaca → **404 dalam 3 ms** |
+| lalu perbaiki `Content-Type` saja | **`x-snapshot-secret` terhapus** |
+
+Itulah mekanisme yang menghabiskan build 02:05 WIB — bukan "header tidak
+sinkron" secara umum. Dan ia **senyap**: `rejectWithoutOracle()` sengaja membuat
+secret salah tak terbedakan dari unit tak dikenal (desain keamanan yang benar),
+sehingga header rusak tampak persis seperti unit yang tidak ada.
+
+**Aturan**: setiap `jobs update http` yang menyentuh header wajib menyebut
+**SELURUH** header sekaligus, lalu **diverifikasi**. Seluruh catatan sudah
+disisir — tidak ada `--update-headers` yang tersisa, dan tiga klaim
+"mempertahankan header yang sudah ada" (dua di runbook backfill 13-09, satu
+milik saya) sudah diubah jadi instruksi verifikasi.
+
+**Gerbangnya**: `scripts/ci/check-snapshot-scheduler-jobs.sh` kini menolak job
+yang `Content-Type`-nya bukan `application/json` **atau** yang kehilangan
+`x-snapshot-secret`, untuk `solamax-snapshot-unit-1` **dan**
+`solamax-snapshot-retire-unit-1`, di setiap deploy pilot. Delapan keadaan
+di-self-test tanpa menyentuh GCP, dan dijalankan **end-to-end terhadap job
+produksi nyata** hari ini: `Content-Type=application/json`, kunci memuat
+`x-snapshot-secret`, uri `/snapshot-worker`, `ENDPOINT_ADA=false` → HIJAU.
+
+Pembacaan headernya lewat `scripts/ci/scheduler-job-facts.py`: `--format=json`
+masuk pipa, dan **hanya** uri + Content-Type + daftar kunci yang keluar.
+Dikontrol dengan nilai umpan `RAHASIA-TIDAK-BOLEH-TERCETAK` — ia tidak muncul.
+
+⚠️ Koreksi atas nasihat saya sendiri: `--format='value(httpTarget.headers.keys().list())'`
+yang sempat saya rekomendasikan **tidak sah** — `keys` bukan transform gcloud.
+Saya menuliskannya tanpa menjalankannya, di catatan tentang bahaya. Sudah
+diuji dan dikoreksi.
+
+## 18 · Premis plateau: keberatan diterima, tetapi atribusi hari ini perlu diluruskan
+
+Premis saya — *"sesudah aliran benar, ruang mati dipakai ulang INSERT
+berikutnya, jadi berkasnya berhenti tumbuh pada tanda-airnya"* — **belum
+terbukti**, dan ia menopang klaim besar ("VACUUM FULL berhenti jadi kebutuhan
+rutin"). Keberatan itu saya terima.
+
+Satu hal perlu diluruskan supaya diagnosisnya tidak salah arah: pertumbuhan
+**+6,76 GB pada 02:48 → 13:48 WIB terjadi di jendela dengan NOL pemensiunan**.
+Cron 02:05 ditolak 404 (§12), dan tidak ada invokasi lain yang lolos sampai
+13:28. Penandaan `failed` 84 → 107 terjadi pada 13:28/13:39 — di **ujung**
+jendela itu, bukan sepanjangnya. Jadi angka 6 GB itu **belum** menunjukkan lag
+autovacuum; ia menunjukkan pemensiunan yang absen.
+
+Bukti positifnya juga masih lemah ke arah sebaliknya: tiga bucket sesudah
+pemensiunan (−14, −16, −48 MB) konsisten dengan ruang yang dipakai ulang,
+tetapi **1,5 jam terlalu pendek untuk menyebutnya plateau**.
+
+⇒ Kedua arah belum terbukti. Yang benar bukan memilih salah satunya, melainkan
+mengukur.
+
+### Prediksi yang DIKUNCI sebelum pengukuran
+
+> Dengan pemensiunan berjalan tiap jam,
+> `pg_relation_size('app.saldo_pelanggan_source_bppiut')` **mendatar dalam ≤ 6
+> jam, pada tingkat ≤ ~1 GB**.
+>
+> Bila ia **naik monoton selama 24 jam**, prediksi ini SALAH, lag autovacuum
+> nyata, dan tuning autovacuum berhenti menjadi "migrasi tanpa pengukuran" —
+> ia menjadi bagian dari perbaikan aliran.
+
+Alatnya: `scripts/piutang-kapasitas/04-autovacuum-lag.sql` — read-only,
+diverifikasi berjalan di PostgreSQL 16. Ia memulangkan per tabel: ukuran heap,
+`n_live_tup`/`n_dead_tup`, persen mati, `autovacuum_count`, **jarak sejak
+autovacuum terakhir**, ambang picu efektif, dan apakah ambang itu sudah
+terlewat — plus `pg_stat_progress_vacuum` (untuk membedakan "terlambat dipicu"
+dari "sedang berjuang") dan jumlah cut staging hidup.
+
+**Satu jalanan tunggal tidak menjawab apa pun**; yang dibaca adalah deretnya.
+Jalankan tiap jam sesudah job pemensiunan hidup, simpan berurutan.

@@ -200,6 +200,16 @@ Menjalankan perintah itu tetap aman, tetapi ia mutasi tanpa efek — dan ia
 menaruh taruhan pada pertanyaan "apakah `jobs update http` mempertahankan header
 yang ada" tanpa imbalan apa pun.
 
+> ✅ **Pertanyaan itu TERJAWAB 14-09-2026, dan jawabannya mahal.**
+> `--update-headers` **MENGGANTI seluruh set header, bukan menambah**. Terbukti
+> dua arah di job produksi: memasang `x-snapshot-secret` saja mengembalikan
+> `Content-Type` ke default `application/octet-stream` (⇒ body tidak di-parse
+> ⇒ 404 di pintu ⇒ **build 02:05 WIB hilang**); lalu memperbaiki `Content-Type`
+> saja **menghapus** `x-snapshot-secret`. Naluri menolak mutasi tanpa imbalan
+> itu ternyata benar — tetapi alasan yang saya tulis waktu itu ("taruhan")
+> terlalu lemah; yang benar adalah **selalu sebut seluruh header sekaligus,
+> lalu verifikasi**.
+
 **Enam job unit lain**: tetap jangan dibuat. Agent keenam unit itu belum
 mengirim source cut (§2.4), jadi pemicu worker tidak akan menemukan apa pun
 untuk dibangun — dan §2.3 belum beres.

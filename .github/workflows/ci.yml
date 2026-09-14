@@ -33,10 +33,10 @@ jobs:
       # Penjaga berkas cadangan ter-track. Sebabnya nyata: compliance.ts.bak —
       # sisa uji mutasi, yatim, salinan BASI logika vonis — sempat TAYANG di
       # `main`. Menjaga akhiran, bukan konsep; batasnya ditulis di skripnya.
-      # Self-test gerbang job sementara — LIMA keadaan, termasuk kedua jalur
-      # hijau. Gerbang yang hanya pernah dibuktikan merah tak dapat dibedakan
-      # dari gerbang yang rusak.
-      - run: bash scripts/ci/check-temporary-retire-job.selftest.sh
+      # Self-test gerbang job Scheduler snapshot — DELAPAN keadaan, termasuk
+      # semua jalur hijau. Gerbang yang hanya pernah dibuktikan merah tak dapat
+      # dibedakan dari gerbang yang rusak.
+      - run: bash scripts/ci/check-snapshot-scheduler-jobs.selftest.sh
       - run: bash scripts/ci/check-backup-files.selftest.sh
       - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4

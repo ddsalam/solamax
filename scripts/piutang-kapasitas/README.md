@@ -56,6 +56,12 @@ pemicu retirement mati, atau sesudah jeda panjang). Ia hanya menyentuh baris
 milik cycle `failed`; `complete` dan `staging` tidak tersentuh. Bertahap dan
 commit per batch, jadi aman diulang dan aman dihentikan Ctrl-C.
 
+**`04-autovacuum-lag.sql` — tiap jam, sesudah job pemensiunan hidup.**
+Read-only. Ia menguji prediksi yang dikunci: apakah berkas benar-benar MENDATAR
+sesudah aliran diperbaiki, atau autovacuum tertinggal. Selama deret itu belum
+ada, klaim "VACUUM FULL berhenti jadi kebutuhan rutin" adalah dugaan berbaju
+kesimpulan. Satu jalanan tunggal tidak menjawab apa pun.
+
 **`03-reclaim.sql` — JARANG.** Hanya bila `01` menunjukkan berkasnya jauh lebih
 besar daripada baris hidupnya DAN gerbang 9 GB tertutup. Dalam keadaan sehat,
 ini tidak perlu dijalankan lagi.

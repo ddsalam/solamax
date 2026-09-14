@@ -148,6 +148,30 @@ jobs:
         run: |
           URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')
           curl -fsS "$URL/health"
+      # Job Cloud Scheduler yang memanggil endpoint snapshot diperiksa DI SINI,
+      # karena dua kegagalannya sama-sama SENYAP:
+      #   - header salah bentuk ditolak 404 di pintu, dan rejectWithoutOracle()
+      #     membuatnya terlihat seperti unit tak dikenal. Build 02:05 WIB
+      #     14-09-2026 hilang begitu, tanpa satu pun alarm.
+      #   - job "sementara" yang menunjuk endpoint build memulangkan 425 ~20x
+      #     sehari, sampai kegagalan sungguhan tak lagi terlihat di antaranya.
+      # Keputusannya di scripts/ci/check-snapshot-scheduler-jobs.sh; self-test
+      # delapan keadaannya berjalan di CI tanpa menyentuh GCP.
+      #
+      # Header dibaca lewat --format=json lalu diekstrak scheduler-job-facts.py,
+      # yang hanya memancarkan uri, Content-Type, dan DAFTAR KUNCI. Jangan
+      # pernah memakai --format yang menyebut httpTarget.headers utuh.
+      - name: Job Scheduler snapshot harus benar bentuknya
+        run: |
+          ENDPOINT_ADA=false
+          if grep -q '@Post("retire")' apps/backend/src/saldo-pelanggan/snapshot-trigger.controller.ts; then
+            ENDPOINT_ADA=true
+          fi
+          for JOB in solamax-snapshot-unit-1 solamax-snapshot-retire-unit-1; do
+            RAW="$(gcloud scheduler jobs describe "$JOB" --project=solamax --location=${REGION} --format=json 2>/dev/null || echo '{}')"
+            eval "$(printf '%s' "$RAW" | python3 scripts/ci/scheduler-job-facts.py)"
+            JOB_NAME="$JOB" JOB_URI="$JOB_URI" JOB_CONTENT_TYPE="$JOB_CONTENT_TYPE" JOB_HEADER_KEYS="$JOB_HEADER_KEYS" ENDPOINT_ADA="$ENDPOINT_ADA" bash scripts/ci/check-snapshot-scheduler-jobs.sh
+          done
       # Job pemensiunan SEMENTARA tidak boleh jadi permanen. Ia menunjuk endpoint
       # BUILD dan karenanya memulangkan 425 ~20x sehari — merah permanen di
       # console, yaitu kebutaan yang baru saja dibayar mahal. Begitu revisi ini

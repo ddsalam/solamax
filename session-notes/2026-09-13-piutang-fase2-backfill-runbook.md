@@ -85,6 +85,18 @@ Masih ada sela balapan setelah pemeriksaan ini. Bila `0039` terkena `lock_timeou
 
 Gunakan kanari 7 hari terlebih dahulu. Siapkan perubahan pada jendela aman **05:15–01:30 WIB** agar job baru pertama kali berjalan pada jendela terjadwal berikutnya; jangan memakai `gcloud scheduler jobs run`. Satu request bekerja pada satu unit; beberapa item dijalankan berurutan dengan lease global 1, deadline 18 menit, batas lease 04:45 dan publikasi sebelum 05:00 WIB. Payload batas 31 hari baru setelah kanari diterima. Retry Scheduler tetap 0; retry durable ada di database.
 
+> ⚠️ **KOREKSI 14-09-2026 — baca sebelum menjalankan blok mana pun di bawah.**
+> Klaim "mempertahankan header yang sudah ada" **tidak berlaku** bila
+> `--update-headers` dipakai: bendera itu **MENGGANTI seluruh set header**.
+> Terbukti dua arah di job produksi hari itu — memasang `x-snapshot-secret`
+> saja mengembalikan `Content-Type` ke `application/octet-stream`, body
+> berhenti di-parse, dan permintaannya ditolak 404 dalam 3 ms; build 02:05 WIB
+> hilang tanpa alarm. Blok di bawah memakai `--message-body`/`--uri` dan
+> karenanya *seharusnya* selamat, tetapi itu **belum diuji**: verifikasi
+> sesudah setiap `jobs update http` dengan
+> `--format=json | python3 scripts/ci/scheduler-job-facts.py`.
+> Gerbang otomatisnya: `scripts/ci/check-snapshot-scheduler-jobs.sh`.
+
 Pembaruan unit 1 berikut adalah tahap kanari pertama. Ia mempertahankan header yang sudah ada dan tidak memerlukan nilai secret di shell. Output mutasi dibatasi `value(name)` agar respons resource tidak mencetak header.
 
 ```bash
