@@ -326,3 +326,104 @@ berasal dari pengukuran ~01:40 WIB dan **tidak diperbarui sesudahnya**.
 3. Batas disk — `scripts/piutang-kapasitas/README.md`.
 4. Alert policy `disk/bytes_used` ~8 GB — setuju/tidak?
 5. Saat promosi #359: jalankan §9. Gerbang §8 akan mengingatkan bila terlewat.
+
+---
+
+# Adendum 2 — 14-09-2026 15:20 WIB · tiga lubang §10 DITUTUP
+
+Kredensial pulih, jadi ketiganya terjawab. Dua jawabannya buruk.
+
+## 12 · Build 02:05 14-Sep TIDAK PERNAH BERJALAN — ditolak 404
+
+```
+2026-09-13T19:05:00Z  (= 02:05:00 WIB 14-09)  404  Google-Cloud-Scheduler
+2026-09-14T06:28:53Z  (= 13:28 WIB)           425  curl/8.7.1
+2026-09-14T06:30:57Z  (= 13:30 WIB)           404  Google-Cloud-Scheduler
+2026-09-14T06:39:47Z  (= 13:39 WIB)           425  Google-Cloud-Scheduler
+```
+
+404 datang dari `rejectWithoutOracle()` — **permintaan ditolak di pintu, sebelum
+pekerjaan apa pun**. Artinya pada 02:05 WIB:
+
+- **tidak ada snapshot yang dibangun untuk 14-09.** Layar masih menyajikan
+  generasi 13-09.
+- **pemensiunan pun tidak berjalan**, karena ia berada di belakang pemeriksaan
+  secret. Staging menumpuk tanpa henti dari 02:48 sampai 13:28 WIB.
+
+Sebabnya: rotasi secret semalam meninggalkan header job Scheduler tidak
+sinkron. Bukti bahwa itu memang sudah diperbaiki: permintaan Scheduler 13:39
+memulangkan **425**, bukan 404 — jadi cron malam ini akan lolos autentikasi.
+
+⚠️ **Kelas kegagalan yang wajib dicatat.** `rejectWithoutOracle()` sengaja
+membuat secret salah dan unit tak dikenal **tidak dapat dibedakan** — itu
+desain keamanan yang benar. Akibat sampingannya: header yang basi sesudah
+rotasi terlihat persis seperti unit yang tidak ada, **dan tidak ada yang
+berbunyi**. Satu malam build hilang tanpa satu pun alarm. Usul (murah):
+sesudah setiap rotasi, jalankan satu permintaan uji ke endpoint dan pastikan
+jawabannya **bukan** 404; atau pasang alert atas kegagalan job Scheduler.
+
+## 13 · Job pemensiunan per jam BELUM ADA
+
+`gcloud scheduler jobs list` hanya memulangkan `solamax-snapshot-unit-1` dan
+`solamax-warm-board`. **Tenggat §1 masih berjalan, dan sekarang lebih mendesak**
+karena satu malam pemensiunan sudah hilang.
+
+## 14 · Laju terukur — dan bukti langsung bahwa pemensiunan adalah tuas yang benar
+
+Kurva `cloudsql.googleapis.com/database/disk/bytes_used`, 26 jam (bukti di
+`evidence/2026-09-14-kapasitas-pasca-vacuum/`):
+
+| Titik | Nilai |
+|---|---:|
+| puncak `VACUUM FULL` 01:18 WIB | **16,638 GB** |
+| lantai pasca-vacuum 02:48 WIB | **7,667 GB** |
+| 02:48 → 13:48 WIB, **nol pemensiunan** | **+6,761 GB / 11 jam = 615 MB/jam = 14,8 GB/hari** |
+| 13:48 → 15:18 WIB, **sesudah pemensiunan manual** | −14, −16, −48 MB — **mendatar, lalu turun** |
+
+Tiga bucket terakhir itu adalah bukti paling langsung yang kita punya bahwa
+pemensiunan **adalah** tuas yang benar: begitu ia berjalan sekali, kurvanya
+berhenti naik.
+
+⚠️ **Jangan campur dua angka ini.** 615 MB/jam adalah **disk keseluruhan** —
+termasuk WAL, churn tabel mirror, dan bloat indeks. Gerbang membaca
+`pg_database_size`, yang **tidak** memuat WAL. Angka 3,38 GB/hari (tabel
+`source_*` saja) dan 14,8 GB/hari (disk) mengukur hal berbeda; memakai yang
+satu untuk meramalkan yang lain adalah kesalahan yang sama dengan "model aliran
+tidak dapat meramalkan angka stok", dalam baju baru.
+
+## 15 · Yang MASIH tidak saya ketahui — dan batas yang bisa saya berikan
+
+**`pg_database_size` sekarang: TIDAK DIKETAHUI.** Ia hanya terbaca lewat psql,
+yang masih diblokir classifier untuk sesi ini. Yang dapat saya berikan adalah
+batasnya, bukan angkanya:
+
+- Angka terakhir yang **sah**: **6.171.892.759 B (6,17 GB)** pada ~01:40 WIB.
+- Sejak 02:48 sampai 13:28 WIB tidak ada pemensiunan sama sekali ⇒ ~10–11 cut
+  staging bertambah ≈ **1,5–1,6 GB** pada tabel `source_*`.
+- Pemensiunan 13:28/13:39 menghapus baris, tetapi `DELETE` **tidak**
+  menurunkan `pg_database_size`.
+- Selisih disk-vs-database pada lantai 02:48 ≈ 1,5 GB (7,667 − 6,17).
+
+⇒ `pg_database_size` sekarang berada **di suatu tempat antara ~8 GB dan
+~12,9 GB**. Batas bawahnya sudah menyentuh gerbang 9 GB, batas atasnya jauh
+melewatinya. **Saya tidak dapat mengatakan gerbangnya terbuka atau tertutup**,
+dan kalau tertutup, cron 02:05 nanti malam akan hilang lagi.
+
+Satu baris yang menyelesaikannya (Dion, lewat cloud-sql-proxy):
+
+```bash
+psql "$DATABASE_URL_PILOT" -X -At -c \
+  "SELECT pg_size_pretty(pg_database_size(current_database())),
+          pg_database_size(current_database()) < 9000000000 AS gerbang_terbuka;"
+```
+
+## 16 · Urutan tindakan malam ini (Dion)
+
+1. **Buat job pemensiunan per jam** (§2) — sekarang, bukan nanti. Ia berjalan
+   di atas kode ter-deploy dan tidak menunggu promosi.
+2. **Ukur `pg_database_size`** (§15). Bila ≥ 9 GB, cron 02:05 akan di-skip lagi
+   dan malam kedua hilang — maka perlu `VACUUM FULL` kedua **di luar** jendela
+   02:00–05:00, dengan peringatan lock yang sama seperti semalam.
+3. Bila < 9 GB: tidak perlu tindakan DB; job §2 yang menjaganya tetap di bawah.
+
+Langkah 1 dan 2 **tidak saling menunggu**.
