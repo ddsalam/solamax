@@ -15,6 +15,28 @@ berubah 14-09-2026**: pemulihan stok pertama sudah dijalankan Dion lewat
 | Alat | pemicu retirement per jam (Cloud Scheduler) | `03-reclaim.sql` (`VACUUM FULL`) |
 | Tanpa yang satunya | berkas tetap besar selamanya; gerbang 9 GB tetap tertutup | tumpukan naik lagi, dan gerbang tertutup lagi beberapa minggu kemudian |
 
+## 🔴 `VACUUM FULL` MENINGGALKAN JEJAK BIAYA PERMANEN — argumen utama, bukan catatan kaki
+
+Puncak `VACUUM FULL` = **lama + baru**. Puncak itu memicu **auto-resize**, dan
+**Cloud SQL tidak pernah mengecilkan disk**. Terjadi hari ini, terukur:
+
+| | |
+|---|---:|
+| disk ter-provision sebelum | 25 GB |
+| puncak terpakai saat vacuum kedua (16:05 WIB, masih naik) | **22,15 GB** |
+| disk ter-provision **sesudah** | **31 GB** |
+
+⇒ Satu `VACUUM FULL` menaikkan biaya penyimpanan **selamanya**, sekitar
+**+6 GB** kali ini. Pada orde US$0,20–0,30/GB/bulan itu **≈ +US$1,2–1,8 per
+bulan, permanen, per kejadian** — dan itu belum menghitung kunci ACCESS
+EXCLUSIVE yang menahan agent 9–14 menit.
+
+**Karena itu pemensiunan per jam bukan optimasi.** Ia satu-satunya jalan yang
+**tidak meninggalkan jejak biaya**: ia menahan tanda-air sebelum naik, sehingga
+`VACUUM FULL` tidak pernah perlu dijalankan lagi. Setiap kali kita memilih
+"bersihkan nanti dengan vacuum", kita sedang memilih menaikkan tagihan bulanan
+secara permanen.
+
 **Ini harus dibaca eksplisit**: pemicu per jam **tidak mengembalikan satu byte
 pun** ke OS. `DELETE` hanya menandai tuple mati; `pg_database_size` — persis
 angka yang dibaca `databaseReviewBytes` — tidak turun karenanya. Dan sebaliknya,
@@ -91,14 +113,46 @@ batas, pertumbuhan berikutnya menaikkan tagihan **diam-diam** alih-alih
 berbunyi.
 
 ```bash
-# GANTI <GB> dengan angka yang Anda putuskan. Skrip ini sengaja TIDAK memilih.
-gcloud sql instances patch solamax-pg \
-  --project=solamax \
-  --storage-auto-increase-limit=<GB> \
-  --storage-auto-increase
+set -euo pipefail
+PROJECT_ID=solamax
+INSTANCE=solamax-pg
+BATAS_GB=50                      # <-- GANTI dengan angka yang Anda putuskan
+
+# Keadaan sebelum, supaya perubahannya dapat dibaca.
+gcloud sql instances describe "$INSTANCE" --project="$PROJECT_ID" \
+  --format='value(settings.dataDiskSizeGb,settings.storageAutoResize,settings.storageAutoResizeLimit)'
+
+gcloud sql instances patch "$INSTANCE" \
+  --project="$PROJECT_ID" \
+  --storage-auto-increase \
+  --storage-auto-increase-limit="$BATAS_GB"
+
+# VERIFIKASI — jangan percaya bahwa patch memelihara sisanya.
+gcloud sql instances describe "$INSTANCE" --project="$PROJECT_ID" \
+  --format='value(settings.dataDiskSizeGb,settings.storageAutoResize,settings.storageAutoResizeLimit)'
 ```
 
-Memilih angkanya — dua batas yang saling menarik:
+⚠️ `--storage-auto-increase-limit` **harus** disertai `--storage-auto-increase`;
+batas tanpa auto-increase yang menyala tidak berarti apa-apa. Dan seperti
+pelajaran `--update-headers`: **verifikasi sesudahnya**, jangan andaikan flag
+lain terpelihara.
+
+Memilih angkanya — **dengan puncak yang sudah terukur, bukan dikira**:
+
+- **Puncak nyata hari ini: 22,15 GB terpakai** saat memvakum database yang
+  sebelum vacuum berukuran ~13,1 GB (`pg_database_size` 15:25 WIB). Jadi puncak
+  ≈ **1,7×** ukuran database, ditambah WAL dan temp.
+- Dengan pemensiunan per jam menjaga database di sekitar **6–7 GB** (ukuran
+  bersih terukur sesudah vacuum pertama: **6,17 GB**), `VACUUM FULL` masa depan
+  akan memuncak di sekitar **11–13 GB** terpakai.
+- Auto-resize sudah memicu sekali pada 25 GB; disk kini **31 GB**.
+
+Rekomendasi peninjau **~50 GB** konsisten dengan angka itu: ia memuat puncak
+terburuk hari ini (22 GB) dengan margin lebih dari dua kali, dan tetap
+menghentikan pertumbuhan diam-diam jauh sebelum tagihannya berlipat. **Angkanya
+tetap keputusan Dion.**
+
+Dua batas yang saling menarik:
 
 - **Batas bawah yang aman.** Harus memuat puncak `VACUUM FULL` = ukuran lama +
   salinan baru. Terpantau 16 GB saat memvakum tabel terbesar. Batas di bawah

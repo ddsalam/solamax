@@ -522,3 +522,91 @@ dari "sedang berjuang") dan jumlah cut staging hidup.
 
 **Satu jalanan tunggal tidak menjawab apa pun**; yang dibaca adalah deretnya.
 Jalankan tiap jam sesudah job pemensiunan hidup, simpan berurutan.
+
+---
+
+# Adendum 4 — 16:05 WIB · disk auto-resize 25 → 31 GB, dan apa yang berubah karenanya
+
+## 19 · `VACUUM FULL` menaikkan biaya PERMANEN — naik jadi argumen utama
+
+| | |
+|---|---:|
+| disk ter-provision sebelum | 25 GB |
+| puncak terpakai (16:05 WIB, **masih naik**) | **22,146 GB** |
+| disk ter-provision sesudah | **31 GB** |
+
+Auto-resize terpicu **lebih cepat** dari perkiraan saya (~1,5 jam) — kenyataannya
+kurang dari 30 menit sesudah saya menuliskannya. Cloud SQL **tidak pernah**
+mengecilkan disk, jadi +6 GB itu **permanen**: pada orde US$0,20–0,30/GB/bulan,
+**≈ +US$1,2–1,8 per bulan selamanya, per kejadian vacuum**.
+
+⇒ **Pemensiunan per jam bukan optimasi; ia satu-satunya jalan yang tidak
+meninggalkan jejak biaya.** Setiap kali kita memilih "bersihkan nanti dengan
+`VACUUM FULL`", kita memilih menaikkan tagihan bulanan secara permanen —
+di samping kunci ACCESS EXCLUSIVE yang menahan agent 9–14 menit.
+
+Argumen ini sudah dipindahkan dari catatan kaki ke bagian paling atas
+`scripts/piutang-kapasitas/README.md`.
+
+## 20 · Batas disk — perhitungan puncaknya, bukan seleranya
+
+- Puncak nyata hari ini **22,15 GB** terpakai, memvakum database yang sebelumnya
+  **~13,1 GB** (15:25 WIB) ⇒ puncak ≈ **1,7×** ukuran database + WAL/temp.
+- Dengan pemensiunan per jam menjaga database di **6–7 GB** (ukuran bersih
+  terukur sesudah vacuum pertama: **6,17 GB**), vacuum masa depan memuncak di
+  **~11–13 GB**.
+- Rekomendasi peninjau **~50 GB** konsisten: memuat puncak terburuk hari ini
+  dengan margin >2×, dan tetap menghentikan pertumbuhan diam-diam. **Angkanya
+  keputusan Dion**; perintah `patch` berdiri sendiri ada di README §batas disk,
+  lengkap dengan langkah verifikasi (`--storage-auto-increase-limit` wajib
+  disertai `--storage-auto-increase`).
+
+## 21 · Job per jam sudah hidup — dan gerbang saya mengujinya
+
+`solamax-snapshot-retire-unit-1`, `20 0,1,5-23 * * *`, dibuat 15:37 WIB.
+Diperiksa dengan gerbang §17 terhadap job **nyata**, dua keadaan:
+
+- **sekarang** (`/retire` belum ter-deploy) → **HIJAU**: `Content-Type=application/json`,
+  kunci memuat `x-snapshot-secret`, uri `/snapshot-worker`.
+- **seandainya `/retire` sudah ter-deploy** → **MERAH**, dengan perintah
+  perbaikannya.
+
+Nyala pertamanya 16:20 WIB. ⚠️ **Bila tembakan pertama gagal karena lock
+`VACUUM FULL`, itu BUKAN konfigurasi rusak** — yang menentukan tembakan 17:20.
+
+## 22 · Prioritas (a) dan (b): alatnya siap, kurvanya belum ada
+
+`05-kurva.sql` + `05-kurva.sh` — satu titik per jam, ber-tag supaya deretnya
+terbaca sebagai kurva, dengan pembaca `--baca`. Diverifikasi berjalan di
+PostgreSQL 16, termasuk perbaikan agar `set_config` tidak ikut mencetak baris
+liar ke dalam kurva.
+
+```bash
+export DATABASE_URL_PILOT=...                              # lewat cloud-sql-proxy
+scripts/piutang-kapasitas/05-kurva.sh 12 > kurva.log &     # 12 jam
+scripts/piutang-kapasitas/05-kurva.sh --baca kurva.log
+```
+
+⚠️ **Jalankan SESUDAH `VACUUM FULL` selesai.** Titik yang diambil saat vacuum
+berjalan mengukur puncak rewrite, bukan keadaan tunak, dan akan mengotori
+kurvanya.
+
+**Prediksi tetap seperti dikunci**: `pg_relation_size` `source_bppiut` mendatar
+dalam ≤ 6 jam pada ≤ ~1 GB. Naik monoton 24 jam ⇒ prediksi SALAH, lag
+autovacuum nyata, tuning jadi bagian perbaikan aliran.
+
+Sampai deret itu ada, **saya tidak punya kurva untuk dilaporkan** — hanya alat
+dan prediksi. Itu keadaan yang jujur, bukan hasil.
+
+## 23 · (c) Pra-promosi #359 + #358 — belum dibuka, tetapi satu syaratnya sudah pasti
+
+Belum saya siapkan: ia menunggu (b) stabil. Satu hal sudah pasti dan saya catat
+sekarang supaya tidak hilang: **gerbang 0039 wajib dijalankan ULANG** dengan
+`app.unit_ids` ber-scope **SEMUA** unit dan **di luar 02:00–05:00 WIB**. Bukti
+13-09 memakai scope `'1'` saja terhadap DB yang salah; itu kesalahan yang sudah
+dibayar sekali.
+
+Preflight otomatisnya sudah ada — `scripts/ci/check-snapshot-quiescent.sh`
+berjalan **sebelum** `prisma migrate deploy` dan sudah men-scope seluruh unit —
+tetapi ia tidak menggantikan pemeriksaan berjadwal oleh manusia di jendela yang
+benar.
