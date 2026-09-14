@@ -6,6 +6,8 @@ import {
   type PiutangSectionId,
   type PiutangViewInput,
 } from "./piutang-model";
+import { rp } from "./format";
+import type { SaldoFreshness } from "./saldo-freshness";
 import type { SaldoSnapshot } from "./saldo-snapshot";
 
 export function piutangViewInput(params: Record<string, string | string[] | undefined>): PiutangViewInput {
@@ -68,9 +70,29 @@ export interface PiutangPendingBanner {
   body: string;
 }
 
+/**
+ * ⚠️ LUBANG YANG DITUTUP DI SINI (F1). Versi lama hanya menyala saat pointer
+ * ber-`pending_replacement`, dan tanda itu hanya dipasang ketika ada cut
+ * `complete` BARU — sekali sehari, 02:05 WIB. Pada 13-09-2026 koreksi mundur
+ * masuk 08:34/08:38 dan layar meleset **Rp 35.979.362** selama ±18 jam tanpa
+ * satu pun indikator; banner yang sudah dibangun tidak mungkin muncul.
+ *
+ * `freshness` mengukur perubahan pasca-cut yang BENAR-BENAR mengubah angka
+ * tanggal ini (materialitas, bukan watermark). Ia diutamakan karena ia
+ * menyebutkan RUPIAHNYA — yang membuat pembaca tahu seberapa jauh melesetnya,
+ * bukan sekadar bahwa ada sesuatu.
+ */
 export function pendingBanner(
   snapshot: Extract<SaldoSnapshot, { status: "ready" }>,
+  freshness?: SaldoFreshness,
 ): PiutangPendingBanner | undefined {
+  if (freshness?.material) {
+    return {
+      tone: "warning",
+      title: `Ada perubahan sesudah snapshot ${formatWib(snapshot.metadata.sourceCompletedAt)}—selisih ${rp(freshness.totalAbsolut)}`,
+      body: "Angka di layar berasal dari snapshot itu; buku besar yang hidup sudah berbeda sebanyak selisih di atas. Snapshot berikutnya akan memuatnya.",
+    };
+  }
   if (!snapshot.metadata.pendingReplacement) return undefined;
   const failed = snapshot.latestAttempt?.status === "failed";
   return {

@@ -39,12 +39,15 @@ q() { psql "$PSQL_URL" -X -v ON_ERROR_STOP=1 -qAt "$@"; }
 # ⚠️ Scope RLS dipasang PEMANGGIL, bukan berkas probe — di aplikasi itu tugas
 # `qScoped()`. Tanpa ini probe memulangkan nol baris TANPA GALAT, dan nol itu
 # terbaca persis seperti "tidak ada perubahan". Lihat [[nol-rls-bukan-fakta]].
-probe() {
+# SQL-nya diambil dari SUMBER KANONIKNYA — konstanta yang dipakai produksi di
+# apps/dashboard/src/lib/saldo-freshness.ts — bukan dari salinan. Dua definisi
+# rumus yang sama adalah dua definisi yang bisa menyimpang diam-diam.
+probe_at() {
   psql "$PSQL_URL" -X -v ON_ERROR_STOP=1 -qAt -F'|' \
     -c "SET app.unit_ids = '1';" \
-    -v unit=1 -v as_of="$ASOF" -v cut_id="$CUT" -v cut_at="$CUT_AT" \
-    -f "$REPO_ROOT/scripts/piutang-f1/probe-freshness.sql"
+    -c "$(python3 "$REPO_ROOT/scripts/piutang-f1/bind-probe-sql.py" 1 "$ASOF" "$CUT" "$1")"
 }
+probe() { probe_at "$CUT_AT"; }
 
 admin -c "DO \$\$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${ROLE}') THEN
@@ -142,10 +145,7 @@ echo "== kontrol: cut sesudah semua perubahan → probe harus diam =="
 # memperlihatkan sesuatu. Tanpa ini, "diam" bisa berarti RLS menyaring semuanya.
 SUBJEK="$(q -c "SET app.unit_ids='1'; SELECT count(*) FROM public.bppiut;")"
 [ "$SUBJEK" -ge 12 ] || fail "kontrol positif gagal: hanya ${SUBJEK} baris bppiut terlihat — scope RLS, bukan tabel kosong"
-FRESH="$(psql "$PSQL_URL" -X -v ON_ERROR_STOP=1 -qAt -F'|' \
-  -c "SET app.unit_ids = '1';" \
-  -v unit=1 -v as_of="$ASOF" -v cut_id="$CUT" -v cut_at="2026-09-13 23:59:00+00" \
-  -f "$REPO_ROOT/scripts/piutang-f1/probe-freshness.sql")"
+FRESH="$(probe_at "2026-09-13 23:59:00+00")"
 [ -z "$FRESH" ] || fail "cut yang lebih baru dari semua perubahan tetap menyala: ${FRESH}"
 echo "  OK — nol baris, dengan ${SUBJEK} baris bppiut yang benar-benar terlihat."
 
