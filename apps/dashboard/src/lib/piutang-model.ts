@@ -1,3 +1,4 @@
+import { todayWib } from "./periods";
 import type {
   SaldoSnapshot,
   SaldoSnapshotMetadata,
@@ -25,12 +26,13 @@ export interface PiutangViewInput {
   search?: string | null;
   filter?: string | null;
   sort?: string | null;
-  page?: string | number | null;
+  pages?: Partial<Record<PiutangSectionId, string | number | null>>;
 }
 
 export interface PiutangViewRow extends SaldoSnapshotRow {
   /** Presentation-only predicate; it never adds or nets the three buckets. */
   isZeroBalance: boolean;
+  bookCount: number;
 }
 
 export interface PiutangNotReadyView {
@@ -47,13 +49,14 @@ export interface PiutangReadyView {
   status: "ready";
   asOfDate: string;
   metadata: SaldoSnapshotMetadata;
+  historicalNote: string | null;
   rows: PiutangViewRow[];
   hasOnlineCustomer: boolean;
   totalCount: number;
   resultCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+  sections: PiutangPageSection[];
+  occurrenceCount: number;
+  zeroSectionOpen: boolean;
   filter: PiutangFilter;
   sort: PiutangSort;
   search: string;
@@ -62,9 +65,12 @@ export interface PiutangReadyView {
 export type PiutangView = PiutangNotReadyView | PiutangReadyView;
 
 export interface PiutangExportView {
+  sections: PiutangSection[];
+  occurrenceCount: number;
   status: "ready";
   asOfDate: string;
   metadata: SaldoSnapshotMetadata;
+  historicalNote: string | null;
   rows: PiutangViewRow[];
   hasOnlineCustomer: boolean;
   totalCount: number;
@@ -72,6 +78,83 @@ export interface PiutangExportView {
   filter: PiutangFilter;
   sort: PiutangSort;
   search: string;
+}
+
+/** Fixed presentation order, shared by the screen and both export formats. */
+export const PIUTANG_BOOKS = [
+  { id: "lokal", title: "Piutang Lokal", totalKey: "piutangLokal", awal: "awalPiutangLokal", akhir: "akhirPiutangLokal",
+    awalDebet: "awalPiutangLokalDebet", awalKredit: "awalPiutangLokalKredit", akhirDebet: "akhirPiutangLokalDebet", akhirKredit: "akhirPiutangLokalKredit" },
+  { id: "online", title: "Piutang Online", totalKey: "piutangOnline", awal: "awalPiutangOnline", akhir: "akhirPiutangOnline",
+    awalDebet: "awalPiutangOnlineDebet", awalKredit: "awalPiutangOnlineKredit", akhirDebet: "akhirPiutangOnlineDebet", akhirKredit: "akhirPiutangOnlineKredit" },
+  { id: "hutang", title: "Hutang Lokal", totalKey: "hutangLokal", awal: "awalHutangLokal", akhir: "akhirHutangLokal",
+    awalDebet: "awalHutangLokalDebet", awalKredit: "awalHutangLokalKredit", akhirDebet: "akhirHutangLokalDebet", akhirKredit: "akhirHutangLokalKredit" },
+] as const;
+
+export type PiutangBook = (typeof PIUTANG_BOOKS)[number];
+
+export interface PiutangBoundaryAmounts { debet: number; kredit: number; saldo: number }
+export interface PiutangBookAmounts { awal: PiutangBoundaryAmounts; akhir: PiutangBoundaryAmounts }
+
+/** Project stored values only; never derive a debit/credit pair from a net saldo. */
+export function piutangBookAmounts(row: SaldoSnapshotRow, book: PiutangBook): PiutangBookAmounts {
+  return {
+    awal: { debet: row[book.awalDebet], kredit: row[book.awalKredit], saldo: row[book.awal] },
+    akhir: { debet: row[book.akhirDebet], kredit: row[book.akhirKredit], saldo: row[book.akhir] },
+  };
+}
+
+export function piutangBookTotalAmounts(metadata: Pick<SaldoSnapshotMetadata, "totals" | "debetTotals" | "kreditTotals">, book: PiutangBook): PiutangBookAmounts {
+  return {
+    awal: { debet: metadata.debetTotals.awal[book.totalKey], kredit: metadata.kreditTotals.awal[book.totalKey], saldo: metadata.totals.awal[book.totalKey] },
+    akhir: { debet: metadata.debetTotals.akhir[book.totalKey], kredit: metadata.kreditTotals.akhir[book.totalKey], saldo: metadata.totals.akhir[book.totalKey] },
+  };
+}
+
+export type PiutangSectionId = PiutangBook["id"] | "nol";
+export const PIUTANG_SECTION_IDS: readonly PiutangSectionId[] = [...PIUTANG_BOOKS.map((book) => book.id), "nol"];
+
+export interface PiutangSection {
+  id: PiutangSectionId;
+  title: string;
+  book: PiutangBook | null;
+  rows: PiutangViewRow[];
+}
+
+/** A zero-saldo book can still carry gross turnover. Attach it once, at the
+ * customer's first active book, while preserving saldo-based section membership. */
+export function booksForPiutangRow(section: PiutangSection, row: PiutangViewRow): readonly PiutangBook[] {
+  if (!section.book) return PIUTANG_BOOKS;
+  const firstActive = PIUTANG_BOOKS.find((book) => row[book.awal] !== 0 || row[book.akhir] !== 0);
+  if (firstActive?.id !== section.book.id) return [section.book];
+  return [section.book, ...PIUTANG_BOOKS.filter((book) =>
+    row[book.awal] === 0 && row[book.akhir] === 0 &&
+    [row[book.awalDebet], row[book.awalKredit], row[book.akhirDebet], row[book.akhirKredit]].some((value) => value !== 0))];
+}
+
+export interface PiutangPageSection extends PiutangSection {
+  page: number;
+  totalPages: number;
+  resultCount: number;
+  pageSize: number;
+}
+
+export function piutangBookLabel(bookCount: number): string | null {
+  return bookCount === 2 ? "satu pelanggan, dua buku"
+    : bookCount === 3 ? "satu pelanggan, tiga buku" : null;
+}
+
+/** Rows are already filtered and sorted; membership never nets or rounds amounts. */
+export function groupPiutangRows(rows: PiutangViewRow[], hasOnlineCustomer: boolean): PiutangSection[] {
+  const sections: PiutangSection[] = PIUTANG_BOOKS
+    .filter((book) => book.id !== "online" || hasOnlineCustomer)
+    .map((book) => ({
+      id: book.id,
+      title: book.title,
+      book,
+      rows: rows.filter((row) => row[book.awal] !== 0 || row[book.akhir] !== 0),
+    }));
+  sections.push({ id: "nol", title: "Tanpa saldo di ketiga buku", book: null, rows: rows.filter((row) => row.isZeroBalance) });
+  return sections;
 }
 
 const NOT_READY_COPY: Record<SaldoSnapshotNotReadyReason, { title: string; message: string }> = {
@@ -112,7 +195,11 @@ function normalizeRow(row: SaldoSnapshotRow): PiutangViewRow {
     customerCode: row.customerCode.trim(),
     customerName: row.customerName?.trim() || null,
   };
-  return { ...normalized, isZeroBalance: isZeroBalance(normalized) };
+  return {
+    ...normalized,
+    isZeroBalance: isZeroBalance(normalized),
+    bookCount: PIUTANG_BOOKS.filter((book) => normalized[book.awal] !== 0 || normalized[book.akhir] !== 0).length,
+  };
 }
 
 function normalizeFilter(value: string | null | undefined): PiutangFilter {
@@ -187,21 +274,27 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
 
   const { search, filter, sort, normalizedRows, rows: filteredRows } = selectRows(snapshot, input);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PIUTANG_PAGE_SIZE));
-  const page = normalizePage(input.page, totalPages);
-  const start = (page - 1) * PIUTANG_PAGE_SIZE;
+  const groups = groupPiutangRows(filteredRows, snapshot.hasOnlineCustomer);
+  const sections = groups.map((section): PiutangPageSection => {
+    const totalPages = Math.max(1, Math.ceil(section.rows.length / PIUTANG_PAGE_SIZE));
+    const page = normalizePage(input.pages?.[section.id], totalPages);
+    const start = (page - 1) * PIUTANG_PAGE_SIZE;
+    return { ...section, rows: section.rows.slice(start, start + PIUTANG_PAGE_SIZE),
+      resultCount: section.rows.length, page, totalPages, pageSize: PIUTANG_PAGE_SIZE };
+  });
 
   return {
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
-    rows: filteredRows.slice(start, start + PIUTANG_PAGE_SIZE),
+    historicalNote: piutangHistoricalNote(snapshot.asOfDate, snapshot.metadata.sourceCompletedAt),
+    rows: filteredRows,
+    sections,
+    occurrenceCount: groups.reduce((count, section) => count + section.rows.length, 0),
+    zeroSectionOpen: Boolean(search || filter === "nol" || input.pages?.nol != null),
     hasOnlineCustomer: snapshot.hasOnlineCustomer,
     totalCount: normalizedRows.length,
     resultCount: filteredRows.length,
-    page,
-    pageSize: PIUTANG_PAGE_SIZE,
-    totalPages,
     filter,
     sort,
     search,
@@ -215,11 +308,15 @@ export function buildPiutangExportView(
 ): PiutangNotReadyView | PiutangExportView {
   if (snapshot.status === "not_ready") return buildPiutangView(snapshot, input);
   const { search, filter, sort, normalizedRows, rows } = selectRows(snapshot, input);
+  const sections = groupPiutangRows(rows, snapshot.hasOnlineCustomer);
   return {
     status: "ready",
     asOfDate: snapshot.asOfDate,
     metadata: snapshot.metadata,
+    historicalNote: piutangHistoricalNote(snapshot.asOfDate, snapshot.metadata.sourceCompletedAt),
     rows,
+    sections,
+    occurrenceCount: sections.reduce((count, section) => count + section.rows.length, 0),
     hasOnlineCustomer: snapshot.hasOnlineCustomer,
     totalCount: normalizedRows.length,
     resultCount: rows.length,
@@ -227,4 +324,13 @@ export function buildPiutangExportView(
     sort,
     search,
   };
+}
+
+/** A later source cut can include corrections entered after the target date. */
+export function piutangHistoricalNote(asOfDate: string, sourceCompletedAt: string): string | null {
+  const sourceDate = todayWib(new Date(sourceCompletedAt));
+  if (sourceDate <= asOfDate) return null;
+  return `Posisi ${asOfDate} dihitung dari data sumber per ${sourceDate} WIB. ` +
+    `Termasuk koreksi bertanggal mundur yang tercatat sampai saat itu; ` +
+    `tidak identik dengan laporan EasyMax yang dicetak pada ${asOfDate}.`;
 }

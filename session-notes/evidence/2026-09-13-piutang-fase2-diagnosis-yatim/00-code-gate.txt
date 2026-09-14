@@ -1,0 +1,19 @@
+BEGIN
+SET
+          observed_at          | current_user  | current_database | read_only | unit_scope 
+-------------------------------+---------------+------------------+-----------+------------
+ 2026-09-13 07:05:04.232247+00 | dashboard_app | solamax          | on        | 1
+(1 row)
+
+ unit_id |  code   |    name     |    timezone    
+---------+---------+-------------+----------------
+       1 | 6478111 | Imam Bonjol | Asia/Pontianak
+(1 row)
+
+           source_cycle_id            | positive_cut_rows 
+--------------------------------------+-------------------
+ c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff |              2973
+(1 row)
+
+Output format is csv.
+ROLLBACK

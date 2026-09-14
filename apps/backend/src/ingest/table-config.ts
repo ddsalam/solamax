@@ -50,6 +50,15 @@ export interface TableConfig {
    *     terra_resmi     10.127 hidup /   762.102 mati = 98,7%  ·  104 MB
    *     delivery        80.067 hidup /       695 mati =  0,9%  ·   25 MB  ← inkremental
    *
+   * ⚠️ ANGKA "2134 MB" DI ATAS BASI untuk bppiut. Diukur ulang di produksi
+   * 2026-09-14: bppiut **572 MB / 2.793.048 baris**, bphut **108 MB / 544.419
+   * baris** — baris hidupnya nyaris sama dengan 5 Agustus (2.786.477), jadi
+   * yang hilang adalah bangkainya, bukan datanya. Itu justru bukti mekanisme
+   * ini bekerja. Angka lama dibiarkan berdiri sebagai sebab keputusannya;
+   * jangan memakainya lagi sebagai ukuran tabel hari ini — sesi 14 September
+   * nyaris merancang probe kesegaran di atas "ledger 2.134 MB" yang sudah
+   * tidak ada.
+   *
    * ⚠️ BAHAYANYA KOREKTNESS, BUKAN PERFORMA: predikat WAJIB mencakup SEMUA
    * kolom yang di-SET. Kolom yang terlewat = perubahan nyata pada kolom itu
    * DIAM-DIAM berhenti mendarat di mirror — jauh lebih buruk daripada tabel

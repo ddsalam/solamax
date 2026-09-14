@@ -1,0 +1,122 @@
+BEGIN
+SET
+          observed_at          | current_user  | read_only | unit_scope 
+-------------------------------+---------------+-----------+------------
+ 2026-09-13 07:05:50.900671+00 | dashboard_app | on        | 1
+(1 row)
+
+ unit_id |  code   |    name     |    timezone    
+---------+---------+-------------+----------------
+       1 | 6478111 | Imam Bonjol | Asia/Pontianak
+(1 row)
+
+           source_cycle_id            | positive_cut_rows 
+--------------------------------------+-------------------
+ c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff |              2973
+(1 row)
+
+=== Y2_NULL_CREDIT_AND_EQUIVALENT_HUTANG ===
+ ledger | rows  | customers | debit_rows | credit_rows | amount_null_rows | credit_amount_null_rows |     debit     |    credit     | first_date | last_date  
+--------+-------+-----------+------------+-------------+------------------+-------------------------+---------------+---------------+------------+------------
+ bphut  | 44683 |       188 |      39217 |        5466 |                0 |                       0 | 53549062678.5 | 54222073216.5 | 2022-08-31 | 2026-09-12
+ bppiut | 14479 |       747 |      14479 |           0 |                0 |                       0 |    6411357535 |               | 2022-09-01 | 2026-06-10
+(2 rows)
+
+=== Y3_PREFIX ===
+ ledger | prefix | rows  | customers | credit_rows | amount_null_rows |     debit     |    credit     
+--------+--------+-------+-----------+-------------+------------------+---------------+---------------
+ bphut  | PH     | 44683 |       188 |        5466 |                0 | 53549062678.5 | 54222073216.5
+ bppiut | PP     | 14479 |       747 |           0 |                0 |    6411357535 |              
+(2 rows)
+
+=== Y3_MASTER_STATUS ===
+ ledger | master_status  | sjenis | rows  | customers |     debit     |    credit     
+--------+----------------+--------+-------+-----------+---------------+---------------
+ bphut  | b_other_sjenis |      2 |  1211 |        22 |     388254046 |      24555849
+ bphut  | b_other_sjenis |      3 | 43472 |       166 | 53160808632.5 | 54197517367.5
+ bppiut | b_other_sjenis |      4 | 14479 |       747 |    6411357535 |              
+(3 rows)
+
+=== Y3_MASTER_PREFIX_CROSS_TAB ===
+ ledger | master_status  | sjenis | prefix | rows  | customers |     debit     |    credit     
+--------+----------------+--------+--------+-------+-----------+---------------+---------------
+ bphut  | b_other_sjenis |      2 | PH     |  1211 |        22 |     388254046 |      24555849
+ bphut  | b_other_sjenis |      3 | PH     | 43472 |       166 | 53160808632.5 | 54197517367.5
+ bppiut | b_other_sjenis |      4 | PP     | 14479 |       747 |    6411357535 |              
+(3 rows)
+
+=== H3_ALL_ACTIVE_LEDGER ===
+ ledger | active_rows | sjnsbp_null_rows | sjnsbp_other_rows | amount_null_rows | code_null_rows | code_empty_rows 
+--------+-------------+------------------+-------------------+------------------+----------------+-----------------
+ bphut  |       44683 |                0 |                 0 |                0 |              0 |               0
+ bppiut |       61154 |                0 |                 0 |                0 |              0 |               0
+(2 rows)
+
+=== Y5_ALL_HUTANG_MASTER_STATUS_INCLUDING_DOTTED_CODES ===
+ master_status  | sjenis | rows  | customers |     debit     |    credit     
+----------------+--------+-------+-----------+---------------+---------------
+ b_other_sjenis |      2 |  1211 |        22 |     388254046 |      24555849
+ b_other_sjenis |      3 | 43472 |       166 | 53160808632.5 | 54197517367.5
+(2 rows)
+
+=== Y4_TOP20_MIRROR_LABELS_ONLY_NOT_CUT_NUMERIC_EVIDENCE ===
+    entry_key    |   cc    |  cut_date  | cut_amount | cut_sjnsbp | master_status  | sjenis |  mirror_vcref   |                     mirror_vcket                      | mirror_match 
+-----------------+---------+------------+------------+------------+----------------+--------+-----------------+-------------------------------------------------------+--------------
+ PP2022101400955 | PLG2751 | 2022-10-14 |    7614596 |          1 | b_other_sjenis |      4 | JP2022000061145 | Penjualan Pelanggan Tunai  Tanggal 14-10-2022 Shift 1 | t
+ PP2022102300143 | PLG2751 | 2022-10-23 |    7191536 |          1 | b_other_sjenis |      4 | JP2022000062673 | Penjualan Pelanggan Tunai  Tanggal 23-10-2022 Shift 1 | t
+ PP2022092402713 | PLG2751 | 2022-09-24 |    6760266 |          1 | b_other_sjenis |      4 | JP2022000056935 | Penjualan Pelanggan Tunai  Tanggal 24-09-2022 Shift 1 | t
+ PP2022091001223 | PLG2751 | 2022-09-10 |    6707386 |          1 | b_other_sjenis |      4 | JP2022000054146 | Penjualan Pelanggan Tunai  Tanggal 10-09-2022 Shift 3 | t
+ PP2022090701080 | PLG2751 | 2022-09-07 |    6687608 |          1 | b_other_sjenis |      4 | JP2022000053373 | Penjualan Pelanggan Tunai  Tanggal 07-09-2022 Shift 3 | t
+ PP2022091800117 | PLG2751 | 2022-09-18 |    6625168 |          1 | b_other_sjenis |      4 | JP2022000055508 | Penjualan Pelanggan Tunai  Tanggal 18-09-2022 Shift 1 | t
+ PP2022121500344 | PLG2751 | 2022-12-15 |    6612516 |          1 | b_other_sjenis |      4 | JP2022000068942 | Penjualan Pelanggan Tunai  Tanggal 15-12-2022 Shift 1 | t
+ PP2022092303697 | PLG2751 | 2022-09-23 |    6314200 |          1 | b_other_sjenis |      4 | JP2022000056745 | Penjualan Pelanggan Tunai  Tanggal 23-09-2022 Shift 2 | t
+ PP2022092101323 | PLG2751 | 2022-09-21 |    5805972 |          1 | b_other_sjenis |      4 | JP2022000056219 | Penjualan Pelanggan Tunai  Tanggal 21-09-2022 Shift 1 | t
+ PP2022090500371 | PLG2751 | 2022-09-05 |    5585758 |          1 | b_other_sjenis |      4 | JP2022000052876 | Penjualan Pelanggan Tunai  Tanggal 05-09-2022 Shift 3 | t
+ PP2022090400134 | PLG2813 | 2022-09-04 |    5528399 |          1 | b_other_sjenis |      4 | JP2022000052587 | Penjualan Pelanggan Tunai  Tanggal 04-09-2022 Shift 3 | t
+ PP2022091501382 | PLG2726 | 2022-09-15 |    5241910 |          1 | b_other_sjenis |      4 | JP2022000055114 | Penjualan Pelanggan Tunai  Tanggal 15-09-2022 Shift 3 | t
+ PP2022091401127 | PLG2751 | 2022-09-14 |    5222534 |          1 | b_other_sjenis |      4 | JP2022000054863 | Penjualan Pelanggan Tunai  Tanggal 14-09-2022 Shift 1 | t
+ PP2023010900414 | PLG2751 | 2023-01-09 |    5205604 |          1 | b_other_sjenis |      4 | JP2023000000614 | Penjualan Pelanggan Tunai  Tanggal 09-01-2023 Shift 1 | t
+ PP2022103000131 | PLG2751 | 2022-10-30 |    5097540 |          1 | b_other_sjenis |      4 | JP2022000063904 | Penjualan Pelanggan Tunai  Tanggal 30-10-2022 Shift 1 | t
+ PP2022090700788 | PLG2751 | 2022-09-07 |    5038716 |          1 | b_other_sjenis |      4 | JP2022000053279 | Penjualan Pelanggan Tunai  Tanggal 07-09-2022 Shift 1 | t
+ PP2022122100559 | PLG2751 | 2022-12-21 |    4774400 |          1 | b_other_sjenis |      4 | JP2022000069542 | Penjualan Pelanggan Tunai  Tanggal 21-12-2022 Shift 1 | t
+ PP2022121700311 | PLG2751 | 2022-12-17 |    4741168 |          1 | b_other_sjenis |      4 | JP2022000069182 | Penjualan Pelanggan Tunai  Tanggal 17-12-2022 Shift 1 | t
+ PP2022091600806 | PLG2726 | 2022-09-16 |    4640000 |          1 | b_other_sjenis |      4 | JP2022000055290 | Penjualan Pelanggan Tunai  Tanggal 16-09-2022 Shift 3 | t
+ PP2022122200238 | PLG2751 | 2022-12-22 |    4489276 |          1 | b_other_sjenis |      4 | JP2022000069646 | Penjualan Pelanggan Tunai  Tanggal 22-12-2022 Shift 1 | t
+(20 rows)
+
+=== B_ACTUAL_RELATION_AND_DATABASE_BYTES ===
+          observed_at          | current_database | database_bytes 
+-------------------------------+------------------+----------------
+ 2026-09-13 07:08:35.624095+00 | solamax          |     7610473495
+(1 row)
+
+ schema |             relation              | table_bytes | index_bytes | total_bytes 
+--------+-----------------------------------+-------------+-------------+-------------
+ app    | saldo_pelanggan_source_bppiut     |  1926922240 |  1985044480 |  3911950336
+ app    | saldo_pelanggan_source_bphut      |   816029696 |   838983680 |  1655013376
+ app    | saldo_pelanggan_source_pelanggan  |     8257536 |     6373376 |    14630912
+ app    | saldo_pelanggan_snapshot_row      |      548864 |      385024 |      933888
+ app    | saldo_pelanggan_source_cycle      |       73728 |       65536 |      139264
+ app    | saldo_pelanggan_build_work        |       16384 |       81920 |       98304
+ app    | saldo_pelanggan_snapshot_manifest |       16384 |       81920 |       98304
+ app    | saldo_pelanggan_snapshot_pointer  |       16384 |       24576 |       40960
+ app    | saldo_pelanggan_source_change     |        8192 |       16384 |       24576
+ app    | saldo_pelanggan_dirty             |           0 |        8192 |        8192
+ public | bppiut                            |   444547072 |   155336704 |   599883776
+ public | bphut                             |    86720512 |    26640384 |   113360896
+(12 rows)
+
+=== B_SNAPSHOT_GENERATION_FOOTPRINT_AND_BASELINE_ROLE ===
+ as_of_date |            generation_id             | row_count | row_payload_bytes 
+------------+--------------------------------------+-----------+-------------------
+ 2026-08-31 | 31f2f0cf-d5c3-4920-9496-1db61215d03c |      2973 |            221570
+ 2026-09-13 | c45a4da2-5d16-4e8f-bf67-37343e02eb47 |      2973 |            221582
+(2 rows)
+
+ as_of_date |            generation_id             |  status  |           source_cycle_id            |      source_completed_at      | base_month_end |          base_generation_id          |  formula_version   | row_count | has_pointer 
+------------+--------------------------------------+----------+--------------------------------------+-------------------------------+----------------+--------------------------------------+--------------------+-----------+-------------
+ 2026-08-31 | 31f2f0cf-d5c3-4920-9496-1db61215d03c | complete | c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff | 2026-09-12 19:05:15.271178+00 |                |                                      | saldo-pelanggan-v1 |      2973 | t
+ 2026-09-13 | c45a4da2-5d16-4e8f-bf67-37343e02eb47 | complete | c33b0dd5-0bfe-4b4e-a86a-0109d080a8ff | 2026-09-12 19:05:15.271178+00 | 2026-08-31     | 31f2f0cf-d5c3-4920-9496-1db61215d03c | saldo-pelanggan-v1 |      2973 | t
+(2 rows)
+
+ROLLBACK

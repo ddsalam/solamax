@@ -194,6 +194,19 @@ type ValidationRow = {
   akhir_piutang_online_total: string;
   awal_hutang_lokal_total: string;
   akhir_hutang_lokal_total: string;
+  awal_piutang_lokal_debet_total: string;
+  awal_piutang_lokal_kredit_total: string;
+  akhir_piutang_lokal_debet_total: string;
+  akhir_piutang_lokal_kredit_total: string;
+  awal_piutang_online_debet_total: string;
+  awal_piutang_online_kredit_total: string;
+  akhir_piutang_online_debet_total: string;
+  akhir_piutang_online_kredit_total: string;
+  awal_hutang_lokal_debet_total: string;
+  awal_hutang_lokal_kredit_total: string;
+  akhir_hutang_lokal_debet_total: string;
+  akhir_hutang_lokal_kredit_total: string;
+
 };
 type ReadySnapshot = Extract<SaldoSnapshot, { status: "ready" }>;
 
@@ -340,6 +353,19 @@ async function buildReady(
         row.awal_piutang_lokal_total, row.akhir_piutang_lokal_total,
         row.awal_piutang_online_total, row.akhir_piutang_online_total,
         row.awal_hutang_lokal_total, row.akhir_hutang_lokal_total,
+        row.awal_piutang_lokal_debet_total,
+        row.awal_piutang_lokal_kredit_total,
+        row.akhir_piutang_lokal_debet_total,
+        row.akhir_piutang_lokal_kredit_total,
+        row.awal_piutang_online_debet_total,
+        row.awal_piutang_online_kredit_total,
+        row.akhir_piutang_online_debet_total,
+        row.akhir_piutang_online_kredit_total,
+        row.awal_hutang_lokal_debet_total,
+        row.awal_hutang_lokal_kredit_total,
+        row.akhir_hutang_lokal_debet_total,
+        row.akhir_hutang_lokal_kredit_total,
+
       ],
     );
     if (completed.rowCount !== 1) throw new Error("B4 manifest was not completed");
@@ -603,13 +629,14 @@ describeLive("B4 synthetic snapshot read proof on solamax-pg-rlsstg", () => {
              (SELECT count(*) FROM "_prisma_migrations"
                WHERE migration_name IN (
                  '0037_saldo_pelanggan_snapshot',
-                 '0038_snapshot_manifest_row_count'
+                 '0038_snapshot_manifest_row_count',
+                 '0039_snapshot_debet_kredit'
                ) AND finished_at IS NOT NULL AND rolled_back_at IS NULL)::text AS migrations`);
     expect(identity.rows[0]).toMatchObject({
       database_name: "solamax",
       current_user: "ingest",
       system_identifier: "7659054651798528016",
-      migrations: "2",
+      migrations: "3",
     });
     expect(Number(identity.rows[0]!.database_bytes)).toBeLessThan(9_000_000_000);
 

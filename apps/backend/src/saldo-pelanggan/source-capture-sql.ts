@@ -1,3 +1,5 @@
+import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
+
 /**
  * SQL for full-sync source-cut capture and invalidation.
  *
@@ -483,6 +485,23 @@ WHERE c.unit_id = $1::smallint
 RETURNING source_cycle_id`;
 
 /** $1 unit, $2 winning sequence. Any older incomplete cut can no longer win. */
+/**
+ * $1 unit. Berapa cut yang masih `staging`.
+ *
+ * Angka inilah tanda kesehatan LAJU. Hanya cut ber-sequence TERTINGGI yang
+ * masih bisa menang (lihat READ_LATEST_SOURCE_SEQUENCE_SQL), jadi dalam keadaan
+ * sehat jumlahnya 1 — paling banyak 2 bila satu cut sedang diunggah. Terukur
+ * di produksi 14-09-2026: **22 cut staging** menumpuk selama ±27 jam, memegang
+ * 17.674.653 dari 18.082.443 baris `source_bppiut` (97,7%). Yang menumpuk
+ * bukan cycle `failed` — yang itu memegang NOL baris; pemensiunannya bekerja.
+ * Yang tidak bekerja adalah CADENCE-nya: penandaan staging->failed hanya
+ * terjadi saat snapshot worker berjalan, yaitu sekali sehari.
+ */
+export const COUNT_STAGING_CYCLES_SQL = `
+SELECT count(*)::bigint AS staging_count
+FROM app.saldo_pelanggan_source_cycle
+WHERE unit_id = $1::smallint AND status = 'staging'`;
+
 export const FAIL_SUPERSEDED_STAGING_CYCLES_SQL = `
 UPDATE app.saldo_pelanggan_source_cycle
 SET status = 'failed',
@@ -497,10 +516,7 @@ WHERE unit_id = $1::smallint
  * rows once a cut failed or an older complete cut has no active consumer.
  * The newest complete cut is retained as the predecessor for the next diff.
  */
-const retiredSourceRowsPredicate = `
-  AND c.unit_id = $1::smallint
-  AND c.source_cycle_id = s.source_cycle_id
-  AND (
+const retiredCyclePredicate = `(
     c.status = 'failed'
     OR (
       c.status = 'complete'
@@ -529,16 +545,39 @@ const retiredSourceRowsPredicate = `
     )
   )`;
 
+/**
+ * $1 unit, $2 batas baris per batch. BERBATAS DENGAN SENGAJA.
+ *
+ * Versi tak-berbatas menghapus seluruh sisa dalam SATU pernyataan di dalam satu
+ * transaksi ber-budget. Melewati budget berarti rollback TOTAL: nol kemajuan,
+ * satu baris peringatan stderr, dan tumpukan yang membesar sehingga percobaan
+ * berikutnya lebih pasti gagal. Terukur 95% budget di produksi 12 Sep 2026.
+ *
+ * Bentuk berbatas membuat kegagalan menjadi KEMAJUAN SEBAGIAN. Predikatnya
+ * dievaluasi ulang tiap batch, jadi cut yang statusnya berubah di tengah
+ * pengurasan diperlakukan menurut keadaan terbarunya — lebih benar, bukan
+ * kurang. `ctid` aman di sini: baris milik cut yang sudah mati tidak ditulis
+ * siapa pun, dan CTE serta DELETE berbagi satu snapshot pernyataan.
+ */
+const boundedPrune = (table: string) => `
+WITH doomed AS (
+  SELECT s.ctid AS row_ctid
+  FROM ${table} s
+  JOIN app.saldo_pelanggan_source_cycle c
+    ON c.unit_id = $1::smallint
+   AND c.source_cycle_id = s.source_cycle_id
+  WHERE s.unit_id = $1::smallint
+    AND ${retiredCyclePredicate}
+  LIMIT $2::int
+)
+DELETE FROM ${table} s
+USING doomed d
+WHERE s.ctid = d.row_ctid`;
+
 export const PRUNE_RETIRED_SOURCE_ROWS_SQL = [
-  `DELETE FROM app.saldo_pelanggan_source_pelanggan s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
-  `DELETE FROM app.saldo_pelanggan_source_bppiut s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
-  `DELETE FROM app.saldo_pelanggan_source_bphut s
-   USING app.saldo_pelanggan_source_cycle c
-   WHERE s.unit_id = $1::smallint${retiredSourceRowsPredicate}`,
+  boundedPrune("app.saldo_pelanggan_source_pelanggan"),
+  boundedPrune("app.saldo_pelanggan_source_bppiut"),
+  boundedPrune("app.saldo_pelanggan_source_bphut"),
 ] as const;
 
 /** $1 unit. Retire unleased work before inserting the latest source cut. */
@@ -595,4 +634,99 @@ INSERT INTO app.saldo_pelanggan_build_work (
 SELECT t.unit_id, gen_random_uuid(), t.as_of_date, $2::uuid,
        $3::bigint, 'complete', 0, 'queued'
 FROM target_dates t
+JOIN app.saldo_pelanggan_source_cycle c
+  ON c.unit_id = t.unit_id AND c.source_cycle_id = $2::uuid
+ AND c.source_cycle_sequence = $3::bigint AND c.status = 'complete'
+WHERE t.as_of_date <= (c.source_completed_at AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date
+ON CONFLICT (unit_id, as_of_date, source_cycle_id, rebuild_epoch) DO NOTHING`;
+
+
+/** $1 unit. Never fall back to an older cut when the latest cut is invalid. */
+export const READ_BACKFILL_SOURCE_CYCLE_SQL = `
+WITH latest AS (
+  SELECT * FROM app.saldo_pelanggan_source_cycle
+  WHERE unit_id = $1::smallint AND status = 'complete'
+  ORDER BY source_cycle_sequence DESC
+  LIMIT 1
+)
+SELECT c.source_cycle_id, c.source_cycle_sequence
+FROM latest c
+WHERE c.source_completed_at IS NOT NULL
+  AND c.pelanggan_keyed_checksum IS NOT NULL
+  AND c.bppiut_keyed_checksum IS NOT NULL
+  AND c.bphut_keyed_checksum IS NOT NULL
+  AND c.pelanggan_row_count = (
+    SELECT count(*) FROM app.saldo_pelanggan_source_pelanggan p
+    WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id
+  )
+  AND c.bppiut_row_count = (
+    SELECT count(*) FROM app.saldo_pelanggan_source_bppiut p
+    WHERE p.unit_id = c.unit_id AND p.source_cycle_id = c.source_cycle_id
+  )
+  AND c.bphut_row_count = (
+    SELECT count(*) FROM app.saldo_pelanggan_source_bphut h
+    WHERE h.unit_id = c.unit_id AND h.source_cycle_id = c.source_cycle_id
+  )`;
+
+/** $1 unit, $2 latest sequence. Keep retries/dead letters on the same cut intact. */
+export const SUPERSEDE_BACKFILL_WORK_SQL = `
+UPDATE app.saldo_pelanggan_build_work w
+SET state = 'dead_letter', last_error = 'superseded_by_new_source_cut',
+    completed_at = clock_timestamp(), updated_at = clock_timestamp()
+WHERE w.unit_id = $1::smallint
+  AND w.source_cycle_sequence < $2::bigint
+  AND w.state IN ('queued', 'retry_wait')
+  AND (
+    NOT EXISTS (
+      SELECT 1 FROM app.saldo_pelanggan_snapshot_pointer p
+      WHERE p.unit_id = w.unit_id AND p.as_of_date = w.as_of_date
+    )
+    OR EXISTS (
+      SELECT 1 FROM app.saldo_pelanggan_snapshot_pointer p
+      WHERE p.unit_id = w.unit_id AND p.as_of_date = w.as_of_date AND p.pending_replacement
+    )
+  )`;
+
+/** $1 unit, $2 prior days (0..31), $3 latest cut, $4 latest sequence.
+ * Called after supersession, under the source-capture advisory transaction lock.
+ */
+export const ENQUEUE_BACKFILL_SQL = `
+WITH bounds AS (
+  SELECT c.unit_id, c.source_cycle_id, c.source_cycle_sequence,
+         (clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date AS today,
+         (c.source_completed_at AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date AS cut_date
+  FROM app.saldo_pelanggan_source_cycle c
+  WHERE c.unit_id = $1::smallint AND c.source_cycle_id = $3::uuid
+    AND c.source_cycle_sequence = $4::bigint AND c.status = 'complete'
+    AND $2::integer BETWEEN 0 AND ${SNAPSHOT_BACKFILL_LIMITS.maxDays}
+), target_dates AS (
+  SELECT b.unit_id, b.today - offset_days AS as_of_date,
+         b.source_cycle_id, b.source_cycle_sequence
+  FROM bounds b CROSS JOIN generate_series(0, $2::integer) AS days(offset_days)
+  WHERE b.today - offset_days <= b.cut_date
+
+  UNION
+
+  -- A dirty published date remains repairable even outside the rolling window.
+  SELECT b.unit_id, p.as_of_date, b.source_cycle_id, b.source_cycle_sequence
+  FROM bounds b
+  JOIN app.saldo_pelanggan_snapshot_pointer p ON p.unit_id = b.unit_id
+  WHERE p.pending_replacement AND p.as_of_date <= LEAST(b.today, b.cut_date)
+)
+INSERT INTO app.saldo_pelanggan_build_work (
+  unit_id, work_id, as_of_date, source_cycle_id,
+  source_cycle_sequence, source_cycle_status, rebuild_epoch, state
+)
+SELECT t.unit_id, gen_random_uuid(), t.as_of_date, t.source_cycle_id,
+       t.source_cycle_sequence, 'complete', 0, 'queued'
+FROM target_dates t
+WHERE NOT EXISTS (
+  SELECT 1 FROM app.saldo_pelanggan_snapshot_pointer p
+  WHERE p.unit_id = t.unit_id AND p.as_of_date = t.as_of_date AND NOT p.pending_replacement
+)
+  AND NOT EXISTS (
+    SELECT 1 FROM app.saldo_pelanggan_build_work w
+    WHERE w.unit_id = t.unit_id AND w.as_of_date = t.as_of_date
+      AND w.source_cycle_id = t.source_cycle_id
+  )
 ON CONFLICT (unit_id, as_of_date, source_cycle_id, rebuild_epoch) DO NOTHING`;

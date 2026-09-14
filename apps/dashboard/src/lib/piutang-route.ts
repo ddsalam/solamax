@@ -1,15 +1,35 @@
 import {
+  PIUTANG_SECTION_IDS,
   isPiutangFilter,
   isPiutangSort,
   type PiutangReadyView,
+  type PiutangSectionId,
   type PiutangViewInput,
-  type PiutangViewRow,
 } from "./piutang-model";
-import type { SaldoSnapshot, SaldoSnapshotRow } from "./saldo-snapshot";
+import type { SaldoSnapshot } from "./saldo-snapshot";
 
 export function piutangViewInput(params: Record<string, string | string[] | undefined>): PiutangViewInput {
   const one = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
-  return { search: one(params.q), filter: one(params.filter), sort: one(params.sort), page: one(params.page) };
+  return {
+    search: one(params.q), filter: one(params.filter), sort: one(params.sort),
+    pages: Object.fromEntries(PIUTANG_SECTION_IDS.map((id) => [id, one(params[`page_${id}`])])),
+  };
+}
+
+/** Section navigation retains every other section page; filter changes omit all pages. */
+export function piutangQueryHref(
+  input: Pick<PiutangReadyView, "search" | "filter" | "sort">,
+  pages: Partial<Record<PiutangSectionId, number>> = {},
+  sectionId?: PiutangSectionId,
+): string {
+  const params = new URLSearchParams();
+  if (input.search) params.set("q", input.search);
+  params.set("filter", input.filter);
+  params.set("sort", input.sort);
+  for (const id of PIUTANG_SECTION_IDS) {
+    if (pages[id] !== undefined) params.set(`page_${id}`, String(pages[id]));
+  }
+  return `?${params}${sectionId ? `#piutang-${sectionId}` : ""}`;
 }
 
 /** Export handlers reject unknown enum values rather than silently normalising them. */
@@ -32,28 +52,6 @@ export function piutangExportHref(
   params.set("filter", input.filter);
   params.set("sort", input.sort);
   return `/api/keuangan/unit/${encodeURIComponent(unitCode)}/piutang/${date}/${format}?${params}`;
-}
-
-export function balanceSetFromRow(row: PiutangViewRow | SaldoSnapshotRow) {
-  return {
-    piutangLokalAwal: row.awalPiutangLokal,
-    piutangLokalAkhir: row.akhirPiutangLokal,
-    piutangOnlineAwal: row.awalPiutangOnline,
-    piutangOnlineAkhir: row.akhirPiutangOnline,
-    hutangLokalAwal: row.awalHutangLokal,
-    hutangLokalAkhir: row.akhirHutangLokal,
-  };
-}
-
-export function balanceSetFromTotals(view: PiutangReadyView) {
-  return {
-    piutangLokalAwal: view.metadata.totals.awal.piutangLokal,
-    piutangLokalAkhir: view.metadata.totals.akhir.piutangLokal,
-    piutangOnlineAwal: view.metadata.totals.awal.piutangOnline,
-    piutangOnlineAkhir: view.metadata.totals.akhir.piutangOnline,
-    hutangLokalAwal: view.metadata.totals.awal.hutangLokal,
-    hutangLokalAkhir: view.metadata.totals.akhir.hutangLokal,
-  };
 }
 
 export function formatWib(iso: string): string {

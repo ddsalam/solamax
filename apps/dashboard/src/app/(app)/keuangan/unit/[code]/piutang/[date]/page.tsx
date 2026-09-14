@@ -5,8 +5,6 @@ import { unitDotted } from "@/lib/config";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { buildPiutangView } from "@/lib/piutang-model";
 import {
-  balanceSetFromRow,
-  balanceSetFromTotals,
   formatWib,
   pendingBanner,
   piutangExportHref,
@@ -68,22 +66,18 @@ export default async function PiutangPelangganPage({
             search: view.search,
             filter: view.filter,
             sort: view.sort,
-            page: view.page,
-            pageSize: 50,
             totalRows: view.resultCount,
-            totalPages: view.totalPages,
+            occurrenceCount: view.occurrenceCount,
           }}
           provenance={{
             formulaVersion: view.metadata.formulaVersion,
             computedAtLabel: formatWib(view.metadata.computedAt),
             sourceCutLabel: `Siklus sumber ${view.metadata.sourceCycleId} selesai ${formatWib(view.metadata.sourceCompletedAt)}`,
           }}
-          totals={balanceSetFromTotals(view)}
-          rows={view.rows.map((row) => ({
-            customerCode: row.customerCode,
-            customerName: row.customerName ?? "Nama belum tersedia",
-            balances: balanceSetFromRow(row),
-          }))}
+          historicalNote={view.historicalNote}
+          summary={view.metadata}
+          sections={view.sections}
+          zeroSectionOpen={view.zeroSectionOpen}
           csvHref={piutangExportHref("csv", unit.code, date, view)}
           pdfHref={piutangExportHref("pdf", unit.code, date, view)}
           pendingBanner={pendingBanner(snapshot as Extract<typeof snapshot, { status: "ready" }>)}

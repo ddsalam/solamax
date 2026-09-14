@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   buildPiutangExportView,
   buildPiutangView,
+  groupPiutangRows,
+  booksForPiutangRow,
   type PiutangFilter,
   type PiutangSort,
 } from "./piutang-model";
 import type { SaldoSnapshot, SaldoSnapshotRow } from "./saldo-snapshot";
 
 const zeroRow = (code: string, name: string | null): SaldoSnapshotRow => ({
+  awalPiutangLokalDebet: 0, awalPiutangLokalKredit: 0, akhirPiutangLokalDebet: 0, akhirPiutangLokalKredit: 0,
+  awalPiutangOnlineDebet: 0, awalPiutangOnlineKredit: 0, akhirPiutangOnlineDebet: 0, akhirPiutangOnlineKredit: 0,
+  awalHutangLokalDebet: 0, awalHutangLokalKredit: 0, akhirHutangLokalDebet: 0, akhirHutangLokalKredit: 0,
   customerCode: code,
   customerName: name,
   awalPiutangLokal: 0,
@@ -39,6 +44,8 @@ function ready(
       sourceCompletedAt: "2026-09-09T03:00:00Z",
       pendingReplacement: false,
       staleInvalidFrom: null,
+      debetTotals: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 }, akhir: { piutangLokal: 1, piutangOnline: 0, hutangLokal: 0 } },
+      kreditTotals: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 }, akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 } },
       totals: {
         awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
         akhir: { piutangLokal: 1, piutangOnline: 0, hutangLokal: 0 },
@@ -102,9 +109,11 @@ describe("buildPiutangView", () => {
       rows: [],
       resultCount: 0,
       totalCount: 0,
-      page: 1,
-      pageSize: 50,
-      totalPages: 1,
+      sections: [
+        { id: "lokal", page: 1, pageSize: 50, totalPages: 1 },
+        { id: "hutang", page: 1, pageSize: 50, totalPages: 1 },
+        { id: "nol", page: 1, pageSize: 50, totalPages: 1 },
+      ],
     });
   });
 
@@ -160,14 +169,14 @@ describe("buildPiutangView", () => {
 
   it("paginates 51 rows at 50 and clamps malformed or excessive pages", () => {
     const rows = Array.from({ length: 51 }, (_, index) => withSaldo(String(index + 1).padStart(2, "0"), `Nama ${index + 1}`));
-    const page2 = buildPiutangView(ready(rows), { sort: "kode", page: "2" });
-    expect(page2).toMatchObject({ status: "ready", resultCount: 51, totalCount: 51, page: 2, pageSize: 50, totalPages: 2 });
+    const page2 = buildPiutangView(ready(rows), { sort: "kode", pages: { lokal: "2" } });
+    expect(page2).toMatchObject({ status: "ready", resultCount: 51, totalCount: 51, sections: [{ id: "lokal", page: 2, pageSize: 50, totalPages: 2 }, { id: "hutang" }, { id: "nol" }] });
     if (page2.status !== "ready") throw new Error("expected ready");
-    expect(page2.rows.map((row) => row.customerCode)).toEqual(["51"]);
+    expect(page2.sections[0]!.rows.map((row) => row.customerCode)).toEqual(["51"]);
 
-    expect(buildPiutangView(ready(rows), { page: "wat" })).toMatchObject({ status: "ready", page: 1 });
-    expect(buildPiutangView(ready(rows), { page: -7 })).toMatchObject({ status: "ready", page: 1 });
-    expect(buildPiutangView(ready(rows), { page: 99 })).toMatchObject({ status: "ready", page: 2 });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: "wat" } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 1 }, { id: "hutang" }, { id: "nol" }] });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: -7 } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 1 }, { id: "hutang" }, { id: "nol" }] });
+    expect(buildPiutangView(ready(rows), { pages: { lokal: 99 } })).toMatchObject({ status: "ready", sections: [{ id: "lokal", page: 2 }, { id: "hutang" }, { id: "nol" }] });
     const exported = buildPiutangExportView(ready(rows), { sort: "kode" });
     expect(exported).toMatchObject({ status: "ready", resultCount: 51 });
     if (exported.status !== "ready") throw new Error("expected ready");
@@ -178,5 +187,114 @@ describe("buildPiutangView", () => {
     const dotted = zeroRow("21.999.0014", "Online");
     expect(buildPiutangView(ready([dotted], false), {})).toMatchObject({ status: "ready", hasOnlineCustomer: false });
     expect(buildPiutangView(ready([dotted], true), {})).toMatchObject({ status: "ready", hasOnlineCustomer: true });
+  });
+});
+
+
+describe("section membership and pagination", () => {
+  it("keeps opening-only and offsetting balances in each relevant book, with unchanged amounts", () => {
+    const rows = [
+      { ...zeroRow("A", "Awal"), awalPiutangLokal: 12.5 },
+      { ...zeroRow("B", "Dua"), awalPiutangLokal: 5, akhirHutangLokal: -5 },
+      { ...zeroRow("C", "Online"), akhirPiutangOnline: 9 },
+      zeroRow("Z", "Nol"),
+    ];
+    const view = buildPiutangView(ready(rows, true), {});
+    if (view.status !== "ready") throw new Error("expected ready");
+    expect(view.sections.map((s) => [s.id, s.rows.map((r) => r.customerCode)])).toEqual([
+      ["lokal", ["A", "B"]], ["online", ["C"]], ["hutang", ["B"]], ["nol", ["Z"]],
+    ]);
+    expect(view.resultCount).toBe(4);
+    expect(view.occurrenceCount).toBe(5);
+    expect(view.sections[0]!.rows[1]!.bookCount).toBe(2);
+    for (const section of view.sections) for (const row of section.rows) {
+      expect(row).toMatchObject(rows.find((r) => r.customerCode === row.customerCode)!);
+    }
+    expect(groupPiutangRows(view.rows, false).map((s) => s.id)).toEqual(["lokal", "hutang", "nol"]);
+  });
+
+  it("pages each section independently and exports every result in the same section order", () => {
+    const rows = Array.from({ length: 51 }, (_, i) => [
+      withSaldo(`L${i}`, `Pelanggan ${i}`),
+      { ...zeroRow(`H${i}`, `Pelanggan ${i}`), awalHutangLokal: -1 },
+      { ...zeroRow(`O${i}`, `Pelanggan ${i}`), akhirPiutangOnline: 1 },
+      zeroRow(`Z${i}`, `Pelanggan ${i}`),
+    ]).flat();
+    const view = buildPiutangView(ready(rows, true), { sort: "kode", pages: { lokal: 2, online: 2, hutang: 1, nol: 2 } });
+    const exported = buildPiutangExportView(ready(rows, true), { sort: "kode" });
+    if (view.status !== "ready" || exported.status !== "ready") throw new Error("expected ready");
+    expect(view.sections.map((s) => [s.id, s.page, s.rows.length, s.resultCount])).toEqual([
+      ["lokal", 2, 1, 51], ["online", 2, 1, 51], ["hutang", 1, 50, 51], ["nol", 2, 1, 51],
+    ]);
+    expect(view.zeroSectionOpen).toBe(true);
+    expect(exported.sections.map((s) => s.rows.length)).toEqual([51, 51, 51, 51]);
+    for (const section of view.sections) {
+      const all = exported.sections.find((s) => s.id === section.id)!;
+      expect(section.rows).toEqual(all.rows.slice((section.page - 1) * 50, section.page * 50));
+    }
+  });
+
+  it("keeps the zero section present and opens it for search or the zero filter", () => {
+    for (const input of [{}, { search: "Nol" }, { filter: "nol" }, { filter: "bersaldo" }]) {
+      const view = buildPiutangView(ready([zeroRow("Z", "Nol")]), input);
+      if (view.status !== "ready") throw new Error("expected ready");
+      expect(view.sections.at(-1)?.id).toBe("nol");
+      expect(view.zeroSectionOpen).toBe(Boolean(input.search || input.filter === "nol"));
+      expect(view.sections.at(-1)?.resultCount).toBe(input.filter === "bersaldo" ? 0 : 1);
+    }
+  });
+});
+
+
+it("sorts search results within books before zero rows, identically for screen and export", () => {
+  const snapshot = ready([
+    withSaldo("L2", "Cari Zulu"), withSaldo("L1", "Cari Alpha"),
+    { ...zeroRow("H2", "Cari Zulu"), awalHutangLokal: -0.4 },
+    { ...zeroRow("H1", "Cari Alpha"), akhirHutangLokal: -1 },
+    zeroRow("Z1", "Cari Nol"), withSaldo("X", "Excluded"),
+  ]);
+  const screen = buildPiutangView(snapshot, { search: "cari", sort: "nama" });
+  const exported = buildPiutangExportView(snapshot, { search: "cari", sort: "nama" });
+  if (screen.status !== "ready" || exported.status !== "ready") throw new Error("expected ready");
+  const codes = (sections: typeof exported.sections) => sections.map((s) => s.rows.map((r) => r.customerCode));
+  expect(codes(screen.sections)).toEqual([["L1", "L2"], ["H1", "H2"], ["Z1"]]);
+  expect(codes(screen.sections)).toEqual(codes(exported.sections));
+});
+
+
+it("retains zero-saldo gross turnover once without changing section membership", () => {
+  const row = { ...zeroRow("TURN", "Pelunasan"),
+    akhirPiutangLokal: 10, akhirPiutangLokalDebet: 10,
+    akhirPiutangOnline: 5, akhirPiutangOnlineDebet: 5,
+    awalHutangLokalDebet: 71.25, awalHutangLokalKredit: 71.25,
+    akhirHutangLokalDebet: 71.25, akhirHutangLokalKredit: 71.25 };
+  const view = buildPiutangExportView(ready([row], true), {});
+  if (view.status !== "ready") throw new Error("expected ready");
+  expect(view.sections.map((section) => [section.id, section.rows.length])).toEqual([
+    ["lokal", 1], ["online", 1], ["hutang", 0], ["nol", 0],
+  ]);
+  expect(view.sections.flatMap((section) => section.rows.flatMap((entry) =>
+    booksForPiutangRow(section, entry).map((book) => [section.id, book.id])))).toEqual([
+      ["lokal", "lokal"], ["lokal", "hutang"], ["online", "online"],
+    ]);
+});
+
+describe("historical snapshot provenance", () => {
+  it("warns using the source business date in WIB, identically in screen and export", () => {
+    const snapshot = ready([withSaldo("A", "A")]);
+    snapshot.asOfDate = "2026-09-10";
+    snapshot.metadata.sourceCompletedAt = "2026-09-12T19:05:15Z";
+    for (const build of [buildPiutangView, buildPiutangExportView]) {
+      const result = build(snapshot, {});
+      expect(result).toHaveProperty("historicalNote", "Posisi 2026-09-10 dihitung dari data sumber per 2026-09-13 WIB. Termasuk koreksi bertanggal mundur yang tercatat sampai saat itu; tidak identik dengan laporan EasyMax yang dicetak pada 2026-09-10.");
+      if (result.status !== "ready") throw new Error("expected ready");
+      expect(result.rows).toEqual(expect.arrayContaining([expect.objectContaining({ akhirPiutangLokal: 1 })]));
+    }
+  });
+  it("does not warn for a cut on the target business date", () => {
+    const snapshot = ready([]);
+    snapshot.asOfDate = "2026-09-13";
+    snapshot.metadata.sourceCompletedAt = "2026-09-12T19:05:15Z";
+    expect(buildPiutangView(snapshot, {})).toHaveProperty("historicalNote", null);
   });
 });

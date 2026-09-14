@@ -11,6 +11,7 @@ import { SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
 export const SET_UNIT_SCOPE_SQL =
   "SELECT set_config('app.unit_ids', $1, true)";
 
+/** $1 unit, $2 source cut, $3 sequence, $4 target date. */
 export const SOURCE_CYCLE_EVIDENCE_SQL = `
 SELECT c.unit_id,
        c.source_cycle_id,
@@ -28,6 +29,7 @@ WHERE c.unit_id = $1::smallint
   AND c.source_cycle_sequence = $3::bigint
   AND c.status = 'complete'
   AND c.source_completed_at IS NOT NULL
+  AND $4::date <= (c.source_completed_at AT TIME ZONE '${SNAPSHOT_OPERATIONAL_LIMITS.timezone}')::date
   AND c.pelanggan_row_count IS NOT NULL
   AND c.pelanggan_keyed_checksum IS NOT NULL
   AND c.bppiut_row_count IS NOT NULL
@@ -72,6 +74,50 @@ FROM (
     AND h.dtgl <= $3::date
     AND COALESCE(sbatal, 0) = 0
     AND NULLIF(btrim(ckdplg), '') IS NULL
+) invalid`;
+
+/** $1 unit, $2 source cycle, $3 target date. Excluded orphan piutang stays excluded. */
+export const ASSERT_VALID_SOURCE_SIDES_SQL = `
+SELECT count(*)::bigint AS invalid_side_count
+FROM (
+  SELECT b.sjnsbp
+  FROM app.saldo_pelanggan_source_bppiut b
+  WHERE b.unit_id = $1::smallint AND b.source_cycle_id = $2::uuid
+    AND b.dtgl <= $3::date AND COALESCE(b.sbatal, 0) = 0
+    AND (b.sjnsbp IS NULL OR b.sjnsbp NOT IN (1, 2))
+    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+    ))
+  UNION ALL
+  SELECT h.sjnsbp
+  FROM app.saldo_pelanggan_source_bphut h
+  WHERE h.unit_id = $1::smallint AND h.source_cycle_id = $2::uuid
+    AND h.dtgl <= $3::date AND COALESCE(h.sbatal, 0) = 0
+    AND (h.sjnsbp IS NULL OR h.sjnsbp NOT IN (1, 2))
+) invalid`;
+
+/** Same included populations; a missing amount is not a zero amount. */
+export const ASSERT_VALID_SOURCE_AMOUNTS_SQL = `
+SELECT count(*)::bigint AS invalid_amount_count
+FROM (
+  SELECT b.njumlah
+  FROM app.saldo_pelanggan_source_bppiut b
+  WHERE b.unit_id = $1::smallint AND b.source_cycle_id = $2::uuid
+    AND b.dtgl <= $3::date AND COALESCE(b.sbatal, 0) = 0
+    AND b.njumlah IS NULL
+    AND (position('.' in btrim(b.ckdplg)) > 0 OR EXISTS (
+      SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+      WHERE p.unit_id = b.unit_id AND p.source_cycle_id = b.source_cycle_id
+        AND btrim(p.ckdplg) = btrim(b.ckdplg) AND p.sjenis IN (1, 5)
+    ))
+  UNION ALL
+  SELECT h.njumlah
+  FROM app.saldo_pelanggan_source_bphut h
+  WHERE h.unit_id = $1::smallint AND h.source_cycle_id = $2::uuid
+    AND h.dtgl <= $3::date AND COALESCE(h.sbatal, 0) = 0
+    AND h.njumlah IS NULL
 ) invalid`;
 
 /**
@@ -135,7 +181,7 @@ WITH master_keys AS (
     AND p.sjenis IN (1, 5)
 ), live_piut AS (
   SELECT btrim(b.ckdplg) AS customer_code,
-         b.dtgl,
+         b.dtgl, b.sjnsbp, b.njumlah,
          b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value
   FROM app.saldo_pelanggan_source_bppiut b
   WHERE b.unit_id = $1::smallint
@@ -144,7 +190,7 @@ WITH master_keys AS (
     AND COALESCE(sbatal, 0) = 0
 ), live_hut AS (
   SELECT btrim(h.ckdplg) AS customer_code,
-         h.dtgl,
+         h.dtgl, h.sjnsbp, h.njumlah,
          h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value
   FROM app.saldo_pelanggan_source_bphut h
   WHERE h.unit_id = $1::smallint
@@ -167,6 +213,10 @@ WITH master_keys AS (
         AND position('.' in p.customer_code) = 0
         AND p.dtgl <= $2::date
     ), 0) AS akhir_piutang_lokal,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < $2::date AND p.sjnsbp = 1), 0) AS awal_piutang_lokal_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < $2::date AND p.sjnsbp = 2), 0) AS awal_piutang_lokal_kredit,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= $2::date AND p.sjnsbp = 1), 0) AS akhir_piutang_lokal_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= $2::date AND p.sjnsbp = 2), 0) AS akhir_piutang_lokal_kredit,
     COALESCE(sum(p.value) FILTER (
       WHERE position('.' in p.customer_code) > 0
         AND p.dtgl < $2::date
@@ -174,7 +224,11 @@ WITH master_keys AS (
     COALESCE(sum(p.value) FILTER (
       WHERE position('.' in p.customer_code) > 0
         AND p.dtgl <= $2::date
-    ), 0) AS akhir_piutang_online
+    ), 0) AS akhir_piutang_online,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < $2::date AND p.sjnsbp = 1), 0) AS awal_piutang_online_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < $2::date AND p.sjnsbp = 2), 0) AS awal_piutang_online_kredit,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= $2::date AND p.sjnsbp = 1), 0) AS akhir_piutang_online_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= $2::date AND p.sjnsbp = 2), 0) AS akhir_piutang_online_kredit
   FROM live_piut p
   LEFT JOIN local_keys l ON l.customer_code = p.customer_code
   GROUP BY p.customer_code
@@ -183,7 +237,11 @@ WITH master_keys AS (
     -COALESCE(sum(h.value) FILTER (WHERE h.dtgl < $2::date), 0)
       AS awal_hutang_lokal,
     -COALESCE(sum(h.value) FILTER (WHERE h.dtgl <= $2::date), 0)
-      AS akhir_hutang_lokal
+      AS akhir_hutang_lokal,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < $2::date AND h.sjnsbp = 1), 0) AS awal_hutang_lokal_debet,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < $2::date AND h.sjnsbp = 2), 0) AS awal_hutang_lokal_kredit,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= $2::date AND h.sjnsbp = 1), 0) AS akhir_hutang_lokal_debet,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= $2::date AND h.sjnsbp = 2), 0) AS akhir_hutang_lokal_kredit
   FROM live_hut h
   GROUP BY h.customer_code
 )
@@ -191,12 +249,36 @@ INSERT INTO app.saldo_pelanggan_snapshot_row (
   unit_id, as_of_date, generation_id, customer_code,
   awal_piutang_lokal, akhir_piutang_lokal,
   awal_piutang_online, akhir_piutang_online,
-  awal_hutang_lokal, akhir_hutang_lokal
+  awal_hutang_lokal, akhir_hutang_lokal,
+  awal_piutang_lokal_debet,
+  awal_piutang_lokal_kredit,
+  akhir_piutang_lokal_debet,
+  akhir_piutang_lokal_kredit,
+  awal_piutang_online_debet,
+  awal_piutang_online_kredit,
+  akhir_piutang_online_debet,
+  akhir_piutang_online_kredit,
+  awal_hutang_lokal_debet,
+  awal_hutang_lokal_kredit,
+  akhir_hutang_lokal_debet,
+  akhir_hutang_lokal_kredit
 )
 SELECT $1::smallint, $2::date, $3::uuid, k.customer_code,
        COALESCE(p.awal_piutang_lokal, 0), COALESCE(p.akhir_piutang_lokal, 0),
        COALESCE(p.awal_piutang_online, 0), COALESCE(p.akhir_piutang_online, 0),
-       COALESCE(h.awal_hutang_lokal, 0), COALESCE(h.akhir_hutang_lokal, 0)
+       COALESCE(h.awal_hutang_lokal, 0), COALESCE(h.akhir_hutang_lokal, 0),
+       COALESCE(p.awal_piutang_lokal_debet, 0),
+       COALESCE(p.awal_piutang_lokal_kredit, 0),
+       COALESCE(p.akhir_piutang_lokal_debet, 0),
+       COALESCE(p.akhir_piutang_lokal_kredit, 0),
+       COALESCE(p.awal_piutang_online_debet, 0),
+       COALESCE(p.awal_piutang_online_kredit, 0),
+       COALESCE(p.akhir_piutang_online_debet, 0),
+       COALESCE(p.akhir_piutang_online_kredit, 0),
+       COALESCE(h.awal_hutang_lokal_debet, 0),
+       COALESCE(h.awal_hutang_lokal_kredit, 0),
+       COALESCE(h.akhir_hutang_lokal_debet, 0),
+       COALESCE(h.akhir_hutang_lokal_kredit, 0)
 FROM customer_keys k
 LEFT JOIN piut p ON p.customer_code = k.customer_code
 LEFT JOIN hut h ON h.customer_code = k.customer_code
@@ -206,7 +288,19 @@ ON CONFLICT (unit_id, as_of_date, generation_id, customer_code) DO UPDATE SET
   awal_piutang_online = EXCLUDED.awal_piutang_online,
   akhir_piutang_online = EXCLUDED.akhir_piutang_online,
   awal_hutang_lokal = EXCLUDED.awal_hutang_lokal,
-  akhir_hutang_lokal = EXCLUDED.akhir_hutang_lokal`;
+  akhir_hutang_lokal = EXCLUDED.akhir_hutang_lokal,
+  awal_piutang_lokal_debet = EXCLUDED.awal_piutang_lokal_debet,
+  awal_piutang_lokal_kredit = EXCLUDED.awal_piutang_lokal_kredit,
+  akhir_piutang_lokal_debet = EXCLUDED.akhir_piutang_lokal_debet,
+  akhir_piutang_lokal_kredit = EXCLUDED.akhir_piutang_lokal_kredit,
+  awal_piutang_online_debet = EXCLUDED.awal_piutang_online_debet,
+  awal_piutang_online_kredit = EXCLUDED.awal_piutang_online_kredit,
+  akhir_piutang_online_debet = EXCLUDED.akhir_piutang_online_debet,
+  akhir_piutang_online_kredit = EXCLUDED.akhir_piutang_online_kredit,
+  awal_hutang_lokal_debet = EXCLUDED.awal_hutang_lokal_debet,
+  awal_hutang_lokal_kredit = EXCLUDED.awal_hutang_lokal_kredit,
+  akhir_hutang_lokal_debet = EXCLUDED.akhir_hutang_lokal_debet,
+  akhir_hutang_lokal_kredit = EXCLUDED.akhir_hutang_lokal_kredit`;
 
 /**
  * $1 unit, $2 target date, $3 generation, $4 source cycle,
@@ -215,7 +309,8 @@ ON CONFLICT (unit_id, as_of_date, generation_id, customer_code) DO UPDATE SET
 export const MATERIALIZE_DELTA_SQL = `
 WITH base AS (
   SELECT r.customer_code,
-         r.akhir_piutang_lokal, r.akhir_piutang_online, r.akhir_hutang_lokal
+         r.akhir_piutang_lokal, r.akhir_piutang_online, r.akhir_hutang_lokal,
+         r.akhir_piutang_lokal_debet, r.akhir_piutang_lokal_kredit, r.akhir_piutang_online_debet, r.akhir_piutang_online_kredit, r.akhir_hutang_lokal_debet, r.akhir_hutang_lokal_kredit
   FROM app.saldo_pelanggan_snapshot_row r
   WHERE r.unit_id = $1::smallint
     AND r.as_of_date = $5::date
@@ -232,7 +327,7 @@ WITH base AS (
     AND p.sjenis IN (1, 5)
 ), month_piut AS (
   SELECT btrim(b.ckdplg) AS customer_code,
-         b.dtgl,
+         b.dtgl, b.sjnsbp, b.njumlah,
          b.njumlah * CASE b.sjnsbp WHEN 1 THEN 1 WHEN 2 THEN -1 ELSE 0 END AS value
   FROM app.saldo_pelanggan_source_bppiut b
   WHERE b.unit_id = $1::smallint
@@ -242,7 +337,7 @@ WITH base AS (
     AND COALESCE(sbatal, 0) = 0
 ), month_hut AS (
   SELECT btrim(h.ckdplg) AS customer_code,
-         h.dtgl,
+         h.dtgl, h.sjnsbp, h.njumlah,
          h.njumlah * CASE h.sjnsbp WHEN 2 THEN 1 WHEN 1 THEN -1 ELSE 0 END AS value
   FROM app.saldo_pelanggan_source_bphut h
   WHERE h.unit_id = $1::smallint
@@ -265,12 +360,20 @@ WITH base AS (
       WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0
         AND p.dtgl <= $2::date
     ), 0) AS akhir_piutang_lokal,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < $2::date AND p.sjnsbp = 1), 0) AS awal_piutang_lokal_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl < $2::date AND p.sjnsbp = 2), 0) AS awal_piutang_lokal_kredit,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= $2::date AND p.sjnsbp = 1), 0) AS akhir_piutang_lokal_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE l.customer_code IS NOT NULL AND position('.' in p.customer_code) = 0 AND p.dtgl <= $2::date AND p.sjnsbp = 2), 0) AS akhir_piutang_lokal_kredit,
     COALESCE(sum(p.value) FILTER (
       WHERE position('.' in p.customer_code) > 0 AND p.dtgl < $2::date
     ), 0) AS awal_piutang_online,
     COALESCE(sum(p.value) FILTER (
       WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= $2::date
-    ), 0) AS akhir_piutang_online
+    ), 0) AS akhir_piutang_online,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < $2::date AND p.sjnsbp = 1), 0) AS awal_piutang_online_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl < $2::date AND p.sjnsbp = 2), 0) AS awal_piutang_online_kredit,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= $2::date AND p.sjnsbp = 1), 0) AS akhir_piutang_online_debet,
+    COALESCE(sum(p.njumlah) FILTER (WHERE position('.' in p.customer_code) > 0 AND p.dtgl <= $2::date AND p.sjnsbp = 2), 0) AS akhir_piutang_online_kredit
   FROM month_piut p
   LEFT JOIN local_keys l ON l.customer_code = p.customer_code
   GROUP BY p.customer_code
@@ -279,7 +382,11 @@ WITH base AS (
     -COALESCE(sum(h.value) FILTER (WHERE h.dtgl < $2::date), 0)
       AS awal_hutang_lokal,
     -COALESCE(sum(h.value) FILTER (WHERE h.dtgl <= $2::date), 0)
-      AS akhir_hutang_lokal
+      AS akhir_hutang_lokal,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < $2::date AND h.sjnsbp = 1), 0) AS awal_hutang_lokal_debet,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl < $2::date AND h.sjnsbp = 2), 0) AS awal_hutang_lokal_kredit,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= $2::date AND h.sjnsbp = 1), 0) AS akhir_hutang_lokal_debet,
+    COALESCE(sum(h.njumlah) FILTER (WHERE h.dtgl <= $2::date AND h.sjnsbp = 2), 0) AS akhir_hutang_lokal_kredit
   FROM month_hut h
   GROUP BY h.customer_code
 )
@@ -287,7 +394,19 @@ INSERT INTO app.saldo_pelanggan_snapshot_row (
   unit_id, as_of_date, generation_id, customer_code,
   awal_piutang_lokal, akhir_piutang_lokal,
   awal_piutang_online, akhir_piutang_online,
-  awal_hutang_lokal, akhir_hutang_lokal
+  awal_hutang_lokal, akhir_hutang_lokal,
+  awal_piutang_lokal_debet,
+  awal_piutang_lokal_kredit,
+  akhir_piutang_lokal_debet,
+  akhir_piutang_lokal_kredit,
+  awal_piutang_online_debet,
+  awal_piutang_online_kredit,
+  akhir_piutang_online_debet,
+  akhir_piutang_online_kredit,
+  awal_hutang_lokal_debet,
+  awal_hutang_lokal_kredit,
+  akhir_hutang_lokal_debet,
+  akhir_hutang_lokal_kredit
 )
 SELECT $1::smallint, $2::date, $3::uuid, k.customer_code,
        COALESCE(b.akhir_piutang_lokal, 0) + COALESCE(p.awal_piutang_lokal, 0),
@@ -295,7 +414,19 @@ SELECT $1::smallint, $2::date, $3::uuid, k.customer_code,
        COALESCE(b.akhir_piutang_online, 0) + COALESCE(p.awal_piutang_online, 0),
        COALESCE(b.akhir_piutang_online, 0) + COALESCE(p.akhir_piutang_online, 0),
        COALESCE(b.akhir_hutang_lokal, 0) + COALESCE(h.awal_hutang_lokal, 0),
-       COALESCE(b.akhir_hutang_lokal, 0) + COALESCE(h.akhir_hutang_lokal, 0)
+       COALESCE(b.akhir_hutang_lokal, 0) + COALESCE(h.akhir_hutang_lokal, 0),
+       COALESCE(b.akhir_piutang_lokal_debet, 0) + COALESCE(p.awal_piutang_lokal_debet, 0),
+       COALESCE(b.akhir_piutang_lokal_kredit, 0) + COALESCE(p.awal_piutang_lokal_kredit, 0),
+       COALESCE(b.akhir_piutang_lokal_debet, 0) + COALESCE(p.akhir_piutang_lokal_debet, 0),
+       COALESCE(b.akhir_piutang_lokal_kredit, 0) + COALESCE(p.akhir_piutang_lokal_kredit, 0),
+       COALESCE(b.akhir_piutang_online_debet, 0) + COALESCE(p.awal_piutang_online_debet, 0),
+       COALESCE(b.akhir_piutang_online_kredit, 0) + COALESCE(p.awal_piutang_online_kredit, 0),
+       COALESCE(b.akhir_piutang_online_debet, 0) + COALESCE(p.akhir_piutang_online_debet, 0),
+       COALESCE(b.akhir_piutang_online_kredit, 0) + COALESCE(p.akhir_piutang_online_kredit, 0),
+       COALESCE(b.akhir_hutang_lokal_debet, 0) + COALESCE(h.awal_hutang_lokal_debet, 0),
+       COALESCE(b.akhir_hutang_lokal_kredit, 0) + COALESCE(h.awal_hutang_lokal_kredit, 0),
+       COALESCE(b.akhir_hutang_lokal_debet, 0) + COALESCE(h.akhir_hutang_lokal_debet, 0),
+       COALESCE(b.akhir_hutang_lokal_kredit, 0) + COALESCE(h.akhir_hutang_lokal_kredit, 0)
 FROM customer_keys k
 LEFT JOIN base b ON b.customer_code = k.customer_code
 LEFT JOIN piut p ON p.customer_code = k.customer_code
@@ -306,7 +437,19 @@ ON CONFLICT (unit_id, as_of_date, generation_id, customer_code) DO UPDATE SET
   awal_piutang_online = EXCLUDED.awal_piutang_online,
   akhir_piutang_online = EXCLUDED.akhir_piutang_online,
   awal_hutang_lokal = EXCLUDED.awal_hutang_lokal,
-  akhir_hutang_lokal = EXCLUDED.akhir_hutang_lokal`;
+  akhir_hutang_lokal = EXCLUDED.akhir_hutang_lokal,
+  awal_piutang_lokal_debet = EXCLUDED.awal_piutang_lokal_debet,
+  awal_piutang_lokal_kredit = EXCLUDED.awal_piutang_lokal_kredit,
+  akhir_piutang_lokal_debet = EXCLUDED.akhir_piutang_lokal_debet,
+  akhir_piutang_lokal_kredit = EXCLUDED.akhir_piutang_lokal_kredit,
+  awal_piutang_online_debet = EXCLUDED.awal_piutang_online_debet,
+  awal_piutang_online_kredit = EXCLUDED.awal_piutang_online_kredit,
+  akhir_piutang_online_debet = EXCLUDED.akhir_piutang_online_debet,
+  akhir_piutang_online_kredit = EXCLUDED.akhir_piutang_online_kredit,
+  awal_hutang_lokal_debet = EXCLUDED.awal_hutang_lokal_debet,
+  awal_hutang_lokal_kredit = EXCLUDED.awal_hutang_lokal_kredit,
+  akhir_hutang_lokal_debet = EXCLUDED.akhir_hutang_lokal_debet,
+  akhir_hutang_lokal_kredit = EXCLUDED.akhir_hutang_lokal_kredit`;
 
 /** $1 unit, $2 date, $3 generation. */
 export const VALIDATE_GENERATION_SQL = `
@@ -315,7 +458,19 @@ SELECT count(*)::bigint AS row_count,
          concat_ws('|', unit_id::text, as_of_date::text, customer_code,
            awal_piutang_lokal::text, akhir_piutang_lokal::text,
            awal_piutang_online::text, akhir_piutang_online::text,
-           awal_hutang_lokal::text, akhir_hutang_lokal::text),
+           awal_hutang_lokal::text, akhir_hutang_lokal::text,
+           awal_piutang_lokal_debet::text,
+           awal_piutang_lokal_kredit::text,
+           akhir_piutang_lokal_debet::text,
+           akhir_piutang_lokal_kredit::text,
+           awal_piutang_online_debet::text,
+           awal_piutang_online_kredit::text,
+           akhir_piutang_online_debet::text,
+           akhir_piutang_online_kredit::text,
+           awal_hutang_lokal_debet::text,
+           awal_hutang_lokal_kredit::text,
+           akhir_hutang_lokal_debet::text,
+           akhir_hutang_lokal_kredit::text),
          E'\\n' ORDER BY customer_code
        ), ''), 'UTF8')) AS row_keyed_checksum,
        COALESCE(sum(awal_piutang_lokal), 0) AS awal_piutang_lokal_total,
@@ -323,7 +478,19 @@ SELECT count(*)::bigint AS row_count,
        COALESCE(sum(awal_piutang_online), 0) AS awal_piutang_online_total,
        COALESCE(sum(akhir_piutang_online), 0) AS akhir_piutang_online_total,
        COALESCE(sum(awal_hutang_lokal), 0) AS awal_hutang_lokal_total,
-       COALESCE(sum(akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total
+       COALESCE(sum(akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,
+       COALESCE(sum(awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,
+       COALESCE(sum(awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,
+       COALESCE(sum(akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,
+       COALESCE(sum(akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,
+       COALESCE(sum(awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,
+       COALESCE(sum(awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,
+       COALESCE(sum(akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,
+       COALESCE(sum(akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,
+       COALESCE(sum(awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,
+       COALESCE(sum(awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,
+       COALESCE(sum(akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,
+       COALESCE(sum(akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total
 FROM app.saldo_pelanggan_snapshot_row
 WHERE unit_id = $1::smallint
   AND as_of_date = $2::date
@@ -353,9 +520,21 @@ WHERE p.unit_id = $1::smallint
            concat_ws('|', r.unit_id::text, r.as_of_date::text, r.customer_code,
              r.awal_piutang_lokal::text, r.akhir_piutang_lokal::text,
              r.awal_piutang_online::text, r.akhir_piutang_online::text,
-             r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text),
+             r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text,
+           r.awal_piutang_lokal_debet::text,
+           r.awal_piutang_lokal_kredit::text,
+           r.akhir_piutang_lokal_debet::text,
+           r.akhir_piutang_lokal_kredit::text,
+           r.awal_piutang_online_debet::text,
+           r.awal_piutang_online_kredit::text,
+           r.akhir_piutang_online_debet::text,
+           r.akhir_piutang_online_kredit::text,
+           r.awal_hutang_lokal_debet::text,
+           r.awal_hutang_lokal_kredit::text,
+           r.akhir_hutang_lokal_debet::text,
+           r.akhir_hutang_lokal_kredit::text),
            E'\\n' ORDER BY r.customer_code
-         ), ''), 'UTF8')) AS row_keyed_checksum
+         ) FILTER (WHERE r.generation_id IS NOT NULL), ''), 'UTF8')) AS row_keyed_checksum
   FROM candidate c
   LEFT JOIN app.saldo_pelanggan_snapshot_row r
     ON r.unit_id = $1::smallint
@@ -399,7 +578,7 @@ SELECT (extract(hour FROM clock_timestamp() AT TIME ZONE '${SNAPSHOT_OPERATIONAL
 
 /**
  * $1 unit, $2 date, $3 generation, $4 row count, $5 checksum,
- * $6..$11 six totals.
+ * $6..$11 six saldo totals, $12..$23 twelve debet/kredit totals.
  */
 export const COMPLETE_MANIFEST_SQL = `
 UPDATE app.saldo_pelanggan_snapshot_manifest m
@@ -418,6 +597,18 @@ SET status = 'complete',
     akhir_piutang_online_total = $9::numeric,
     awal_hutang_lokal_total = $10::numeric,
     akhir_hutang_lokal_total = $11::numeric,
+    awal_piutang_lokal_debet_total = $12::numeric,
+    awal_piutang_lokal_kredit_total = $13::numeric,
+    akhir_piutang_lokal_debet_total = $14::numeric,
+    akhir_piutang_lokal_kredit_total = $15::numeric,
+    awal_piutang_online_debet_total = $16::numeric,
+    awal_piutang_online_kredit_total = $17::numeric,
+    akhir_piutang_online_debet_total = $18::numeric,
+    akhir_piutang_online_kredit_total = $19::numeric,
+    awal_hutang_lokal_debet_total = $20::numeric,
+    awal_hutang_lokal_kredit_total = $21::numeric,
+    akhir_hutang_lokal_debet_total = $22::numeric,
+    akhir_hutang_lokal_kredit_total = $23::numeric,
     source_pelanggan_row_count = c.pelanggan_row_count,
     source_pelanggan_keyed_checksum = c.pelanggan_keyed_checksum,
     source_bppiut_row_count = c.bppiut_row_count,
@@ -567,28 +758,84 @@ RETURNING generation_id`;
 
 /** One read statement: an absent result is not-ready, never numeric zero. */
 export const READ_READY_SNAPSHOT_SQL = `
-SELECT p.generation_id,
-       m.source_cycle_id,
-       m.source_completed_at,
-       r.customer_code,
+WITH candidate AS (
+  SELECT m.*
+  FROM app.saldo_pelanggan_snapshot_pointer p
+  JOIN app.saldo_pelanggan_snapshot_manifest m
+    ON m.unit_id = p.unit_id AND m.as_of_date = p.as_of_date AND m.generation_id = p.generation_id
+  WHERE p.unit_id = $1::smallint AND p.as_of_date = $2::date
+    AND m.status = 'complete' AND m.published AND m.validation_passed
+    AND m.formula_version = 'saldo-pelanggan-v2'
+), actual AS (
+  SELECT m.generation_id, count(r.generation_id)::bigint AS row_count,
+    sha256(convert_to(COALESCE(string_agg(
+      concat_ws('|', r.unit_id::text, r.as_of_date::text, r.customer_code,
+        r.awal_piutang_lokal::text,
+        r.akhir_piutang_lokal::text,
+        r.awal_piutang_online::text,
+        r.akhir_piutang_online::text,
+        r.awal_hutang_lokal::text,
+        r.akhir_hutang_lokal::text,
+        r.awal_piutang_lokal_debet::text,
+        r.awal_piutang_lokal_kredit::text,
+        r.akhir_piutang_lokal_debet::text,
+        r.akhir_piutang_lokal_kredit::text,
+        r.awal_piutang_online_debet::text,
+        r.awal_piutang_online_kredit::text,
+        r.akhir_piutang_online_debet::text,
+        r.akhir_piutang_online_kredit::text,
+        r.awal_hutang_lokal_debet::text,
+        r.awal_hutang_lokal_kredit::text,
+        r.akhir_hutang_lokal_debet::text,
+        r.akhir_hutang_lokal_kredit::text),
+      E'\\n' ORDER BY r.customer_code) FILTER (WHERE r.generation_id IS NOT NULL), ''), 'UTF8')) AS row_keyed_checksum,
+    COALESCE(sum(r.awal_piutang_lokal), 0) AS awal_piutang_lokal_total,
+    COALESCE(sum(r.akhir_piutang_lokal), 0) AS akhir_piutang_lokal_total,
+    COALESCE(sum(r.awal_piutang_online), 0) AS awal_piutang_online_total,
+    COALESCE(sum(r.akhir_piutang_online), 0) AS akhir_piutang_online_total,
+    COALESCE(sum(r.awal_hutang_lokal), 0) AS awal_hutang_lokal_total,
+    COALESCE(sum(r.akhir_hutang_lokal), 0) AS akhir_hutang_lokal_total,
+    COALESCE(sum(r.awal_piutang_lokal_debet), 0) AS awal_piutang_lokal_debet_total,
+    COALESCE(sum(r.awal_piutang_lokal_kredit), 0) AS awal_piutang_lokal_kredit_total,
+    COALESCE(sum(r.akhir_piutang_lokal_debet), 0) AS akhir_piutang_lokal_debet_total,
+    COALESCE(sum(r.akhir_piutang_lokal_kredit), 0) AS akhir_piutang_lokal_kredit_total,
+    COALESCE(sum(r.awal_piutang_online_debet), 0) AS awal_piutang_online_debet_total,
+    COALESCE(sum(r.awal_piutang_online_kredit), 0) AS awal_piutang_online_kredit_total,
+    COALESCE(sum(r.akhir_piutang_online_debet), 0) AS akhir_piutang_online_debet_total,
+    COALESCE(sum(r.akhir_piutang_online_kredit), 0) AS akhir_piutang_online_kredit_total,
+    COALESCE(sum(r.awal_hutang_lokal_debet), 0) AS awal_hutang_lokal_debet_total,
+    COALESCE(sum(r.awal_hutang_lokal_kredit), 0) AS awal_hutang_lokal_kredit_total,
+    COALESCE(sum(r.akhir_hutang_lokal_debet), 0) AS akhir_hutang_lokal_debet_total,
+    COALESCE(sum(r.akhir_hutang_lokal_kredit), 0) AS akhir_hutang_lokal_kredit_total
+  FROM candidate m
+  LEFT JOIN app.saldo_pelanggan_snapshot_row r ON r.unit_id = m.unit_id
+    AND r.as_of_date = m.as_of_date AND r.generation_id = m.generation_id
+  GROUP BY m.generation_id
+)
+SELECT m.generation_id, m.source_cycle_id, m.source_completed_at, r.customer_code,
        r.awal_piutang_lokal,
        r.akhir_piutang_lokal,
        r.awal_piutang_online,
        r.akhir_piutang_online,
        r.awal_hutang_lokal,
-       r.akhir_hutang_lokal
-FROM app.saldo_pelanggan_snapshot_pointer p
-JOIN app.saldo_pelanggan_snapshot_manifest m
-  ON m.unit_id = p.unit_id
- AND m.as_of_date = p.as_of_date
- AND m.generation_id = p.generation_id
- AND m.status = 'complete'
- AND m.published
- AND m.validation_passed
-JOIN app.saldo_pelanggan_snapshot_row r
-  ON r.unit_id = m.unit_id
- AND r.as_of_date = m.as_of_date
- AND r.generation_id = m.generation_id
-WHERE p.unit_id = $1::smallint
-  AND p.as_of_date = $2::date
+       r.akhir_hutang_lokal,
+       r.awal_piutang_lokal_debet,
+       r.awal_piutang_lokal_kredit,
+       r.akhir_piutang_lokal_debet,
+       r.akhir_piutang_lokal_kredit,
+       r.awal_piutang_online_debet,
+       r.awal_piutang_online_kredit,
+       r.akhir_piutang_online_debet,
+       r.akhir_piutang_online_kredit,
+       r.awal_hutang_lokal_debet,
+       r.awal_hutang_lokal_kredit,
+       r.akhir_hutang_lokal_debet,
+       r.akhir_hutang_lokal_kredit
+FROM candidate m
+JOIN actual a ON a.generation_id = m.generation_id
+  AND a.row_count = m.row_count AND a.row_keyed_checksum = m.row_keyed_checksum
+  AND ROW(a.awal_piutang_lokal_total, a.akhir_piutang_lokal_total, a.awal_piutang_online_total, a.akhir_piutang_online_total, a.awal_hutang_lokal_total, a.akhir_hutang_lokal_total, a.awal_piutang_lokal_debet_total, a.awal_piutang_lokal_kredit_total, a.akhir_piutang_lokal_debet_total, a.akhir_piutang_lokal_kredit_total, a.awal_piutang_online_debet_total, a.awal_piutang_online_kredit_total, a.akhir_piutang_online_debet_total, a.akhir_piutang_online_kredit_total, a.awal_hutang_lokal_debet_total, a.awal_hutang_lokal_kredit_total, a.akhir_hutang_lokal_debet_total, a.akhir_hutang_lokal_kredit_total)
+    = ROW(m.awal_piutang_lokal_total, m.akhir_piutang_lokal_total, m.awal_piutang_online_total, m.akhir_piutang_online_total, m.awal_hutang_lokal_total, m.akhir_hutang_lokal_total, m.awal_piutang_lokal_debet_total, m.awal_piutang_lokal_kredit_total, m.akhir_piutang_lokal_debet_total, m.akhir_piutang_lokal_kredit_total, m.awal_piutang_online_debet_total, m.awal_piutang_online_kredit_total, m.akhir_piutang_online_debet_total, m.akhir_piutang_online_kredit_total, m.awal_hutang_lokal_debet_total, m.awal_hutang_lokal_kredit_total, m.akhir_hutang_lokal_debet_total, m.akhir_hutang_lokal_kredit_total)
+JOIN app.saldo_pelanggan_snapshot_row r ON r.unit_id = m.unit_id
+  AND r.as_of_date = m.as_of_date AND r.generation_id = m.generation_id
 ORDER BY r.customer_code`;

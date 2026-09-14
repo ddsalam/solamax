@@ -1,0 +1,13 @@
+awal_piutang_lokal: row total = manifest total = source debit-credit = 13052684187.5
+akhir_piutang_lokal: row total = manifest total = source debit-credit = 13052684187.5
+piutang_lokal: sum of per-customer differences = 35979362
+awal_piutang_online: row total = manifest total = source debit-credit = 900000
+akhir_piutang_online: row total = manifest total = source debit-credit = 900000
+piutang_online: sum of per-customer differences = 0
+awal_hutang_lokal: row total = manifest total = source debit-credit = -673010538
+akhir_hutang_lokal: row total = manifest total = source debit-credit = -673010538
+hutang_lokal: sum of per-customer differences = 1405000
+snapshot rows / distinct customer codes = 2973 / 2973
+All Decimal arithmetic assertions passed. No database query in this check.
+Temporal attribution to 02:05-12:45: NOT VERIFIED.
+EasyMax 12-09 oracle: NOT AVAILABLE.

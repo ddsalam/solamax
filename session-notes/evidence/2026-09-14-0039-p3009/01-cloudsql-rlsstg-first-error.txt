@@ -1,0 +1,71 @@
+2026-09-13T16:05:56.565703Z	INFO	2026-09-13 16:05:56.565 UTC [27]: [14817-1] db=,user= LOG:  checkpoint starting: time
+2026-09-13T16:05:39.936065Z	INFO	2026-09-13 16:05:39.934 UTC [1533337]: [5-1] db=solamax,user=ingest STATEMENT:  UPDATE "_prisma_migrations" SET "logs" = $1 WHERE "id" = $2
+2026-09-13T16:05:39.935948Z	ERROR	2026-09-13 16:05:39.934 UTC [1533337]: [4-1] db=solamax,user=ingest ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-09-13T16:05:39.698519Z	INFO	2026-09-13 16:05:39.696 UTC [1533337]: [3-1] db=solamax,user=ingest STATEMENT:  -- Reconstruct every stored generation from its OWN immutable source cut.
+-- This upgrade is atomic: no reader can observe nullable sides, old checksums,
+-- or mixed generation references. No defaults stand in for missing evidence.
+-- FORCE RLS stays enabled; the migration scopes one existing unit at a time.
+BEGIN;
+SET LOCAL lock_timeout = '10s';
+-- Bound lock acquisition, not reconstruction duration. Deployment runs this
+-- migration before serving v2 readers/builders; never execute it manually.
+LOCK TABLE app.saldo_pelanggan_source_cycle,
+  app.saldo_pelanggan_source_pelanggan,
+  app.saldo_pelanggan_source_bppiut,
+  app.saldo_pelanggan_source_bphut IN SHARE MODE;
+LOCK TABLE app.saldo_pelanggan_snapshot_manifest,
+  app.saldo_pelanggan_snapshot_row,
+  app.saldo_pelanggan_snapshot_pointer,
+  app.saldo_pelanggan_build_work,
+  app.saldo_pelanggan_dirty IN ACCESS EXCLUSIVE MODE;
+
+ALTER TABLE app.saldo_pelanggan_snapshot_row
+  ADD COLUMN awal_piutang_lokal_debet NUMERIC,
+  ADD COLUMN awal_piutang_lokal_kredit NUMERIC,
+  ADD COLUMN akhir_piutang_lokal_debet NUMERIC,
+  ADD COLUMN akhir_piutang_lokal_kredit NUMERIC,
+  ADD COLUMN awal_piutang_online_debet NUMERIC,
+  ADD COLUMN awal_piutang_online_kredit NUMERIC,
+  ADD COLUMN akhir_piutang_online_debet NUMERIC,
+  ADD COLUMN akhir_piutang_online_kredit NUMERIC,
+  ADD COLUMN awal_hutang_lokal_debet NUMERIC,
+  ADD COLUMN awal_hutang_lokal_kredit NUMERIC,
+  ADD COLUMN akhir_hutang_lokal_debet NUMERIC,
+  ADD COLUMN akhir_hutang_lokal_kredit NUMERIC;
+
+ALTER TABLE app.saldo_pelanggan_snapshot_manifest
+  ADD COLUMN awal_piutang_lokal_debet_total NUMERIC,
+  ADD COLUMN awal_piutang_lokal_kredit_total NUMERIC,
+  ADD COLUMN akhir_piutang_lokal_debet_total NUMERIC,
+  ADD COLUMN akhir_piutang_lokal_kredit_total NUMERIC,
+  ADD COLUMN awal_piutang_online_debet_total NUMERIC,
+  ADD COLUMN awal_piutang_online_kredit_total NUMERIC,
+  ADD COLUMN akhir_piutang_online_debet_total NUMERIC,
+  ADD COLUMN akhir_piutang_online_kredit_total NUMERIC,
+  ADD COLUMN awal_hutang_lokal_debet_total NUMERIC,
+  ADD COLUMN awal_hutang_lokal_kredit_total NUMERIC,
+  ADD COLUMN akhir_hutang_lokal_debet_total NUMERIC,
+  ADD COLUMN akhir_hutang_lokal_kredit_total NUMERIC;
+
+ALTER TABLE app.saldo_pelanggan_snapshot_manifest ALTER CONSTRAINT sps_manifest_base_generation_fkey DEFERRABLE;
+ALTER TABLE app.saldo_pelanggan_snapshot_row ALTER CONSTRAINT sps_row_generation_fkey DEFERRABLE;
+ALTER TABLE app.saldo_pelanggan_snapshot_pointer ALTER CONSTRAINT sps_pointer_generation_fkey DEFERRABLE;
+ALTER TABLE app.saldo_pelanggan_build_work ALTER CONSTRAINT sps_work_generation_fkey DEFERRABLE;
+ALTER TABLE app.saldo_pelanggan_dirty ALTER CONSTRAINT sps_dirty_coverage_generation_fkey DEFERRABLE;
+SET CONSTRAINTS app.sps_manifest_base_generation_fkey, app.sps_row_generation_fkey, app.sps_pointer_generation_fkey, app.sps_work_generation_fkey, app.sps_dirty_coverage_generation_fkey DEFERRED;
+
+CREATE TEMP TABLE sps_v2_map (
+  unit_id SMALLINT NOT NULL, as_of_date DATE NOT NULL,
+  old_generation_id UUID NOT NULL, new_generation_id UUID NOT NULL,
+  new_epoch BIGINT NOT NULL,
+  PRIMARY KEY (unit_id, as_of_date, old_generation_id)
+) ON COMMIT DROP;
+CREATE TEMP TABLE sps_v2_rows (LIKE app.saldo_pelanggan_snapshot_row) ON COMMIT DROP;
+
+DO $upgrade$
+DECLARE
+  scoped_unit SMALLINT;
+  g RECORD;
+  invalid_count BIGINT;
+  proof RECORD;
+  previous_scope TEXT := current_setting('
