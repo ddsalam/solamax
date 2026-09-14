@@ -63,22 +63,39 @@ antipola "alarm yang selalu menyala". Langkah 2 menghapusnya.
 
 ### Langkah 1 — malam ini, tanpa deploy (perintah Dion; saya tidak menjalankan)
 
+⚠️ **Koreksi bentuk.** Versi pertama yang saya sodorkan di percakapan hanya
+memuat potongan `gcloud scheduler jobs create` dengan `$URL` dan
+`$SNAPSHOT_SECRET` **tidak terisi** — dijalankan apa adanya ia membuat job
+rusak. Blok di catatan ini memang lengkap, tetapi **yang disalin orang adalah
+blok yang disodorkan**, bukan yang diarsipkan. Aturan yang saya ambil dari itu:
+*perintah operator harus berdiri sendiri di dalam blok yang ditampilkan* —
+tidak ada variabel yang tidak didefinisikan di blok yang sama.
+
 ```bash
-set -euo pipefail
-PROJECT_ID=solamax; REGION=asia-southeast2; SERVICE=solamax-ingest-staging
-URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"
+set -euo pipefail                      # JANGAN tambahkan -x: ia akan mencetak nilai secret
+PROJECT_ID=solamax
+REGION=asia-southeast2
+SERVICE=solamax-ingest-staging
+
+URL="$(gcloud run services describe "$SERVICE" \
+       --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"
 test -n "$URL"
-test -n "${SNAPSHOT_SECRET:?siapkan lewat prosedur tepercaya yang sudah ada}"
 
 gcloud scheduler jobs create http solamax-snapshot-retire-unit-1 \
   --project="$PROJECT_ID" --location="$REGION" \
   --description="Pemensiunan source cut per jam (SEMENTARA: lewat /snapshot-worker; 425 = normal)" \
   --schedule='20 0,1,5-23 * * *' --time-zone=Asia/Pontianak \
   --uri="$URL/snapshot-worker" --http-method=POST \
-  --headers="Content-Type=application/json,x-snapshot-secret=${SNAPSHOT_SECRET}" \
+  --headers="Content-Type=application/json,x-snapshot-secret=$(gcloud secrets versions access latest \
+      --secret=solamax-warm-board-secret --project="$PROJECT_ID")" \
   --message-body='{"unit_id":1}' \
   --attempt-deadline=300s --max-retry-attempts=0 --format='value(name)'
 ```
+
+Nilai secret ditarik **inline** dari Secret Manager: ia tidak pernah melewati
+variabel shell yang bisa tercetak, tidak pernah muncul di riwayat, dan tidak
+pernah masuk transkrip. Secret ini sudah dirotasi 14-09 (versi 2 aktif), jadi
+nilai lama apa pun yang tersimpan di tempat lain memang tidak akan bekerja.
 
 - **Jam 2–4 sengaja dilewati**: itu jendela build; cron 02:05 sudah
   memensiunkan lebih dulu, dan invokasi bersamaan hanya memperebutkan lease.
@@ -212,3 +229,100 @@ job-nya.
    lama + baru (terpantau 13,97 → 16 GB).
 3. **Alert policy disk 8 GB** (§3c) — setuju/tidak?
 4. Sesudah promosi dibuka: perbarui URI job ke `/snapshot-worker/retire`.
+
+---
+
+# Adendum — menutup kebutaan yang dilahirkan job sementara
+
+## 7 · Keberatan yang saya terima
+
+Saya menolak menjadwalkan endpoint build per jam karena "job yang selalu merah
+berhenti dibaca", lalu mengusulkan job yang menjawab **425 dua puluh kali
+sehari** — merah permanen di console. Menandainya `SEMENTARA` di deskripsi
+**tidak menutup apa pun**: label tidak mencabut apa pun, dan hal sementara
+adalah hal yang paling sering menjadi permanen. Keberatan itu benar, dan
+jawabannya harus mekanis, bukan ingatan.
+
+Saya membangun **keduanya** — gerbang DAN langkah runbook — karena masing-masing
+sendirian berlubang: gerbangnya tidak dapat menghapus job apa pun, dan langkah
+runbook sendirian bersandar pada seseorang membacanya.
+
+## 8 · Pemicu 1 — gerbang yang MERAH saat promosi
+
+`scripts/ci/check-temporary-retire-job.sh`, dipanggil dari langkah baru di
+`deploy-backend.yml` **tier pilot**, sesudah deploy dan health check.
+
+Keputusannya:
+
+| job | endpoint `/retire` di revisi | hasil |
+|---|---|---|
+| tidak ada | apa pun | HIJAU — tak ada yang sementara |
+| menunjuk `/snapshot-worker` | belum ada | HIJAU — job sementara masih satu-satunya cara |
+| menunjuk `/snapshot-worker` | **sudah ada** | **MERAH** |
+| menunjuk `/snapshot-worker/retire` | sudah ada | HIJAU |
+| bentuk lain | sudah ada | MERAH — gerbang tidak boleh lulus atas bentuk yang tak dipahaminya |
+
+⇒ Deploy pilot yang membawa `/retire` **menolak diam** selama job masih
+menunjuk endpoint build, dan pesan gagalnya memuat perintah perbaikannya.
+Gerbang ini tidak menghapus apa pun; ia menahan giliran orang yang sedang
+melakukan promosi, tepat ketika ia sedang memperhatikan.
+
+Perbandingannya pada **path**, bukan host — Cloud Run punya beberapa bentuk URL
+yang sama-sama sah (`…-wn6i64kvza-et.a.run.app` dan
+`…-113869564052.asia-southeast2.run.app`), dan gerbang yang membandingkan host
+akan merah pada job yang sudah benar. Self-test kasus 4 sengaja memakai host
+yang berbeda dari kasus 3 supaya kesalahan itu tertangkap.
+
+`check-temporary-retire-job.selftest.sh` menguji **lima keadaan termasuk kedua
+jalur hijau**, berjalan di CI tiap commit, dan **tidak menyentuh GCP**.
+
+⚠️ Langkah deploy-nya memakai `--format='value(httpTarget.uri)'` — **URI saja**.
+`httpTarget.headers` tidak boleh disebut di sana: format itu mencetak NILAI
+header, dan pada 14-09-2026 ia membocorkan `x-snapshot-secret` ke transkrip.
+
+## 9 · Pemicu 2 — langkah runbook promosi #359
+
+Dijalankan Dion **sebagai bagian dari promosi**, sesudah deploy pilot berhasil:
+
+```bash
+set -euo pipefail
+PROJECT_ID=solamax
+REGION=asia-southeast2
+URL="$(gcloud run services describe solamax-ingest-staging \
+       --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"
+test -n "$URL"
+
+gcloud scheduler jobs update http solamax-snapshot-retire-unit-1 \
+  --project="$PROJECT_ID" --location="$REGION" \
+  --uri="$URL/snapshot-worker/retire" \
+  --description='Pemensiunan source cut per jam' \
+  --format='value(name)'
+```
+
+Jadwal dan header dipertahankan; hanya uri dan deskripsi berubah. Sesudahnya
+job memulangkan **200** dan berhenti tampil merah, dan gerbang §8 menjadi hijau.
+
+## 10 · LUBANG BERNAMA — hal yang TIDAK saya ketahui
+
+Kredensial Google kedaluwarsa dua lapis (gcloud CLI dan ADC), jadi sejak
+pemberitahuan itu saya **tidak dapat membaca** Cloud Logging, Secret Manager,
+maupun DB produksi. Yang berikut ini **tidak diketahui**, dan tidak saya isi
+dengan perkiraan:
+
+| Lubang | Kenapa penting |
+|---|---|
+| **Hasil build 02:05 14-09** | Apakah gerbang byte sudah terbuka dan publikasi snapshot kembali berjalan sesudah `VACUUM FULL`. |
+| **Ukuran DB sekarang** | Menentukan berapa jam tersisa sebelum gerbang 9 GB menutup lagi. Angka terakhir yang SAH adalah 6.171.892.759 B pada ~01:40 WIB. |
+| **Apakah job §2 sudah dibuat** | Bila belum, tenggat ~21:00 masih berjalan. Gerbang §8 sengaja memperlakukan "job tidak ada" sebagai HIJAU, jadi ia benar di kedua keadaan. |
+
+Semua angka laju di catatan ini (3,38 GB/hari, kepala ruang 2,83 GB, ±20 jam)
+berasal dari pengukuran ~01:40 WIB dan **tidak diperbarui sesudahnya**.
+
+## 11 · Yang butuh Dion (diperbarui)
+
+1. `gcloud auth login` **dan** `gcloud auth application-default login` — tanpa
+   itu tidak ada verifikasi yang bisa dijalankan siapa pun.
+2. Job §2 bila belum dibuat (tenggat ~21:00 WIB).
+3. Batas disk — `scripts/piutang-kapasitas/README.md`.
+4. Alert policy `disk/bytes_used` ~8 GB — setuju/tidak?
+5. Saat promosi #359: jalankan §9. Gerbang §8 akan mengingatkan bila terlewat.

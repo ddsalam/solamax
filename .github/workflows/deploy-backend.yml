@@ -148,6 +148,28 @@ jobs:
         run: |
           URL=$(gcloud run services describe ${SERVICE} --region=${REGION} --format='value(status.url)')
           curl -fsS "$URL/health"
+      # Job pemensiunan SEMENTARA tidak boleh jadi permanen. Ia menunjuk endpoint
+      # BUILD dan karenanya memulangkan 425 ~20x sehari — merah permanen di
+      # console, yaitu kebutaan yang baru saja dibayar mahal. Begitu revisi ini
+      # membawa /snapshot-worker/retire, deploy menolak diam selama job masih
+      # menunjuk endpoint lama. Keputusannya ada di skripnya; self-test-nya
+      # berjalan di CI tanpa menyentuh GCP.
+      #
+      # ⚠️ `--format='value(httpTarget.uri)'` MEMINTA URI SAJA. Jangan pernah
+      # menyebut `httpTarget.headers` di sini: format itu mencetak NILAI header,
+      # dan pada 14-09-2026 ia membocorkan x-snapshot-secret ke transkrip sesi.
+      - name: Job pemensiunan sementara tidak boleh tertinggal
+        env:
+          JOB_NAME: solamax-snapshot-retire-unit-1
+        run: |
+          JOB_URI="$(gcloud scheduler jobs describe "$JOB_NAME" \
+            --project=solamax --location=${REGION} \
+            --format='value(httpTarget.uri)' 2>/dev/null || true)"
+          ENDPOINT_ADA=false
+          grep -q '@Post("retire")' apps/backend/src/saldo-pelanggan/snapshot-trigger.controller.ts \
+            && ENDPOINT_ADA=true
+          JOB_URI="$JOB_URI" ENDPOINT_ADA="$ENDPOINT_ADA" JOB_NAME="$JOB_NAME" \
+            bash scripts/ci/check-temporary-retire-job.sh
 
   # ═══ TIER PILOT (main → -staging = PILOT LIVE) — gated Environment `pilot` ═══
 
