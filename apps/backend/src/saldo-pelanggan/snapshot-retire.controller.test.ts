@@ -22,9 +22,13 @@ const SECRET = "rahasia-uji-snapshot-cukup-panjang-32-karakter";
  * supaya job per jam tidak tercatat gagal 20-an kali sehari, dan mengangkat
  * angka lajunya ke log supaya operator tidak perlu membuka psql.
  */
-function harness(summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020 }) {
+function harness(
+  summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020 },
+  run?: { units: Array<RetirementSummary & { unitId: number; error?: string }>; skipped: number[] },
+) {
   const worker = {
     retireOnly: vi.fn(async () => summary),
+    retireAllUnits: vi.fn(async () => run ?? { units: [{ unitId: 1, ...summary }], skipped: [] }),
     runBatch: vi.fn(async () => { throw new Error("retire tidak boleh membangun"); }),
   } as unknown as SnapshotWorkerService;
   const prisma = {
@@ -118,6 +122,97 @@ describe("POST /snapshot-worker/retire", () => {
       }).controller.retire(SECRET, { unit_id: 1 });
       expect(quiet.staging_review).toBe(false);
       expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("TANPA unit_id memensiunkan SELURUH unit — bukan unit 1 saja", async () => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    try {
+      const h = harness(undefined, {
+        units: [
+          { unitId: 4, stagingBefore: 32, stagingAfter: 1, rowsDeleted: 12_717_355 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+        ],
+        skipped: [],
+      });
+      const body = await h.controller.retire(SECRET, {});
+      expect(h.worker.retireAllUnits).toHaveBeenCalledTimes(1);
+      expect(h.worker.retireOnly).not.toHaveBeenCalled();
+      // Total tetap ada di tingkat atas supaya pemanggilan lama tak berubah arti.
+      expect(body).toMatchObject({ status: "retired", stagingBefore: 33, rowsDeleted: 12_717_355 });
+      expect(body.units.map(u => u.unitId)).toEqual([4, 1]);
+    } finally {
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("BERBUNYI untuk SATU unit yang membengkak di antara unit yang bersih", async () => {
+    // Inilah kegagalan 14-09-2026: unit 4 menumpuk 32 cut selama berbulan-bulan
+    // sementara unit lain bersih. Ambang yang dinilai atas TOTAL akan
+    // menenggelamkannya; karena itu ia dinilai per unit lalu di-OR.
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    try {
+      const over = SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount + 1;
+      const h = harness(undefined, {
+        units: [
+          { unitId: 4, stagingBefore: 32, stagingAfter: over, rowsDeleted: 1 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+          { unitId: 2, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+        ],
+        skipped: [],
+      });
+      const body = await h.controller.retire(SECRET, {});
+      expect(body.staging_review).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // KONTROL NEGATIF YANG MEMBEDAKAN per-unit dari total.
+      // Tujuh unit yang MASING-MASING sehat (1 cut) berjumlah 7 — melewati
+      // ambang 4. Ambang atas total akan menyala di sini setiap jam, selamanya:
+      // alarm yang selalu menyala, yang lalu berhenti dibaca. Per-unit harus
+      // DIAM. Inilah kasus yang jatuh bila seseorang menggantinya dengan total.
+      warn.mockClear();
+      const tenang = await harness(undefined, {
+        units: [1, 2, 3, 4, 5, 6, 7].map(unitId => (
+          { unitId, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 1 })),
+        skipped: [],
+      }).controller.retire(SECRET, {});
+      expect(tenang.stagingAfter).toBe(7);
+      expect(tenang.stagingAfter).toBeGreaterThan(SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount);
+      expect(tenang.staging_review).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("unit yang GAGAL atau TERLEWAT tidak didiamkan", async () => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    try {
+      const gagal = await harness(undefined, {
+        units: [{ unitId: 4, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0, error: "boom" }],
+        skipped: [],
+      }).controller.retire(SECRET, {});
+      expect(gagal.staging_review).toBe(true);
+
+      const terlewat = await harness(undefined, {
+        units: [{ unitId: 4, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 }],
+        skipped: [7],
+      }).controller.retire(SECRET, {});
+      expect(terlewat.staging_review).toBe(true);
+      expect(terlewat.skipped).toEqual([7]);
+      expect(warn).toHaveBeenCalledTimes(2);
     } finally {
       warn.mockRestore();
       log.mockRestore();

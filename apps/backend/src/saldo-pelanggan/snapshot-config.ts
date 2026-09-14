@@ -55,6 +55,14 @@ export const SNAPSHOT_RETIREMENT_LIMITS = Object.freeze({
    * pemensiunan, 3,38 GB/hari).
    */
   stagingReviewCount: 4,
+  /**
+   * Anggaran satu putaran pemensiunan LINTAS UNIT. Cloud Run memutus permintaan
+   * pada 20 menit; sisakan ruang untuk HTTP/framework. Unit yang belum sempat
+   * dilayani dilaporkan sebagai `skipped`, bukan didiamkan — dan karena
+   * urutannya backlog-terbanyak-lebih-dulu, yang tersisa selalu yang paling
+   * ringan.
+   */
+  allUnitsMilliseconds: 15 * 60 * 1_000,
 } as const);
 
 /** First rollout covers seven prior dates; operators may explicitly widen to 31. */

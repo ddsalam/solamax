@@ -167,10 +167,15 @@ jobs:
           if grep -q '@Post("retire")' apps/backend/src/saldo-pelanggan/snapshot-trigger.controller.ts; then
             ENDPOINT_ADA=true
           fi
+          ALL_UNITS_ADA=false
+          if grep -q 'retireAllUnits' apps/backend/src/saldo-pelanggan/snapshot-worker.service.ts; then
+            ALL_UNITS_ADA=true
+          fi
           for JOB in solamax-snapshot-unit-1 solamax-snapshot-retire-unit-1; do
+            case "$JOB" in *retire*) JOB_ROLE=retire ;; *) JOB_ROLE=build ;; esac
             RAW="$(gcloud scheduler jobs describe "$JOB" --project=solamax --location=${REGION} --format=json 2>/dev/null || echo '{}')"
             eval "$(printf '%s' "$RAW" | python3 scripts/ci/scheduler-job-facts.py)"
-            JOB_NAME="$JOB" JOB_URI="$JOB_URI" JOB_CONTENT_TYPE="$JOB_CONTENT_TYPE" JOB_HEADER_KEYS="$JOB_HEADER_KEYS" ENDPOINT_ADA="$ENDPOINT_ADA" bash scripts/ci/check-snapshot-scheduler-jobs.sh
+            JOB_NAME="$JOB" JOB_URI="$JOB_URI" JOB_CONTENT_TYPE="$JOB_CONTENT_TYPE" JOB_HEADER_KEYS="$JOB_HEADER_KEYS" JOB_BODY_UNIT="$JOB_BODY_UNIT" JOB_ROLE="$JOB_ROLE" ENDPOINT_ADA="$ENDPOINT_ADA" ALL_UNITS_ADA="$ALL_UNITS_ADA" bash scripts/ci/check-snapshot-scheduler-jobs.sh
           done
 
   # ═══ TIER PILOT (main → -staging = PILOT LIVE) — gated Environment `pilot` ═══

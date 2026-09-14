@@ -67,4 +67,35 @@ JOB_NAME=uji JOB_URI="https://x/endpoint-lain" JOB_CONTENT_TYPE="application/jso
   JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true \
   jalankan merah "uri tak dikenali tidak boleh lulus"
 
-[ "$gagal" -eq 0 ] && echo "check-snapshot-scheduler-jobs: 8 keadaan sesuai harapan." || exit 1
+# ── Cakupan per-unit ───────────────────────────────────────────────────────
+# 9 · MERAH — job pemensiunan mematok satu unit. INI akar insiden 14-09-2026:
+#     pemensiunan per-unit + penjadwal yang hanya mencakup unit 1 => unit 4
+#     menumpuk 32 cut staging (30,3 juta baris) tanpa berbunyi.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker/retire" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=true JOB_ROLE=retire JOB_BODY_UNIT=1 \
+  jalankan merah "job pemensiunan mematok satu unit"
+
+# 10 · MERAH — body tak terbaca tidak boleh dianggap aman.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker/retire" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=true JOB_ROLE=retire JOB_BODY_UNIT='?' \
+  jalankan merah "body job pemensiunan tak terbaca"
+
+# 11 · HIJAU — body kosong = seluruh unit aktif.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker/retire" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=true JOB_ROLE=retire JOB_BODY_UNIT="" \
+  jalankan ok "job pemensiunan mencakup seluruh unit"
+
+# 12 · HIJAU — job BUILD memang harus mematok satu unit; aturan di atas tidak
+#      boleh ikut menjatuhkannya.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=false JOB_ROLE=build JOB_BODY_UNIT=1 \
+  jalankan ok "job build mematok unit (memang seharusnya)"
+
+# 13 · HIJAU — revisi ter-deploy BELUM mendukung /retire tanpa unit_id, jadi
+#      body yang mematok unit masih SATU-SATUNYA bentuk yang bekerja.
+#      Menuntut '{}' di sini akan membuat job 404 dan pemensiunan BERHENTI.
+JOB_NAME=uji JOB_URI="https://x/snapshot-worker/retire" JOB_CONTENT_TYPE="application/json" \
+  JOB_HEADER_KEYS="$OK_HEADERS" ENDPOINT_ADA=true ALL_UNITS_ADA=false JOB_ROLE=retire JOB_BODY_UNIT=1 \
+  jalankan ok "body mematok unit sementara revisi belum mendukung semua-unit"
+
+[ "$gagal" -eq 0 ] && echo "check-snapshot-scheduler-jobs: 13 keadaan sesuai harapan." || exit 1
