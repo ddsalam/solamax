@@ -15,7 +15,20 @@ import type { Response } from "express";
 import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import { PrismaService } from "../prisma.service.js";
 import type { RetirementSummary } from "./source-capture.service.js";
+
+/**
+ * Bentuk respons `/retire`. Total tetap ada di tingkat atas supaya pemanggilan
+ * satu-unit yang sudah dipakai tidak berubah artinya; `units` menambahkan
+ * rinciannya, bukan menggantikan.
+ */
+type RetireResponse = RetirementSummary & {
+  status: "retired";
+  staging_review: boolean;
+  units: Array<RetirementSummary & { unitId: number; error?: string }>;
+  skipped: number[];
+};
 import {
+  type RetirementRun,
   type SnapshotWorkerBatchResult,
   SnapshotWorkerService,
 } from "./snapshot-worker.service.js";
@@ -148,51 +161,81 @@ export class SnapshotTriggerController {
   async retire(
     @Headers("x-snapshot-secret") suppliedSecret: string | undefined,
     @Body() body: unknown,
-  ): Promise<RetirementSummary & { status: "retired"; staging_review: boolean }> {
+  ): Promise<RetireResponse> {
     const startedAt = Date.now();
     if (!isAuthorized(suppliedSecret, process.env.SNAPSHOT_TRIGGER_SECRET)) {
       rejectWithoutOracle();
     }
-    const unitId = parseUnitIdOnly(body);
-    if (unitId === null) rejectWithoutOracle();
 
-    let activeUnit: { unitId: number } | null;
-    try {
-      activeUnit = await this.prisma.unit.findFirst({
-        where: { unitId, active: true },
-        select: { unitId: true },
-      });
-    } catch {
-      this.logger.error(JSON.stringify({ msg: "snapshot-retire unit lookup failed", unit_id: unitId }));
-      throw new HttpException({ status: "failed" }, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-    if (!activeUnit) rejectWithoutOracle();
+    // `unit_id` OPSIONAL. Tanpa ia: SELURUH unit aktif.
+    //
+    // ⚠️ Default-nya sengaja "semua", bukan "unit 1". Insiden kapasitas
+    // 14-09-2026 berakar pada pemensiunan yang per-unit sementara hanya unit 1
+    // punya penjadwal: unit 4 menumpuk 32 cut staging = 30,3 juta baris,
+    // berbulan-bulan, tanpa berbunyi. Default yang memilih satu unit adalah
+    // default yang menunggu diulang.
+    const hasUnit = !!body && typeof body === "object" && "unit_id" in body;
+    const unitId = hasUnit ? parseUnitIdOnly(body) : null;
+    if (hasUnit && unitId === null) rejectWithoutOracle();
 
-    let summary: RetirementSummary;
+    let run: RetirementRun;
     try {
-      summary = await this.worker.retireOnly(unitId);
-    } catch {
+      if (unitId === null) {
+        run = await this.worker.retireAllUnits();
+      } else {
+        const activeUnit = await this.prisma.unit.findFirst({
+          where: { unitId, active: true },
+          select: { unitId: true },
+        });
+        if (!activeUnit) rejectWithoutOracle();
+        run = { units: [{ unitId, ...(await this.worker.retireOnly(unitId)) }], skipped: [] };
+      }
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(JSON.stringify({
         msg: "snapshot-retire failed", unit_id: unitId, ms: Date.now() - startedAt,
       }));
       throw new HttpException({ status: "failed" }, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // Di atas ambang, lajunya tidak terkejar — ditulis WARN supaya penyaring
-    // severity Cloud Logging melihatnya tanpa ada yang perlu membuka psql.
-    const review = summary.stagingAfter > SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount;
+    const total = run.units.reduce((acc, u) => ({
+      stagingBefore: acc.stagingBefore + u.stagingBefore,
+      stagingAfter: acc.stagingAfter + u.stagingAfter,
+      rowsDeleted: acc.rowsDeleted + u.rowsDeleted,
+    }), { stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0 });
+
+    // Ambangnya dinilai PER UNIT lalu di-OR — dan alasannya BUKAN sensitivitas.
+    // Total selalu >= unit terbesar, jadi ambang atas total justru LEBIH mudah
+    // menyala, bukan kurang. Justru di situ masalahnya: tujuh unit yang
+    // masing-masing sehat (1 cut) berjumlah 7 dan akan melewati ambang 4 tiap
+    // jam, selamanya. Alarm yang selalu menyala berhenti dibaca — kelas yang
+    // sama dengan 425 yang menyamarkan disk_review_required. Per-unit menyala
+    // hanya ketika ada unit yang benar-benar tertinggal, seperti unit 4.
+    const loud = run.units.filter(
+      (u) => u.stagingAfter > SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount || u.error,
+    );
+    const review = loud.length > 0 || run.skipped.length > 0;
+
     const line = JSON.stringify({
       msg: "snapshot-retire finished",
       unit_id: unitId,
-      staging_before: summary.stagingBefore,
-      staging_after: summary.stagingAfter,
-      rows_deleted: summary.rowsDeleted,
+      units: run.units.map((u) => ({
+        unit_id: u.unitId,
+        staging_before: u.stagingBefore,
+        staging_after: u.stagingAfter,
+        rows_deleted: u.rowsDeleted,
+        ...(u.error ? { error: u.error } : {}),
+      })),
+      skipped_units: run.skipped,
+      staging_before: total.stagingBefore,
+      staging_after: total.stagingAfter,
+      rows_deleted: total.rowsDeleted,
       staging_review: review,
       ms: Date.now() - startedAt,
     });
     if (review) this.logger.warn(line); else this.logger.log(line);
 
-    return { status: "retired", ...summary, staging_review: review };
+    return { status: "retired", ...total, units: run.units, skipped: run.skipped, staging_review: review };
   }
 
   @Post()

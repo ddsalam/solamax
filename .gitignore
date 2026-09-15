@@ -31,6 +31,11 @@ __pycache__/
 # Bundle deploy Windows (artefak build — dibuat ulang via `pnpm bundle`)
 bundle-out/
 solamax-agent-bundle.zip
+# Direktori hasil EKSTRAK bundle. Hanya .zip yang diabaikan sebelumnya, jadi
+# bundle yang di-unzip di tempat tetap untracked-tapi-terlihat — dan sepuluh
+# berkasnya (termasuk solamax-agent.cjs, +39.267 baris) sempat ikut ter-commit
+# ke PR #362 lewat `git add -A -- apps`.
+solamax-agent-bundle/
 
 # OS / editor
 .DS_Store

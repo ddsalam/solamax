@@ -53,11 +53,40 @@ print(f"  ok  {p}")
 PY
 done
 
+# ── Setiap skrip yang DIRUJUK workflow harus ADA ────────────────────────────
+#
+# ⚠️ Dibayar 14-09-2026: promosi ke `main` tertahan `deploy-test exit 127`
+# karena `deploy-backend.yml` masih memanggil `scripts/ci/check-temporary-retire-job.sh`
+# sesudah skrip itu dikonsolidasikan (di-rename) menjadi
+# `check-snapshot-scheduler-jobs.sh`. YAML-nya sah, jobnya terdaftar, dan
+# penjaga di atas HIJAU — karena ia hanya memeriksa bentuk, bukan rujukan.
+#
+# Kelasnya: saat mengonsolidasikan skrip, pemanggilnya tidak ikut tersisir.
+# `exit 127` baru terlihat saat deploy berjalan, yaitu saat paling mahal.
+rujukan=0
+hilang=0
+while IFS= read -r ref; do
+  rujukan=$((rujukan + 1))
+  if [ ! -f "$ref" ]; then
+    echo "❌ $ref dirujuk workflow/action tetapi TIDAK ADA — ini exit 127 saat deploy."
+    hilang=$((hilang + 1))
+  fi
+done < <(grep -rhoE 'scripts/(ci|piutang-[a-z0-9]+)/[A-Za-z0-9_.-]+\.(sh|py|sql)' \
+           .github/workflows/ .github/actions/ 2>/dev/null | sort -u)
+
+[ "$hilang" -eq 0 ] || exit 1
+
 # KONTROL ANTI-VAKUM: direktori kosong / glob yang tak cocok akan "lulus" tanpa
 # memeriksa apa pun — persis kegagalan yang penjaga ini ada untuk mencegah.
+# Berlaku untuk KEDUA pemeriksaan: nol rujukan juga berarti regex-nya berhenti
+# cocok, bukan berarti tidak ada skrip yang dipanggil.
 if [ "$n" -lt 3 ]; then
   echo "❌ hanya $n workflow terbaca di $DIR — glob-nya kemungkinan tak cocok."
   exit 1
 fi
+if [ "$rujukan" -lt 3 ]; then
+  echo "❌ hanya $rujukan rujukan skrip terbaca — regex-nya kemungkinan tak cocok."
+  exit 1
+fi
 
-echo "check-workflows: $n workflow valid."
+echo "check-workflows: $n workflow valid, $rujukan rujukan skrip semuanya ada."

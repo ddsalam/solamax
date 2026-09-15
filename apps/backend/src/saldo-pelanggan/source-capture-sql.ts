@@ -497,6 +497,25 @@ RETURNING source_cycle_id`;
  * Yang tidak bekerja adalah CADENCE-nya: penandaan staging->failed hanya
  * terjadi saat snapshot worker berjalan, yaitu sekali sehari.
  */
+/**
+ * Cut `staging` per unit, untuk SELURUH unit yang terlihat dalam scope.
+ *
+ * ⚠️ Ini yang menemukan akar insiden kapasitas 14-09-2026. Pemensiunan bersifat
+ * PER UNIT, dan hanya unit 1 punya penjadwal — jadi setiap pengukuran yang
+ * di-scope ke unit 1 tampak BERSIH sementara disk tumbuh. Unit 4 menumpuk
+ * **32 cut staging (seq 7..38) = 30,3 juta baris bppiut** tanpa satu pun
+ * pemensiunan, berbulan-bulan, tanpa berbunyi.
+ *
+ * Pemakaian: scope `app.unit_ids` ke SEMUA unit lebih dulu. Nol baris dari
+ * scope sempit bukan fakta — lihat [[nol-rls-bukan-fakta]].
+ */
+export const COUNT_STAGING_BY_UNIT_SQL = `
+SELECT unit_id, count(*)::bigint AS staging_count
+FROM app.saldo_pelanggan_source_cycle
+WHERE status = 'staging'
+GROUP BY unit_id
+ORDER BY count(*) DESC, unit_id`;
+
 export const COUNT_STAGING_CYCLES_SQL = `
 SELECT count(*)::bigint AS staging_count
 FROM app.saldo_pelanggan_source_cycle

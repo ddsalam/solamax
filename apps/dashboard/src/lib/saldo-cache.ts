@@ -9,6 +9,7 @@
 import { unstable_cache } from "next/cache";
 import { addDays, todayWib } from "./periods";
 import { readSaldoPelangganLegacy } from "./queries";
+import { compareFreshness, type SaldoFreshness } from "./saldo-freshness";
 import {
   assembleReadySaldoSnapshot,
   getSaldoSnapshotGeneration,
@@ -19,6 +20,31 @@ import {
   type SaldoSnapshotRow,
 } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope-rule";
+
+/**
+ * TTL pembanding kesegaran. Ia TIDAK berjalan tiap render: agregat ledger hidup
+ * adalah kueri berat yang sama dengan jalur fallback lama. 300 detik jauh lebih
+ * rapat daripada cadence koreksi mundur yang ia kejar (08:34 vs cut 02:05 =
+ * ±6 jam), jadi ia menutup lubangnya tanpa membebani jalur baca.
+ */
+export const SALDO_FRESHNESS_REVALIDATE_S = 300;
+
+/**
+ * Kunci cache memuat `generationId`: generasi baru = kunci baru, sehingga hasil
+ * lama tidak pernah menempel pada snapshot yang sudah berganti.
+ */
+export function getCachedSaldoFreshness(
+  unit: ScopedUnitId,
+  asOfDate: string,
+  generationId: string,
+  snapshotTotals: SaldoPelanggan,
+): Promise<SaldoFreshness> {
+  return unstable_cache(
+    async () => compareFreshness(await readSaldoPelangganLegacy(unit, asOfDate), snapshotTotals),
+    ["saldo-freshness", String(unit), asOfDate, generationId],
+    { revalidate: SALDO_FRESHNESS_REVALIDATE_S },
+  )();
+}
 
 /** Revalidate tanggal historis — selaras cadence koreksi back-dated agent. */
 export const SALDO_HIST_REVALIDATE_S = 86_400;

@@ -11,6 +11,7 @@ import {
   piutangViewInput,
   readinessProps,
 } from "@/lib/piutang-route";
+import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -34,6 +35,12 @@ export default async function PiutangPelangganPage({
 
   // Strict B6 read path: no legacy ledger fallback and no per-customer query.
   const snapshot = await getSaldoSnapshot(unit.unit_id, date);
+  // Probe kesegaran ber-cache (300 dtk), BUKAN per render: 2,6 detik/unit.
+  // Ia menutup lubang 13-09-2026 — koreksi mundur yang tak terlihat ±18 jam.
+  const freshness = snapshot.status === "ready"
+    ? await getCachedSaldoFreshness(
+        unit.unit_id, date, snapshot.metadata.generationId, snapshot.metadata.totals)
+    : undefined;
   const view = buildPiutangView(snapshot, piutangViewInput(rawQuery));
   const detailBaseUrl = `/keuangan/unit/${encodeURIComponent(unit.code)}/piutang/${date}/pelanggan`;
 
@@ -80,7 +87,7 @@ export default async function PiutangPelangganPage({
           zeroSectionOpen={view.zeroSectionOpen}
           csvHref={piutangExportHref("csv", unit.code, date, view)}
           pdfHref={piutangExportHref("pdf", unit.code, date, view)}
-          pendingBanner={pendingBanner(snapshot as Extract<typeof snapshot, { status: "ready" }>)}
+          pendingBanner={pendingBanner(snapshot as Extract<typeof snapshot, { status: "ready" }>, freshness)}
         />
       )}
     </>

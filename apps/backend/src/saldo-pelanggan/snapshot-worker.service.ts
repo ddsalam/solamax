@@ -1,14 +1,26 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service.js";
-import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_OPERATIONAL_LIMITS } from "./snapshot-config.js";
+import {
+  SNAPSHOT_BACKFILL_LIMITS,
+  SNAPSHOT_OPERATIONAL_LIMITS,
+  SNAPSHOT_RETIREMENT_LIMITS,
+} from "./snapshot-config.js";
 import { type RetirementSummary, SnapshotSourceCaptureService } from "./source-capture.service.js";
+
+/** Hasil satu putaran pemensiunan lintas unit. */
+export interface RetirementRun {
+  units: Array<RetirementSummary & { unitId: number; error?: string }>;
+  /** Unit yang belum sempat dilayani karena anggaran habis — dilaporkan, tidak didiamkan. */
+  skipped: number[];
+}
 import {
   evaluateOperationalGate,
   SnapshotBuildError,
   SnapshotBuilderService,
 } from "./snapshot-builder.service.js";
 import { PUBLICATION_OPERATIONAL_GATE_SQL, SET_UNIT_SCOPE_SQL } from "./snapshot-sql.js";
+import { COUNT_STAGING_BY_UNIT_SQL } from "./source-capture-sql.js";
 import {
   FAIL_EXPIRED_MANIFEST_SQL,
   FAIL_ORPHAN_MANIFEST_SQL,
@@ -122,6 +134,71 @@ export class SnapshotWorkerService {
    * selalu menyala berhenti dibaca orang — dan itu persis kelas kegagalan yang
    * membuat insiden ini tidak terlihat berhari-hari.
    */
+  /**
+   * Pemensiunan untuk SELURUH unit aktif — bukan satu unit.
+   *
+   * ⚠️ INI AKAR INSIDEN KAPASITAS 14-09-2026, dan alasan bentuk ini dipilih.
+   * Pemensiunan bersifat PER UNIT. Hanya unit 1 yang punya penjadwal, sehingga
+   * unit 4 menumpuk **32 cut staging = 30,3 juta baris** tanpa satu pun
+   * pemensiunan — sementara tiap pengukuran kami, yang di-scope ke unit 1,
+   * tampak bersih.
+   *
+   * KENAPA SATU ENDPOINT YANG MENGITERASI, BUKAN SATU JOB PER UNIT.
+   * Kegagalan yang baru terjadi PERSIS berbentuk "ada unit yang tidak punya
+   * job". Satu job per unit memberi isolasi kegagalan yang lebih baik, tetapi
+   * ia membuat CAKUPAN bergantung pada seseorang mengingat menambah job setiap
+   * kali unit baru di-onboard — ketergantungan yang sudah terbukti gagal, dan
+   * yang akan diuji lagi pada setiap unit berikutnya. Dengan mengiterasi unit
+   * aktif, cakupan menjadi **sifat sistem**, bukan sifat ingatan.
+   *
+   * Harga yang dibayar, dan penawarnya:
+   *  · tak ada isolasi antar-unit → kegagalan satu unit DITANGKAP dan iterasi
+   *    lanjut; unit yang gagal dilaporkan, tidak menghentikan sisanya;
+   *  · satu unit lambat dapat menghabiskan anggaran → urutannya **backlog
+   *    terbanyak lebih dulu**, sehingga unit terburuk selalu terlayani walau
+   *    anggaran habis, dan unit yang belum sempat dilaporkan eksplisit.
+   */
+  async retireAllUnits(): Promise<RetirementRun> {
+    const units = await this.prisma.unit.findMany({
+      where: { active: true },
+      select: { unitId: true },
+    });
+    const active = new Set(units.map((u) => u.unitId));
+    if (active.size === 0) return { units: [], skipped: [] };
+
+    // Urutan: backlog terbanyak lebih dulu. Hitungan ini butuh scope SELURUH
+    // unit — di-scope sempit ia memulangkan nol tanpa galat, dan nol itu
+    // persis yang menyembunyikan unit 4 selama ini.
+    const scope = [...active].sort((a, b) => a - b).join(",");
+    const backlog = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(SET_UNIT_SCOPE_SQL, scope);
+      return tx.$queryRawUnsafe<Array<{ unit_id: number; staging_count: bigint }>>(
+        COUNT_STAGING_BY_UNIT_SQL,
+      );
+    }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+
+    const ordered = [
+      ...backlog.map((row) => row.unit_id).filter((unitId) => active.has(unitId)),
+      ...[...active].sort((a, b) => a - b),
+    ].filter((unitId, index, all) => all.indexOf(unitId) === index);
+
+    const deadline = Date.now() + SNAPSHOT_RETIREMENT_LIMITS.allUnitsMilliseconds;
+    const done: RetirementRun["units"] = [];
+    const skipped: number[] = [];
+    for (const unitId of ordered) {
+      if (Date.now() >= deadline) { skipped.push(unitId); continue; }
+      try {
+        done.push({ unitId, ...(await this.retireOnly(unitId)) });
+      } catch (error) {
+        done.push({
+          unitId, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
+          error: errorText(error),
+        });
+      }
+    }
+    return { units: done, skipped };
+  }
+
   async retireOnly(unitId: number): Promise<RetirementSummary> {
     if (!Number.isInteger(unitId) || unitId < -32_768 || unitId > 32_767) {
       throw new Error("unitId must be a SMALLINT");

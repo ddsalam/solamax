@@ -15,6 +15,14 @@ inputs:
   db-secret:
     description: "Nama secret Secret Manager berisi DATABASE_URL role `ingest` untuk tier ini"
     required: true
+  coverage-check:
+    description: >
+      "true" untuk menjalankan gerbang cakupan unit (job build & pemensiunan vs
+      unit yang benar-benar mengirim cut). Hanya dinyalakan pada tier PILOT:
+      di tier testing daftar unit ber-cut bersifat sintetis dan tidak mewakili
+      penjadwal produksi.
+    required: false
+    default: "false"
   forbid:
     description: >
       Substring yang TIDAK BOLEH muncul di DATABASE_URL. Wajib diisi "rlsstg"
@@ -91,6 +99,45 @@ runs:
           exit 1
         }
         bash scripts/ci/check-snapshot-quiescent.sh
+
+    # Gerbang cakupan unit — DUA SISI. Penjadwal snapshot per-unit, dan
+    # cakupannya bergantung pada seseorang mengingat membuat job saat unit baru
+    # di-onboard. Ingatan itu gagal DUA KALI pada 14-09-2026: sisi pemensiunan
+    # (unit 4 menumpuk 30,3 juta baris) dan sisi BUILD (unit 4 punya 39 cycle
+    # dengan complete = 0 selama dua hari, cut-nya lengkap, tak pernah dibangun).
+    #
+    # Daftar "unit yang mengirim cut" diambil dari DB — bukan dari registry —
+    # karena unit yang agent-nya belum ditukar memang belum boleh dituntut punya
+    # job. Gerbang yang memakai registry akan menyala tiap hari sampai unit
+    # terakhir di-onboard, yaitu alarm yang selalu menyala.
+    - name: Cakupan unit (build & pemensiunan)
+      if: inputs.coverage-check == 'true'
+      shell: bash
+      env:
+        DATABASE_URL: ${{ steps.db.outputs.url }}
+      run: |
+        PSQL_URL="${DATABASE_URL%%\?*}"
+        UNIT_BERCUT="$(psql "$PSQL_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
+        BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+        SELECT set_config('app.unit_ids',
+          (SELECT string_agg(unit_id::text, ',' ORDER BY unit_id) FROM public.unit), true) \g /dev/null
+        SELECT string_agg(u::text, ',' ORDER BY u)
+        FROM (SELECT DISTINCT unit_id AS u FROM app.saldo_pelanggan_source_cycle) t;
+        ROLLBACK;
+        SQL
+        )"
+        UNIT_BERCUT="$(printf '%s' "$UNIT_BERCUT" | tr -d '[:space:]')"
+        JOBS="$(gcloud scheduler jobs list --location=asia-southeast2 --project=solamax --format='value(name.basename())')"
+        BUILD_UNITS="$(printf '%s\n' "$JOBS" | grep -E '^solamax-snapshot-unit-[0-9]+$' | sed -E 's/.*-([0-9]+)$/\1/' | sort -n | paste -sd, - || true)"
+        RETIRE_UNITS="$(printf '%s\n' "$JOBS" | grep -E '^solamax-snapshot-retire-unit-[0-9]+$' | sed -E 's/.*-([0-9]+)$/\1/' | sort -n | paste -sd, - || true)"
+        RETIRE_ITERASI=false
+        for JOB in $(printf '%s\n' "$JOBS" | grep -E 'retire' || true); do
+          RAW="$(gcloud scheduler jobs describe "$JOB" --project=solamax --location=asia-southeast2 --format=json 2>/dev/null || echo '{}')"
+          eval "$(printf '%s' "$RAW" | python3 scripts/ci/scheduler-job-facts.py)"
+          if [ -z "$JOB_BODY_UNIT" ] && [ -n "$JOB_URI" ]; then RETIRE_ITERASI=true; fi
+        done
+        UNIT_BERCUT="$UNIT_BERCUT" BUILD_UNITS="$BUILD_UNITS" RETIRE_UNITS="$RETIRE_UNITS" \
+          RETIRE_ITERASI="$RETIRE_ITERASI" bash scripts/ci/check-snapshot-unit-coverage.sh
 
     - name: prisma migrate deploy
       shell: bash
