@@ -116,7 +116,12 @@ runs:
       env:
         DATABASE_URL: ${{ steps.db.outputs.url }}
       run: |
-        PSQL_URL="${DATABASE_URL%%\?*}"
+        # `host=/cloudsql/...` HARUS dipertahankan. Membuang SELURUH query
+        # membuat psql mencoba TCP localhost:5432 -> "Connection refused",
+        # dan itu menjatuhkan deploy pilot 15-09-2026. Buang HANYA `schema`
+        # (parameter Prisma yang ditolak psql) — lihat `strip_schema_param`
+        # di scripts/ci/check-snapshot-quiescent.sh yang sudah benar.
+        PSQL_URL="$(printf '%s' "$DATABASE_URL" | sed -E 's/([?&])schema=[^&]*/\1/; s/\?&/?/; s/&&/\&/g; s/[?&]$//')"
         UNIT_BERCUT="$(psql "$PSQL_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
         BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
         SELECT set_config('app.unit_ids',
