@@ -68,6 +68,10 @@ describe("banner kesegaran", () => {
     expect(banner).toBeDefined();
     // Rupiahnya harus disebut: pembaca perlu tahu seberapa jauh melesetnya.
     expect(banner!.title).toContain("37.384.362");
+    // Batas "tidak beku" WAJIB ikut ke layar. Angka tanggal lampau bergeser
+    // saat di-rebuild — IB 13-09 bergeser −536.588.685 pada 15-09 — dan
+    // pembaca yang mengira angka historis beku akan salah membacanya.
+    expect(banner!.body).toContain("bergeser");
   });
 
   it("DIAM ketika tidak material dan pointer tidak pending", () => {

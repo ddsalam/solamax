@@ -114,3 +114,99 @@ apa pun yang dibutuhkan data malam ini** — fiturnya sudah di produksi sejak
 Promosi ke `main` ditahan sampai verifikasi §3 bersih, dan dijalankan **di luar
 02:00–05:00** karena deploy me-restart backend dan dapat menjatuhkan build yang
 sedang berjalan.
+
+---
+
+# Adendum — vonis keenam, batas di layar, dan kurva
+
+## 6 · Hasil verifikasi data (dijalankan sesi peninjau)
+
+```
+27 pointer · 3 unit · 9 tanggal · nol pending_replacement
+manifest 29 complete + 1 failed (superseded, jinak) — semuanya v2
+unit 1: 07-31 08-31 09-08..09-13 09-15   (14-09 HILANG = item superseded)
+unit 2: 08-31 09-08..09-15      unit 4: 08-31 09-08..09-15
+G3: 8 pasangan per unit, NOL pelanggaran
+kapasitas 4.828 MB, gerbang TERBUKA (dari 13,97 GB kemarin)
+```
+
+Kelima vonis berperilaku sesuai pendaftaran; **G1 = LULUS dengan PERIKSA** pada
+unit 1 (8 dari 9). Jendela backfill besok (09-09..09-16) mencakup 14-09, jadi
+ia sembuh sendiri — **jangan dipaksa**.
+
+## 7 · 🔴 G5 — angka historis BERGERAK, dan G3 buta terhadapnya
+
+```
+IB 13-09 saat diverifikasi vs EasyMax : 13.052.684.187,50
+IB 13-09 sekarang                     : 12.516.095.502,50
+selisih −536.588.685, hampir seluruhnya dari kredit (+712 juta)
+```
+
+Sebabnya snapshot 13-09 **dibangun ulang** semalam dari cut 15-Sep, sehingga
+memuat pembayaran yang dicatat mundur pada 14–15 Sep. Secara akuntansi benar.
+
+**G3 tidak dapat melihatnya**: ia menguji konsistensi antar-**tanggal** di dalam
+satu generasi, bukan stabilitas satu **tanggal** antar-generasi. Dua sumbu
+berbeda; menutup yang satu tidak menutup yang lain.
+
+### Kenapa ambangnya LETAK, bukan RUPIAH
+
+Rebuild backfill menyentuh **7 tanggal tiap malam**. Ambang rupiah berapa pun
+akan menyala hampir setiap hari — alarm yang selalu menyala, kelas yang sama
+dengan 425 yang menyamarkan `disk_review_required`, dan kelas yang sama dengan
+ambang total yang saya tolak untuk `staging_review`. Yang membedakan wajar dari
+gawat bukan besarnya, melainkan **di mana tanggalnya berada**:
+
+| Letak | Vonis | Alasan |
+|---|---|---|
+| di DALAM jendela backfill (`cut − 7 hari`) | **PERIKSA**, besarannya dilaporkan | rebuild memang menyentuhnya; yang dibutuhkan visibilitas, bukan alarm |
+| di LUAR jendela | **GAGAL G5** | tidak ada yang seharusnya membangun ulang tanggal sejauh itu, termasuk baseline akhir bulan. Angka lama yang bergerak diam-diam adalah tepat hal yang vonis ini ada untuk menangkap |
+
+Dibuktikan dua arah di PostgreSQL 16 lokal: pergeseran 500 juta pada 14-09
+(cut 15-09) → `LULUS dengan PERIKSA`; pergeseran yang sama pada tanggal di luar
+jendela → `GAGAL G5`. Dasar (satu generasi per tanggal) → `LULUS`.
+
+## 8 · Batasnya kini di LAYAR, bukan hanya di catatan
+
+`TIDAK_BEKU` di `piutang-route.ts`, muncul di **dua** tempat:
+
+- **provenance** — selalu terlihat, bahkan ketika banner tidak menyala;
+- **badan banner F1** — ketika ada selisih hidup-vs-snapshot.
+
+> "Angka tanggal lampau dapat bergeser: ia menyajikan posisi tanggal itu menurut
+> catatan TERBARU, bukan yang terlihat pada hari itu."
+
+Dikunci uji, dan ujinya dibuktikan merah (menghapus kalimat itu menjatuhkannya).
+
+## 9 · ❓ Pertanyaan untuk Dion — apakah angka historis HARUS beku
+
+Ini keputusan pemilik, bukan keputusan kode. Tiga pilihan dengan biayanya:
+
+| Pilihan | Yang didapat | Yang dibayar |
+|---|---|---|
+| **A · biarkan bergerak** (keadaan sekarang) | angka selalu = pengetahuan terbaik; koreksi mundur yang sah selalu masuk | laporan tanggal yang sama yang dicetak hari ini dan besok bisa BERBEDA. Setiap rekonsiliasi eksternal wajib menyebut kapan snapshot dibangun — kalau tidak, ia mengulang jebakan [[oracle-selaras-waktu]]. Biaya kode: **nol** (sudah begini) |
+| **B · beku sesudah keluar jendela** | angka historis stabil; laporan dapat diulang | koreksi mundur yang tiba > 7 hari **tidak akan pernah** masuk — angka jadi permanen berbeda dari EasyMax. Butuh kode: penanda immutability + jalan keluar manual yang diaudit |
+| **C · beku + revisi bernomor** | stabil DAN dapat dikoreksi; pembaca melihat "revisi ke-n, tanggal revisi …" | biaya tertinggi: UI revisi, retensi generasi lama, dan keputusan retensi berapa lama |
+
+Saya **tidak** memilih. Sampai keputusan diambil, layar menyebutkan apa adanya
+(§8), yang menutup bahaya terbesarnya: pembaca mengira angka historis beku.
+
+## 10 · Kurva kapasitas — premis plateau kini DIDUKUNG, dengan batasnya
+
+20 titik per jam, 15-09 01:08 → 20:08 WIB, tiga unit aktif, pemensiunan per jam
+hidup:
+
+```
+01:08  6,35 GB   …berosilasi ±250 MB…   20:08  6,31 GB
+tren 19 jam: −33 MB = −2 MB/jam
+```
+
+Bandingkan **615 MB/jam** ketika pemensiunan absen (14-09, 02:48→13:48). Aliran
+yang diperbaiki memang menahan tanda-airnya.
+
+⚠️ **Batas yang wajib ikut**: prediksi yang saya kunci berbicara tentang
+`pg_relation_size('app.saldo_pelanggan_source_bppiut')` **≤ ~1 GB dalam ≤ 6 jam**,
+diukur lewat `05-kurva.sh`. Yang saya punya di sini adalah **disk keseluruhan**
+selama 19 jam — korroborasi kuat, **bukan** prediksi yang saya daftarkan.
+Prediksi itu belum dikonfirmasi maupun digugurkan; `05-kurva.sh` tetap alat yang
+menjawabnya, dan ia butuh psql.

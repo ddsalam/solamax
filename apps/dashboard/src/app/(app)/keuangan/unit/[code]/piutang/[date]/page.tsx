@@ -10,6 +10,7 @@ import {
   piutangExportHref,
   piutangViewInput,
   readinessProps,
+  TIDAK_BEKU,
 } from "@/lib/piutang-route";
 import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
@@ -79,7 +80,7 @@ export default async function PiutangPelangganPage({
           provenance={{
             formulaVersion: view.metadata.formulaVersion,
             computedAtLabel: formatWib(view.metadata.computedAt),
-            sourceCutLabel: `Siklus sumber ${view.metadata.sourceCycleId} selesai ${formatWib(view.metadata.sourceCompletedAt)}`,
+            sourceCutLabel: `Siklus sumber ${view.metadata.sourceCycleId} selesai ${formatWib(view.metadata.sourceCompletedAt)}. ${TIDAK_BEKU}`,
           }}
           historicalNote={view.historicalNote}
           summary={view.metadata}

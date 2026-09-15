@@ -82,6 +82,24 @@ export interface PiutangPendingBanner {
  * menyebutkan RUPIAHNYA — yang membuat pembaca tahu seberapa jauh melesetnya,
  * bukan sekadar bahwa ada sesuatu.
  */
+/**
+ * Batas yang WAJIB terlihat di layar, bukan hanya tersimpan di catatan.
+ *
+ * Snapshot sebuah tanggal DIBANGUN ULANG setiap kali tanggal itu masuk jendela
+ * backfill, jadi angkanya adalah **pengetahuan terbaik hari ini tentang posisi
+ * tanggal itu**, bukan "apa yang terlihat pada tanggal itu". Terukur 15-09-2026:
+ * IB 13-09 bergeser 13.052.684.187,50 → 12.516.095.502,50 (−536.588.685,
+ * hampir seluruhnya dari kredit) karena pembayaran yang dicatat mundur pada
+ * 14–15 September ikut terbaca. Secara akuntansi itu benar; yang salah adalah
+ * membiarkan pembaca mengira angka historis beku.
+ *
+ * Apakah angka historis HARUS dibekukan adalah keputusan pemilik, bukan
+ * keputusan kode ini. Sampai keputusan itu diambil, layar menyebutkan apa
+ * adanya.
+ */
+export const TIDAK_BEKU =
+  "Angka tanggal lampau dapat bergeser: ia menyajikan posisi tanggal itu menurut catatan TERBARU, bukan yang terlihat pada hari itu.";
+
 export function pendingBanner(
   snapshot: Extract<SaldoSnapshot, { status: "ready" }>,
   freshness?: SaldoFreshness,
@@ -90,7 +108,7 @@ export function pendingBanner(
     return {
       tone: "warning",
       title: `Ada perubahan sesudah snapshot ${formatWib(snapshot.metadata.sourceCompletedAt)}—selisih ${rp(freshness.totalAbsolut)}`,
-      body: "Angka di layar berasal dari snapshot itu; buku besar yang hidup sudah berbeda sebanyak selisih di atas. Snapshot berikutnya akan memuatnya.",
+      body: `Angka di layar berasal dari snapshot itu; buku besar yang hidup sudah berbeda sebanyak selisih di atas. Snapshot berikutnya akan memuatnya. ${TIDAK_BEKU}`,
     };
   }
   if (!snapshot.metadata.pendingReplacement) return undefined;
