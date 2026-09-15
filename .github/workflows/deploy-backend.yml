@@ -112,6 +112,10 @@ jobs:
         with:
           instance: solamax:asia-southeast2:solamax-pg-rlsstg
           db-secret: solamax-db-url-ingest-rlsstg
+          # "report": vonis cakupan tidak menjatuhkan (daftar unit di sini
+          # sintetis), tetapi SAMBUNGAN dan KUERI tetap dituntut berhasil —
+          # itu bagian yang gagal di produksi 15-09-2026.
+          coverage: report
 
   deploy-test:
     if: github.ref == 'refs/heads/staging'
@@ -209,7 +213,7 @@ jobs:
           instance: solamax:asia-southeast2:solamax-pg
           db-secret: solamax-db-url-staging
           forbid: rlsstg
-          coverage-check: "true"
+          coverage: enforce
 
   deploy-pilot:
     if: github.ref == 'refs/heads/main'
