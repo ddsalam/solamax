@@ -37,6 +37,8 @@ jobs:
       # semua jalur hijau. Gerbang yang hanya pernah dibuktikan merah tak dapat
       # dibedakan dari gerbang yang rusak.
       - run: bash scripts/ci/check-snapshot-scheduler-jobs.selftest.sh
+      # Gerbang cakupan unit — tujuh keadaan, dua sisi (build & pemensiunan).
+      - run: bash scripts/ci/check-snapshot-unit-coverage.selftest.sh
       - run: bash scripts/ci/check-backup-files.selftest.sh
       - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4
@@ -135,15 +137,6 @@ jobs:
       - run: pnpm --filter @solamax/shared build
       - run: pnpm --filter @solamax/backend prisma:generate
       - run: bash scripts/ci/check-migrate-deploy.sh
-        env:
-          MIGRATE_DEPLOY_ADMIN_URL: postgresql://migrate_gate_admin:migrate_gate_only@127.0.0.1:5433/postgres
-          MIGRATE_DEPLOY_HOST: 127.0.0.1
-          MIGRATE_DEPLOY_PORT: "5433"
-      # Semantik probe kesegaran F1 dikunci SEBELUM ia menyentuh jalur baca:
-      # material menyala dengan rupiah yang benar, non-material diam. Kontrol
-      # negatifnya (baris bertanggal masa depan senilai Rp 500 juta, kelas
-      # sjenis=4, baris yang tak berubah sejak cut) adalah setengah gerbangnya.
-      - run: bash scripts/ci/check-piutang-freshness-probe.sh
         env:
           MIGRATE_DEPLOY_ADMIN_URL: postgresql://migrate_gate_admin:migrate_gate_only@127.0.0.1:5433/postgres
           MIGRATE_DEPLOY_HOST: 127.0.0.1

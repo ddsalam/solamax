@@ -7,6 +7,7 @@ import { rp } from "@/lib/format";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { formatWib, pendingBanner, readinessProps } from "@/lib/piutang-route";
 import { PIUTANG_BOOKS, piutangBookAmounts, piutangHistoricalNote } from "@/lib/piutang-model";
+import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -50,7 +51,10 @@ export default async function PiutangPelangganDetailPage({
     // joined form above remains the authoritative first match.
   }
   if (!row) notFound();
-  const banner = pendingBanner(snapshot);
+  // Probe kesegaran ber-cache (300 dtk), BUKAN per render: 2,6 detik/unit.
+  const banner = pendingBanner(snapshot, await getCachedSaldoFreshness(
+    unit.unit_id, date, snapshot.metadata.generationId, snapshot.metadata.totals,
+  ));
 
   return (
     <>

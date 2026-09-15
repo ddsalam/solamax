@@ -35,19 +35,25 @@
 #   JOB_URI           uri httpTarget; KOSONG = job tidak ada
 #   JOB_CONTENT_TYPE  nilai header Content-Type ("" bila tak ada)
 #   JOB_HEADER_KEYS   daftar kunci header, dipisah koma
+#   JOB_BODY_UNIT     unit_id yang DIPATOK body ("" = tak mematok, "?" = tak terbaca)
+#   JOB_ROLE          "retire" untuk job pemensiunan, selain itu job build
 #   ENDPOINT_ADA      "true" bila /snapshot-worker/retire ada di sumber ter-deploy
+#   ALL_UNITS_ADA     "true" bila revisi ter-deploy mendukung /retire TANPA unit_id
 set -euo pipefail
 
 JOB_NAME="${JOB_NAME:-<job>}"
 JOB_URI="${JOB_URI:-}"
 JOB_CONTENT_TYPE="${JOB_CONTENT_TYPE:-}"
 JOB_HEADER_KEYS="${JOB_HEADER_KEYS:-}"
+JOB_BODY_UNIT="${JOB_BODY_UNIT:-}"
+JOB_ROLE="${JOB_ROLE:-build}"
 ENDPOINT_ADA="${ENDPOINT_ADA:-false}"
+ALL_UNITS_ADA="${ALL_UNITS_ADA:-false}"
 
 perbaikan_header() {
   cat >&2 <<MSG
 
-PERBAIKANNYA (owner) — sebut SELURUH header sekaligus. \`--update-headers\`
+PERBAIKANNYA (owner) — sebut SELURUH header sekaligus. \'--update-headers\'
 MENGGANTI set header, jadi menyebut satu saja menghapus sisanya:
 
   gcloud scheduler jobs update http ${JOB_NAME} \\
@@ -98,10 +104,49 @@ esac
 # SUDAH benar.
 case "$JOB_URI" in
   */snapshot-worker/retire)
-    echo "Job '${JOB_NAME}': header benar, menunjuk /snapshot-worker/retire. OK."
+    # ⚠️ Job pemensiunan TIDAK BOLEH mematok satu unit. Pemensiunan bersifat
+    # per-unit; penjadwal yang hanya mencakup unit 1 membuat unit 4 menumpuk
+    # 32 cut staging = 30,3 juta baris, berbulan-bulan, tanpa berbunyi.
+    # Endpoint `/retire` tanpa `unit_id` mengiterasi SELURUH unit aktif,
+    # sehingga unit baru tercakup tanpa siapa pun perlu mengingatnya.
+    # ⚠️ URUTAN MENGIKAT. Body dituntut kosong HANYA bila revisi ter-deploy
+    # benar-benar menerima /retire tanpa unit_id. Mengosongkannya lebih dulu
+    # membuat permintaannya ditolak 404 dan pemensiunan per jam BERHENTI SAMA
+    # SEKALI — lebih buruk daripada cakupan yang kurang.
+    if [ "$JOB_ROLE" = "retire" ] && [ "$ALL_UNITS_ADA" = "true" ] && [ -n "$JOB_BODY_UNIT" ]; then
+      cat >&2 <<MSG
+DITOLAK: '${JOB_NAME}' memanggil /snapshot-worker/retire tetapi MEMATOK
+unit_id=${JOB_BODY_UNIT} di body-nya.
+
+CATATAN: revisi baru SUDAH ter-deploy dan SEDANG melayani — langkah ini berjalan
+sesudah deploy. Yang tersisa satu perintah; deploy berikutnya hijau sesudahnya.
+
+Pemensiunan bersifat per-unit. Job yang mematok satu unit meninggalkan unit
+lain tanpa pemensiunan sama sekali — akar insiden kapasitas 14-09-2026, ketika
+unit 4 menumpuk 32 cut staging (30,3 juta baris) sementara setiap pengukuran
+yang di-scope ke unit 1 tampak bersih.
+
+PERBAIKANNYA (owner) — body kosong berarti SELURUH unit aktif:
+
+  gcloud scheduler jobs update http ${JOB_NAME} \\
+    --project=solamax --location=asia-southeast2 \\
+    --message-body='{}' --format='value(name)'
+MSG
+      exit 1
+    fi
+    echo "Job '${JOB_NAME}': header benar, menunjuk /snapshot-worker/retire,"
+    echo "tidak mematok unit. OK."
     exit 0
     ;;
   */snapshot-worker)
+    # Job BUILD memang menunjuk /snapshot-worker selamanya — aturan
+    # job-sementara di bawah hanya berlaku untuk job PEMENSIUNAN. Ketahuan saat
+    # gerbang ini dijalankan terhadap job produksi nyata: tanpa syarat ini ia
+    # menjatuhkan solamax-snapshot-unit-1, yang sama sekali tidak keliru.
+    if [ "$JOB_ROLE" != "retire" ]; then
+      echo "Job '${JOB_NAME}': header benar, job build menunjuk /snapshot-worker. OK."
+      exit 0
+    fi
     if [ "$ENDPOINT_ADA" != "true" ]; then
       echo "Job '${JOB_NAME}': header benar. Endpoint /retire belum ada di revisi"
       echo "ini, jadi menunjuk endpoint build masih SAH. OK."
@@ -126,9 +171,10 @@ PERBAIKANNYA (owner) — hanya uri dan deskripsi:
     --description='Pemensiunan source cut per jam' \\
     --format='value(name)'
 
-⚠️ Perintah itu TIDAK menyebut --update-headers, jadi header SEHARUSNYA
-terpelihara — tetapi itu belum pernah diuji pada job ini. VERIFIKASI sesudahnya
-dengan perintah describe di atas; bila header hilang, pasang ulang SELURUHNYA.
+✅ TERBUKTI 14-09-2026: '--uri' MEMPERTAHANKAN header. Job ini benar-benar
+diarahkan ke /retire di produksi dan Content-Type serta x-snapshot-secret tetap
+utuh sesudahnya. Dulu ini ditulis sebagai asumsi; kini ia pengamatan. Yang
+MENGGANTI set header adalah '--update-headers', bukan '--uri'.
 
 Bila job itu memang tak diperlukan lagi:
   gcloud scheduler jobs delete ${JOB_NAME} --project=solamax --location=asia-southeast2
