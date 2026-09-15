@@ -39,6 +39,10 @@ jobs:
       - run: bash scripts/ci/check-snapshot-scheduler-jobs.selftest.sh
       # Gerbang cakupan unit — tujuh keadaan, dua sisi (build & pemensiunan).
       - run: bash scripts/ci/check-snapshot-unit-coverage.selftest.sh
+      # Konversi DATABASE_URL Prisma -> URL psql. Salinan kedua logika ini
+      # membuang host=/cloudsql dan menjatuhkan deploy PILOT 15-09-2026;
+      # self-test ini memuat bentuk URL itu persis.
+      - run: bash scripts/ci/psql-url.selftest.sh
       - run: bash scripts/ci/check-backup-files.selftest.sh
       - run: bash scripts/ci/check-backup-files.sh
       - uses: pnpm/action-setup@v4
