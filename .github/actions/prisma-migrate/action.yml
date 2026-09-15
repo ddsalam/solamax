@@ -15,14 +15,19 @@ inputs:
   db-secret:
     description: "Nama secret Secret Manager berisi DATABASE_URL role `ingest` untuk tier ini"
     required: true
-  coverage-check:
+  coverage:
     description: >
-      "true" untuk menjalankan gerbang cakupan unit (job build & pemensiunan vs
-      unit yang benar-benar mengirim cut). Hanya dinyalakan pada tier PILOT:
-      di tier testing daftar unit ber-cut bersifat sintetis dan tidak mewakili
-      penjadwal produksi.
+      Mode gerbang cakupan unit: "off" | "report" | "enforce".
+      ⚠️ "report" WAJIB dinyalakan di tier TESTING. Versi pertama langkah ini
+      hanya berjalan di pilot, sehingga kegagalan PERTAMANYA jatuh di produksi
+      (URL psql kehilangan host=/cloudsql, "Connection refused", 15-09-2026).
+      Gerbang yang dibangun untuk menangkap "belum teruji di tier sebenarnya"
+      ternyata sendiri belum teruji di tier sebenarnya.
+      Dalam "report": sambungan dan kueri TETAP dituntut berhasil (itu bagian
+      yang gagal di produksi), hanya VONIS cakupannya yang tidak menjatuhkan —
+      daftar unit di tier testing sintetis dan tidak mewakili penjadwal.
     required: false
-    default: "false"
+    default: "off"
   forbid:
     description: >
       Substring yang TIDAK BOLEH muncul di DATABASE_URL. Wajib diisi "rlsstg"
@@ -111,27 +116,29 @@ runs:
     # job. Gerbang yang memakai registry akan menyala tiap hari sampai unit
     # terakhir di-onboard, yaitu alarm yang selalu menyala.
     - name: Cakupan unit (build & pemensiunan)
-      if: inputs.coverage-check == 'true'
+      if: inputs.coverage != 'off'
       shell: bash
       env:
         DATABASE_URL: ${{ steps.db.outputs.url }}
+        MODE: ${{ inputs.coverage }}
       run: |
-        # `host=/cloudsql/...` HARUS dipertahankan. Membuang SELURUH query
-        # membuat psql mencoba TCP localhost:5432 -> "Connection refused",
-        # dan itu menjatuhkan deploy pilot 15-09-2026. Buang HANYA `schema`
-        # (parameter Prisma yang ditolak psql) — lihat `strip_schema_param`
-        # di scripts/ci/check-snapshot-quiescent.sh yang sudah benar.
-        PSQL_URL="$(printf '%s' "$DATABASE_URL" | sed -E 's/([?&])schema=[^&]*/\1/; s/\?&/?/; s/&&/\&/g; s/[?&]$//')"
-        UNIT_BERCUT="$(psql "$PSQL_URL" -X -qAt -v ON_ERROR_STOP=1 <<'SQL'
-        BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
-        SELECT set_config('app.unit_ids',
-          (SELECT string_agg(unit_id::text, ',' ORDER BY unit_id) FROM public.unit), true) \g /dev/null
-        SELECT string_agg(u::text, ',' ORDER BY u)
-        FROM (SELECT DISTINCT unit_id AS u FROM app.saldo_pelanggan_source_cycle) t;
-        ROLLBACK;
-        SQL
-        )"
-        UNIT_BERCUT="$(printf '%s' "$UNIT_BERCUT" | tr -d '[:space:]')"
+        # URL dikonversi oleh helper BERSAMA. Menulis ulang logikanya di sini
+        # adalah cara versi kedua yang salah lahir — dan versi kedua itulah yang
+        # menjatuhkan deploy pilot 15-09-2026.
+        PSQL_URL="$(bash scripts/ci/psql-url.sh "$DATABASE_URL")"
+        # Sentinel membuktikan kueri BENAR-BENAR berjalan. Tanpa itu, DB testing
+        # yang kosong memulangkan baris kosong yang tak dapat dibedakan dari
+        # sambungan yang gagal — dan "tidak ada keluaran" bukan sinyal.
+        HASIL="$(psql "$PSQL_URL" -X -qAt -v ON_ERROR_STOP=1 -f scripts/ci/unit-bercut.sql)"
+        SENTINEL="${HASIL%%|*}"
+        UNIT_BERCUT="${HASIL#*|}"
+        if [ "$SENTINEL" != "KUERI_JALAN" ]; then
+          echo "DITOLAK: kueri unit-ber-cut tidak berjalan (sentinel='${SENTINEL}')." >&2
+          echo "Ini kegagalan SAMBUNGAN/kueri, bukan 'tidak ada unit'." >&2
+          exit 1
+        fi
+        echo "Sambungan & kueri OK. unit ber-cut: ${UNIT_BERCUT:-<kosong>}"
+
         JOBS="$(gcloud scheduler jobs list --location=asia-southeast2 --project=solamax --format='value(name.basename())')"
         BUILD_UNITS="$(printf '%s\n' "$JOBS" | grep -E '^solamax-snapshot-unit-[0-9]+$' | sed -E 's/.*-([0-9]+)$/\1/' | sort -n | paste -sd, - || true)"
         RETIRE_UNITS="$(printf '%s\n' "$JOBS" | grep -E '^solamax-snapshot-retire-unit-[0-9]+$' | sed -E 's/.*-([0-9]+)$/\1/' | sort -n | paste -sd, - || true)"
@@ -141,8 +148,17 @@ runs:
           eval "$(printf '%s' "$RAW" | python3 scripts/ci/scheduler-job-facts.py)"
           if [ -z "$JOB_BODY_UNIT" ] && [ -n "$JOB_URI" ]; then RETIRE_ITERASI=true; fi
         done
-        UNIT_BERCUT="$UNIT_BERCUT" BUILD_UNITS="$BUILD_UNITS" RETIRE_UNITS="$RETIRE_UNITS" \
-          RETIRE_ITERASI="$RETIRE_ITERASI" bash scripts/ci/check-snapshot-unit-coverage.sh
+
+        if UNIT_BERCUT="$UNIT_BERCUT" BUILD_UNITS="$BUILD_UNITS" RETIRE_UNITS="$RETIRE_UNITS" \
+             RETIRE_ITERASI="$RETIRE_ITERASI" bash scripts/ci/check-snapshot-unit-coverage.sh; then
+          exit 0
+        fi
+        if [ "$MODE" = "report" ]; then
+          echo "::warning::Vonis cakupan MERAH, tetapi mode=report (tier testing)."
+          echo "Sambungan dan kueri sudah terbukti jalan — itu bagian yang dijaga di sini."
+          exit 0
+        fi
+        exit 1
 
     - name: prisma migrate deploy
       shell: bash

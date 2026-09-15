@@ -31,24 +31,10 @@ set -euo pipefail
 
 : "${DATABASE_URL:?DATABASE_URL wajib diisi}"
 
-# psql menolak parameter `schema` milik Prisma, tetapi MEMBUTUHKAN `host` pada
-# mode unix-socket Cloud SQL. Buang `schema`, pertahankan sisanya. Nilai secret
-# tidak pernah dicetak.
-strip_schema_param() {
-  local url="$1" base query kept item
-  base="${url%%\?*}"
-  if [ "$base" = "$url" ]; then printf '%s' "$url"; return; fi
-  query="${url#*\?}"
-  kept=""
-  local IFS='&'
-  for item in $query; do
-    case "$item" in
-      schema=*) ;;
-      *) kept="${kept:+$kept&}$item" ;;
-    esac
-  done
-  printf '%s%s' "$base" "${kept:+?$kept}"
-}
+# Konversi URL dipusatkan di scripts/ci/psql-url.sh. Salinan kedua dari logika
+# ini pernah ditulis ulang di dalam YAML action dan membuang `host=/cloudsql/...`
+# — psql jatuh ke TCP localhost dan menjatuhkan deploy pilot 15-09-2026.
+. "$(dirname "${BASH_SOURCE[0]}")/psql-url.sh"
 
 PSQL_URL="$(strip_schema_param "$DATABASE_URL")"
 

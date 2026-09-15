@@ -114,3 +114,56 @@ apa pun yang dibutuhkan data malam ini** — fiturnya sudah di produksi sejak
 Promosi ke `main` ditahan sampai verifikasi §3 bersih, dan dijalankan **di luar
 02:00–05:00** karena deploy me-restart backend dan dapat menjatuhkan build yang
 sedang berjalan.
+
+---
+
+# Adendum 2 · 15-09 malam — angka yang dipatok dibuang, ketujuh unit tercakup
+
+## 11 · Cacat yang saya tandai sendiri, kini ditutup
+
+`01-build-malam.sql` memakai `unit_id IN (1,2,4)` dan rentang
+`2026-09-08..2026-09-15`. Dengan **tujuh** unit mengirim cut sejak 20:11 WIB,
+dijalankan apa adanya ia akan **HIJAU sambil mengabaikan empat unit** — vonis
+yang lulus hampa, kelas yang sudah ditolak tiga kali dalam arc ini.
+
+**Melebarkannya jadi `(1,…,7)` akan mengulang cacatnya dengan angka lain**: unit
+ke-8 diabaikan diam-diam. Keduanya kini **diturunkan dari database**:
+
+- **unit sasaran** = unit yang punya `source_cycle` (sumber sama dengan
+  `unit-bercut.sql`);
+- **jendela tanggal** = `[cut complete terbaru − 7, cut complete terbaru]`,
+  yaitu definisi jendela backfill itu sendiri — bukan tanggal yang kebetulan
+  benar hari ini.
+
+Skrip ini karena itu tidak perlu disunting lagi saat unit ke-8 masuk, maupun
+besok, maupun pekan depan.
+
+## 12 · Satu vonis BARU yang lahir dari perubahan ini
+
+Menurunkan daftar unit dari DB memunculkan keadaan yang sebelumnya tak terpikir:
+**unit yang mengirim cut tetapi belum punya cut `complete`** — artinya
+build-nya belum pernah berjalan. Sebelumnya unit seperti itu hanya "tidak ada di
+daftar" dan hilang tanpa jejak. Kini ia **GAGAL G1** dengan kalimatnya sendiri:
+*"ada unit ber-cut TANPA cut complete — build-nya tidak jalan."*
+
+Itu persis keadaan keempat unit yang bundle-nya baru ditukar malam ini, bila
+build mereka gagal.
+
+## 13 · Dibuktikan di PostgreSQL 16 lokal
+
+| Keadaan | Vonis |
+|---|---|
+| 3 unit, jendela penuh | `LULUS` (24 subjek) |
+| DB tanpa cut sama sekali | `GAGAL G0: nol unit ber-cut` |
+| unit ber-cut **tanpa** cut complete | `GAGAL G1: build-nya tidak jalan` |
+| unit itu diberi cut complete + 8 tanggal | kembali lulus |
+| unit turun ke 6 tanggal | `GAGAL G1: < 7 tanggal terbit` |
+
+Ditambah kontrol dari putaran sebelumnya yang masih berlaku: `GAGAL G2` (v1),
+`GAGAL G3` (kontinuitas), `GAGAL G5` (pergeseran di luar jendela), dan
+`LULUS dengan PERIKSA` (7/8).
+
+⚠️ Satu catatan teknis yang memakan satu putaran: `CREATE TEMP VIEW` **ditolak
+di dalam transaksi READ ONLY**. View kini dibuat di luar transaksi; seluruh
+PEMBACAAN tetap di dalam transaksi read-only yang diakhiri `ROLLBACK`, jadi
+jaminannya tidak berkurang.
