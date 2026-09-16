@@ -115,3 +115,37 @@ menyala, di layar pengguna, bukan di log.
 
 **Saya tidak memilih.** Ini satu paket dengan pertanyaan beku/tidak-beku yang
 sudah menunggu.
+
+---
+
+## 5 · Dua hal yang tertangkap saat mengirim, dan satu titik buta yang dilaporkan
+
+**(a) Saya melaporkan CI hijau untuk nomor PR yang salah.** Saya men-poll `#368`
+padahal PR ini `#369`; `#368` hijau, `#369` merah. Kelas yang sama dengan
+melaporkan keadaan basi tanpa memeriksanya ulang — dan kali ini saya melakukannya
+pada *nomor* alih-alih pada *waktu*. Perintah `gh pr create` memulangkan URL-nya;
+itu yang harus dipakai, bukan tebakan berurutan.
+
+**(b) Backtick menutup template literal TypeScript.** Komentar SQL yang saya
+tulis memuat `` ` `` di dalam template literal, sehingga berkasnya berhenti
+di-parse. Ini **kejadian keempat** untuk keluarga yang sama dalam arc ini
+(commit message, heredoc gerbang, heredoc pesan galat, kini template literal).
+Aturannya melebar: *backtick dalam prosa apa pun yang tertanam di dalam konstruk
+ber-kutip — shell maupun TypeScript — harus dianggap aktif sampai dibuktikan
+tidak.*
+
+**(c) Titik buta `nama-tabel.guard` — dilaporkan, tidak diakali diam-diam.**
+Penjaga itu menolak `CUT_AGE_BY_UNIT_SQL` dengan *"tabel tak dikenal: now"*,
+karena ia membaca kata `FROM` di dalam `extract(epoch FROM now() - …)` sebagai
+awal nama tabel. Itu **positif palsu** atas SQL yang sah.
+
+Saya memakai `date_part('epoch', …)` yang **setara persis** di PostgreSQL dan
+tidak memuat kata `FROM` — jadi penjaganya lulus **tanpa dilemahkan**. Tetapi
+titik butanya tetap ada dan akan menggigit siapa pun yang menulis
+`extract(… FROM …)` di SQL mentah. Diverifikasi: konstruk itu **belum pernah
+dipakai** di berkas sumber mana pun sebelum ini, jadi ini bukan regresi lama —
+ia hanya belum pernah tersentuh.
+
+Memperbaiki parser penjaga adalah perubahan pada alat penegak, jadi saya
+**laporkan, tidak sentuh**. Pilihan untuk Dion: biarkan (setiap penulis harus
+tahu memakai `date_part`), atau ajarkan parsernya melewati `extract(… FROM …)`.

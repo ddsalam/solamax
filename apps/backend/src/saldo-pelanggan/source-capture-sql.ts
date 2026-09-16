@@ -530,9 +530,16 @@ RETURNING source_cycle_id`;
  */
 export const CUT_AGE_BY_UNIT_SQL = `
 SELECT unit_id,
-       round(extract(epoch FROM now() - min(started_at)) / 3600)::int AS oldest_cut_hours,
-       round(extract(epoch FROM now() - max(source_completed_at)
-             FILTER (WHERE status = 'complete')) / 3600)::int          AS complete_age_hours
+       -- date_part('epoch', ...) dipakai, BUKAN extract(epoch FROM ...):
+       -- keduanya setara di PostgreSQL, tetapi penjaga nama-tabel.guard membaca
+       -- kata FROM di dalam extract() sebagai nama tabel dan menolak "now".
+       -- Bentuk ini menghindarinya TANPA melemahkan penjaganya. Titik butanya
+       -- dilaporkan terpisah: ia akan menggigit siapa pun yang menulis konstruk
+       -- itu. (Backtick sengaja TIDAK dipakai di komentar ini — di dalam
+       -- template literal TS ia menutup stringnya.)
+       round(date_part('epoch', now() - min(started_at)) / 3600)::int AS oldest_cut_hours,
+       round(date_part('epoch', now() - max(source_completed_at)
+             FILTER (WHERE status = 'complete')) / 3600)::int         AS complete_age_hours
 FROM app.saldo_pelanggan_source_cycle
 GROUP BY unit_id
 ORDER BY unit_id`;
