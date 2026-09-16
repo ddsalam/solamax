@@ -212,7 +212,11 @@ export class SnapshotTriggerController {
     // sama dengan 425 yang menyamarkan disk_review_required. Per-unit menyala
     // hanya ketika ada unit yang benar-benar tertinggal, seperti unit 4.
     const loud = run.units.filter(
-      (u) => u.stagingAfter > SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount || u.error,
+      (u) => u.stagingAfter > SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount
+        || u.error
+        // Kalah balapan cut-vs-build: mengirim cut lama, tak satu pun pernah
+        // `complete`. Unit seperti ini memulangkan `idle` dan tak terlihat.
+        || u.staleCut,
     );
     const review = loud.length > 0 || run.skipped.length > 0;
 
@@ -224,6 +228,11 @@ export class SnapshotTriggerController {
         staging_before: u.stagingBefore,
         staging_after: u.stagingAfter,
         rows_deleted: u.rowsDeleted,
+        ...(u.oldestCutHours !== undefined ? {
+          oldest_cut_hours: u.oldestCutHours,
+          complete_age_hours: u.completeAgeHours,
+          stale_cut: u.staleCut,
+        } : {}),
         ...(u.error ? { error: u.error } : {}),
       })),
       skipped_units: run.skipped,
