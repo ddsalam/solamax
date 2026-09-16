@@ -63,6 +63,16 @@ export const SNAPSHOT_RETIREMENT_LIMITS = Object.freeze({
    * ringan.
    */
   allUnitsMilliseconds: 15 * 60 * 1_000,
+  /**
+   * Umur (jam) di mana "unit ini mengirim cut tetapi tak satu pun pernah
+   * mencapai `complete`" berhenti wajar dan menjadi temuan.
+   *
+   * Build berjalan sekali sehari, jadi 26 jam = satu siklus penuh plus margin.
+   * Ambangnya menuntut DUA syarat sekaligus (sudah lama mengirim DAN tak pernah
+   * selesai) supaya ia tidak menyala pada unit yang bundle-nya baru ditukar
+   * beberapa jam lalu — hari penukaran akan jadi alarm palsu setiap kali.
+   */
+  staleCompleteCutHours: 26,
 } as const);
 
 /** First rollout covers seven prior dates; operators may explicitly widen to 31. */
