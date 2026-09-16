@@ -509,6 +509,41 @@ RETURNING source_cycle_id`;
  * Pemakaian: scope `app.unit_ids` ke SEMUA unit lebih dulu. Nol baris dari
  * scope sempit bukan fakta — lihat [[nol-rls-bukan-fakta]].
  */
+/**
+ * Umur cut per unit — dipakai untuk MELIHAT unit yang kalah balapan cut-vs-build
+ * tanpa membuka psql.
+ *
+ * ⚠️ KENAPA INI ADA. Batu Layang (unit 5) nol snapshot pada 16-09-2026 bukan
+ * karena build-nya gagal, melainkan karena **tidak ada satu pun cut yang pernah
+ * mencapai `complete`**: cut seq 7 mulai diunggah 02:33:31, build berjalan
+ * 02:35 saat unggahan belum selesai, lalu cut berikutnya menggusurnya jadi
+ * `failed`. Unit itu memulangkan `idle` — sah, tenang, dan tak terlihat.
+ *
+ * Gerbang cakupan menangkap "unit TANPA job". Ia buta terhadap "unit PUNYA job
+ * tetapi selalu idle". Kolom di sini menutup kebutaan itu:
+ *  · `oldest_cut_hours`   — sudah berapa lama unit ini mengirim cut sama sekali;
+ *  · `complete_age_hours` — umur cut `complete` TERBARU, NULL bila tak pernah ada.
+ *
+ * Unit yang baru di-onboard beberapa jam lalu memang belum punya cut complete —
+ * karena itu ambangnya menuntut KEDUANYA (sudah lama mengirim DAN tak pernah
+ * selesai), supaya alarmnya tidak menyala di tiap hari penukaran bundle.
+ */
+export const CUT_AGE_BY_UNIT_SQL = `
+SELECT unit_id,
+       -- date_part('epoch', ...) dipakai, BUKAN extract(epoch FROM ...):
+       -- keduanya setara di PostgreSQL, tetapi penjaga nama-tabel.guard membaca
+       -- kata FROM di dalam extract() sebagai nama tabel dan menolak "now".
+       -- Bentuk ini menghindarinya TANPA melemahkan penjaganya. Titik butanya
+       -- dilaporkan terpisah: ia akan menggigit siapa pun yang menulis konstruk
+       -- itu. (Backtick sengaja TIDAK dipakai di komentar ini — di dalam
+       -- template literal TS ia menutup stringnya.)
+       round(date_part('epoch', now() - min(started_at)) / 3600)::int AS oldest_cut_hours,
+       round(date_part('epoch', now() - max(source_completed_at)
+             FILTER (WHERE status = 'complete')) / 3600)::int         AS complete_age_hours
+FROM app.saldo_pelanggan_source_cycle
+GROUP BY unit_id
+ORDER BY unit_id`;
+
 export const COUNT_STAGING_BY_UNIT_SQL = `
 SELECT unit_id, count(*)::bigint AS staging_count
 FROM app.saldo_pelanggan_source_cycle

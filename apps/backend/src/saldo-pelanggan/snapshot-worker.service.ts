@@ -10,7 +10,16 @@ import { type RetirementSummary, SnapshotSourceCaptureService } from "./source-c
 
 /** Hasil satu putaran pemensiunan lintas unit. */
 export interface RetirementRun {
-  units: Array<RetirementSummary & { unitId: number; error?: string }>;
+  units: Array<RetirementSummary & {
+    unitId: number;
+    error?: string;
+    /** Sudah berapa lama unit ini mengirim cut sama sekali. */
+    oldestCutHours?: number;
+    /** Umur cut `complete` terbaru; null = TIDAK PERNAH ada yang selesai. */
+    completeAgeHours?: number | null;
+    /** Mengirim cut lama, tetapi tak satu pun pernah `complete` — kalah balapan. */
+    staleCut?: boolean;
+  }>;
   /** Unit yang belum sempat dilayani karena anggaran habis — dilaporkan, tidak didiamkan. */
   skipped: number[];
 }
@@ -20,7 +29,7 @@ import {
   SnapshotBuilderService,
 } from "./snapshot-builder.service.js";
 import { PUBLICATION_OPERATIONAL_GATE_SQL, SET_UNIT_SCOPE_SQL } from "./snapshot-sql.js";
-import { COUNT_STAGING_BY_UNIT_SQL } from "./source-capture-sql.js";
+import { COUNT_STAGING_BY_UNIT_SQL, CUT_AGE_BY_UNIT_SQL } from "./source-capture-sql.js";
 import {
   FAIL_EXPIRED_MANIFEST_SQL,
   FAIL_ORPHAN_MANIFEST_SQL,
@@ -182,17 +191,42 @@ export class SnapshotWorkerService {
       ...[...active].sort((a, b) => a - b),
     ].filter((unitId, index, all) => all.indexOf(unitId) === index);
 
+    // Umur cut per unit — inilah yang membuat "punya job tetapi selalu idle"
+    // terlihat. Diambil sekali untuk seluruh unit, bukan per unit.
+    const umur = new Map<number, { oldest: number; complete: number | null }>();
+    for (const row of await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(SET_UNIT_SCOPE_SQL, scope);
+      return tx.$queryRawUnsafe<Array<{
+        unit_id: number; oldest_cut_hours: number; complete_age_hours: number | null;
+      }>>(CUT_AGE_BY_UNIT_SQL);
+    }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds })) {
+      umur.set(row.unit_id, {
+        oldest: Number(row.oldest_cut_hours),
+        complete: row.complete_age_hours === null ? null : Number(row.complete_age_hours),
+      });
+    }
+
     const deadline = Date.now() + SNAPSHOT_RETIREMENT_LIMITS.allUnitsMilliseconds;
     const done: RetirementRun["units"] = [];
     const skipped: number[] = [];
     for (const unitId of ordered) {
       if (Date.now() >= deadline) { skipped.push(unitId); continue; }
+      const u = umur.get(unitId);
+      // Kalah balapan cut-vs-build: sudah lama mengirim cut, tetapi tak satu pun
+      // pernah mencapai `complete`. Unit seperti ini memulangkan `idle` — sah,
+      // tenang, dan tak terlihat sampai seseorang membuka psql.
+      const staleCut = !!u
+        && u.oldest > SNAPSHOT_RETIREMENT_LIMITS.staleCompleteCutHours
+        && (u.complete === null || u.complete > SNAPSHOT_RETIREMENT_LIMITS.staleCompleteCutHours);
+      const umurFields = u
+        ? { oldestCutHours: u.oldest, completeAgeHours: u.complete, staleCut }
+        : {};
       try {
-        done.push({ unitId, ...(await this.retireOnly(unitId)) });
+        done.push({ unitId, ...(await this.retireOnly(unitId)), ...umurFields });
       } catch (error) {
         done.push({
           unitId, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
-          error: errorText(error),
+          error: errorText(error), ...umurFields,
         });
       }
     }

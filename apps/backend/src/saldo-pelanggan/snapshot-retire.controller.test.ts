@@ -4,7 +4,7 @@ import type { PrismaService } from "../prisma.service.js";
 import { SnapshotTriggerController } from "./snapshot-trigger.controller.js";
 import { SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import type { RetirementSummary } from "./source-capture.service.js";
-import type { SnapshotWorkerService } from "./snapshot-worker.service.js";
+import type { RetirementRun, SnapshotWorkerService } from "./snapshot-worker.service.js";
 
 const SECRET = "rahasia-uji-snapshot-cukup-panjang-32-karakter";
 
@@ -24,7 +24,7 @@ const SECRET = "rahasia-uji-snapshot-cukup-panjang-32-karakter";
  */
 function harness(
   summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020 },
-  run?: { units: Array<RetirementSummary & { unitId: number; error?: string }>; skipped: number[] },
+  run?: RetirementRun,
 ) {
   const worker = {
     retireOnly: vi.fn(async () => summary),
@@ -217,6 +217,43 @@ describe("POST /snapshot-worker/retire", () => {
       warn.mockRestore();
       log.mockRestore();
       vi.unstubAllEnvs();
+    }
+  });
+
+  it("BERBUNYI untuk unit yang kalah balapan cut-vs-build (punya job, selalu idle)", async () => {
+    // Batu Layang 16-09-2026: cut seq 7 mulai 02:33:31, build 02:35 saat masih
+    // mengunggah, cut berikutnya menggusurnya jadi failed. Nol cut `complete`,
+    // nol snapshot — dan endpointnya memulangkan `idle`: sah, tenang, dan tak
+    // terlihat. Gerbang cakupan menangkap "unit TANPA job", bukan ini.
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    try {
+      const kalah = await harness(undefined, {
+        units: [
+          { unitId: 5, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 0,
+            oldestCutHours: 48, completeAgeHours: null, staleCut: true },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+            oldestCutHours: 200, completeAgeHours: 6, staleCut: false },
+        ],
+        skipped: [],
+      }).controller.retire(SECRET, {});
+      expect(kalah.staging_review).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // KONTROL NEGATIF: unit yang bundle-nya baru ditukar beberapa jam lalu
+      // memang belum punya cut complete. Berbunyi untuknya membuat setiap hari
+      // penukaran jadi alarm palsu.
+      warn.mockClear();
+      const baru = await harness(undefined, {
+        units: [{ unitId: 6, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+                  oldestCutHours: 3, completeAgeHours: null, staleCut: false }],
+        skipped: [],
+      }).controller.retire(SECRET, {});
+      expect(baru.staging_review).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore(); log.mockRestore(); vi.unstubAllEnvs();
     }
   });
 });
