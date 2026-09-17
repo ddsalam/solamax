@@ -512,7 +512,41 @@ WHERE p.unit_id = $1::smallint
   AND m.published
   AND m.validation_passed
   AND m.formula_version = $3::text
-  AND m.source_cycle_id = $4::uuid
+  -- Baseline tidak boleh berasal dari cut yang LEBIH BARU dari build ini;
+  -- kalau itu terjadi, build inilah yang basi, bukan baseline-nya.
+  AND m.source_cycle_sequence <= $4::bigint
+  -- ⛔ DULU: m.source_cycle_id = $4::uuid — baseline hanya sah bila berasal
+  -- dari potongan sumber yang SAMA PERSIS. Itu menolak jangkar yang masih benar
+  -- semata karena UUID cut-nya berganti, sehingga tiap malam tiap unit
+  -- membangun ulang jangkar akhir-bulannya dari riwayat penuh. Unit 2-7
+  -- membangun ulang 31-08 tujuh kali dengan checksum yang sama persis.
+  --
+  -- Kode itu juga BERTENTANGAN dengan dirinya sendiri: MARK_STALE_POINTERS_SQL
+  -- hanya menandai pointer as_of_date >= dirty_invalid_from, jadi sistem SUDAH
+  -- percaya pointer yang lebih tua tetap benar lintas cut — lalu menolak pointer
+  -- yang sama itu sebagai baseline.
+  --
+  -- SEKARANG: syarat yang sebenarnya, yaitu tidak ada perubahan sumber sejak cut
+  -- baseline yang menjangkau mundur sampai <= tanggal baseline. Buktinya sudah
+  -- ada di skema (source_change.invalid_from_date, ditulis DIFF_*_SQL) dan
+  -- tabel itu TIDAK ikut dipensiunkan, jadi buktinya awet.
+  --
+  -- ⚠️ Ini memindahkan deteksi dari gaya-kasar ke berbasis-bukti. Kalau DIFF_*
+  -- punya celah, rebuild membabi-buta dulu masih menangkapnya; kini tidak.
+  -- Penawarnya WAJIB dan sudah terpasang: gerbang G6 di
+  -- scripts/piutang-verifikasi/01-build-malam.sql ("bukti bilang harus bergerak
+  -- tapi tak ada rebuild = MERAH"), plus uji merah baseline-dipakai-ulang vs
+  -- full-history di p1-baseline.postgres.test.ts.
+  AND NOT EXISTS (
+    SELECT 1
+    FROM app.saldo_pelanggan_source_change ch
+    JOIN app.saldo_pelanggan_source_cycle c
+      ON c.unit_id = ch.unit_id AND c.source_cycle_id = ch.source_cycle_id
+    WHERE ch.unit_id = m.unit_id
+      AND ch.invalid_from_date IS NOT NULL
+      AND ch.invalid_from_date <= m.as_of_date
+      AND c.source_cycle_sequence > m.source_cycle_sequence
+  )
 ), actual AS (
   SELECT c.generation_id,
          count(r.generation_id)::bigint AS row_count,

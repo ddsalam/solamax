@@ -794,7 +794,11 @@ describeLive("B2 synthetic snapshot equality on solamax-pg-rlsstg", () => {
 
     await replaceMirror(prisma, unitB, CUT_B_C1);
     let bBaselineGeneration = "";
-    for (const date of ["2026-01-31", "2026-02-01", "2026-02-15"]) {
+    // P2: target akhir-bulan dibangun dari riwayat penuh dan TIDAK lagi
+    // memanufaktur jangkar bulan sebelumnya. 2025-12-31 karena itu dibangun
+    // sebagai target tersendiri di sini — dulu ia lahir sebagai efek samping
+    // dari membangun 2026-01-31, dan efek samping itulah yang P2 hentikan.
+    for (const date of ["2025-12-31", "2026-01-31", "2026-02-01", "2026-02-15"]) {
       const result = await builder.build(
         {
           unitId: unitB,
@@ -805,7 +809,17 @@ describeLive("B2 synthetic snapshot equality on solamax-pg-rlsstg", () => {
         },
         { syntheticWibMinutes: 180 },
       );
-      if (date === "2026-01-31") bBaselineGeneration = result.baseline.generationId;
+      if (date === "2025-12-31") {
+        // Target akhir-bulan ADALAH jangkarnya sendiri; tak ada baseline.
+        expect(result.baseline).toBeUndefined();
+        bBaselineGeneration = result.target.generationId;
+      }
+      if (date === "2026-02-01") {
+        // Tanggal biasa TETAP memakai jangkar bulan sebelumnya — itu optimasi
+        // sungguhan (satu jangkar melayani seluruh tanggal di bulannya), dan P2
+        // tidak menyentuhnya.
+        expect(result.baseline?.asOfDate).toBe("2026-01-31");
+      }
       const comparison = await compare(prisma, unitB, date);
       expectEqual(comparison);
       equalityReport.push(reportComparison(`B/C1/${date}`, comparison));
@@ -919,6 +933,17 @@ describeLive("B2 synthetic snapshot equality on solamax-pg-rlsstg", () => {
       row.awal_hutang_lokal, row.akhir_hutang_lokal,
     ].every((value) => Number(numeric(value)) === 0))).toBe(true);
     expect(readyZeroRows[0]?.generation_id).toBe(bBaselineGeneration);
+
+    // 🔴 P2: RANTAI MUNDUR BERHENTI. Membangun 2025-12-31 dulu menerbitkan
+    // pointer 2025-11-30, yang pada cut berikutnya ikut kotor dan menjadi
+    // TARGET-nya sendiri — melahirkan jangkar satu bulan lebih tua lagi, tiap
+    // putaran. Tanpa penegasan ini, P2 bisa diurungkan tanpa ada yang merah.
+    const jangkarLebihTua = await scoped(prisma, unitB, async (tx) => tx.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT count(*)::bigint AS count FROM app.saldo_pelanggan_snapshot_manifest
+        WHERE unit_id = $1::smallint AND as_of_date < '2025-12-31'::date`,
+      unitB,
+    ));
+    expect(jangkarLebihTua[0]?.count).toBe(0n);
     gateReport.readiness = {
       not_ready_status: buildingState[0]?.status,
       not_ready_numeric_rows: notReadyRows.length,

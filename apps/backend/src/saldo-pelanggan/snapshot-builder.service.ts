@@ -61,7 +61,8 @@ export interface PublishedGeneration {
 }
 
 export interface SnapshotBuildResult {
-  baseline: PublishedGeneration;
+  /** Tak ada untuk target akhir-bulan: ia dibangun dari riwayat penuh (P2). */
+  baseline: PublishedGeneration | undefined;
   target: PublishedGeneration;
   outcome: "published" | "superseded";
 }
@@ -176,6 +177,25 @@ export function comparePublicationTuple(
   return 0;
 }
 
+/**
+ * Apakah tanggal ini akhir bulan.
+ *
+ * Dipakai P2: target yang SENDIRI akhir bulan dibangun langsung dari riwayat
+ * penuh, tidak memanufaktur jangkar satu bulan lebih tua. Baseline sebuah target
+ * akhir-bulan hanya melayani DIRINYA SENDIRI, sedangkan baseline 31-08 melayani
+ * 01-09..17-09 — yang pertama pemborosan, yang kedua optimasi sungguhan.
+ *
+ * Ia juga menghentikan pertumbuhan mundur: `build()` menerbitkan pointer untuk
+ * baseline yang dibangunnya, dan pointer itu ikut kotor pada cut berikutnya,
+ * sehingga ia menjadi target yang melahirkan jangkar lebih tua lagi.
+ */
+export function isMonthEnd(asOfDate: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) throw new Error("asOfDate invalid");
+  const [year, month, day] = asOfDate.split("-").map(Number);
+  const next = new Date(Date.UTC(year!, month! - 1, day! + 1));
+  return next.getUTCMonth() !== month! - 1;
+}
+
 export function previousMonthEnd(asOfDate: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) throw new Error("asOfDate invalid");
   const [year, month] = asOfDate.split("-").map(Number);
@@ -260,8 +280,14 @@ export class SnapshotBuilderService {
       ? { workId: request.workId, leaseOwner: request.leaseOwner }
       : undefined;
     const baselineDate = previousMonthEnd(request.asOfDate);
-    let baseline = await this.findValidBaseline(request, baselineDate, hooks);
-    if (!baseline) {
+    // P2: target akhir-bulan dibangun langsung dari riwayat penuh. Ongkosnya
+    // LEBIH MURAH, bukan lebih mahal: jalur lama melakukan satu pindai riwayat
+    // penuh (untuk jangkar) DITAMBAH satu delta; ini satu pindai saja. Dan ia
+    // tidak menerbitkan pointer baru yang akan jadi target esok harinya.
+    let baseline = isMonthEnd(request.asOfDate)
+      ? undefined
+      : await this.findValidBaseline(request, baselineDate, hooks);
+    if (!baseline && !isMonthEnd(request.asOfDate)) {
       const baselineBuild = await this.buildGeneration(
         request,
         baselineDate,
@@ -419,7 +445,9 @@ export class SnapshotBuilderService {
         request.unitId,
         baselineDate,
         SNAPSHOT_FORMULA_VERSION,
-        request.sourceCycleId,
+        // P1: sequence, bukan lagi identitas cut. Keabsahan baseline diuji
+        // dengan BUKTI PERUBAHAN, bukan dengan "apakah UUID cut-nya sama".
+        request.sourceCycleSequence,
       );
       const generationId = rows[0]?.generation_id;
       return generationId ? { asOfDate: baselineDate, generationId } : undefined;

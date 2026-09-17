@@ -75,11 +75,37 @@ export const SNAPSHOT_RETIREMENT_LIMITS = Object.freeze({
   staleCompleteCutHours: 26,
 } as const);
 
-/** First rollout covers seven prior dates; operators may explicitly widen to 31. */
+/**
+ * First rollout covers seven prior dates; operators may explicitly widen to 31.
+ *
+ * ⚠️ `defaultItems`/`maxItems` menghitung BARIS KERJA, bukan manifest. Satu baris
+ * kerja dapat menerbitkan dua manifest (baseline lalu target), jadi 8 item
+ * pernah terbaca sebagai "9 complete + 1 failed" di produksi. Jangan menalar
+ * ongkosnya dari jumlah manifest.
+ *
+ * Dinaikkan 8 -> 16 pada 18-09-2026, dan dasarnya aritmetika, bukan selera:
+ *
+ *   · CLEAR_DIRTY_IF_COVERED_SQL hanya mencabut watermark bila SELURUH pointer
+ *     >= dirty_invalid_from bersih pada cut berjalan — artinya seluruh tunggakan
+ *     harus tuntas DALAM SATU CUT. Unit 1 punya 12 pointer + hari ini = 13.
+ *     Dengan 8, itu mustahil selamanya, dan watermark 2023-03-27 tak pernah
+ *     tercabut. Dengan 16, tercapai sekali lalu selesai — MARK_STALE menuntut
+ *     `dirty_invalid_from IS NOT NULL`, jadi sekali tuntas = tuntas.
+ *   · Ongkosnya diukur dari `completed_at - started_at` di manifest produksi:
+ *     median 1,0-1,4 detik per item; putaran terburuk 74 detik untuk 9 item
+ *     (8,2 detik per item). 16 item = 16-22 detik pada median, 131 detik pada
+ *     kasus terburuk — 1,3% dari jendela build 2 jam 45 menit, dan 12% dari
+ *     `requestMilliseconds`. `maxItems: 8` tidak pernah menjadi anggaran waktu.
+ *
+ * Batasnya TIDAK dihapus: anggaran yang sebenarnya adalah `requestMilliseconds`,
+ * dan batas item tetap perlu sebagai penjaga terhadap loop patologis. 24 adalah
+ * pintu darurat operator untuk kejar-tayang sekali jalan (~197 detik pada kasus
+ * terburuk), bukan nilai harian.
+ */
 export const SNAPSHOT_BACKFILL_LIMITS = Object.freeze({
   defaultDays: 7,
   maxDays: 31,
-  defaultItems: 8,
-  maxItems: 8,
+  defaultItems: 16,
+  maxItems: 24,
   requestMilliseconds: 18 * 60 * 1_000,
 } as const);
