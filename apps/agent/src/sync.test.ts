@@ -1,4 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -796,5 +803,61 @@ describe("runCycle", () => {
     expect(store.bufferCount()).toBe(0);
     expect(online.sent.some((p) => p.domain === "sales")).toBe(true);
     expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
+  });
+
+  // Regresi insiden Imam Bonjol 16–17 Sep 2026: satu entri buffer berisi NUL
+  // (mesin mati saat menulis) membuat JSON.parse melempar di setiap siklus.
+  // Galatnya ditangkap gerbang flush lalu `return` — sehingga TAK SATU domain
+  // pun tersinkron, dan entrinya tak pernah terhapus karena penghapusan
+  // digerbangi kirim-sukses. Unit itu berhenti 23 jam; empat restart proses
+  // tak menyembuhkan karena keadaannya ada di disk, bukan di proses.
+  it("entri buffer rusak DIKARANTINA dan siklus tetap jalan (tidak memutus unit)", async () => {
+    const store = new StateStore(dir);
+    const corrupt = join(dir, "buffer", "000000000000001-0000.json");
+    writeFileSync(corrupt, Buffer.alloc(64)); // 64 byte NUL — persis bentuk di lapangan
+    expect(store.bufferCount()).toBe(1);
+
+    const online = fakeClient({});
+    await runCycle(
+      { conn: fakeConn(), client: online.client, store, cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+
+    // Yang PALING penting: siklus live tetap berjalan, bukan dibatalkan.
+    expect(online.sent.some((p) => p.domain === "sales")).toBe(true);
+    expect(store.getWatermark("sales")).toBe("2026-06-11T07:30:00.000Z");
+    // Entri beracunnya keluar dari jalur — antrean tak lagi macet di situ.
+    expect(store.bufferCount()).toBe(0);
+    expect(existsSync(corrupt)).toBe(false);
+    // Dipindah untuk forensik, bukan dihapus diam-diam.
+    expect(readdirSync(join(dir, "buffer-rusak"))).toEqual([
+      "000000000000001-0000.json",
+    ]);
+  });
+
+  // CATATAN KEJUJURAN: atomisitas terhadap MATI LISTRIK tak bisa direproduksi
+  // in-process — jaminannya datang dari `rename()` yang atomik di level
+  // filesystem, bukan dari tes ini. Yang dijaga di sini adalah syarat yang
+  // dibutuhkan pola itu: sisa `.tmp` (rename gagal) tak boleh pernah terbaca
+  // sebagai entri antrean. Tes ini SENGAJA juga hijau di kode lama.
+  it("sisa .tmp tak pernah terbaca sebagai entri antrean; entri terlihat selalu utuh", async () => {
+    const offline = fakeClient({ fail: true });
+    const store = new StateStore(dir);
+    await runCycle(
+      { conn: fakeConn(), client: offline.client, store, cfg: CFG, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+    expect(store.bufferCount()).toBeGreaterThan(0);
+
+    // Tiap .json yang terlihat antrean HARUS utuh — tak pernah ada tahap di mana
+    // berkas ber-nama final masih separuh tertulis.
+    for (const f of store.bufferedFiles()) {
+      expect(() =>
+        JSON.parse(readFileSync(join(dir, "buffer", f), "utf8")),
+      ).not.toThrow();
+    }
+    // Sisa .tmp (rename gagal) tak boleh ikut terbaca sebagai entri antrean.
+    writeFileSync(join(dir, "buffer", "999999999999999-9999.json.tmp"), "{sep");
+    expect(store.bufferedFiles().some((f) => f.endsWith(".tmp"))).toBe(false);
   });
 });
