@@ -556,6 +556,40 @@ SELECT count(*)::bigint AS staging_count
 FROM app.saldo_pelanggan_source_cycle
 WHERE unit_id = $1::smallint AND status = 'staging'`;
 
+/**
+ * $1 unit, $2 sequence batas. Menggugurkan cut staging yang sudah tersusul.
+ *
+ * 🔑 SATU CUT DIKECUALIKAN DENGAN SENGAJA — opsi (d),
+ * session-notes/2026-09-16-balapan-cut-vs-build.md.
+ *
+ * Bentuk lama menggugurkan SELURUH staging di bawah $2 tanpa menanyakan
+ * kesiapannya. Karena pemensiunan berjalan TEPAT SEBELUM finalisasi di invokasi
+ * yang sama (snapshot-worker.service.ts), sebuah unit yang agent-nya sedang
+ * mengunggah alokasi terbaru kehilangan SEMUA kandidat finalisasinya beberapa
+ * milidetik sebelum finalisasi mencarinya. Worker memulangkan `idle` — sah,
+ * tenang, dan tak terlihat. Batu Layang 16-09-2026: nol cut complete, nol
+ * manifest, nol work. Kotabaru dua hari sebelumnya, balapan yang sama.
+ *
+ * Yang dikecualikan: cut staging ber-sequence TERTINGGI yang sudah SIAP
+ * (ketiga domain beserta ketiga checksum-nya ada) — syarat yang sama persis
+ * dengan READ_READY_SOURCE_CYCLE_SQL, supaya yang dipertahankan memang yang
+ * akan dicari finalisasi, bukan cut sembarang.
+ *
+ * ⏳ PENGECUALIANNYA SEMENTARA, dan itu bagian dari rancangannya. Ia hanya
+ * berlaku selama TIDAK ADA cut complete ber-sequence lebih tinggi. Begitu ada
+ * yang mencapai complete di atasnya, cut ini berhenti menjadi kandidat dan
+ * gugur pada putaran berikutnya. Tanpa syarat itu ia akan tertahan selamanya
+ * dan ongkos +-144 MB berubah dari sementara menjadi permanen.
+ *
+ * `IS DISTINCT FROM`, bukan `<>`: bila tak ada satu pun cut siap, subkuerinya
+ * NULL, dan `<>` akan memulangkan NULL sehingga TIDAK ADA baris yang
+ * digugurkan — kebalikan dari yang dimaksud. Dengan IS DISTINCT FROM, tak-ada
+ * cut siap berarti semuanya gugur, persis seperti bentuk lama.
+ *
+ * Batas yang ikut: bila agent mengunggah terus-menerus dan tak ada satu pun cut
+ * yang pernah mencapai siap, (d) tetap gagal. Itu masalah lain dan lebih keras;
+ * `stale_cut` pada log pemensiunan per jam yang menyebutnya.
+ */
 export const FAIL_SUPERSEDED_STAGING_CYCLES_SQL = `
 UPDATE app.saldo_pelanggan_source_cycle
 SET status = 'failed',
@@ -563,7 +597,27 @@ SET status = 'failed',
     failure_summary = 'superseded by a newer complete-input source cycle'
 WHERE unit_id = $1::smallint
   AND status = 'staging'
-  AND source_cycle_sequence < $2::bigint`;
+  AND source_cycle_sequence < $2::bigint
+  AND source_cycle_sequence IS DISTINCT FROM (
+    SELECT max(r.source_cycle_sequence)
+    FROM app.saldo_pelanggan_source_cycle r
+    WHERE r.unit_id = $1::smallint
+      AND r.status = 'staging'
+      AND r.source_cycle_sequence < $2::bigint
+      AND r.pelanggan_row_count IS NOT NULL
+      AND r.pelanggan_keyed_checksum IS NOT NULL
+      AND r.bppiut_row_count IS NOT NULL
+      AND r.bppiut_keyed_checksum IS NOT NULL
+      AND r.bphut_row_count IS NOT NULL
+      AND r.bphut_keyed_checksum IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM app.saldo_pelanggan_source_cycle done
+        WHERE done.unit_id = r.unit_id
+          AND done.status = 'complete'
+          AND done.source_cycle_sequence > r.source_cycle_sequence
+      )
+  )`;
 
 /**
  * $1 unit. Preserve source-cycle audit metadata, but release bulky immutable

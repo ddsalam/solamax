@@ -11,6 +11,10 @@ import {
   type SyncHealthReport,
   SyncHealthService,
 } from "./sync-health.service.js";
+import {
+  type FrozenShiftReport,
+  FrozenShiftService,
+} from "./frozen-shift.service.js";
 
 /**
  * Penanda log yang DIKONSUMSI alarm. Jangan diubah tanpa mengubah
@@ -20,6 +24,18 @@ import {
  */
 export const SYNC_HEALTH_INCIDENT_MARKER = "sync_health_incident";
 export const SYNC_HEALTH_OK_MARKER = "sync_health_ok";
+
+/**
+ * Penanda kedua di rel yang SAMA: severity ERROR -> log-based metric ->
+ * alert policy. Endpoint, job Scheduler, dan rahasianya satu; penandanya dua
+ * karena penanggapnya dua — "unit berhenti mengirim" ditangani operator,
+ * "angka beku bergerak" ditangani PEMILIK, dan ia hanya padam oleh pengakuan.
+ *
+ * Dedup tetap urusan alert policy: incident terbuka selama metrik > 0 dan
+ * menutup sendiri ketika peristiwa terakhir diakui. Tidak ada state kedua di
+ * basis data yang bisa ikut basi.
+ */
+export const FROZEN_SHIFT_INCIDENT_MARKER = "frozen_shift_incident";
 
 function isAuthorized(
   given: string | undefined,
@@ -36,7 +52,10 @@ function isAuthorized(
 export class SyncHealthController {
   private readonly logger = new Logger(SyncHealthController.name);
 
-  constructor(private readonly service: SyncHealthService) {}
+  constructor(
+    private readonly service: SyncHealthService,
+    private readonly frozenShift: FrozenShiftService,
+  ) {}
 
   /**
    * Probe kesehatan sinkronisasi, dipicu Cloud Scheduler tiap jam.
@@ -60,7 +79,7 @@ export class SyncHealthController {
   @Post()
   async check(
     @Headers("x-sync-health-secret") suppliedSecret: string | undefined,
-  ): Promise<SyncHealthReport> {
+  ): Promise<SyncHealthReport & { frozenShift: FrozenShiftReport }> {
     // Rahasia TERPISAH dari `SNAPSHOT_TRIGGER_SECRET` dengan sengaja. Probe
     // baca-saja tidak boleh memegang kunci yang bisa memicu build produksi —
     // membaca kesehatan dan memicu pekerjaan adalah dua kewenangan berbeda.
@@ -69,6 +88,7 @@ export class SyncHealthController {
     }
 
     const report = await this.service.evaluate();
+    const frozenShift = await this.reportFrozenShifts();
 
     if (report.status === "ok") {
       // Senyap secara default: satu baris INFO, tak dikonsumsi alarm.
@@ -77,7 +97,7 @@ export class SyncHealthController {
         active_units: report.activeUnits,
         threshold_minutes: report.thresholdMinutes,
       });
-      return report;
+      return { ...report, frozenShift };
     }
 
     // Satu baris ERROR per probe selama keadaan insiden bertahan. Dedup "sekali
@@ -105,6 +125,59 @@ export class SyncHealthController {
               : Math.round((u.ageSeconds / 3600) * 10) / 10,
           last_run_at: u.lastRunAt,
         })),
+    });
+    return { ...report, frozenShift };
+  }
+
+  /**
+   * Pengawas pergerakan angka pada data BEKU — rel yang sama, penanda berbeda.
+   *
+   * ⚠️ Kegagalannya SENGAJA tidak dilempar. Melempar akan memulangkan 500 dan
+   * ikut membungkam alarm unit-diam pada probe yang sama; dua pengawas tak boleh
+   * saling menjatuhkan. Tapi ia juga tidak boleh diam: probe yang tidak bisa
+   * jalan memulangkan keadaan TIDAK DIKETAHUI, dan itu berbunyi di rel yang
+   * sama dengan sebab yang disebut namanya.
+   */
+  private async reportFrozenShifts(): Promise<FrozenShiftReport> {
+    let report: FrozenShiftReport;
+    try {
+      report = await this.frozenShift.evaluate();
+    } catch (error) {
+      this.logger.error({
+        msg: FROZEN_SHIFT_INCIDENT_MARKER,
+        reason: "probe_failed",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        status: "scope_returned_nothing",
+        checkedAt: new Date().toISOString(),
+        activeUnits: 0,
+        shiftRowsVisible: 0,
+        unacknowledgedCount: 0,
+        shifts: [],
+      };
+    }
+
+    if (report.status === "ok") return report;
+
+    this.logger.error({
+      msg: FROZEN_SHIFT_INCIDENT_MARKER,
+      reason: report.status,
+      active_units: report.activeUnits,
+      shift_rows_visible: report.shiftRowsVisible,
+      unacknowledged_count: report.unacknowledgedCount,
+      // Tanggal dan selisihnya ikut dicetak supaya email alarm bisa ditindak
+      // tanpa membuka psql — dan supaya yang membacanya tahu angka MANA yang
+      // bergerak sebelum ia memutuskan mengakuinya.
+      shifts: report.shifts.map((s) => ({
+        unit_id: s.unitId,
+        name: s.unitName,
+        as_of_date: s.asOfDate,
+        source_cycle_sequence: s.sourceCycleSequence,
+        geser_piutang_lokal: s.geserPiutangLokal,
+        geser_piutang_online: s.geserPiutangOnline,
+        geser_hutang_lokal: s.geserHutangLokal,
+      })),
     });
     return report;
   }

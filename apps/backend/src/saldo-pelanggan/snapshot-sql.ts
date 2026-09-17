@@ -663,6 +663,70 @@ WHERE m.unit_id = $1::smallint
   AND c.status = 'complete'
 RETURNING m.generation_id, m.source_cycle_sequence, m.rebuild_epoch`;
 
+/**
+ * Merekam pergerakan angka pada tanggal yang SUDAH TERBIT, di dalam transaksi
+ * publikasi yang sama — bukan sebagai perbandingan pasca-fakta.
+ *
+ * Kenapa di sini, bukan sebagai kueri terjadwal: perbandingan pasca-fakta hanya
+ * pernah melihat DUA generasi terakhir. Unit 1 tanggal 31-08 bergeser tiga kali;
+ * pergeseran -690.068.731 sudah TIDAK TERLIHAT lagi hari ini oleh siapa pun yang
+ * membandingkan dua build terakhir. Peristiwa yang direkam saat terjadi tidak
+ * bisa tertimpa oleh pergeseran berikutnya.
+ *
+ * Dipanggil SETELAH manifest baru complete dan SEBELUM pointer bertukar, jadi
+ * pointer di sini masih menunjuk generasi LAMA — itulah angka yang pengguna
+ * benar-benar lihat sampai detik ini.
+ *
+ * Ambang >= 1 rupiah pada salah satu dari ENAM total. COALESCE(...,0) dipakai
+ * supaya transisi NULL -> nilai terbaca sebagai pergeseran alih-alih menguap
+ * jadi NULL dan lolos senyap.
+ *
+ * BEKU memakai definisi tunggal milik G5 (01-build-malam.sql):
+ * as_of_date < source_completed_at::date - 7. Jangan membuat definisi kedua.
+ *
+ * $1 unit, $2 date, $3 generation.
+ */
+export const RECORD_SHIFT_SQL = `
+INSERT INTO app.saldo_pelanggan_shift (
+  unit_id, as_of_date, generation_id, previous_generation_id,
+  source_cycle_sequence, rebuild_epoch, source_completed_at, frozen,
+  before_awal_piutang_lokal, before_akhir_piutang_lokal,
+  before_awal_piutang_online, before_akhir_piutang_online,
+  before_awal_hutang_lokal, before_akhir_hutang_lokal,
+  after_awal_piutang_lokal, after_akhir_piutang_lokal,
+  after_awal_piutang_online, after_akhir_piutang_online,
+  after_awal_hutang_lokal, after_akhir_hutang_lokal
+)
+SELECT n.unit_id, n.as_of_date, n.generation_id, o.generation_id,
+       n.source_cycle_sequence, n.rebuild_epoch, n.source_completed_at,
+       (n.as_of_date < n.source_completed_at::date - 7),
+       o.awal_piutang_lokal_total,  o.akhir_piutang_lokal_total,
+       o.awal_piutang_online_total, o.akhir_piutang_online_total,
+       o.awal_hutang_lokal_total,   o.akhir_hutang_lokal_total,
+       n.awal_piutang_lokal_total,  n.akhir_piutang_lokal_total,
+       n.awal_piutang_online_total, n.akhir_piutang_online_total,
+       n.awal_hutang_lokal_total,   n.akhir_hutang_lokal_total
+FROM app.saldo_pelanggan_snapshot_manifest n
+JOIN app.saldo_pelanggan_snapshot_pointer p
+  ON p.unit_id = n.unit_id AND p.as_of_date = n.as_of_date
+JOIN app.saldo_pelanggan_snapshot_manifest o
+  ON o.unit_id = p.unit_id AND o.as_of_date = p.as_of_date
+ AND o.generation_id = p.generation_id
+WHERE n.unit_id = $1::smallint
+  AND n.as_of_date = $2::date
+  AND n.generation_id = $3::uuid
+  AND o.generation_id <> n.generation_id
+  AND (
+       abs(COALESCE(n.awal_piutang_lokal_total, 0)   - COALESCE(o.awal_piutang_lokal_total, 0))   >= 1
+    OR abs(COALESCE(n.akhir_piutang_lokal_total, 0)  - COALESCE(o.akhir_piutang_lokal_total, 0))  >= 1
+    OR abs(COALESCE(n.awal_piutang_online_total, 0)  - COALESCE(o.awal_piutang_online_total, 0))  >= 1
+    OR abs(COALESCE(n.akhir_piutang_online_total, 0) - COALESCE(o.akhir_piutang_online_total, 0)) >= 1
+    OR abs(COALESCE(n.awal_hutang_lokal_total, 0)    - COALESCE(o.awal_hutang_lokal_total, 0))    >= 1
+    OR abs(COALESCE(n.akhir_hutang_lokal_total, 0)   - COALESCE(o.akhir_hutang_lokal_total, 0))   >= 1
+  )
+ON CONFLICT (unit_id, as_of_date, generation_id) DO NOTHING
+RETURNING generation_id`;
+
 /** $1 unit, $2 date, $3 generation, $4 sequence, $5 epoch. */
 export const UPSERT_POINTER_SQL = `
 INSERT INTO app.saldo_pelanggan_snapshot_pointer (

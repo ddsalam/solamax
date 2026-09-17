@@ -23,6 +23,7 @@ import {
   MATERIALIZE_DELTA_SQL,
   MATERIALIZE_FULL_HISTORY_SQL,
   PUBLICATION_OPERATIONAL_GATE_SQL,
+  RECORD_SHIFT_SQL,
   REASSERT_POINTER_DIRTY_SQL,
   SET_UNIT_SCOPE_SQL,
   SOURCE_CYCLE_EVIDENCE_SQL,
@@ -704,6 +705,21 @@ export class SnapshotBuilderService {
       if (completed.length !== 1) {
         throw new SnapshotBuildError("manifest_completion_failed", "manifest completion lost provenance", false);
       }
+
+      // Pergerakan angka pada tanggal yang sudah terbit direkam DI SINI —
+      // satu transaksi dengan penyelesaian manifest dan pertukaran pointer.
+      // Pointer masih menunjuk generasi LAMA, jadi nilai "sebelum" yang terekam
+      // adalah angka yang pengguna benar-benar lihat sampai detik ini.
+      //
+      // Sengaja fail-closed: kalau perekaman gagal, transaksinya rollback dan
+      // publikasi ikut batal. Pengawas yang tak sanggup mencatat menghentikan
+      // hal yang diawasinya, bukan membiarkannya lewat tanpa jejak.
+      await tx.$queryRawUnsafe(
+        RECORD_SHIFT_SQL,
+        request.unitId,
+        request.asOfDate,
+        generationId,
+      );
 
       await hooks.beforePointerSwap?.({
         unitId: request.unitId,

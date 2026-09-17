@@ -125,3 +125,62 @@ export function readinessProps(snapshot: Extract<SaldoSnapshot, { status: "not_r
     ...(snapshot.latestAttempt?.attemptedAt ? { lastAttemptLabel: formatWib(snapshot.latestAttempt.attemptedAt) } : {}),
   };
 }
+
+/**
+ * Indikator pergerakan angka pada tanggal BEKU.
+ *
+ * ⚠️ BEDA DENGAN `pendingBanner`, dan bedanya penting. `pendingBanner` bicara
+ * soal angka yang SEDANG atau AKAN berubah. Ini bicara soal angka yang SUDAH
+ * berubah pada tanggal yang seharusnya tidak lagi bergerak — dan ia tidak padam
+ * karena waktu, hanya karena ada manusia yang mengakuinya.
+ *
+ * ⛔ Keadaan `frozen` tidak dihitung ulang di sini; ia dibaca dari peristiwa,
+ * yang membekukannya memakai definisi tunggal G5 saat perekaman.
+ */
+export interface PiutangShiftNotice {
+  tone: "warning" | "info";
+  title: string;
+  body: string;
+  /** Peristiwa yang menunggu pengakuan pemilik; kosong = tidak ada tombol. */
+  menunggu: Array<{ generationId: string; selisihAbsolut: number }>;
+}
+
+export function shiftNotice(
+  shifts: Array<{
+    frozen: boolean;
+    acknowledged: boolean;
+    acknowledgedBy: string | null;
+    generationId: string;
+    geserPiutangLokal: number;
+    geserPiutangOnline: number;
+    geserHutangLokal: number;
+  }>,
+): PiutangShiftNotice | undefined {
+  const beku = shifts.filter((s) => s.frozen);
+  if (beku.length === 0) return undefined;
+
+  const absolut = (s: (typeof beku)[number]) =>
+    Math.abs(s.geserPiutangLokal) + Math.abs(s.geserPiutangOnline) + Math.abs(s.geserHutangLokal);
+
+  const menunggu = beku.filter((s) => !s.acknowledged);
+  if (menunggu.length === 0) {
+    const pengaku = beku.find((s) => s.acknowledgedBy)?.acknowledgedBy ?? "pemilik";
+    return {
+      tone: "info",
+      title: `Angka tanggal ini pernah berubah sesudah terbit—sudah diperiksa dan disetujui`,
+      body: `${beku.length} pergeseran tercatat pada tanggal ini. Terakhir diakui oleh ${pengaku}. Jika angkanya bergerak lagi, tanda ini akan memerah kembali.`,
+      menunggu: [],
+    };
+  }
+
+  const total = menunggu.reduce((sum, s) => sum + absolut(s), 0);
+  return {
+    tone: "warning",
+    title: `Angka tanggal ini BERUBAH sesudah terbit—selisih ${rp(total)} belum diakui`,
+    body:
+      menunggu.length === 1
+        ? "Tanggal ini sudah di luar jendela pembaruan wajar, tetapi angkanya bergerak karena koreksi di sumber. Perubahan itu sah; yang belum ada adalah pengakuan bahwa ia sudah diperiksa."
+        : `${menunggu.length} pergeseran pada tanggal ini belum diakui. Semuanya di luar jendela pembaruan wajar.`,
+    menunggu: menunggu.map((s) => ({ generationId: s.generationId, selisihAbsolut: absolut(s) })),
+  };
+}
