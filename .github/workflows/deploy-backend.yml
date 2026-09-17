@@ -139,7 +139,7 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --timeout=20m \
-            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest \
+            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest,SYNC_HEALTH_SECRET=solamax-sync-health-secret:latest \
             --update-labels rls-aware=${RLS_AWARE}
       # WAJIB mendahului health check: `curl $URL/health` menguji revisi yang SEDANG
       # menyajikan — yang bisa saja revisi LAMA — jadi tanpa guard ini ia hijau justru
@@ -235,7 +235,7 @@ jobs:
           gcloud run deploy ${SERVICE} --region=${REGION} \
             --image '${{ needs.build.outputs.image }}' \
             --timeout=20m \
-            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest \
+            --update-secrets=SNAPSHOT_TRIGGER_SECRET=solamax-warm-board-secret:latest,SYNC_HEALTH_SECRET=solamax-sync-health-secret:latest \
             --update-labels rls-aware=${RLS_AWARE}
       # Insiden 2026-08-05→07 terjadi PERSIS di sini: traffic pilot ter-pin, deploy
       # membuat revisi baru tanpa memindahkan traffic, exit 0, job hijau, ~30 jam
