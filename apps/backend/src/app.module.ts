@@ -7,9 +7,11 @@ import { SnapshotBuilderService } from "./saldo-pelanggan/snapshot-builder.servi
 import { SnapshotTriggerController } from "./saldo-pelanggan/snapshot-trigger.controller.js";
 import { SnapshotWorkerService } from "./saldo-pelanggan/snapshot-worker.service.js";
 import { SnapshotSourceCaptureService } from "./saldo-pelanggan/source-capture.service.js";
+import { SyncHealthController } from "./sync-health/sync-health.controller.js";
+import { SyncHealthService } from "./sync-health/sync-health.service.js";
 
 @Module({
-  controllers: [IngestController, SnapshotTriggerController],
+  controllers: [IngestController, SnapshotTriggerController, SyncHealthController],
   providers: [
     PrismaService,
     IngestService,
@@ -17,6 +19,7 @@ import { SnapshotSourceCaptureService } from "./saldo-pelanggan/source-capture.s
     SnapshotBuilderService,
     SnapshotWorkerService,
     SnapshotSourceCaptureService,
+    SyncHealthService,
   ],
 })
 export class AppModule {}
