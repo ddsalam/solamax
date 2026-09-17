@@ -1428,8 +1428,10 @@ export async function runCycle(
     sweepJobs?: readonly SweepJob[];
   },
 ): Promise<void> {
-  // Flush buffer dulu (FIFO). Bila backend masih offline → lewati live agar
-  // urutan terjaga & buffer tak membengkak tak terkendali.
+  // Flush buffer dulu (FIFO). Bila flush gagal → lewati live agar urutan terjaga
+  // & buffer tak membengkak tak terkendali. Entri yang TAK TERBACA tidak sampai
+  // ke sini: `drainBuffer` mengarantinanya lalu lanjut, karena entri semacam itu
+  // takkan pernah bisa dikirim dan akan memutus unitnya selamanya.
   if (!d.dryRun && d.store.bufferCount() > 0) {
     try {
       const sent = await d.store.drainBuffer((p) =>
@@ -1437,7 +1439,13 @@ export async function runCycle(
       );
       log.info("buffer ter-flush", { sent });
     } catch (err) {
-      log.warn("backend masih offline — lewati siklus live", {
+      // JANGAN menyebut sebab yang tidak diukur. Pesan lama ("backend masih
+      // offline") menuliskan satu kesimpulan untuk apa pun yang dilempar, dan
+      // pada insiden Imam Bonjol 16–17 Sep 2026 sebab aslinya adalah
+      // `SyntaxError` dari entri buffer yang rusak — backend-nya sehat dan
+      // melayani enam unit lain tiap menit. Log yang menuliskan kesimpulan
+      // menghapus jejak yang dibutuhkan untuk membantahnya.
+      log.warn("flush buffer gagal — lewati siklus live", {
         err: String(err),
         bufferDepth: d.store.bufferCount(),
       });
