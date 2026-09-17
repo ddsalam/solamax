@@ -275,7 +275,7 @@ ${bind(MATERIALIZE_FULL_HISTORY_SQL,[2,"2026-09-13",emptyGeneration,emptyCut])};
 
   it("uses all 18 numbers in integrity checks and gets identical cumulative full-history and delta results", () => {
     const baseId = rows("SELECT generation_id FROM app.saldo_pelanggan_snapshot_pointer WHERE as_of_date='2026-08-31'")[0]!.generation_id as string;
-    expect(rows(bind(VALIDATE_BASELINE_SQL,[1,"2026-08-31","saldo-pelanggan-v2",cut]))).toHaveLength(1);
+    expect(rows(bind(VALIDATE_BASELINE_SQL,[1,"2026-08-31","saldo-pelanggan-v2",1]))).toHaveLength(1);
     sql(bind(INSERT_BUILDING_MANIFEST_SQL,[1,"2026-09-12",full,"saldo-pelanggan-v2",cut,1,0,null,null]));
     sql(bind(MATERIALIZE_FULL_HISTORY_SQL,[1,"2026-09-12",full,cut]));
     // Release only this fixture's building slot; retain its rows as the oracle.
@@ -291,7 +291,7 @@ ${bind(MATERIALIZE_FULL_HISTORY_SQL,[2,"2026-09-13",emptyGeneration,emptyCut])};
     for (const balance of six) {
       sql(`UPDATE app.saldo_pelanggan_snapshot_row SET ${balance}_debet=${balance}_debet+1,${balance}_kredit=${balance}_kredit+1 WHERE generation_id='${baseId}' AND customer_code='IBLOCAL';`);
       expect(rows(bind(VALIDATE_GENERATION_SQL,[1,"2026-08-31",baseId]))[0]!.row_keyed_checksum).not.toEqual(validated.row_keyed_checksum);
-      expect(rows(bind(VALIDATE_BASELINE_SQL,[1,"2026-08-31","saldo-pelanggan-v2",cut]))).toHaveLength(0);
+      expect(rows(bind(VALIDATE_BASELINE_SQL,[1,"2026-08-31","saldo-pelanggan-v2",1]))).toHaveLength(0);
       expect(rows(bind(dashboardRowsSql,[1,"2026-08-31",baseId]))).toHaveLength(0);
       sql(`UPDATE app.saldo_pelanggan_snapshot_row SET ${balance}_debet=${balance}_debet-1,${balance}_kredit=${balance}_kredit-1 WHERE generation_id='${baseId}' AND customer_code='IBLOCAL';`);
     }
