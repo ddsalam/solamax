@@ -94,12 +94,32 @@ unset SECRET
 Penanda `sync_health_incident` adalah **kontrak** dengan kode; `sync-health.controller.test.ts`
 mengunci nilainya supaya perubahan menjatuhkan CI, bukan menjatuhkan alarm diam-diam.
 
+🛑 **JANGAN menyaring dengan `severity>=ERROR`.** Resep itu ada di versi pertama berkas ini dan
+**salah** — ia mencocokkan nol entri, sehingga alarmnya berdiri hijau selamanya tanpa pernah bisa
+berbunyi. Diverifikasi di produksi 17-09-2026 dengan memancing insiden sungguhan:
+
+```
+textPayload:"sync_health_incident"                  -> 1 entri, severity = (kosong)
+severity>=ERROR AND textPayload:"sync_health_incident" -> 0 entri
+```
+
+Sebabnya **bukan** salah aliran — diperiksa dari `logName`, baris insiden memang masuk lewat
+`run.googleapis.com/stderr` (baris `ok` lewat `stdout`). **Severity tetap kosong di keduanya.**
+Yang gagal adalah penguraiannya: `this.logger.error(obj)` milik NestJS mencetak objeknya
+**multi-baris**, bukan satu baris JSON ber-kunci `severity`, sehingga Cloud Run memasukkan tiap
+baris sebagai `textPayload` ber-severity DEFAULT. Menaruhnya di stderr saja tidak cukup. Komentar doktrin di
+`sync-health.controller.ts` ("sinyalnya dibawa **severity log**") **tidak berlaku** sampai
+pencetakannya diperbaiki; lihat "Utang yang tersisa" di bawah.
+
+Yang menahan filter ini tetap jujur adalah penanda teksnya: `SYNC_HEALTH_INCIDENT_MARKER` dikunci
+`sync-health.controller.test.ts`, jadi mengubahnya menjatuhkan CI — bukan menjatuhkan alarm
+diam-diam.
+
 ```bash
 gcloud logging metrics create solamax_sync_health_incident \
   --description="Unit SolaMax berhenti mengirim (agent diam melewati ambang)" \
   --log-filter='resource.type="cloud_run_revision"
 resource.labels.service_name="solamax-ingest-staging"
-severity>=ERROR
 textPayload:"sync_health_incident"'
 ```
 
@@ -173,6 +193,16 @@ gcloud monitoring snoozes create --display-name="perawatan <unit>" ...
 ```
 
 Jangan menonaktifkan policy-nya — snooze berakhir sendiri, policy nonaktif tidak.
+
+## Utang yang tersisa
+
+**Pencetakan log belum sesuai doktrinnya.** Jalur alarm hari ini bersandar pada pencocokan teks,
+bukan pada `severity`, karena NestJS mencetak multi-baris. Alirannya sudah benar (stderr);
+yang kurang adalah bentuknya. Perbaikan yang benar: emit **satu baris** JSON dengan kunci
+`severity: "ERROR"` (bentuk yang diurai Cloud Run),
+lalu kembalikan `severity>=ERROR` ke filter metrik sebagai lapis kedua — **tambahkan, jangan
+tukar**, dan hanya setelah dibuktikan ulang dengan Langkah 6. Sampai itu terjadi, komentar doktrin
+di `sync-health.controller.ts` menjanjikan sesuatu yang belum ditepati kodenya.
 
 ## Yang TIDAK ditutup alarm ini
 
