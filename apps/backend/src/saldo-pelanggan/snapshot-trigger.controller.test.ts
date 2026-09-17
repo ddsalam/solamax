@@ -150,7 +150,7 @@ describe("SnapshotTriggerController", () => {
       expect(worker.runBatch).toHaveBeenCalledOnce();
       const [unitId, leaseOwner, options] = vi.mocked(worker.runBatch).mock.calls[0]!;
       expect(unitId).toBe(1);
-      expect(options).toMatchObject({ backfillDays: 7, maxItems: 8 });
+      expect(options).toMatchObject({ backfillDays: 7, maxItems: 16 });
       expect(leaseOwner).toMatch(/^snapshot-http:/);
       expect(options?.attemptDeadlineEpochMs).toBeGreaterThanOrEqual(
         before + SNAPSHOT_TRIGGER_REQUEST_MILLISECONDS,
@@ -200,7 +200,7 @@ describe("bounded trigger options", () => {
   it.each([
     { backfill_days: 32 }, { backfill_days: -1 }, { backfill_days: 1.5 },
     { backfill_days: "7" }, { backfill_days: null },
-    { max_items: 0 }, { max_items: 9 }, { max_items: 1.5 }, { max_items: "2" }, { max_items: null },
+    { max_items: 0 }, { max_items: 25 }, { max_items: 1.5 }, { max_items: "2" }, { max_items: null },
   ])("rejects invalid options before looking up the unit: %j", async (options) => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
     try {

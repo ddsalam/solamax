@@ -348,7 +348,7 @@ describe("bounded snapshot backfill batch", () => {
     const { service, builder } = harness({ leased: work, retryRow: { work_id: work.work_id, state: "retry_wait" } });
     builder.build.mockResolvedValueOnce({ outcome: "published", target: { generationId: "generation" } })
       .mockRejectedValueOnce(new Error("transient"));
-    await expect(service.runBatch(1, "worker", { maxItems: 8 }))
+    await expect(service.runBatch(1, "worker", { maxItems: 24 }))
       .resolves.toMatchObject({ status: "retry_wait", processedCount: 2, completedCount: 1 });
     expect(builder.build).toHaveBeenCalledTimes(2);
   });
@@ -396,7 +396,7 @@ describe("batch termination and deadline limits", () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it.each([0, 9, 1.5, NaN])("rejects invalid batch item limit %s", async (maxItems) => {
+  it.each([0, 25, 1.5, NaN])("rejects invalid batch item limit %s", async (maxItems) => {
     const { service, prisma } = harness();
     await expect(service.runBatch(1, "worker", { maxItems })).rejects.toThrow("maxItems");
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -409,7 +409,7 @@ describe("batch termination and deadline limits", () => {
 
 
 describe("batch fixed request budget", () => {
-  it("caps a supplied longer deadline at eighteen minutes and eight items", async () => {
+  it("caps a supplied longer deadline at eighteen minutes and sixteen items", async () => {
     vi.useFakeTimers();
     try {
       const { service, builder } = harness({ leased: work });
@@ -419,8 +419,8 @@ describe("batch fixed request budget", () => {
         return { outcome: "published", target: { generationId: "generation" } };
       });
       await expect(service.runBatch(1, "worker", { attemptDeadlineEpochMs: startedAt + 3_600_000 }))
-        .resolves.toMatchObject({ status: "done", completedCount: 8 });
-      expect(builder.build).toHaveBeenCalledTimes(8);
+        .resolves.toMatchObject({ status: "done", completedCount: 16 });
+      expect(builder.build).toHaveBeenCalledTimes(16);
       expect(builder.build.mock.calls[0]![1].attemptDeadlineEpochMs).toBe(startedAt + 15 * 60_000);
       expect(builder.build.mock.calls[1]![1].attemptDeadlineEpochMs).toBe(startedAt + 18 * 60_000);
     } finally { vi.useRealTimers(); }
