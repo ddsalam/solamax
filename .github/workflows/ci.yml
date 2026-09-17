@@ -97,6 +97,15 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+      # ⚠️ LANGKAH TERPISAH, bukan berkas kedua pada perintah yang sama: kedua
+      # suite memakai basis data sekali-pakai yang SAMA dan masing-masing
+      # membangun ulang skemanya sendiri. Satu perintah menaruhnya di worker
+      # paralel dan keduanya saling menimpa (CREATE ROLE / CREATE SCHEMA yang
+      # balapan). Dibuktikan merah lokal sebelum dipecah.
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/balapan-cut-build.postgres.test.ts
+        env:
+          SNAPSHOT_POSTGRES_CI: "1"
+          SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
 
   # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
   #
