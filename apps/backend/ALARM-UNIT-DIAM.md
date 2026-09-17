@@ -103,9 +103,11 @@ textPayload:"sync_health_incident"                  -> 1 entri, severity = (koso
 severity>=ERROR AND textPayload:"sync_health_incident" -> 0 entri
 ```
 
-Sebabnya: `this.logger.error(obj)` milik NestJS **mencetak objeknya multi-baris ke stdout**, bukan
-satu baris JSON ke stderr. Cloud Run karena itu tidak mengurai `severity` maupun `jsonPayload` —
-tiap baris masuk sebagai `textPayload` ber-severity DEFAULT. Komentar doktrin di
+Sebabnya **bukan** salah aliran — diperiksa dari `logName`, baris insiden memang masuk lewat
+`run.googleapis.com/stderr` (baris `ok` lewat `stdout`). **Severity tetap kosong di keduanya.**
+Yang gagal adalah penguraiannya: `this.logger.error(obj)` milik NestJS mencetak objeknya
+**multi-baris**, bukan satu baris JSON ber-kunci `severity`, sehingga Cloud Run memasukkan tiap
+baris sebagai `textPayload` ber-severity DEFAULT. Menaruhnya di stderr saja tidak cukup. Komentar doktrin di
 `sync-health.controller.ts` ("sinyalnya dibawa **severity log**") **tidak berlaku** sampai
 pencetakannya diperbaiki; lihat "Utang yang tersisa" di bawah.
 
@@ -195,8 +197,9 @@ Jangan menonaktifkan policy-nya — snooze berakhir sendiri, policy nonaktif tid
 ## Utang yang tersisa
 
 **Pencetakan log belum sesuai doktrinnya.** Jalur alarm hari ini bersandar pada pencocokan teks,
-bukan pada `severity`, karena NestJS mencetak multi-baris ke stdout. Perbaikan yang benar: emit
-satu baris JSON ke **stderr** dengan kunci `severity: "ERROR"` (bentuk yang diurai Cloud Run),
+bukan pada `severity`, karena NestJS mencetak multi-baris. Alirannya sudah benar (stderr);
+yang kurang adalah bentuknya. Perbaikan yang benar: emit **satu baris** JSON dengan kunci
+`severity: "ERROR"` (bentuk yang diurai Cloud Run),
 lalu kembalikan `severity>=ERROR` ke filter metrik sebagai lapis kedua — **tambahkan, jangan
 tukar**, dan hanya setelah dibuktikan ulang dengan Langkah 6. Sampai itu terjadi, komentar doktrin
 di `sync-health.controller.ts` menjanjikan sesuatu yang belum ditepati kodenya.
