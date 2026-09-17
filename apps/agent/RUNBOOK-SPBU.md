@@ -171,6 +171,7 @@ Hasil tersimpan di **`output-dry-run.txt`** — **kirim isi file ini**.
 | 6   | `'node' is not recognized`                                                                              | Node belum terpasang / PATH belum aktif                  | Bagian B; tutup-buka cmd; restart mesin                                                                                                           |
 | 7   | `Gagal baca config`                                                                                     | `config.local.json` tidak ada di folder yang sama        | Pastikan file ada di samping `solamax-agent.cjs`, namanya persis (bukan `.json.txt` — matikan "Hide extensions" di Folder Options bila perlu)     |
 | 8   | `ETIMEDOUT` / hang lama                                                                                 | MySQL hanya menerima koneksi dari tempat lain / firewall | Pastikan dijalankan **di mesin server SPBU** (bukan PC lain); laporkan                                                                            |
+| 10  | `flush buffer gagal — lewati siklus live` berulang tiap siklus, `bufferDepth` **tak berubah**                | Entri buffer tak terkirim/tak terbaca — unit ini **tidak mengirim apa pun**  | Lihat **Bagian J**. ⛔ **Jangan restart berulang** — kalau galatnya identik tiap siklus, sebabnya ada di disk, bukan di proses                     |
 | 9   | Error lain                                                                                              | —                                                        | Kirim `output-*.txt` apa adanya — pesan error persisnya yang dibutuhkan                                                                           |
 
 ## Bagian H — Yang dilaporkan balik
@@ -297,3 +298,48 @@ SELECT COUNT(*) FROM tr_djualbbm WHERE DTGLJAM IS NULL;  -- via user readonly_sy
 logged on or not" + highest privileges, Start-in `C:\solamax-agent`. Log:
 `logs\resync-bulanan.log`. (Roadmap: sales masuk sapuan Track 2 di rilis agent
 berikutnya — sesudah itu task ini menjadi cadangan.)
+---
+
+## Bagian J — Unit berhenti mengirim (agent stale) — **BACA LOG SEBELUM RESTART**
+
+Gejala dari sisi pusat: `sync_state` unit itu beku, sering **ke-14 domain berhenti pada detik
+yang sama**, sementara unit lain sinkron < 2 menit.
+
+> 🛑 **Sinyal "14 domain berhenti serentak" TIDAK memberitahu penyebabnya.** Ia cocok sama
+> persisnya untuk **proses mati** (Bakau 24-Jul-2026 — sembuh dengan End → Run) dan untuk
+> **proses hidup tapi tertahan gerbang** (Imam Bonjol 16–17-Sep-2026 — End → Run **tidak**
+> menyembuhkan, dijalankan empat kali sia-sia). Yang memisahkan keduanya **hanya log di mesin.**
+
+**Urutannya — langkah 1 tidak boleh dilewati:**
+
+1. **Buka `C:\solamax-agent\logs\agent-<tgl-hari-ini>.log`, baca ~20 baris terakhir.**
+   - **Tak ada baris sama sekali hari ini / berhenti mendadak tanpa galat** → proses memang
+     mati. Lanjut ke langkah 3 (restart biasa).
+   - **Ada `agent start` lalu `koneksi MySQL OK` lalu galat berulang tiap beberapa menit** →
+     proses **hidup**; restart tidak akan menolong. Lanjut langkah 2.
+2. **Cocokkan galatnya ke tabel Bagian G.** Untuk `flush buffer gagal` dengan `bufferDepth`
+   yang tak berubah, entri antreannya macet — **karantina** isinya:
+   ```bat
+   mkdir C:\solamax-agent\buffer-rusak-manual
+   move C:\solamax-agent\data\buffer\*.json C:\solamax-agent\buffer-rusak-manual\
+   ```
+   Kalau `dataDir` di `config.local.json` bukan `./data`, sesuaikan path-nya:
+   ```bat
+   node -e "const c=require('C:/solamax-agent/config.local.json');console.log('dataDir='+(c.dataDir||'./data'))"
+   ```
+   > **Membuang isi buffer tidak menghilangkan data.** Watermark hanya maju setelah batch
+   > sukses masuk backend, jadi payload yang sempat ter-buffer meninggalkan watermark di
+   > tempat; siklus berikutnya membacanya ulang dari MySQL dan UPSERT-nya idempoten. Bukti di
+   > lapangan saat pemulihan IB: **3 shift, bukan 6.**
+   >
+   > Sejak rilis agent yang memuat karantina otomatis, entri tak terbaca **dipindah sendiri**
+   > ke `data\buffer-rusak\` dan siklusnya jalan terus — langkah manual ini tinggal
+   > jaring pengaman untuk bundle lama.
+3. **Restart loop:** Task Scheduler → **End** → Task Manager → Details → akhiri sisa
+   `node.exe` → Task Scheduler → **Run**.
+4. **Verifikasi:** di log hari ini muncul `ingest ok`, dan **tidak ada** `422`.
+5. **Pemulihan data tidak perlu backfill manual** — jendela rescan menyapu balik sendiri:
+   sales 7 hari, EDC 5 hari, **pelanggan 3 hari (paling sempit)**. Karena itu jangan menunda:
+   lewat ±3 hari, Transaksi Pelanggan keluar dari jalur cepat dan baru terpungut sapuan
+   mingguan Track 2.
+
