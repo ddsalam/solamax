@@ -9,6 +9,7 @@ import { SnapshotWorkerService } from "./saldo-pelanggan/snapshot-worker.service
 import { SnapshotSourceCaptureService } from "./saldo-pelanggan/source-capture.service.js";
 import { SyncHealthController } from "./sync-health/sync-health.controller.js";
 import { SyncHealthService } from "./sync-health/sync-health.service.js";
+import { FrozenShiftService } from "./sync-health/frozen-shift.service.js";
 
 @Module({
   controllers: [IngestController, SnapshotTriggerController, SyncHealthController],
@@ -20,6 +21,7 @@ import { SyncHealthService } from "./sync-health/sync-health.service.js";
     SnapshotWorkerService,
     SnapshotSourceCaptureService,
     SyncHealthService,
+    FrozenShiftService,
   ],
 })
 export class AppModule {}

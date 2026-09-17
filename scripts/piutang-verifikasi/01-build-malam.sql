@@ -35,6 +35,27 @@
 --                  tiap malam, jadi ambang rupiah jadi alarm yang selalu
 --                  menyala. Di DALAM jendela = PERIKSA; DI LUAR = GAGAL.
 --
+--                  DUA CACAT DIPERBAIKI 18-09-2026:
+--                  (i)  urutannya dulu (rebuild_epoch, completed_at) — BUKAN
+--                       kunci yang dipakai CAS pointer, yaitu
+--                       (source_cycle_sequence, rebuild_epoch). Begitu
+--                       rebuild_epoch pernah ≠ 0, keduanya bisa memilih baris
+--                       berbeda sebagai "terbaru". Laten, tapi diam.
+--                  (ii) ia hanya melihat DUA build terakhir, jadi pergeseran
+--                       yang tertimpa pergeseran berikutnya HILANG. Unit 1
+--                       31-08 bergeser tiga kali; −690.068.731 sudah tidak
+--                       terlihat lagi oleh perbandingan rn=1 vs rn=2. Kini G5
+--                       membaca app.saldo_pelanggan_shift, yang merekam tiap
+--                       pergeseran SAAT TERJADI dan tak bisa tertimpa.
+--                  Ambangnya juga kini ENAM total, bukan tiga: awal(D) dapat
+--                  bergeser tanpa akhir(D) ikut bergeser.
+--   G6 BUKTI-vs-  bukti perubahan sumber mengatakan tanggal D harus dibangun
+--      REBUILD    ulang, DAN unit itu memang sudah membangun pada cut ≥ cut
+--                 bukti tersebut, TETAPI pointer D masih duduk di cut lama.
+--                 Kesempatan ada, pekerjaannya tidak dikerjakan = GAGAL.
+--                 Kontrol ini menjadikan asumsi "bukti perubahan lengkap"
+--                 dapat dibantah terus-menerus di produksi, bukan sekali di CI.
+--
 -- Jalankan: psql "$DATABASE_URL_PILOT" -X -f scripts/piutang-verifikasi/01-build-malam.sql
 \set ON_ERROR_STOP on
 \timing on
@@ -65,6 +86,38 @@ CREATE TEMP VIEW v_aktif AS
   JOIN v_jendela j ON j.unit_id = m.unit_id
   WHERE m.as_of_date BETWEEN j.dari AND j.sampai;
 
+-- G6. "Bukti bilang harus bergerak, tapi tak ada rebuild."
+--
+-- Kenapa syaratnya DUA, bukan satu: build berjalan sekali semalam, jadi koreksi
+-- yang masuk pukul 08.34 memang belum dibangun ulang sampai 02.05 esok harinya.
+-- Menuntut rebuild seketika akan membuat kontrol ini menyala tiap hari dan
+-- berhenti dibaca. Yang menjadi temuan adalah KESEMPATAN YANG DILEWATI: unit
+-- ini SUDAH membangun sesuatu pada cut >= cut bukti, tetapi tanggal D masih
+-- duduk di cut yang lebih lama.
+CREATE TEMP VIEW v_bukti_tanpa_rebuild AS
+WITH bukti AS (
+  SELECT ch.unit_id, ch.invalid_from_date, c.source_cycle_sequence
+  FROM app.saldo_pelanggan_source_change ch
+  JOIN app.saldo_pelanggan_source_cycle c
+    ON c.unit_id = ch.unit_id AND c.source_cycle_id = ch.source_cycle_id
+  WHERE ch.invalid_from_date IS NOT NULL
+), kesempatan AS (
+  SELECT unit_id, max(source_cycle_sequence) AS built_through
+  FROM app.saldo_pelanggan_snapshot_manifest
+  WHERE status = 'complete'
+  GROUP BY unit_id
+)
+SELECT p.unit_id, p.as_of_date, p.source_cycle_sequence AS pointer_cut,
+       min(b.source_cycle_sequence) AS bukti_cut, k.built_through
+FROM app.saldo_pelanggan_snapshot_pointer p
+JOIN kesempatan k ON k.unit_id = p.unit_id
+JOIN bukti b
+  ON b.unit_id = p.unit_id
+ AND b.invalid_from_date <= p.as_of_date
+ AND b.source_cycle_sequence > p.source_cycle_sequence
+ AND k.built_through >= b.source_cycle_sequence
+GROUP BY p.unit_id, p.as_of_date, p.source_cycle_sequence, k.built_through;
+
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL statement_timeout = '180s';
 
@@ -90,23 +143,21 @@ WHERE a.apl IS DISTINCT FROM k.epl OR a.apo IS DISTINCT FROM k.epo OR a.ahl IS D
 ORDER BY a.unit_id, a.as_of_date;
 \echo '   (nol baris = G3 LULUS)'
 
-\echo '--- G5: pergeseran antar-generasi ---'
-WITH gen AS (
-  SELECT unit_id, as_of_date, rebuild_epoch, source_completed_at,
-         akhir_piutang_lokal_total AS epl, akhir_piutang_online_total AS epo,
-         akhir_hutang_lokal_total AS ehl,
-         row_number() OVER (PARTITION BY unit_id, as_of_date
-                            ORDER BY rebuild_epoch DESC, completed_at DESC) AS rn
-  FROM app.saldo_pelanggan_snapshot_manifest WHERE status = 'complete'
-)
-SELECT b.unit_id, b.as_of_date::text AS tanggal,
-       (b.epl - l.epl) AS geser_piutang_lokal, (b.epo - l.epo) AS geser_piutang_online,
-       (b.ehl - l.ehl) AS geser_hutang_lokal,
-       CASE WHEN b.as_of_date >= b.source_completed_at::date - 7
-            THEN 'dalam jendela (wajar)' ELSE 'DI LUAR JENDELA' END AS letak
-FROM gen b JOIN gen l ON l.unit_id = b.unit_id AND l.as_of_date = b.as_of_date AND l.rn = 2
-WHERE b.rn = 1 AND abs(b.epl - l.epl) + abs(b.epo - l.epo) + abs(b.ehl - l.ehl) >= 1
-ORDER BY b.unit_id, b.as_of_date;
+\echo '--- G5: pergeseran antar-generasi (dari peristiwa yang direkam saat terjadi) ---'
+SELECT s.unit_id, s.as_of_date::text AS tanggal, s.source_cycle_sequence AS cut,
+       trim_scale(COALESCE(s.after_akhir_piutang_lokal,0)  - COALESCE(s.before_akhir_piutang_lokal,0))  AS geser_piutang_lokal,
+       trim_scale(COALESCE(s.after_akhir_piutang_online,0) - COALESCE(s.before_akhir_piutang_online,0)) AS geser_piutang_online,
+       trim_scale(COALESCE(s.after_akhir_hutang_lokal,0)   - COALESCE(s.before_akhir_hutang_lokal,0))   AS geser_hutang_lokal,
+       CASE WHEN s.frozen THEN 'DI LUAR JENDELA' ELSE 'dalam jendela (wajar)' END AS letak,
+       EXISTS (SELECT 1 FROM app.saldo_pelanggan_shift_ack a
+                WHERE a.unit_id = s.unit_id AND a.as_of_date = s.as_of_date
+                  AND a.generation_id = s.generation_id) AS sudah_diakui
+FROM app.saldo_pelanggan_shift s
+ORDER BY s.unit_id, s.as_of_date, s.source_cycle_sequence;
+
+\echo '--- G6: bukti bilang harus bergerak, tapi tak ada rebuild ---'
+SELECT * FROM v_bukti_tanpa_rebuild ORDER BY unit_id, as_of_date;
+\echo '   (nol baris = G6 LULUS)'
 
 \echo '--- VONIS ---'
 WITH cakupan AS (
@@ -119,17 +170,17 @@ WITH cakupan AS (
     ON k.unit_id = a.unit_id AND k.as_of_date = a.as_of_date - 1
    AND k.source_cycle_id = a.source_cycle_id
   WHERE a.apl IS DISTINCT FROM k.epl OR a.apo IS DISTINCT FROM k.epo OR a.ahl IS DISTINCT FROM k.ehl
-), gen AS (
-  SELECT unit_id, as_of_date, rebuild_epoch, source_completed_at,
-         akhir_piutang_lokal_total AS epl, akhir_piutang_online_total AS epo,
-         akhir_hutang_lokal_total AS ehl,
-         row_number() OVER (PARTITION BY unit_id, as_of_date
-                            ORDER BY rebuild_epoch DESC, completed_at DESC) AS rn
-  FROM app.saldo_pelanggan_snapshot_manifest WHERE status = 'complete'
 ), geser AS (
-  SELECT (b.as_of_date < b.source_completed_at::date - 7) AS luar
-  FROM gen b JOIN gen l ON l.unit_id = b.unit_id AND l.as_of_date = b.as_of_date AND l.rn = 2
-  WHERE b.rn = 1 AND abs(b.epl - l.epl) + abs(b.epo - l.epo) + abs(b.ehl - l.ehl) >= 1
+  -- BEKU ≡ frozen, dibekukan saat perekaman memakai definisi yang sama persis.
+  -- Yang menggagalkan hanyalah pergeseran beku yang BELUM DIAKUI: keputusan
+  -- pemilik 17-09-2026 membolehkan angka historis bergerak, asal diakui.
+  SELECT s.frozen AS luar,
+         NOT EXISTS (SELECT 1 FROM app.saldo_pelanggan_shift_ack a
+                      WHERE a.unit_id = s.unit_id AND a.as_of_date = s.as_of_date
+                        AND a.generation_id = s.generation_id) AS belum_diakui
+  FROM app.saldo_pelanggan_shift s
+), bukti AS (
+  SELECT count(*) AS n FROM v_bukti_tanpa_rebuild
 )
 SELECT
   (SELECT count(*) FROM v_sasaran) AS unit_sasaran,
@@ -148,12 +199,14 @@ SELECT
          THEN 'GAGAL G3: kontinuitas awal(D)=akhir(D-1) dilanggar'
        WHEN (SELECT count(*) FROM pg_constraint WHERE conname LIKE '%\_sides') < 12
          THEN 'GAGAL G4: CHECK sisi debet-kredit tidak lengkap'
-       WHEN (SELECT count(*) FROM geser WHERE luar) > 0
-         THEN 'GAGAL G5: tanggal DI LUAR jendela bergeser antar-generasi'
+       WHEN (SELECT count(*) FROM geser WHERE luar AND belum_diakui) > 0
+         THEN 'GAGAL G5: tanggal DI LUAR jendela bergeser dan BELUM DIAKUI pemilik'
+       WHEN (SELECT n FROM bukti) > 0
+         THEN 'GAGAL G6: bukti perubahan menuntut rebuild yang tidak pernah terjadi'
        WHEN EXISTS (SELECT 1 FROM cakupan WHERE n = 7) OR (SELECT count(*) FROM geser) > 0
          THEN 'LULUS dengan PERIKSA: cakupan 7/8 dan/atau pergeseran dalam jendela'
        ELSE 'LULUS' END AS vonis;
 
 ROLLBACK;
 
-DROP VIEW v_aktif, v_jendela, v_sasaran;
+DROP VIEW v_bukti_tanpa_rebuild, v_aktif, v_jendela, v_sasaran;

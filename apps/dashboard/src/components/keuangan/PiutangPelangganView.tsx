@@ -1,3 +1,4 @@
+import { rp } from "@/lib/format";
 import {
   PIUTANG_BOOKS,
   piutangBookTotalAmounts,
@@ -13,7 +14,11 @@ import {
   type PiutangFilter,
   type PiutangSort,
 } from "@/lib/piutang-model";
-import { piutangQueryHref, type PiutangPendingBanner } from "@/lib/piutang-route";
+import {
+  piutangQueryHref,
+  type PiutangPendingBanner,
+  type PiutangShiftNotice,
+} from "@/lib/piutang-route";
 
 import type { SaldoSnapshotMetadata } from "@/lib/saldo-snapshot";
 
@@ -48,6 +53,14 @@ export type PiutangPelangganViewProps =
       csvHref: string;
       pdfHref: string;
       pendingBanner?: PiutangPendingBanner;
+      /** Pergerakan angka pada tanggal BEKU; lihat `shiftNotice`. */
+      shiftNotice?: PiutangShiftNotice;
+      /** Hanya pemilik (super_admin) yang menerima tombol pengakuan. */
+      shiftAck?: {
+        code: string;
+        asOfDate: string;
+        action: (formData: FormData) => Promise<void>;
+      };
       historicalNote?: string | null;
     })
   | (PiutangCommonProps & {
@@ -370,6 +383,34 @@ export function PiutangPelangganView(props: PiutangPelangganViewProps) {
               <div>
                 <strong>{props.pendingBanner.title}</strong>
                 <p>{props.pendingBanner.body}</p>
+              </div>
+            </div>
+          )}
+
+          {props.shiftNotice && (
+            <div
+              className={`banner ${props.shiftNotice.tone} b6-piutang-shift`}
+              role={props.shiftNotice.tone === "warning" ? "alert" : "status"}
+            >
+              <span className={`dot ${props.shiftNotice.tone}`} aria-hidden="true" />
+              <div>
+                <strong>{props.shiftNotice.title}</strong>
+                <p>{props.shiftNotice.body}</p>
+                {/* Tombolnya hanya ada bila pemanggilnya pemilik DAN masih ada
+                    yang menunggu. Wewenangnya tetap ditegakkan di server —
+                    ketiadaan tombol bukan penjaganya. Satu tombol per
+                    peristiwa: tidak ada "setujui semua". */}
+                {props.shiftAck &&
+                  props.shiftNotice.menunggu.map((m) => (
+                    <form key={m.generationId} action={props.shiftAck!.action}>
+                      <input type="hidden" name="code" value={props.shiftAck!.code} />
+                      <input type="hidden" name="as_of_date" value={props.shiftAck!.asOfDate} />
+                      <input type="hidden" name="generation_id" value={m.generationId} />
+                      <button className="btn-outline" type="submit">
+                        Diketahui &amp; disetujui — {rp(m.selisihAbsolut)}
+                      </button>
+                    </form>
+                  ))}
               </div>
             </div>
           )}

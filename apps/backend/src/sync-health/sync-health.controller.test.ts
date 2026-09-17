@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  FROZEN_SHIFT_INCIDENT_MARKER,
   SYNC_HEALTH_INCIDENT_MARKER,
   SYNC_HEALTH_OK_MARKER,
   SyncHealthController,
@@ -8,6 +9,10 @@ import type {
   SyncHealthReport,
   SyncHealthService,
 } from "./sync-health.service.js";
+import type {
+  FrozenShiftReport,
+  FrozenShiftService,
+} from "./frozen-shift.service.js";
 
 const SECRET = "rahasia-uji-sync-health-cukup-panjang-32-karakter";
 
@@ -24,11 +29,32 @@ function report(over: Partial<SyncHealthReport> = {}): SyncHealthReport {
   };
 }
 
-function harness(r: SyncHealthReport = report()) {
+export function frozenReport(over: Partial<FrozenShiftReport> = {}): FrozenShiftReport {
+  return {
+    status: "ok",
+    checkedAt: "2026-09-17T07:00:00.000Z",
+    activeUnits: 7,
+    shiftRowsVisible: 29,
+    unacknowledgedCount: 0,
+    shifts: [],
+    ...over,
+  };
+}
+
+function harness(
+  r: SyncHealthReport = report(),
+  f: FrozenShiftReport | Error = frozenReport(),
+) {
   const service = {
     evaluate: vi.fn(async () => r),
   } as unknown as SyncHealthService;
-  const controller = new SyncHealthController(service);
+  const frozen = {
+    evaluate: vi.fn(async () => {
+      if (f instanceof Error) throw f;
+      return f;
+    }),
+  } as unknown as FrozenShiftService;
+  const controller = new SyncHealthController(service, frozen);
   const logs: Array<{ level: "log" | "error"; payload: Record<string, unknown> }> = [];
   // @ts-expect-error — logger privat; kita mengintip keluarannya dengan sengaja
   // karena SEVERITY-nya adalah kontrak alarm, bukan detail internal.
@@ -136,6 +162,87 @@ describe("SyncHealthController — probe yang menemukan masalah BUKAN probe yang
     const { controller } = harness(r);
     // Tidak melempar ⇒ Nest membalas 200 ⇒ Scheduler tidak menandai job gagal
     // ⇒ tidak ada retry ⇒ "sekali per insiden" tetap sekali.
-    await expect(controller.check(SECRET)).resolves.toEqual(r);
+    await expect(controller.check(SECRET)).resolves.toMatchObject(r);
+  });
+});
+
+describe("SyncHealthController — pengawas pergerakan angka BEKU", () => {
+  it("penanda alarmnya TERKUNCI sebagai kontrak dengan log-based metric", () => {
+    expect(FROZEN_SHIFT_INCIDENT_MARKER).toBe("frozen_shift_incident");
+    // Rel yang sama, penanda yang BERBEDA — kalau keduanya sama, satu policy
+    // tak akan bisa memisahkan "unit berhenti" dari "angka beku bergerak".
+    expect(FROZEN_SHIFT_INCIDENT_MARKER).not.toBe(SYNC_HEALTH_INCIDENT_MARKER);
+  });
+
+  it("pergeseran beku yang belum diakui terbit sebagai ERROR, bukan INFO", async () => {
+    process.env.SYNC_HEALTH_SECRET = SECRET;
+    const { controller, logs } = harness(
+      report(),
+      frozenReport({
+        status: "unacknowledged_frozen_shift",
+        unacknowledgedCount: 1,
+        shifts: [
+          {
+            unitId: 1,
+            unitName: "Imam Bonjol",
+            asOfDate: "2026-08-31",
+            generationId: "g-baru",
+            previousGenerationId: "g-lama",
+            sourceCycleSequence: "126",
+            detectedAt: "2026-09-14T19:00:00.000Z",
+            geserPiutangLokal: "-690068731",
+            geserPiutangOnline: "0",
+            geserHutangLokal: "0",
+          },
+        ],
+      }),
+    );
+
+    await controller.check(SECRET);
+
+    const alarm = logs.find((l) => l.payload.msg === FROZEN_SHIFT_INCIDENT_MARKER);
+    expect(alarm?.level).toBe("error");
+    expect(alarm?.payload.reason).toBe("unacknowledged_frozen_shift");
+    // Angkanya ikut ke email supaya bisa ditindak tanpa psql.
+    expect(JSON.stringify(alarm?.payload)).toContain("-690068731");
+    expect(JSON.stringify(alarm?.payload)).toContain("2026-08-31");
+  });
+
+  it("nol pergeseran SENYAP — alarm yang selalu menyala melatih orang mengabaikannya", async () => {
+    process.env.SYNC_HEALTH_SECRET = SECRET;
+    const { controller, logs } = harness(report(), frozenReport());
+    await controller.check(SECRET);
+    expect(logs.some((l) => l.payload.msg === FROZEN_SHIFT_INCIDENT_MARKER)).toBe(false);
+  });
+
+  it("scope RLS gagal BERBUNYI, tidak menyamar jadi 'tak ada pergeseran'", async () => {
+    process.env.SYNC_HEALTH_SECRET = SECRET;
+    const { controller, logs } = harness(
+      report(),
+      // Bentuk yang persis sama dengan keadaan sehat: nol pergeseran.
+      frozenReport({ status: "scope_returned_nothing", shiftRowsVisible: 0 }),
+    );
+    await controller.check(SECRET);
+    const alarm = logs.find((l) => l.payload.msg === FROZEN_SHIFT_INCIDENT_MARKER);
+    expect(alarm?.level).toBe("error");
+    expect(alarm?.payload.reason).toBe("scope_returned_nothing");
+  });
+
+  it("probe yang MELEDAK berbunyi, dan tidak ikut menjatuhkan alarm unit-diam", async () => {
+    process.env.SYNC_HEALTH_SECRET = SECRET;
+    const { controller, logs } = harness(
+      report({ status: "stale_units", staleCount: 1 }),
+      new Error("relation app.saldo_pelanggan_shift does not exist"),
+    );
+
+    const res = await controller.check(SECRET);
+
+    // Berbunyi di rel yang sama, dengan sebab yang disebut namanya.
+    const alarm = logs.find((l) => l.payload.msg === FROZEN_SHIFT_INCIDENT_MARKER);
+    expect(alarm?.level).toBe("error");
+    expect(alarm?.payload.reason).toBe("probe_failed");
+    // Dan alarm unit-diam TETAP terbit — dua pengawas tak saling menjatuhkan.
+    expect(logs.some((l) => l.payload.msg === SYNC_HEALTH_INCIDENT_MARKER)).toBe(true);
+    expect(res.frozenShift.status).toBe("scope_returned_nothing");
   });
 });
