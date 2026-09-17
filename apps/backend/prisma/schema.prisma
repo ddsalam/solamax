@@ -1185,54 +1185,54 @@ model SaldoPelangganSourceChange {
 }
 
 model SaldoPelangganSnapshotManifest {
-  unitId                       Int       @map("unit_id") @db.SmallInt
-  asOfDate                     DateTime  @map("as_of_date") @db.Date
-  generationId                 String    @map("generation_id") @db.Uuid
-  formulaVersion               String    @map("formula_version")
-  status                       String    @default("building")
-  baseMonthEnd                 DateTime? @map("base_month_end") @db.Date
-  baseGenerationId             String?   @map("base_generation_id") @db.Uuid
-  sourceCycleId                String    @map("source_cycle_id") @db.Uuid
-  sourceCycleSequence          BigInt    @map("source_cycle_sequence")
-  sourceCycleStatus            String    @default("complete") @map("source_cycle_status")
-  sourceCompletedAt            DateTime  @map("source_completed_at") @db.Timestamptz()
-  rebuildEpoch                 BigInt    @default(0) @map("rebuild_epoch")
-  startedAt                    DateTime  @default(now()) @map("started_at") @db.Timestamptz()
-  computedAt                   DateTime? @map("computed_at") @db.Timestamptz()
-  completedAt                  DateTime? @map("completed_at") @db.Timestamptz()
-  published                    Boolean   @default(false)
-  publishedAt                  DateTime? @map("published_at") @db.Timestamptz()
-  validationPassed             Boolean   @default(false) @map("validation_passed")
-  customerKeyCount             BigInt?   @map("customer_key_count")
-  rowCount                     BigInt?   @map("row_count")
-  rowKeyedChecksum             Bytes?    @map("row_keyed_checksum")
-  awalPiutangLokalTotal        Decimal?  @map("awal_piutang_lokal_total") @db.Decimal
-  akhirPiutangLokalTotal       Decimal?  @map("akhir_piutang_lokal_total") @db.Decimal
-  awalPiutangOnlineTotal       Decimal?  @map("awal_piutang_online_total") @db.Decimal
-  akhirPiutangOnlineTotal      Decimal?  @map("akhir_piutang_online_total") @db.Decimal
-  awalHutangLokalTotal         Decimal?  @map("awal_hutang_lokal_total") @db.Decimal
-  akhirHutangLokalTotal        Decimal?  @map("akhir_hutang_lokal_total") @db.Decimal
-  awalPiutangLokalDebetTotal Decimal? @map("awal_piutang_lokal_debet_total") @db.Decimal
-  awalPiutangLokalKreditTotal Decimal? @map("awal_piutang_lokal_kredit_total") @db.Decimal
-  akhirPiutangLokalDebetTotal Decimal? @map("akhir_piutang_lokal_debet_total") @db.Decimal
-  akhirPiutangLokalKreditTotal Decimal? @map("akhir_piutang_lokal_kredit_total") @db.Decimal
-  awalPiutangOnlineDebetTotal Decimal? @map("awal_piutang_online_debet_total") @db.Decimal
-  awalPiutangOnlineKreditTotal Decimal? @map("awal_piutang_online_kredit_total") @db.Decimal
-  akhirPiutangOnlineDebetTotal Decimal? @map("akhir_piutang_online_debet_total") @db.Decimal
-  akhirPiutangOnlineKreditTotal Decimal? @map("akhir_piutang_online_kredit_total") @db.Decimal
-  awalHutangLokalDebetTotal Decimal? @map("awal_hutang_lokal_debet_total") @db.Decimal
-  awalHutangLokalKreditTotal Decimal? @map("awal_hutang_lokal_kredit_total") @db.Decimal
-  akhirHutangLokalDebetTotal Decimal? @map("akhir_hutang_lokal_debet_total") @db.Decimal
-  akhirHutangLokalKreditTotal Decimal? @map("akhir_hutang_lokal_kredit_total") @db.Decimal
-  sourcePelangganRowCount      BigInt?   @map("source_pelanggan_row_count")
-  sourcePelangganKeyedChecksum Bytes?    @map("source_pelanggan_keyed_checksum")
-  sourceBppiutRowCount         BigInt?   @map("source_bppiut_row_count")
-  sourceBppiutKeyedChecksum    Bytes?    @map("source_bppiut_keyed_checksum")
-  sourceBphutRowCount          BigInt?   @map("source_bphut_row_count")
-  sourceBphutKeyedChecksum     Bytes?    @map("source_bphut_keyed_checksum")
-  failureCode                  String?   @map("failure_code")
-  failureSummary               String?   @map("failure_summary")
-  retryable                    Boolean   @default(false)
+  unitId                        Int       @map("unit_id") @db.SmallInt
+  asOfDate                      DateTime  @map("as_of_date") @db.Date
+  generationId                  String    @map("generation_id") @db.Uuid
+  formulaVersion                String    @map("formula_version")
+  status                        String    @default("building")
+  baseMonthEnd                  DateTime? @map("base_month_end") @db.Date
+  baseGenerationId              String?   @map("base_generation_id") @db.Uuid
+  sourceCycleId                 String    @map("source_cycle_id") @db.Uuid
+  sourceCycleSequence           BigInt    @map("source_cycle_sequence")
+  sourceCycleStatus             String    @default("complete") @map("source_cycle_status")
+  sourceCompletedAt             DateTime  @map("source_completed_at") @db.Timestamptz()
+  rebuildEpoch                  BigInt    @default(0) @map("rebuild_epoch")
+  startedAt                     DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  computedAt                    DateTime? @map("computed_at") @db.Timestamptz()
+  completedAt                   DateTime? @map("completed_at") @db.Timestamptz()
+  published                     Boolean   @default(false)
+  publishedAt                   DateTime? @map("published_at") @db.Timestamptz()
+  validationPassed              Boolean   @default(false) @map("validation_passed")
+  customerKeyCount              BigInt?   @map("customer_key_count")
+  rowCount                      BigInt?   @map("row_count")
+  rowKeyedChecksum              Bytes?    @map("row_keyed_checksum")
+  awalPiutangLokalTotal         Decimal?  @map("awal_piutang_lokal_total") @db.Decimal
+  akhirPiutangLokalTotal        Decimal?  @map("akhir_piutang_lokal_total") @db.Decimal
+  awalPiutangOnlineTotal        Decimal?  @map("awal_piutang_online_total") @db.Decimal
+  akhirPiutangOnlineTotal       Decimal?  @map("akhir_piutang_online_total") @db.Decimal
+  awalHutangLokalTotal          Decimal?  @map("awal_hutang_lokal_total") @db.Decimal
+  akhirHutangLokalTotal         Decimal?  @map("akhir_hutang_lokal_total") @db.Decimal
+  awalPiutangLokalDebetTotal    Decimal?  @map("awal_piutang_lokal_debet_total") @db.Decimal
+  awalPiutangLokalKreditTotal   Decimal?  @map("awal_piutang_lokal_kredit_total") @db.Decimal
+  akhirPiutangLokalDebetTotal   Decimal?  @map("akhir_piutang_lokal_debet_total") @db.Decimal
+  akhirPiutangLokalKreditTotal  Decimal?  @map("akhir_piutang_lokal_kredit_total") @db.Decimal
+  awalPiutangOnlineDebetTotal   Decimal?  @map("awal_piutang_online_debet_total") @db.Decimal
+  awalPiutangOnlineKreditTotal  Decimal?  @map("awal_piutang_online_kredit_total") @db.Decimal
+  akhirPiutangOnlineDebetTotal  Decimal?  @map("akhir_piutang_online_debet_total") @db.Decimal
+  akhirPiutangOnlineKreditTotal Decimal?  @map("akhir_piutang_online_kredit_total") @db.Decimal
+  awalHutangLokalDebetTotal     Decimal?  @map("awal_hutang_lokal_debet_total") @db.Decimal
+  awalHutangLokalKreditTotal    Decimal?  @map("awal_hutang_lokal_kredit_total") @db.Decimal
+  akhirHutangLokalDebetTotal    Decimal?  @map("akhir_hutang_lokal_debet_total") @db.Decimal
+  akhirHutangLokalKreditTotal   Decimal?  @map("akhir_hutang_lokal_kredit_total") @db.Decimal
+  sourcePelangganRowCount       BigInt?   @map("source_pelanggan_row_count")
+  sourcePelangganKeyedChecksum  Bytes?    @map("source_pelanggan_keyed_checksum")
+  sourceBppiutRowCount          BigInt?   @map("source_bppiut_row_count")
+  sourceBppiutKeyedChecksum     Bytes?    @map("source_bppiut_keyed_checksum")
+  sourceBphutRowCount           BigInt?   @map("source_bphut_row_count")
+  sourceBphutKeyedChecksum      Bytes?    @map("source_bphut_keyed_checksum")
+  failureCode                   String?   @map("failure_code")
+  failureSummary                String?   @map("failure_summary")
+  retryable                     Boolean   @default(false)
 
   @@id([unitId, asOfDate, generationId], map: "sps_manifest_pkey")
   @@unique([unitId, asOfDate, generationId, status, published, validationPassed, sourceCycleSequence, rebuildEpoch], map: "sps_manifest_pointer_target_key")
@@ -1261,28 +1261,28 @@ model SaldoPelangganSnapshotPointer {
 }
 
 model SaldoPelangganSnapshotRow {
-  unitId             Int      @map("unit_id") @db.SmallInt
-  asOfDate           DateTime @map("as_of_date") @db.Date
-  generationId       String   @map("generation_id") @db.Uuid
-  customerCode       String   @map("customer_code") @db.VarChar(12)
-  awalPiutangLokal   Decimal  @map("awal_piutang_lokal") @db.Decimal
-  akhirPiutangLokal  Decimal  @map("akhir_piutang_lokal") @db.Decimal
-  awalPiutangOnline  Decimal  @map("awal_piutang_online") @db.Decimal
-  akhirPiutangOnline Decimal  @map("akhir_piutang_online") @db.Decimal
-  awalHutangLokal    Decimal  @map("awal_hutang_lokal") @db.Decimal
-  akhirHutangLokal   Decimal  @map("akhir_hutang_lokal") @db.Decimal
-  awalPiutangLokalDebet Decimal @map("awal_piutang_lokal_debet") @db.Decimal
-  awalPiutangLokalKredit Decimal @map("awal_piutang_lokal_kredit") @db.Decimal
-  akhirPiutangLokalDebet Decimal @map("akhir_piutang_lokal_debet") @db.Decimal
-  akhirPiutangLokalKredit Decimal @map("akhir_piutang_lokal_kredit") @db.Decimal
-  awalPiutangOnlineDebet Decimal @map("awal_piutang_online_debet") @db.Decimal
-  awalPiutangOnlineKredit Decimal @map("awal_piutang_online_kredit") @db.Decimal
-  akhirPiutangOnlineDebet Decimal @map("akhir_piutang_online_debet") @db.Decimal
-  akhirPiutangOnlineKredit Decimal @map("akhir_piutang_online_kredit") @db.Decimal
-  awalHutangLokalDebet Decimal @map("awal_hutang_lokal_debet") @db.Decimal
-  awalHutangLokalKredit Decimal @map("awal_hutang_lokal_kredit") @db.Decimal
-  akhirHutangLokalDebet Decimal @map("akhir_hutang_lokal_debet") @db.Decimal
-  akhirHutangLokalKredit Decimal @map("akhir_hutang_lokal_kredit") @db.Decimal
+  unitId                   Int      @map("unit_id") @db.SmallInt
+  asOfDate                 DateTime @map("as_of_date") @db.Date
+  generationId             String   @map("generation_id") @db.Uuid
+  customerCode             String   @map("customer_code") @db.VarChar(12)
+  awalPiutangLokal         Decimal  @map("awal_piutang_lokal") @db.Decimal
+  akhirPiutangLokal        Decimal  @map("akhir_piutang_lokal") @db.Decimal
+  awalPiutangOnline        Decimal  @map("awal_piutang_online") @db.Decimal
+  akhirPiutangOnline       Decimal  @map("akhir_piutang_online") @db.Decimal
+  awalHutangLokal          Decimal  @map("awal_hutang_lokal") @db.Decimal
+  akhirHutangLokal         Decimal  @map("akhir_hutang_lokal") @db.Decimal
+  awalPiutangLokalDebet    Decimal  @map("awal_piutang_lokal_debet") @db.Decimal
+  awalPiutangLokalKredit   Decimal  @map("awal_piutang_lokal_kredit") @db.Decimal
+  akhirPiutangLokalDebet   Decimal  @map("akhir_piutang_lokal_debet") @db.Decimal
+  akhirPiutangLokalKredit  Decimal  @map("akhir_piutang_lokal_kredit") @db.Decimal
+  awalPiutangOnlineDebet   Decimal  @map("awal_piutang_online_debet") @db.Decimal
+  awalPiutangOnlineKredit  Decimal  @map("awal_piutang_online_kredit") @db.Decimal
+  akhirPiutangOnlineDebet  Decimal  @map("akhir_piutang_online_debet") @db.Decimal
+  akhirPiutangOnlineKredit Decimal  @map("akhir_piutang_online_kredit") @db.Decimal
+  awalHutangLokalDebet     Decimal  @map("awal_hutang_lokal_debet") @db.Decimal
+  awalHutangLokalKredit    Decimal  @map("awal_hutang_lokal_kredit") @db.Decimal
+  akhirHutangLokalDebet    Decimal  @map("akhir_hutang_lokal_debet") @db.Decimal
+  akhirHutangLokalKredit   Decimal  @map("akhir_hutang_lokal_kredit") @db.Decimal
 
   @@id([unitId, asOfDate, generationId, customerCode], map: "sps_row_pkey")
   @@map("saldo_pelanggan_snapshot_row")
@@ -1329,5 +1329,55 @@ model SaldoPelangganBuildWork {
   @@unique([unitId, asOfDate, sourceCycleId, rebuildEpoch], map: "sps_work_idempotency_key")
   @@index([state, availableAt, createdAt], map: "sps_work_ready_idx")
   @@map("saldo_pelanggan_build_work")
+  @@schema("app")
+}
+
+/// Pergerakan angka pada tanggal yang SUDAH TERBIT. Direkam di dalam transaksi
+/// publikasi, bukan dibandingkan pasca-fakta. Kuncinya menyertakan generationId
+/// dengan sengaja: persetujuan terikat pada NILAI, bukan pada baris.
+model SaldoPelangganShift {
+  unitId                   Int      @map("unit_id") @db.SmallInt
+  asOfDate                 DateTime @map("as_of_date") @db.Date
+  generationId             String   @map("generation_id") @db.Uuid
+  previousGenerationId     String   @map("previous_generation_id") @db.Uuid
+  sourceCycleSequence      BigInt   @map("source_cycle_sequence")
+  rebuildEpoch             BigInt   @default(0) @map("rebuild_epoch")
+  sourceCompletedAt        DateTime @map("source_completed_at") @db.Timestamptz()
+  frozen                   Boolean
+  detectedAt               DateTime @default(now()) @map("detected_at") @db.Timestamptz()
+  beforeAwalPiutangLokal   Decimal? @map("before_awal_piutang_lokal") @db.Decimal
+  beforeAkhirPiutangLokal  Decimal? @map("before_akhir_piutang_lokal") @db.Decimal
+  beforeAwalPiutangOnline  Decimal? @map("before_awal_piutang_online") @db.Decimal
+  beforeAkhirPiutangOnline Decimal? @map("before_akhir_piutang_online") @db.Decimal
+  beforeAwalHutangLokal    Decimal? @map("before_awal_hutang_lokal") @db.Decimal
+  beforeAkhirHutangLokal   Decimal? @map("before_akhir_hutang_lokal") @db.Decimal
+  afterAwalPiutangLokal    Decimal? @map("after_awal_piutang_lokal") @db.Decimal
+  afterAkhirPiutangLokal   Decimal? @map("after_akhir_piutang_lokal") @db.Decimal
+  afterAwalPiutangOnline   Decimal? @map("after_awal_piutang_online") @db.Decimal
+  afterAkhirPiutangOnline  Decimal? @map("after_akhir_piutang_online") @db.Decimal
+  afterAwalHutangLokal     Decimal? @map("after_awal_hutang_lokal") @db.Decimal
+  afterAkhirHutangLokal    Decimal? @map("after_akhir_hutang_lokal") @db.Decimal
+
+  @@id([unitId, asOfDate, generationId], map: "sps_shift_pkey")
+  @@map("saldo_pelanggan_shift")
+  @@schema("app")
+}
+
+/// Pengakuan pemilik atas satu peristiwa pergeseran. APPEND-ONLY: dashboard_app
+/// dapat SELECT dan INSERT, tetapi UPDATE/DELETE di-REVOKE — sama seperti
+/// app.audit_log. Tanpa UNIQUE pada peristiwanya: klik kedua tidak boleh
+/// melempar, dan dua pengakuan atas satu peristiwa adalah jejak yang sah.
+model SaldoPelangganShiftAck {
+  ackId                String   @id(map: "sps_shift_ack_pkey") @default(dbgenerated("gen_random_uuid()")) @map("ack_id") @db.Uuid
+  unitId               Int      @map("unit_id") @db.SmallInt
+  asOfDate             DateTime @map("as_of_date") @db.Date
+  generationId         String   @map("generation_id") @db.Uuid
+  acknowledgedByUserId String?  @map("acknowledged_by_user_id")
+  acknowledgedByEmail  String   @map("acknowledged_by_email")
+  acknowledgedAt       DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz()
+  note                 String?
+
+  @@index([unitId, asOfDate, generationId], map: "sps_shift_ack_shift_idx")
+  @@map("saldo_pelanggan_shift_ack")
   @@schema("app")
 }

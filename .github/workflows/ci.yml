@@ -93,7 +93,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @solamax/shared build
       - run: pnpm --filter @solamax/backend prisma:generate
-      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/snapshot-v2.postgres.test.ts
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/snapshot-v2.postgres.test.ts src/saldo-pelanggan/shift-watcher.postgres.test.ts
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
