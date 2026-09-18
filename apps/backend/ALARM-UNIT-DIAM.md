@@ -123,6 +123,44 @@ resource.labels.service_name="solamax-ingest-staging"
 textPayload:"sync_health_incident"'
 ```
 
+## Langkah 4b — perluas filter SEBELUM revisi JSON hidup
+
+🛑 **INI YANG PALING MUDAH MEMATIKAN ALARM, dan matinya senyap.** Kedua filter yang hidup hari ini
+berbunyi `textPayload:"…"`. Begitu revisi ber-JSON hidup, Cloud Logging menguraikan barisnya
+menjadi `jsonPayload` dan **`textPayload` lenyap** — filter berhenti cocok, metrik jatuh ke nol,
+policy menutup incident-nya sendiri, dan tak ada satu pun galat yang terbit. Alarm yang mati
+terlihat persis seperti armada yang sehat.
+
+Filter di bawah benar **sebelum maupun sesudah** revisi itu hidup, jadi urutan pemasangannya tidak
+bisa salah:
+
+```bash
+for M in sync_health frozen_shift; do
+  gcloud logging metrics update "solamax_${M}_incident" --project solamax     --log-filter="resource.type=\"cloud_run_revision\"
+resource.labels.service_name=\"solamax-ingest-staging\"
+(textPayload:\"${M}_incident\" OR (jsonPayload.msg=\"${M}_incident\" AND severity>=ERROR))"
+done
+```
+
+⚠️ **Gerbang `severity>=ERROR` sengaja hanya menempel pada kaki JSON.** Bentuk lama terbit dengan
+severity DEFAULT (kosong) — diverifikasi di produksi 17-09-2026, lihat Langkah 4 — jadi menaruh
+`severity>=ERROR` di luar kurung akan menjatuhkan kaki lama dan memadamkan alarm SEKARANG JUGA,
+sebelum revisi barunya hidup. Itu persis kesalahan yang dicatat Langkah 4, dalam bentuk baru.
+
+Sesudah revisi JSON hidup dan **Langkah 6 dibuktikan ulang**, kaki `textPayload` boleh dilepas —
+jangan sebelum itu.
+
+Diadu ke log produksi 18-09-2026 (`gcloud logging read`, jendela 2 hari), ketiga bentuknya:
+
+```
+                                        sync_health   frozen_shift
+filter LAMA  (textPayload saja)               4            9
+filter BARU  (dua bentuk, seperti di atas)    4            9   <- aman dipasang SEKARANG
+filter SALAH (severity di LUAR kurung)        0            0   <- memadamkan keduanya seketika
+```
+
+Baris ketiga itu bentuk yang paling wajar ditulis orang, dan ia membunuh alarm tanpa galat.
+
 ## Langkah 5 — saluran email + policy
 
 Saluran email perlu verifikasi lewat tautan yang dikirim Google; paling mudah dibuat di Console
@@ -196,13 +234,16 @@ Jangan menonaktifkan policy-nya — snooze berakhir sendiri, policy nonaktif tid
 
 ## Utang yang tersisa
 
-**Pencetakan log belum sesuai doktrinnya.** Jalur alarm hari ini bersandar pada pencocokan teks,
-bukan pada `severity`, karena NestJS mencetak multi-baris. Alirannya sudah benar (stderr);
-yang kurang adalah bentuknya. Perbaikan yang benar: emit **satu baris** JSON dengan kunci
-`severity: "ERROR"` (bentuk yang diurai Cloud Run),
-lalu kembalikan `severity>=ERROR` ke filter metrik sebagai lapis kedua — **tambahkan, jangan
-tukar**, dan hanya setelah dibuktikan ulang dengan Langkah 6. Sampai itu terjadi, komentar doktrin
-di `sync-health.controller.ts` menjanjikan sesuatu yang belum ditepati kodenya.
+**LUNAS 18-09-2026.** Probe kini mencetak **satu baris JSON ber-kunci `severity`**
+(`sync-health/structured-logger.ts`). Severity menjadi fakta yang dikirim aplikasi, bukan tebakan
+infrastruktur dari stream mana barisnya keluar. Bentuk nyatanya:
+
+```json
+{"severity":"ERROR","context":"SyncHealthController","message":"frozen_shift_incident","msg":"frozen_shift_incident","reason":"unacknowledged_frozen_shift","active_units":7,"unacknowledged_count":7,"shifts":[{"unit_id":1,"name":"Imam Bonjol","as_of_date":"2026-08-31","source_cycle_sequence":"206","geser_piutang_lokal":"-895667391"}]}
+```
+
+Penanda teks **tetap hidup di kunci `msg`** dan tetap dikunci tes — ia tidak ditukar, hanya pindah
+tempat. Lihat **Langkah 4b**, yang WAJIB dijalankan.
 
 ## Yang TIDAK ditutup alarm ini
 
