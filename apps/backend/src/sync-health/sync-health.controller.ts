@@ -4,9 +4,9 @@ import {
   Headers,
   HttpException,
   HttpStatus,
-  Logger,
   Post,
 } from "@nestjs/common";
+import { StructuredLogger } from "./structured-logger.js";
 import {
   type SyncHealthReport,
   SyncHealthService,
@@ -50,7 +50,13 @@ function isAuthorized(
 
 @Controller("sync-health")
 export class SyncHealthController {
-  private readonly logger = new Logger(SyncHealthController.name);
+  /**
+   * Satu baris JSON ber-kunci `severity`, bukan `Logger` bawaan Nest.
+   * Alarm di sini dibawa severity log; severity harus jadi FAKTA yang dikirim
+   * aplikasi, bukan tebakan infrastruktur dari stream mana barisnya keluar.
+   * Antarmukanya sengaja tetap `log`/`error` supaya kontrak uji tidak berubah.
+   */
+  private readonly logger = new StructuredLogger(SyncHealthController.name);
 
   constructor(
     private readonly service: SyncHealthService,
