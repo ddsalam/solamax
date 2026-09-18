@@ -208,7 +208,7 @@ done
 Sesudah melepas, **jalankan Langkah 6 sekali lagi**. Pelepasan ini menyentuh satu-satunya jalur
 yang membuat alarm berbunyi; ia tidak boleh berakhir dengan asumsi.
 
-Keadaan pada 19-09-2026, sebagai contoh prasyarat yang BELUM terpenuhi: pilot masih menyajikan
+Keadaan pada 18-09-2026 sore, sebagai contoh prasyarat yang BELUM terpenuhi: pilot masih menyajikan
 `solamax-ingest-staging-00055-zbw` (revisi sebelum JSON) pada 100% traffic, dan kontrol positif
 kaki-JSON-saja memulangkan **0 dan 0**. Melepas kaki `textPayload` pada keadaan itu akan
 memadamkan kedua alarm — prasyarat 1 dan 3 keduanya gagal, dan gagalnya terlihat justru karena
