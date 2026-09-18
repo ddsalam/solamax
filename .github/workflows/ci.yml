@@ -93,7 +93,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @solamax/shared build
       - run: pnpm --filter @solamax/backend prisma:generate
+      # ⚠️ DUA LANGKAH TERPISAH, BUKAN SATU PERINTAH DUA BERKAS. Kedua suite
+      # memakai SATU basis data sekali-pakai yang sama dan masing-masing
+      # membangun ulang skemanya sendiri (DROP SCHEMA app CASCADE). Dijalankan
+      # dalam satu perintah, vitest menaruhnya di worker paralel dan keduanya
+      # saling menimpa; yang pertama meledak adalah CREATE ROLE yang balapan
+      # (duplicate key on pg_authid). Dijalankan sebagai dua langkah, keduanya
+      # berurutan tanpa perlu mengandalkan bendera paralelisme vitest.
       - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/snapshot-v2.postgres.test.ts
+        env:
+          SNAPSHOT_POSTGRES_CI: "1"
+          SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+      # ⚠️ LANGKAH TERPISAH, bukan berkas kedua pada perintah yang sama: kedua
+      # suite memakai basis data sekali-pakai yang SAMA dan masing-masing
+      # membangun ulang skemanya sendiri. Satu perintah menaruhnya di worker
+      # paralel dan keduanya saling menimpa (CREATE ROLE / CREATE SCHEMA yang
+      # balapan). Dibuktikan merah lokal sebelum dipecah.
+      #
+      # Aturan ini berlaku untuk SETIAP suite postgres berikutnya: tambahkan
+      # `- run:` sendiri, jangan menempelkannya ke perintah yang sudah ada.
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/shift-watcher.postgres.test.ts
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/balapan-cut-build.postgres.test.ts
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/p1-baseline.postgres.test.ts
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci

@@ -10,7 +10,10 @@ import {
   piutangExportHref,
   piutangViewInput,
   readinessProps,
+  shiftNotice,
 } from "@/lib/piutang-route";
+import { getSaldoShifts } from "@/lib/saldo-shift";
+import { acknowledgeShift } from "@/lib/shift-ack-actions";
 import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
@@ -41,6 +44,12 @@ export default async function PiutangPelangganPage({
     ? await getCachedSaldoFreshness(
         unit.unit_id, date, snapshot.metadata.generationId, snapshot.metadata.totals)
     : undefined;
+  // Pergerakan angka pada tanggal BEKU. Dibaca tanpa cache DENGAN SENGAJA:
+  // indikator ini padam oleh tindakan pemilik, dan tombol yang tetap merah
+  // setelah diklik akan mengajari orang bahwa tombolnya tidak berfungsi.
+  const shifts = snapshot.status === "ready"
+    ? await getSaldoShifts(unit.unit_id, date)
+    : [];
   const view = buildPiutangView(snapshot, piutangViewInput(rawQuery));
   const detailBaseUrl = `/keuangan/unit/${encodeURIComponent(unit.code)}/piutang/${date}/pelanggan`;
 
@@ -88,6 +97,12 @@ export default async function PiutangPelangganPage({
           csvHref={piutangExportHref("csv", unit.code, date, view)}
           pdfHref={piutangExportHref("pdf", unit.code, date, view)}
           pendingBanner={pendingBanner(snapshot as Extract<typeof snapshot, { status: "ready" }>, freshness)}
+          shiftNotice={shiftNotice(shifts)}
+          shiftAck={
+            scope.isSuperAdmin
+              ? { code: unit.code, asOfDate: date, action: acknowledgeShift }
+              : undefined
+          }
         />
       )}
     </>
