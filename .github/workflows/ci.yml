@@ -118,6 +118,10 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+      - run: pnpm --filter @solamax/backend exec vitest run src/saldo-pelanggan/watermark-maju.postgres.test.ts
+        env:
+          SNAPSHOT_POSTGRES_CI: "1"
+          SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
 
   # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
   #
