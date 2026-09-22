@@ -392,3 +392,60 @@ Jalur Ketaatan (`komponenCSql`) diuji terpisah dan juga memulangkan **37.843.138
 kumpulan yatim (Rp 3.450.504 / 306,69 L): DKP Sekretariat, DLH PYPS, PT Cahaya Abda, DKUMP Kota,
 Emporium, PT Persada. Totalnya benar; atribusinya belum. Menutupnya butuh `CRFID` pada baris yatim
 `tr_djualplg` + master kartu — belum disinkron.
+
+## Koreksi 2026-09-22 — penjualan pelanggan TUNAI bukan bagian dari C
+
+**Yang berubah.** Seksi 2 Pelanggan **mengecualikan** baris `pelanggan_sale` yang
+postingnya berbunyi "Penjualan Pelanggan **Tunai**". Sebelumnya ketiga produsen `C`
+menghitungnya.
+
+**Kenapa.** EasyMax mencatat penjualan ke pelanggan bernama yang **dibayar tunai di
+tempat** ke modul yang sama dengan penjualan tempo (`tr_hjualplg` → `pelanggan_sale`).
+Yang membedakannya hanya posting bukunya: `tr_bppiut.vcket` berbunyi "Penjualan
+Pelanggan Tunai" alih-alih "… Kredit". Seksi PELANGGAN laporan Rincian EasyMax tidak
+menghitungnya — dan itu benar secara akuntansi: `C` adalah porsi omzet yang **bukan**
+tunai, jadi `E = A − (B+C+D)` harus membiarkan uang itu di laci. Menghitungnya membuat
+`E` dan `H` kekurangan persis sebesar nilainya. Arah salahnya sama dengan cacat voucher
+2026-09-11: kelebihan catat di `C` terbaca sebagai "lebih setor", bukan "kurang setor".
+
+**Kunci per-TRANSAKSI, bukan per-pelanggan-per-hari.** `tr_bppiut.vcref` identik dengan
+`pelanggan_sale.ckdjualplg` (keduanya `JP…`), jadi pelanggan yang pada hari yang sama
+membeli tunai **dan** tempo tetap terpisah benar. Sapuan 2026 menemukan nol kasus
+bercampur, tetapi bentuk per-transaksi tidak bergantung pada keberuntungan itu.
+
+**Bukti (mirror, unit 1 Imam Bonjol, 2026-09-21):**
+
+| | SolaMax sebelum | SolaMax sesudah | EasyMax (cetak 22-09 07:55) |
+|---|---:|---:|---:|
+| Rupiah | 152.427.507 | **148.147.507** | 148.147.507 |
+| Liter | 10.867,25 | **10.647,25** | 10.647,25 |
+| Baris | 44 | **42** | 42 |
+
+Yang tersaring tepat dua: **DUTA UMINDO** `PLG1276` 160,00 L / Rp 3.872.000
+(`JP2026000010704`) dan **PT SINCRON INTIM** `PLG2375` 60,00 L / Rp 408.000
+(`JP2026000010706`). Seksi Omset, EDC, dan Deposit sudah cocok selisih 0 sebelum
+perbaikan — hanya `C` yang meleset.
+
+**Seberapa luas.** Sapuan 7 unit sepanjang 2026: **44 kasus di 43 hari-unit, 5 dari 7
+unit, Rp 48.072.400**. 28 Oktober 19 kasus / Rp 28.454.280 · Imam Bonjol 17 / Rp
+12.735.812 · Batu Layang 4 / Rp 3.637.600 · Korek 2 / Rp 2.595.200 · Kotabaru 2 /
+Rp 649.508. Bakau dan Adisucipto nihil. Jarang, tapi tiap kejadian menggembosi `H`
+hari itu.
+
+**Batas yang diketahui.**
+
+- Diskriminatornya **teks bebas** `vcket`, bukan kolom berjenis. Itu bentuk yang
+  tersedia di cermin; kolom jenis-bayar tidak disinkron dari `tr_hjualplg`. `vcket`
+  terisi 100% di ketujuh unit (0 kosong dari 169.878 baris 2026), jadi aturan ini tidak
+  gagal-diam — tetapi bila EasyMax mengubah kalimatnya, ia gagal **senyap** ke perilaku
+  lama. Penutup yang lebih kokoh = sinkron kolom jenis-bayar; belum dikerjakan.
+- Baris **YATIM** (`ckdjualplg` NULL) tetap dihitung — `trim(NULL)` tak pernah cocok,
+  jadi `NOT EXISTS` benar. Disengaja (lihat koreksi 2026-09-12).
+- Angka historis di layar **berubah surut** untuk 43 hari-unit itu begitu perbaikan
+  live. Laporan yang sudah dicetak dari SolaMax pada hari-hari tersebut memuat `C` yang
+  kelebihan; `H`-nya kekurangan sebesar nilai di tabel atas.
+
+**Sumber kebenaran kode:** `BUKAN_PENJUALAN_TUNAI` di
+[`apps/dashboard/src/lib/queries.ts`](apps/dashboard/src/lib/queries.ts), dipakai
+`komponenCSql` **dan** `getPelangganForDate`. Uji regresi (merahnya sudah dijalankan
+terhadap ketiga produsen): `queries.komponen-c.test.ts`.
