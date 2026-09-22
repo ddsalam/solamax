@@ -83,11 +83,12 @@ describe("komponen C — satu aturan di tiga query", () => {
     it(`${nama}: penjualan pelanggan TUNAI dikecualikan dari C`, async () => {
       await panggil();
       const sql = q.mock.calls[0]![0].replace(/\s+/g, " ");
-      expect(sql).toMatch(/NOT EXISTS \( SELECT 1 FROM public\.bppiut bt/);
-      expect(sql).toMatch(/bt\.vcket ILIKE '%Penjualan Pelanggan Tunai%'/);
-      // Kuncinya per-TRANSAKSI (vcref = ckdjualplg), bukan per-pelanggan-hari.
-      expect(sql).toMatch(/trim\(bt\.vcref\) = trim\(ps\.ckdjualplg\)/);
-      expect(sql).not.toMatch(/bt\.ckdplg = ps\.ckdplg/);
+      expect(sql).toMatch(/NOT EXISTS \( SELECT 1 FROM public\.pelanggan_master pm/);
+      expect(sql).toMatch(/pm\.sjenis = 4/);
+      expect(sql).toMatch(/trim\(pm\.ckdplg\) = trim\(ps\.ckdplg\)/);
+      // Sejak 2026-09-22 diskriminatornya KOLOM BERKODE, bukan teks bebas:
+      // `vcket` gagal SENYAP bila EasyMax mengubah kalimatnya.
+      expect(sql).not.toMatch(/vcket/);
     });
   }
 

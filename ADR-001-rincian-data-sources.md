@@ -449,3 +449,53 @@ hari itu.
 [`apps/dashboard/src/lib/queries.ts`](apps/dashboard/src/lib/queries.ts), dipakai
 `komponenCSql` **dan** `getPelangganForDate`. Uji regresi (merahnya sudah dijalankan
 terhadap ketiga produsen): `queries.komponen-c.test.ts`.
+
+## Koreksi 2026-09-22 (kedua) — diskriminator tunai pindah dari KALIMAT ke KOLOM BERKODE
+
+**Yang berubah.** Predikat `BUKAN_PENJUALAN_TUNAI` tidak lagi membaca teks bebas
+`tr_bppiut.vcket`, melainkan **`pelanggan_master.sjenis = 4`**.
+
+**Kenapa.** Aturan teks bekerja, tapi rapuh dengan cara yang buruk: bila EasyMax mengubah
+kalimatnya ("Penjualan Plg Cash", "…(T)", apa pun), predikatnya **gagal SENYAP** — tanpa
+error, tanpa alarm — dan `C` kembali menggelembung. `sjenis` adalah `smallint`; ia kebal
+terhadap perubahan kata.
+
+**Dasar.** Kedua aturan **setara sempurna** atas seluruh **107.942** baris `pelanggan_sale`
+2026 di 7 unit:
+
+| | |
+|---|---:|
+| teks "Tunai" **dan** `sjenis=4` | **92** |
+| teks "Tunai" tapi `sjenis` ≠ 4 | **0** |
+| `sjenis=4` tapi teks bukan "Tunai" | **0** |
+
+**Penjaga penukaran** (aturan lama vs baru, `C` per hari-unit, 2026):
+
+| | |
+|---|---:|
+| hari-unit dibandingkan | **1.586** |
+| yang `C`-nya **berbeda** | **0** |
+| total selisih | **Rp 0** |
+
+Penukaran ini **no-op terhadap angka**; yang berubah hanya kerapuhannya. IB 2026-09-21
+tetap 148.147.507 / 10.647,25 L / 42 baris, dan `compC` `komponenCSql` tetap 148.147.507.
+
+⚠️ **Yang ikut berubah sifatnya: per-TRANSAKSI → per-PELANGGAN.** `vcket` beku pada tiap
+transaksi; `sjenis` atribut master yang bisa disunting, dan menyuntingnya **mengubah angka
+hari lampau secara surut**. Diterima karena datanya mendukung: dari **19** pelanggan yang
+pernah bertransaksi tunai pada 2026, **nol** yang juga pernah bertransaksi kredit —
+tunai/kredit memang sifat pelanggannya. Bila kelak ada pelanggan bercampur, aturan ini
+salah untuk pelanggan itu dan harus kembali ke kunci per-transaksi (`bppiut.vcref` =
+`pelanggan_sale.ckdjualplg`).
+
+🪤 **Kawat sandung.** Aturan teks kini menjadi satu-satunya pembanding independen. Kuerinya
+disimpan di komentar `BUKAN_PENJUALAN_TUNAI` (`queries.ts`) — jalankan bila seksi Pelanggan
+dicurigai lagi; kedua kolomnya harus nol.
+
+⚠️ **Jangan campur dengan `kode-pelanggan-kembar`.** Halaman wiki itu memakai `sjenis=4`
+untuk arti "kode dorman" dan melaporkan populasi "17 kode, 43 unit-hari, Rp 44.296.150" —
+**keliru**: sapuan itu sebenarnya menghitung kelas tunai ini. Populasi kode-kembar yang
+sebenarnya, dihitung ulang 2026-09-22 dengan penyaring **nama berpasangan**, adalah
+**5 pasangan / 3 unit-hari / 2 kode duplikat / Rp 2.422.000 / 271,00 L**
+(SARANA JAYA ⟷ CV SARANA JAYA di Batu Layang; EKT ⟷ EKT di 28 Oktober). Mekanismenya tetap
+sah — kasus pendirinya ber-`sjenis=3` dan bukan baris tunai.
