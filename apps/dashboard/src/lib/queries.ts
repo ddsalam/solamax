@@ -1166,29 +1166,58 @@ export async function getAvgDailySales(
  * Menghitungnya membuat `E` dan `H` kekurangan persis sebesar nilainya —
  * alarm kas palsu "lebih setor", searah dengan cacat voucher 2026-09-11.
  *
- * **Kuncinya per-TRANSAKSI, bukan per-pelanggan-per-hari.** `bppiut.vcref`
- * sama persis dengan `pelanggan_sale.ckdjualplg` (keduanya `JP…`), jadi
- * seorang pelanggan yang pada hari yang sama membeli tunai DAN tempo tetap
- * terpisah dengan benar. (Sapuan 2026: 44 kasus, nol yang bercampur — tapi
- * bentuk per-transaksi tak bergantung pada keberuntungan itu.)
+ * 🔁 **DIGANTI 2026-09-22 (kedua) — dari KALIMAT ke KOLOM BERKODE.** Semula
+ * predikat ini membaca teks bebas `vcket` di atas. Itu bekerja, tapi rapuh:
+ * bila EasyMax mengubah kalimatnya, predikatnya **gagal SENYAP** dan `C`
+ * kembali menggelembung tanpa error apa pun. Kini ia membaca
+ * `pelanggan_master.sjenis = 4` — `smallint`, kebal kata-kata.
  *
- * **Baris YATIM tetap masuk**: `ckdjualplg` NULL -> `trim(NULL)` NULL -> tak
- * pernah cocok -> `NOT EXISTS` benar. Itu disengaja (lihat koreksi 2026-09-12).
+ * **Dasar penggantian:** kedua aturan terbukti **setara sempurna** atas seluruh
+ * **107.942** baris `pelanggan_sale` 2026 di 7 unit — 92 cocok, **0** "teks
+ * tunai tapi sjenis<>4", **0** "sjenis=4 tapi teks bukan tunai".
+ *
+ * ⚠️ **Yang ikut berubah sifatnya: per-TRANSAKSI -> per-PELANGGAN.** `vcket`
+ * beku pada tiap transaksi; `sjenis` atribut master yang bisa disunting kapan
+ * saja, dan menyuntingnya **mengubah angka hari-hari lampau secara surut**.
+ * Diterima karena datanya mendukung: dari 19 pelanggan yang pernah bertransaksi
+ * tunai pada 2026, **nol** yang juga pernah bertransaksi kredit — tunai/kredit
+ * memang sifat pelanggannya. Bila suatu saat ada pelanggan bercampur, aturan
+ * ini salah untuk pelanggan itu dan harus kembali ke kunci per-transaksi.
+ *
+ * 🪤 **Kawat sandung — aturan teks adalah satu-satunya pembanding independen,
+ * jadi jangan dilupakan.** Bila seksi Pelanggan dicurigai lagi, jalankan ini;
+ * kedua kolom harus NOL:
+ *
+ *     SELECT count(*) FILTER (WHERE teks AND sjenis IS DISTINCT FROM 4) AS a,
+ *            count(*) FILTER (WHERE NOT teks AND sjenis = 4)            AS b
+ *     FROM (SELECT m.sjenis, EXISTS (SELECT 1 FROM public.bppiut bt
+ *             WHERE bt.unit_id=p.unit_id AND bt.dtgl=p.business_date
+ *               AND COALESCE(bt.sbatal,0)=0 AND bt.sjnsbp=1
+ *               AND trim(bt.vcref)=trim(p.ckdjualplg)
+ *               AND bt.vcket ILIKE '%Penjualan Pelanggan Tunai%') AS teks
+ *           FROM public.pelanggan_sale p LEFT JOIN public.pelanggan_master m
+ *             ON m.unit_id=p.unit_id AND trim(m.ckdplg)=trim(p.ckdplg)
+ *          WHERE COALESCE(p.sbatal,0)=0 AND p.business_date >= '2026-01-01') z;
+ *
+ * ⚠️ **`sjenis=4` juga dipakai wiki `kode-pelanggan-kembar` untuk arti "kode
+ * dorman".** Itu terbukti KELIRU 2026-09-22 — sapuannya sebenarnya menghitung
+ * kelas tunai ini (populasi kode-kembar yang sebenarnya: 5 pasangan / 3
+ * unit-hari / Rp 2.422.000, bukan Rp 44.296.150). Jangan campur kedua konsep.
+ *
+ * **Baris YATIM tetap masuk**: `ckdplg` NULL -> `trim(NULL)` NULL -> tak pernah
+ * cocok -> `NOT EXISTS` benar. Begitu pula baris yang `ckdplg`-nya tak punya
+ * baris master: tak cocok -> tetap dihitung (arah aman, sama seperti sebelum).
  *
  * Bukti (mirror, unit 1, 2026-09-21): tanpa predikat ini C = 152.427.507 /
  * 10.867,25 L / 44 baris; dengan predikat ini **148.147.507 / 10.647,25 L /
  * 42 baris = laporan EasyMax, selisih 0 pada ketiganya**. Yang tersaring
  * tepat dua baris: DUTA UMINDO 3.872.000 dan PT SINCRON INTIM 408.000.
- *
- * `vcket` terisi 100% di ketujuh unit (0 kosong dari 169.878 baris 2026), jadi
- * aturan ini tidak gagal-diam di unit mana pun.
  */
 const BUKAN_PENJUALAN_TUNAI = `NOT EXISTS (
-                  SELECT 1 FROM public.bppiut bt
-                   WHERE bt.unit_id = ps.unit_id AND bt.dtgl = ps.business_date
-                     AND COALESCE(bt.sbatal,0) = 0 AND bt.sjnsbp = 1
-                     AND trim(bt.vcref) = trim(ps.ckdjualplg)
-                     AND bt.vcket ILIKE '%Penjualan Pelanggan Tunai%')`;
+                  SELECT 1 FROM public.pelanggan_master pm
+                   WHERE pm.unit_id = ps.unit_id
+                     AND trim(pm.ckdplg) = trim(ps.ckdplg)
+                     AND pm.sjenis = 4)`;
 
 function komponenCSql(
   unitPred: string,
