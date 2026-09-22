@@ -71,6 +71,26 @@ describe("komponen C — satu aturan di tiga query", () => {
     });
   }
 
+  /**
+   * Penjualan pelanggan TUNAI harus dikecualikan dari C di KETIGA produsen.
+   *
+   * Uji ini MERAH pada implementasi sebelum 2026-09-22. Kasus nyatanya: IB
+   * 2026-09-21 menampilkan C = 152.427.507 sementara laporan EasyMax hari itu
+   * 148.147.507 — persis DUTA UMINDO (3.872.000) + PT SINCRON INTIM (408.000),
+   * keduanya berposting "Penjualan Pelanggan Tunai".
+   */
+  for (const [nama, panggil] of PRODUSEN) {
+    it(`${nama}: penjualan pelanggan TUNAI dikecualikan dari C`, async () => {
+      await panggil();
+      const sql = q.mock.calls[0]![0].replace(/\s+/g, " ");
+      expect(sql).toMatch(/NOT EXISTS \( SELECT 1 FROM public\.bppiut bt/);
+      expect(sql).toMatch(/bt\.vcket ILIKE '%Penjualan Pelanggan Tunai%'/);
+      // Kuncinya per-TRANSAKSI (vcref = ckdjualplg), bukan per-pelanggan-hari.
+      expect(sql).toMatch(/trim\(bt\.vcref\) = trim\(ps\.ckdjualplg\)/);
+      expect(sql).not.toMatch(/bt\.ckdplg = ps\.ckdplg/);
+    });
+  }
+
   it("ketiganya memakai predikat posting yang IDENTIK", async () => {
     const teks: string[] = [];
     for (const [, panggil] of PRODUSEN) {
