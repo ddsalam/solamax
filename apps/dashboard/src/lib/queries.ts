@@ -1119,8 +1119,13 @@ export async function getAvgDailySales(
  *
  * **Aturan (terbukti eksak ke laporan EasyMax, KB 2026-08-31):**
  *
- *   C = `pelanggan_sale` non-batal (termasuk baris YATIM `ckdplg` NULL)
+ *   C = `pelanggan_sale` non-batal, **BUKAN penjualan tunai** (termasuk baris
+ *       YATIM `ckdplg` NULL)
  *     + voucher PER REF: posting hidup bila ada, **cadangan detail** bila tidak
+ *
+ * ⚠️ **Penjualan pelanggan TUNAI dikecualikan** (ditambahkan 2026-09-22, lihat
+ * `BUKAN_PENJUALAN_TUNAI`): ia ada di modul yang sama dengan penjualan tempo,
+ * tetapi uangnya masuk laci — laporan EasyMax juga tidak menghitungnya.
  *
  * ⚠️ **Kenapa per-ref dengan cadangan, bukan posting saja.** EasyMax menulis ulang
  * posting tiap kali laporan dicetak (pola posting + `- Pembalik`). Sebuah ref bisa
@@ -1147,6 +1152,44 @@ export async function getAvgDailySales(
  * @param d1       ekspresi SQL batas atas inklusif (tanpa FROM)
  * @param perUnit  true -> hasil ber-unit_id (GROUP BY 1,2); false -> per tanggal saja
  */
+/**
+ * Predikat **BUKAN penjualan pelanggan TUNAI** — dipakai pada SETIAP pembacaan
+ * `pelanggan_sale` yang mengisi komponen `C`. Alias tabel luarnya wajib `ps`.
+ *
+ * 🔴 **Kelas cacat yang ditutupnya.** EasyMax mencatat penjualan ke pelanggan
+ * bernama yang dibayar **tunai di tempat** ke modul yang sama dengan penjualan
+ * tempo (`tr_hjualplg` -> `pelanggan_sale`), dan membedakannya hanya lewat
+ * posting bukunya: `vcket` berbunyi "Penjualan Pelanggan **Tunai**" alih-alih
+ * "... **Kredit**". Seksi PELANGGAN laporan Rincian EasyMax **tidak**
+ * menghitungnya, dan itu benar secara akuntansi: `C` adalah porsi omzet yang
+ * BUKAN tunai, jadi `E = A - (B+C+D)` harus membiarkan uang itu di laci.
+ * Menghitungnya membuat `E` dan `H` kekurangan persis sebesar nilainya —
+ * alarm kas palsu "lebih setor", searah dengan cacat voucher 2026-09-11.
+ *
+ * **Kuncinya per-TRANSAKSI, bukan per-pelanggan-per-hari.** `bppiut.vcref`
+ * sama persis dengan `pelanggan_sale.ckdjualplg` (keduanya `JP…`), jadi
+ * seorang pelanggan yang pada hari yang sama membeli tunai DAN tempo tetap
+ * terpisah dengan benar. (Sapuan 2026: 44 kasus, nol yang bercampur — tapi
+ * bentuk per-transaksi tak bergantung pada keberuntungan itu.)
+ *
+ * **Baris YATIM tetap masuk**: `ckdjualplg` NULL -> `trim(NULL)` NULL -> tak
+ * pernah cocok -> `NOT EXISTS` benar. Itu disengaja (lihat koreksi 2026-09-12).
+ *
+ * Bukti (mirror, unit 1, 2026-09-21): tanpa predikat ini C = 152.427.507 /
+ * 10.867,25 L / 44 baris; dengan predikat ini **148.147.507 / 10.647,25 L /
+ * 42 baris = laporan EasyMax, selisih 0 pada ketiganya**. Yang tersaring
+ * tepat dua baris: DUTA UMINDO 3.872.000 dan PT SINCRON INTIM 408.000.
+ *
+ * `vcket` terisi 100% di ketujuh unit (0 kosong dari 169.878 baris 2026), jadi
+ * aturan ini tidak gagal-diam di unit mana pun.
+ */
+const BUKAN_PENJUALAN_TUNAI = `NOT EXISTS (
+                  SELECT 1 FROM public.bppiut bt
+                   WHERE bt.unit_id = ps.unit_id AND bt.dtgl = ps.business_date
+                     AND COALESCE(bt.sbatal,0) = 0 AND bt.sjnsbp = 1
+                     AND trim(bt.vcref) = trim(ps.ckdjualplg)
+                     AND bt.vcket ILIKE '%Penjualan Pelanggan Tunai%')`;
+
 function komponenCSql(
   unitPred: string,
   d0: string,
@@ -1162,9 +1205,10 @@ function komponenCSql(
 
   return `SELECT ${selOut} FROM (
              SELECT ${u}business_date AS d, COALESCE(total,0) AS v
-               FROM public.pelanggan_sale
+               FROM public.pelanggan_sale ps
               WHERE ${unitPred} AND COALESCE(sbatal,0)=0
                 AND ${rentang("business_date")}
+                AND ${BUKAN_PENJUALAN_TUNAI}
              UNION ALL
              SELECT ${u}d, COALESCE(p.rp, dt.rp, 0) AS v
                FROM (
@@ -1498,6 +1542,7 @@ export async function getPelangganForDate(
               COALESCE(sum(ps.liter),0) AS liter, COALESCE(sum(ps.total),0) AS rp
        FROM public.pelanggan_sale ps
        WHERE ps.unit_id = $1 AND ps.business_date = $2::date AND COALESCE(ps.sbatal,0) = 0
+         AND ${BUKAN_PENJUALAN_TUNAI}
        GROUP BY 1
      ), vdet AS (
        SELECT trim(vs.ckdusevouc) AS ref,
