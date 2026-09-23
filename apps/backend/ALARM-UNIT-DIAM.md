@@ -148,7 +148,7 @@ severity DEFAULT (kosong) — diverifikasi di produksi 17-09-2026, lihat Langkah
 sebelum revisi barunya hidup. Itu persis kesalahan yang dicatat Langkah 4, dalam bentuk baru.
 
 Sesudah revisi JSON hidup dan **Langkah 6 dibuktikan ulang**, kaki `textPayload` boleh dilepas —
-jangan sebelum itu.
+jangan sebelum itu. Prosedurnya di **Langkah 4c**.
 
 Diadu ke log produksi 18-09-2026 (`gcloud logging read`, jendela 2 hari), ketiga bentuknya:
 
@@ -160,6 +160,59 @@ filter SALAH (severity di LUAR kurung)        0            0   <- memadamkan ked
 ```
 
 Baris ketiga itu bentuk yang paling wajar ditulis orang, dan ia membunuh alarm tanpa galat.
+
+## Langkah 4c — lepas kaki `textPayload` (HANYA setelah Langkah 6 berbunyi)
+
+Kaki `textPayload` adalah jembatan transisi, bukan bagian tetap. Ia menjaga alarm tetap hidup
+selagi revisi lama dan baru berdampingan. Setelah semua revisi yang serve memancarkan bentuk JSON,
+kaki itu tidak lagi cocok dengan apa pun — dan kaki yang tak pernah cocok adalah separuh gerbang
+yang berdiri hijau selamanya tanpa pernah bisa berbunyi.
+
+🛑 **TIGA PRASYARAT, ketiganya harus terpenuhi. Jangan dijalankan lebih awal.**
+
+1. Revisi ber-JSON **serve 100% traffic** di `solamax-ingest-staging`. Revisi lama yang masih
+   menerima sebagian traffic memancarkan `textPayload`; melepas kakinya membuat insiden dari
+   revisi itu tak terlihat.
+2. **Langkah 6 sudah dibuktikan ulang pada bentuk JSON** — insiden dipancing, dan **emailnya
+   benar-benar masuk**. Konfigurasi yang benar bukan bukti kawat yang menyala.
+3. Kontrol positif: filter kaki JSON **saja** mencocokkan entri nyata. Buktikan lebih dulu, tanpa
+   menyentuh metriknya:
+
+```bash
+for M in sync_health frozen_shift; do
+  printf '%s kaki-JSON-saja: ' "$M"
+  gcloud logging read "resource.type=\"cloud_run_revision\"
+AND resource.labels.service_name=\"solamax-ingest-staging\"
+AND jsonPayload.msg=\"${M}_incident\" AND severity>=ERROR" \
+    --project solamax --freshness=2d --limit=50 --format="value(timestamp)" | wc -l
+done
+```
+
+`sync_health` boleh **0** bila armadanya memang sehat sepanjang jendela itu — nol di sana bukan
+kegagalan kontrol, melainkan ketiadaan subjek. Yang WAJIB bukan-nol adalah penanda yang memang
+sedang punya insiden. Kalau keduanya nol, perpanjang `--freshness` atau pancing satu insiden dulu;
+**jangan melepas kaki lama atas dasar jendela yang kebetulan kosong.**
+
+Baru setelah ketiganya terpenuhi:
+
+```bash
+for M in sync_health frozen_shift; do
+  gcloud logging metrics update "solamax_${M}_incident" --project solamax \
+    --log-filter="resource.type=\"cloud_run_revision\"
+resource.labels.service_name=\"solamax-ingest-staging\"
+jsonPayload.msg=\"${M}_incident\"
+severity>=ERROR"
+done
+```
+
+Sesudah melepas, **jalankan Langkah 6 sekali lagi**. Pelepasan ini menyentuh satu-satunya jalur
+yang membuat alarm berbunyi; ia tidak boleh berakhir dengan asumsi.
+
+Keadaan pada 18-09-2026 sore, sebagai contoh prasyarat yang BELUM terpenuhi: pilot masih menyajikan
+`solamax-ingest-staging-00055-zbw` (revisi sebelum JSON) pada 100% traffic, dan kontrol positif
+kaki-JSON-saja memulangkan **0 dan 0**. Melepas kaki `textPayload` pada keadaan itu akan
+memadamkan kedua alarm — prasyarat 1 dan 3 keduanya gagal, dan gagalnya terlihat justru karena
+kontrolnya dijalankan lebih dulu.
 
 ## Langkah 5 — saluran email + policy
 
