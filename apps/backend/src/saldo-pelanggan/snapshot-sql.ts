@@ -802,45 +802,105 @@ WHERE unit_id = $1::smallint
 RETURNING work_id`;
 
 /**
- * Clear the durable watermark only after every stored target at/after the
- * invalidation boundary points to a complete cut that covers it. The coverage
- * tuple remains as durable evidence. $1 unit, $2 just-published target date.
+ * SATU predikat untuk "tanggal ini masih kotor", dipakai di SATU tempat.
+ *
+ * ⛔ Bentuk lama memakai dua predikat yang harus cocok: sebuah NOT EXISTS untuk
+ * menentukan boleh-tidaknya mencabut, dan tak ada apa pun untuk menentukan
+ * sampai mana kemajuan sudah sampai. Menambahkan yang kedua sebagai salinan
+ * akan menciptakan pasangan yang bisa menyimpang: satu klausa meleset, dan satu
+ * tanggal terdampar SENYAP di bawah watermark baru — kotor, tapi tak pernah
+ * ditandai lagi, sehingga angkanya membeku salah di layar.
+ *
+ * Maka predikatnya dijadikan satu dan diturunkan: `min()` atas himpunan ini
+ * memberi tanggal terkotor yang tersisa, dan KOSONGNYA himpunan ini ADALAH
+ * syarat pencabutan. Tidak ada dua hal untuk disamakan.
+ */
+const SISA_KOTOR_PREDIKAT = `p.as_of_date >= d.dirty_invalid_from
+    AND (
+      p.pending_replacement
+      OR p.source_cycle_sequence < d.dirty_source_cycle_sequence
+    )`;
+
+/**
+ * Memajukan watermark ke tanggal terkotor yang TERSISA, dan mencabutnya hanya
+ * ketika tak ada sisa. $1 unit, $2 tanggal yang baru saja terbit.
+ *
+ * ⚠️ KENAPA MAJU, BUKAN HANYA DICABUT — ini bukan optimasi, ini memperbaiki
+ * TREADMILL. `MARK_STALE_POINTERS_SQL` dipanggil TANPA SYARAT pada tiap
+ * finalisasi cut (`source-capture.service.ts`), jadi tiap pointer >= watermark
+ * ditandai kotor lagi tiap malam. Bentuk lama hanya bisa mencabut bila SELURUH
+ * himpunan bersih SERENTAK, di dalam satu putaran. Akibatnya kemajuan semalam
+ * bernilai NOL: membangun ulang 16 dari 17 meninggalkan unit persis di tempat
+ * semula keesokan harinya, dan himpunannya bertambah satu tiap malam karena
+ * tiap malam menerbitkan satu tanggal baru.
+ *
+ * Tidak ada angka `maxItems` yang menyelesaikan treadmill — ia hanya memindahkan
+ * garis yang harus dilompati. Yang menyelesaikannya adalah membuat kemajuan
+ * TAHAN LAMA: watermark yang maju berarti tanggal yang sudah dibangun ulang
+ * tinggal di bawahnya dan tidak ditandai lagi. Tunggakan N lalu selesai dalam
+ * ceil(N / defaultItems) malam, bukan menuntut N < defaultItems.
+ *
+ * KENAPA MEMAJUKAN ITU BENAR, bukan pelonggaran: arti watermark adalah "setiap
+ * tanggal terbit dari sini ke depan mungkin salah". Tanggal yang sudah dibangun
+ * ulang pada cut terbaru sudah memuat seluruh bukti sampai cut itu, jadi ia
+ * tidak lagi mungkin salah. Tanggal terawal yang masih mungkin salah adalah
+ * yang tertua belum dibangun. Memajukan ke sana MENGETATKAN aproksimasi
+ * konservatif. Bukti masa depan tidak hilang: `LEAST(...)` di
+ * `UPSERT_DIRTY_WATERMARK_SQL` menurunkan watermark lagi begitu ada perubahan
+ * yang menjangkau lebih mundur.
+ *
+ * Penjaganya bila maju terlalu jauh: gerbang G6 di
+ * `scripts/piutang-verifikasi/01-build-malam.sql` ("bukti bilang harus bergerak
+ * tapi tak ada rebuild = MERAH") berbunyi persis pada keadaan itu.
+ *
+ * 🔒 Baris `saldo_pelanggan_dirty` unit ini SUDAH dikunci `FOR UPDATE` oleh
+ * transaksi yang sama lewat `LOCK_DIRTY_WATERMARK_SQL`, jauh sebelum pernyataan
+ * ini. Jadi ia tidak mengambil kunci baru sama sekali, dan tidak menambah titik
+ * kontensi di jalur panas publikasi.
+ *
+ * 🔁 Penjaga thrash: `IS DISTINCT FROM` di bawah membuat pernyataan ini TIDAK
+ * meng-UPDATE apa pun ketika watermark tidak benar-benar berpindah. `version`
+ * dan `updated_at` hanya bergerak pada perpindahan yang nyata.
  */
 export const CLEAR_DIRTY_IF_COVERED_SQL = `
-WITH candidate AS (
-  SELECT p.unit_id, p.as_of_date, p.generation_id, p.source_cycle_sequence
+WITH d AS (
+  SELECT unit_id, dirty_invalid_from, dirty_source_cycle_sequence
+  FROM app.saldo_pelanggan_dirty
+  WHERE unit_id = $1::smallint AND dirty_invalid_from IS NOT NULL
+), sisa AS (
+  SELECT min(p.as_of_date) AS tertua
   FROM app.saldo_pelanggan_snapshot_pointer p
-  JOIN app.saldo_pelanggan_dirty d ON d.unit_id = p.unit_id
-  WHERE p.unit_id = $1::smallint
-    AND p.as_of_date = $2::date
-    AND d.dirty_invalid_from IS NOT NULL
+  JOIN d ON d.unit_id = p.unit_id
+  WHERE ${SISA_KOTOR_PREDIKAT}
+), terbit AS (
+  SELECT p.as_of_date, p.generation_id, p.source_cycle_sequence
+  FROM app.saldo_pelanggan_snapshot_pointer p
+  JOIN d ON d.unit_id = p.unit_id
+  WHERE p.as_of_date = $2::date
     AND p.as_of_date >= d.dirty_invalid_from
     AND p.source_cycle_sequence >= d.dirty_source_cycle_sequence
     AND NOT p.pending_replacement
-    AND NOT EXISTS (
-      SELECT 1
-      FROM app.saldo_pelanggan_snapshot_pointer pending
-      WHERE pending.unit_id = p.unit_id
-        AND pending.as_of_date >= d.dirty_invalid_from
-        AND (
-          pending.pending_replacement
-          OR pending.source_cycle_sequence < d.dirty_source_cycle_sequence
-        )
-    )
 )
-UPDATE app.saldo_pelanggan_dirty d
-SET dirty_invalid_from = NULL,
-    dirty_source_cycle_id = NULL,
-    dirty_source_cycle_sequence = NULL,
-    dirty_since = NULL,
-    covered_through_date = c.as_of_date,
-    covered_by_generation_id = c.generation_id,
-    covered_source_cycle_sequence = c.source_cycle_sequence,
-    version = d.version + 1,
+UPDATE app.saldo_pelanggan_dirty t
+SET dirty_invalid_from = s.tertua,
+    dirty_source_cycle_id = CASE WHEN s.tertua IS NULL
+      THEN NULL ELSE t.dirty_source_cycle_id END,
+    dirty_source_cycle_sequence = CASE WHEN s.tertua IS NULL
+      THEN NULL ELSE t.dirty_source_cycle_sequence END,
+    dirty_since = CASE WHEN s.tertua IS NULL
+      THEN NULL ELSE t.dirty_since END,
+    covered_through_date = CASE WHEN s.tertua IS NULL
+      THEN e.as_of_date ELSE t.covered_through_date END,
+    covered_by_generation_id = CASE WHEN s.tertua IS NULL
+      THEN e.generation_id ELSE t.covered_by_generation_id END,
+    covered_source_cycle_sequence = CASE WHEN s.tertua IS NULL
+      THEN e.source_cycle_sequence ELSE t.covered_source_cycle_sequence END,
+    version = t.version + 1,
     updated_at = clock_timestamp()
-FROM candidate c
-WHERE d.unit_id = c.unit_id
-RETURNING d.unit_id`;
+FROM sisa s, terbit e
+WHERE t.unit_id = $1::smallint
+  AND s.tertua IS DISTINCT FROM t.dirty_invalid_from
+RETURNING t.unit_id, t.dirty_invalid_from`;
 
 /** $1 unit, $2 date, $3 generation, $4 code, $5 summary, $6 retryable. */
 export const FAIL_MANIFEST_SQL = `

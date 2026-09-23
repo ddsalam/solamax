@@ -119,6 +119,31 @@ function tanpaKomentar(q: string): string {
   return q.replace(/--.*$/gm, "");
 }
 
+/**
+ * Netralkan `FROM` yang MILIK OPERATOR, bukan milik klausa tabel.
+ *
+ * 🔴 LUBANG YANG DITUTUPNYA (18 Sep 2026): `IS DISTINCT FROM t.kolom` membuat
+ * penjaga ini melaporkan tabel bernama `t`. Kelas yang sama pernah menggigit
+ * lebih dulu lewat `extract(epoch FROM now())` — dilaporkan sebagai tabel `now`,
+ * dan waktu itu DIHINDARI dengan menulis ulang SQL-nya jadi `date_part`, bukan
+ * diperbaiki di sini. Itu keliru: positif-palsu semahal negatif-palsu, sebab ia
+ * mengajari orang menulis SQL yang lebih buruk demi menyenangkan penjaganya.
+ *
+ * Ini TIDAK melemahkan penjaga. Di belakang `IS [NOT] DISTINCT FROM` dan di
+ * dalam `EXTRACT(<bagian> FROM …)` yang berdiri selalu EKSPRESI, tak pernah
+ * nama tabel — jadi tak ada rujukan tabel sungguhan yang bisa tersembunyi.
+ * Daya-bedanya diuji dua arah di bawah.
+ *
+ * ⚠️ Yang MASIH belum ditangani, disebut supaya tidak terlupa:
+ * `SUBSTRING(x FROM …)`, `TRIM(… FROM x)`, `OVERLAY(… FROM …)`. Ketiganya belum
+ * dipakai di repo ini; begitu dipakai, positif-palsunya kembali.
+ */
+export function tanpaFromOperator(q: string): string {
+  return q
+    .replace(/\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b/gi, "IS_DISTINCT_OP")
+    .replace(/\bEXTRACT\s*\(\s*([a-z_]+)\s+FROM\b/gi, "EXTRACT($1 OF");
+}
+
 /** Potong sumber jadi kueri-kueri: isi setiap template literal & string. */
 function kueriDalam(src: string): string[] {
   return [
@@ -127,6 +152,7 @@ function kueriDalam(src: string): string[] {
     ...[...src.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]!),
   ]
     .map(tanpaKomentar)
+    .map(tanpaFromOperator)
     .filter((q) => /\b(FROM|JOIN|INTO|USING)\s/i.test(q));
 }
 
@@ -201,6 +227,32 @@ describe("nama tabel di kueri mentah harus ada di schema.prisma", () => {
       "users",
       "membership",
     ]);
+  });
+
+  it("🔴 FROM milik OPERATOR dinetralkan — dan penetralannya tak membutakan penjaga", () => {
+    // Positif-palsu yang melahirkan perbaikan ini: `IS DISTINCT FROM t.kolom`
+    // dilaporkan sebagai tabel `t` (CLEAR_DIRTY_IF_COVERED_SQL, 18 Sep 2026).
+    const distinct = "UPDATE app.saldo_pelanggan_dirty t SET x = 1\n"
+      + "FROM sisa s WHERE s.tertua IS DISTINCT FROM t.dirty_invalid_from";
+    expect([...tanpaFromOperator(distinct).matchAll(RE_TABEL)].map((m) => m[2]))
+      .toEqual(["sisa"]);
+    // DAYA-BEDA: tanpa penetralan, alias `t` terbaca sebagai tabel.
+    expect([...distinct.matchAll(RE_TABEL)].map((m) => m[2])).toContain("t");
+
+    // Kelas yang sama, lebih tua: extract(epoch FROM now()) -> tabel `now`.
+    const ekstrak = "SELECT extract(epoch FROM now() - x) FROM app.day_close";
+    expect([...tanpaFromOperator(ekstrak).matchAll(RE_TABEL)].map((m) => m[2]))
+      .toEqual(["day_close"]);
+    expect([...ekstrak.matchAll(RE_TABEL)].map((m) => m[2])).toContain("now");
+
+    // 🔴 YANG PALING PENTING: penjaga TETAP menangkap tabel tak dikenal pada
+    // kueri yang juga memuat operator itu. Tanpa baris ini, penetralan di atas
+    // bisa saja membuang terlalu banyak dan tak ada yang tahu.
+    const hantu = "SELECT 1 FROM app.tabel_hantu h\n"
+      + "WHERE h.a IS NOT DISTINCT FROM h.b AND extract(year FROM h.c) = 1";
+    const nama = [...tanpaFromOperator(hantu).matchAll(RE_TABEL)].map((m) => m[2]);
+    expect(nama).toContain("tabel_hantu");
+    expect(dikenal.has("tabel_hantu")).toBe(false);
   });
 
   it("CTE PostgreSQL MATERIALIZED tetap dikenali sebagai CTE", () => {
