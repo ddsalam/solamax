@@ -15,6 +15,10 @@ import type { Response } from "express";
 import { SNAPSHOT_BACKFILL_LIMITS, SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import { PrismaService } from "../prisma.service.js";
 import type { RetirementSummary } from "./source-capture.service.js";
+// Format baris alarm yang SAMA dengan probe sync-health/frozen-shift: satu baris
+// JSON ber-kunci `severity`. Rumahnya di sync-health karena di situlah rel ini
+// lahir; kalau konsumen ketiga muncul, ia layak pindah ke modul bersama.
+import { StructuredLogger } from "../sync-health/structured-logger.js";
 
 /**
  * Bentuk respons `/retire`. Total tetap ada di tingkat atas supaya pemanggilan
@@ -136,9 +140,22 @@ function throwWorkerOutcome(result: SnapshotWorkerBatchResult, status: number): 
   }, status);
 }
 
+/**
+ * Penanda yang DIKONSUMSI alarm — satu kontrak dengan log-based metric
+ * `solamax_retire_incident`. Dikunci uji supaya mengubahnya menjatuhkan CI,
+ * bukan menjatuhkan alarm diam-diam.
+ */
+export const RETIRE_INCIDENT_MARKER = "retire_incident";
+
 @Controller("snapshot-worker")
 export class SnapshotTriggerController {
   private readonly logger = new Logger(SnapshotTriggerController.name);
+  /**
+   * Jalur ALARM, terpisah dari `logger` biasa. Severity menjadi fakta yang
+   * dikirim aplikasi, bukan tebakan infrastruktur dari stream mana barisnya
+   * keluar — sama seperti probe sync-health sejak #381.
+   */
+  private readonly alarm = new StructuredLogger(SnapshotTriggerController.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -225,8 +242,8 @@ export class SnapshotTriggerController {
     );
     const review = loud.length > 0 || run.skipped.length > 0;
 
-    const line = JSON.stringify({
-      msg: "snapshot-retire finished",
+    const payload = {
+      msg: RETIRE_INCIDENT_MARKER,
       unit_id: unitId,
       units: run.units.map((u) => ({
         unit_id: u.unitId,
@@ -253,8 +270,19 @@ export class SnapshotTriggerController {
       cycles_drained: total.cyclesDrained,
       staging_review: review,
       ms: Date.now() - startedAt,
-    });
-    if (review) this.logger.warn(line); else this.logger.log(line);
+    };
+    // 🛑 SEBELUM INI, kegagalan pemensiunan TIDAK PERNAH mencapai alarm.
+    //
+    // Barisnya ditulis `Logger.warn` bawaan Nest — teks ber-ANSI, jadi Cloud
+    // Logging memasukkannya sebagai `textPayload` ber-severity DEFAULT (terukur:
+    // 42 baris dalam 2 hari, severity kosong seluruhnya). Tidak ada log-based
+    // metric yang mencocokinya. Jadi ketika pemensiunan gagal +-4x sehari pada
+    // 21-24 September 2026 dan `staging_review` menyala, datanya ada sepanjang
+    // waktu dan tak ada yang membacanya selama tiga hari.
+    //
+    // Itu bentuk cacat yang sama persis dengan "unit punya job tetapi selalu
+    // idle" — dan alarm inilah yang menutupnya.
+    if (review) this.alarm.error(payload); else this.alarm.log(payload);
 
     return { status: "retired", ...total, units: run.units, skipped: run.skipped, staging_review: review };
   }
