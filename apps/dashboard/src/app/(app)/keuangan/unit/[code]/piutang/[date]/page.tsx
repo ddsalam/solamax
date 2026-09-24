@@ -12,8 +12,8 @@ import {
   readinessProps,
   shiftNotice,
 } from "@/lib/piutang-route";
-import { getSaldoShifts } from "@/lib/saldo-shift";
-import { acknowledgeShift } from "@/lib/shift-ack-actions";
+import { getSaldoShiftGroups, getSaldoShifts } from "@/lib/saldo-shift";
+import { acknowledgeShift, acknowledgeShiftGroup } from "@/lib/shift-ack-actions";
 import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
@@ -49,6 +49,13 @@ export default async function PiutangPelangganPage({
   // setelah diklik akan mengajari orang bahwa tombolnya tidak berfungsi.
   const shifts = snapshot.status === "ready"
     ? await getSaldoShifts(unit.unit_id, date)
+    : [];
+  // Kelompok koreksi mencakup SELURUH tanggal unit ini, bukan hanya tanggal
+  // yang sedang dibuka: satu koreksi sumber menggeser banyak tanggal sekaligus,
+  // dan memaksa pemilik membuka tiap tanggal satu per satu mengubah pengakuan
+  // jadi klik refleks. Hanya pemilik yang menerimanya.
+  const shiftGroups = snapshot.status === "ready" && scope.isSuperAdmin
+    ? await getSaldoShiftGroups(unit.unit_id)
     : [];
   const view = buildPiutangView(snapshot, piutangViewInput(rawQuery));
   const detailBaseUrl = `/keuangan/unit/${encodeURIComponent(unit.code)}/piutang/${date}/pelanggan`;
@@ -101,6 +108,11 @@ export default async function PiutangPelangganPage({
           shiftAck={
             scope.isSuperAdmin
               ? { code: unit.code, asOfDate: date, action: acknowledgeShift }
+              : undefined
+          }
+          shiftGroups={
+            scope.isSuperAdmin && shiftGroups.length > 0
+              ? { code: unit.code, action: acknowledgeShiftGroup, kelompok: shiftGroups }
               : undefined
           }
         />

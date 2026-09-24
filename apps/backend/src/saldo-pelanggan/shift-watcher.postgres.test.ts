@@ -157,6 +157,34 @@ function ack(date: string, gen: string, email = "damiandionsalam@gmail.com"): vo
  VALUES (1,'${date}','${gen}','${email}');`);
 }
 
+/**
+ * SQL pengakuan per-koreksi dibaca dari berkas dashboard-nya, bukan disalin.
+ * Salinan akan menyimpang diam-diam, dan yang diuji lalu bukan yang dijalankan.
+ */
+/**
+ * Mengikat $n berdasar INDEKS, bukan lewat rantai `.replace()` atas teks
+ * tertentu. Rantai itu rapuh: begitu pernyataannya berubah bentuk, ikatannya
+ * meleset dan ujinya gagal karena galat psql — merah yang tidak menjelaskan
+ * apa-apa, bukan merah yang membedakan.
+ */
+function ikat(statement: string, values: string[]): string {
+  return statement.replace(/\$(\d+)(::[a-z\[\]]+)?/gi, (_t, i: string, cast?: string) => {
+    const v = values[Number(i) - 1];
+    if (v === undefined) throw new Error(`nilai $${i} tidak disediakan`);
+    return `${v}${cast ?? ""}`;
+  });
+}
+
+function dashboardSql(nama: string): string {
+  const src = readFileSync(
+    resolve(__dirname, "../../../dashboard/src/lib/saldo-shift.ts"),
+    "utf8",
+  );
+  const m = new RegExp(`export const ${nama} = \`([^\`]*)\``).exec(src);
+  if (!m) throw new Error(`${nama} tidak ditemukan di saldo-shift.ts`);
+  return m[1]!;
+}
+
 suite("pengawas pergerakan angka BEKU (PostgreSQL 16)", () => {
   beforeAll(() => {
     connection = ciConnection(process.env.SNAPSHOT_POSTGRES_CI_URL);
@@ -304,5 +332,55 @@ suite("pengawas pergerakan angka BEKU (PostgreSQL 16)", () => {
       { tanggal: BEKU, generation_id: GEN_C, frozen: true, geser: "3732737" },
       { tanggal: DALAM_JENDELA, generation_id: GEN_E, frozen: false, geser: "150" },
     ]);
+  });
+
+  // ⛔ Pengakuan per-KOREKSI: satu koreksi menggeser banyak tanggal. Yang
+  // dilarang bukan jumlah kliknya, melainkan pengakuan yang CAKUPANNYA
+  // TERSEMBUNYI. Uji di bawah menjaga cakupan itu tetap persis daftar yang
+  // diajukan — tak lebih.
+  it("mengakui PERSIS daftar yang diajukan, tidak memekar ke peristiwa lain", () => {
+    resetSchema();
+    sql(migrationText("0040_saldo_pelanggan_shift"));
+
+    // Tiga peristiwa beku dari satu koreksi.
+    const gens = [GEN_A, GEN_B, GEN_C];
+    const tanggal = ["2026-06-30", "2026-07-31", BEKU];
+    for (let i = 0; i < 3; i += 1) {
+      seedManifest(tanggal[i]!, gens[i]!, CUT2, 2, "2026-09-14 19:05:15+00", `${100 + i}`);
+      sql(`INSERT INTO app.saldo_pelanggan_shift
+ (unit_id,as_of_date,generation_id,previous_generation_id,source_cycle_sequence,
+  source_completed_at,frozen,after_akhir_piutang_lokal,before_akhir_piutang_lokal)
+ VALUES (1,'${tanggal[i]}','${gens[i]}','${GEN_D}',2,'2026-09-14 19:05:15+00',true,${100 + i},0);`);
+    }
+
+    const verify = dashboardSql("VERIFY_SHIFT_GROUP_SQL");
+    const insert = dashboardSql("INSERT_SHIFT_GROUP_ACK_SQL");
+    const arr = (xs: string[]) => `ARRAY[${xs.map((x) => `'${x}'`).join(",")}]`;
+
+    // Diajukan DUA dari tiga.
+    const nilai = [
+      "1", arr([tanggal[0]!, tanggal[1]!]), arr([gens[0]!, gens[1]!]),
+      "'1'", "'dion@example.com'", "''",
+    ];
+    expect(Number(sql(ikat(verify, nilai)))).toBe(2);
+    sql(ikat(insert, nilai));
+
+    // Tepat dua baris ack — satu per peristiwa, bukan satu baris kolektif.
+    expect(rows(`SELECT generation_id FROM app.saldo_pelanggan_shift_ack ORDER BY as_of_date`)
+      .map((r) => r.generation_id)).toEqual([gens[0], gens[1]]);
+
+    // 🔴 Yang KETIGA tetap belum diakui — pengakuan tidak memekar.
+    expect(belumDiakui().map((r) => r.generation_id)).toEqual([gens[2]]);
+  });
+
+  it("menolak seluruhnya bila satu peristiwa sudah diakui — hitungannya tak cocok", () => {
+    const verify = dashboardSql("VERIFY_SHIFT_GROUP_SQL");
+    const semua = rows(`SELECT as_of_date::text AS d, generation_id AS g
+                         FROM app.saldo_pelanggan_shift ORDER BY as_of_date`);
+    const d = `ARRAY[${semua.map((r) => `'${r.d}'`).join(",")}]`;
+    const g = `ARRAY[${semua.map((r) => `'${r.g}'`).join(",")}]`;
+    // Tiga diajukan, dua di antaranya sudah diakui pada uji sebelumnya.
+    expect(Number(sql(ikat(verify, ["1", d, g])))).toBe(1);
+    expect(semua).toHaveLength(3); // dan pemanggil menolak karena 1 <> 3
   });
 });

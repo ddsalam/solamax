@@ -16,6 +16,8 @@ import {
 } from "@/lib/piutang-model";
 import {
   piutangQueryHref,
+  shiftGroupDates,
+  shiftGroupLabel,
   type PiutangPendingBanner,
   type PiutangShiftNotice,
 } from "@/lib/piutang-route";
@@ -60,6 +62,20 @@ export type PiutangPelangganViewProps =
         code: string;
         asOfDate: string;
         action: (formData: FormData) => Promise<void>;
+      };
+      /**
+       * Pengakuan per KOREKSI: satu koreksi sumber menggeser banyak tanggal.
+       * Daftarnya dibawa EKSPLISIT oleh formulir — server tidak memekarkan
+       * nomor cut menjadi himpunan peristiwa.
+       */
+      shiftGroups?: {
+        code: string;
+        action: (formData: FormData) => Promise<void>;
+        kelompok: Array<{
+          sourceCycleSequence: string;
+          selisihAbsolut: number;
+          peristiwa: Array<{ asOfDate: string; generationId: string }>;
+        }>;
       };
       historicalNote?: string | null;
     })
@@ -413,6 +429,41 @@ export function PiutangPelangganView(props: PiutangPelangganViewProps) {
                   ))}
               </div>
             </div>
+          )}
+
+          {props.shiftGroups && props.shiftGroups.kelompok.length > 0 && (
+            <aside className="banner warning b6-piutang-shift-group" aria-label="Koreksi yang menunggu pengakuan">
+              <span className="dot warning" aria-hidden="true" />
+              <div>
+                <strong>
+                  {props.shiftGroups.kelompok.length} koreksi sumber menunggu pengakuan
+                </strong>
+                <p>
+                  Satu koreksi menggeser beberapa tanggal sekaligus. Tiap tanggal
+                  di bawah diakui sebagai peristiwa tersendiri dan tercatat
+                  sendiri — tombolnya membawa daftar ini apa adanya.
+                </p>
+                {props.shiftGroups.kelompok.map((g) => (
+                  <form key={g.sourceCycleSequence} action={props.shiftGroups!.action}>
+                    <input type="hidden" name="code" value={props.shiftGroups!.code} />
+                    {/* Daftar EKSPLISIT: yang diakui manusia sama persis dengan
+                        yang tercatat. Kalau server yang memekarkan nomor cut,
+                        keduanya bisa berbeda — di situlah borongan senyap lahir. */}
+                    <input
+                      type="hidden"
+                      name="peristiwa"
+                      value={JSON.stringify(
+                        g.peristiwa.map((p) => ({ d: p.asOfDate, g: p.generationId })),
+                      )}
+                    />
+                    <p className="b6-piutang-shift-dates">{shiftGroupDates(g)}</p>
+                    <button className="btn-outline" type="submit">
+                      {shiftGroupLabel(g)}
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </aside>
           )}
 
           <PiutangHistoricalNote note={props.historicalNote} />

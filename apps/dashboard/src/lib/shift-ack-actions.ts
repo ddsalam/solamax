@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { q, qScoped } from "./db";
 import { getDataScope } from "./scope";
+import { bacaDaftarPeristiwa } from "./shift-ack-rules";
+import {
+  INSERT_SHIFT_GROUP_ACK_SQL,
+  VERIFY_SHIFT_GROUP_SQL,
+} from "./saldo-shift";
 
 /**
  * Pengakuan pemilik atas pergerakan angka pada data BEKU.
@@ -79,4 +84,79 @@ export async function acknowledgeShift(formData: FormData): Promise<void> {
   );
 
   revalidatePath(`/keuangan/unit/${encodeURIComponent(unit.code)}/piutang/${asOfDate}`);
+}
+
+/**
+ * Pengakuan SATU KOREKSI yang menggeser banyak tanggal sekaligus.
+ *
+ * ⛔ INI BUKAN "SETUJUI SEMUA", dan bedanya struktural, bukan sekadar niat.
+ *
+ * Tombolnya membawa DAFTAR EKSPLISIT yang ia tampilkan. Server tidak pernah
+ * memekarkan sebuah nomor cut menjadi himpunan peristiwa — kalau ia melakukan
+ * itu, yang diakui manusia (sebuah nomor) berbeda dari yang tercatat (tanggal
+ * yang mungkin bertambah antara render dan klik), dan di situlah persetujuan
+ * borongan senyap lahir.
+ *
+ * Akibat yang disengaja: peristiwa yang muncul SESUDAH halaman dirender tidak
+ * ikut terakui. Itu benar — ia belum pernah dilihat siapa pun.
+ *
+ * Lima batas, semuanya server-side:
+ *
+ *  B1  HANYA super_admin — sama dengan `acknowledgeShift`.
+ *  B2  Daftar eksplisit, tidak kosong, dan berbatas. Tanpa daftar = ditolak.
+ *  B3  Tiap peristiwa harus BENAR-BENAR ADA, beku, belum diakui, dan terlihat
+ *      dalam scope pemanggil. Jumlah yang cocok harus SAMA PERSIS dengan yang
+ *      diajukan; selisih satu pun membatalkan seluruhnya.
+ *  B4  Satu baris ack per peristiwa — append-only, bukan satu baris kolektif.
+ *      Pencabutan atau audit per tanggal tetap mungkin.
+ *  B5  Satu baris audit_log yang MENYEBUTKAN tiap tanggalnya, bukan hanya
+ *      jumlahnya.
+ */
+export async function acknowledgeShiftGroup(formData: FormData): Promise<void> {
+  const scope = await getDataScope();
+  if (!scope.isSuperAdmin) throw new Error("forbidden: super_admin only"); // B1
+
+  const code = String(formData.get("code") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  const daftar = bacaDaftarPeristiwa(String(formData.get("peristiwa") ?? "")); // B2
+  const unit = scope.requireUnit(code);
+
+  // B3 — verifikasi dalam SATU kueri ber-scope. `unnest` menjodohkan pasangan
+  // (tanggal, generasi) apa adanya; ia tidak bisa memekar.
+  const found = await qScoped<{ n: string }>(
+    unit.unit_id,
+    VERIFY_SHIFT_GROUP_SQL,
+    [unit.unit_id, daftar.map((x) => x.d), daftar.map((x) => x.g)],
+  );
+  if (Number(found[0]?.n ?? 0) !== daftar.length) {
+    throw new Error("peristiwa pergeseran tidak cocok: sebagian tidak ada, sudah diakui, atau di luar scope");
+  }
+
+  // B4 — satu baris per peristiwa.
+  await qScoped(
+    unit.unit_id,
+    INSERT_SHIFT_GROUP_ACK_SQL,
+    [
+      unit.unit_id, daftar.map((x) => x.d), daftar.map((x) => x.g),
+      String(scope.userId), scope.email, note,
+    ],
+  );
+
+  // B5 — jejak yang menyebut tiap tanggalnya.
+  await q(
+    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, tenant_id, detail)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+    [
+      scope.userId, scope.email, "saldo_shift_acknowledge_group",
+      `${unit.code}/${daftar.length} peristiwa`, null,
+      JSON.stringify({
+        unit_id: unit.unit_id,
+        jumlah: daftar.length,
+        peristiwa: daftar.map((x) => ({ as_of_date: x.d, generation_id: x.g })),
+        note,
+      }),
+    ],
+  );
+
+  revalidatePath(`/keuangan/unit/${encodeURIComponent(unit.code)}/piutang`, "layout");
 }
