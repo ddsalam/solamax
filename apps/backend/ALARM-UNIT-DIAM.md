@@ -147,8 +147,19 @@ severity DEFAULT (kosong) — diverifikasi di produksi 17-09-2026, lihat Langkah
 `severity>=ERROR` di luar kurung akan menjatuhkan kaki lama dan memadamkan alarm SEKARANG JUGA,
 sebelum revisi barunya hidup. Itu persis kesalahan yang dicatat Langkah 4, dalam bentuk baru.
 
-Sesudah revisi JSON hidup dan **Langkah 6 dibuktikan ulang**, kaki `textPayload` boleh dilepas —
-jangan sebelum itu. Prosedurnya di **Langkah 4c**.
+🔒 **KEPUTUSAN 24-09-2026: kaki `textPayload` DITAHAN, bukan dilepas.** Ketiga prasyarat Langkah 4c
+sudah terpenuhi dan ia tetap tidak dilepas — sengaja. Alasannya bukan kehati-hatian, melainkan satu
+skenario nyata: **kalau trafik dikembalikan ke revisi pra-JSON** (rollback Cloud Run), revisi itu
+memancarkan `textPayload` lagi, dan kaki JSON tidak akan mencocoki apa pun. Alarm padam persis pada
+saat ia paling dibutuhkan, yaitu ketika ada yang cukup salah sampai perlu di-rollback.
+
+Ongkos menahannya nol: kaki itu tidak menyaring apa pun yang tidak sah. Ongkos melepasnya adalah
+kebutaan pada satu-satunya keadaan yang membuat rollback terjadi.
+
+⚠️ Karena itu **Langkah 4c tetap ada sebagai PROSEDUR, bukan sebagai pekerjaan yang tertunda.**
+Jangan menjalankannya hanya karena ketiga prasyaratnya hijau — keputusan menahannya berdiri
+terpisah dari prasyaratnya. Kalau suatu saat rollback ke revisi pra-JSON sudah mustahil (misalnya
+revisi lama sudah dihapus), barulah alasan penahanan ini gugur dan Langkah 4c layak dijalankan.
 
 Diadu ke log produksi 18-09-2026 (`gcloud logging read`, jendela 2 hari), ketiga bentuknya:
 
@@ -161,7 +172,12 @@ filter SALAH (severity di LUAR kurung)        0            0   <- memadamkan ked
 
 Baris ketiga itu bentuk yang paling wajar ditulis orang, dan ia membunuh alarm tanpa galat.
 
-## Langkah 4c — lepas kaki `textPayload` (HANYA setelah Langkah 6 berbunyi)
+## Langkah 4c — lepas kaki `textPayload` (PROSEDUR — sedang DITAHAN, lihat Langkah 4b)
+
+> 🔒 **Jangan jalankan sekarang.** Keputusan 24-09-2026 menahan kaki `textPayload` sebagai asuransi
+> rollback. Prasyarat di bawah tetap berlaku bila kelak keputusan itu dicabut; terpenuhinya
+> prasyarat BUKAN alasan menjalankannya.
+
 
 Kaki `textPayload` adalah jembatan transisi, bukan bagian tetap. Ia menjaga alarm tetap hidup
 selagi revisi lama dan baru berdampingan. Setelah semua revisi yang serve memancarkan bentuk JSON,
