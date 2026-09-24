@@ -499,3 +499,44 @@ sebenarnya, dihitung ulang 2026-09-22 dengan penyaring **nama berpasangan**, ada
 **5 pasangan / 3 unit-hari / 2 kode duplikat / Rp 2.422.000 / 271,00 L**
 (SARANA JAYA ⟷ CV SARANA JAYA di Batu Layang; EKT ⟷ EKT di 28 Oktober). Mekanismenya tetap
 sah — kasus pendirinya ber-`sjenis=3` dan bukan baris tunai.
+
+## Koreksi 2026-09-24 — seksi OMSET: detail penjualan basi (NURUT ditulis ulang) tak pernah terhapus
+
+**Yang berubah.** Rescan SALES per tanggal-bisnis (`SALES_RESYNC`) kini mengirim
+`replace_details: true`; backend menghapus baris `sales_detail` milik header-header di
+payload yang `(ckdnozzle, nurut)`-nya tak ada lagi di sumber (`buildSalesDetailPrune`).
+
+**Kenapa.** Batu Layang 23-09-2026, seksi 1 OMSET: SolaMax **59.913,30 L / Rp 716.082.018**,
+EasyMax (Rincian Penjualan) **44.302,50 L / Rp 520.013.802,50**. Seksi lain semua selisih 0.
+Header shift 3 `JB202600798` memuat 40 detail, bukan 26: EasyMax meng-key shift 3 pagi hari
+sebagai `NURUT 0` (DTGLJAM NULL → jam sintetis 00:00 WIB di mirror), lalu saat tutup shift
+menulis ulang 14 nozzle sebagai `NURUT 1`. Baris `NURUT 0` itu lenyap di sumber, tetapi
+`sales_detail` hanya UPSERT — ia tinggal di mirror dan dihitung dua kali. `NURUT 0` yang basi
+bahkan dimulai dari **awal shift 2** (mis. NZ-04 16.532.184,33), jadi ia menghitung ulang
+shift 2 + 3. Membuang 14 baris itu ⇒ keenam produk cocok **eksak** dengan EasyMax.
+
+Kelas yang sama dengan `terra_resmi` 2026-08-24/09-01 ("UPSERT tidak pernah menghapus"),
+kini di tabel penjualan.
+
+**Seberapa luas (mirror, 7 unit, semua tahun).** Detektor: `nurut=0`, jam = tengah malam
+WIB tanggal-bisnis, ada `nurut>0` pada header+nozzle yang sama **dengan rentang meteran
+bertumpuk** (bukan bersambung):
+
+| Hari-unit | Baris | Liter | Rupiah |
+|---|---:|---:|---:|
+| Batu Layang 2026-09-23 | 14 | 15.610,80 | 196.068.215 |
+| Batu Layang 2026-07-25 | 22 | 2.793,51 | 34.296.980 |
+
+Positif palsu yang disingkirkan syarat "bertumpuk": Adisucipto 2026-02-28 (pecah ganti harga
+Rp 12.100→12.600, rentang bersambung) dan Korek 2026-06-09 (`nurut 1/2` ber-jam asli).
+Bukti 25-07 sudah hilang di sumber: rescan 1-Agu menulis ulang semua baris lain header itu
+tetapi tidak menyentuh 22 baris ini (`ingested_at` beku 26-Jul).
+
+**Batas yang diketahui.**
+- Aktif per unit **setelah bundle agent ditukar** (RUNBOOK-SPBU §I). Sampai itu, kasus
+  baru hanya sembuh lewat DELETE manual (`session-notes` 2026-09-24).
+- Hanya menyapu jendela rescan (`salesRescanDays`) / `--resync-sales`. Kasus lebih tua
+  butuh `--resync-sales <from> <to>` sekali di unit itu.
+- Balapan: detail `NURUT` baru yang di-ingest jalur incremental di antara baca-sumber dan
+  pangkas rescan bisa ikut terhapus; ia kembali pada siklus rescan berikutnya (≤ 1 siklus).
+- Laporan SolaMax yang sudah dicetak untuk kedua hari itu memuat Omset/H kelebihan.

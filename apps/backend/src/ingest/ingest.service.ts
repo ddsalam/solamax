@@ -7,7 +7,12 @@ import {
 import type { IngestPayload, IngestResponse } from "@solamax/shared";
 import { REPLACE_WINDOW_DOMAINS } from "@solamax/shared";
 import { PrismaService } from "../prisma.service.js";
-import { buildReplace, buildReplaceWindowDeletes, buildUpsert } from "./sql.js";
+import {
+  buildReplace,
+  buildReplaceWindowDeletes,
+  buildSalesDetailPrune,
+  buildUpsert,
+} from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
 import { SnapshotSourceCaptureService } from "../saldo-pelanggan/source-capture.service.js";
 
@@ -63,10 +68,22 @@ export class IngestService {
         )
       : [];
 
+    // replace_details (sales, rescan per tanggal-bisnis): pangkas detail basi per
+    // header — baris NURUT yang ditulis ulang EasyMax tak boleh tinggal di mirror.
+    if (payload.replace_details && payload.domain !== "sales") {
+      throw new UnprocessableEntityException(
+        `replace_details tidak sah untuk domain ${payload.domain}`,
+      );
+    }
+    const detailPrune = payload.replace_details
+      ? buildSalesDetailPrune(unitId, payload.tables.sales_detail ?? [])
+      : null;
+
     // REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale) → [DELETE, INSERT];
     // selain itu UPSERT by natural key. Semua di SATU transaksi (atomik + idempoten).
     const statements = [
       ...windowDeletes,
+      ...(detailPrune ? [detailPrune] : []),
       ...entries.flatMap(([table, rows]) => {
         const cfg = TABLE_CONFIG[table]!;
         return cfg.replaceByBusinessDate

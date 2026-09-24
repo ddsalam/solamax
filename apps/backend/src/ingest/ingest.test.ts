@@ -196,6 +196,41 @@ describe("IngestService", () => {
     expect(sqls.at(-1)).toContain('"sync_state"');
   });
 
+  it("replace_details sales: pangkas detail basi per header SEBELUM upsert (BL 23-09-2026)", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload: IngestPayload = { ...SALES_PAYLOAD, watermark_high: null, replace_details: true };
+    await new IngestService(prisma).ingest(5, payload);
+    const sqls = executed.map((e) => e.sql);
+    const pruneIdx = sqls.findIndex((s) => s.includes('DELETE FROM "sales_detail"'));
+    const insIdx = sqls.findIndex((s) => s.includes('INSERT INTO "sales_detail"'));
+    expect(pruneIdx).toBeGreaterThan(-1);
+    expect(insIdx).toBeGreaterThan(pruneIdx);
+    expect(sqls[pruneIdx]).toContain("NOT EXISTS");
+    // Header diambil dari DETAIL payload; kunci (header, nozzle, nurut) yang dipertahankan.
+    expect(executed[pruneIdx]!.params).toEqual([5, ["H1"], ["H1"], ["N1"], [1]]);
+  });
+
+  it("tanpa replace_details: sales murni UPSERT, tak ada DELETE", async () => {
+    const { prisma, executed } = fakePrisma();
+    await new IngestService(prisma).ingest(1, SALES_PAYLOAD);
+    expect(executed.some((e) => e.sql.includes("DELETE"))).toBe(false);
+  });
+
+  it("replace_details pada domain selain sales → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = {
+      unit_code: "6478111",
+      domain: "delivery",
+      watermark_high: null,
+      replace_details: true,
+      tables: { delivery: [] },
+    } as unknown as IngestPayload;
+    await expect(new IngestService(prisma).ingest(1, payload)).rejects.toThrow(
+      /replace_details tidak sah/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+
   it("replace_window pada domain non-whitelist → 422 tanpa eksekusi", async () => {
     const { prisma, executed } = fakePrisma();
     const payload = {

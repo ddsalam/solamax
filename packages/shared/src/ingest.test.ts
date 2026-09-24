@@ -145,6 +145,20 @@ describe("IngestPayload", () => {
     expect(r.success).toBe(false);
   });
 
+  it("replace_details: sah untuk sales, DITOLAK untuk domain lain", () => {
+    const sales = {
+      unit_code: "6478201",
+      domain: "sales",
+      watermark_high: null,
+      replace_details: true,
+      tables: {
+        sales_header: [{ ckdjualbbm: "H1", dtgljual: "2026-09-23", nshift: 3, vcket: null }],
+      },
+    };
+    expect(IngestPayload.safeParse(sales).success).toBe(true);
+    expect(IngestPayload.safeParse({ ...winBase, domain: "delivery", replace_details: true, tables: {} }).success).toBe(false);
+  });
+
   it("tanpa replace_window: payload kosong tetap ditolak", () => {
     const r = IngestPayload.safeParse({
       unit_code: "6378301",

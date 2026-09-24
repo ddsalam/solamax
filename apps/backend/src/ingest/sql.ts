@@ -239,6 +239,38 @@ export function buildReplace(
  * punya kolom tanggal → dihapus via join header SEBELUM header-nya. Identifier
  * konstanta; nilai via parameter. RLS `unit_scope` tetap membatasi ke unit GUC.
  */
+/**
+ * Pangkas `sales_detail` basi untuk header yang detailnya dibawa LENGKAP oleh
+ * payload `replace_details` (rescan per tanggal-bisnis). Hapus baris mirror milik
+ * header-header itu yang `(ckdnozzle, nurut)`-nya tak ada di payload.
+ *
+ * Cakupan per HEADER, bukan per jendela: himpunan header diambil dari baris
+ * DETAIL payload (bukan dari sales_header), jadi header tanpa detail di payload —
+ * termasuk sumber kosong — tak pernah tersentuh. Perbandingan `bpchar` mengabaikan
+ * spasi pengisi kolom `character(n)`.
+ */
+export function buildSalesDetailPrune(
+  unitId: number,
+  details: Record<string, unknown>[],
+): { sql: string; params: unknown[] } | null {
+  const headers = [...new Set(details.map((r) => String(r["ckdjualbbm"])))];
+  if (headers.length === 0) return null;
+  return {
+    sql:
+      `DELETE FROM "sales_detail" d WHERE d."unit_id" = $1 ` +
+      `AND d."ckdjualbbm" = ANY($2::bpchar[]) ` +
+      `AND NOT EXISTS (SELECT 1 FROM unnest($3::bpchar[], $4::bpchar[], $5::int[]) AS k(j, n, u) ` +
+      `WHERE k.j = d."ckdjualbbm" AND k.n = d."ckdnozzle" AND k.u = d."nurut")`,
+    params: [
+      unitId,
+      headers,
+      details.map((r) => String(r["ckdjualbbm"])),
+      details.map((r) => String(r["ckdnozzle"])),
+      details.map((r) => Number(r["nurut"])),
+    ],
+  };
+}
+
 export function buildReplaceWindowDeletes(
   domain: "tebus" | "delivery" | "terra_resmi",
   unitId: number,
