@@ -184,3 +184,25 @@ export function shiftNotice(
     menunggu: menunggu.map((s) => ({ generationId: s.generationId, selisihAbsolut: absolut(s) })),
   };
 }
+
+/**
+ * Label satu KOREKSI untuk tombol pengakuannya.
+ *
+ * ⚠️ Label ini WAJIB menyebut JUMLAH tanggal, dan tanggalnya sendiri wajib
+ * ditampilkan di sebelahnya. Tombol yang hanya berbunyi "setujui koreksi ini"
+ * menyembunyikan cakupannya, dan pengakuan yang cakupannya tersembunyi adalah
+ * persetujuan borongan senyap dengan nama lain.
+ */
+export function shiftGroupLabel(group: {
+  sourceCycleSequence: string;
+  peristiwa: Array<{ asOfDate: string }>;
+  selisihAbsolut: number;
+}): string {
+  const n = group.peristiwa.length;
+  return `Koreksi cut ${group.sourceCycleSequence} — ${n} tanggal, selisih ${rp(group.selisihAbsolut)}`;
+}
+
+/** Tanggal yang dicakup satu koreksi, untuk ditampilkan SEBELUM tombol ditekan. */
+export function shiftGroupDates(group: { peristiwa: Array<{ asOfDate: string }> }): string {
+  return group.peristiwa.map((p) => p.asOfDate).join(" · ");
+}
