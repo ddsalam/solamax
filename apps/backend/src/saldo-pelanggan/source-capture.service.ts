@@ -15,6 +15,8 @@ import {
   ENSURE_SOURCE_CYCLE_SQL,
   FAIL_OBSOLETE_SOURCE_CYCLE_SQL,
   FAIL_SUPERSEDED_STAGING_CYCLES_SQL,
+  MARK_CYCLE_DRAINED_SQL,
+  READ_DOOMED_CYCLES_SQL,
   LOCK_SOURCE_CAPTURE_SQL,
   LOCK_SOURCE_CYCLE_ALLOCATION_SQL,
   MARK_STALE_POINTERS_SQL,
@@ -123,6 +125,10 @@ export interface RetirementSummary {
   stagingBefore: number;
   stagingAfter: number;
   rowsDeleted: number;
+  /** Cut yang masih perlu dikuras pada awal putaran ini. */
+  cyclesConsidered: number;
+  /** Cut yang terbukti kosong dan ditandai, sehingga tak diperiksa lagi besok. */
+  cyclesDrained: number;
 }
 
 @Injectable()
@@ -239,7 +245,10 @@ export class SnapshotSourceCaptureService {
    * The newest cut is never touched, so an in-flight capture keeps its rows.
    */
   async collectRetiredSources(unitId: number): Promise<RetirementSummary> {
-    const summary: RetirementSummary = { stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0 };
+    const summary: RetirementSummary = {
+      stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
+      cyclesConsidered: 0, cyclesDrained: 0,
+    };
     // Tahap 1 — menandai. Murni UPDATE metadata, selalu murah.
     // Kedua hitungan staging diambil DI SINI, bukan sesudah pengurasan:
     // staging->failed terjadi pada penandaan, sementara pengurasan hanya
@@ -270,24 +279,74 @@ export class SnapshotSourceCaptureService {
     }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
     if (!marked) return summary;
 
-    // Tahap 2 — pengurasan. Tiap batch COMMIT sendiri, jadi budget yang habis
-    // meninggalkan kemajuan yang tersimpan, bukan nol. Ini yang membedakannya
-    // dari bentuk lama: di sana satu pernyataan tak berbatas melewati budget
-    // dan seluruhnya di-rollback, diam-diam, berulang kali.
+    // Tahap 2 — pengurasan, PER CUT.
+    //
+    // ⚠️ KENAPA PER CUT. Bentuk lama bertanya kepada tabel BARIS ("baris mana
+    // yang layak dihapus"), dengan predikat kelayakan yang hidup di tabel CUT.
+    // Perencana tidak bisa memakai indeks baris untuk predikat itu dan memilih
+    // Seq Scan atas tabel 3,1 GB — yang berjalan SAMPAI HABIS justru ketika tak
+    // ada yang cocok, karena LIMIT baru berhenti setelah cukup baris ditemukan.
+    // Produksi 24-09-2026, unit 7: NOL baris dihapus, 36 detik terpakai, lalu
+    // gagal pada timeout transaksi. Hari itu 11 kali.
+    //
+    // Sekarang daftar cut dibaca lebih dulu (himpunan kecil), dan tiap cut
+    // ditembak lewat PK yang sudah ada. Terukur 7.630 ms -> 16,5 ms.
     const deadline = Date.now() + SNAPSHOT_RETIREMENT_LIMITS.budgetMilliseconds;
-    for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
-      while (Date.now() < deadline) {
-        const deleted = await this.prisma.$transaction(async (tx) => {
-          await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
-          await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
-          return tx.$executeRawUnsafe(sql, unitId, SNAPSHOT_RETIREMENT_LIMITS.batchRows);
-        }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
-        // Batch yang tidak penuh berarti tabel ini sudah terkuras. Berhenti di
-        // sini, bukan pada `deleted === 0`, supaya tidak ada lintasan kosong
-        // tambahan per tabel setiap kali pemensiunan berjalan.
-        summary.rowsDeleted += deleted;
-        if (deleted < SNAPSHOT_RETIREMENT_LIMITS.batchRows) break;
+    const doomed = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+      return tx.$queryRawUnsafe<Array<{ source_cycle_id: string }>>(
+        READ_DOOMED_CYCLES_SQL,
+        unitId,
+      );
+    }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+    summary.cyclesConsidered = doomed.length;
+
+    for (const { source_cycle_id: cycleId } of doomed) {
+      if (Date.now() >= deadline) break;
+
+      // Habis atau tidak SELURUH tiga tabel untuk cut ini. Hanya cut yang
+      // benar-benar tuntas yang boleh ditandai; budget yang habis di tengah
+      // meninggalkan cut itu apa adanya untuk putaran berikutnya.
+      let tuntas = true;
+      for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
+        for (;;) {
+          if (Date.now() >= deadline) { tuntas = false; break; }
+          // Tiap batch COMMIT sendiri, jadi budget yang habis meninggalkan
+          // kemajuan yang tersimpan, bukan nol.
+          const deleted = await this.prisma.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+            await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
+            return tx.$executeRawUnsafe(
+              sql,
+              unitId,
+              cycleId,
+              SNAPSHOT_RETIREMENT_LIMITS.batchRows,
+            );
+          }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+          summary.rowsDeleted += deleted;
+          // Batch yang tidak penuh berarti tabel ini sudah terkuras untuk cut
+          // ini. Berhenti di sini, bukan pada `deleted === 0`, supaya tidak ada
+          // lintasan kosong tambahan per tabel.
+          if (deleted < SNAPSHOT_RETIREMENT_LIMITS.batchRows) break;
+        }
+        if (!tuntas) break;
       }
+      if (!tuntas) break;
+
+      // Penandaannya MEMBUKTIKAN dirinya sendiri: MARK_CYCLE_DRAINED_SQL hanya
+      // mengenai baris bila ketiga tabel benar-benar kosong untuk cut ini.
+      // Tanda yang salah terpasang akan membuat barisnya tak pernah terhapus,
+      // diam-diam; syaratnya karena itu tidak diserahkan ke kode pemanggil.
+      const marked = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(SET_UNIT_SCOPE_SQL, String(unitId));
+        await tx.$executeRawUnsafe(LOCK_SOURCE_CAPTURE_SQL, unitId);
+        return tx.$queryRawUnsafe<Array<{ source_cycle_id: string }>>(
+          MARK_CYCLE_DRAINED_SQL,
+          unitId,
+          cycleId,
+        );
+      }, { timeout: SNAPSHOT_RETIREMENT_LIMITS.batchMilliseconds });
+      if (marked.length === 1) summary.cyclesDrained += 1;
     }
     return summary;
   }

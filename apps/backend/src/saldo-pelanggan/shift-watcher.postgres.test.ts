@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeAll, expect, it, describe } from "vitest";
 import { RECORD_SHIFT_SQL, UPSERT_POINTER_SQL } from "./snapshot-sql.js";
-import { PRUNE_RETIRED_SOURCE_ROWS_SQL } from "./source-capture-sql.js";
+import {
+  PRUNE_RETIRED_SOURCE_ROWS_SQL,
+  READ_DOOMED_CYCLES_SQL,
+} from "./source-capture-sql.js";
 import {
   RLS_POSITIVE_CONTROL_SQL,
   UNACKNOWLEDGED_FROZEN_SHIFTS_SQL,
@@ -90,6 +93,9 @@ INSERT INTO public.unit VALUES(1),(2);`, false);
   sql(migrationText("0037_saldo_pelanggan_snapshot"));
   sql(migrationText("0038_snapshot_manifest_row_count"));
   sql(migrationText("0039_snapshot_debet_kredit"));
+  // 0041 hanya menyentuh source_cycle, jadi aman dipasang di sini walau 0040
+  // sengaja dipasang belakangan oleh masing-masing uji.
+  sql(migrationText("0041_source_cycle_rows_pruned_at"));
   sql(`
 INSERT INTO app.saldo_pelanggan_source_cycle
 (unit_id,source_cycle_id,source_cycle_sequence,status,source_completed_at,promoted_at,
@@ -254,8 +260,13 @@ suite("pengawas pergerakan angka BEKU (PostgreSQL 16)", () => {
         (1,'${CUT2}','B','B',1,sha256('b'::bytea));`);
     const sumberSebelum = Number(rows(`SELECT count(*) AS n FROM app.saldo_pelanggan_source_pelanggan`)[0]!.n);
     expect(sumberSebelum).toBe(2);
-    for (const statement of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
-      sql(bind(statement, [1, 20000]));
+    // Prune kini per-CUT: daftar cut dibaca lebih dulu, lalu tiap cut ditembak
+    // lewat PK-nya. Uji ini hanya perlu pemensiunannya benar-benar MENGHAPUS —
+    // yang dijaganya adalah bahwa peristiwa pergeseran TIDAK ikut terhapus.
+    for (const { source_cycle_id: cut } of rows(bind(READ_DOOMED_CYCLES_SQL, [1]))) {
+      for (const statement of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
+        sql(bind(statement, [1, cut, 20000]));
+      }
     }
     expect(Number(rows(`SELECT count(*) AS n FROM app.saldo_pelanggan_source_pelanggan`)[0]!.n)).toBe(0);
     const sesudah = rows(`SELECT

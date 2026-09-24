@@ -1,7 +1,11 @@
 import { HttpException, Logger } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma.service.js";
-import { SnapshotTriggerController } from "./snapshot-trigger.controller.js";
+import {
+  RETIRE_INCIDENT_MARKER,
+  SnapshotTriggerController,
+} from "./snapshot-trigger.controller.js";
+import { StructuredLogger } from "../sync-health/structured-logger.js";
 import { SNAPSHOT_RETIREMENT_LIMITS } from "./snapshot-config.js";
 import type { RetirementSummary } from "./source-capture.service.js";
 import type { RetirementRun, SnapshotWorkerService } from "./snapshot-worker.service.js";
@@ -23,7 +27,7 @@ const SECRET = "rahasia-uji-snapshot-cukup-panjang-32-karakter";
  * angka lajunya ke log supaya operator tidak perlu membuka psql.
  */
 function harness(
-  summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020 },
+  summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020, cyclesConsidered: 0, cyclesDrained: 0 },
   run?: RetirementRun,
 ) {
   const worker = {
@@ -78,7 +82,7 @@ describe("POST /snapshot-worker/retire", () => {
       // cron 02:05; harness sengaja melempar bila itu terjadi.
       expect(h.worker.runBatch).not.toHaveBeenCalled();
       expect(body).toMatchObject({
-        status: "retired", stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020,
+        status: "retired", stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020, cyclesConsidered: 0, cyclesDrained: 0,
         staging_review: false,
       });
     } finally {
@@ -89,12 +93,16 @@ describe("POST /snapshot-worker/retire", () => {
   it("mengangkat angka laju ke log — tanpa psql", async () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
     const lines: string[] = [];
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation((v: unknown) => { lines.push(String(v)); });
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation((v: unknown) => { lines.push(JSON.stringify(v)); });
     try {
       await harness().controller.retire(SECRET, { unit_id: 1 });
-      const line = lines.find(l => l.includes("snapshot-retire finished"));
+      const line = lines.find((l) => l.includes(RETIRE_INCIDENT_MARKER));
       expect(line).toBeDefined();
-      for (const field of ["staging_before", "staging_after", "rows_deleted", "staging_review"]) {
+      for (const field of [
+        "staging_before", "staging_after", "rows_deleted", "staging_review",
+        // Dua angka yang membuat "berjalan tapi tak pernah tuntas" terlihat.
+        "cycles_considered", "cycles_drained",
+      ]) {
         expect(line, `log kehilangan ${field} — operator kembali harus membuka psql`).toContain(field);
       }
     } finally {
@@ -105,11 +113,11 @@ describe("POST /snapshot-worker/retire", () => {
 
   it("BERBUNYI (warn) ketika staging melewati ambang, diam ketika di bawahnya", async () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
-    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(StructuredLogger.prototype, "error").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
     try {
       const over = SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount + 1;
-      const loud = await harness({ stagingBefore: 22, stagingAfter: over, rowsDeleted: 0 })
+      const loud = await harness({ stagingBefore: 22, stagingAfter: over, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 })
         .controller.retire(SECRET, { unit_id: 1 });
       expect(loud.staging_review).toBe(true);
       expect(warn).toHaveBeenCalledTimes(1);
@@ -118,7 +126,7 @@ describe("POST /snapshot-worker/retire", () => {
       // Kontrol negatif: keadaan sehat TIDAK boleh berbunyi, kalau tidak
       // alarmnya selalu menyala dan berhenti dibaca orang.
       const quiet = await harness({
-        stagingBefore: 2, stagingAfter: SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount, rowsDeleted: 0,
+        stagingBefore: 2, stagingAfter: SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
       }).controller.retire(SECRET, { unit_id: 1 });
       expect(quiet.staging_review).toBe(false);
       expect(warn).not.toHaveBeenCalled();
@@ -131,12 +139,12 @@ describe("POST /snapshot-worker/retire", () => {
 
   it("TANPA unit_id memensiunkan SELURUH unit — bukan unit 1 saja", async () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
     try {
       const h = harness(undefined, {
         units: [
-          { unitId: 4, stagingBefore: 32, stagingAfter: 1, rowsDeleted: 12_717_355 },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+          { unitId: 4, stagingBefore: 32, stagingAfter: 1, rowsDeleted: 12_717_355, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
         ],
         skipped: [],
       });
@@ -144,7 +152,7 @@ describe("POST /snapshot-worker/retire", () => {
       expect(h.worker.retireAllUnits).toHaveBeenCalledTimes(1);
       expect(h.worker.retireOnly).not.toHaveBeenCalled();
       // Total tetap ada di tingkat atas supaya pemanggilan lama tak berubah arti.
-      expect(body).toMatchObject({ status: "retired", stagingBefore: 33, rowsDeleted: 12_717_355 });
+      expect(body).toMatchObject({ status: "retired", stagingBefore: 33, rowsDeleted: 12_717_355, cyclesConsidered: 0, cyclesDrained: 0 });
       expect(body.units.map(u => u.unitId)).toEqual([4, 1]);
     } finally {
       log.mockRestore();
@@ -157,15 +165,15 @@ describe("POST /snapshot-worker/retire", () => {
     // sementara unit lain bersih. Ambang yang dinilai atas TOTAL akan
     // menenggelamkannya; karena itu ia dinilai per unit lalu di-OR.
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
-    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(StructuredLogger.prototype, "error").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
     try {
       const over = SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount + 1;
       const h = harness(undefined, {
         units: [
-          { unitId: 4, stagingBefore: 32, stagingAfter: over, rowsDeleted: 1 },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
-          { unitId: 2, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+          { unitId: 4, stagingBefore: 32, stagingAfter: over, rowsDeleted: 1, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 2, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
         ],
         skipped: [],
       });
@@ -181,7 +189,7 @@ describe("POST /snapshot-worker/retire", () => {
       warn.mockClear();
       const tenang = await harness(undefined, {
         units: [1, 2, 3, 4, 5, 6, 7].map(unitId => (
-          { unitId, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 1 })),
+          { unitId, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 1, cyclesConsidered: 0, cyclesDrained: 0 })),
         skipped: [],
       }).controller.retire(SECRET, {});
       expect(tenang.stagingAfter).toBe(7);
@@ -197,17 +205,17 @@ describe("POST /snapshot-worker/retire", () => {
 
   it("unit yang GAGAL atau TERLEWAT tidak didiamkan", async () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
-    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(StructuredLogger.prototype, "error").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
     try {
       const gagal = await harness(undefined, {
-        units: [{ unitId: 4, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0, error: "boom" }],
+        units: [{ unitId: 4, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0, error: "boom" }],
         skipped: [],
       }).controller.retire(SECRET, {});
       expect(gagal.staging_review).toBe(true);
 
       const terlewat = await harness(undefined, {
-        units: [{ unitId: 4, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 }],
+        units: [{ unitId: 4, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 }],
         skipped: [7],
       }).controller.retire(SECRET, {});
       expect(terlewat.staging_review).toBe(true);
@@ -226,14 +234,14 @@ describe("POST /snapshot-worker/retire", () => {
     // nol snapshot — dan endpointnya memulangkan `idle`: sah, tenang, dan tak
     // terlihat. Gerbang cakupan menangkap "unit TANPA job", bukan ini.
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
-    const warn = vi.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
-    const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(StructuredLogger.prototype, "error").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
     try {
       const kalah = await harness(undefined, {
         units: [
-          { unitId: 5, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 0,
+          { unitId: 5, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
             oldestCutHours: 48, completeAgeHours: null, staleCut: true },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
             oldestCutHours: 200, completeAgeHours: 6, staleCut: false },
         ],
         skipped: [],
@@ -246,7 +254,7 @@ describe("POST /snapshot-worker/retire", () => {
       // penukaran jadi alarm palsu.
       warn.mockClear();
       const baru = await harness(undefined, {
-        units: [{ unitId: 6, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+        units: [{ unitId: 6, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
                   oldestCutHours: 3, completeAgeHours: null, staleCut: false }],
         skipped: [],
       }).controller.retire(SECRET, {});
@@ -255,5 +263,56 @@ describe("POST /snapshot-worker/retire", () => {
     } finally {
       warn.mockRestore(); log.mockRestore(); vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("alarm pemensiunan — rel yang sama, penanda sendiri", () => {
+  it("penanda TERKUNCI sebagai kontrak dengan log-based metric", async () => {
+    const { FROZEN_SHIFT_INCIDENT_MARKER, SYNC_HEALTH_INCIDENT_MARKER } =
+      await import("../sync-health/sync-health.controller.js");
+    expect(RETIRE_INCIDENT_MARKER).toBe("retire_incident");
+    // Tiga penanggap berbeda: unit diam = operator, angka beku = pemilik,
+    // pemensiunan gagal = operator kapasitas. Penandanya tak boleh sama.
+    expect(RETIRE_INCIDENT_MARKER).not.toBe(FROZEN_SHIFT_INCIDENT_MARKER);
+    expect(RETIRE_INCIDENT_MARKER).not.toBe(SYNC_HEALTH_INCIDENT_MARKER);
+  });
+
+  it("🔴 unit yang GAGAL terbit sebagai ERROR — bukan warn yang tak dibaca siapa pun", async () => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const errors: Array<Record<string, unknown>> = [];
+    const err = vi.spyOn(StructuredLogger.prototype, "error")
+      .mockImplementation((payload) => { errors.push(payload); });
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
+    try {
+      await harness(undefined, {
+        units: [{
+          unitId: 7, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
+          cyclesConsidered: 3, cyclesDrained: 0,
+          error: "Transaction already closed: timeout 30000 ms, however 36248 ms passed",
+        }],
+        skipped: [],
+      }).controller.retire(SECRET, {});
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.msg).toBe(RETIRE_INCIDENT_MARKER);
+      expect(errors[0]!.staging_review).toBe(true);
+      // Sebabnya ikut ke email supaya bisa ditindak tanpa membuka psql.
+      expect(JSON.stringify(errors[0])).toContain("36248 ms");
+      expect(JSON.stringify(errors[0])).toContain("cycles_considered");
+    } finally { err.mockRestore(); log.mockRestore(); vi.unstubAllEnvs(); }
+  });
+
+  it("keadaan sehat SENYAP — alarm yang selalu menyala berhenti dibaca", async () => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    const err = vi.spyOn(StructuredLogger.prototype, "error").mockImplementation(() => {});
+    const log = vi.spyOn(StructuredLogger.prototype, "log").mockImplementation(() => {});
+    try {
+      await harness({
+        stagingBefore: 2, stagingAfter: 1, rowsDeleted: 10,
+        cyclesConsidered: 1, cyclesDrained: 1,
+      }).controller.retire(SECRET, { unit_id: 1 });
+      expect(err).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally { err.mockRestore(); log.mockRestore(); vi.unstubAllEnvs(); }
   });
 });

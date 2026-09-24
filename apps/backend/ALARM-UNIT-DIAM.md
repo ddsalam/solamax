@@ -148,7 +148,7 @@ severity DEFAULT (kosong) — diverifikasi di produksi 17-09-2026, lihat Langkah
 sebelum revisi barunya hidup. Itu persis kesalahan yang dicatat Langkah 4, dalam bentuk baru.
 
 Sesudah revisi JSON hidup dan **Langkah 6 dibuktikan ulang**, kaki `textPayload` boleh dilepas —
-jangan sebelum itu.
+jangan sebelum itu. Prosedurnya di **Langkah 4c**.
 
 Diadu ke log produksi 18-09-2026 (`gcloud logging read`, jendela 2 hari), ketiga bentuknya:
 
@@ -160,6 +160,99 @@ filter SALAH (severity di LUAR kurung)        0            0   <- memadamkan ked
 ```
 
 Baris ketiga itu bentuk yang paling wajar ditulis orang, dan ia membunuh alarm tanpa galat.
+
+## Langkah 4c — lepas kaki `textPayload` (HANYA setelah Langkah 6 berbunyi)
+
+Kaki `textPayload` adalah jembatan transisi, bukan bagian tetap. Ia menjaga alarm tetap hidup
+selagi revisi lama dan baru berdampingan. Setelah semua revisi yang serve memancarkan bentuk JSON,
+kaki itu tidak lagi cocok dengan apa pun — dan kaki yang tak pernah cocok adalah separuh gerbang
+yang berdiri hijau selamanya tanpa pernah bisa berbunyi.
+
+🛑 **TIGA PRASYARAT, ketiganya harus terpenuhi. Jangan dijalankan lebih awal.**
+
+1. Revisi ber-JSON **serve 100% traffic** di `solamax-ingest-staging`. Revisi lama yang masih
+   menerima sebagian traffic memancarkan `textPayload`; melepas kakinya membuat insiden dari
+   revisi itu tak terlihat.
+2. **Langkah 6 sudah dibuktikan ulang pada bentuk JSON** — insiden dipancing, dan **emailnya
+   benar-benar masuk**. Konfigurasi yang benar bukan bukti kawat yang menyala.
+3. Kontrol positif: filter kaki JSON **saja** mencocokkan entri nyata. Buktikan lebih dulu, tanpa
+   menyentuh metriknya:
+
+```bash
+for M in sync_health frozen_shift; do
+  printf '%s kaki-JSON-saja: ' "$M"
+  gcloud logging read "resource.type=\"cloud_run_revision\"
+AND resource.labels.service_name=\"solamax-ingest-staging\"
+AND jsonPayload.msg=\"${M}_incident\" AND severity>=ERROR" \
+    --project solamax --freshness=2d --limit=50 --format="value(timestamp)" | wc -l
+done
+```
+
+`sync_health` boleh **0** bila armadanya memang sehat sepanjang jendela itu — nol di sana bukan
+kegagalan kontrol, melainkan ketiadaan subjek. Yang WAJIB bukan-nol adalah penanda yang memang
+sedang punya insiden. Kalau keduanya nol, perpanjang `--freshness` atau pancing satu insiden dulu;
+**jangan melepas kaki lama atas dasar jendela yang kebetulan kosong.**
+
+Baru setelah ketiganya terpenuhi:
+
+```bash
+for M in sync_health frozen_shift; do
+  gcloud logging metrics update "solamax_${M}_incident" --project solamax \
+    --log-filter="resource.type=\"cloud_run_revision\"
+resource.labels.service_name=\"solamax-ingest-staging\"
+jsonPayload.msg=\"${M}_incident\"
+severity>=ERROR"
+done
+```
+
+Sesudah melepas, **jalankan Langkah 6 sekali lagi**. Pelepasan ini menyentuh satu-satunya jalur
+yang membuat alarm berbunyi; ia tidak boleh berakhir dengan asumsi.
+
+Keadaan pada 18-09-2026 sore, sebagai contoh prasyarat yang BELUM terpenuhi: pilot masih menyajikan
+`solamax-ingest-staging-00055-zbw` (revisi sebelum JSON) pada 100% traffic, dan kontrol positif
+kaki-JSON-saja memulangkan **0 dan 0**. Melepas kaki `textPayload` pada keadaan itu akan
+memadamkan kedua alarm — prasyarat 1 dan 3 keduanya gagal, dan gagalnya terlihat justru karena
+kontrolnya dijalankan lebih dulu.
+
+## Langkah 4d — metrik ketiga: pemensiunan gagal
+
+🛑 **KENAPA ADA. Pemensiunan gagal ±4× sehari selama 21–24 September 2026 dan
+tak ada yang melihatnya.** Ringkasannya ditulis `Logger.warn` bawaan Nest — teks
+ber-ANSI, jadi Cloud Logging memasukkannya sebagai `textPayload` ber-severity
+DEFAULT. Terukur: **42 baris dalam 2 hari, severity kosong seluruhnya**, dan
+tidak satu pun log-based metric mencocokinya. `staging_review: true` ada di
+baris itu sepanjang waktu.
+
+Bentuk cacatnya sama persis dengan "unit punya job tetapi selalu idle": datanya
+ada, yang tidak ada adalah sesuatu yang membacanya tanpa diminta.
+
+Unit yang gagal tidak terpangkas, jadi basis data tumbuh ±100 MB/hari.
+
+Barisnya kini satu baris JSON ber-`severity` seperti dua penanda lain:
+
+```bash
+gcloud logging metrics create solamax_retire_incident --project solamax \
+  --description="Pemensiunan source cut gagal, terlewat, atau staging menumpuk" \
+  --log-filter='resource.type="cloud_run_revision"
+resource.labels.service_name="solamax-ingest-staging"
+jsonPayload.msg="retire_incident"
+severity>=ERROR'
+```
+
+⚠️ **Tidak perlu kaki `textPayload` di sini.** Penanda ini LAHIR dalam bentuk
+JSON — tidak ada revisi lama yang pernah memancarkannya sebagai teks, jadi tidak
+ada yang perlu dijembatani. Ini berbeda dari dua metrik lain, yang kakinya
+sengaja dipertahankan sebagai asuransi bila trafik dikembalikan ke revisi
+pra-JSON (lihat Langkah 4c).
+
+Policy-nya mengikuti pola Langkah 5, dengan satu perbedaan yang disengaja:
+**penerimanya operator kapasitas, bukan pemilik.** "Angka beku bergerak" hanya
+padam oleh pengakuan manusia; yang ini padam sendiri begitu pemensiunan berhasil
+lagi.
+
+Sesudah dipasang, **buktikan dengan Langkah 6.** Yang paling mudah: jalankan job
+pemensiunan saat masih ada unit yang `staging_after` melewati ambang, lalu
+pastikan emailnya masuk.
 
 ## Langkah 5 — saluran email + policy
 

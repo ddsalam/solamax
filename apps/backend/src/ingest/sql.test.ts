@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildReplace, buildReplaceWindowDeletes, buildUpsert } from "./sql.js";
+import {
+  buildReplace,
+  buildReplaceWindowDeletes,
+  buildSalesDetailPrune,
+  buildUpsert,
+} from "./sql.js";
 import { TABLE_CONFIG } from "./table-config.js";
 
 describe("buildUpsert", () => {
@@ -292,5 +297,24 @@ describe("buildReplaceWindowDeletes", () => {
     const out = buildReplaceWindowDeletes("terra_resmi", 5, win);
     expect(out[0]!.sql).toContain('"unit_id" = $1');
     expect(out[0]!.params[0]).toBe(5);
+  });
+});
+
+// Regresi BL 23-09-2026: shift-3 di-key pagi sbg NURUT 0 (DTGLJAM NULL), lalu
+// ditulis ulang EasyMax sbg NURUT 1 saat tutup shift. UPSERT murni meninggalkan
+// NURUT 0 di mirror → omset +15.610,80 L / Rp 196.068.215.
+describe("buildSalesDetailPrune", () => {
+  const det = (j: string, n: string, u: number) => ({ ckdjualbbm: j, ckdnozzle: n, nurut: u });
+
+  it("header diambil dari DETAIL, unik; kunci yang dipertahankan = (header, nozzle, nurut)", () => {
+    const out = buildSalesDetailPrune(5, [det("JB202600798", "NZ-13", 1), det("JB202600798", "NZ-12", 1)])!;
+    expect(out.sql).toContain('DELETE FROM "sales_detail"');
+    expect(out.sql).toContain('"unit_id" = $1');
+    expect(out.sql).toContain("NOT EXISTS");
+    expect(out.params).toEqual([5, ["JB202600798"], ["JB202600798", "JB202600798"], ["NZ-13", "NZ-12"], [1, 1]]);
+  });
+
+  it("tanpa detail (mis. sumber kosong) → null: tak ada yang dihapus", () => {
+    expect(buildSalesDetailPrune(5, [])).toBeNull();
   });
 });

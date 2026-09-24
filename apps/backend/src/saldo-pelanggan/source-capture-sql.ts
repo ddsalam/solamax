@@ -654,29 +654,66 @@ const retiredCyclePredicate = `(
   )`;
 
 /**
- * $1 unit, $2 batas baris per batch. BERBATAS DENGAN SENGAJA.
+ * $1 unit. Daftar cut yang masih perlu dikuras — dibaca SEKALI per putaran.
+ *
+ * ⚠️ INI PENGGANTI DARI PEMINDAIAN. Bentuk lama menanyakan "baris mana yang
+ * layak dihapus" langsung kepada tabel sumber, dengan JOIN ke tabel cut. Karena
+ * predikat kelayakannya hidup di sisi cut, perencana tidak bisa memakai indeks
+ * baris, dan memilih Seq Scan atas tabel 3,1 GB — yang berjalan SAMPAI HABIS
+ * persis ketika tak ada yang cocok, sebab LIMIT baru berhenti setelah menemukan
+ * cukup baris.
+ *
+ * Terukur di produksi 24-09-2026, unit 7, memulangkan NOL baris:
+ *   bentuk lama (per unit, JOIN)  : 7.630 ms
+ *   probe per cut (PK yang ada)   :    16,5 ms
+ *
+ * Bertanya kepada tabel CUT lebih dulu membalik urutannya: himpunannya kecil
+ * (1.697 baris di produksi), dan hasilnya dipakai menembak baris lewat
+ * `sps_*_pkey` = (unit_id, source_cycle_id, ...) yang SUDAH ADA sejak 0037.
+ * Tak ada indeks baru pada tabel besar.
+ *
+ * `rows_pruned_at IS NULL` membuat daftar ini menyusut: cut yang sudah
+ * dinyatakan kosong tidak ditanyakan lagi besok.
+ */
+export const READ_DOOMED_CYCLES_SQL = `
+SELECT c.source_cycle_id
+FROM app.saldo_pelanggan_source_cycle c
+WHERE c.unit_id = $1::smallint
+  AND c.rows_pruned_at IS NULL
+  AND ${retiredCyclePredicate}
+ORDER BY c.source_cycle_sequence`;
+
+/**
+ * $1 unit, $2 cut, $3 batas baris per batch. BERBATAS DENGAN SENGAJA.
  *
  * Versi tak-berbatas menghapus seluruh sisa dalam SATU pernyataan di dalam satu
  * transaksi ber-budget. Melewati budget berarti rollback TOTAL: nol kemajuan,
  * satu baris peringatan stderr, dan tumpukan yang membesar sehingga percobaan
  * berikutnya lebih pasti gagal. Terukur 95% budget di produksi 12 Sep 2026.
  *
- * Bentuk berbatas membuat kegagalan menjadi KEMAJUAN SEBAGIAN. Predikatnya
- * dievaluasi ulang tiap batch, jadi cut yang statusnya berubah di tengah
- * pengurasan diperlakukan menurut keadaan terbarunya — lebih benar, bukan
- * kurang. `ctid` aman di sini: baris milik cut yang sudah mati tidak ditulis
- * siapa pun, dan CTE serta DELETE berbagi satu snapshot pernyataan.
+ * 🔑 Kelayakan cut TETAP diperiksa ulang tiap batch, sama seperti bentuk lama —
+ * cut yang statusnya berubah di tengah pengurasan diperlakukan menurut keadaan
+ * TERBARUNYA. Bedanya, pemeriksaan itu kini berupa satu subkueri atas konstanta
+ * ($1, $2) yang dinilai SEKALI per pernyataan, bukan JOIN yang memaksa
+ * perencana memindai seluruh tabel baris.
+ *
+ * `ctid` aman di sini: baris milik cut yang sudah mati tidak ditulis siapa pun,
+ * dan CTE serta DELETE berbagi satu snapshot pernyataan.
  */
 const boundedPrune = (table: string) => `
 WITH doomed AS (
   SELECT s.ctid AS row_ctid
   FROM ${table} s
-  JOIN app.saldo_pelanggan_source_cycle c
-    ON c.unit_id = $1::smallint
-   AND c.source_cycle_id = s.source_cycle_id
   WHERE s.unit_id = $1::smallint
-    AND ${retiredCyclePredicate}
-  LIMIT $2::int
+    AND s.source_cycle_id = $2::uuid
+    AND EXISTS (
+      SELECT 1
+      FROM app.saldo_pelanggan_source_cycle c
+      WHERE c.unit_id = $1::smallint
+        AND c.source_cycle_id = $2::uuid
+        AND ${retiredCyclePredicate}
+    )
+  LIMIT $3::int
 )
 DELETE FROM ${table} s
 USING doomed d
@@ -687,6 +724,39 @@ export const PRUNE_RETIRED_SOURCE_ROWS_SQL = [
   boundedPrune("app.saldo_pelanggan_source_bppiut"),
   boundedPrune("app.saldo_pelanggan_source_bphut"),
 ] as const;
+
+/**
+ * $1 unit, $2 cut. Menyatakan sebuah cut KOSONG — dan membuktikannya sendiri.
+ *
+ * 🔴 RISIKO UTAMA rancangan ini adalah tanda "sudah kosong" yang terpasang pada
+ * cut yang sebenarnya MASIH BERISI: barisnya lalu tak pernah terhapus, diam-diam
+ * dan selamanya. Karena itu syaratnya tidak diserahkan kepada pemanggil.
+ * Ketiga `NOT EXISTS` di bawah adalah probe indeks pada
+ * (unit_id, source_cycle_id) — murah, dan membuat mode kegagalan itu MUSTAHIL
+ * secara struktural, bukan sekadar dijaga uji.
+ *
+ * `rows_pruned_at IS NULL` menjaga idempotensi: menjalankannya dua kali tidak
+ * menggeser stempel waktunya.
+ */
+export const MARK_CYCLE_DRAINED_SQL = `
+UPDATE app.saldo_pelanggan_source_cycle c
+SET rows_pruned_at = clock_timestamp()
+WHERE c.unit_id = $1::smallint
+  AND c.source_cycle_id = $2::uuid
+  AND c.rows_pruned_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM app.saldo_pelanggan_source_pelanggan p
+    WHERE p.unit_id = $1::smallint AND p.source_cycle_id = $2::uuid
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM app.saldo_pelanggan_source_bppiut b
+    WHERE b.unit_id = $1::smallint AND b.source_cycle_id = $2::uuid
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM app.saldo_pelanggan_source_bphut h
+    WHERE h.unit_id = $1::smallint AND h.source_cycle_id = $2::uuid
+  )
+RETURNING c.source_cycle_id`;
 
 /** $1 unit. Retire unleased work before inserting the latest source cut. */
 export const SUPERSEDE_PENDING_WORK_SQL = `

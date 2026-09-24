@@ -202,6 +202,10 @@ async function syncSalesWindow(
         unit_code: d.cfg.unitCode,
         domain: "sales",
         watermark_high: null, // re-sync by business-date; jangan geser watermark DTGLJAM
+        // Tiap header di chunk ini membawa SELURUH detailnya (SALES_RESYNC memfilter
+        // per h.DTGLJUAL, bukan per baris) → backend boleh memangkas detail mirror
+        // yang tak ada lagi di sumber (NURUT 0 yang ditulis ulang jadi NURUT 1).
+        replace_details: true,
         tables: { sales_header: hChunk, sales_detail: dChunk },
       });
       if (status !== "ok") return false; // buffered/dry — siklus depan ulang window

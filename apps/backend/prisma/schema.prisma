@@ -1104,6 +1104,10 @@ model SaldoPelangganSourceCycle {
   bphutRowCount          BigInt?   @map("bphut_row_count")
   bphutKeyedChecksum     Bytes?    @map("bphut_keyed_checksum")
   failureSummary         String?   @map("failure_summary")
+  /// Cut yang baris-barisnya sudah terbukti habis. NULL = belum pernah
+  /// dinyatakan kosong, bukan "berisi". Ia yang membuat pemensiunan berhenti
+  /// memindai ulang cut yang sudah bersih tiap putaran.
+  rowsPrunedAt           DateTime? @map("rows_pruned_at") @db.Timestamptz()
 
   @@id([unitId, sourceCycleId], map: "sps_cycle_pkey")
   @@unique([unitId, sourceCycleId, sourceCycleSequence], map: "sps_cycle_unit_id_sequence_key")
