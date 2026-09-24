@@ -23,7 +23,7 @@ const SECRET = "rahasia-uji-snapshot-cukup-panjang-32-karakter";
  * angka lajunya ke log supaya operator tidak perlu membuka psql.
  */
 function harness(
-  summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020 },
+  summary: RetirementSummary = { stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020, cyclesConsidered: 0, cyclesDrained: 0 },
   run?: RetirementRun,
 ) {
   const worker = {
@@ -78,7 +78,7 @@ describe("POST /snapshot-worker/retire", () => {
       // cron 02:05; harness sengaja melempar bila itu terjadi.
       expect(h.worker.runBatch).not.toHaveBeenCalled();
       expect(body).toMatchObject({
-        status: "retired", stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020,
+        status: "retired", stagingBefore: 3, stagingAfter: 1, rowsDeleted: 711_020, cyclesConsidered: 0, cyclesDrained: 0,
         staging_review: false,
       });
     } finally {
@@ -109,7 +109,7 @@ describe("POST /snapshot-worker/retire", () => {
     const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
     try {
       const over = SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount + 1;
-      const loud = await harness({ stagingBefore: 22, stagingAfter: over, rowsDeleted: 0 })
+      const loud = await harness({ stagingBefore: 22, stagingAfter: over, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 })
         .controller.retire(SECRET, { unit_id: 1 });
       expect(loud.staging_review).toBe(true);
       expect(warn).toHaveBeenCalledTimes(1);
@@ -118,7 +118,7 @@ describe("POST /snapshot-worker/retire", () => {
       // Kontrol negatif: keadaan sehat TIDAK boleh berbunyi, kalau tidak
       // alarmnya selalu menyala dan berhenti dibaca orang.
       const quiet = await harness({
-        stagingBefore: 2, stagingAfter: SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount, rowsDeleted: 0,
+        stagingBefore: 2, stagingAfter: SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
       }).controller.retire(SECRET, { unit_id: 1 });
       expect(quiet.staging_review).toBe(false);
       expect(warn).not.toHaveBeenCalled();
@@ -135,8 +135,8 @@ describe("POST /snapshot-worker/retire", () => {
     try {
       const h = harness(undefined, {
         units: [
-          { unitId: 4, stagingBefore: 32, stagingAfter: 1, rowsDeleted: 12_717_355 },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+          { unitId: 4, stagingBefore: 32, stagingAfter: 1, rowsDeleted: 12_717_355, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
         ],
         skipped: [],
       });
@@ -144,7 +144,7 @@ describe("POST /snapshot-worker/retire", () => {
       expect(h.worker.retireAllUnits).toHaveBeenCalledTimes(1);
       expect(h.worker.retireOnly).not.toHaveBeenCalled();
       // Total tetap ada di tingkat atas supaya pemanggilan lama tak berubah arti.
-      expect(body).toMatchObject({ status: "retired", stagingBefore: 33, rowsDeleted: 12_717_355 });
+      expect(body).toMatchObject({ status: "retired", stagingBefore: 33, rowsDeleted: 12_717_355, cyclesConsidered: 0, cyclesDrained: 0 });
       expect(body.units.map(u => u.unitId)).toEqual([4, 1]);
     } finally {
       log.mockRestore();
@@ -163,9 +163,9 @@ describe("POST /snapshot-worker/retire", () => {
       const over = SNAPSHOT_RETIREMENT_LIMITS.stagingReviewCount + 1;
       const h = harness(undefined, {
         units: [
-          { unitId: 4, stagingBefore: 32, stagingAfter: over, rowsDeleted: 1 },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
-          { unitId: 2, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 },
+          { unitId: 4, stagingBefore: 32, stagingAfter: over, rowsDeleted: 1, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
+          { unitId: 2, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 },
         ],
         skipped: [],
       });
@@ -181,7 +181,7 @@ describe("POST /snapshot-worker/retire", () => {
       warn.mockClear();
       const tenang = await harness(undefined, {
         units: [1, 2, 3, 4, 5, 6, 7].map(unitId => (
-          { unitId, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 1 })),
+          { unitId, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 1, cyclesConsidered: 0, cyclesDrained: 0 })),
         skipped: [],
       }).controller.retire(SECRET, {});
       expect(tenang.stagingAfter).toBe(7);
@@ -201,13 +201,13 @@ describe("POST /snapshot-worker/retire", () => {
     const log = vi.spyOn(Logger.prototype, "log").mockImplementation(() => {});
     try {
       const gagal = await harness(undefined, {
-        units: [{ unitId: 4, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0, error: "boom" }],
+        units: [{ unitId: 4, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0, error: "boom" }],
         skipped: [],
       }).controller.retire(SECRET, {});
       expect(gagal.staging_review).toBe(true);
 
       const terlewat = await harness(undefined, {
-        units: [{ unitId: 4, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0 }],
+        units: [{ unitId: 4, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0 }],
         skipped: [7],
       }).controller.retire(SECRET, {});
       expect(terlewat.staging_review).toBe(true);
@@ -231,9 +231,9 @@ describe("POST /snapshot-worker/retire", () => {
     try {
       const kalah = await harness(undefined, {
         units: [
-          { unitId: 5, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 0,
+          { unitId: 5, stagingBefore: 2, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
             oldestCutHours: 48, completeAgeHours: null, staleCut: true },
-          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+          { unitId: 1, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
             oldestCutHours: 200, completeAgeHours: 6, staleCut: false },
         ],
         skipped: [],
@@ -246,7 +246,7 @@ describe("POST /snapshot-worker/retire", () => {
       // penukaran jadi alarm palsu.
       warn.mockClear();
       const baru = await harness(undefined, {
-        units: [{ unitId: 6, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0,
+        units: [{ unitId: 6, stagingBefore: 1, stagingAfter: 1, rowsDeleted: 0, cyclesConsidered: 0, cyclesDrained: 0,
                   oldestCutHours: 3, completeAgeHours: null, staleCut: false }],
         skipped: [],
       }).controller.retire(SECRET, {});

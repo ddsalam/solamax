@@ -226,6 +226,7 @@ export class SnapshotWorkerService {
       } catch (error) {
         done.push({
           unitId, stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
+          cyclesConsidered: 0, cyclesDrained: 0,
           error: errorText(error), ...umurFields,
         });
       }

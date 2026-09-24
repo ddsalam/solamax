@@ -202,7 +202,12 @@ export class SnapshotTriggerController {
       stagingBefore: acc.stagingBefore + u.stagingBefore,
       stagingAfter: acc.stagingAfter + u.stagingAfter,
       rowsDeleted: acc.rowsDeleted + u.rowsDeleted,
-    }), { stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0 });
+      cyclesConsidered: acc.cyclesConsidered + u.cyclesConsidered,
+      cyclesDrained: acc.cyclesDrained + u.cyclesDrained,
+    }), {
+      stagingBefore: 0, stagingAfter: 0, rowsDeleted: 0,
+      cyclesConsidered: 0, cyclesDrained: 0,
+    });
 
     // Ambangnya dinilai PER UNIT lalu di-OR — dan alasannya BUKAN sensitivitas.
     // Total selalu >= unit terbesar, jadi ambang atas total justru LEBIH mudah
@@ -228,6 +233,11 @@ export class SnapshotTriggerController {
         staging_before: u.stagingBefore,
         staging_after: u.stagingAfter,
         rows_deleted: u.rowsDeleted,
+        // Dua angka ini yang membuat "pemensiunan berjalan tapi tak pernah
+        // tuntas" terlihat tanpa membuka psql: cut yang masih harus dikuras vs
+        // cut yang benar-benar tuntas pada putaran ini.
+        cycles_considered: u.cyclesConsidered,
+        cycles_drained: u.cyclesDrained,
         ...(u.oldestCutHours !== undefined ? {
           oldest_cut_hours: u.oldestCutHours,
           complete_age_hours: u.completeAgeHours,
@@ -239,6 +249,8 @@ export class SnapshotTriggerController {
       staging_before: total.stagingBefore,
       staging_after: total.stagingAfter,
       rows_deleted: total.rowsDeleted,
+      cycles_considered: total.cyclesConsidered,
+      cycles_drained: total.cyclesDrained,
       staging_review: review,
       ms: Date.now() - startedAt,
     });

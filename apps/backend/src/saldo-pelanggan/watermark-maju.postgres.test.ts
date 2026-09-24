@@ -153,7 +153,8 @@ CREATE TABLE public.pelanggan_master(unit_id smallint,ckdplg char(12),vcnmplg te
 ALTER TABLE public.pelanggan_master OWNER TO snapshot_ci_owner;
 INSERT INTO public.unit VALUES(1);`, false);
     for (const m of ["0037_saldo_pelanggan_snapshot", "0038_snapshot_manifest_row_count",
-                     "0039_snapshot_debet_kredit", "0040_saldo_pelanggan_shift"]) {
+                     "0039_snapshot_debet_kredit", "0040_saldo_pelanggan_shift",
+                     "0041_source_cycle_rows_pruned_at"]) {
       sql(readFileSync(resolve(migrations, m, "migration.sql"), "utf8"));
     }
     sql(`INSERT INTO app.saldo_pelanggan_source_cycle
