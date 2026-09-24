@@ -58,6 +58,17 @@ export const IngestPayload = z
       })
       .refine((w) => w.from < w.to, { message: "replace_window: from harus < to" })
       .optional(),
+    /**
+     * Hanya domain `sales`, hanya dari rescan per tanggal-bisnis (`SALES_RESYNC`),
+     * yang selalu membawa SELURUH detail tiap header. Backend menghapus baris
+     * `sales_detail` milik header-header itu yang `(ckdnozzle, nurut)`-nya tak ada
+     * lagi di payload. Tanpa ini, baris shift-3 yang di-key pagi (NURUT 0, DTGLJAM
+     * NULL) lalu ditulis ulang EasyMax sebagai NURUT 1 saat tutup shift tinggal
+     * ABADI di mirror dan dihitung dua kali (Batu Layang 23-09-2026: +15.610,80 L /
+     * Rp 196.068.215; 25-07-2026: +2.793,51 L). Jalur incremental (per DTGLJAM)
+     * JANGAN memakainya — detail per header di sana parsial.
+     */
+    replace_details: z.literal(true).optional(),
     /** Metadata potongan full-sync untuk capture snapshot saldo yang durable. */
     source_cut: SourceCut.optional(),
     tables: z.object({
@@ -104,6 +115,13 @@ export const IngestPayload = z
         code: z.ZodIssueCode.custom,
         path: ["replace_window"],
         message: `replace_window hanya untuk domain: ${REPLACE_WINDOW_DOMAINS.join(", ")}`,
+      });
+    }
+    if (p.replace_details && p.domain !== "sales") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["replace_details"],
+        message: "replace_details hanya untuk domain sales",
       });
     }
     if (p.source_cut) {

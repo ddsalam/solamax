@@ -378,6 +378,33 @@ describe("runCycle", () => {
 
     // Watermark DTGLJAM SALES tak digeser oleh re-sync.
     expect(store.getWatermark("sales")).toBeNull();
+
+    // Rescan per tanggal-bisnis membawa detail LENGKAP per header → minta backend
+    // memangkas detail basi (NURUT 0 yang ditulis ulang EasyMax; BL 23-09-2026).
+    expect(sales!.replace_details).toBe(true);
+  });
+
+  it("sales incremental (per DTGLJAM) TIDAK membawa replace_details — detailnya parsial", async () => {
+    const ROW = {
+      CKDJUALBBM: "H1", CKDNOZZLE: "N1", NURUT: "1", NVOLUME: "50", NHARGAJUAL: "10000",
+      NSUBTOTAL: "500000", CKDBBM: "P1", CKDTANGKI: "T1", NSTANDAWAL: "0",
+      NSTANDAKHIR: "50", VCOPEATOR: "-", DTGLJAM: "2026-06-15 14:00:00", SUBAH: "0", SEDIT: "0",
+      DTGLJUAL: "2026-06-15", NSHIFT: "2", VCKET: null,
+    };
+    const conn = {
+      async roQuery(sql: string) {
+        if (sql.includes("tr_djualbbm d") && sql.includes("DTGLJAM > ?")) return [ROW];
+        return [];
+      },
+    } as unknown as EasyMaxConnection;
+    const { client, sent } = fakeClient({});
+    await runCycle(
+      { conn, client, store: new StateStore(dir), cfg: CFG as unknown as AgentConfig, dryRun: false },
+      { includeMasters: false, includePelanggan: false, includeSalesRescan: false },
+    );
+    const inc = sent.filter((p) => p.domain === "sales");
+    expect(inc.length).toBeGreaterThan(0);
+    expect(inc.every((p) => p.replace_details === undefined)).toBe(true);
   });
 
   it("runCycle: rescan SALES hanya jalan bila includeSalesRescan (ter-gate interval)", async () => {
