@@ -4,6 +4,7 @@ import {
   AMBANG,
   nadaTerburuk,
   rakitPantau,
+  ringkasKejadian,
   ringkasPelaku,
   temuanKedisiplinan,
   temuanKesiapan,
@@ -209,6 +210,29 @@ describe("§10.26 — saldo pembuka sementara", () => {
     const s = t.find((x) => x.kode === "saldo_awal")!;
     expect(s.nada).toBe("kuning");
     expect(s.rinci).toContain("Bank BCA - 1");
+  });
+});
+
+describe("ringkasKejadian — pola berulang dibaca sebagai SATU pola", () => {
+  const k = (unitId: number, jenis: KejadianPantau["jenis"], waktu: string, ket: string, nominal: number): KejadianPantau => ({
+    unitId, jenis, waktu, tanggalBisnis: "2026-09-24", pelaku: null, keterangan: ket, nominal, hariTerlambat: null,
+  });
+  it("pos janggal digabung per unit (jumlah, total, contoh); jenis lain tetap satu-satu", () => {
+    const r = ringkasKejadian([
+      k(1, "keterangan_janggal", "2026-09-25 09:00", "pendapatan_lain — SETORAN BRIGHT", 12_000),
+      k(1, "keterangan_janggal", "2026-09-24 09:00", "pendapatan_lain — SETORAN BRIGHT", 10_000),
+      k(1, "keterangan_janggal", "2026-09-23 09:00", "pengeluaran — PRIVE PT X", 5_000),
+      k(2, "keterangan_janggal", "2026-09-25 09:00", "pengeluaran — PAK A SETOR TUNAI", 70_000),
+      k(1, "batal_saldo_awal", "2026-09-20 10:00", "Bank — saldo", 1),
+    ]);
+    expect(r[0]!.jenis).toBe("batal_saldo_awal"); // merah tetap di atas
+    const u1 = r.find((x) => x.unitId === 1 && x.jenis === "keterangan_janggal")!;
+    expect(u1.jumlah).toBe(3);
+    expect(u1.nominal).toBe(27_000);
+    expect(u1.keterangan).toBe("3 baris · contoh: SETORAN BRIGHT · PRIVE PT X");
+    const u2 = r.find((x) => x.unitId === 2)!;
+    expect(u2.jumlah).toBe(1);
+    expect(u2.keterangan).toBe("pengeluaran — PAK A SETOR TUNAI");
   });
 });
 
