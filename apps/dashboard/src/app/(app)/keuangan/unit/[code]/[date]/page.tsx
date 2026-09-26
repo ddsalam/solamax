@@ -69,7 +69,11 @@ export default async function LaporanKeuanganPage({
     incomeAdjustment: null,
   });
 
-  const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai ?? 0;
+  // §10.23 — JANGAN `?? 0`: laba yang tak diketahui bukan laba nol. Papan dan
+  // Tutup hari sudah memakai aturan ini; layar ini dulu satu-satunya yang tidak,
+  // sehingga ia bisa menampilkan langkah harian berangka saat keduanya berbunyi
+  // "belum bisa dihitung".
+  const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai;
   const bs = panelBalance({
     cashOnHand: b.kasAkhir,
     sebabKas: b.sebabKas,

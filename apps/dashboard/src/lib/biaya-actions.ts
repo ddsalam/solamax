@@ -64,9 +64,11 @@ export async function tambahBiayaFinance(input: BiayaFinanceInput): Promise<Biay
   if (input.operationalCategory.trim() === "") {
     return { ok: false, error: "Kategori wajib dipilih." };
   }
-  // Tanda ditentukan SEKSI: pengeluaran negatif, pendapatan positif. Minus yang
-  // terlupa adalah cara termudah membuat biaya menaikkan laba.
-  const amount = input.section === "pengeluaran" ? -input.amountRp : input.amountRp;
+  // ⛔ Nominal POSITIF untuk kedua seksi — ARAH ditentukan seksinya, sama
+  // dengan pintu pengawas (`manual-entry-nominal.ts`). Versi sebelumnya
+  // menyimpan pengeluaran NEGATIF di sini, sehingga satu kolom memakai dua
+  // konvensi tanda dan laba bersih menghitung biaya pengawas sebagai tambahan.
+  const amount = input.amountRp;
 
   const client = await pool.connect();
   try {

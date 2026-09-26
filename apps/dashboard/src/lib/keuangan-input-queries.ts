@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
 import type { AkunKasRow } from "./keuangan-akun-model";
@@ -319,7 +320,7 @@ export async function getBiayaHarian(
     `SELECT id::text              AS id,
             section::text         AS section,
             keterangan,
-            amount::float8        AS amount,
+            ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS amount,
             operational_category  AS "operationalCategory",
             accounting_account    AS "accountingAccount",
             status::text          AS status,

@@ -73,9 +73,15 @@ describe("biaya-actions — penjagaan yang tak boleh hilang", () => {
     expect(KODE).toMatch(/belum punya pemetaan akun akuntansi/);
   });
 
-  it("tanda nominal ditentukan SEKSI, bukan diketik", () => {
-    // Minus yang terlupa adalah cara termudah membuat biaya menaikkan laba.
-    expect(KODE).toMatch(/input\.section === "pengeluaran" \? -input\.amountRp : input\.amountRp/);
+  it("nominal POSITIF untuk kedua seksi — ARAH ditentukan seksi (konvensi pintu pengawas)", () => {
+    // ⛔ KOREKSI 26 Sep 2026. Asersi lama di sini MENUNTUT pengeluaran disimpan
+    // negatif ("minus yang terlupa membuat biaya menaikkan laba"). Kekhawatirannya
+    // benar, arah pengamannya terbalik: pintu pengawas menyimpan positif, jadi
+    // satu kolom memakai dua konvensi — dan laporan yang membalik semuanya
+    // menjadikan biaya PENGAWAS penambah laba. Penjaga ini dulu mengunci cacatnya.
+    // Konvensi tunggal kini hidup di `manual-entry-nominal.ts` + CHECK 0042.
+    expect(KODE).toMatch(/const amount = input\.amountRp;/);
+    expect(KODE).not.toMatch(/-input\.amountRp/);
     expect(KODE).toMatch(/input\.amountRp > 0/);
   });
 

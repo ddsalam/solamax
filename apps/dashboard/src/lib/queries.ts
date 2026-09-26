@@ -1328,7 +1328,7 @@ export async function getComplianceMatrix(
              (count(*) FILTER (WHERE section='pengeluaran'))::int     AS ng,
              (count(*) FILTER (WHERE section='setoran_tunai'))::int   AS ni
              FROM app.manual_entry
-            WHERE unit_id = $1 AND NOT void
+            WHERE unit_id = $1 AND NOT void AND source_door = 'pengawas'
               AND business_date BETWEEN (SELECT d0 FROM rentang) AND (SELECT d1 FROM rentang)
             GROUP BY 1)
      SELECT to_char(hari.d,'YYYY-MM-DD') AS d,
@@ -1409,7 +1409,7 @@ export async function getAdminDays(
              (count(*) FILTER (WHERE section='pengeluaran'))::int     AS ng,
              (count(*) FILTER (WHERE section='setoran_tunai'))::int   AS ni
              FROM app.manual_entry
-            WHERE unit_id = ANY($1::int[]) AND NOT void
+            WHERE unit_id = ANY($1::int[]) AND NOT void AND source_door = 'pengawas'
               AND business_date BETWEEN $2::date AND $3::date GROUP BY 1,2)
      SELECT uh.unit_id, to_char(uh.d,'YYYY-MM-DD') AS d,
             COALESCE(a.shifts,0) AS shifts,
@@ -1837,6 +1837,9 @@ export async function getManualEntries(
      FROM app.manual_entry
      WHERE unit_id = $1 AND business_date = $2::date
        AND section = $3::app.manual_entry_section AND NOT void
+       -- Pintu Finance (0034) = biaya yang TIDAK lewat kas SPBU: ia bukan milik
+       -- rekonsiliasi pengawas, dan pengawas tak boleh membatalkannya.
+       AND source_door = 'pengawas'
      ORDER BY urut, created_at`,
     [unit, date, section],
   );
