@@ -21,7 +21,10 @@ export type HasilAngka =
   | { keadaan: "tolak"; pesan: string };
 
 const bersihkan = (teks: string): string =>
-  teks.replace(/\s+/g, "").replace(/^rp\.?/i, "");
+  teks
+    .replace(/\s+/g, "")
+    // Minus boleh ditulis sebelum "Rp": `-Rp250.000` = `-250.000`.
+    .replace(/^(-?)(?:rp\.?|idr)/i, "$1");
 
 /**
  * Nominal RUPIAH bulat — kas, bank, EDC, biaya, saldo pembuka.
@@ -41,6 +44,9 @@ export function bacaRupiah(teks: string, opsi: { bolehNegatif?: boolean } = {}):
     negatif = true;
     s = s.slice(1);
   }
+  // Sen NOL yang lazim ditulis di kuitansi — `1.500.000,-`, `,00`, `,0` —
+  // tidak mengubah nilai, jadi diterima. Sen BUKAN nol tetap ditolak di bawah.
+  s = s.replace(/,(?:-|0{1,2})$/, "");
   if (/[.,]\d{1,2}$/.test(s)) {
     return {
       keadaan: "tolak",

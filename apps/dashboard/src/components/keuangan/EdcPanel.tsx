@@ -78,7 +78,9 @@ export function EdcPanel({
   const angkaDitolak = [hBruto, hNeto, hTxn].some((h) => h.keadaan === "tolak");
   // MDR di layar = bruto − neto. Ditampilkan, tidak bisa diketik.
   const mdrPratinjau = brutoN > 0 && netoN > 0 ? brutoN - netoN : null;
-  const selisihPratinjau = txnN === null ? null : txnN - brutoN;
+  // Hanya bila KEDUANYA sah: bruto yang ditolak terbaca 0, dan banner akan
+  // menyebut seluruh total transaksi sebagai "selisih".
+  const selisihPratinjau = txnN === null || hBruto.keadaan !== "sah" ? null : txnN - brutoN;
 
   const ringkas: RingkasMdr[] = ringkasMdr(settlements);
   const geser = pergeseranMdr(ringkas);

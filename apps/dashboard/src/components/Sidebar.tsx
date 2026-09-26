@@ -119,7 +119,9 @@ function buildGroups(
           icon: "report",
           // Cocok HANYA pada rute laporan, bukan pada /input di bawahnya —
           // tanpa `$`, butir ini akan ikut menyala saat Input Keuangan dibuka.
-          match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+$/.test(p),
+          // Segmen kedua harus TANGGAL: tanpa itu `/akun-kas` ikut cocok dan
+          // dua butir menyala sekaligus di halaman Kelola akun kas.
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/\d{4}-\d{2}-\d{2}$/.test(p),
         },
         {
           href: unitCode ? `/keuangan/unit/${unitCode}/piutang/${date}` : null,

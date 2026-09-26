@@ -351,7 +351,8 @@ export function BukuKasPanel({
               <span className="keu-label">Nominal</span>
               <input
                 className="manual-input num"
-                inputMode="numeric"
+                // Keypad angka ponsel tak punya tombol minus — Penyesuaian butuh itu.
+                inputMode={jenis === "adjustment" ? "text" : "numeric"}
                 value={nominal}
                 onChange={(e) => setNominal(e.target.value)}
                 placeholder="contoh 1.500.000"
@@ -377,7 +378,12 @@ export function BukuKasPanel({
             </label>
           )}
           <div className="manual-form-actions">
-            <button type="button" className="btn-navy" onClick={simpan} disabled={pending}>
+            <button
+              type="button"
+              className="btn-navy"
+              onClick={simpan}
+              disabled={pending || hNominal.keadaan === "tolak"}
+            >
               {pending ? "Menyimpan…" : "Simpan mutasi"}
             </button>
             <button

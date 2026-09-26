@@ -12,9 +12,14 @@ describe("bacaRupiah — yang ambigu DITOLAK, tidak ditebak seratus kali lipat",
     ["Rp 1.500.000", 1_500_000],
     ["  328.795.000 ", 328_795_000],
     ["15.000", 15_000],
+    // Review #398: bentuk kuitansi Indonesia yang lazim — sen nol.
+    ["1.500.000,-", 1_500_000],
+    ["1.500.000,00", 1_500_000],
+    ["1500000,0", 1_500_000],
+    ["IDR 1.500.000", 1_500_000],
   ])("%s → %d", (t, n) => expect(nilai(bacaRupiah(t))).toBe(n));
 
-  it.each(["1.500.000,50", "1500000.5", "1.50", "1,500,000", "1.50.000", "12a"])(
+  it.each(["1.500.000,50", "1500000.5", "1.50", "1,500,000", "1.50.000", "12a", "1.500.000,05"])(
     "🔴 %s DITOLAK (dulu tersimpan diam-diam dengan nilai lain)",
     (t) => expect(bacaRupiah(t).keadaan).toBe("tolak"),
   );
@@ -28,6 +33,7 @@ describe("bacaRupiah — yang ambigu DITOLAK, tidak ditebak seratus kali lipat",
   it("minus hanya bila diizinkan (penyesuaian, saldo pembuka)", () => {
     expect(bacaRupiah("-250.000").keadaan).toBe("tolak");
     expect(nilai(bacaRupiah("-250.000", { bolehNegatif: true }))).toBe(-250_000);
+    expect(nilai(bacaRupiah("-Rp 250.000", { bolehNegatif: true }))).toBe(-250_000);
   });
 
   it("kosong bukan nol", () => expect(bacaRupiah("  ").keadaan).toBe("kosong"));

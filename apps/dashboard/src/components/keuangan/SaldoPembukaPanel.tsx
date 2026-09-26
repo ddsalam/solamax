@@ -148,7 +148,8 @@ export function SaldoPembukaPanel({
               <span className="keu-label">Nominal (boleh negatif)</span>
               <input
                 className="manual-input num"
-                inputMode="numeric"
+                // Boleh negatif — keypad angka ponsel tak punya tombol minus.
+                inputMode="text"
                 value={nominal}
                 onChange={(e) => setNominal(e.target.value)}
                 placeholder="contoh 300.566.000"
@@ -173,7 +174,7 @@ export function SaldoPembukaPanel({
             <button
               type="button"
               className="btn-navy"
-              disabled={pending}
+              disabled={pending || hNominal.keadaan === "tolak"}
               onClick={() => void simpan(buka)}
             >
               {pending ? "Menyimpan…" : "Simpan saldo pembuka"}
