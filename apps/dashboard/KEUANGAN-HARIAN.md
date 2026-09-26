@@ -1845,7 +1845,7 @@ bisa ditekan. Bukan edit, bukan koreksi nominal:
 | Akun efektif | reklasifikasi terakhir, kalau tidak akun beku (0024) — satu rumus `SQL_AKUN_EFEKTIF` di laporan, layar Biaya, Pemantauan |
 | Membatalkan | reklasifikasi balik — keduanya tetap terlihat |
 | Kapan | kapan saja, termasuk sesudah hari ditutup (§2.3) |
-| Siapa | gerbang tulis Layar 3 (`canInputKeuangan`: staf `keuangan`, super admin) |
+| Siapa | `canReklasifikasi`: staf `keuangan`, super admin, **dan Head of Finance** (⚖️ keputusan owner 27 Sep — lihat di bawah) |
 | Alasan | grup `reclass` §10.2 (`RCL-NATURE/SPLIT/MAPDEF`); **catatan wajib** bila tujuannya akun bukan-laba |
 | Tidak berlaku untuk | titipan outlet Bright (§10.27 punya jalurnya sendiri), baris draft/dibatalkan |
 | Tujuan | daftar TERTUTUP `AKUN_REKLAS` = bagan §10.3 + dua akun bukan-laba (uji memaksa setiap akun 0023 ada di daftar) |
@@ -1866,6 +1866,15 @@ ekuitas ⇒ langkah harian **+5 jt** (mutan diuji memerah). Dengan `deltaKontrib
 memindahkan pos keluar dari laba MENAIKKAN laba), dan pos yang sudah direklasifikasi
 berhenti ditandai `keterangan_janggal`. Layar Biaya menampilkan akun efektif, akun
 semula, dan riwayat (siapa, kapan, alasan, catatan) di bawah akun.
+
+⚖️ **HoF boleh mereklasifikasi — pengecualian SEMPIT atas §10.12 (keputusan owner 27 Sep
+2026).** Rilis pertama memakai `canInputKeuangan`, sehingga HoF (Admin Perusahaan + daftar HoF)
+tertolak saat mencoba — dan layarnya menampilkan nama tindakan tanpa tombol, terbaca seperti
+fitur rusak. Owner memutuskan reklasifikasi **bukan "mengetik"**: tak ada transaksi baru, nominal,
+tanggal, maupun kategori pengawas yang berubah — ia keputusan penyajian, wajar di tangan kepala
+keuangan. §10.12 tetap utuh untuk seluruh input harian lain (uji menjaga keduanya). Kontrolnya
+keterlihatan: riwayat di baris + `reklasifikasi_biaya` di Pemantauan. Pengguna yang tak berwenang
+kini melihat "Reklasifikasi oleh staf Keuangan / Head of Finance", bukan nama tindakan lepas.
 
 **Belum:** `Tinjau`, `Kembalikan untuk perbaikan`, `Koreksi / balik` (nominal/tanggal
 salah sesudah hari ditutup — `correction_entry` dengan approver ≠ pengaju).

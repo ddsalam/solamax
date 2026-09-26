@@ -40,6 +40,7 @@ import {
 import {
   alasanTakBolehInput,
   canInputKeuangan,
+  canReklasifikasi,
   canViewLaporanKeuangan,
   PESAN_TAK_BOLEH_INPUT,
 } from "@/lib/keuangan-wewenang";
@@ -249,6 +250,7 @@ export default async function InputKeuanganPage({
           reklas={reklas}
           reasonReklas={reasonReklas}
           bolehTulis={bolehTulis}
+          bolehReklas={canReklasifikasi({ role: scope.role, email: scope.email })}
         />
       </div>
     </>
