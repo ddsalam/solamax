@@ -285,6 +285,7 @@ describe("§10.23 · rambatan null sampai gerbang tutup hari", () => {
       piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
       netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
       incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null,
+      saldoTitipanBright: 0,
     });
     // Gerbang tutup hari TIDAK bisa lulus — konsekuensi yang disengaja.
     expect(bs.langkahHarian).toBeNull();

@@ -1,3 +1,4 @@
+import { isTitipanBright } from "./titipan-bright";
 /**
  * SATU tempat yang menggabungkan seluruh sumber BEBAN untuk Income Statement.
  *
@@ -149,6 +150,8 @@ export interface BarisManualLaporan {
   keterangan: string;
   void: boolean;
   section: string;
+  /** Kategori operasional milik pengawas — dipakai mengenali titipan (§10.27). */
+  operationalCategory: string | null;
 }
 
 /**
@@ -165,11 +168,13 @@ export interface BarisManualLaporan {
 export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   manualBeban: BarisManualLaporan[];
   pendapatanLain: number;
+  /** §10.27 — titipan outlet Bright hari itu: BUKAN pendapatan, liabilitas. */
+  titipanBright: number;
 } {
+  const lain = manual.filter((r) => r.section === "pendapatan_lain" && !r.void);
   return {
     manualBeban: manual.filter((r) => r.section === "pengeluaran"),
-    pendapatanLain: manual
-      .filter((r) => r.section === "pendapatan_lain" && !r.void)
-      .reduce((s, r) => s + r.amountRp, 0),
+    pendapatanLain: lain.filter((r) => !isTitipanBright(r)).reduce((s, r) => s + r.amountRp, 0),
+    titipanBright: lain.filter((r) => isTitipanBright(r)).reduce((s, r) => s + r.amountRp, 0),
   };
 }

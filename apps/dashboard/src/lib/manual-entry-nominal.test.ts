@@ -22,6 +22,7 @@ const baris = (
   section = "pengeluaran",
 ) => ({
   section,
+  operationalCategory: null,
   businessDate: "2026-09-24",
   accountingAccount: null,
   amountRp: nominalManualEntry({ sourceDoor, amount }),
@@ -66,14 +67,16 @@ describe("konvensi nominal manual_entry — satu tanda untuk dua pintu", () => {
 });
 
 describe("🔴 laba bersih — biaya MENGURANGI laba, dari pintu mana pun", () => {
-  it("angka produksi Imam Bonjol 24-09-2026: −107.252.683, BUKAN −94.843.083", () => {
+  it("angka produksi Imam Bonjol 24-09-2026: −119.737.483 (bukan −94.843.083 cacat, bukan −107.252.683 pra-§10.27)", () => {
     // Delapan baris pengeluaran pengawas hari itu (total 6.204.800) dan satu
-    // pendapatan lain 12.484.800. Versi cacat menambahkan 6.204.800.
+    // "pendapatan lain" 12.484.800 yang ternyata SETORAN BRIGHT IB — titipan
+    // outlet Bright (§10.27, keputusan owner 26-09), bukan pendapatan SPBU.
+    // Riwayat: cacat tanda −94.843.083 → perbaikan #397 −107.252.683 → §10.27.
     const pengeluaran = [100_000, 50_000, 50_000, 100_000, 100_000, 5_000_000, 659_800, 145_000].map((n) =>
       baris("pengawas", n),
     );
     const pendapatan = baris("pengawas", 12_484_800, "SETORAN BRIGHT IB", "pendapatan_lain");
-    expect(labaBersih([...pengeluaran, pendapatan])).toBe(-107_252_683);
+    expect(labaBersih([...pengeluaran, pendapatan])).toBe(-119_737_483);
   });
 
   it("baris pengawas DAN Finance pada hari yang sama menjumlah sebagai beban", () => {

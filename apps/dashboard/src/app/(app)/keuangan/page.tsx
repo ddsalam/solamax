@@ -314,6 +314,7 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
     incomeAdjustment: null,
     totalAssetKemarin: bahan.totalAssetKemarin,
     deltaKontribusi: null,
+    saldoTitipanBright: bahan.saldoTitipanBright,
   });
 
   return barisUnit({

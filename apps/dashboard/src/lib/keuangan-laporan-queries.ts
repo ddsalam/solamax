@@ -8,6 +8,7 @@ import {
   type BarisManualLaporan,
 } from "./keuangan-beban";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
+import { KATEGORI_PENYERAHAN_TITIPAN, sqlTitipanBright } from "./titipan-bright";
 import { saldoAkun, saldoSemuaAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
 import {
@@ -49,6 +50,10 @@ export interface BahanLaporan {
   hutangPiutangNonEasymax: number | null;
   /** ARUS hari itu — untuk cash flow. Bukan angka yang sama. */
   arusHutangPiutangNonEasymax: number | null;
+  /** §10.27 — SALDO liabilitas titipan outlet Bright (neraca). */
+  saldoTitipanBright: number;
+  /** §10.27 — ARUS titipan hari itu: diterima − diserahkan (cash flow). */
+  arusTitipanBright: number;
   piutangEasymax: number;
   deltaPiutangEasymax: number;
   beban: BarisBeban[];
@@ -61,13 +66,14 @@ export interface BahanLaporan {
 async function getBebanDanPendapatan(
   unit: ScopedUnitId,
   date: string,
-): Promise<{ beban: BarisBeban[]; pendapatanLain: number }> {
+): Promise<{ beban: BarisBeban[]; pendapatanLain: number; titipanBright: number }> {
   const manual = await qScoped<BarisManualLaporan>(
     unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate",
             accounting_account                  AS "accountingAccount",
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
-            keterangan, void, section::text     AS section
+            keterangan, void, section::text     AS section,
+            operational_category                AS "operationalCategory"
        FROM app.manual_entry
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pengeluaran','pendapatan_lain')`,
@@ -90,14 +96,42 @@ async function getBebanDanPendapatan(
     [unit, date],
   );
 
-  const { manualBeban, pendapatanLain } = pilahManualEntry(manual);
+  const { manualBeban, pendapatanLain, titipanBright } = pilahManualEntry(manual);
   const beban = kumpulkanBeban(
     { manual_entry: manualBeban, noncash_expense: nonKas },
     date,
     date,
   );
 
-  return { beban, pendapatanLain };
+  return { beban, pendapatanLain, titipanBright };
+}
+
+/**
+ * §10.27 — SALDO titipan outlet Bright pada `d`: Σ titipan diterima (Rincian)
+ * − Σ yang sudah diserahkan (buku kas, kategori penyerahan), SEJAK buku kas
+ * unit ini dimulai (mutasi tertua). Sebelum buku dimulai kas tak terhitung,
+ * jadi liabilitasnya pun tak dihitung — nol, supaya keduanya mulai bersamaan
+ * dan langkah harian di hari pertama tetap seimbang.
+ */
+async function saldoTitipanPada(
+  unit: ScopedUnitId,
+  d: string,
+  mutasi: readonly { businessDate: string; void: boolean; categoryLabel: string | null; amount: number }[],
+): Promise<number> {
+  const aktif = mutasi.filter((m) => !m.void && m.businessDate <= d);
+  if (aktif.length === 0) return 0;
+  const mulai = aktif.reduce((a, m) => (m.businessDate < a ? m.businessDate : a), aktif[0]!.businessDate);
+  const r = await qScoped<{ rp: number }>(
+    unit,
+    `SELECT COALESCE(sum(m.amount), 0)::float8 AS rp
+       FROM app.manual_entry m
+      WHERE m.unit_id = $1 AND NOT m.void
+        AND m.business_date BETWEEN $2::date AND $3::date
+        AND ${sqlTitipanBright("m")}`,
+    [unit, mulai, d],
+  );
+  // Penyerahan tersimpan KREDIT (negatif) — menjumlahkannya mengurangi utang.
+  return (r[0]?.rp ?? 0) + deltaKategoriSampai(mutasi, d, KATEGORI_PENYERAHAN_TITIPAN);
 }
 
 /** Total asset komponen-non-kas pada satu tanggal — untuk LANGKAH harian. */
@@ -147,7 +181,9 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
   const kas = [...saldoSemuaAkun(mutasi, d).values()].reduce((s, v) => s + v, 0);
   const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
   const nonEasymax = deltaKategoriSampai(mutasi, d, "Hutang Piutang");
-  return kas + assetNonKas(totals) + piutang + nonEasymax;
+  // §10.27 — titipan outlet Bright adalah LIABILITAS: mengurangi asset bersih.
+  const titipan = await saldoTitipanPada(unit, d, mutasi);
+  return kas + assetNonKas(totals) + piutang + nonEasymax - titipan;
 }
 
 export async function getBahanLaporan(
@@ -227,6 +263,8 @@ async function bahanLaporan(
   //    pos lain adalah menebak keputusan yang tak diambil.
   const saldoNonEasymax = adaAkun ? deltaKategoriSampai(mutasi, date, "Hutang Piutang") : null;
   const arusNonEasymax = adaAkun ? deltaKategori(mutasi, date, "Hutang Piutang") : null;
+  const saldoTitipanBright = await saldoTitipanPada(unit, date, mutasi);
+  const arusTitipanBright = bp.titipanBright + deltaKategori(mutasi, date, KATEGORI_PENYERAHAN_TITIPAN);
 
   // Piutang pelanggan EasyMax pada DUA batas (§ getSaldoPelanggan) — yang dipakai
   // neraca adalah akhir hari; arusnya = selisih terhadap awal hari.
@@ -243,6 +281,8 @@ async function bahanLaporan(
     sebabKas,
     hutangPiutangNonEasymax: saldoNonEasymax,
     arusHutangPiutangNonEasymax: arusNonEasymax,
+    saldoTitipanBright,
+    arusTitipanBright,
     piutangEasymax,
     deltaPiutangEasymax,
     beban: bp.beban,

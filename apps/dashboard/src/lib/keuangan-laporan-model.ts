@@ -83,6 +83,8 @@ export interface CashFlowInput {
   penebusanSo: number | null;
   pendapatanLain: number;
   biayaOperasional: number;
+  /** §10.27 — titipan outlet Bright hari itu (diterima − diserahkan). Kas, bukan laba. */
+  arusTitipanBright: number;
 }
 
 export interface PanelLaporan {
@@ -117,6 +119,9 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
     },
     { label: "Pendapatan lain-lain", nilai: i.pendapatanLain },
     { label: "Biaya operasional", nilai: i.biayaOperasional },
+    // §10.27 — uang titipan outlet Bright ikut laci & setoran SPBU, jadi ia ARUS
+    // KAS — tetapi bukan pendapatan. Baris sendiri, supaya tak tercampur.
+    { label: "Titipan outlet Bright (bukan pendapatan)", nilai: i.arusTitipanBright },
   ];
 
   // Net cash change hanya ada bila SELURUH komponennya ada. Menjumlah dengan
@@ -222,6 +227,8 @@ export interface BalanceInput {
   totalAssetKemarin: number | null;
   /** Δ kontribusi/dividend hari ini (arus keluar ekuitas). */
   deltaKontribusi: number | null;
+  /** §10.27 — SALDO liabilitas titipan outlet Bright. Mengurangi asset bersih. */
+  saldoTitipanBright: number;
 }
 
 export interface PanelBalance extends PanelLaporan {
@@ -241,7 +248,8 @@ export function panelBalance(i: BalanceInput): PanelBalance {
       i.inventoryValue +
       i.soValue +
       (i.piutangEasymax ?? 0) +
-      (i.hutangPiutangNonEasymax ?? 0);
+      (i.hutangPiutangNonEasymax ?? 0) -
+      i.saldoTitipanBright;
 
   // ⛔ `netIncome` boleh `null` sejak §10.23. Menggantinya 0 di sini — atau di
   //    pemanggil dengan `?? 0` — memasukkan kembali angka lebih saji yang
@@ -269,6 +277,7 @@ export function panelBalance(i: BalanceInput): PanelBalance {
       { label: "Nilai DO", nilai: i.soValue, ind: true },
       { label: "Hutang piutang pelanggan EasyMax", nilai: i.piutangEasymax, ind: true, sebab: i.piutangEasymax === null ? "tak_bersumber" : undefined },
       { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined },
+      { label: "Titipan outlet Bright (liabilitas)", nilai: -i.saldoTitipanBright, ind: true },
       { label: "Equity", nilai: equity, sum: true, sebab: equity === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Opened retained earnings", nilai: i.openedRetainedEarnings, ind: true, sebab: i.openedRetainedEarnings === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Net income", nilai: i.netIncome, ind: true },

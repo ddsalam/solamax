@@ -1754,6 +1754,44 @@ bukan saldo bank sesungguhnya. Angkanya benar sebagai *arus*, salah sebagai *sal
 Kelola akun kas kini membaca mutasi **tanpa batas tanggal atas** — titik awal
 bertanggal masa depan (1 Okt, ditetapkan 26 Sep) dulu tampil "Belum ditetapkan".
 
+### 10.27 K4 · Setoran Bright = TITIPAN outlet Bright, bukan pendapatan SPBU (26 September 2026)
+
+**Temuan (produksi 12–25 Sep 2026, layar Pemantauan):** 105 baris "SETORAN BRIGHT"
+di **ketujuh** unit dicatat pengawas sebagai *pendapatan lain* — laba SPBU lebih
+saji setiap hari (±Rp 0,1–22 jt/hari/unit).
+
+**Keputusan owner:** setoran Bright adalah **titipan** hasil penjualan outlet
+Bright di tiap SPBU. Uangnya masuk laci & disetor bersama kas SPBU (jadi tetap
+ikut rekonsiliasi kas pengawas, komponen F), tetapi ia **utang** kepada outlet
+Bright/SPH sampai diserahkan. Cara memisahkan: **kategori "Titipan outlet
+Bright" di Rincian**, baris lama ikut dikenali.
+
+| Laporan | Perlakuan |
+|---|---|
+| Rincian (rekonsiliasi pengawas) | tidak berubah — titipan tetap di F |
+| Laba rugi | **tidak** masuk pendapatan lain-lain |
+| Arus kas | baris "Titipan outlet Bright (bukan pendapatan)" = diterima − diserahkan |
+| Neraca | **liabilitas** "Titipan outlet Bright" = Σ diterima − Σ diserahkan sejak buku kas dimulai; mengurangi asset bersih |
+
+Kas naik, utang naik, laba tak berubah ⇒ **langkah harian tetap seimbang** (diuji).
+Penyerahan ke outlet Bright/SPH dicatat Keuangan sebagai **Kredit, kategori
+"Penyerahan titipan Bright"** (0045) — mengurangi kas dan utang bersamaan.
+
+**Pengenal tunggal** `titipan-bright.ts` (`isTitipanBright` + padanan SQL
+`sqlTitipanBright`): kategori operasional pengawas menang; baris TANPA kategori
+dikenali dari kata utuh "bright"/"titipan" di keterangan. Formulir pengawas:
+centang "Titipan outlet Bright" tercentang otomatis dari keterangan, bisa diubah;
+"bukan titipan" pada keterangan yang berbunyi titipan dicatat `Lain-Lain` agar
+pengenal baris lama tak menimpa pilihan orang.
+
+⚠️ **Batas:** pengenal baris lama berbasis kata — keterangan yang tak menyebut
+Bright/titipan tak terkenali (sebaliknya: pendapatan sungguhan yang menyebut
+"bright" akan terbaca titipan sampai pengawas mencatatnya ulang). Pemantauan
+berhenti menandai titipan sebagai pos janggal.
+
+**Riwayat angka acuan IB 24-09:** −94.843.083 (cacat tanda) → −107.252.683 (#397)
+→ **−119.737.483** (§10.27: Rp 12.484.800 SETORAN BRIGHT IB keluar dari laba).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
