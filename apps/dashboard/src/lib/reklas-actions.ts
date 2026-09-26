@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { AKUN_KOSONG, periksaReklas } from "./keuangan-reklas";
-import { alasanTakBolehInput, PESAN_TAK_BOLEH_INPUT } from "./keuangan-wewenang";
+import { canReklasifikasi } from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
 import { isTitipanBright } from "./titipan-bright";
 
@@ -37,9 +37,14 @@ export async function reklasifikasiBiaya(input: {
 }): Promise<ReklasResult> {
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code);
-  // Reklasifikasi = tindakan Finance (§2.3) — gerbang tulis Layar 3 yang sama.
-  const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
-  if (alasan !== null) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasan] };
+  // Reklasifikasi = tindakan Finance (§2.3): staf Keuangan DAN Head of Finance
+  // (keputusan owner 27 Sep 2026 — pengecualian sempit §10.12, lihat predikatnya).
+  if (!canReklasifikasi({ role: scope.role, email: scope.email })) {
+    return {
+      ok: false,
+      error: "Reklasifikasi dilakukan tim Finance — staf Keuangan atau Head of Finance.",
+    };
+  }
   if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
 
   const client = await pool.connect();

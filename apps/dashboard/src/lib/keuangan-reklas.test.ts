@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { pilahManualEntry, type BarisManualLaporan } from "./keuangan-beban";
+import { canInputKeuangan, canReklasifikasi } from "./keuangan-wewenang";
 import { panelBalance, panelCashFlow } from "./keuangan-laporan-model";
 import {
   AKUN_KOSONG,
@@ -205,8 +206,38 @@ describe("server action — baris pengawas TIDAK PERNAH disentuh", () => {
     expect(ins).toEqual(["app.reclassification"]);
   });
   it("wewenang dicek di server & akun asal dibaca ulang di transaksi", () => {
-    expect(kode).toMatch(/alasanTakBolehInput\(/);
+    expect(kode).toMatch(/canReklasifikasi\(/);
     expect(kode).toMatch(/FROM app\.reclassification[\s\S]*ORDER BY created_at DESC/);
     expect(kode).toMatch(/periksaReklas\(/);
+  });
+});
+
+describe("canReklasifikasi — staf Keuangan DAN Head of Finance (keputusan owner 27 Sep 2026)", () => {
+  const HOF = ["hof@x"];
+  it("staf keuangan & super admin (gerbang tulis Layar 3)", () => {
+    expect(canReklasifikasi({ role: "keuangan", email: "staf@x" }, HOF)).toBe(true);
+    expect(canReklasifikasi({ role: "super_admin", email: "a@x" }, HOF)).toBe(true);
+  });
+  it("🔴 Head of Finance BOLEH — apa pun perannya (kasus produksi: Admin Perusahaan)", () => {
+    expect(canReklasifikasi({ role: "admin_perusahaan", email: "hof@x" }, HOF)).toBe(true);
+    expect(canReklasifikasi({ role: "keuangan", email: "hof@x" }, HOF)).toBe(true);
+  });
+  it("…tetapi pengecualiannya SEMPIT: HoF tetap tidak boleh input harian (§10.12)", () => {
+    expect(canInputKeuangan({ role: "admin_perusahaan", email: "hof@x" }, HOF)).toBe(false);
+    expect(canInputKeuangan({ role: "keuangan", email: "hof@x" }, HOF)).toBe(false);
+  });
+  it("bukan pengawas, direksi, atau admin perusahaan biasa", () => {
+    for (const role of ["pengawas", "direksi", "admin_perusahaan"] as const) {
+      expect(canReklasifikasi({ role, email: "a@x" }, HOF), role).toBe(false);
+    }
+  });
+  it("layar memakai gerbang yang SAMA dengan server — bukan bolehTulis", () => {
+    const panel = readFileSync(resolve(__dirname, "../components/keuangan/BiayaPanel.tsx"), "utf8");
+    expect(panel).toMatch(/const bisaReklas = bolehReklas && /);
+    const hal = readFileSync(
+      resolve(__dirname, "../app/(app)/keuangan/unit/[code]/[date]/input/page.tsx"),
+      "utf8",
+    );
+    expect(hal).toMatch(/bolehReklas=\{canReklasifikasi\(/);
   });
 });
