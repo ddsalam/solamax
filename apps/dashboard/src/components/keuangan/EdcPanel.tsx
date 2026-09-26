@@ -1,5 +1,7 @@
 "use client";
 
+import { bacaRupiah, type HasilAngka } from "@/lib/angka-input";
+import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { setujuiPencairan, simpanSettlement } from "@/lib/edc-actions";
 import {
@@ -64,10 +66,16 @@ export function EdcPanel({
   const [pending, start] = useTransition();
 
   const namaAkun = (id: string): string => akun.find((a) => a.id === id)?.nama ?? id;
-  const angka = (s: string): number => Number(s.replace(/[^\d]/g, ""));
-  const brutoN = angka(bruto);
-  const netoN = angka(neto);
-  const txnN = txn.trim() === "" ? null : angka(txn);
+  // Satu pembaca angka untuk semua formulir keuangan (`angka-input.ts`): yang
+  // ambigu DITOLAK dengan contoh, tidak ditebak seratus kali lipat.
+  const hBruto = bacaRupiah(bruto);
+  const hNeto = bacaRupiah(neto);
+  const hTxn = bacaRupiah(txn);
+  const nilai = (h: HasilAngka): number => (h.keadaan === "sah" ? h.nilai : 0);
+  const brutoN = nilai(hBruto);
+  const netoN = nilai(hNeto);
+  const txnN = hTxn.keadaan === "sah" ? hTxn.nilai : null;
+  const angkaDitolak = [hBruto, hNeto, hTxn].some((h) => h.keadaan === "tolak");
   // MDR di layar = bruto − neto. Ditampilkan, tidak bisa diketik.
   const mdrPratinjau = brutoN > 0 && netoN > 0 ? brutoN - netoN : null;
   const selisihPratinjau = txnN === null ? null : txnN - brutoN;
@@ -79,6 +87,10 @@ export function EdcPanel({
   const simpan = (): void => {
     setErr(null);
     setMsg(null);
+    if (angkaDitolak) {
+      setErr("Periksa kolom angka yang bertanda merah sebelum menyimpan.");
+      return;
+    }
     start(async () => {
       const res = await simpanSettlement({
         code,
@@ -357,7 +369,9 @@ export function EdcPanel({
                 inputMode="numeric"
                 value={bruto}
                 onChange={(e) => setBruto(e.target.value)}
+                placeholder="contoh 12.500.000"
               />
+              <PratinjauAngka hasil={hBruto} />
             </label>
             <label className="keu-fld">
               <span className="keu-label">Neto diterima</span>
@@ -366,7 +380,9 @@ export function EdcPanel({
                 inputMode="numeric"
                 value={neto}
                 onChange={(e) => setNeto(e.target.value)}
+                placeholder="contoh 12.412.500"
               />
+              <PratinjauAngka hasil={hNeto} />
             </label>
             <label className="keu-fld">
               <span className="keu-label">Total transaksi EDC (opsional)</span>
@@ -377,6 +393,7 @@ export function EdcPanel({
                 onChange={(e) => setTxn(e.target.value)}
                 placeholder="menurut mesin EDC / SolaMax"
               />
+              <PratinjauAngka hasil={hTxn} />
             </label>
           </div>
 
@@ -415,7 +432,7 @@ export function EdcPanel({
           )}
 
           <div className="manual-form-actions">
-            <button type="button" className="btn-navy" onClick={simpan} disabled={pending}>
+            <button type="button" className="btn-navy" onClick={simpan} disabled={pending || angkaDitolak}>
               {pending ? "Menyimpan…" : "Simpan batch"}
             </button>
             <button

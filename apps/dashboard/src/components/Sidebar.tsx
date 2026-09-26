@@ -145,6 +145,15 @@ function buildGroups(
           icon: "receipt",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+\/input/.test(p),
         },
+        {
+          // Dulu hanya bisa dicapai dengan mengetik URL — padahal Head of Finance
+          // WAJIB ke sini untuk saldo pembuka, dan tautan satu-satunya di Papan
+          // hanya muncul bagi peran Keuangan pada unit TANPA akun sama sekali.
+          href: unitCode ? `/keuangan/unit/${unitCode}/akun-kas` : null,
+          label: "Kelola akun kas",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/akun-kas/.test(p),
+        },
       ],
     },
     {

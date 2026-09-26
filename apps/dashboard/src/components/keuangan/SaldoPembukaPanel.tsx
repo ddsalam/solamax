@@ -11,6 +11,8 @@
  * lama: ia menetapkan yang baru, dan yang lama di-void beserta jejaknya. Karena
  * itu **alasan wajib** — dan kalimatnya menyebut kenapa, bukan sekadar menuntut.
  */
+import { bacaRupiah } from "@/lib/angka-input";
+import { PratinjauAngka } from "./PratinjauAngka";
 import { useState } from "react";
 import { tetapkanSaldoAwal } from "@/lib/kas-actions";
 
@@ -40,14 +42,19 @@ export function SaldoPembukaPanel({
   const [galat, setGalat] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const hNominal = bacaRupiah(nominal, { bolehNegatif: true });
   async function simpan(accountId: string) {
-    setPending(true);
     setGalat(null);
+    if (hNominal.keadaan !== "sah") {
+      setGalat(hNominal.keadaan === "tolak" ? hNominal.pesan : "Nominal wajib diisi.");
+      return;
+    }
+    setPending(true);
     const r = await tetapkanSaldoAwal({
       code,
       accountId,
       date: tanggal,
-      amount: Number(nominal.replace(/[^\d-]/g, "")),
+      amount: hNominal.nilai,
       alasan,
     });
     setPending(false);
@@ -144,8 +151,9 @@ export function SaldoPembukaPanel({
                 inputMode="numeric"
                 value={nominal}
                 onChange={(e) => setNominal(e.target.value)}
-                placeholder="0"
+                placeholder="contoh 300.566.000"
               />
+              <PratinjauAngka hasil={hNominal} />
             </label>
           </div>
           <label className="keu-fld">

@@ -1,5 +1,6 @@
 "use server";
 
+import { barisSistemDari, PENJELASAN_BARIS_SISTEM } from "./keuangan-kas-model";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "./keuangan-kas";
@@ -243,10 +244,31 @@ export async function voidMutasiKas(input: {
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+    // ⛔ Baris SISTEM tidak dibatalkan dari buku — dijaga DI SERVER, bukan hanya
+    // dengan menyembunyikan tombolnya. Dulu tombol "Batalkan" bisa (a) mencabut
+    // saldo pembuka milik Head of Finance tanpa jejak audit_log, dan (b) memutus
+    // satu dari tiga kaki jurnal pencairan EDC sehingga buku tak seimbang dan
+    // batch-nya tak bisa disetujui ulang. `FOR UPDATE` mengunci barisnya sampai
+    // UPDATE di bawah, supaya vonis dan tulisan membaca keadaan yang sama.
+    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean }>(
+      `SELECT saldo_awal, (edc_settlement_id IS NOT NULL) AS dari_edc
+         FROM app.cash_ledger
+        WHERE id=$1::uuid AND unit_id=$2 AND NOT void
+        FOR UPDATE`,
+      [input.id, unit.unit_id],
+    );
+    const sistem = cek.rows[0]
+      ? barisSistemDari({ saldoAwal: cek.rows[0].saldo_awal, dariPencairanEdc: cek.rows[0].dari_edc })
+      : null;
+    if (sistem !== null) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: `Baris ini tidak bisa dibatalkan dari buku. ${PENJELASAN_BARIS_SISTEM[sistem]}` };
+    }
     const res = await client.query(
       `UPDATE app.cash_ledger
           SET void=true, voided_by_user_id=$1, voided_at=now()
-        WHERE id=$2::uuid AND unit_id=$3 AND NOT void`,
+        WHERE id=$2::uuid AND unit_id=$3 AND NOT void
+          AND NOT saldo_awal AND edc_settlement_id IS NULL`,
       [scope.userId, input.id, unit.unit_id],
     );
     await client.query("COMMIT");
