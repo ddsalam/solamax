@@ -4,6 +4,9 @@ import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { BiayaPanel } from "@/components/keuangan/BiayaPanel";
 import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
 import { EdcPanel } from "@/components/keuangan/EdcPanel";
+import { EdcShiftSetujuPanel } from "@/components/edc/EdcShiftSetujuPanel";
+import { rakitShiftEdc } from "@/lib/edc-shift-model";
+import { getCekSlip, getEdcPerShift, getPetaKartu } from "@/lib/edc-shift-queries";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
 import { unitDotted, unitLabel } from "@/lib/config";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -95,12 +98,17 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes, biaya, petaKategori] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
     getBiayaHarian(unit.unit_id, date),
     getPetaKategori(unit.unit_id, date),
+    // §10.25 — penjualan EDC per shift yang ditawarkan ke EDC Penampungan.
+    getEdcPerShift(unit.unit_id, date),
+    getPetaKartu(unit.unit_id),
+    getCekSlip(unit.unit_id, date),
   ]);
+  const edcPerShift = rakitShiftEdc(edcShift, petaKartu, cekSlip);
 
   const baris = barisHargaBeli(produk, buyRows, sellHistory, date);
   const penjaga = ringkasPenjaga(baris);
@@ -198,6 +206,15 @@ export default async function InputKeuanganPage({
       )}
 
       <div className="mt10">
+        <EdcShiftSetujuPanel
+          code={unit.code}
+          date={date}
+          baris={edcPerShift.baris}
+          kartuTanpaPeta={edcPerShift.kartuTanpaPeta}
+          reasonCodes={reasonCodes}
+          bolehTulis={bolehTulis}
+          adaAkunEdc={akun.some((a) => a.kind === "edc_penampungan" && a.active)}
+        />
         <EdcPanel
           code={unit.code}
           date={date}

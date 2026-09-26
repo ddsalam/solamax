@@ -248,3 +248,34 @@ export function canViewLaporanKeuangan(ctx: WewenangCtx): boolean {
 export function canNonaktifkanAkunKas(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+/**
+ * Boleh MEMETAKAN kode kartu EasyMax → bank (§10.25, keputusan owner 26 Sep
+ * 2026): Head of Finance, super admin, Direksi (owner), dan pengawas — yang
+ * terakhir hanya untuk unit dalam cakupannya (dijaga `requireUnit` + RLS).
+ *
+ * ⚠️ Staf `keuangan` TIDAK termasuk, sesuai keputusan: peta menentukan ke
+ * bank mana penjualan dibukukan, dan penyetuju posting tak semestinya juga
+ * menentukan petanya.
+ */
+export function canPetakanKartuEdc(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    ctx.role === "pengawas" ||
+    ctx.role === "direksi" ||
+    ctx.role === "super_admin" ||
+    isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/**
+ * Boleh MENCOCOKKAN slip settlement EDC per shift (§10.25): pengawas — pemegang
+ * slip fisik — dan super admin (break-glass).
+ *
+ * ⛔ Yang mencocokkan TIDAK boleh menyetujui posting cek yang sama; itu
+ * ditegakkan di server action persetujuan (`checked_by ≠ approver`), bukan
+ * dengan menyempitkan peran di sini.
+ */
+export function canCekSlipEdc(ctx: WewenangCtx): boolean {
+  return ctx.role === "pengawas" || ctx.role === "super_admin";
+}
+

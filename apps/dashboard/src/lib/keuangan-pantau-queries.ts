@@ -97,7 +97,8 @@ export type JenisKejadian =
   | "selisih_settlement"
   | "tutup_di_luar_toleransi"
   | "tutup_dengan_selisih"
-  | "keterangan_janggal";
+  | "keterangan_janggal"
+  | "selisih_slip_edc";
 
 export interface KejadianPantau {
   unitId: number;
@@ -127,6 +128,8 @@ export interface BahanPantau {
   sampai: string;
   /** Hari dalam jendela yang punya penjualan, per unit — penyebut buku kas & tutup hari. */
   hariPenjualan: Map<number, number>;
+  /** §10.25 — hari berpenjualan EDC vs hari yang penjualan EDC-nya sudah dibukukan. */
+  edc: Map<number, { hariEdc: number; hariDibukukan: number }>;
   akun: AkunPantau[];
   bukuKas: BukuKasPantau[];
   setoran: SetoranTertundaPantau[];
@@ -163,7 +166,7 @@ export async function getBahanPantau(
   const ids = units.map(Number);
   const p = [ids, dari, sampai];
 
-  const [hariJual, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga] =
+  const [hariJual, edcHari, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga] =
     await Promise.all([
       // Penyebut: hari yang PUNYA penjualan. Hari tanpa penjualan (unit tutup,
       // agent mati) tidak boleh dihitung sebagai "hari yang lupa dibukukan".
@@ -173,6 +176,33 @@ export async function getBahanPantau(
            FROM sales_header
           WHERE unit_id = ANY($1::int[]) AND dtgljual BETWEEN $2::date AND $3::date
           GROUP BY unit_id`,
+        p,
+      ),
+      // §10.25 — penjualan EDC per shift yang sudah masuk EDC Penampungan.
+      qScoped<{ unitId: number; hariEdc: number; hariDibukukan: number }>(
+        units,
+        // "Dibukukan" = SELURUH bruto EDC hari itu sudah masuk buku, bukan
+        // "ada satu shift yang masuk" — hitungan per hari yang lebih longgar
+        // menghijaukan hari yang shift terakhirnya terlupa (terlihat di uji lokal).
+        `WITH e AS (
+           SELECT unit_id, business_date AS d, sum(total) AS rp
+             FROM public.edc
+            WHERE unit_id = ANY($1::int[]) AND business_date BETWEEN $2::date AND $3::date
+              AND ckdkartu IS NOT NULL AND trim(ckdkartu) <> ''
+            GROUP BY 1, 2
+           HAVING COALESCE(sum(total), 0) <> 0
+         ), b AS (
+           SELECT unit_id, business_date AS d, sum(amount) AS rp
+             FROM app.cash_ledger
+            WHERE unit_id = ANY($1::int[]) AND business_date BETWEEN $2::date AND $3::date
+              AND edc_shift_cek_id IS NOT NULL AND NOT void
+            GROUP BY 1, 2
+         )
+         SELECT e.unit_id::int AS "unitId",
+                count(*)::int AS "hariEdc",
+                count(*) FILTER (WHERE COALESCE(b.rp, 0) >= e.rp - 1)::int AS "hariDibukukan"
+           FROM e LEFT JOIN b ON b.unit_id = e.unit_id AND b.d = e.d
+          GROUP BY e.unit_id`,
         p,
       ),
       qScoped<AkunPantau>(
@@ -279,6 +309,7 @@ export async function getBahanPantau(
     dari,
     sampai,
     hariPenjualan: new Map(hariJual.map((r) => [r.unitId, r.n])),
+    edc: new Map(edcHari.map((r) => [r.unitId, { hariEdc: r.hariEdc, hariDibukukan: r.hariDibukukan }])),
     akun,
     bukuKas,
     setoran,
@@ -442,6 +473,19 @@ const KUERI_KEJADIAN = `
        AND m.status = 'submitted'
        AND m.business_date BETWEEN $2::date AND $3::date
        AND m.keterangan ~* '(setor|prive|pindah ?buku|pinjam|kasbon|transfer)'
+
+    UNION ALL
+    SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},
+           to_char(k.business_date, 'YYYY-MM-DD'), u.email,
+           ('shift ' || k.cshift || ' ' || k.acquirer || ' · slip ' || to_char(k.slip_rp, 'FM999G999G990')
+             || ' vs EasyMax ' || to_char(k.easymax_rp, 'FM999G999G990')
+             || COALESCE(' · ' || k.reason_code, '')),
+           (k.slip_rp - k.easymax_rp)::float8, NULL
+      FROM app.edc_shift_cek k
+      LEFT JOIN app.users u ON u.id = k.checked_by_user_id
+     WHERE k.unit_id = ANY($1::int[]) AND NOT k.void
+       AND abs(k.slip_rp - k.easymax_rp) >= 1
+       AND ${SAAT_DALAM_JENDELA("k.checked_at")}
   ) k
   ORDER BY k.waktu DESC NULLS LAST
   LIMIT 300`;
@@ -480,6 +524,10 @@ const KUERI_AKTIVITAS = `
     SELECT voided_by_user_id, 'pembatalan', voided_at
       FROM app.edc_settlement
      WHERE unit_id = ANY($1::int[]) AND void AND ${SAAT_DALAM_JENDELA("voided_at")}
+    UNION ALL
+    SELECT checked_by_user_id, 'cek slip EDC', checked_at
+      FROM app.edc_shift_cek
+     WHERE unit_id = ANY($1::int[]) AND ${SAAT_DALAM_JENDELA("checked_at")}
     UNION ALL
     SELECT posted_by_user_id, 'pencairan EDC', posted_at
       FROM app.edc_settlement
