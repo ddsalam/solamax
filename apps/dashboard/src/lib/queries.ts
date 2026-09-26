@@ -1734,6 +1734,8 @@ export interface ManualEntryRow {
   keterangan: string;
   amount: number;
   urut: number;
+  /** Kategori operasional pengawas (§2.1) — dipakai menandai titipan (§10.27). */
+  operationalCategory?: string | null;
 }
 
 interface LegacySaldoRow {
@@ -1833,7 +1835,8 @@ export async function getManualEntries(
 ): Promise<ManualEntryRow[]> {
   return qScoped<ManualEntryRow>(
     unit,
-    `SELECT id::text AS id, keterangan, amount::float8 AS amount, urut
+    `SELECT id::text AS id, keterangan, amount::float8 AS amount, urut,
+            operational_category AS "operationalCategory"
      FROM app.manual_entry
      WHERE unit_id = $1 AND business_date = $2::date
        AND section = $3::app.manual_entry_section AND NOT void

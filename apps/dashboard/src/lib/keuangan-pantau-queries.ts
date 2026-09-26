@@ -7,6 +7,7 @@ import {
   getProdukUnit,
 } from "./keuangan-input-queries";
 import { barisHargaBeli, type BarisHargaBeli } from "./keuangan-harga-model";
+import { sqlTitipanBright } from "./titipan-bright";
 
 /**
  * Bahan mentah Layar "Pemantauan pemakaian keuangan" — SELURUHNYA BACA.
@@ -51,6 +52,8 @@ export interface AkunPantau {
   kind: "kas" | "bank" | "edc_penampungan";
   active: boolean;
   adaSaldoAwal: boolean;
+  /** §10.26 — titik awal yang ada masih ditandai sementara. */
+  saldoAwalSementara: boolean;
 }
 
 export interface BukuKasPantau {
@@ -214,7 +217,11 @@ export async function getBahanPantau(
                 EXISTS (
                   SELECT 1 FROM app.cash_ledger l
                    WHERE l.account_id = a.id AND l.saldo_awal AND NOT l.void
-                )                               AS "adaSaldoAwal"
+                )                               AS "adaSaldoAwal",
+                EXISTS (
+                  SELECT 1 FROM app.cash_ledger l
+                   WHERE l.account_id = a.id AND l.saldo_awal AND l.saldo_awal_sementara AND NOT l.void
+                )                               AS "saldoAwalSementara"
            FROM app.cash_account a
           WHERE a.unit_id = ANY($1::int[])
           ORDER BY a.unit_id, (a.kind <> 'kas'), a.nama`,
@@ -473,6 +480,9 @@ const KUERI_KEJADIAN = `
        AND m.status = 'submitted'
        AND m.business_date BETWEEN $2::date AND $3::date
        AND m.keterangan ~* '(setor|prive|pindah ?buku|pinjam|kasbon|transfer)'
+       -- §10.27 — titipan outlet Bright sudah DIKENALI (liabilitas, bukan laba):
+       -- bukan lagi pos janggal. Tanpa ini 105 baris produksi 12–25 Sep tetap menjerit.
+       AND NOT ${sqlTitipanBright("m")}
 
     UNION ALL
     SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},

@@ -926,6 +926,8 @@ model CashLedger {
   amount              Decimal           @db.Decimal(17, 2)
   /// §10.24 — PENANDA, bukan angka: titik awal rekening. Satu per akun (indeks parsial 0036).
   saldoAwal           Boolean           @default(false) @map("saldo_awal")
+  /// §10.26 — titik awal SEMENTARA (Rp 0 sah hanya dengan penanda ini, 0044).
+  saldoAwalSementara  Boolean           @default(false) @map("saldo_awal_sementara")
   void                Boolean           @default(false)
   createdByUserId     Int               @map("created_by_user_id")
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz()

@@ -5,6 +5,7 @@ import { LoadingButton } from "@/components/loading/LoadingButton";
 import { StateView } from "@/components/loading/StateView";
 import { rp } from "@/lib/format";
 import { addManualEntry, voidManualEntry } from "@/lib/manual-entry-actions";
+import { isTitipanBright, KATEGORI_TITIPAN_BRIGHT, POLA_KETERANGAN_TITIPAN } from "@/lib/titipan-bright";
 import type { ManualEntryRow, ManualSection } from "@/lib/queries";
 import type { PanelIsyarat } from "@/lib/rincian-model";
 
@@ -132,6 +133,11 @@ export interface ManualSectionViewProps {
   onConfirmVoid: (id: string) => void;
   onCancelVoid: () => void;
   ketInputRef?: React.Ref<HTMLInputElement>;
+  /**
+   * §10.27 — hanya Pendapatan Lain: pilihan "titipan outlet Bright". Tanpa prop
+   * ini (Pengeluaran, Setoran) kontrolnya tak dirender sama sekali.
+   */
+  titipan?: { checked: boolean; onChange: (v: boolean) => void };
   addToggleRef?: React.Ref<HTMLButtonElement>;
   confirmYesRef?: React.Ref<HTMLButtonElement>;
   registerVoidBtn?: (id: string, el: HTMLButtonElement | null) => void;
@@ -190,7 +196,14 @@ export function ManualSectionView(p: ManualSectionViewProps) {
                 aria-busy={r._pending}
               >
                 <span className="fs15 t-tertiary num">{i + 1}</span>
-                <span className="fs16 t-primary manual-ket">{r.keterangan}</span>
+                <span className="fs16 t-primary manual-ket">
+                  {r.keterangan}
+                  {p.titipan && isTitipanBright({ section: "pendapatan_lain", operationalCategory: r.operationalCategory ?? null, keterangan: r.keterangan }) && (
+                    <span className="manual-titipan" title="Titipan outlet Bright — masuk rekonsiliasi kas, bukan pendapatan SPBU">
+                      titipan
+                    </span>
+                  )}
+                </span>
                 <span className="fs16 right num nowrap manual-amt">{rp(r.amount)}</span>
                 <span className="manual-actioncell">
                   {!confirming && (
@@ -273,6 +286,17 @@ export function ManualSectionView(p: ManualSectionViewProps) {
                 placeholder="mis. SETOR BANK"
               />
             </div>
+            {p.titipan && (
+              <label className="manual-titipan-opt" htmlFor={`${p.idBase}-titipan`}>
+                <input
+                  id={`${p.idBase}-titipan`}
+                  type="checkbox"
+                  checked={p.titipan.checked}
+                  onChange={(e) => p.titipan?.onChange(e.target.checked)}
+                />{" "}
+                Titipan outlet Bright — tetap dihitung di kas SPBU, <strong>bukan</strong> pendapatan SPBU
+              </label>
+            )}
             <div className="manual-field">
               <label htmlFor={`${p.idBase}-amt`}>Jumlah (Rp)</label>
               <input
@@ -337,6 +361,10 @@ export function ManualEntryForm({
 }) {
   const [ket, setKet] = useState("");
   const [amount, setAmount] = useState("");
+  // §10.27 — `null` = ikuti keterangan (otomatis tercentang bila menyebut
+  // Bright/titipan); boolean = pengawas sudah memilih sendiri.
+  const [titipanPilih, setTitipanPilih] = useState<boolean | null>(null);
+  const titipanChecked = titipanPilih ?? POLA_KETERANGAN_TITIPAN.test(ket);
   const [adding, setAdding] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -406,13 +434,28 @@ export function ManualEntryForm({
     start(async () => {
       applyOpt({
         kind: "add",
-        row: { id: `opt-${seq.current++}`, keterangan: ketTrim, amount: amt, urut: 9_999, _pending: true },
+        row: {
+          id: `opt-${seq.current++}`,
+          keterangan: ketTrim,
+          amount: amt,
+          urut: 9_999,
+          operationalCategory: section === "pendapatan_lain" && titipanChecked ? KATEGORI_TITIPAN_BRIGHT : null,
+          _pending: true,
+        },
       });
-      const res = await addManualEntry({ code, date, section, keterangan: ketTrim, amount: amt });
+      const res = await addManualEntry({
+        code,
+        date,
+        section,
+        keterangan: ketTrim,
+        amount: amt,
+        ...(section === "pendapatan_lain" ? { titipanBright: titipanChecked } : {}),
+      });
       if (!res.ok) setErr(res.error); // isian DIPERTAHANKAN utk koreksi
       else {
         setKet("");
         setAmount("");
+        setTitipanPilih(null);
         setSuccess("Entri ditambahkan.");
         ketInputRef.current?.focus(); // siap entri berikutnya
       }
@@ -474,6 +517,11 @@ export function ManualEntryForm({
       addToggleRef={addToggleRef}
       confirmYesRef={confirmYesRef}
       registerVoidBtn={registerVoidBtn}
+      titipan={
+        section === "pendapatan_lain"
+          ? { checked: titipanChecked, onChange: (v) => setTitipanPilih(v) }
+          : undefined
+      }
     />
   );
 }

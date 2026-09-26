@@ -60,6 +60,7 @@ export default async function LaporanKeuanganPage({
     penebusanSo: b.penebusanSo,
     pendapatanLain: b.pendapatanLain,
     biayaOperasional: -b.beban.reduce((s, x) => s + x.amountRp, 0),
+    arusTitipanBright: b.arusTitipanBright,
   });
 
   const is = panelIncome({
@@ -86,6 +87,7 @@ export default async function LaporanKeuanganPage({
     incomeAdjustment: null,
     totalAssetKemarin: b.totalAssetKemarin,
     deltaKontribusi: null,
+    saldoTitipanBright: b.saldoTitipanBright,
   });
 
   return (

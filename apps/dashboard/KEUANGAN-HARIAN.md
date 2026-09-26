@@ -1728,6 +1728,70 @@ dipetakan ke bank sehingga tak ikut dibukukan — ia tetap flag kepatuhan di
 Rincian (ADR-001 #3). Foto slip belum punya penyimpanan; membuatnya wajib butuh
 keputusan tempat simpan (mis. Cloud Storage) lebih dulu.
 
+### 10.26 K4 · Saldo pembuka Rp 0 SEMENTARA, cut-over 1 Oktober 2026 (26 September 2026)
+
+**Keputusan owner (26 Sep 2026):** pembukuan di SolaMax **mulai 1 Oktober 2026**
+walau saldo rekening koran belum di tangan. Saldo pembuka tiap rekening diisi
+**Rp 0 bertanda sementara**, lalu diganti angka rekening koran per tanggal cut-over.
+
+**Ini MELONGGARKAN §10.24 dengan syarat, bukan membatalkannya.** §10.24 menolak
+nol supaya "saldo pembuka lengkap" tak pernah palsu. Nol kini sah **hanya** bila
+barisnya membawa penanda `saldo_awal_sementara` (0044):
+
+- DB: `cash_ledger_tanda` punya satu jalan tambahan — adjustment bernominal nol
+  yang adalah saldo pembuka **sementara**; `cash_ledger_sementara_hanya_saldo_awal`
+  melarang penanda itu di baris lain.
+- Server: `tetapkanSaldoAwal` menolak Rp 0 tanpa penanda.
+- Layar: Kelola akun kas menampilkan chip "· sementara" + kalimat penggantinya;
+  formulir memaksa penanda menyala untuk Rp 0. Pemantauan menilai **kuning**
+  ("n akun saldo pembukanya sementara"), tidak pernah hijau "lengkap".
+- Mengganti tetap lewat jalur §10.24 (void + insert + `audit_log`) — penanda
+  hilang karena baris penggantinya tidak membawanya.
+
+⚠️ **Akibat yang disengaja:** selama sementara, kas akhir = mutasi sejak 1 Okt,
+bukan saldo bank sesungguhnya. Angkanya benar sebagai *arus*, salah sebagai *saldo*.
+
+Kelola akun kas kini membaca mutasi **tanpa batas tanggal atas** — titik awal
+bertanggal masa depan (1 Okt, ditetapkan 26 Sep) dulu tampil "Belum ditetapkan".
+
+### 10.27 K4 · Setoran Bright = TITIPAN outlet Bright, bukan pendapatan SPBU (26 September 2026)
+
+**Temuan (produksi 12–25 Sep 2026, layar Pemantauan):** 105 baris "SETORAN BRIGHT"
+di **ketujuh** unit dicatat pengawas sebagai *pendapatan lain* — laba SPBU lebih
+saji setiap hari (±Rp 0,1–22 jt/hari/unit).
+
+**Keputusan owner:** setoran Bright adalah **titipan** hasil penjualan outlet
+Bright di tiap SPBU. Uangnya masuk laci & disetor bersama kas SPBU (jadi tetap
+ikut rekonsiliasi kas pengawas, komponen F), tetapi ia **utang** kepada outlet
+Bright/SPH sampai diserahkan. Cara memisahkan: **kategori "Titipan outlet
+Bright" di Rincian**, baris lama ikut dikenali.
+
+| Laporan | Perlakuan |
+|---|---|
+| Rincian (rekonsiliasi pengawas) | tidak berubah — titipan tetap di F |
+| Laba rugi | **tidak** masuk pendapatan lain-lain |
+| Arus kas | baris "Titipan outlet Bright (bukan pendapatan)" = diterima − diserahkan |
+| Neraca | **liabilitas** "Titipan outlet Bright" = Σ diterima − Σ diserahkan sejak buku kas dimulai; mengurangi asset bersih |
+
+Kas naik, utang naik, laba tak berubah ⇒ **langkah harian tetap seimbang** (diuji).
+Penyerahan ke outlet Bright/SPH dicatat Keuangan sebagai **Kredit, kategori
+"Penyerahan titipan Bright"** (0045) — mengurangi kas dan utang bersamaan.
+
+**Pengenal tunggal** `titipan-bright.ts` (`isTitipanBright` + padanan SQL
+`sqlTitipanBright`): kategori operasional pengawas menang; baris TANPA kategori
+dikenali dari kata utuh "bright"/"titipan" di keterangan. Formulir pengawas:
+centang "Titipan outlet Bright" tercentang otomatis dari keterangan, bisa diubah;
+"bukan titipan" pada keterangan yang berbunyi titipan dicatat `Lain-Lain` agar
+pengenal baris lama tak menimpa pilihan orang.
+
+⚠️ **Batas:** pengenal baris lama berbasis kata — keterangan yang tak menyebut
+Bright/titipan tak terkenali (sebaliknya: pendapatan sungguhan yang menyebut
+"bright" akan terbaca titipan sampai pengawas mencatatnya ulang). Pemantauan
+berhenti menandai titipan sebagai pos janggal.
+
+**Riwayat angka acuan IB 24-09:** −94.843.083 (cacat tanda) → −107.252.683 (#397)
+→ **−119.737.483** (§10.27: Rp 12.484.800 SETORAN BRIGHT IB keluar dari laba).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

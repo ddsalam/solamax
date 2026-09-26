@@ -66,6 +66,7 @@ export default async function TutupHariPage({
     incomeAdjustment: null,
     totalAssetKemarin: bahanAwal.totalAssetKemarin,
     deltaKontribusi: null,
+    saldoTitipanBright: bahanAwal.saldoTitipanBright,
   });
   // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
   // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
@@ -96,6 +97,7 @@ export default async function TutupHariPage({
     penebusanSo: bahan.penebusanSo,
     pendapatanLain: bahan.pendapatanLain,
     biayaOperasional: -bahan.beban.reduce((s, x) => s + x.amountRp, 0),
+    arusTitipanBright: bahan.arusTitipanBright,
   });
   const is = panelIncome({
     totals: bahan.totals,
@@ -115,6 +117,7 @@ export default async function TutupHariPage({
     incomeAdjustment: null,
     totalAssetKemarin: bahan.totalAssetKemarin,
     deltaKontribusi: null,
+    saldoTitipanBright: bahan.saldoTitipanBright,
   });
 
   // Wewenang dihitung DI SERVER. Layar tidak boleh menyimpulkannya sendiri —

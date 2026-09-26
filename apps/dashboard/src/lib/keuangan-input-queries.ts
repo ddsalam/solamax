@@ -186,6 +186,7 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             category_label                        AS "categoryLabel",
             amount::float8                        AS amount,
             saldo_awal                            AS "saldoAwal",
+            saldo_awal_sementara                  AS "saldoAwalSementara",
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId",
             (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc"
