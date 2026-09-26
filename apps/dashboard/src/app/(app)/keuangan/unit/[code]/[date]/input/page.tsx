@@ -7,6 +7,8 @@ import { EdcPanel } from "@/components/keuangan/EdcPanel";
 import { EdcShiftSetujuPanel } from "@/components/edc/EdcShiftSetujuPanel";
 import { rakitShiftEdc } from "@/lib/edc-shift-model";
 import { getCekSlip, getEdcPerShift, getPetaKartu } from "@/lib/edc-shift-queries";
+import { getVersiRekening } from "@/lib/edc-rekening-queries";
+import { normalisasiEdc } from "@/lib/edc-rekening-model";
 import { HargaBeliPanel } from "@/components/keuangan/HargaBeliPanel";
 import { unitDotted, unitLabel } from "@/lib/config";
 import { DATE_RE } from "@/lib/selection-keys";
@@ -98,7 +100,7 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
     getBiayaHarian(unit.unit_id, date),
@@ -107,7 +109,13 @@ export default async function InputKeuanganPage({
     getEdcPerShift(unit.unit_id, date),
     getPetaKartu(unit.unit_id),
     getCekSlip(unit.unit_id, date),
+    // §10.28 — saran rekening tujuan batch settlement.
+    getVersiRekening(unit.unit_id),
   ]);
+  const rekeningEdc = versiRekening.filter((v) => !v.void);
+  const namaEdc = [
+    ...new Set([...petaKartu.map((p) => normalisasiEdc(p.acquirer)), ...rekeningEdc.map((v) => v.acquirer)]),
+  ].sort();
   const edcPerShift = rakitShiftEdc(edcShift, petaKartu, cekSlip);
 
   const baris = barisHargaBeli(produk, buyRows, sellHistory, date);
@@ -220,6 +228,8 @@ export default async function InputKeuanganPage({
           date={date}
           settlements={settlements}
           akun={akun}
+          rekeningEdc={rekeningEdc}
+          namaEdc={namaEdc}
           reasonCodes={reasonCodes}
           bolehTulis={bolehTulis}
         />

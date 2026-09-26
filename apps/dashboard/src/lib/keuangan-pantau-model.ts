@@ -3,6 +3,7 @@ import type {
   AkunPantau,
   AktivitasPantau,
   BahanPantau,
+  EdcPengaturanPantau,
   JenisKejadian,
   KejadianPantau,
 } from "./keuangan-pantau-queries";
@@ -167,6 +168,52 @@ export function temuanKesiapan(
   return out;
 }
 
+/**
+ * Kesiapan pengaturan EDC (§10.28): kode kartu yang BERJUALAN harus punya EDC,
+ * dan EDC yang berjualan harus punya rekening pencairan. Unit tanpa penjualan
+ * EDC di jendela tak ditagih apa pun.
+ */
+export function temuanPengaturanEdc(rows: readonly EdcPengaturanPantau[]): Temuan[] {
+  if (rows.length === 0) return [];
+  const tanpaPeta = rows.filter((r) => r.acquirer === null).map((r) => r.ckdkartu);
+  const tanpaRekening = [
+    ...new Set(rows.filter((r) => r.acquirer !== null && !r.adaRekening).map((r) => r.acquirer!.toUpperCase())),
+  ].sort();
+  const out: Temuan[] = [];
+  if (tanpaPeta.length) {
+    out.push({
+      kelompok: "kesiapan",
+      kode: "edc_kode_tanpa_peta",
+      nada: "kuning",
+      judul: `${tanpaPeta.length} kode kartu EDC tanpa EDC`,
+      rinci:
+        `${tanpaPeta.join(", ")} — penjualannya tak bisa dicocokkan maupun dibukukan. ` +
+        "Petakan di Keuangan › Pengaturan EDC (Head of Finance) atau Rincian (pengawas).",
+    });
+  }
+  if (tanpaRekening.length) {
+    out.push({
+      kelompok: "kesiapan",
+      kode: "edc_tanpa_rekening",
+      nada: "kuning",
+      judul: `${tanpaRekening.length} EDC tanpa rekening pencairan`,
+      rinci:
+        `${tanpaRekening.join(", ")} — atur rekening tujuannya di Keuangan › Pengaturan EDC ` +
+        "supaya batch settlement disarankan ke rekening yang benar dan bisa diperiksa.",
+    });
+  }
+  if (out.length === 0) {
+    out.push({
+      kelompok: "kesiapan",
+      kode: "edc_tanpa_rekening",
+      nada: "hijau",
+      judul: "Pengaturan EDC lengkap",
+      rinci: "Setiap kode kartu yang berjualan punya EDC dan rekening pencairan.",
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // 2 · Kedisiplinan (dalam jendela)
 // ---------------------------------------------------------------------------
@@ -307,6 +354,8 @@ export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   tutup_di_luar_toleransi: "Hari ditutup di luar toleransi",
   tutup_dengan_selisih: "Hari ditutup dengan selisih kecil",
   keterangan_janggal: "Pos biaya/pendapatan perlu dicek",
+  rekening_edc_diubah: "Rekening pencairan EDC diubah",
+  rekening_pencairan_beda: "Dana EDC masuk ke rekening lain dari pengaturan",
 };
 
 export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
@@ -322,6 +371,9 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   mutasi_terlambat: "kuning",
   selisih_slip_edc: "kuning",
   keterangan_janggal: "kuning",
+  // §10.28 — perubahan rekening tujuan dana selalu dilihat pemilik, walau sah.
+  rekening_edc_diubah: "kuning",
+  rekening_pencairan_beda: "kuning",
   batal_mutasi_kas: "kuning",
   batal_harga_beli: "kuning",
   batal_settlement: "kuning",
@@ -463,6 +515,7 @@ export function rakitPantau(unitIds: readonly number[], bahan: BahanPantau): Bar
           bahan.tanpaHarga.filter((t) => t.unitId === u),
           bahan.harga.get(u) ?? [],
         ),
+        ...temuanPengaturanEdc(bahan.edcPengaturan.filter((r) => r.unitId === u)),
         ...temuanKedisiplinan(
           {
             hariPenjualan: bahan.hariPenjualan.get(u) ?? 0,

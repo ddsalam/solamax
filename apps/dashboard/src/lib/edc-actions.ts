@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
+import { normalisasiEdc } from "./edc-rekening-model";
 import { alasanTakBolehInput, PESAN_TAK_BOLEH_INPUT } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 
@@ -102,7 +103,9 @@ export async function simpanSettlement(input: SettlementInput): Promise<EdcResul
        VALUES ($1,$2,$3,$4::date,$5::date,$6::uuid,$7,$8,$9,$10,$11,$12)`,
       [
         unit.unit_id,
-        input.acquirer.trim(),
+        // §10.28 — ejaan tunggal nama EDC, sama dengan peta kartu & Pengaturan
+        // EDC; tanpa ini "bca" dan "BCA" menjadi dua EDC di kontrol MDR%.
+        normalisasiEdc(input.acquirer),
         input.settlementNo.trim(),
         input.settlementDate,
         input.businessDate,

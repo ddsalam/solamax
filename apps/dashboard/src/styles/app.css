@@ -1368,6 +1368,20 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .edc-peta { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .edc-peta-baris { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
 .edc-peta-aksi { display: inline-flex; gap: 6px; align-items: center; }
+/* Pengaturan EDC — rekening pencairan tiap EDC (§10.28). */
+.cols-edcrek { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1.4fr); align-items: start; }
+.tbl-scroll .cols-edcrek { min-width: 900px; }
+.cols-edcrek .keu-p, .cols-edckode .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+.cols-edckode { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 2fr); align-items: start; }
+.tbl-scroll .cols-edckode { min-width: 720px; }
+.edc-kode { display: block; }
+.edc-kode + .edc-kode { margin-top: 2px; }
+.edc-rek-aksi { display: flex; flex-wrap: wrap; gap: 6px; }
+.edc-riwayat { padding: 4px 24px 12px; background: var(--neutral-50); border-bottom: 1px solid var(--color-border-hairline); }
+.edc-riwayat-baris { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--color-border-hairline); }
+.edc-riwayat-baris:last-child { border-bottom: 0; }
+.edc-riwayat-baris.dibatalkan > span:first-child { color: var(--color-text-tertiary); text-decoration: line-through; }
+.edc-riwayat-baris .keu-p { display: block; margin-top: 2px; font-size: 15px; text-decoration: none; }
 /* Pratinjau angka di bawah kolom isian keuangan ("Terbaca: Rp …" / penolakan). */
 .keu-terbaca { display: block; margin-top: 4px; font-size: 15px; }
 /* Konfirmasi pembatalan di tempat — dua tombol berdampingan. */

@@ -27,6 +27,7 @@ export type UnitRouteSegment =
   | "keuangan-input"
   | "keuangan-tutup-hari"
   | "keuangan-akun-kas"
+  | "keuangan-edc"
   | "keuangan-piutang"
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
@@ -63,6 +64,8 @@ export function unitRouteHref(args: {
   }
   // Tanpa dimensi tanggal — daftar rekening bukan keadaan harian.
   if (segment === "keuangan-akun-kas") return `/keuangan/unit/${code}/akun-kas${suffix}`;
+  // Tanpa dimensi tanggal — pengaturan EDC bukan keadaan harian (§10.28).
+  if (segment === "keuangan-edc") return `/keuangan/unit/${code}/edc${suffix}`;
   // Unit di QUERY: halaman ini membaca `?unit=`, bukan segmen path.
   if (segment === "keuangan-sumber-data") {
     return `/keuangan/sumber-data?${qs({ unit: code, tanggal: date, lain: query })}`;

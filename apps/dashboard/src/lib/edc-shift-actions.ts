@@ -114,6 +114,7 @@ export async function simpanPetaKartu(input: {
     await client.query("COMMIT");
     revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
+    revalidatePath(`/keuangan/unit/${unit.code}/edc`);
     return { ok: true };
   } catch (e) {
     return gagal(client, e, "Gagal menyimpan peta kartu.");

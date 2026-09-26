@@ -165,6 +165,14 @@ function buildGroups(
           icon: "clipboard",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/akun-kas/.test(p),
         },
+        {
+          // §10.28 — rekening pencairan tiap EDC + peta kode kartu. Tim Finance
+          // mengubahnya saat kesepakatan dengan bank berganti.
+          href: unitCode ? `/keuangan/unit/${unitCode}/edc` : null,
+          label: "Pengaturan EDC",
+          icon: "card",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/edc$/.test(p),
+        },
       ],
     },
     {

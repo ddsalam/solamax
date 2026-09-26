@@ -29,9 +29,10 @@ function halaman(dir: string): string[] {
 const RUTE = halaman(KEU);
 
 describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
-  it("penjaga ini punya SUBJEK — sembilan rute ditemukan", () => {
+  it("penjaga ini punya SUBJEK — sepuluh rute ditemukan", () => {
     // 8 → 9: Pemantauan pemakaian keuangan (lintas unit, seperti papan).
-    expect(RUTE.length).toBe(9);
+    // 9 → 10: Pengaturan EDC per unit (§10.28).
+    expect(RUTE.length).toBe(10);
   });
 
   for (const f of RUTE) {
@@ -56,7 +57,7 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     for (const f of lain) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/dimensiUnit="tak_berlaku"/);
     }
-    expect(lain).toHaveLength(7);
+    expect(lain).toHaveLength(8);
   });
 });
 
@@ -66,6 +67,7 @@ describe("🔴 URL keuangan dibangun SATU tempat, dan menavigasi ke tempat yang 
     ["keuangan-input", "/keuangan/unit/6378301/2026-08-22/input"],
     ["keuangan-tutup-hari", "/keuangan/unit/6378301/tutup-hari/2026-08-22"],
     ["keuangan-akun-kas", "/keuangan/unit/6378301/akun-kas"],
+    ["keuangan-edc", "/keuangan/unit/6378301/edc"],
     ["keuangan-piutang", "/keuangan/unit/6378301/piutang/2026-08-22"],
   ];
 
