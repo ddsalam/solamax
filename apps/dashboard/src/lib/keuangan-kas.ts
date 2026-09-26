@@ -101,12 +101,27 @@ export function saldoSemuaAkun(
   mutasi: readonly MutasiKas[],
   date: string,
 ): Map<string, number> {
+  // ⛔ KOREKSI 26 Sep 2026 (audit): versi lama menjumlah SEMUA mutasi ≤ tanggal
+  // tanpa syarat cut-over, padahal `saldoAkun` mengecualikan mutasi sebelum
+  // cut-over (§10.24 butir 2). Papan & laporan (pemakai fungsi ini) dan layar
+  // input (pemakai `saldoAkun`) menghitung kas yang BERBEDA untuk rekening yang
+  // punya mutasi lama — produksi: IB Bank BCA, mutasi 1 Sep sebelum cut-over
+  // 1 Okt. Kini satu aturan: tiap akun dihitung lewat `saldoAkun`.
   const out = new Map<string, number>();
-  for (const m of mutasi) {
-    if (m.void || m.businessDate > date) continue;
-    out.set(m.accountId, (out.get(m.accountId) ?? 0) + m.amount);
+  for (const id of new Set(mutasi.map((m) => m.accountId))) {
+    out.set(id, saldoAkun(mutasi, id, date));
   }
   return out;
+}
+
+/** §10.26 — cut-over TERAWAL di antara akun yang sudah punya saldo pembuka. */
+export function cutOverTerawal(mutasi: readonly MutasiKas[]): string | null {
+  let t: string | null = null;
+  for (const m of mutasi) {
+    if (m.void || !m.saldoAwal) continue;
+    if (t === null || m.businessDate < t) t = m.businessDate;
+  }
+  return t;
 }
 
 /**
