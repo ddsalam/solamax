@@ -34,8 +34,15 @@ export interface BarisBiaya {
   amount: number;
   /** Milik PENGAWAS. `null` = belum berkategori. */
   operationalCategory: string | null;
-  /** Milik FINANCE. `null` = belum dipetakan. */
+  /**
+   * Milik FINANCE — akun EFEKTIF: reklasifikasi terakhir bila ada (§10.29),
+   * kalau tidak akun beku di barisnya. `null` = belum dipetakan.
+   */
   accountingAccount: string | null;
+  /** Akun beku di baris aslinya (0024) — pembanding "semula" setelah reklasifikasi. */
+  akunAsli: string | null;
+  /** §10.27 — titipan outlet Bright: bukan pendapatan, tak direklasifikasi. */
+  titipanBright: boolean;
   status: StatusBiaya;
   sourceDoor: PintuBiaya;
   void: boolean;

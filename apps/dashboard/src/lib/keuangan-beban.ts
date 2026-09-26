@@ -1,4 +1,5 @@
 import { isTitipanBright } from "./titipan-bright";
+import { jenisAkun } from "./keuangan-reklas";
 /**
  * SATU tempat yang menggabungkan seluruh sumber BEBAN untuk Income Statement.
  *
@@ -145,6 +146,7 @@ export function ringkasPerSumber(baris: readonly BarisBeban[]): Record<SumberBeb
 /** Baris `manual_entry` sebagaimana dibaca kueri — nominal SUDAH dinormalkan. */
 export interface BarisManualLaporan {
   businessDate: string;
+  /** Akun EFEKTIF — reklasifikasi terakhir bila ada (`SQL_AKUN_EFEKTIF`), kalau tidak akun beku. */
   accountingAccount: string | null;
   amountRp: number;
   keterangan: string;
@@ -170,11 +172,31 @@ export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   pendapatanLain: number;
   /** §10.27 — titipan outlet Bright hari itu: BUKAN pendapatan, liabilitas. */
   titipanBright: number;
+  /**
+   * §10.29 — arus EKUITAS bersih hari itu (keluar ke pemilik − masuk dari
+   * pemilik): baris yang direklasifikasi ke akun prive/kontribusi. Bukan laba;
+   * mengalir ke `deltaKontribusi` neraca & baris arus kas sendiri.
+   */
+  kontribusi: number;
+  /** §10.29 — Σ baris yang hanya berpindah tempat (laci → bank, transfer). Bukan laba, bukan arus. */
+  pindahDana: number;
 } {
+  // §10.29 — jenis akun EFEKTIF menentukan rumah baris. Baris yang tak pernah
+  // direklasifikasi jatuh ke perilaku lama (pengeluaran = beban).
+  const jenis = (r: BarisManualLaporan) => jenisAkun(r.accountingAccount, r.section);
   const lain = manual.filter((r) => r.section === "pendapatan_lain" && !r.void);
+  const lainBukanTitipan = lain.filter((r) => !isTitipanBright(r));
+  const keluar = manual.filter((r) => r.section === "pengeluaran");
+  const jumlah = (xs: readonly BarisManualLaporan[]) => xs.reduce((s, r) => s + r.amountRp, 0);
   return {
-    manualBeban: manual.filter((r) => r.section === "pengeluaran"),
-    pendapatanLain: lain.filter((r) => !isTitipanBright(r)).reduce((s, r) => s + r.amountRp, 0),
-    titipanBright: lain.filter((r) => isTitipanBright(r)).reduce((s, r) => s + r.amountRp, 0),
+    manualBeban: keluar.filter((r) => jenis(r) === "beban"),
+    pendapatanLain: jumlah(lainBukanTitipan.filter((r) => jenis(r) === "pendapatan")),
+    titipanBright: jumlah(lain.filter((r) => isTitipanBright(r))),
+    kontribusi:
+      jumlah(keluar.filter((r) => !r.void && jenis(r) === "ekuitas")) -
+      jumlah(lainBukanTitipan.filter((r) => jenis(r) === "ekuitas")),
+    pindahDana:
+      jumlah(keluar.filter((r) => !r.void && jenis(r) === "pindah_dana")) +
+      jumlah(lainBukanTitipan.filter((r) => jenis(r) === "pindah_dana")),
   };
 }

@@ -313,7 +313,8 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
     netIncome: netProfit,
     incomeAdjustment: null,
     totalAssetKemarin: bahan.totalAssetKemarin,
-    deltaKontribusi: null,
+    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
+    deltaKontribusi: bahan.kontribusi,
     saldoTitipanBright: bahan.saldoTitipanBright,
   });
 

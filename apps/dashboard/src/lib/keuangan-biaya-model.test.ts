@@ -18,6 +18,8 @@ const b = (o: Partial<BarisBiaya> = {}): BarisBiaya => ({
   amount: -500_000,
   operationalCategory: "Biaya Taktis",
   accountingAccount: "6-9100",
+  akunAsli: "6-9100",
+  titipanBright: false,
   status: "submitted",
   sourceDoor: "pengawas",
   void: false,
