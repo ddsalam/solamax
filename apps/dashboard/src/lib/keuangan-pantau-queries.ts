@@ -101,7 +101,9 @@ export type JenisKejadian =
   | "tutup_di_luar_toleransi"
   | "tutup_dengan_selisih"
   | "keterangan_janggal"
-  | "selisih_slip_edc";
+  | "selisih_slip_edc"
+  | "rekening_edc_diubah"
+  | "rekening_pencairan_beda";
 
 export interface KejadianPantau {
   unitId: number;
@@ -142,6 +144,17 @@ export interface BahanPantau {
   aktivitas: AktivitasPantau[];
   /** Penjaga harga beli per unit pada tanggal akhir — dari fungsi Layar 3. */
   harga: Map<number, BarisHargaBeli[]>;
+  /** §10.28 — kode kartu yang BERJUALAN dalam jendela, dengan EDC & rekening pencairannya. */
+  edcPengaturan: EdcPengaturanPantau[];
+}
+
+export interface EdcPengaturanPantau {
+  unitId: number;
+  ckdkartu: string;
+  /** `null` = kode belum dipetakan ke EDC. */
+  acquirer: string | null;
+  /** EDC-nya punya rekening pencairan yang berlaku pada tanggal akhir jendela. */
+  adaRekening: boolean;
 }
 
 /** Batas jendela `[dari, sampai]` inklusif, dengan `sampai` = tanggal akhir. */
@@ -169,7 +182,7 @@ export async function getBahanPantau(
   const ids = units.map(Number);
   const p = [ids, dari, sampai];
 
-  const [hariJual, edcHari, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga] =
+  const [hariJual, edcHari, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga, edcPengaturan] =
     await Promise.all([
       // Penyebut: hari yang PUNYA penjualan. Hari tanpa penjualan (unit tutup,
       // agent mati) tidak boleh dihitung sebagai "hari yang lupa dibukukan".
@@ -310,6 +323,30 @@ export async function getBahanPantau(
       qScoped<KejadianPantau>(units, KUERI_KEJADIAN, p),
       qScoped<AktivitasPantau>(units, KUERI_AKTIVITAS, p),
       hargaPerUnit(units, sampai),
+      // §10.28 — kesiapan pengaturan EDC: hanya kode yang BERJUALAN di jendela.
+      // Kode sepi tak menagih apa pun; EDC tanpa penjualan tak butuh rekening.
+      qScoped<EdcPengaturanPantau>(
+        units,
+        `SELECT j.unit_id::int                  AS "unitId",
+                j.ckdkartu,
+                m.acquirer,
+                (m.acquirer IS NOT NULL AND EXISTS (
+                   SELECT 1 FROM app.edc_rekening_pencairan r
+                    WHERE r.unit_id = j.unit_id AND r.acquirer = upper(btrim(m.acquirer))
+                      AND NOT r.void AND r.berlaku_sejak <= $3::date
+                ))                              AS "adaRekening"
+           FROM (
+             SELECT e.unit_id, trim(e.ckdkartu) AS ckdkartu
+               FROM public.edc e
+              WHERE e.unit_id = ANY($1::int[]) AND e.business_date BETWEEN $2::date AND $3::date
+                AND e.ckdkartu IS NOT NULL AND trim(e.ckdkartu) <> ''
+              GROUP BY 1, 2
+             HAVING COALESCE(sum(e.total), 0) <> 0
+           ) j
+           LEFT JOIN app.edc_kartu_acquirer m ON m.unit_id = j.unit_id AND m.ckdkartu = j.ckdkartu
+          ORDER BY 1, 2`,
+        p,
+      ),
     ]);
 
   return {
@@ -325,6 +362,7 @@ export async function getBahanPantau(
     kejadian,
     aktivitas,
     harga,
+    edcPengaturan,
   };
 }
 
@@ -496,6 +534,62 @@ const KUERI_KEJADIAN = `
      WHERE k.unit_id = ANY($1::int[]) AND NOT k.void
        AND abs(k.slip_rp - k.easymax_rp) >= 1
        AND ${SAAT_DALAM_JENDELA("k.checked_at")}
+
+    -- §10.28 — SETIAP perubahan rekening pencairan EDC terlihat, bukan hanya
+    -- bisa ditelusuri: mengganti rekening tujuan dana adalah celah klasik.
+    UNION ALL
+    SELECT r.unit_id::int, 'rekening_edc_diubah', ${WIB_TEKS("r.created_at")},
+           to_char(r.berlaku_sejak, 'YYYY-MM-DD'), u.email,
+           (r.acquirer || ' → ' || a.nama || ' mulai ' || to_char(r.berlaku_sejak, 'YYYY-MM-DD')
+             || COALESCE(' · sebelumnya ' || (
+                  SELECT a0.nama FROM app.edc_rekening_pencairan r0
+                    JOIN app.cash_account a0 ON a0.id = r0.to_account_id AND a0.unit_id = r0.unit_id
+                   WHERE r0.unit_id = r.unit_id AND r0.acquirer = r.acquirer AND r0.id <> r.id
+                     AND NOT r0.void AND r0.berlaku_sejak <= r.berlaku_sejak
+                   ORDER BY r0.berlaku_sejak DESC LIMIT 1), ' · pertama kali')
+             || COALESCE(' · ' || r.catatan, '')),
+           NULL::float8, NULL
+      FROM app.edc_rekening_pencairan r
+      JOIN app.cash_account a ON a.id = r.to_account_id AND a.unit_id = r.unit_id
+      LEFT JOIN app.users u ON u.id = r.created_by_user_id
+     WHERE r.unit_id = ANY($1::int[])
+       AND ${SAAT_DALAM_JENDELA("r.created_at")}
+
+    UNION ALL
+    SELECT r.unit_id::int, 'rekening_edc_diubah', ${WIB_TEKS("r.voided_at")},
+           to_char(r.berlaku_sejak, 'YYYY-MM-DD'), u.email,
+           (r.acquirer || ' → ' || a.nama || ' mulai ' || to_char(r.berlaku_sejak, 'YYYY-MM-DD')
+             || ' · DIBATALKAN'),
+           NULL::float8, NULL
+      FROM app.edc_rekening_pencairan r
+      JOIN app.cash_account a ON a.id = r.to_account_id AND a.unit_id = r.unit_id
+      LEFT JOIN app.users u ON u.id = r.voided_by_user_id
+     WHERE r.unit_id = ANY($1::int[]) AND r.void
+       AND ${SAAT_DALAM_JENDELA("r.voided_at")}
+
+    -- §10.28 — batch settlement yang dananya dicatat masuk ke rekening LAIN dari
+    -- Pengaturan EDC yang berlaku pada tanggal uang masuk. Bisa sah (bank
+    -- memindahkan tanpa pemberitahuan) — itulah sebabnya ia ditandai, bukan ditolak.
+    UNION ALL
+    SELECT s.unit_id::int, 'rekening_pencairan_beda', ${WIB_TEKS("s.created_at")},
+           to_char(s.business_date, 'YYYY-MM-DD'), u.email,
+           (s.acquirer || ' ' || s.settlement_no || ' · masuk ke ' || a.nama
+             || ' · pengaturan: ' || ap.nama),
+           s.net_rp::float8, NULL
+      FROM app.edc_settlement s
+      JOIN LATERAL (
+             SELECT r.to_account_id FROM app.edc_rekening_pencairan r
+              WHERE r.unit_id = s.unit_id AND r.acquirer = upper(btrim(s.acquirer))
+                AND NOT r.void AND r.berlaku_sejak <= s.settlement_date
+              ORDER BY r.berlaku_sejak DESC
+              LIMIT 1
+           ) p ON true
+      JOIN app.cash_account a  ON a.id  = s.to_account_id AND a.unit_id  = s.unit_id
+      JOIN app.cash_account ap ON ap.id = p.to_account_id AND ap.unit_id = s.unit_id
+      LEFT JOIN app.users u ON u.id = s.created_by_user_id
+     WHERE s.unit_id = ANY($1::int[]) AND NOT s.void
+       AND s.to_account_id <> p.to_account_id
+       AND ${SAAT_DALAM_JENDELA("s.created_at")}
   ) k
   ORDER BY k.waktu DESC NULLS LAST
   LIMIT 300`;

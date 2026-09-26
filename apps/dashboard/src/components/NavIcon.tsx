@@ -12,9 +12,17 @@ export type IconName =
   | "fuel"
   | "chart"
   | "users"
-  | "eye";
+  | "eye"
+  | "card";
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  // Kartu pembayaran — Pengaturan EDC (§10.28).
+  card: (
+    <>
+      <rect x="2.5" y="5" width="15" height="10" rx="1.5" />
+      <path d="M2.5 8.5h15M5.5 12h3" />
+    </>
+  ),
   eye: (
     <>
       <path d="M2.5 10S5.5 4.5 10 4.5 17.5 10 17.5 10 14.5 15.5 10 15.5 2.5 10 2.5 10Z" />

@@ -14,6 +14,7 @@ import {
   type RingkasMdr,
 } from "@/lib/keuangan-edc";
 import type { AkunKas } from "@/lib/keuangan-kas-model";
+import { rekeningBerlaku, saranRekening, type VersiRekening } from "@/lib/edc-rekening-model";
 import type { SettlementRow } from "@/lib/keuangan-input-queries";
 
 /**
@@ -41,6 +42,8 @@ export function EdcPanel({
   date,
   settlements,
   akun,
+  rekeningEdc,
+  namaEdc,
   reasonCodes,
   bolehTulis,
 }: {
@@ -48,6 +51,10 @@ export function EdcPanel({
   date: string;
   settlements: SettlementRow[];
   akun: AkunKas[];
+  /** §10.28 — pengaturan rekening pencairan (aktif saja), sumber saran rekening tujuan. */
+  rekeningEdc: VersiRekening[];
+  /** Nama EDC yang dikenal unit ini — saran isian acquirer, supaya ejaannya seragam. */
+  namaEdc: string[];
   reasonCodes: { code: string; label: string }[];
   bolehTulis: boolean;
 }) {
@@ -57,6 +64,11 @@ export function EdcPanel({
   const [tglSettle, setTglSettle] = useState(date);
   const [tglBisnis, setTglBisnis] = useState(date);
   const [akunTujuan, setAkunTujuan] = useState(akun.find((a) => a.kind === "bank")?.id ?? "");
+  // §10.28 — rekening tujuan MENGIKUTI Pengaturan EDC sampai orangnya memilih
+  // sendiri. Pilihan tangan tak ditimpa saran: uang yang ternyata masuk ke
+  // rekening lain harus dicatat di rekening itu, dan perbedaannya tampil di
+  // Pemantauan — bukan dibetulkan diam-diam oleh formulir.
+  const [akunDipilihTangan, setAkunDipilihTangan] = useState(false);
   const [bruto, setBruto] = useState("");
   const [neto, setNeto] = useState("");
   const [txn, setTxn] = useState("");
@@ -81,6 +93,13 @@ export function EdcPanel({
   // Hanya bila KEDUANYA sah: bruto yang ditolak terbaca 0, dan banner akan
   // menyebut seluruh total transaksi sebagai "selisih".
   const selisihPratinjau = txnN === null || hBruto.keadaan !== "sah" ? null : txnN - brutoN;
+
+  const terapkanSaran = (acq: string, tgl: string): void => {
+    if (akunDipilihTangan) return;
+    const v = rekeningBerlaku(rekeningEdc, acq, tgl);
+    if (v !== null) setAkunTujuan(v.toAccountId);
+  };
+  const saran = saranRekening(rekeningEdc, acquirer, tglSettle, akunTujuan);
 
   const ringkas: RingkasMdr[] = ringkasMdr(settlements);
   const geser = pergeseranMdr(ringkas);
@@ -111,6 +130,7 @@ export function EdcPanel({
       else {
         setMsg("Batch settlement tersimpan. Jurnal pencairannya menunggu persetujuan.");
         setAcquirer("");
+        setAkunDipilihTangan(false);
         setNoSettle("");
         setBruto("");
         setNeto("");
@@ -318,9 +338,18 @@ export function EdcPanel({
               <input
                 className="manual-input"
                 value={acquirer}
-                onChange={(e) => setAcquirer(e.target.value)}
+                onChange={(e) => {
+                  setAcquirer(e.target.value);
+                  terapkanSaran(e.target.value, tglSettle);
+                }}
                 placeholder="mis. BCA"
+                list="edc-settle-nama"
               />
+              <datalist id="edc-settle-nama">
+                {namaEdc.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </label>
             <label className="keu-fld">
               <span className="keu-label">Nomor settlement</span>
@@ -336,7 +365,10 @@ export function EdcPanel({
                 className="manual-input"
                 type="date"
                 value={tglSettle}
-                onChange={(e) => setTglSettle(e.target.value)}
+                onChange={(e) => {
+                  setTglSettle(e.target.value);
+                  terapkanSaran(acquirer, e.target.value);
+                }}
               />
             </label>
             <label className="keu-fld">
@@ -353,7 +385,10 @@ export function EdcPanel({
               <select
                 className="manual-input"
                 value={akunTujuan}
-                onChange={(e) => setAkunTujuan(e.target.value)}
+                onChange={(e) => {
+                  setAkunTujuan(e.target.value);
+                  setAkunDipilihTangan(true);
+                }}
               >
                 {akun
                   .filter((a) => a.kind !== "edc_penampungan")
@@ -363,6 +398,24 @@ export function EdcPanel({
                     </option>
                   ))}
               </select>
+              {acquirer.trim() !== "" && saran.keadaan === "sesuai" && (
+                <span className="keu-terbaca t-tertiary">
+                  Sesuai Pengaturan EDC (sejak {saran.versi.berlakuSejak}).
+                </span>
+              )}
+              {acquirer.trim() !== "" && saran.keadaan === "beda" && (
+                <span className="keu-terbaca t-warning">
+                  Berbeda dari Pengaturan EDC: {saran.versi.namaAkun} (sejak {saran.versi.berlakuSejak}).
+                  Pilih rekening tempat uangnya benar-benar masuk menurut rekening koran — perbedaan
+                  ini ditandai di Pemantauan.
+                </span>
+              )}
+              {acquirer.trim() !== "" && saran.keadaan === "belum_diatur" && (
+                <span className="keu-terbaca t-tertiary">
+                  EDC ini belum punya rekening di{" "}
+                  <a href={`/keuangan/unit/${code}/edc`}>Pengaturan EDC</a>.
+                </span>
+              )}
             </label>
             <label className="keu-fld">
               <span className="keu-label">Bruto</span>

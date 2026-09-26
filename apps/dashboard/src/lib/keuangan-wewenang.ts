@@ -279,3 +279,26 @@ export function canCekSlipEdc(ctx: WewenangCtx): boolean {
   return ctx.role === "pengawas" || ctx.role === "super_admin";
 }
 
+
+/**
+ * Boleh MENGATUR rekening pencairan tiap EDC (§10.28, keputusan owner 26 Sep
+ * 2026): tim Finance — staf `keuangan` DAN Head of Finance — plus Direksi dan
+ * super admin. Kesepakatan dengan bank bisa berubah sewaktu-waktu, dan yang
+ * memegang kesepakatan itu adalah Finance.
+ *
+ * ⚠️ Beda sengaja dengan `canPetakanKartuEdc`: peta kode kartu menentukan KE
+ * EDC MANA penjualan dikelompokkan (dan staf Keuangan-lah yang menyetujui
+ * postingnya), sedangkan rekening pencairan hanya menentukan SARAN rekening
+ * tujuan batch settlement — batch tetap mencatat rekening nyatanya sendiri, dan
+ * yang berbeda dari pengaturan ditandai di Pemantauan.
+ *
+ * Pengawas TIDAK termasuk: rekening pencairan urusan Finance, bukan lapangan.
+ */
+export function canAturRekeningEdc(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    ctx.role === "keuangan" ||
+    ctx.role === "direksi" ||
+    ctx.role === "super_admin" ||
+    isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}

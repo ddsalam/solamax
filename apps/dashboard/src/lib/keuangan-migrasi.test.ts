@@ -114,6 +114,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0021", sql0021, ["reclassification", "correction_entry"]],
     // §10.25 — EDC per shift (26 Sep 2026).
     ["0043", MIG("0043_edc_per_shift"), ["edc_kartu_acquirer", "edc_shift_cek"]],
+    // §10.28 — rekening pencairan tiap EDC, bertanggal berlaku (26 Sep 2026).
+    ["0046", MIG("0046_edc_rekening_pencairan"), ["edc_rekening_pencairan"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
