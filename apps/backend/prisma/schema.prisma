@@ -998,6 +998,26 @@ model EdcKartuAcquirer {
   @@schema("app")
 }
 
+// Rekening pencairan tiap EDC per unit, BERTANGGAL BERLAKU (§10.28, 0046).
+// Diubah tim Finance; tak pernah ditimpa — rekening baru = baris baru.
+// Void-only; FK komposit ke rekening unit yang sama.
+model EdcRekeningPencairan {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  acquirer        String
+  toAccountId     String    @map("to_account_id") @db.Uuid
+  berlakuSejak    DateTime  @map("berlaku_sejak") @db.Date
+  catatan         String?
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("edc_rekening_pencairan")
+  @@schema("app")
+}
+
 // Cek slip settlement EDC per (tanggal, shift, acquirer) oleh pengawas (§10.25,
 // 0043). `easymaxRp` = bruto EasyMax SAAT dicocokkan; persetujuan ditolak bila
 // bruto berubah sesudahnya. Satu cek aktif per kunci (indeks parsial).

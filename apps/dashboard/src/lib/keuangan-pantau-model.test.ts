@@ -177,6 +177,7 @@ describe("kejadian & rakitan", () => {
       kejadian: [],
       aktivitas: [],
       harga: new Map(),
+      edcPengaturan: [],
     };
     const r = rakitPantau([7], bahan);
     expect(r).toHaveLength(1);

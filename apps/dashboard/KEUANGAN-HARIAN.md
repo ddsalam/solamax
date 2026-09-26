@@ -1792,6 +1792,42 @@ berhenti menandai titipan sebagai pos janggal.
 **Riwayat angka acuan IB 24-09:** −94.843.083 (cacat tanda) → −107.252.683 (#397)
 → **−119.737.483** (§10.27: Rp 12.484.800 SETORAN BRIGHT IB keluar dari laba).
 
+### 10.28 K4 · Rekening pencairan tiap EDC — diatur tim Finance, bertanggal berlaku (26 September 2026)
+
+**Keputusan owner:** penjualan tiap EDC (BCA, MANDIRI, BRI, BNI, LinkAja,
+MyPertamina, …) dicairkan ke **rekening yang disepakati dengan banknya**, dan
+kesepakatan itu **bisa berubah sewaktu-waktu** — termasuk rekening
+penampungannya. Tim Finance harus bisa mengubahnya sendiri. LinkAja dan
+MyPertamina adalah **EDC tersendiri** (mencairkan ke bank masing-masing), bukan
+bagian dari EDC bank; kode EasyMax yang bernama sekadar "EDC" diperlakukan sama
+dengan EDC bank lainnya.
+
+**Bentuknya — layar Keuangan › Pengaturan EDC (per unit), tabel 0046:**
+
+| Hal | Aturan |
+|---|---|
+| Rekening pencairan | per (unit, EDC), **bertanggal berlaku**; rekening yang berlaku pada tanggal X = versi aktif dengan `berlaku_sejak` terbesar ≤ X (`rekeningBerlaku`) |
+| Mengganti | **versi baru**, tak pernah menimpa; koreksi pada tanggal yang sama = void yang lama + tulis baru |
+| Rekening sah | rekening **bank** yang **aktif** milik unit itu (FK komposit + cek server) |
+| Wewenang | `canAturRekeningEdc`: staf `keuangan`, Head of Finance, Direksi, super admin — **bukan** pengawas |
+| Peta kode kartu → EDC | ikut ditampilkan di layar yang sama; wewenangnya **tetap** §10.25 (`canPetakanKartuEdc`) |
+| Batch settlement | rekening tujuan **disarankan** dari pengaturan pada **tanggal uang masuk**; pilihan tangan tidak ditimpa — rekening yang tercatat adalah tempat uang benar-benar masuk |
+| Ejaan EDC | satu ejaan (`normalisasiEdc`: huruf besar, spasi dirapikan) di peta kartu, pengaturan, DAN batch settlement |
+
+**Kontrol — karena mengganti rekening tujuan dana adalah celah penyelewengan klasik:**
+void-only (tanpa DELETE), `audit_log` (`edc_rekening.tetapkan/ganti/batal`), dan
+**setiap** perubahan tampil di Pemantauan (`rekening_edc_diubah`, kuning).
+Batch yang dananya dicatat masuk ke rekening **lain** dari pengaturan yang berlaku
+ditandai `rekening_pencairan_beda` (kuning) — ditandai, bukan ditolak, sebab
+bisa sah (bank memindahkan tanpa pemberitahuan). Kesiapan unit menagih kode kartu
+berjualan tanpa EDC dan EDC berjualan tanpa rekening pencairan.
+
+⚖️ **Beda wewenang yang disengaja:** staf Keuangan boleh mengatur rekening
+pencairan tapi tidak memetakan kode kartu; pengawas sebaliknya. Peta kode
+menentukan ke EDC mana penjualan dikelompokkan — dan staf Keuangan-lah yang
+menyetujui postingnya (§10.25). Rekening pencairan hanya menentukan SARAN; batch
+tetap mencatat rekening nyatanya.
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
