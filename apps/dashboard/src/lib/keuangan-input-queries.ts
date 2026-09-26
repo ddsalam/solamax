@@ -191,7 +191,10 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             source_manual_entry_id::text          AS "sourceManualEntryId",
             (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc"
        FROM app.cash_ledger
-      WHERE unit_id = $1 AND business_date <= $2::date
+      -- Saldo pembuka SELALU ikut, apa pun tanggalnya (§10.26): cut-over bisa
+      -- bertanggal sesudah hari yang dilaporkan, dan tanpa baris itu hari-hari
+      -- sebelum cut-over tak tahu bahwa bukunya belum dimulai.
+      WHERE unit_id = $1 AND (business_date <= $2::date OR (saldo_awal AND NOT void))
       ORDER BY business_date, created_at`,
     [unit, to],
   );

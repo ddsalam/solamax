@@ -23,6 +23,7 @@ import type { DayTotals } from "./keuangan-mesin";
 export type SebabKosong =
   | "belum_ada_akun_kas"
   | "belum_ada_mutasi_kas"
+  | "sebelum_cut_over"
   | "produk_tanpa_harga_beli"
   | "belum_ada_harga_beli"
   | "belum_ada_opname"
@@ -44,6 +45,12 @@ export const PENJELASAN_KOSONG: Record<SebabKosong, string> = {
     "saldonya BELUM DIKETAHUI, bukan nol. Tim keuangan yang mengisinya di Layar 3 blok 2.",
   belum_ada_akun_kas:
     "Unit ini belum punya daftar rekening kas/bank — tim keuangan yang mendaftarkannya.",
+  // §10.26 — pembukuan SolaMax dimulai di tanggal cut-over. Hari sebelumnya
+  // TIDAK dibukukan di sini; menjumlah mutasi lama yang kebetulan ada akan
+  // menampilkan saldo yang tampak sah padahal bukunya belum dimulai.
+  sebelum_cut_over:
+    "Tanggal ini SEBELUM pembukuan kas di SolaMax dimulai (tanggal cut-over saldo pembuka) — " +
+    "kasnya tidak dibukukan di sini, bukan nol.",
   belum_ada_harga_beli:
     "Harga beli produk belum diisi untuk tanggal ini — tim keuangan, di Layar 3 blok 1.",
   belum_ada_opname: "Opname penutup hari ini belum masuk dari EasyMax.",
@@ -321,7 +328,7 @@ function sebabKas(s: SebabKasInput): SebabKosong {
 }
 
 /** `null` = pemanggil tak menyebutkan; JANGAN diisi tebakan. */
-export type SebabKasInput = "belum_ada_akun_kas" | "belum_ada_mutasi_kas" | null;
+export type SebabKasInput = "belum_ada_akun_kas" | "belum_ada_mutasi_kas" | "sebelum_cut_over" | null;
 
 /**
  * ⛔ SATU PEMBUAT VONIS untuk "kenapa sisi kas kosong" (§10.21). Dipakai
@@ -330,8 +337,14 @@ export type SebabKasInput = "belum_ada_akun_kas" | "belum_ada_mutasi_kas" | null
  *
  * `null` (bukan sebab) berarti kasnya BISA dihitung.
  */
-export function sebabKasDari(jumlahAkun: number, jumlahMutasiAktif: number): SebabKasInput {
+export function sebabKasDari(
+  jumlahAkun: number,
+  jumlahMutasiAktif: number,
+  /** §10.26 — tanggal laporan & cut-over TERAWAL antar akun (`null` = belum ada saldo pembuka). */
+  cutOver?: { tanggal: string; terawal: string | null },
+): SebabKasInput {
   if (jumlahAkun === 0) return "belum_ada_akun_kas";
+  if (cutOver?.terawal != null && cutOver.tanggal < cutOver.terawal) return "sebelum_cut_over";
   if (jumlahMutasiAktif === 0) return "belum_ada_mutasi_kas";
   return null;
 }
