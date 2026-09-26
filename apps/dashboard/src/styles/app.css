@@ -1336,6 +1336,18 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .keu-chip.keadaan-belum { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
 .keu-chip.keadaan-batas_diketahui { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
 .cols-sumber .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+/* Pemantauan pemakaian keuangan — tiga nada, satu pembuat vonis (keuangan-pantau-model.ts). */
+.cols-pantau { grid-template-columns: minmax(0, 1.3fr) minmax(0, 3fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }
+.tbl-scroll .cols-pantau { min-width: 760px; }
+.cols-pantau-kejadian { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 2.6fr) minmax(0, 1fr); align-items: baseline; }
+.tbl-scroll .cols-pantau-kejadian { min-width: 1000px; }
+.cols-pantau-pelaku { grid-template-columns: minmax(0, 2fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 2.6fr) minmax(0, 1.1fr); align-items: baseline; }
+.tbl-scroll .cols-pantau-pelaku { min-width: 900px; }
+.pantau-temuan { display: flex; flex-direction: column; gap: 6px; }
+.pantau-temuan .keu-p { margin-left: 8px; font-size: 15px; }
+.keu-chip.nada-merah { color: var(--color-danger); background: var(--color-danger-bg); border-color: var(--color-danger-border); }
+.keu-chip.nada-kuning { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning-border); }
+.keu-chip.nada-hijau { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success-border); }
 
 /* Kelola akun kas (§10.18). Tak ada kolom "hapus" — DELETE tak diberikan. */
 .cols-akun { grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 2fr) minmax(0, 1.6fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }

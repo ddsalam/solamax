@@ -29,8 +29,9 @@ function halaman(dir: string): string[] {
 const RUTE = halaman(KEU);
 
 describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
-  it("penjaga ini punya SUBJEK — delapan rute ditemukan", () => {
-    expect(RUTE.length).toBe(8);
+  it("penjaga ini punya SUBJEK — sembilan rute ditemukan", () => {
+    // 8 → 9: Pemantauan pemakaian keuangan (lintas unit, seperti papan).
+    expect(RUTE.length).toBe(9);
   });
 
   for (const f of RUTE) {
@@ -42,12 +43,16 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     });
   }
 
-  it("🔴 papan memakai dimensiUnit=tak_berlaku — kontrol yang tak mengubah apa pun TIDAK dipasang", () => {
-    const papan = readFileSync(join(KEU, "page.tsx"), "utf8");
-    expect(papan).toMatch(/dimensiUnit="tak_berlaku"/);
+  it("🔴 papan & pemantauan memakai dimensiUnit=tak_berlaku — kontrol yang tak mengubah apa pun TIDAK dipasang", () => {
+    // Dua layar LINTAS UNIT, didaftar dengan nama — bukan "semua yang kebetulan
+    // memakainya". Layar ketiga yang ingin bergabung harus ditambah di sini.
+    const lintasUnit = [join(KEU, "page.tsx"), join(KEU, "pemantauan", "page.tsx")];
+    for (const f of lintasUnit) {
+      expect(readFileSync(f, "utf8"), f).toMatch(/dimensiUnit="tak_berlaku"/);
+    }
     // DAYA-BEDA: ketujuh rute lain TIDAK memakainya — kalau semuanya memakainya,
     // pemilih unit lenyap dari seluruh modul dan penjaga di atas tetap hijau.
-    const lain = RUTE.filter((f) => f !== join(KEU, "page.tsx"));
+    const lain = RUTE.filter((f) => !lintasUnit.includes(f));
     for (const f of lain) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/dimensiUnit="tak_berlaku"/);
     }
