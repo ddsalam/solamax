@@ -340,6 +340,53 @@ export function urutkanKejadian(k: readonly KejadianPantau[]): KejadianPantau[] 
   );
 }
 
+/**
+ * Kejadian yang DIRINGKAS untuk dibaca manusia.
+ *
+ * Pos "perlu dicek" yang berulang tiap hari (produksi 26-09: 105 baris, hampir
+ * semuanya "SETORAN BRIGHT" di ketujuh unit) adalah SATU pola, bukan 105
+ * kejadian — daftar panjang menenggelamkan kejadian lain yang hanya muncul
+ * sekali. Karena itu `keterangan_janggal` digabung per unit: jumlah baris,
+ * total nominal, dan tiga contoh keterangan. Jenis lain tetap satu per baris.
+ */
+export interface KejadianRingkas extends KejadianPantau {
+  /** Jumlah baris yang digabung (1 untuk kejadian tunggal). */
+  jumlah: number;
+}
+
+export function ringkasKejadian(k: readonly KejadianPantau[]): KejadianRingkas[] {
+  const tunggal: KejadianRingkas[] = [];
+  const grup = new Map<number, { baris: KejadianPantau[] }>();
+  for (const x of k) {
+    if (x.jenis !== "keterangan_janggal") {
+      tunggal.push({ ...x, jumlah: 1 });
+      continue;
+    }
+    const g = grup.get(x.unitId) ?? { baris: [] };
+    g.baris.push(x);
+    grup.set(x.unitId, g);
+  }
+  const digabung: KejadianRingkas[] = [...grup.entries()].map(([unitId, g]) => {
+    const terbaru = [...g.baris].sort((a, b) => b.waktu.localeCompare(a.waktu));
+    const contoh = [...new Set(terbaru.map((b) => b.keterangan.replace(/^\w+ — /, "")))].slice(0, 3);
+    return {
+      unitId,
+      jenis: "keterangan_janggal",
+      waktu: terbaru[0]!.waktu,
+      tanggalBisnis: null,
+      pelaku: null,
+      keterangan:
+        g.baris.length === 1
+          ? terbaru[0]!.keterangan
+          : `${g.baris.length} baris · contoh: ${contoh.join(" · ")}`,
+      nominal: g.baris.reduce((s, b) => s + (b.nominal ?? 0), 0),
+      hariTerlambat: null,
+      jumlah: g.baris.length,
+    };
+  });
+  return urutkanKejadian([...tunggal, ...digabung]) as KejadianRingkas[];
+}
+
 // ---------------------------------------------------------------------------
 // 4 · Pelaku
 // ---------------------------------------------------------------------------
