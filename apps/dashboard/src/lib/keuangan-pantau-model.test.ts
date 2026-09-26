@@ -18,6 +18,7 @@ const akun = (kind: AkunPantau["kind"], adaSaldoAwal = true, active = true): Aku
   kind,
   active,
   adaSaldoAwal,
+  saldoAwalSementara: false,
 });
 
 const harga = (nama: string, p2Due: boolean, p2StaleDays: number | null = null): BarisHargaBeli => ({
@@ -198,6 +199,16 @@ describe("tambahan 26 Sep — tanpa penjualan & EDC per shift", () => {
     expect(nada(10, 6)).toBe("kuning");
     expect(nada(10, 10)).toBe("hijau");
     expect(nada(0, 0)).toBeUndefined();
+  });
+});
+
+describe("§10.26 — saldo pembuka sementara", () => {
+  it("titik awal sementara ⇒ kuning yang menyebut akunnya, bukan hijau 'lengkap'", () => {
+    const a = { ...akun("bank"), nama: "Bank BCA - 1", saldoAwalSementara: true };
+    const t = temuanKesiapan([akun("kas"), akun("edc_penampungan"), a], [], []);
+    const s = t.find((x) => x.kode === "saldo_awal")!;
+    expect(s.nada).toBe("kuning");
+    expect(s.rinci).toContain("Bank BCA - 1");
   });
 });
 

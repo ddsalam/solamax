@@ -22,6 +22,8 @@ export interface AkunSaldoAwal {
   /** `null` = rekening ini belum punya titik awal. */
   cutOver: string | null;
   nominal: number | null;
+  /** §10.26 — titik awal sementara (angka rekening koran menyusul). */
+  sementara: boolean;
   /** Mutasi yang bertanggal SEBELUM cut-over — dikeluarkan dari saldo. */
   praCutOver: number;
 }
@@ -39,10 +41,15 @@ export function SaldoPembukaPanel({
   const [tanggal, setTanggal] = useState("");
   const [nominal, setNominal] = useState("");
   const [alasan, setAlasan] = useState("");
+  const [sementara, setSementara] = useState(false);
   const [galat, setGalat] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const hNominal = bacaRupiah(nominal, { bolehNegatif: true });
+  // §10.26 — Rp 0 hanya sah sebagai titik awal SEMENTARA; penandanya dipaksa
+  // menyala, bukan diandalkan pada ingatan pengisi.
+  const nol = hNominal.keadaan === "sah" && hNominal.nilai === 0;
+  const tandaSementara = sementara || nol;
   async function simpan(accountId: string) {
     setGalat(null);
     if (hNominal.keadaan !== "sah") {
@@ -56,6 +63,7 @@ export function SaldoPembukaPanel({
       date: tanggal,
       amount: hNominal.nilai,
       alasan,
+      sementara: tandaSementara,
     });
     setPending(false);
     if (!r.ok) {
@@ -66,6 +74,7 @@ export function SaldoPembukaPanel({
     setTanggal("");
     setNominal("");
     setAlasan("");
+    setSementara(false);
   }
 
   return (
@@ -92,9 +101,15 @@ export function SaldoPembukaPanel({
                   <span className="keu-chip keadaan-belum">Belum ditetapkan</span>
                 ) : (
                   <>
-                    <span className="keu-chip keadaan-siap">
+                    <span className={`keu-chip ${a.sementara ? "keadaan-sebagian" : "keadaan-siap"}`}>
                       {a.nominal === null ? "—" : a.nominal.toLocaleString("id-ID")}
+                      {a.sementara && " · sementara"}
                     </span>
+                    {a.sementara && (
+                      <span className="fs16 t-warning keu-p">
+                        Titik awal sementara — ganti dengan saldo rekening koran per tanggal ini.
+                      </span>
+                    )}
                     <span className="fs16 t-tertiary keu-p">berlaku sejak {a.cutOver}</span>
                   </>
                 )}
@@ -157,6 +172,18 @@ export function SaldoPembukaPanel({
               <PratinjauAngka hasil={hNominal} />
             </label>
           </div>
+          <label className="keu-check mt4">
+            <input
+              type="checkbox"
+              checked={tandaSementara}
+              disabled={nol}
+              onChange={(e) => setSementara(e.target.checked)}
+            />{" "}
+            <span className="fs16">
+              Tandai <strong>sementara</strong> — angka rekening koran menyusul
+              {nol && " (wajib untuk Rp 0)"}
+            </span>
+          </label>
           <label className="keu-fld">
             <span className="keu-label">Alasan — dari mana angka ini berasal</span>
             <input

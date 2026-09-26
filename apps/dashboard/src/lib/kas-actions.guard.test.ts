@@ -172,7 +172,8 @@ describe("§10.24 · saldo pembuka — gerbang dan bentuknya", () => {
 
   it("🔴 MENGGANTI, bukan menyunting: anchor lama di-VOID, bukan di-UPDATE nilainya", () => {
     expect(fn).toMatch(/SET void = true, voided_by_user_id/);
-    expect(fn).toMatch(/saldo_awal, created_by_user_id/); // sisip baru
+    // sisip baru — sejak §10.26 membawa penanda sementara di antara keduanya.
+    expect(fn).toMatch(/saldo_awal, saldo_awal_sementara, created_by_user_id/);
     // Tak boleh ada UPDATE yang mengubah amount/business_date anchor.
     expect(fn).not.toMatch(/SET amount/);
     expect(fn).not.toMatch(/SET business_date/);
@@ -203,5 +204,26 @@ describe("§10.24 · saldo pembuka — gerbang dan bentuknya", () => {
     expect(simpan).toMatch(/BEGIN[\s\S]*saldo_awal AND NOT void[\s\S]*INSERT INTO app\.cash_ledger/);
     expect(simpan).toMatch(/input\.date < cutOver/);
     expect(simpan).toMatch(/mendahului saldo pembuka/);
+  });
+});
+
+describe("§10.26 — Rp 0 hanya sah sebagai saldo pembuka SEMENTARA", () => {
+  const src = readFileSync(resolve(__dirname, "kas-actions.ts"), "utf8");
+  const fn = src.slice(src.indexOf("export async function tetapkanSaldoAwal"));
+  it("server menolak Rp 0 tanpa penanda, sebelum menyentuh DB", () => {
+    expect(fn).toMatch(/input\.amount === 0 && !sementara/);
+    expect(fn.indexOf("input.amount === 0 && !sementara")).toBeLessThan(fn.indexOf("pool.connect()"));
+  });
+  it("penanda ikut tersimpan di baris DAN di audit_log", () => {
+    expect(fn).toMatch(/saldo_awal_sementara/);
+    expect(fn).toMatch(/nominal: input\.amount,\s*\n\s*sementara,/);
+  });
+  it("DB: nol hanya lewat jalan saldo pembuka sementara (0044)", () => {
+    const m = readFileSync(
+      resolve(__dirname, "../../../backend/prisma/migrations/0044_saldo_pembuka_sementara/migration.sql"),
+      "utf8",
+    );
+    expect(m).toMatch(/"jenis" = 'adjustment' AND "saldo_awal" AND "saldo_awal_sementara" AND "amount" = 0/);
+    expect(m).toMatch(/NOT "saldo_awal_sementara" OR "saldo_awal"/);
   });
 });

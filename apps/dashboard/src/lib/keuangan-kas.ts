@@ -31,6 +31,8 @@ export interface MutasiKas {
   amount: number;
   /** §10.24 — baris TITIK AWAL rekening. Satu per akun (indeks parsial 0036). */
   saldoAwal: boolean;
+  /** §10.26 — titik awal SEMENTARA (mis. Rp 0 sambil menunggu rekening koran). */
+  saldoAwalSementara?: boolean;
   void: boolean;
 }
 

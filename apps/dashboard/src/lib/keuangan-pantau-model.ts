@@ -113,13 +113,23 @@ export function temuanKesiapan(
               `${tanpaSaldo.map((a) => a.nama).join(", ")}. Isi saldo pembuka (Head of Finance) ` +
               "SEBELUM mutasi pertama diketik — kas akhir tak bisa dihitung tanpanya.",
           }
-        : {
-            kelompok: "kesiapan",
-            kode: "saldo_awal",
-            nada: "hijau",
-            judul: "Saldo pembuka lengkap",
-            rinci: `Semua ${aktif.length} akun punya saldo pembuka.`,
-          },
+        : aktif.some((a) => a.saldoAwalSementara)
+          ? {
+              kelompok: "kesiapan",
+              kode: "saldo_awal",
+              nada: "kuning",
+              judul: `${aktif.filter((a) => a.saldoAwalSementara).length} akun saldo pembukanya sementara`,
+              rinci:
+                `${aktif.filter((a) => a.saldoAwalSementara).map((a) => a.nama).join(", ")} — ` +
+                "ganti dengan saldo rekening koran per tanggal cut-over (Head of Finance, Kelola akun kas).",
+            }
+          : {
+              kelompok: "kesiapan",
+              kode: "saldo_awal",
+              nada: "hijau",
+              judul: "Saldo pembuka lengkap",
+              rinci: `Semua ${aktif.length} akun punya saldo pembuka.`,
+            },
   );
 
   if (tanpaHarga.length) {

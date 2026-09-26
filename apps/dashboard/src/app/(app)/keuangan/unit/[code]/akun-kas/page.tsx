@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { SaldoPembukaPanel } from "@/components/keuangan/SaldoPembukaPanel";
 import { getMutasiKas } from "@/lib/keuangan-input-queries";
 import { mutasiSebelumCutOver, tanggalCutOver } from "@/lib/keuangan-kas";
-import { todayWib as hariIniWibServer } from "@/lib/periods";
 import { todayWib } from "@/lib/periods";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { AkunKasPanel } from "@/components/keuangan/AkunKasPanel";
@@ -45,7 +44,10 @@ export default async function AkunKasPage({
   const akun = await getAkunKasKelola(unit.unit_id);
   // §10.24 — titik awal tiap rekening, dihitung dari mutasi yang sama dengan
   // yang dipakai saldo: satu sumber, bukan kolom kedua.
-  const mutasi = await getMutasiKas(unit.unit_id, hariIniWibServer());
+  // ⚠️ Batas atas JAUH, bukan hari ini: saldo pembuka boleh bertanggal di MASA
+  // DEPAN (cut-over 1 Okt ditetapkan 26 Sep, §10.26). Memotong di hari ini membuat
+  // titik awal yang sudah ditetapkan tampil "Belum ditetapkan" sampai tanggalnya tiba.
+  const mutasi = await getMutasiKas(unit.unit_id, "9999-12-31");
   const saldoAwal = akun.map((a) => {
     const cutOver = tanggalCutOver(mutasi, a.id);
     const anchor = mutasi.find((m) => !m.void && m.saldoAwal && m.accountId === a.id) ?? null;
@@ -54,6 +56,7 @@ export default async function AkunKasPage({
       nama: a.nama,
       cutOver,
       nominal: anchor?.amount ?? null,
+      sementara: anchor?.saldoAwalSementara === true,
       praCutOver: mutasiSebelumCutOver(mutasi, a.id).length,
     };
   });

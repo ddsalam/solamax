@@ -1728,6 +1728,32 @@ dipetakan ke bank sehingga tak ikut dibukukan — ia tetap flag kepatuhan di
 Rincian (ADR-001 #3). Foto slip belum punya penyimpanan; membuatnya wajib butuh
 keputusan tempat simpan (mis. Cloud Storage) lebih dulu.
 
+### 10.26 K4 · Saldo pembuka Rp 0 SEMENTARA, cut-over 1 Oktober 2026 (26 September 2026)
+
+**Keputusan owner (26 Sep 2026):** pembukuan di SolaMax **mulai 1 Oktober 2026**
+walau saldo rekening koran belum di tangan. Saldo pembuka tiap rekening diisi
+**Rp 0 bertanda sementara**, lalu diganti angka rekening koran per tanggal cut-over.
+
+**Ini MELONGGARKAN §10.24 dengan syarat, bukan membatalkannya.** §10.24 menolak
+nol supaya "saldo pembuka lengkap" tak pernah palsu. Nol kini sah **hanya** bila
+barisnya membawa penanda `saldo_awal_sementara` (0044):
+
+- DB: `cash_ledger_tanda` punya satu jalan tambahan — adjustment bernominal nol
+  yang adalah saldo pembuka **sementara**; `cash_ledger_sementara_hanya_saldo_awal`
+  melarang penanda itu di baris lain.
+- Server: `tetapkanSaldoAwal` menolak Rp 0 tanpa penanda.
+- Layar: Kelola akun kas menampilkan chip "· sementara" + kalimat penggantinya;
+  formulir memaksa penanda menyala untuk Rp 0. Pemantauan menilai **kuning**
+  ("n akun saldo pembukanya sementara"), tidak pernah hijau "lengkap".
+- Mengganti tetap lewat jalur §10.24 (void + insert + `audit_log`) — penanda
+  hilang karena baris penggantinya tidak membawanya.
+
+⚠️ **Akibat yang disengaja:** selama sementara, kas akhir = mutasi sejak 1 Okt,
+bukan saldo bank sesungguhnya. Angkanya benar sebagai *arus*, salah sebagai *saldo*.
+
+Kelola akun kas kini membaca mutasi **tanpa batas tanggal atas** — titik awal
+bertanggal masa depan (1 Okt, ditetapkan 26 Sep) dulu tampil "Belum ditetapkan".
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

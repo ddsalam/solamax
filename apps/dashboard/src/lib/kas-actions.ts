@@ -308,8 +308,13 @@ export interface SaldoAwalInput {
   accountId: string;
   /** Tanggal cut-over — saldo berlaku pada AWAL hari ini. */
   date: string;
-  /** Bebas tanda (rekening bisa negatif), tetapi tidak boleh nol. */
+  /** Bebas tanda (rekening bisa negatif). Nol HANYA bila `sementara` (§10.26). */
   amount: number;
+  /**
+   * §10.26 — angka rekening koran belum di tangan; titik awal ini akan diganti.
+   * Satu-satunya jalan saldo pembuka Rp 0 sah, dan penandanya terlihat di layar.
+   */
+  sementara?: boolean;
   /** Wajib: kenapa angka ini, dan dari mana. */
   alasan: string;
 }
@@ -321,8 +326,15 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
     return { ok: false, error: "Hanya Head of Finance yang boleh menetapkan saldo pembuka." };
   }
   if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
-  if (!Number.isFinite(input.amount) || input.amount === 0) {
-    return { ok: false, error: "Saldo pembuka tak boleh nol — rekening bersaldo nol tak perlu titik awal." };
+  const sementara = input.sementara === true;
+  if (!Number.isFinite(input.amount)) return { ok: false, error: "Nominal tak valid." };
+  if (input.amount === 0 && !sementara) {
+    return {
+      ok: false,
+      error:
+        "Saldo pembuka Rp 0 hanya boleh bila ditandai SEMENTARA (angka rekening koran menyusul) — " +
+        "supaya nol tidak terbaca sebagai saldo sungguhan.",
+    };
   }
   if (input.alasan.trim() === "") {
     return { ok: false, error: "Alasan wajib diisi: dari mana angka ini berasal." };
@@ -354,9 +366,17 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
     await client.query(
       `INSERT INTO app.cash_ledger
          (unit_id, account_id, business_date, keterangan, jenis, amount,
-          saldo_awal, created_by_user_id)
-       VALUES ($1,$2::uuid,$3::date,$4,'adjustment',$5,true,$6)`,
-      [unit.unit_id, input.accountId, input.date, "Saldo pembuka", input.amount, scope.userId],
+          saldo_awal, saldo_awal_sementara, created_by_user_id)
+       VALUES ($1,$2::uuid,$3::date,$4,'adjustment',$5,true,$6,$7)`,
+      [
+        unit.unit_id,
+        input.accountId,
+        input.date,
+        sementara ? "Saldo pembuka (sementara)" : "Saldo pembuka",
+        input.amount,
+        sementara,
+        scope.userId,
+      ],
     );
 
     await client.query(
@@ -369,6 +389,7 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
         JSON.stringify({
           tanggal: input.date,
           nominal: input.amount,
+          sementara,
           alasan: input.alasan.trim(),
           sebelumnya:
             sebelumnya === null
