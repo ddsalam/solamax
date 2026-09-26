@@ -28,6 +28,28 @@ export interface BarisBuku extends MutasiKas {
   saldoBerjalan: number;
   /** Baris ini lahir dari setoran pengawas yang disetujui (0033). */
   dariSetoranPengawas: boolean;
+  /**
+   * Baris SISTEM yang tidak boleh dibatalkan dari buku: saldo pembuka (§10.24,
+   * milik Head of Finance) dan kaki pencairan EDC (tiga kaki satu jurnal —
+   * membatalkan satu membuat buku tak seimbang). `null` = baris biasa.
+   */
+  barisSistem: BarisSistem | null;
+}
+
+export type BarisSistem = "saldo_awal" | "pencairan_edc";
+
+export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
+  saldo_awal: "Saldo pembuka — hanya Head of Finance yang menggantinya, di Kelola akun kas.",
+  pencairan_edc:
+    "Bagian dari jurnal pencairan EDC (tiga baris sekaligus). Membatalkan satu baris membuat buku " +
+    "tidak seimbang — hubungi Head of Finance.",
+};
+
+/** Satu pembuat vonis untuk "baris ini baris sistem?" — dipakai layar DAN server. */
+export function barisSistemDari(m: { saldoAwal: boolean; dariPencairanEdc?: boolean }): BarisSistem | null {
+  if (m.saldoAwal) return "saldo_awal";
+  if (m.dariPencairanEdc) return "pencairan_edc";
+  return null;
 }
 
 /**
@@ -37,7 +59,12 @@ export interface BarisBuku extends MutasiKas {
  * hari dari nol akan terlihat rapi dan salah.
  */
 export function barisBuku(
-  mutasi: readonly (MutasiKas & { id: string; keterangan: string; sourceManualEntryId?: string | null })[],
+  mutasi: readonly (MutasiKas & {
+    id: string;
+    keterangan: string;
+    sourceManualEntryId?: string | null;
+    dariPencairanEdc?: boolean;
+  })[],
   accountId: string,
   date: string,
   hariSebelumnya: string,
@@ -47,7 +74,12 @@ export function barisBuku(
   for (const m of mutasi) {
     if (m.void || m.accountId !== accountId || m.businessDate !== date) continue;
     saldo += m.amount;
-    out.push({ ...m, saldoBerjalan: saldo, dariSetoranPengawas: !!m.sourceManualEntryId });
+    out.push({
+      ...m,
+      saldoBerjalan: saldo,
+      dariSetoranPengawas: !!m.sourceManualEntryId,
+      barisSistem: barisSistemDari(m),
+    });
   }
   return out;
 }

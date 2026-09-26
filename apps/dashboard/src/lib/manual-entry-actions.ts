@@ -71,7 +71,9 @@ export async function voidManualEntry(input: {
     unit.unit_id, // RLS (0016): app.unit_ids → USING+WITH CHECK pada UPDATE app.manual_entry
     `UPDATE app.manual_entry
         SET void=true, voided_by_user_id=$1, voided_at=now(), updated_at=now()
-      WHERE id=$2::uuid AND unit_id=$3 AND NOT void`,
+      WHERE id=$2::uuid AND unit_id=$3 AND NOT void
+        -- Baris pintu Finance bukan milik pengawas (§2): tak bisa dibatalkan dari Rincian.
+        AND source_door = 'pengawas'`,
     [scope.userId, input.id, unit.unit_id],
   );
   revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);

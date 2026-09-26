@@ -1,7 +1,13 @@
 import { qScoped } from "./db";
 import { ukur } from "./ukur-kueri";
 import { effectiveBuyPrice } from "./harga-beli";
-import { kumpulkanBeban, type BarisBeban } from "./keuangan-beban";
+import {
+  kumpulkanBeban,
+  pilahManualEntry,
+  type BarisBeban,
+  type BarisManualLaporan,
+} from "./keuangan-beban";
+import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { saldoAkun, saldoSemuaAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
 import {
@@ -56,18 +62,11 @@ async function getBebanDanPendapatan(
   unit: ScopedUnitId,
   date: string,
 ): Promise<{ beban: BarisBeban[]; pendapatanLain: number }> {
-  const manual = await qScoped<{
-    businessDate: string;
-    accountingAccount: string | null;
-    amountRp: number;
-    keterangan: string;
-    void: boolean;
-    section: string;
-  }>(
+  const manual = await qScoped<BarisManualLaporan>(
     unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate",
             accounting_account                  AS "accountingAccount",
-            amount::float8                      AS "amountRp",
+            ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
             keterangan, void, section::text     AS section
        FROM app.manual_entry
       WHERE unit_id = $1 AND business_date = $2::date
@@ -91,21 +90,12 @@ async function getBebanDanPendapatan(
     [unit, date],
   );
 
-  // Beban disimpan BERTANDA negatif di manual_entry; `kumpulkanBeban` menerima
-  // beban POSITIF. Tandanya dibalik di SATU tempat, di sini.
+  const { manualBeban, pendapatanLain } = pilahManualEntry(manual);
   const beban = kumpulkanBeban(
-    {
-      manual_entry: manual
-        .filter((r) => r.section === "pengeluaran")
-        .map((r) => ({ ...r, amountRp: -r.amountRp })),
-      noncash_expense: nonKas,
-    },
+    { manual_entry: manualBeban, noncash_expense: nonKas },
     date,
     date,
   );
-  const pendapatanLain = manual
-    .filter((r) => r.section === "pendapatan_lain" && !r.void)
-    .reduce((s, r) => s + r.amountRp, 0);
 
   return { beban, pendapatanLain };
 }

@@ -31,7 +31,9 @@ export type UnitRouteSegment =
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
   // Keuangan — TANPA dimensi unit: papan menampilkan SEMUA unit sekaligus
-  | "keuangan-papan";
+  | "keuangan-papan"
+  // Keuangan — TANPA dimensi unit: pemantauan pemakaian lintas unit
+  | "keuangan-pantau";
 
 export function unitRouteHref(args: {
   segment: UnitRouteSegment;
@@ -68,6 +70,10 @@ export function unitRouteHref(args: {
   // TANPA unit: papan menampilkan semua unit; hanya tanggal yang berarti.
   if (segment === "keuangan-papan") {
     return `/keuangan${date ? `?${qs({ tanggal: date, lain: query })}` : suffix}`;
+  }
+  // TANPA unit, sama seperti papan: tanggal = AKHIR jendela pemantauan.
+  if (segment === "keuangan-pantau") {
+    return `/keuangan/pemantauan${date ? `?${qs({ tanggal: date, lain: query })}` : suffix}`;
   }
 
   const edt = segment === "usulan" && edit ? "/edit" : "";

@@ -1,5 +1,7 @@
 "use client";
 
+import { bacaHargaLiter } from "@/lib/angka-input";
+import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { simpanHargaBeli } from "@/lib/harga-beli-actions";
 import type { BarisHargaBeli, RingkasPenjaga } from "@/lib/keuangan-harga-model";
@@ -66,7 +68,10 @@ export function HargaBeliPanel({
   const [pending, start] = useTransition();
 
   const aktif = baris.find((b) => b.productKey === buka) ?? null;
-  const hargaNum = Number(harga.replace(/[^\d.,]/g, "").replace(/\./g, "").replace(",", "."));
+  // `19582.51` dulu tersimpan 1.958.251 (titik dibuang). Kini ditolak dengan
+  // saran "19582,51" — lihat `angka-input.ts`.
+  const hHarga = bacaHargaLiter(harga);
+  const hargaNum = hHarga.keadaan === "sah" ? hHarga.nilai : NaN;
   // Pratinjau P1 di layar. Ini KENYAMANAN, bukan penjaga — yang menegakkan ada
   // di server, yang membaca harga jualnya sendiri.
   const p1Pratinjau =
@@ -90,6 +95,10 @@ export function HargaBeliPanel({
     setErr(null);
     setKurang([]);
     setMsg(null);
+    if (hHarga.keadaan !== "sah") {
+      setErr(hHarga.keadaan === "tolak" ? hHarga.pesan : "Harga beli wajib diisi.");
+      return;
+    }
     start(async () => {
       const res = await simpanHargaBeli({
         code,
@@ -243,9 +252,10 @@ export function HargaBeliPanel({
                 inputMode="decimal"
                 value={harga}
                 onChange={(e) => setHarga(e.target.value)}
-                placeholder="0,00"
+                placeholder="contoh 19.582,51"
                 aria-describedby="hb-hint"
               />
+              <PratinjauAngka hasil={hHarga} satuan="per_liter" />
               <span className="fs16 t-tertiary" id="hb-hint">
                 Dari faktur Pertamina. Berlaku sampai ada harga berikutnya.
               </span>
@@ -314,7 +324,12 @@ export function HargaBeliPanel({
           )}
 
           <div className="manual-form-actions">
-            <button type="button" className="btn-navy" onClick={simpan} disabled={pending}>
+            <button
+              type="button"
+              className="btn-navy"
+              onClick={simpan}
+              disabled={pending || hHarga.keadaan === "tolak"}
+            >
               {pending ? "Menyimpan…" : "Simpan harga beli"}
             </button>
             <button type="button" className="btn-outline" onClick={tutup} disabled={pending}>

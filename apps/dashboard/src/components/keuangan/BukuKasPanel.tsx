@@ -1,5 +1,8 @@
 "use client";
 
+import { PENJELASAN_BARIS_SISTEM } from "@/lib/keuangan-kas-model";
+import { bacaRupiah } from "@/lib/angka-input";
+import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { setujuiSetoran, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
 import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
@@ -63,12 +66,16 @@ export function BukuKasPanel({
   const saldoAwal = saldoAwalPerAkun[akunAktif] ?? 0;
   const kategoriSisi = kategori.filter((k) => k.side === (jenis === "kredit" ? "kredit" : "debet"));
 
+  // Penyesuaian satu-satunya jenis yang arahnya tak tersirat dari namanya —
+  // hanya di sana minus boleh diketik (dulu mustahil: semua non-digit dibuang).
+  const hNominal = bacaRupiah(nominal, { bolehNegatif: jenis === "adjustment" });
   const angka = (): number => {
-    const n = Number(nominal.replace(/[^\d]/g, ""));
-    if (!Number.isFinite(n) || n === 0) return NaN;
-    // Tanda ditentukan JENIS, bukan diketik: minus yang terlupa adalah cara
-    // termudah membuat kredit menaikkan saldo.
-    return jenis === "kredit" ? -n : n;
+    if (hNominal.keadaan !== "sah" || hNominal.nilai === 0) return NaN;
+    const n = hNominal.nilai;
+    // Tanda debet/kredit ditentukan JENIS, bukan diketik: minus yang terlupa
+    // adalah cara termudah membuat kredit menaikkan saldo.
+    if (jenis === "adjustment") return n;
+    return jenis === "kredit" ? -Math.abs(n) : Math.abs(n);
   };
 
   const simpan = (): void => {
@@ -76,7 +83,9 @@ export function BukuKasPanel({
     setMsg(null);
     const amount = angka();
     if (Number.isNaN(amount)) {
-      setErr("Nominal harus angka dan bukan nol.");
+      setErr(
+        hNominal.keadaan === "tolak" ? hNominal.pesan : "Nominal harus diisi dan bukan nol.",
+      );
       return;
     }
     const kat = kategoriSisi.find((k) => `${k.side}|${k.label}` === katKey) ?? null;
@@ -119,9 +128,14 @@ export function BukuKasPanel({
     });
   };
 
+  // Konfirmasi DI TEMPAT (bukan `confirm()`): klik pertama menanyakan, klik
+  // kedua membatalkan. Pembatalan tercatat selamanya atas nama pelakunya —
+  // satu klik yang meleset tidak boleh cukup.
+  const [yakin, setYakin] = useState<string | null>(null);
   const batalkan = (id: string): void => {
     setErr(null);
     setMsg(null);
+    setYakin(null);
     start(async () => {
       const res = await voidMutasiKas({ code, date, id });
       if (!res.ok) setErr(res.error);
@@ -248,14 +262,39 @@ export function BukuKasPanel({
               <span className="right num t-secondary">{rp(b.saldoBerjalan)}</span>
               {bolehTulis && (
                 <span className="right">
-                  <button
-                    type="button"
-                    className="btn-outline sm"
-                    onClick={() => batalkan(b.id)}
-                    disabled={pending}
-                  >
-                    Batalkan
-                  </button>
+                  {b.barisSistem !== null ? (
+                    <span className="keu-chip" title={PENJELASAN_BARIS_SISTEM[b.barisSistem]}>
+                      {b.barisSistem === "saldo_awal" ? "saldo pembuka" : "pencairan EDC"}
+                    </span>
+                  ) : yakin === b.id ? (
+                    <span className="keu-yakin">
+                      <button
+                        type="button"
+                        className="btn-outline sm t-danger"
+                        onClick={() => batalkan(b.id)}
+                        disabled={pending}
+                      >
+                        Ya, batalkan
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline sm"
+                        onClick={() => setYakin(null)}
+                        disabled={pending}
+                      >
+                        Tidak
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-outline sm"
+                      onClick={() => setYakin(b.id)}
+                      disabled={pending}
+                    >
+                      Batalkan
+                    </button>
+                  )}
                 </span>
               )}
             </div>
@@ -285,7 +324,8 @@ export function BukuKasPanel({
         <div className="card card-pad-lg keu-form">
           <h4 className="text-h3">Tambah mutasi</h4>
           <p className="fs16 t-tertiary mt2">
-            Tanda nominal mengikuti jenis — Anda tidak perlu (dan tidak bisa) mengetik minus.
+            Tanda nominal mengikuti jenis — ketik angkanya saja. Khusus <strong>Penyesuaian</strong>:
+            ketik minus bila saldo berkurang.
           </p>
           <label className="keu-fld">
             <span className="keu-label">Keterangan</span>
@@ -311,11 +351,13 @@ export function BukuKasPanel({
               <span className="keu-label">Nominal</span>
               <input
                 className="manual-input num"
-                inputMode="numeric"
+                // Keypad angka ponsel tak punya tombol minus — Penyesuaian butuh itu.
+                inputMode={jenis === "adjustment" ? "text" : "numeric"}
                 value={nominal}
                 onChange={(e) => setNominal(e.target.value)}
-                placeholder="0"
+                placeholder="contoh 1.500.000"
               />
+              <PratinjauAngka hasil={hNominal} />
             </label>
           </div>
           {jenis !== "adjustment" && (
@@ -336,7 +378,12 @@ export function BukuKasPanel({
             </label>
           )}
           <div className="manual-form-actions">
-            <button type="button" className="btn-navy" onClick={simpan} disabled={pending}>
+            <button
+              type="button"
+              className="btn-navy"
+              onClick={simpan}
+              disabled={pending || hNominal.keadaan === "tolak"}
+            >
               {pending ? "Menyimpan…" : "Simpan mutasi"}
             </button>
             <button

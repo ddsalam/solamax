@@ -140,3 +140,36 @@ export function ringkasPerSumber(baris: readonly BarisBeban[]): Record<SumberBeb
   for (const b of baris) out[b.sumber] += b.amountRp;
   return out;
 }
+
+/** Baris `manual_entry` sebagaimana dibaca kueri — nominal SUDAH dinormalkan. */
+export interface BarisManualLaporan {
+  businessDate: string;
+  accountingAccount: string | null;
+  amountRp: number;
+  keterangan: string;
+  void: boolean;
+  section: string;
+}
+
+/**
+ * Pilah baris `manual_entry` hari itu jadi beban & pendapatan lain — MURNI.
+ *
+ * ⛔ Nominal `manual_entry` POSITIF dari kedua pintu (`manual-entry-nominal.ts`),
+ * dan `kumpulkanBeban` juga menerima beban POSITIF — jadi TIDAK ada pembalikan
+ * tanda di sini. Pembalikan yang dulu ada di jalur ini adalah sumber cacat
+ * "biaya pengawas menambah laba bersih" (26 Sep 2026). Dipisah dari kueri
+ * supaya ujinya bisa MEMERAH terhadap cacat itu, bukan hanya membaca teks —
+ * mutan yang mengembalikan pembalikan tanda menghasilkan persis angka produksi
+ * yang salah (−94.843.083).
+ */
+export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
+  manualBeban: BarisManualLaporan[];
+  pendapatanLain: number;
+} {
+  return {
+    manualBeban: manual.filter((r) => r.section === "pengeluaran"),
+    pendapatanLain: manual
+      .filter((r) => r.section === "pendapatan_lain" && !r.void)
+      .reduce((s, r) => s + r.amountRp, 0),
+  };
+}
