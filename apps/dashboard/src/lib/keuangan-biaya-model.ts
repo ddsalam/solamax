@@ -26,7 +26,11 @@ export interface BarisBiaya {
   /** `pendapatan_lain` | `pengeluaran`. */
   section: string;
   keterangan: string;
-  /** Bertanda: pengeluaran negatif, pendapatan positif. */
+  /**
+   * Nominal POSITIF dari kedua pintu — arah ditentukan `section`
+   * (`manual-entry-nominal.ts`). Untuk tampilan & total, pakai
+   * {@link nilaiBertanda}, jangan `amount` langsung.
+   */
   amount: number;
   /** Milik PENGAWAS. `null` = belum berkategori. */
   operationalCategory: string | null;
@@ -98,7 +102,16 @@ export function totalPerPintu(baris: readonly BarisBiaya[]): Record<PintuBiaya, 
   const out = { pengawas: 0, finance: 0 } satisfies Record<PintuBiaya, number>;
   for (const b of baris) {
     if (b.void) continue;
-    out[b.sourceDoor] += b.amount;
+    out[b.sourceDoor] += nilaiBertanda(b);
   }
   return out;
+}
+
+/**
+ * Nilai bertanda untuk DITAMPILKAN & DIJUMLAH: pengeluaran negatif, pendapatan
+ * positif. Tandanya diturunkan dari SEKSI — satu-satunya tempat arah disimpan —
+ * sehingga total per pintu adalah angka neto, bukan biaya ditambah pendapatan.
+ */
+export function nilaiBertanda(b: Pick<BarisBiaya, "section" | "amount">): number {
+  return b.section === "pengeluaran" ? -Math.abs(b.amount) : Math.abs(b.amount);
 }

@@ -8,6 +8,7 @@ import {
   menungguTinjauan,
   tindakanTersedia,
   totalPerPintu,
+  nilaiBertanda,
   type BarisBiaya,
 } from "@/lib/keuangan-biaya-model";
 
@@ -171,8 +172,8 @@ export function BiayaPanel({
                 <span className="fs16 t-secondary">
                   {b.accountingAccount ?? <span className="t-danger">belum dipetakan</span>}
                 </span>
-                <span className={`right num ${b.amount < 0 ? "t-danger" : ""}`}>
-                  {rp(b.amount)}
+                <span className={`right num ${nilaiBertanda(b) < 0 ? "t-danger" : ""}`}>
+                  {rp(nilaiBertanda(b))}
                 </span>
                 <span className="fs16 t-secondary">
                   {b.void ? "dibatalkan" : b.status === "closed" ? "disahkan · terkunci" : b.status}

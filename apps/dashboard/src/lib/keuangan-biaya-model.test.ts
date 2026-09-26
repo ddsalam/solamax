@@ -55,15 +55,23 @@ describe("tindakanTersedia — empat tindakan bernama, dan TIDAK ADA edit", () =
 
 describe("dua pintu, satu daftar (§2.4)", () => {
   it("total per pintu dipisah, dan keduanya menyumbang", () => {
-    const rows = [b({ amount: -500_000 }), b({ sourceDoor: "finance", amount: -300_000 })];
+    // Nominal tersimpan POSITIF (konvensi tunggal, 26 Sep 2026); tanda dari seksi.
+    const rows = [b({ amount: 500_000 }), b({ sourceDoor: "finance", amount: 300_000 })];
     const t = totalPerPintu(rows);
     expect(t).toEqual({ pengawas: -500_000, finance: -300_000 });
     for (const p of PINTU_BIAYA) expect(t[p]).not.toBe(0);
   });
 
   it("baris void tidak ikut total", () => {
-    const rows = [b({ amount: -500_000 }), b({ amount: -9_000_000, void: true })];
+    const rows = [b({ amount: 500_000 }), b({ amount: 9_000_000, void: true })];
     expect(totalPerPintu(rows).pengawas).toBe(-500_000);
+  });
+
+  it("🔴 total per pintu NETO — pendapatan tidak ditambahkan ke biaya", () => {
+    // Review #397: sesudah konvensi positif, menjumlah `amount` apa adanya
+    // membuat biaya 500 rb + pendapatan 200 rb terbaca 700 rb.
+    const rows = [b({ amount: 500_000 }), b({ section: "pendapatan_lain", amount: 200_000 })];
+    expect(totalPerPintu(rows).pengawas).toBe(-300_000);
   });
 
   it("daftar pintu bisa DIHITUNG — 'berapa pintu' punya jawaban", () => {
