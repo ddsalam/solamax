@@ -4,6 +4,16 @@ import { bacaRupiah } from "@/lib/angka-input";
 import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { tambahBiayaFinance } from "@/lib/biaya-actions";
+import { reklasifikasiBiaya } from "@/lib/reklas-actions";
+import type { ReklasBaris } from "@/lib/keuangan-input-queries";
+import {
+  AKUN_REKLAS,
+  dampakLaba,
+  jenisAkun,
+  labelAkun,
+  membentukLaba,
+  type SeksiBiaya,
+} from "@/lib/keuangan-reklas";
 import {
   belumBerakun,
   LABEL_TINDAKAN,
@@ -26,6 +36,11 @@ import {
  * ⛔ **DUA KOLOM, DUA PEMILIK** (§2.1): kategori operasional dipilih pengawas
  * dan tidak bisa disentuh Finance; akun akuntansi dipetakan otomatis dari
  * kategori itu, dan reklasifikasi menanganinya secara teraudit.
+ *
+ * §10.29 — **Reklasifikasi** kini tombol sungguhan: memindahkan AKUN baris
+ * pengawas (termasuk ke dua akun bukan-laba: prive/kontribusi & perpindahan
+ * dana) lewat baris baru di `app.reclassification`. Barisnya sendiri tidak
+ * berubah; riwayatnya tampil di bawah akun.
  */
 
 const rp = (n: number): string =>
@@ -53,14 +68,24 @@ export function BiayaPanel({
   date,
   baris,
   peta,
+  reklas,
+  reasonReklas,
   bolehTulis,
 }: {
   code: string;
   date: string;
   baris: BarisBiaya[];
   peta: { category: string; account: string }[];
+  /** Riwayat reklasifikasi baris hari ini — terbaru dulu. */
+  reklas: ReklasBaris[];
+  /** Kode alasan grup `reclass` (§10.2). */
+  reasonReklas: { code: string; label: string }[];
   bolehTulis: boolean;
 }) {
+  const [reklasId, setReklasId] = useState<string | null>(null);
+  const [akunKe, setAkunKe] = useState("");
+  const [alasanReklas, setAlasanReklas] = useState("");
+  const [catatanReklas, setCatatanReklas] = useState("");
   const [buka, setBuka] = useState(false);
   const [section, setSection] = useState<"pengeluaran" | "pendapatan_lain">("pengeluaran");
   const [ket, setKet] = useState("");
@@ -75,6 +100,153 @@ export function BiayaPanel({
   const tanpaAkun = belumBerakun(baris);
   const akunDari = (k: string): string | null =>
     peta.find((p) => p.category === k)?.account ?? null;
+
+  const riwayatDari = (id: string): ReklasBaris[] => reklas.filter((r) => r.sourceTxnId === id);
+
+  const bukaReklas = (id: string): void => {
+    setErr(null);
+    setMsg(null);
+    setReklasId(id);
+    setAkunKe("");
+    setAlasanReklas("");
+    setCatatanReklas("");
+  };
+
+  const simpanReklas = (b: BarisBiaya): void => {
+    setErr(null);
+    setMsg(null);
+    start(async () => {
+      const res = await reklasifikasiBiaya({
+        code,
+        date,
+        entryId: b.id,
+        toAccount: akunKe,
+        reasonCode: alasanReklas,
+        note: catatanReklas,
+      });
+      if (!res.ok) setErr(res.error);
+      else {
+        setMsg(`“${b.keterangan}” kini di akun ${labelAkun(akunKe)}. Baris pengawasnya tidak berubah.`);
+        setReklasId(null);
+      }
+    });
+  };
+
+  const formReklas = (b: BarisBiaya) => {
+    const pilihan = AKUN_REKLAS.filter(
+      (a) => a.untuk.includes(b.section as SeksiBiaya) && a.kode !== b.accountingAccount,
+    );
+    const bukanLaba = pilihan.filter((a) => !membentukLaba(a.jenis));
+    const laba = pilihan.filter((a) => membentukLaba(a.jenis));
+    const tujuan = AKUN_REKLAS.find((a) => a.kode === akunKe) ?? null;
+    const dampak = tujuan === null ? 0 : dampakLaba(b.section, b.accountingAccount, akunKe, b.amount);
+    const perluCatatan = tujuan !== null && !membentukLaba(tujuan.jenis);
+    return (
+      <div className="card card-pad-lg keu-form reklas-form">
+        <h4 className="text-h3">Reklasifikasi — {b.keterangan}</h4>
+        <p className="fs16 t-tertiary mt2">
+          Keterangan, nominal, tanggal, dan kategori pengawas <strong>tidak berubah</strong>. Yang
+          berpindah hanya akun akuntansinya — dan karena itu apakah baris ini ikut membentuk laba.
+          Sekarang: <strong>{labelAkun(b.accountingAccount)}</strong>.
+        </p>
+        <div className="keu-2col">
+          <label className="keu-fld">
+            <span className="keu-label">Akun baru</span>
+            <select
+              className="manual-input"
+              value={akunKe}
+              onChange={(e) => {
+                setAkunKe(e.target.value);
+                const t = AKUN_REKLAS.find((a) => a.kode === e.target.value);
+                // Saran alasan: keluar dari laba = sifatnya berbeda.
+                if (alasanReklas === "" && t && !membentukLaba(t.jenis)) setAlasanReklas("RCL-NATURE");
+              }}
+            >
+              <option value="">— pilih akun —</option>
+              <optgroup label="Bukan beban / bukan pendapatan — tidak masuk laba">
+                {bukanLaba.map((a) => (
+                  <option key={a.kode} value={a.kode}>
+                    {a.kode} {a.nama}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={b.section === "pengeluaran" ? "Beban operasional" : "Pendapatan"}>
+                {laba.map((a) => (
+                  <option key={a.kode} value={a.kode}>
+                    {a.kode} {a.nama}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </label>
+          <label className="keu-fld">
+            <span className="keu-label">Alasan</span>
+            <select
+              className="manual-input"
+              value={alasanReklas}
+              onChange={(e) => setAlasanReklas(e.target.value)}
+            >
+              <option value="">— pilih alasan —</option>
+              {reasonReklas.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} — {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="keu-fld">
+          <span className="keu-label">Catatan{perluCatatan ? " (wajib)" : " (opsional)"}</span>
+          <input
+            className="manual-input"
+            value={catatanReklas}
+            onChange={(e) => setCatatanReklas(e.target.value)}
+            placeholder={
+              tujuan?.jenis === "ekuitas"
+                ? "contoh: prive ke PT Triguna, atas persetujuan Direktur"
+                : tujuan?.jenis === "pindah_dana"
+                  ? "contoh: disetor ke BCA oleh Pak Athoi / dibayar pelanggan via transfer"
+                  : "contoh: sebenarnya perbaikan genset"
+            }
+          />
+        </label>
+        {tujuan !== null && (
+          <div className={`banner ${dampak === 0 ? "info" : "warning"} keu-banner`} role="status">
+            <b>
+              {dampak === 0
+                ? "Laba bersih tidak berubah — baris hanya pindah antar akun."
+                : `Laba bersih ${date} ${dampak > 0 ? "naik" : "turun"} Rp ${rp(Math.abs(dampak))}.`}
+            </b>
+            {tujuan.jenis === "ekuitas" && (
+              <p className="keu-p">
+                Uangnya tetap keluar dari kas — di arus kas ia tampil sebagai prive/kontribusi
+                pemilik, bukan biaya operasional.
+              </p>
+            )}
+            {tujuan.jenis === "pindah_dana" && (
+              <p className="keu-p">
+                Pastikan uangnya tercatat di buku kas/bank Finance (setoran ke bank atau
+                penerimaan transfer) — di sanalah perpindahannya dibukukan.
+              </p>
+            )}
+          </div>
+        )}
+        <div className="manual-form-actions">
+          <button
+            type="button"
+            className="btn-navy"
+            onClick={() => simpanReklas(b)}
+            disabled={pending || akunKe === "" || alasanReklas === "" || (perluCatatan && catatanReklas.trim().length < 5)}
+          >
+            {pending ? "Menyimpan…" : "Simpan reklasifikasi"}
+          </button>
+          <button type="button" className="btn-outline" onClick={() => setReklasId(null)} disabled={pending}>
+            Batal
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const hNominal = bacaRupiah(nominal);
   const simpan = (): void => {
@@ -124,6 +296,11 @@ export function BiayaPanel({
           Dua kolom terpisah menjaga batasnya — kategori operasional dipilih pengawas, akun
           akuntansi jadi tanggung jawab Finance.
         </p>
+        <p className="keu-p">
+          <strong>Reklasifikasi</strong> sudah bisa dipakai: pindahkan pos yang bukan biaya
+          (prive, setoran ke bank, penjualan via transfer) ke akun bukan-laba. Baris pengawasnya
+          tetap utuh. Tindakan lain menyusul.
+        </p>
       </div>
 
       {tanpaAkun.length > 0 && (
@@ -163,8 +340,12 @@ export function BiayaPanel({
         ) : (
           baris.map((b) => {
             const tindakan = tindakanTersedia(b);
+            const riwayat = riwayatDari(b.id);
+            const bukanLaba = !membentukLaba(jenisAkun(b.accountingAccount, b.section));
+            const bisaReklas = bolehTulis && tindakan.includes("reclassify") && !b.titipanBright;
             return (
-              <div className="grid-row cols-biaya" key={b.id}>
+              <div key={b.id}>
+              <div className="grid-row cols-biaya">
                 <span className="w600">
                   {b.keterangan}
                   {/* Keping asal-usul — direkam saat penulisan (0034). */}
@@ -178,7 +359,22 @@ export function BiayaPanel({
                   )}
                 </span>
                 <span className="fs16 t-secondary">
-                  {b.accountingAccount ?? <span className="t-danger">belum dipetakan</span>}
+                  {b.titipanBright ? (
+                    <span className="t-tertiary">titipan outlet Bright — bukan pendapatan</span>
+                  ) : b.accountingAccount === null ? (
+                    <span className="t-danger">belum dipetakan</span>
+                  ) : (
+                    labelAkun(b.accountingAccount)
+                  )}
+                  {bukanLaba && !b.void && <span className="keu-chip nada-kuning">tidak masuk laba</span>}
+                  {riwayat.length > 0 && (
+                    <span className="keu-p t-tertiary">
+                      direklasifikasi {riwayat.length}× · semula {labelAkun(b.akunAsli)} · terakhir{" "}
+                      {riwayat[0]!.waktu}
+                      {riwayat[0]!.oleh !== null && ` oleh ${riwayat[0]!.oleh}`} · {riwayat[0]!.reasonCode}
+                      {riwayat[0]!.note !== null && ` · ${riwayat[0]!.note}`}
+                    </span>
+                  )}
                 </span>
                 <span className={`right num ${nilaiBertanda(b) < 0 ? "t-danger" : ""}`}>
                   {rp(nilaiBertanda(b))}
@@ -187,12 +383,24 @@ export function BiayaPanel({
                   {b.void ? "dibatalkan" : b.status === "closed" ? "disahkan · terkunci" : b.status}
                 </span>
                 <span className="fs16 t-tertiary">
-                  {/* Daftar tindakan yang AKAN tersedia. Tak ada "Edit" di sini,
-                      dan tak akan pernah ada. */}
-                  {tindakan.length === 0
-                    ? "—"
-                    : tindakan.map((t) => LABEL_TINDAKAN[t]).join(" · ")}
+                  {/* Tak ada "Edit" di sini, dan tak akan pernah ada. */}
+                  {bisaReklas ? (
+                    <button
+                      type="button"
+                      className="btn-outline sm"
+                      disabled={pending}
+                      onClick={() => (reklasId === b.id ? setReklasId(null) : bukaReklas(b.id))}
+                    >
+                      Reklasifikasi
+                    </button>
+                  ) : tindakan.length === 0 ? (
+                    "—"
+                  ) : (
+                    tindakan.map((t) => LABEL_TINDAKAN[t]).join(" · ")
+                  )}
                 </span>
+              </div>
+              {reklasId === b.id && formReklas(b)}
               </div>
             );
           })

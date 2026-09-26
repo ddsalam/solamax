@@ -103,7 +103,8 @@ export type JenisKejadian =
   | "keterangan_janggal"
   | "selisih_slip_edc"
   | "rekening_edc_diubah"
-  | "rekening_pencairan_beda";
+  | "rekening_pencairan_beda"
+  | "reklasifikasi_biaya";
 
 export interface KejadianPantau {
   unitId: number;
@@ -521,6 +522,26 @@ const KUERI_KEJADIAN = `
        -- §10.27 — titipan outlet Bright sudah DIKENALI (liabilitas, bukan laba):
        -- bukan lagi pos janggal. Tanpa ini 105 baris produksi 12–25 Sep tetap menjerit.
        AND NOT ${sqlTitipanBright("m")}
+       -- §10.29 — sudah ditinjau Finance lewat reklasifikasi: bukan lagi pos
+       -- yang menunggu, melainkan kejadian 'reklasifikasi_biaya' di bawah.
+       AND NOT EXISTS (
+             SELECT 1 FROM app.reclassification rc
+              WHERE rc.source_kind = 'manual_entry' AND rc.source_txn_id = m.id
+           )
+
+    -- §10.29 — setiap reklasifikasi biaya pengawas terlihat: memindahkan pos
+    -- keluar dari laba MENAIKKAN laba, jadi pemilik harus bisa melihatnya.
+    UNION ALL
+    SELECT r.unit_id::int, 'reklasifikasi_biaya', ${WIB_TEKS("r.created_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.keterangan || ' · ' || r.from_account || ' → ' || r.to_account
+             || ' · ' || r.reason_code || COALESCE(' · ' || r.note, '')),
+           abs(m.amount)::float8, NULL
+      FROM app.reclassification r
+      JOIN app.manual_entry m ON m.id = r.source_txn_id AND m.unit_id = r.unit_id
+      LEFT JOIN app.users u ON u.id = r.created_by_user_id
+     WHERE r.unit_id = ANY($1::int[]) AND r.source_kind = 'manual_entry'
+       AND ${SAAT_DALAM_JENDELA("r.created_at")}
 
     UNION ALL
     SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},

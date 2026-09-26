@@ -92,6 +92,11 @@ export interface CashFlowInput {
   biayaOperasional: number;
   /** §10.27 — titipan outlet Bright hari itu (diterima − diserahkan). Kas, bukan laba. */
   arusTitipanBright: number;
+  /**
+   * §10.29 — arus ekuitas bersih hari itu (keluar ke pemilik − masuk dari pemilik),
+   * dari biaya pengawas yang direklasifikasi ke prive/kontribusi. POSITIF = keluar.
+   */
+  kontribusiPemilik: number;
 }
 
 export interface PanelLaporan {
@@ -129,6 +134,9 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
     // §10.27 — uang titipan outlet Bright ikut laci & setoran SPBU, jadi ia ARUS
     // KAS — tetapi bukan pendapatan. Baris sendiri, supaya tak tercampur.
     { label: "Titipan outlet Bright (bukan pendapatan)", nilai: i.arusTitipanBright },
+    // §10.29 — uang ke/dari pemilik yang dicatat pengawas sebagai biaya lalu
+    // direklasifikasi Finance: tetap ARUS KAS, tetapi bukan beban.
+    { label: "Prive / kontribusi pemilik (bukan beban)", nilai: -i.kontribusiPemilik },
   ];
 
   // Net cash change hanya ada bila SELURUH komponennya ada. Menjumlah dengan
