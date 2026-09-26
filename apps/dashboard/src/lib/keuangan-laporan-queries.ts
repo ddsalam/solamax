@@ -9,7 +9,7 @@ import {
 } from "./keuangan-beban";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { KATEGORI_PENYERAHAN_TITIPAN, sqlTitipanBright } from "./titipan-bright";
-import { saldoAkun, saldoSemuaAkun } from "./keuangan-kas";
+import { cutOverTerawal, saldoAkun, saldoSemuaAkun, type MutasiKas } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
 import {
   deltaKategori,
@@ -116,11 +116,17 @@ async function getBebanDanPendapatan(
 async function saldoTitipanPada(
   unit: ScopedUnitId,
   d: string,
-  mutasi: readonly { businessDate: string; void: boolean; categoryLabel: string | null; amount: number }[],
+  mutasi: readonly MutasiKas[],
 ): Promise<number> {
   const aktif = mutasi.filter((m) => !m.void && m.businessDate <= d);
   if (aktif.length === 0) return 0;
-  const mulai = aktif.reduce((a, m) => (m.businessDate < a ? m.businessDate : a), aktif[0]!.businessDate);
+  // Mulai = cut-over terawal bila ada (§10.26) — titipan dan kas mulai
+  // dibukukan pada tanggal yang SAMA. Tanpa ini, mutasi lama sebelum cut-over
+  // (IB, 1 Sep) menarik awal titipan mundur sebulan (produksi: −345,8 jt).
+  const cut = cutOverTerawal(mutasi);
+  if (cut !== null && d < cut) return 0;
+  const mulai =
+    cut ?? aktif.reduce((a, m) => (m.businessDate < a ? m.businessDate : a), aktif[0]!.businessDate);
   const r = await qScoped<{ rp: number }>(
     unit,
     `SELECT COALESCE(sum(m.amount), 0)::float8 AS rp
@@ -242,7 +248,11 @@ async function bahanLaporan(
   //    dibangun untuk menangkap "angka dari himpunan tak lengkap" DIAM: bukan
   //    karena rusak, melainkan karena 0 adalah angka yang sah.
   const adaAkun = akun.length > 0;
-  const sebabKas = sebabKasDari(akun.length, mutasi.filter((m) => !m.void).length);
+  const sebabKas = sebabKasDari(
+    akun.length,
+    mutasi.filter((m) => !m.void && m.businessDate <= date).length,
+    { tanggal: date, terawal: cutOverTerawal(mutasi) },
+  );
   /** Saldo hanya berarti bila bukunya punya isi. Kosong ⇒ BELUM DIKETAHUI. */
   const kasTerhitung = sebabKas === null;
   const kasAwalPerAkun = kasTerhitung
