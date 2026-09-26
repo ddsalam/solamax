@@ -1,5 +1,7 @@
 "use client";
 
+import { bacaRupiah } from "@/lib/angka-input";
+import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { tambahBiayaFinance } from "@/lib/biaya-actions";
 import {
@@ -74,16 +76,22 @@ export function BiayaPanel({
   const akunDari = (k: string): string | null =>
     peta.find((p) => p.category === k)?.account ?? null;
 
+  const hNominal = bacaRupiah(nominal);
   const simpan = (): void => {
     setErr(null);
     setMsg(null);
+    if (hNominal.keadaan !== "sah") {
+      setErr(hNominal.keadaan === "tolak" ? hNominal.pesan : "Nominal wajib diisi.");
+      return;
+    }
+    const amountRp = hNominal.nilai;
     start(async () => {
       const res = await tambahBiayaFinance({
         code,
         date,
         section,
         keterangan: ket,
-        amountRp: Number(nominal.replace(/[^\d]/g, "")),
+        amountRp,
         operationalCategory: kategori,
       });
       if (!res.ok) setErr(res.error);
@@ -235,8 +243,9 @@ export function BiayaPanel({
                 inputMode="numeric"
                 value={nominal}
                 onChange={(e) => setNominal(e.target.value)}
-                placeholder="0"
+                placeholder="contoh 250.000"
               />
+              <PratinjauAngka hasil={hNominal} />
             </label>
           </div>
           <label className="keu-fld">
@@ -264,7 +273,12 @@ export function BiayaPanel({
             </span>
           </label>
           <div className="manual-form-actions">
-            <button type="button" className="btn-navy" onClick={simpan} disabled={pending}>
+            <button
+              type="button"
+              className="btn-navy"
+              onClick={simpan}
+              disabled={pending || hNominal.keadaan === "tolak"}
+            >
               {pending ? "Menyimpan…" : "Simpan"}
             </button>
             <button

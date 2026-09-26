@@ -119,7 +119,9 @@ function buildGroups(
           icon: "report",
           // Cocok HANYA pada rute laporan, bukan pada /input di bawahnya —
           // tanpa `$`, butir ini akan ikut menyala saat Input Keuangan dibuka.
-          match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+$/.test(p),
+          // Segmen kedua harus TANGGAL: tanpa itu `/akun-kas` ikut cocok dan
+          // dua butir menyala sekaligus di halaman Kelola akun kas.
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/\d{4}-\d{2}-\d{2}$/.test(p),
         },
         {
           href: unitCode ? `/keuangan/unit/${unitCode}/piutang/${date}` : null,
@@ -144,6 +146,15 @@ function buildGroups(
           label: "Input keuangan",
           icon: "receipt",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/[^/]+\/input/.test(p),
+        },
+        {
+          // Dulu hanya bisa dicapai dengan mengetik URL — padahal Head of Finance
+          // WAJIB ke sini untuk saldo pembuka, dan tautan satu-satunya di Papan
+          // hanya muncul bagi peran Keuangan pada unit TANPA akun sama sekali.
+          href: unitCode ? `/keuangan/unit/${unitCode}/akun-kas` : null,
+          label: "Kelola akun kas",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/akun-kas/.test(p),
         },
       ],
     },

@@ -158,6 +158,8 @@ export interface MutasiKasRow extends MutasiKas {
   id: string;
   keterangan: string;
   sourceManualEntryId: string | null;
+  /** Kaki jurnal "Setujui pencairan" EDC — ditulis mesin, tiga kaki sekaligus. */
+  dariPencairanEdc: boolean;
 }
 
 /**
@@ -185,7 +187,8 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             amount::float8                        AS amount,
             saldo_awal                            AS "saldoAwal",
             void,
-            source_manual_entry_id::text          AS "sourceManualEntryId"
+            source_manual_entry_id::text          AS "sourceManualEntryId",
+            (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc"
        FROM app.cash_ledger
       WHERE unit_id = $1 AND business_date <= $2::date
       ORDER BY business_date, created_at`,
