@@ -24,6 +24,10 @@ import {
 } from "@/lib/queries";
 import { buildRincianModel } from "@/lib/rincian-model";
 import { getDataScope } from "@/lib/scope";
+import { EdcShiftCekPanel } from "@/components/edc/EdcShiftCekPanel";
+import { rakitShiftEdc } from "@/lib/edc-shift-model";
+import { getAcquirerDikenal, getCekSlip, getEdcPerShift, getPetaKartu } from "@/lib/edc-shift-queries";
+import { canCekSlipEdc, canPetakanKartuEdc } from "@/lib/keuangan-wewenang";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +83,16 @@ export default async function RincianPage({
       getManualEntries(unit.unit_id, addDays(date, 1), "pengeluaran"),
       getManualEntries(unit.unit_id, addDays(date, 1), "setoran_tunai"),
     ]);
+
+  // §10.25 — EDC per shift: bahan panel cocokkan-slip pengawas (no-print).
+  const [edcShift, petaKartu, cekSlip, acquirerDikenal] = await Promise.all([
+    getEdcPerShift(unit.unit_id, date),
+    getPetaKartu(unit.unit_id),
+    getCekSlip(unit.unit_id, date),
+    getAcquirerDikenal(unit.unit_id),
+  ]);
+  const edcPerShift = rakitShiftEdc(edcShift, petaKartu, cekSlip);
+  const wewenang = { role: scope.role, email: scope.email };
 
   /** Tetangga dari baris manual: I null bila tak ada baris (bukan nol rupiah). */
   const sisi = (f: typeof pendapatanLain, g: typeof pengeluaran, i: typeof setoranTunai) => ({
@@ -313,6 +327,16 @@ export default async function RincianPage({
             recon={setoranRecon}
           />
         </ManualPanel>
+
+        <EdcShiftCekPanel
+          code={unit.code}
+          date={date}
+          baris={edcPerShift.baris}
+          kartuTanpaPeta={edcPerShift.kartuTanpaPeta}
+          bolehCek={canCekSlipEdc(wewenang)}
+          bolehPetakan={canPetakanKartuEdc(wewenang)}
+          acquirerDikenal={acquirerDikenal}
+        />
 
         {/* Tanda tangan */}
         <div className="sig-grid mt12">

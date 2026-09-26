@@ -1353,6 +1353,21 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .cols-akun { grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 2fr) minmax(0, 1.6fr); align-items: baseline; padding-top: 12px; padding-bottom: 12px; }
 .tbl-scroll .cols-akun { min-width: 980px; }
 .cols-akun .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+/* §10.27 — titipan outlet Bright di Rincian (pengawas). */
+.manual-titipan { margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--color-warning); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: var(--radius-full); padding: 1px 8px; white-space: nowrap; }
+.manual-titipan-opt { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; margin-top: 6px; }
+.keu-check { display: flex; gap: 8px; align-items: flex-start; }
+/* EDC per shift → EDC Penampungan (§10.25). */
+.cols-edcshift { grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 2.2fr) minmax(0, 1.8fr); align-items: start; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-edcshift { min-width: 900px; }
+.cols-edcsetuju { grid-template-columns: 32px minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1.8fr); align-items: start; padding-top: 11px; padding-bottom: 11px; }
+.tbl-scroll .cols-edcsetuju { min-width: 900px; }
+.cols-edcshift .keu-p, .cols-edcsetuju .keu-p { display: block; margin-top: 4px; font-size: 15px; }
+.edc-slip-isi { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.edc-slip-isi .manual-input { max-width: 180px; }
+.edc-peta { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.edc-peta-baris { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.edc-peta-aksi { display: inline-flex; gap: 6px; align-items: center; }
 /* Pratinjau angka di bawah kolom isian keuangan ("Terbaca: Rp …" / penolakan). */
 .keu-terbaca { display: block; margin-top: 4px; font-size: 15px; }
 /* Konfirmasi pembatalan di tempat — dua tombol berdampingan. */

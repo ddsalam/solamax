@@ -1683,6 +1683,115 @@ bergerak memang saldonya sebesar itu. **Dan ini konsekuensi langsung dari
 jawaban 1** — dengan tabel terpisah, `sebabKasDari` harus diajari mengenal
 anchor, dan setiap pembaca saldo ikut berubah.
 
+### 10.25 K4 · Penjualan EDC per shift masuk EDC Penampungan (26 September 2026)
+
+**Masalah.** §10.5 membangun sisi **keluar** EDC Penampungan (jurnal pencairan H+1
+mengkredit bruto). Sisi **masuk** — penjualan EDC hari-H — tak dicatat siapa pun,
+sehingga akun kliring ini selalu minus: bentuk yang sama dengan kerusakan keempat
+Bakau (saldo Rp 12,4 M).
+
+**Keputusan owner (26 Sep 2026):**
+
+| Butir | Keputusan |
+|---|---|
+| Sumber nominal | **Bruto EasyMax** (tabel `edc`), bukan ketikan |
+| Pemeriksa | **Slip settlement**, dicocokkan **pengawas** per shift |
+| Granularitas | **Per shift × acquirer** |
+| Foto slip | **Opsional sekarang, wajib kelak** — kolom `slip_foto_ref` disiapkan |
+| Peta kode kartu → bank | **Head of Finance / super admin / Direksi (owner) / pengawas** unit itu — staf `keuangan` tidak |
+| Posting | Staf **Keuangan menyetujui** → Debet EDC Penampungan, kategori `Penjualan EDC` |
+
+**Bentuk (0043):** `app.edc_kartu_acquirer` (peta, PK unit+kode) ·
+`app.edc_shift_cek` (cek slip; `easymax_rp` = bruto SAAT dicocokkan; satu cek aktif
+per unit/tanggal/shift/acquirer) · `cash_ledger.edc_shift_cek_id` (unik parsial —
+satu posting aktif per cek). RLS §4.1b, VOID-only.
+
+**Aturan yang ditegakkan server (`edc-shift-actions.ts`):**
+1. Bruto dihitung **ulang** di dalam transaksi yang menulis — saat mencocokkan dan
+   saat menyetujui. Angka di layar tak pernah dipercaya.
+2. Bila bruto EasyMax **berubah** sesudah dicocokkan (sinkron susulan, ralat POS),
+   persetujuan **ditolak** sampai pengawas mencocokkan ulang — slip itu memeriksa
+   angka yang sudah tidak ada.
+3. **Yang mencocokkan tidak menyetujui** cek yang sama (`checked_by ≠ approver`).
+4. Slip ≠ EasyMax ⇒ persetujuan **wajib kode alasan** `closing`; selisihnya tetap
+   tercatat di cek, tidak dibulatkan hilang.
+5. Kode kartu **tanpa peta tidak ditebak** ke bank mana pun — ia disebut dengan
+   namanya sampai yang berwenang memetakannya.
+6. Tanggal sebelum cut-over saldo pembuka EDC Penampungan ditolak (§10.24).
+
+**Layar:** pengawas mencocokkan di **Rincian Penjualan** (panel no-print "EDC per
+shift"); Keuangan menyetujui di **Input keuangan › blok 3**; **Pemantauan**
+menilai hari yang bruto EDC-nya dibukukan **penuh** dan mencatat slip berselisih.
+
+⚠️ **Batas yang diketahui:** transaksi blank-card (`ckdkartu` kosong) tak bisa
+dipetakan ke bank sehingga tak ikut dibukukan — ia tetap flag kepatuhan di
+Rincian (ADR-001 #3). Foto slip belum punya penyimpanan; membuatnya wajib butuh
+keputusan tempat simpan (mis. Cloud Storage) lebih dulu.
+
+### 10.26 K4 · Saldo pembuka Rp 0 SEMENTARA, cut-over 1 Oktober 2026 (26 September 2026)
+
+**Keputusan owner (26 Sep 2026):** pembukuan di SolaMax **mulai 1 Oktober 2026**
+walau saldo rekening koran belum di tangan. Saldo pembuka tiap rekening diisi
+**Rp 0 bertanda sementara**, lalu diganti angka rekening koran per tanggal cut-over.
+
+**Ini MELONGGARKAN §10.24 dengan syarat, bukan membatalkannya.** §10.24 menolak
+nol supaya "saldo pembuka lengkap" tak pernah palsu. Nol kini sah **hanya** bila
+barisnya membawa penanda `saldo_awal_sementara` (0044):
+
+- DB: `cash_ledger_tanda` punya satu jalan tambahan — adjustment bernominal nol
+  yang adalah saldo pembuka **sementara**; `cash_ledger_sementara_hanya_saldo_awal`
+  melarang penanda itu di baris lain.
+- Server: `tetapkanSaldoAwal` menolak Rp 0 tanpa penanda.
+- Layar: Kelola akun kas menampilkan chip "· sementara" + kalimat penggantinya;
+  formulir memaksa penanda menyala untuk Rp 0. Pemantauan menilai **kuning**
+  ("n akun saldo pembukanya sementara"), tidak pernah hijau "lengkap".
+- Mengganti tetap lewat jalur §10.24 (void + insert + `audit_log`) — penanda
+  hilang karena baris penggantinya tidak membawanya.
+
+⚠️ **Akibat yang disengaja:** selama sementara, kas akhir = mutasi sejak 1 Okt,
+bukan saldo bank sesungguhnya. Angkanya benar sebagai *arus*, salah sebagai *saldo*.
+
+Kelola akun kas kini membaca mutasi **tanpa batas tanggal atas** — titik awal
+bertanggal masa depan (1 Okt, ditetapkan 26 Sep) dulu tampil "Belum ditetapkan".
+
+### 10.27 K4 · Setoran Bright = TITIPAN outlet Bright, bukan pendapatan SPBU (26 September 2026)
+
+**Temuan (produksi 12–25 Sep 2026, layar Pemantauan):** 105 baris "SETORAN BRIGHT"
+di **ketujuh** unit dicatat pengawas sebagai *pendapatan lain* — laba SPBU lebih
+saji setiap hari (±Rp 0,1–22 jt/hari/unit).
+
+**Keputusan owner:** setoran Bright adalah **titipan** hasil penjualan outlet
+Bright di tiap SPBU. Uangnya masuk laci & disetor bersama kas SPBU (jadi tetap
+ikut rekonsiliasi kas pengawas, komponen F), tetapi ia **utang** kepada outlet
+Bright/SPH sampai diserahkan. Cara memisahkan: **kategori "Titipan outlet
+Bright" di Rincian**, baris lama ikut dikenali.
+
+| Laporan | Perlakuan |
+|---|---|
+| Rincian (rekonsiliasi pengawas) | tidak berubah — titipan tetap di F |
+| Laba rugi | **tidak** masuk pendapatan lain-lain |
+| Arus kas | baris "Titipan outlet Bright (bukan pendapatan)" = diterima − diserahkan |
+| Neraca | **liabilitas** "Titipan outlet Bright" = Σ diterima − Σ diserahkan sejak buku kas dimulai; mengurangi asset bersih |
+
+Kas naik, utang naik, laba tak berubah ⇒ **langkah harian tetap seimbang** (diuji).
+Penyerahan ke outlet Bright/SPH dicatat Keuangan sebagai **Kredit, kategori
+"Penyerahan titipan Bright"** (0045) — mengurangi kas dan utang bersamaan.
+
+**Pengenal tunggal** `titipan-bright.ts` (`isTitipanBright` + padanan SQL
+`sqlTitipanBright`): kategori operasional pengawas menang; baris TANPA kategori
+dikenali dari kata utuh "bright"/"titipan" di keterangan. Formulir pengawas:
+centang "Titipan outlet Bright" tercentang otomatis dari keterangan, bisa diubah;
+"bukan titipan" pada keterangan yang berbunyi titipan dicatat `Lain-Lain` agar
+pengenal baris lama tak menimpa pilihan orang.
+
+⚠️ **Batas:** pengenal baris lama berbasis kata — keterangan yang tak menyebut
+Bright/titipan tak terkenali (sebaliknya: pendapatan sungguhan yang menyebut
+"bright" akan terbaca titipan sampai pengawas mencatatnya ulang). Pemantauan
+berhenti menandai titipan sebagai pos janggal.
+
+**Riwayat angka acuan IB 24-09:** −94.843.083 (cacat tanda) → −107.252.683 (#397)
+→ **−119.737.483** (§10.27: Rp 12.484.800 SETORAN BRIGHT IB keluar dari laba).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

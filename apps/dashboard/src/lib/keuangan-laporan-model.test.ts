@@ -41,6 +41,7 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
   penebusanSo: 0,
   pendapatanLain: 500,
   biayaOperasional: -40_500,
+  arusTitipanBright: 0,
   ...o,
 });
 
@@ -56,6 +57,7 @@ const bs = (o: Partial<BalanceInput> = {}): BalanceInput => ({
   incomeAdjustment: 0,
   totalAssetKemarin: null,
   deltaKontribusi: 0,
+  saldoTitipanBright: 0,
   ...o,
 });
 

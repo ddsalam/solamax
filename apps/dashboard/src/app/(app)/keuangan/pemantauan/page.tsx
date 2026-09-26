@@ -7,6 +7,7 @@ import {
   NADA_KEJADIAN,
   nadaTerburuk,
   rakitPantau,
+  ringkasKejadian,
   ringkasPelaku,
   type Nada,
 } from "@/lib/keuangan-pantau-model";
@@ -59,7 +60,9 @@ export default async function PemantauanKeuanganPage({
   const namaUnit = new Map(scope.units.map((u) => [Number(u.unit_id), u] as const));
 
   const unitMerah = baris.filter((b) => b.merah > 0).length;
-  const kejadianPenting = baris.flatMap((b) => b.kejadian).filter((k) => NADA_KEJADIAN[k.jenis] !== "hijau");
+  const kejadianMentah = baris.flatMap((b) => b.kejadian).filter((k) => NADA_KEJADIAN[k.jenis] !== "hijau");
+  // Pola berulang digabung per unit — lihat `ringkasKejadian`.
+  const kejadianPenting = ringkasKejadian(kejadianMentah);
   const rp = (n: number | null): string =>
     n === null ? "—" : n.toLocaleString("id-ID", { maximumFractionDigits: 0 });
 
@@ -94,7 +97,10 @@ export default async function PemantauanKeuanganPage({
         <div className="card card-pad">
           <div className="fs16 t-tertiary">Tanda kesalahan</div>
           <div className="tutup-angka num">{kejadianPenting.length}</div>
-          <div className="fs16 t-secondary">pembatalan, pencatatan terlambat, selisih, pos janggal</div>
+          <div className="fs16 t-secondary">
+            kelompok temuan dari {kejadianMentah.length} baris — pembatalan, pencatatan terlambat, selisih, pos
+            janggal
+          </div>
         </div>
         <div className="card card-pad">
           <div className="fs16 t-tertiary">Orang yang bekerja di modul</div>
@@ -167,7 +173,10 @@ export default async function PemantauanKeuanganPage({
             <div className="grid-row cols-pantau-kejadian" key={`${k.jenis}-${k.waktu}-${i}`}>
               <span className="fs16 num">{k.waktu}</span>
               <span className="fs16">
-                <span className={`keu-chip nada-${NADA_KEJADIAN[k.jenis] as Nada}`}>{LABEL_KEJADIAN[k.jenis]}</span>
+                <span className={`keu-chip nada-${NADA_KEJADIAN[k.jenis] as Nada}`}>
+                  {LABEL_KEJADIAN[k.jenis]}
+                  {k.jumlah > 1 && ` · ${k.jumlah}×`}
+                </span>
                 {k.hariTerlambat !== null && (
                   <span className="fs16 t-tertiary keu-p">{k.hariTerlambat} hari sesudah tanggal bisnisnya</span>
                 )}

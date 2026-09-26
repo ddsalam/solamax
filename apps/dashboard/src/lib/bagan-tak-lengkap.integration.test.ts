@@ -71,6 +71,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
         incomeAdjustment: null,
         totalAssetKemarin: bahan.totalAssetKemarin,
         deltaKontribusi: null,
+        saldoTitipanBright: bahan.saldoTitipanBright,
       });
       const b = barisUnit({
         unitId: u.unit_id, code: u.code, nama: u.name, adaAkunKas: true,
