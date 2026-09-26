@@ -112,6 +112,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
   const kasus: [string, string, string[]][] = [
     ["0020", sql0020, ["purchase_price"]],
     ["0021", sql0021, ["reclassification", "correction_entry"]],
+    // §10.25 — EDC per shift (26 Sep 2026).
+    ["0043", MIG("0043_edc_per_shift"), ["edc_kartu_acquirer", "edc_shift_cek"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {

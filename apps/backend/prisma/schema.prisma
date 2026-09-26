@@ -935,6 +935,8 @@ model CashLedger {
   // mutasi biasa. Kolomnya sudah ada di DB sejak 0030 tetapi belum pernah
   // tercermin di sini — drift lama, dirapikan bersama 0033.
   edcSettlementId     String?           @map("edc_settlement_id") @db.Uuid
+  /// §10.25 — Debet EDC Penampungan dari penjualan EDC per shift (0043).
+  edcShiftCekId       String?           @map("edc_shift_cek_id") @db.Uuid
   // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
   // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
   sourceManualEntryId String?           @map("source_manual_entry_id") @db.Uuid
@@ -976,6 +978,48 @@ model EdcSettlement {
 
   @@index([unitId, acquirer, settlementDate])
   @@map("edc_settlement")
+  @@schema("app")
+}
+
+// Peta kode kartu EasyMax → acquirer/bank per unit (§10.25, 0043). Diisi Head
+// of Finance / Direksi / super admin / pengawas unit itu. Konfigurasi, bukan
+// transaksi: boleh diperbarui, pelaku & waktunya ikut tersimpan + audit_log.
+model EdcKartuAcquirer {
+  unitId          Int      @map("unit_id") @db.SmallInt
+  ckdkartu        String
+  acquirer        String
+  updatedByUserId Int      @map("updated_by_user_id")
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@id([unitId, ckdkartu])
+  @@map("edc_kartu_acquirer")
+  @@schema("app")
+}
+
+// Cek slip settlement EDC per (tanggal, shift, acquirer) oleh pengawas (§10.25,
+// 0043). `easymaxRp` = bruto EasyMax SAAT dicocokkan; persetujuan ditolak bila
+// bruto berubah sesudahnya. Satu cek aktif per kunci (indeks parsial).
+model EdcShiftCek {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId           Int       @map("unit_id") @db.SmallInt
+  businessDate     DateTime  @map("business_date") @db.Date
+  cshift           String
+  acquirer         String
+  easymaxRp        Decimal   @map("easymax_rp") @db.Decimal(17, 2)
+  slipRp           Decimal   @map("slip_rp") @db.Decimal(17, 2)
+  /// Opsional sekarang (keputusan 26-09), wajib kelak.
+  slipFotoRef      String?   @map("slip_foto_ref")
+  catatan          String?
+  checkedByUserId  Int       @map("checked_by_user_id")
+  checkedAt        DateTime  @default(now()) @map("checked_at") @db.Timestamptz()
+  reasonCode       String?   @map("reason_code")
+  reasonAppliesTo  String?   @map("reason_applies_to")
+  void             Boolean   @default(false)
+  voidedByUserId   Int?      @map("voided_by_user_id")
+  voidedAt         DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@unique([id, unitId], map: "edc_shift_cek_unit_uq")
+  @@map("edc_shift_cek")
   @@schema("app")
 }
 

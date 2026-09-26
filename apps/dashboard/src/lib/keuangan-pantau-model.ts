@@ -172,11 +172,29 @@ export interface FaktaKedisiplinan {
   ditutup: number;
   dibukaBelumDitutup: number;
   diLuarToleransi: number;
+  /** §10.25 — hari berpenjualan EDC & hari yang EDC-nya sudah dibukukan. */
+  hariEdc?: number;
+  hariEdcDibukukan?: number;
 }
 
 export function temuanKedisiplinan(f: FaktaKedisiplinan, sampai: string): Temuan[] {
   const out: Temuan[] = [];
   const penyebut = Math.max(f.hariPenjualan, 1);
+
+  // Tanpa satu hari penjualan pun, "belum dibukukan / belum ditutup" tak
+  // bermakna — dulu layar berbunyi "Belum ada hari yang ditutup — 0 hari belum
+  // ditutup", kalimat yang membantah dirinya sendiri (terlihat di tier testing).
+  if (f.hariPenjualan === 0) {
+    return [
+      {
+        kelompok: "kedisiplinan",
+        kode: "tanpa_penjualan",
+        nada: "hijau",
+        judul: "Tidak ada penjualan dalam jendela ini",
+        rinci: "Tak ada yang perlu dibukukan atau ditutup.",
+      },
+    ];
+  }
 
   // Buku kas
   if (f.hariBermutasi === 0) {
@@ -224,6 +242,23 @@ export function temuanKedisiplinan(f: FaktaKedisiplinan, sampai: string): Temuan
   // tim keuangan atas tombol yang belum ada adalah alarm palsu — dan alarm palsu
   // mengajari orang mengabaikan layar ini. Nyalakan kembali begitu tombolnya ada.
 
+  // EDC per shift → EDC Penampungan (§10.25).
+  const hariEdc = f.hariEdc ?? 0;
+  if (hariEdc > 0) {
+    const dib = f.hariEdcDibukukan ?? 0;
+    out.push({
+      kelompok: "kedisiplinan",
+      kode: "edc_penampungan",
+      nada: dib === 0 ? "merah" : dib < hariEdc ? "kuning" : "hijau",
+      judul:
+        dib === 0
+          ? "Belum ada hari yang penjualan EDC-nya dibukukan penuh"
+          : `Penjualan EDC dibukukan penuh ${dib} dari ${hariEdc} hari`,
+      rinci:
+        "Pengawas mencocokkan slip per shift di Rincian Penjualan; Keuangan menyetujuinya di Input keuangan › blok 3.",
+    });
+  }
+
   // Tutup hari — yang tak pernah dibuka TIDAK punya baris (§10.15), jadi
   // penyebutnya hari penjualan, bukan jumlah baris day_close.
   const belum = Math.max(f.hariPenjualan - f.ditutup, 0);
@@ -256,6 +291,7 @@ export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   batal_settlement: "Settlement EDC dibatalkan",
   batal_beban_nonkas: "Beban non-kas dibatalkan",
   mutasi_terlambat: "Mutasi dicatat terlambat",
+  selisih_slip_edc: "Slip EDC berselisih dengan EasyMax",
   harga_beli_di_atas_jual: "Harga beli di atas harga jual",
   selisih_settlement: "Settlement EDC berselisih",
   tutup_di_luar_toleransi: "Hari ditutup di luar toleransi",
@@ -274,6 +310,7 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   harga_beli_di_atas_jual: "kuning",
   selisih_settlement: "kuning",
   mutasi_terlambat: "kuning",
+  selisih_slip_edc: "kuning",
   keterangan_janggal: "kuning",
   batal_mutasi_kas: "kuning",
   batal_harga_beli: "kuning",
@@ -380,6 +417,8 @@ export function rakitPantau(unitIds: readonly number[], bahan: BahanPantau): Bar
             ditutup: th?.ditutup ?? 0,
             dibukaBelumDitutup: th?.dibukaBelumDitutup ?? 0,
             diLuarToleransi: th?.diLuarToleransi ?? 0,
+            hariEdc: bahan.edc.get(u)?.hariEdc ?? 0,
+            hariEdcDibukukan: bahan.edc.get(u)?.hariDibukukan ?? 0,
           },
           bahan.sampai,
         ),

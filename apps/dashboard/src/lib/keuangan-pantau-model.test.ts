@@ -166,6 +166,7 @@ describe("kejadian & rakitan", () => {
       dari: "2026-09-12",
       sampai: "2026-09-25",
       hariPenjualan: new Map([[7, 14]]),
+      edc: new Map(),
       akun: [],
       bukuKas: [],
       setoran: [],
@@ -180,3 +181,23 @@ describe("kejadian & rakitan", () => {
     expect(r[0]!.merah).toBeGreaterThan(0);
   });
 });
+
+describe("tambahan 26 Sep — tanpa penjualan & EDC per shift", () => {
+  it("jendela tanpa penjualan: satu temuan hijau, bukan '0 hari belum ditutup'", () => {
+    const t = temuanKedisiplinan(fakta({ hariPenjualan: 0, ditutup: 0, hariBermutasi: 0 }), "2026-09-25");
+    expect(t).toHaveLength(1);
+    expect(t[0]!.kode).toBe("tanpa_penjualan");
+    expect(t[0]!.nada).toBe("hijau");
+  });
+
+  it("EDC: belum pernah dibukukan ⇒ merah; sebagian ⇒ kuning; tanpa penjualan EDC ⇒ tak dinilai", () => {
+    const nada = (hariEdc: number, hariEdcDibukukan: number) =>
+      temuanKedisiplinan(fakta({ hariEdc, hariEdcDibukukan }), "2026-09-25").find((x) => x.kode === "edc_penampungan")
+        ?.nada;
+    expect(nada(10, 0)).toBe("merah");
+    expect(nada(10, 6)).toBe("kuning");
+    expect(nada(10, 10)).toBe("hijau");
+    expect(nada(0, 0)).toBeUndefined();
+  });
+});
+

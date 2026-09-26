@@ -1683,6 +1683,51 @@ bergerak memang saldonya sebesar itu. **Dan ini konsekuensi langsung dari
 jawaban 1** — dengan tabel terpisah, `sebabKasDari` harus diajari mengenal
 anchor, dan setiap pembaca saldo ikut berubah.
 
+### 10.25 K4 · Penjualan EDC per shift masuk EDC Penampungan (26 September 2026)
+
+**Masalah.** §10.5 membangun sisi **keluar** EDC Penampungan (jurnal pencairan H+1
+mengkredit bruto). Sisi **masuk** — penjualan EDC hari-H — tak dicatat siapa pun,
+sehingga akun kliring ini selalu minus: bentuk yang sama dengan kerusakan keempat
+Bakau (saldo Rp 12,4 M).
+
+**Keputusan owner (26 Sep 2026):**
+
+| Butir | Keputusan |
+|---|---|
+| Sumber nominal | **Bruto EasyMax** (tabel `edc`), bukan ketikan |
+| Pemeriksa | **Slip settlement**, dicocokkan **pengawas** per shift |
+| Granularitas | **Per shift × acquirer** |
+| Foto slip | **Opsional sekarang, wajib kelak** — kolom `slip_foto_ref` disiapkan |
+| Peta kode kartu → bank | **Head of Finance / super admin / Direksi (owner) / pengawas** unit itu — staf `keuangan` tidak |
+| Posting | Staf **Keuangan menyetujui** → Debet EDC Penampungan, kategori `Penjualan EDC` |
+
+**Bentuk (0043):** `app.edc_kartu_acquirer` (peta, PK unit+kode) ·
+`app.edc_shift_cek` (cek slip; `easymax_rp` = bruto SAAT dicocokkan; satu cek aktif
+per unit/tanggal/shift/acquirer) · `cash_ledger.edc_shift_cek_id` (unik parsial —
+satu posting aktif per cek). RLS §4.1b, VOID-only.
+
+**Aturan yang ditegakkan server (`edc-shift-actions.ts`):**
+1. Bruto dihitung **ulang** di dalam transaksi yang menulis — saat mencocokkan dan
+   saat menyetujui. Angka di layar tak pernah dipercaya.
+2. Bila bruto EasyMax **berubah** sesudah dicocokkan (sinkron susulan, ralat POS),
+   persetujuan **ditolak** sampai pengawas mencocokkan ulang — slip itu memeriksa
+   angka yang sudah tidak ada.
+3. **Yang mencocokkan tidak menyetujui** cek yang sama (`checked_by ≠ approver`).
+4. Slip ≠ EasyMax ⇒ persetujuan **wajib kode alasan** `closing`; selisihnya tetap
+   tercatat di cek, tidak dibulatkan hilang.
+5. Kode kartu **tanpa peta tidak ditebak** ke bank mana pun — ia disebut dengan
+   namanya sampai yang berwenang memetakannya.
+6. Tanggal sebelum cut-over saldo pembuka EDC Penampungan ditolak (§10.24).
+
+**Layar:** pengawas mencocokkan di **Rincian Penjualan** (panel no-print "EDC per
+shift"); Keuangan menyetujui di **Input keuangan › blok 3**; **Pemantauan**
+menilai hari yang bruto EDC-nya dibukukan **penuh** dan mencatat slip berselisih.
+
+⚠️ **Batas yang diketahui:** transaksi blank-card (`ckdkartu` kosong) tak bisa
+dipetakan ke bank sehingga tak ikut dibukukan — ia tetap flag kepatuhan di
+Rincian (ADR-001 #3). Foto slip belum punya penyimpanan; membuatnya wajib butuh
+keputusan tempat simpan (mis. Cloud Storage) lebih dulu.
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
