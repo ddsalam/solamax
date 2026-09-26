@@ -114,6 +114,15 @@ function buildGroups(
           match: (p) => p === "/keuangan",
         },
         {
+          // Pemantauan pemakaian: APAKAH pembukuan dikerjakan, bukan labanya.
+          // Hanya baca — lihat komentar di halamannya kenapa ia tak menautkan
+          // ke Tutup hari.
+          href: "/keuangan/pemantauan",
+          label: "Pemantauan pemakaian",
+          icon: "eye",
+          match: (p) => p.startsWith("/keuangan/pemantauan"),
+        },
+        {
           href: unitCode ? `/keuangan/unit/${unitCode}/${date}` : null,
           label: "Laporan harian",
           icon: "report",

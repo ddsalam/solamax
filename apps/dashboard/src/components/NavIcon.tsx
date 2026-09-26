@@ -11,9 +11,16 @@ export type IconName =
   | "receipt"
   | "fuel"
   | "chart"
-  | "users";
+  | "users"
+  | "eye";
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  eye: (
+    <>
+      <path d="M2.5 10S5.5 4.5 10 4.5 17.5 10 17.5 10 14.5 15.5 10 15.5 2.5 10 2.5 10Z" />
+      <circle cx="10" cy="10" r="2.5" />
+    </>
+  ),
   home: <path d="M3 9.5 10 3l7 6.5M5 8.5V16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5" />,
   droplet: <path d="M10 3s5 5.2 5 8.5a5 5 0 0 1-10 0C5 8.2 10 3 10 3Z" />,
   clipboard: (
