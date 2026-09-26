@@ -302,3 +302,25 @@ export function canAturRekeningEdc(ctx: WewenangCtx, daftar?: readonly string[])
     isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
   );
 }
+
+/**
+ * Boleh MEREKLASIFIKASI biaya/pendapatan lain pengawas (§10.29) — staf
+ * `keuangan` (gerbang tulis Layar 3) DAN Head of Finance.
+ *
+ * ⚖️ Keputusan owner 27 Sep 2026: HoF mencoba mereklasifikasi dan tertolak,
+ * sebab tombolnya semula memakai `canInputKeuangan` — yang sengaja menolak HoF
+ * (§10.12: HoF menyetujui, tidak mengetik). Owner memutuskan reklasifikasi
+ * BUKAN "mengetik": ia tidak melahirkan transaksi, tidak mengubah nominal,
+ * tanggal, maupun kategori pengawas — ia keputusan PENYAJIAN akuntansi, yang
+ * justru wajar di tangan kepala keuangan. Pengecualian ini SEMPIT: §10.12 tetap
+ * berlaku utuh untuk seluruh input harian lain.
+ *
+ * Kontrolnya bukan pemisahan tugas melainkan keterlihatan: setiap reklasifikasi
+ * tercatat (siapa, kapan, alasan, catatan wajib untuk akun bukan-laba) dan
+ * tampil kuning di Pemantauan pemakaian.
+ */
+export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}

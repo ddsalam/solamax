@@ -71,6 +71,7 @@ export function BiayaPanel({
   reklas,
   reasonReklas,
   bolehTulis,
+  bolehReklas,
 }: {
   code: string;
   date: string;
@@ -81,6 +82,11 @@ export function BiayaPanel({
   /** Kode alasan grup `reclass` (§10.2). */
   reasonReklas: { code: string; label: string }[];
   bolehTulis: boolean;
+  /**
+   * §10.29 — gerbangnya SENDIRI (`canReklasifikasi`): staf Keuangan DAN Head of
+   * Finance. Bukan `bolehTulis`, yang menolak HoF (§10.12).
+   */
+  bolehReklas: boolean;
 }) {
   const [reklasId, setReklasId] = useState<string | null>(null);
   const [akunKe, setAkunKe] = useState("");
@@ -342,7 +348,7 @@ export function BiayaPanel({
             const tindakan = tindakanTersedia(b);
             const riwayat = riwayatDari(b.id);
             const bukanLaba = !membentukLaba(jenisAkun(b.accountingAccount, b.section));
-            const bisaReklas = bolehTulis && tindakan.includes("reclassify") && !b.titipanBright;
+            const bisaReklas = bolehReklas && tindakan.includes("reclassify") && !b.titipanBright;
             return (
               <div key={b.id}>
               <div className="grid-row cols-biaya">
@@ -393,10 +399,14 @@ export function BiayaPanel({
                     >
                       Reklasifikasi
                     </button>
-                  ) : tindakan.length === 0 ? (
+                  ) : b.titipanBright ? (
                     "—"
+                  ) : tindakan.includes("reclassify") ? (
+                    // Nama tindakan TANPA tombol terbaca seperti tombol rusak
+                    // (27 Sep: HoF mengira fiturnya gagal). Sebut siapa pelakunya.
+                    <span className="keu-p">Reklasifikasi oleh staf Keuangan / Head of Finance</span>
                   ) : (
-                    tindakan.map((t) => LABEL_TINDAKAN[t]).join(" · ")
+                    "—"
                   )}
                 </span>
               </div>
