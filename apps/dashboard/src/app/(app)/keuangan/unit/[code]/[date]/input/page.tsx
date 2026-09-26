@@ -22,6 +22,8 @@ import {
   getPetaKategori,
   getProdukUnit,
   getReasonCodeClosing,
+  getReasonCodeReclass,
+  getReklasHarian,
   getSetoranPengawas,
   getSettlements,
 } from "@/lib/keuangan-input-queries";
@@ -100,7 +102,7 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening, reklas, reasonReklas] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
     getBiayaHarian(unit.unit_id, date),
@@ -111,6 +113,9 @@ export default async function InputKeuanganPage({
     getCekSlip(unit.unit_id, date),
     // §10.28 — saran rekening tujuan batch settlement.
     getVersiRekening(unit.unit_id),
+    // §10.29 — riwayat & kode alasan reklasifikasi biaya pengawas.
+    getReklasHarian(unit.unit_id, date),
+    getReasonCodeReclass(unit.unit_id),
   ]);
   const rekeningEdc = versiRekening.filter((v) => !v.void);
   const namaEdc = [
@@ -241,6 +246,8 @@ export default async function InputKeuanganPage({
           date={date}
           baris={biaya}
           peta={petaKategori}
+          reklas={reklas}
+          reasonReklas={reasonReklas}
           bolehTulis={bolehTulis}
         />
       </div>

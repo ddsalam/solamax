@@ -42,6 +42,7 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
   pendapatanLain: 500,
   biayaOperasional: -40_500,
   arusTitipanBright: 0,
+  kontribusiPemilik: 0,
   ...o,
 });
 

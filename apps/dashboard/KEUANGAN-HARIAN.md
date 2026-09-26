@@ -1828,6 +1828,48 @@ menentukan ke EDC mana penjualan dikelompokkan — dan staf Keuangan-lah yang
 menyetujui postingnya (§10.25). Rekening pencairan hanya menentukan SARAN; batch
 tetap mencatat rekening nyatanya.
 
+### 10.29 K4 · Tombol Reklasifikasi biaya pengawas + dua akun BUKAN-LABA (26–27 September 2026)
+
+**Permintaan owner (26 Sep):** bangun tombol koreksi biaya pengawas sekarang. Tiga pos
+janggal produksi 12–25 Sep yang menunggunya — semuanya dicatat pengawas sebagai
+*pengeluaran* padahal **bukan beban**: prive ke pemilik/afiliasi (IB Rp 5 jt), setoran
+tunai ke bank ("Pak Athoi setor tunai", 28 Oktober Rp 70 jt), penjualan yang dibayar
+transfer ("Dexlite bayar transfer", Korek Rp 5,3 jt).
+
+**Yang dibangun = `Reclassify` §2.3**, tindakan pertama dari empat yang benar-benar
+bisa ditekan. Bukan edit, bukan koreksi nominal:
+
+| Hal | Aturan |
+|---|---|
+| Menyentuh baris pengawas? | **Tidak.** Satu baris BARU di `app.reclassification` (0021, append-only) |
+| Akun efektif | reklasifikasi terakhir, kalau tidak akun beku (0024) — satu rumus `SQL_AKUN_EFEKTIF` di laporan, layar Biaya, Pemantauan |
+| Membatalkan | reklasifikasi balik — keduanya tetap terlihat |
+| Kapan | kapan saja, termasuk sesudah hari ditutup (§2.3) |
+| Siapa | gerbang tulis Layar 3 (`canInputKeuangan`: staf `keuangan`, super admin) |
+| Alasan | grup `reclass` §10.2 (`RCL-NATURE/SPLIT/MAPDEF`); **catatan wajib** bila tujuannya akun bukan-laba |
+| Tidak berlaku untuk | titipan outlet Bright (§10.27 punya jalurnya sendiri), baris draft/dibatalkan |
+| Tujuan | daftar TERTUTUP `AKUN_REKLAS` = bagan §10.3 + dua akun bukan-laba (uji memaksa setiap akun 0023 ada di daftar) |
+
+**Dua akun bukan-laba** (⚠️ kode = usulan pelaksana; owner boleh menggantinya selama
+belum dipakai reklasifikasi):
+
+| Kode | Arti | Laba | Arus kas | Neraca harian |
+|---|---|---|---|---|
+| `3-9100` Prive / kontribusi pemilik | uang keluar ke / masuk dari pemilik (prive, kontribusi ke pusat, setoran modal) | tidak | baris sendiri "Prive / kontribusi pemilik (bukan beban)" | lewat `deltaKontribusi` (dulu selalu `null`) |
+| `1-1800` Perpindahan dana | uang yang hanya pindah tempat: laci → bank, penjualan dibayar transfer | tidak | tidak (kedua sisinya di buku kas Finance) | tidak |
+
+🔴 **Kenapa prive butuh `deltaKontribusi`, diuji:** sebagai beban, prive Rp 5 jt =
+laba −5 jt & aset −5 jt ⇒ langkah harian 0. Dipindah keluar dari laba TANPA suku
+ekuitas ⇒ langkah harian **+5 jt** (mutan diuji memerah). Dengan `deltaKontribusi` ⇒ 0.
+
+**Kontrol:** Pemantauan menampilkan setiap reklasifikasi (`reklasifikasi_biaya`, kuning —
+memindahkan pos keluar dari laba MENAIKKAN laba), dan pos yang sudah direklasifikasi
+berhenti ditandai `keterangan_janggal`. Layar Biaya menampilkan akun efektif, akun
+semula, dan riwayat (siapa, kapan, alasan, catatan) di bawah akun.
+
+**Belum:** `Tinjau`, `Kembalikan untuk perbaikan`, `Koreksi / balik` (nominal/tanggal
+salah sesudah hari ditutup — `correction_entry` dengan approver ≠ pengaju).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

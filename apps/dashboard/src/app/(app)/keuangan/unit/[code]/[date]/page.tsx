@@ -61,6 +61,7 @@ export default async function LaporanKeuanganPage({
     pendapatanLain: b.pendapatanLain,
     biayaOperasional: -b.beban.reduce((s, x) => s + x.amountRp, 0),
     arusTitipanBright: b.arusTitipanBright,
+    kontribusiPemilik: b.kontribusi,
   });
 
   const is = panelIncome({
@@ -86,7 +87,8 @@ export default async function LaporanKeuanganPage({
     netIncome: netProfit,
     incomeAdjustment: null,
     totalAssetKemarin: b.totalAssetKemarin,
-    deltaKontribusi: null,
+    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
+    deltaKontribusi: b.kontribusi,
     saldoTitipanBright: b.saldoTitipanBright,
   });
 

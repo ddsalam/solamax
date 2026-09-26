@@ -65,7 +65,8 @@ export default async function TutupHariPage({
       }).baris.find((x) => x.label === "Net profit")!.nilai,
     incomeAdjustment: null,
     totalAssetKemarin: bahanAwal.totalAssetKemarin,
-    deltaKontribusi: null,
+    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
+    deltaKontribusi: bahanAwal.kontribusi,
     saldoTitipanBright: bahanAwal.saldoTitipanBright,
   });
   // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
@@ -98,6 +99,7 @@ export default async function TutupHariPage({
     pendapatanLain: bahan.pendapatanLain,
     biayaOperasional: -bahan.beban.reduce((s, x) => s + x.amountRp, 0),
     arusTitipanBright: bahan.arusTitipanBright,
+    kontribusiPemilik: bahan.kontribusi,
   });
   const is = panelIncome({
     totals: bahan.totals,
@@ -116,7 +118,7 @@ export default async function TutupHariPage({
     netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
     incomeAdjustment: null,
     totalAssetKemarin: bahan.totalAssetKemarin,
-    deltaKontribusi: null,
+    deltaKontribusi: bahan.kontribusi,
     saldoTitipanBright: bahan.saldoTitipanBright,
   });
 

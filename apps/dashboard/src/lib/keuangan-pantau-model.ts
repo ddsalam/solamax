@@ -356,6 +356,7 @@ export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   keterangan_janggal: "Pos biaya/pendapatan perlu dicek",
   rekening_edc_diubah: "Rekening pencairan EDC diubah",
   rekening_pencairan_beda: "Dana EDC masuk ke rekening lain dari pengaturan",
+  reklasifikasi_biaya: "Biaya/pendapatan pengawas direklasifikasi Finance",
 };
 
 export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
@@ -374,6 +375,8 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   // §10.28 — perubahan rekening tujuan dana selalu dilihat pemilik, walau sah.
   rekening_edc_diubah: "kuning",
   rekening_pencairan_beda: "kuning",
+  // §10.29 — memindahkan pos keluar dari laba mengubah laba; pemilik melihatnya.
+  reklasifikasi_biaya: "kuning",
   batal_mutasi_kas: "kuning",
   batal_harga_beli: "kuning",
   batal_settlement: "kuning",

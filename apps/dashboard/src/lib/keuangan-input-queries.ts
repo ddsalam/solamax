@@ -1,5 +1,7 @@
 import { qScoped } from "./db";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
+import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
+import { sqlTitipanBright } from "./titipan-bright";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
 import type { AkunKasRow } from "./keuangan-akun-model";
@@ -294,6 +296,51 @@ export async function getTotalEdcHarian(
   );
 }
 
+/** Kode alasan grup `reclass` (§10.2) — untuk reklasifikasi biaya pengawas. */
+export async function getReasonCodeReclass(
+  unit: ScopedUnitId,
+): Promise<{ code: string; label: string }[]> {
+  return qScoped<{ code: string; label: string }>(
+    unit,
+    `SELECT code, label
+       FROM app.reason_code
+      WHERE applies_to = 'reclass' AND active
+      ORDER BY code`,
+  );
+}
+
+/** Satu reklasifikasi yang pernah dibuat atas baris `manual_entry` (0021). */
+export interface ReklasBaris {
+  sourceTxnId: string;
+  fromAccount: string;
+  toAccount: string;
+  reasonCode: string;
+  note: string | null;
+  oleh: string | null;
+  /** WIB, `YYYY-MM-DD HH24:MI`. */
+  waktu: string;
+}
+
+/** Riwayat reklasifikasi baris biaya/pendapatan lain satu unit+tanggal — terbaru dulu. */
+export async function getReklasHarian(unit: ScopedUnitId, date: string): Promise<ReklasBaris[]> {
+  return qScoped<ReklasBaris>(
+    unit,
+    `SELECT r.source_txn_id::text AS "sourceTxnId",
+            r.from_account        AS "fromAccount",
+            r.to_account          AS "toAccount",
+            r.reason_code         AS "reasonCode",
+            r.note,
+            u.email               AS oleh,
+            to_char(r.created_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS waktu
+       FROM app.reclassification r
+       JOIN app.manual_entry m ON m.id = r.source_txn_id AND m.unit_id = r.unit_id
+       LEFT JOIN app.users u ON u.id = r.created_by_user_id
+      WHERE r.unit_id = $1 AND r.source_kind = 'manual_entry' AND m.business_date = $2::date
+      ORDER BY r.created_at DESC, r.id DESC`,
+    [unit, date],
+  );
+}
+
 /** Kode alasan grup `closing` — untuk selisih transaksi vs settlement. */
 export async function getReasonCodeClosing(
   unit: ScopedUnitId,
@@ -324,16 +371,19 @@ export async function getBiayaHarian(
 ): Promise<BarisBiaya[]> {
   return qScoped<BarisBiaya>(
     unit,
-    `SELECT id::text              AS id,
+    `SELECT m.id::text            AS id,
             section::text         AS section,
             keterangan,
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS amount,
             operational_category  AS "operationalCategory",
-            accounting_account    AS "accountingAccount",
+            -- §10.29 — akun EFEKTIF (reklasifikasi terakhir) & akun beku aslinya.
+            ${SQL_AKUN_EFEKTIF("m")} AS "accountingAccount",
+            accounting_account    AS "akunAsli",
             status::text          AS status,
             source_door           AS "sourceDoor",
-            void
-       FROM app.manual_entry
+            void,
+            ${sqlTitipanBright("m")} AS "titipanBright"
+       FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pendapatan_lain','pengeluaran')
       ORDER BY section, urut, created_at`,

@@ -8,6 +8,7 @@ import {
   type BarisManualLaporan,
 } from "./keuangan-beban";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
+import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
 import { KATEGORI_PENYERAHAN_TITIPAN, sqlTitipanBright } from "./titipan-bright";
 import { cutOverTerawal, saldoAkun, saldoSemuaAkun, type MutasiKas } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
@@ -58,6 +59,8 @@ export interface BahanLaporan {
   deltaPiutangEasymax: number;
   beban: BarisBeban[];
   pendapatanLain: number;
+  /** §10.29 — arus ekuitas bersih hari itu (prive/kontribusi): `deltaKontribusi` neraca & baris arus kas. */
+  kontribusi: number;
   penebusanSo: number | null;
   totalAssetKemarin: number | null;
 }
@@ -66,15 +69,21 @@ export interface BahanLaporan {
 async function getBebanDanPendapatan(
   unit: ScopedUnitId,
   date: string,
-): Promise<{ beban: BarisBeban[]; pendapatanLain: number; titipanBright: number }> {
+): Promise<{
+  beban: BarisBeban[];
+  pendapatanLain: number;
+  titipanBright: number;
+  kontribusi: number;
+}> {
   const manual = await qScoped<BarisManualLaporan>(
     unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate",
-            accounting_account                  AS "accountingAccount",
+            -- §10.29 — akun EFEKTIF: reklasifikasi terakhir, kalau tidak akun beku.
+            ${SQL_AKUN_EFEKTIF("m")}            AS "accountingAccount",
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
             keterangan, void, section::text     AS section,
             operational_category                AS "operationalCategory"
-       FROM app.manual_entry
+       FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pengeluaran','pendapatan_lain')`,
     [unit, date],
@@ -96,14 +105,14 @@ async function getBebanDanPendapatan(
     [unit, date],
   );
 
-  const { manualBeban, pendapatanLain, titipanBright } = pilahManualEntry(manual);
+  const { manualBeban, pendapatanLain, titipanBright, kontribusi } = pilahManualEntry(manual);
   const beban = kumpulkanBeban(
     { manual_entry: manualBeban, noncash_expense: nonKas },
     date,
     date,
   );
 
-  return { beban, pendapatanLain, titipanBright };
+  return { beban, pendapatanLain, titipanBright, kontribusi };
 }
 
 /**
@@ -297,6 +306,7 @@ async function bahanLaporan(
     deltaPiutangEasymax,
     beban: bp.beban,
     pendapatanLain: bp.pendapatanLain,
+    kontribusi: bp.kontribusi,
     // ⚠️ Penebusan SO belum punya jalur arus-kas tersendiri di SolaMax; ia
     // dibiarkan `null` (tak bersumber) alih-alih ditebak nol.
     penebusanSo: null,
