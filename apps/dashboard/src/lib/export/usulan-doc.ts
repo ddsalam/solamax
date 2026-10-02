@@ -10,6 +10,7 @@ import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_PORTRAIT as CW, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import type { ExportConfig } from "./config";
+import { formatUsulanKl } from "@/components/usulan/format";
 import { fmtKL, idn } from "@/lib/format";
 import type { UsulanModel, UsulanRow } from "@/lib/usulan-model";
 
@@ -65,10 +66,10 @@ function usulanTable(model: UsulanModel): Content {
       { text: pdfText(r.label), color: PDF.textPrimary },
       sisaStockCell(r),
       ketahananCell(r),
-      { text: kl3(r.sisaDo), alignment: "right", color: PDF.textSecondary },
-      { text: kl3(r.penerimaanHari), alignment: "right" },
-      { text: kl3(r.permintaanBesok), alignment: "right" },
-      { text: kl3(r.usulanPenebusan), alignment: "right" },
+      { text: formatUsulanKl(r.sisaDo), alignment: "right", color: PDF.textSecondary },
+      { text: formatUsulanKl(r.penerimaanHari), alignment: "right" },
+      { text: formatUsulanKl(r.permintaanBesok), alignment: "right" },
+      { text: formatUsulanKl(r.usulanPenebusan), alignment: "right" },
     ]);
   }
 
@@ -84,10 +85,10 @@ function usulanTable(model: UsulanModel): Content {
     { text: "TOTAL", style: "totalCell", fillColor: PDF.totalFill },
     totCell(model.anyProvisional ? `${kl3(t.sisaStock)} (sebagian)` : kl3(t.sisaStock)),
     { text: "—", alignment: "right", color: PDF.textMuted, fillColor: PDF.totalFill },
-    totCell(kl3(t.sisaDo)),
-    totCell(kl3(t.penerimaanHari)),
-    totCell(kl3(t.permintaanBesok)),
-    totCell(kl3(t.usulanPenebusan)),
+    totCell(formatUsulanKl(t.sisaDo)),
+    totCell(formatUsulanKl(t.penerimaanHari)),
+    totCell(formatUsulanKl(t.permintaanBesok)),
+    totCell(formatUsulanKl(t.usulanPenebusan)),
   ]);
 
   const table: ContentTable = {

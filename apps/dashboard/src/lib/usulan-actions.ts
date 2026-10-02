@@ -22,9 +22,9 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export interface UsulanInputRow {
   productKey: string;
-  penerimaanHari: number;
-  permintaanBesok: number;
-  usulanPenebusan: number;
+  penerimaanHari: number | null;
+  permintaanBesok: number | null;
+  usulanPenebusan: number | null;
 }
 
 export async function saveUsulanSo(input: {
@@ -40,13 +40,15 @@ export async function saveUsulanSo(input: {
   if (input.status !== "draft" && input.status !== "diajukan") {
     return { ok: false, error: "Status tak dikenal." };
   }
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+  // null = sengaja belum diisi; nol eksplisit tetap 0. Jangan koersi string,
+  // undefined, NaN atau Infinity menjadi null (itu input yang tidak valid).
+  const isQuantity = (v: unknown): v is number | null =>
+    v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0);
   const clean: UsulanInputRow[] = [];
   for (const r of input.rows) {
     if (!VALID_KEYS.has(r.productKey)) return { ok: false, error: `Produk tak dikenal: ${r.productKey}` };
-    const a = num(r.penerimaanHari), b = num(r.permintaanBesok), c = num(r.usulanPenebusan);
-    if (a === null || b === null || c === null) {
+    const a = r.penerimaanHari, b = r.permintaanBesok, c = r.usulanPenebusan;
+    if (!isQuantity(a) || !isQuantity(b) || !isQuantity(c)) {
       return { ok: false, error: "Angka harus ≥ 0." };
     }
     clean.push({ productKey: r.productKey, penerimaanHari: a, permintaanBesok: b, usulanPenebusan: c });

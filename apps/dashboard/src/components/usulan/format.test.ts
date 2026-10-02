@@ -23,14 +23,19 @@ describe("formatUsulanKl — tampilan empat kolom DO", () => {
     expect(formatUsulanKl(liters)).toBe(expected);
   });
 
-  it("formatter bersama/ekspor tetap tiga desimal", () => {
+  it("formatter bersama tetap tiga desimal untuk Sisa Stock dan laporan lain", () => {
     expect(fmtKL(8000, 3)).toBe("8,000 KL");
     expect(fmtKL(8500, 3)).toBe("8,500 KL");
     expect(fmtKL(8250, 3)).toBe("8,250 KL");
     expect(fmtKL(8125, 3)).toBe("8,125 KL");
   });
 
-  it("dipakai pada Sisa DO dan empat total saja; Sisa Stock tetap", () => {
+  it("kosong bukan nol, sementara nol historis tetap terlihat", () => {
+    expect(formatUsulanKl(null)).toBe("");
+    expect(formatUsulanKl(0)).toBe("0 KL");
+  });
+
+  it("dipakai pada Sisa DO dan empat total; Sisa Stock tetap", () => {
     const source = readFileSync(new URL("./UsulanForm.tsx", import.meta.url), "utf8");
     for (const value of [
       "r.sisaDo", "tot.sisaDo", "tot.penerimaanHari", "tot.permintaanBesok", "tot.usulanPenebusan",
@@ -39,4 +44,26 @@ describe("formatUsulanKl — tampilan empat kolom DO", () => {
     expect(source).toContain("fmtKL(r.sisaStock, 3)");
     expect(source).toContain("fmtKL(tot.sisaStock, 3)");
   });
+});
+
+// Every actual export for Usulan is a PDF: the form uses one doc builder for
+// direct download/preview/options; the list prints the same rendered values.
+it("daftar/cetak dan PDF menggunakan formatter nullable yang sama", () => {
+  const list = readFileSync(new URL("../../app/(app)/unit/[code]/usulan/[date]/page.tsx", import.meta.url), "utf8");
+  for (const field of ["totalPenerimaan", "totalPermintaan", "totalUsulan"]) {
+    expect(list).toContain(`formatUsulanKl(u.${field})`);
+  }
+  const pdf = readFileSync(new URL("../../lib/export/usulan-doc.ts", import.meta.url), "utf8");
+  for (const prefix of ["r", "t"]) {
+    for (const field of ["sisaDo", "penerimaanHari", "permintaanBesok", "usulanPenebusan"]) {
+      expect(pdf).toContain(`formatUsulanKl(${prefix}.${field})`);
+    }
+  }
+  expect(pdf).toContain("kl3(r.sisaStock)");
+  expect(pdf).toContain("kl3(t.sisaStock)");
+});
+
+it("perubahan unit/tanggal mereset state input ke record yang benar", () => {
+  const edit = readFileSync(new URL("../../app/(app)/unit/[code]/usulan/[date]/edit/page.tsx", import.meta.url), "utf8");
+  expect(edit).toContain('<UsulanForm key={`${unit.code}:${date}`}');
 });
