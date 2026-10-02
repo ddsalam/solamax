@@ -19,8 +19,8 @@ export interface UsulanRow {
   /** Hari; null bila stock/avg tak tersedia. */
   ketahanan: number | null;
   ketahananLevel: "danger" | "warning" | "ok" | "unknown";
-  /** Liter; null hanya bila tak ada baris sumber DO untuk produk ini. */
-  sisaDo: number | null;
+  /** Liter; saldo terhitung. Tanpa riwayat SO berarti saldo nol (bukan input kosong). */
+  sisaDo: number;
   penerimaanHari: number | null; // Liter (persisted)
   permintaanBesok: number | null; // Liter (persisted)
   usulanPenebusan: number | null; // Liter (persisted)
@@ -28,7 +28,7 @@ export interface UsulanRow {
 
 export interface UsulanTotals {
   sisaStock: number;
-  sisaDo: number | null;
+  sisaDo: number;
   penerimaanHari: number | null;
   permintaanBesok: number | null;
   usulanPenebusan: number | null;
@@ -89,7 +89,7 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
       sisaStockProvisional: provisional,
       ketahanan: days,
       ketahananLevel: enduranceLevel(days),
-      sisaDo: doAwalByKey.get(p.key) ?? null,
+      sisaDo: doAwalByKey.get(p.key) ?? 0,
       penerimaanHari: s?.penerimaanHari ?? null,
       permintaanBesok: s?.permintaanBesok ?? null,
       usulanPenebusan: s?.usulanPenebusan ?? null,
@@ -98,7 +98,7 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
 
   const totals: UsulanTotals = {
     sisaStock: rows.reduce((total, row) => total + (row.sisaStock ?? 0), 0),
-    sisaDo: sumUsulanQuantities(rows.map((row) => row.sisaDo)),
+    sisaDo: rows.reduce((total, row) => total + row.sisaDo, 0),
     penerimaanHari: sumUsulanQuantities(rows.map((row) => row.penerimaanHari)),
     permintaanBesok: sumUsulanQuantities(rows.map((row) => row.permintaanBesok)),
     usulanPenebusan: sumUsulanQuantities(rows.map((row) => row.usulanPenebusan)),
