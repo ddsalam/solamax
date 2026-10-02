@@ -109,7 +109,7 @@ describe("buildUsulanDocDefinition", () => {
     const example: UsulanModel = {
       rows: [
         { ...model.rows[0]!, sisaDo: 8000, penerimaanHari: 8500, permintaanBesok: 8250, usulanPenebusan: 8125 },
-        { ...model.rows[1]!, sisaDo: null, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null },
+        { ...model.rows[1]!, sisaDo: 0, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null },
       ],
       totals: { sisaStock: 12000, sisaDo: 8000, penerimaanHari: 8500, permintaanBesok: 8250, usulanPenebusan: 8125 },
       status: "draft", anyProvisional: true,
@@ -119,7 +119,7 @@ describe("buildUsulanDocDefinition", () => {
     const body = collectTables(doc.content)[0]!.table.body;
     const text = (row: number) => body[row]!.slice(3).map((cell) => (cell as { text: string }).text);
     expect(text(1)).toEqual(["8 KL", "8,5 KL", "8,25 KL", "8,125 KL"]);
-    expect(text(2)).toEqual(["", "", "0 KL", ""]);
+    expect(text(2)).toEqual(["0 KL", "", "0 KL", ""]);
     expect(text(3)).toEqual(["8 KL", "8,5 KL", "8,25 KL", "8,125 KL"]);
     expect(JSON.stringify(example)).toBe(original);
     expect(typeof example.rows[0]!.usulanPenebusan).toBe("number");
@@ -127,9 +127,9 @@ describe("buildUsulanDocDefinition", () => {
 
   it("total seluruh kontributor kosong tercetak kosong; total nol tetap nol", () => {
     const blank: UsulanModel = { ...model, rows: [], totals: {
-      sisaStock: 0, sisaDo: null, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null,
+      sisaStock: 0, sisaDo: 0, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null,
     } };
     const body = collectTables(buildUsulanDocDefinition({ model: blank, meta, config: DEFAULT_EXPORT_CONFIG }).content)[0]!.table.body;
-    expect(body[1]!.slice(3).map((cell) => (cell as { text: string }).text)).toEqual(["", "", "0 KL", ""]);
+    expect(body[1]!.slice(3).map((cell) => (cell as { text: string }).text)).toEqual(["0 KL", "", "0 KL", ""]);
   });
 });

@@ -3,16 +3,16 @@ import { DO_PRODUCTS } from "@/lib/config";
 import { buildUsulanModel } from "@/lib/usulan-model";
 
 describe("buildUsulanModel", () => {
-  it("raw kosong → semua slot DO provisional, total DO/manual kosong, status draft", () => {
+  it("raw kosong → semua slot DO provisional, total manual kosong, saldo DO terhitung nol, status draft", () => {
     const m = buildUsulanModel({ glPrev: [], doDay: [], avg7: [], existing: [] });
     expect(m.rows).toHaveLength(DO_PRODUCTS.length);
     expect(m.rows.every((r) => r.sisaStock === null && r.sisaStockProvisional)).toBe(true);
     expect(m.anyProvisional).toBe(true);
     expect(m.status).toBe("draft");
-    expect(m.totals.sisaDo).toBeNull();
+    expect(m.totals.sisaDo).toBe(0);
     expect(m.totals.permintaanBesok).toBeNull();
     expect(m.totals.sisaStock).toBe(0);
-    expect(m.rows.every((r) => r.sisaDo === null && r.penerimaanHari === null
+    expect(m.rows.every((r) => r.sisaDo === 0 && r.penerimaanHari === null
       && r.permintaanBesok === null && r.usulanPenebusan === null)).toBe(true);
     expect(m.totals.penerimaanHari).toBeNull();
     expect(m.totals.usulanPenebusan).toBeNull();
