@@ -7,6 +7,7 @@ import { fmtKL, idn } from "@/lib/format";
 import type { UsulanStatus } from "@/lib/queries";
 import { saveUsulanSo } from "@/lib/usulan-actions";
 import type { UsulanRow } from "@/lib/usulan-model";
+import { formatUsulanKl } from "./format";
 
 /**
  * Form Usulan Penebusan SO (no-print input pengawas). Tiga kolom kanan (Penerimaan
@@ -159,7 +160,7 @@ export function UsulanForm({
           >
             {r.ketahanan !== null ? `${idn(r.ketahanan, 1)} hari` : "—"}
           </span>
-          <span className="right fs16 num t-secondary">{fmtKL(r.sisaDo, 3)}</span>
+          <span className="right fs16 num t-secondary">{formatUsulanKl(r.sisaDo)}</span>
           <span className="usulan-incell">
             <input
               className="usulan-input"
@@ -203,10 +204,10 @@ export function UsulanForm({
           )}
         </span>
         <span className="right num t-tertiary">—</span>
-        <span className="right w700 num lap-totnum">{fmtKL(tot.sisaDo, 3)}</span>
-        <span className="right w700 num lap-totnum">{fmtKL(tot.penerimaanHari, 3)}</span>
-        <span className="right w700 num lap-totnum">{fmtKL(tot.permintaanBesok, 3)}</span>
-        <span className="right w700 num lap-totnum">{fmtKL(tot.usulanPenebusan, 3)}</span>
+        <span className="right w700 num lap-totnum">{formatUsulanKl(tot.sisaDo)}</span>
+        <span className="right w700 num lap-totnum">{formatUsulanKl(tot.penerimaanHari)}</span>
+        <span className="right w700 num lap-totnum">{formatUsulanKl(tot.permintaanBesok)}</span>
+        <span className="right w700 num lap-totnum">{formatUsulanKl(tot.usulanPenebusan)}</span>
       </div>
 
       <div className="usulan-actions no-print">
