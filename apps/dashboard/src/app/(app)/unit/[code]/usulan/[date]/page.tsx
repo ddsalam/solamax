@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
+import { formatUsulanKl } from "@/components/usulan/format";
 import { UsulanToolbar } from "@/components/usulan/Toolbar";
 import { unitDotted } from "@/lib/config";
-import { dateLong, dateShort, fmtKL, timeWib } from "@/lib/format";
+import { dateLong, dateShort, timeWib } from "@/lib/format";
 import { todayWib } from "@/lib/periods";
 import { getUsulanSoList } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
@@ -70,9 +71,9 @@ export default async function UsulanListPage({
               className="grid-row cols-usulan-list clickable"
             >
               <span className="text-caption w600 t-primary">{dateShort(u.date)}</span>
-              <span className="right fs16 num">{fmtKL(u.totalPenerimaan, 3)}</span>
-              <span className="right fs16 num">{fmtKL(u.totalPermintaan, 3)}</span>
-              <span className="right fs16 num w600">{fmtKL(u.totalUsulan, 3)}</span>
+              <span className="right fs16 num">{formatUsulanKl(u.totalPenerimaan)}</span>
+              <span className="right fs16 num">{formatUsulanKl(u.totalPermintaan)}</span>
+              <span className="right fs16 num w600">{formatUsulanKl(u.totalUsulan)}</span>
               <span>
                 <span className={`status-pill ${u.status === "diajukan" ? "diajukan" : "draft"}`}>
                   {u.status === "diajukan" ? "Diajukan" : "Draft"}

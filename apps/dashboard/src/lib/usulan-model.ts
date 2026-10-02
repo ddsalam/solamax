@@ -6,6 +6,7 @@
  */
 import { DO_PRODUCTS, resolveDoProduct } from "@/lib/config";
 import { enduranceDays, enduranceLevel } from "@/lib/derive";
+import { sumUsulanQuantities } from "@/lib/usulan-quantities";
 import type * as Q from "@/lib/queries";
 import type { UsulanStatus } from "@/lib/queries";
 
@@ -18,18 +19,19 @@ export interface UsulanRow {
   /** Hari; null bila stock/avg tak tersedia. */
   ketahanan: number | null;
   ketahananLevel: "danger" | "warning" | "ok" | "unknown";
-  sisaDo: number; // Liter
-  penerimaanHari: number; // Liter (persisted)
-  permintaanBesok: number; // Liter (persisted)
-  usulanPenebusan: number; // Liter (persisted)
+  /** Liter; null hanya bila tak ada baris sumber DO untuk produk ini. */
+  sisaDo: number | null;
+  penerimaanHari: number | null; // Liter (persisted)
+  permintaanBesok: number | null; // Liter (persisted)
+  usulanPenebusan: number | null; // Liter (persisted)
 }
 
 export interface UsulanTotals {
   sisaStock: number;
-  sisaDo: number;
-  penerimaanHari: number;
-  permintaanBesok: number;
-  usulanPenebusan: number;
+  sisaDo: number | null;
+  penerimaanHari: number | null;
+  permintaanBesok: number | null;
+  usulanPenebusan: number | null;
 }
 
 export interface UsulanModel {
@@ -87,23 +89,20 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
       sisaStockProvisional: provisional,
       ketahanan: days,
       ketahananLevel: enduranceLevel(days),
-      sisaDo: doAwalByKey.get(p.key) ?? 0,
-      penerimaanHari: s?.penerimaanHari ?? 0,
-      permintaanBesok: s?.permintaanBesok ?? 0,
-      usulanPenebusan: s?.usulanPenebusan ?? 0,
+      sisaDo: doAwalByKey.get(p.key) ?? null,
+      penerimaanHari: s?.penerimaanHari ?? null,
+      permintaanBesok: s?.permintaanBesok ?? null,
+      usulanPenebusan: s?.usulanPenebusan ?? null,
     };
   });
 
-  const totals = rows.reduce<UsulanTotals>(
-    (a, r) => ({
-      sisaStock: a.sisaStock + (r.sisaStock ?? 0),
-      sisaDo: a.sisaDo + r.sisaDo,
-      penerimaanHari: a.penerimaanHari + r.penerimaanHari,
-      permintaanBesok: a.permintaanBesok + r.permintaanBesok,
-      usulanPenebusan: a.usulanPenebusan + r.usulanPenebusan,
-    }),
-    { sisaStock: 0, sisaDo: 0, penerimaanHari: 0, permintaanBesok: 0, usulanPenebusan: 0 },
-  );
+  const totals: UsulanTotals = {
+    sisaStock: rows.reduce((total, row) => total + (row.sisaStock ?? 0), 0),
+    sisaDo: sumUsulanQuantities(rows.map((row) => row.sisaDo)),
+    penerimaanHari: sumUsulanQuantities(rows.map((row) => row.penerimaanHari)),
+    permintaanBesok: sumUsulanQuantities(rows.map((row) => row.permintaanBesok)),
+    usulanPenebusan: sumUsulanQuantities(rows.map((row) => row.usulanPenebusan)),
+  };
 
   return { rows, totals, status, anyProvisional: rows.some((r) => r.sisaStockProvisional) };
 }

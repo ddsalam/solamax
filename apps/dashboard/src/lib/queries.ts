@@ -1856,9 +1856,9 @@ export type UsulanStatus = "draft" | "diajukan";
 
 export interface UsulanSoRow {
   productKey: string;
-  penerimaanHari: number;
-  permintaanBesok: number;
-  usulanPenebusan: number;
+  penerimaanHari: number | null;
+  permintaanBesok: number | null;
+  usulanPenebusan: number | null;
   status: UsulanStatus;
 }
 
@@ -1880,9 +1880,9 @@ export async function getUsulanSo(unit: ScopedUnitId, date: string): Promise<Usu
 export interface UsulanSoListItem {
   /** Tanggal bisnis usulan (YYYY-MM-DD). */
   date: string;
-  totalPenerimaan: number;
-  totalPermintaan: number;
-  totalUsulan: number;
+  totalPenerimaan: number | null;
+  totalPermintaan: number | null;
+  totalUsulan: number | null;
   status: UsulanStatus;
   /** Waktu simpan terakhir (ISO UTC) generasi aktif. */
   lastSavedAt: string | null;
@@ -1891,6 +1891,7 @@ export interface UsulanSoListItem {
 /**
  * Riwayat usulan per tanggal (agregat baris AKTIF) untuk halaman daftar (C).
  * Status diambil dari max() — semua baris satu generasi berbagi status sama.
+ * SUM mempertahankan null bila seluruh produk belum diisi; nol eksplisit = 0.
  * Ter-scope. `limit` membatasi riwayat (default 60 tanggal terbaru).
  */
 export async function getUsulanSoList(
