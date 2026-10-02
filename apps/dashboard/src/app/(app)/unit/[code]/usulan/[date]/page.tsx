@@ -26,7 +26,7 @@ export default async function UsulanListPage({
   const list = await getUsulanSoList(unit.unit_id);
 
   return (
-    <div className="lap-page">
+    <div className="lap-page usulan-list-page">
       {/* Filter MILIK HALAMAN — unit + tanggal usulan yang akan dibuat/diedit. */}
       <UnitDateFilters
         units={scope.units.map((u) => ({ code: u.code, name: u.name, dotted: unitDotted(u.code) }))}
