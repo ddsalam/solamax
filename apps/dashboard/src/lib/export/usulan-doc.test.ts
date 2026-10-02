@@ -82,10 +82,12 @@ describe("buildUsulanDocDefinition", () => {
     expect(json).toContain("Penerimaan Hari (KL)");
   });
 
-  it("nilai KL 3-desimal id-ID + TOTAL provisional 'sebagian'", () => {
+  it("nilai DO ringkas, stock 3-desimal id-ID + TOTAL provisional 'sebagian'", () => {
     const doc = buildUsulanDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     const json = JSON.stringify(doc.content);
-    expect(json).toContain("16,000 KL"); // usulan Pertalite (16000 L → 16 KL, 3dp)
+    expect(json).toContain("16 KL"); // volume sama, tanpa trailing nol
+    expect(json).not.toContain("16,000 KL");
+    expect(json).toContain("12,000 KL"); // Sisa Stock tak berubah
     expect(json).toContain("— sementara"); // Solar provisional
     expect(json).toContain("(sebagian)"); // TOTAL provisional marker
   });
@@ -101,5 +103,33 @@ describe("buildUsulanDocDefinition", () => {
     expect(JSON.stringify(noSig.content)).not.toContain("Pengawas SPBU");
     expect(withSig.info?.title).toContain("64.781.11");
     expect(withSig.info?.author).toBe("SolaMax");
+  });
+
+  it.each([true, false])("semua opsi PDF: null kosong, nol terlihat, angka sumber tetap (%s)", (includeSignature) => {
+    const example: UsulanModel = {
+      rows: [
+        { ...model.rows[0]!, sisaDo: 8000, penerimaanHari: 8500, permintaanBesok: 8250, usulanPenebusan: 8125 },
+        { ...model.rows[1]!, sisaDo: 0, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null },
+      ],
+      totals: { sisaStock: 12000, sisaDo: 8000, penerimaanHari: 8500, permintaanBesok: 8250, usulanPenebusan: 8125 },
+      status: "draft", anyProvisional: true,
+    };
+    const original = JSON.stringify(example);
+    const doc = buildUsulanDocDefinition({ model: example, meta, config: { ...DEFAULT_EXPORT_CONFIG, includeSignature } });
+    const body = collectTables(doc.content)[0]!.table.body;
+    const text = (row: number) => body[row]!.slice(3).map((cell) => (cell as { text: string }).text);
+    expect(text(1)).toEqual(["8 KL", "8,5 KL", "8,25 KL", "8,125 KL"]);
+    expect(text(2)).toEqual(["0 KL", "", "0 KL", ""]);
+    expect(text(3)).toEqual(["8 KL", "8,5 KL", "8,25 KL", "8,125 KL"]);
+    expect(JSON.stringify(example)).toBe(original);
+    expect(typeof example.rows[0]!.usulanPenebusan).toBe("number");
+  });
+
+  it("total seluruh kontributor kosong tercetak kosong; total nol tetap nol", () => {
+    const blank: UsulanModel = { ...model, rows: [], totals: {
+      sisaStock: 0, sisaDo: 0, penerimaanHari: null, permintaanBesok: 0, usulanPenebusan: null,
+    } };
+    const body = collectTables(buildUsulanDocDefinition({ model: blank, meta, config: DEFAULT_EXPORT_CONFIG }).content)[0]!.table.body;
+    expect(body[1]!.slice(3).map((cell) => (cell as { text: string }).text)).toEqual(["0 KL", "", "0 KL", ""]);
   });
 });

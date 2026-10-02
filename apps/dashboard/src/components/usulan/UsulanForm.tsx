@@ -7,6 +7,9 @@ import { fmtKL, idn } from "@/lib/format";
 import type { UsulanStatus } from "@/lib/queries";
 import { saveUsulanSo } from "@/lib/usulan-actions";
 import type { UsulanRow } from "@/lib/usulan-model";
+import {
+  editUsulanInputValue, sumUsulanQuantities, usulanInputValue, type UsulanInputValue,
+} from "@/lib/usulan-quantities";
 import { formatUsulanKl } from "./format";
 
 /**
@@ -19,29 +22,6 @@ import { formatUsulanKl } from "./format";
  */
 type Field = "penerimaanHari" | "permintaanBesok" | "usulanPenebusan";
 
-// --- Seam KiloLiter (KL) ↔ Liter -------------------------------------------
-// Penyimpanan tetap Liter (app.usulan_so); konversi HANYA di batas UI.
-// 1 KL = 1000 L. Input & tampilan 3 desimal; KL→Liter selalu integer via
-// round(kl × 1000) sehingga round-trip lossless (storage whole-liter).
-
-/** String KL yg diketik user (koma sbg pemisah) → Liter integer. "" → 0. */
-const parseKlToLiter = (s: string): number => {
-  const kl = Number.parseFloat(s.replace(",", "."));
-  return Number.isFinite(kl) ? Math.round(kl * 1000) : 0;
-};
-
-/** Liter tersimpan → string KL editable (koma, ≤3 desimal, tanpa trailing 0). */
-const literToKlStr = (l: number): string =>
-  l ? String(Number((l / 1000).toFixed(3))).replace(".", ",") : "";
-
-/** Sanitizer input KL: digit + satu pemisah desimal (→koma) + maks 3 desimal. */
-const sanitizeKl = (raw: string): string => {
-  let s = raw.replace(/[^\d.,]/g, "").replace(/[.,]/g, ",");
-  const i = s.indexOf(",");
-  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/,/g, "").slice(0, 3);
-  return s;
-};
-
 export function UsulanForm({
   code,
   date,
@@ -53,14 +33,14 @@ export function UsulanForm({
   rows: UsulanRow[];
   status: UsulanStatus;
 }) {
-  // State angka manual per produk (string KL utk edit; ×1000 → liter bulat saat simpan).
-  const init = (): Record<string, Record<Field, string>> => {
-    const m: Record<string, Record<Field, string>> = {};
+  // Teks KL + nilai liter asli: membuka/blur/simpan tanpa edit tidak membulatkan data DB.
+  const init = (): Record<string, Record<Field, UsulanInputValue>> => {
+    const m: Record<string, Record<Field, UsulanInputValue>> = {};
     for (const r of rows) {
       m[r.key] = {
-        penerimaanHari: literToKlStr(r.penerimaanHari),
-        permintaanBesok: literToKlStr(r.permintaanBesok),
-        usulanPenebusan: literToKlStr(r.usulanPenebusan),
+        penerimaanHari: usulanInputValue(r.penerimaanHari),
+        permintaanBesok: usulanInputValue(r.permintaanBesok),
+        usulanPenebusan: usulanInputValue(r.usulanPenebusan),
       };
     }
     return m;
@@ -79,23 +59,32 @@ export function UsulanForm({
   );
 
   const set = (key: string, field: Field, raw: string): void => {
-    const kl = sanitizeKl(raw);
-    setVals((p) => ({ ...p, [key]: { ...p[key]!, [field]: kl } }));
+    const value = editUsulanInputValue(raw);
+    setVals((p) => ({ ...p, [key]: { ...p[key]!, [field]: value } }));
     setMsg(null);
   };
-  // KL string → Liter integer (dipakai TOTAL & save; read-only TOTAL tetap Liter murni).
-  const n = (key: string, field: Field): number => parseKlToLiter(vals[key]?.[field] ?? "");
+  // TOTAL dan save memakai nilai numerik, bukan teks presentasi yang dibulatkan.
+  const n = (key: string, field: Field): number | null => vals[key]?.[field]?.liters ?? null;
 
-  const tot = rows.reduce(
-    (a, r) => ({
-      sisaStock: a.sisaStock + (r.sisaStock ?? 0),
-      sisaDo: a.sisaDo + r.sisaDo,
-      penerimaanHari: a.penerimaanHari + n(r.key, "penerimaanHari"),
-      permintaanBesok: a.permintaanBesok + n(r.key, "permintaanBesok"),
-      usulanPenebusan: a.usulanPenebusan + n(r.key, "usulanPenebusan"),
-    }),
-    { sisaStock: 0, sisaDo: 0, penerimaanHari: 0, permintaanBesok: 0, usulanPenebusan: 0 },
-  );
+  // Incomplete decimal punctuation is not a numeric contributor while editing;
+  // the server still rejects it on save instead of silently storing a blank.
+  const total = (field: Field) => sumUsulanQuantities(rows.map((r) => {
+    const value = n(r.key, field);
+    return value !== null && !Number.isFinite(value) ? null : value;
+  }));
+  const tot = {
+    sisaStock: rows.reduce((sum, r) => sum + (r.sisaStock ?? 0), 0),
+    sisaDo: sumUsulanQuantities(rows.map((r) => r.sisaDo)),
+    penerimaanHari: total("penerimaanHari"),
+    permintaanBesok: total("permintaanBesok"),
+    usulanPenebusan: total("usulanPenebusan"),
+  };
+  const compact = (key: string, field: Field): void => {
+    const value = n(key, field);
+    if (value === null || Number.isFinite(value)) {
+      setVals((p) => ({ ...p, [key]: { ...p[key]!, [field]: usulanInputValue(value) } }));
+    }
+  };
 
   const save = (nextStatus: UsulanStatus): void => {
     setErr(null);
@@ -165,8 +154,9 @@ export function UsulanForm({
             <input
               className="usulan-input"
               inputMode="decimal"
-              value={vals[r.key]?.penerimaanHari ?? ""}
+              value={vals[r.key]?.penerimaanHari?.text ?? ""}
               onChange={(e) => set(r.key, "penerimaanHari", e.target.value)}
+              onBlur={() => compact(r.key, "penerimaanHari")}
               aria-label={`Penerimaan Hari ${r.label}`}
             />
           </span>
@@ -174,8 +164,9 @@ export function UsulanForm({
             <input
               className="usulan-input"
               inputMode="decimal"
-              value={vals[r.key]?.permintaanBesok ?? ""}
+              value={vals[r.key]?.permintaanBesok?.text ?? ""}
               onChange={(e) => set(r.key, "permintaanBesok", e.target.value)}
+              onBlur={() => compact(r.key, "permintaanBesok")}
               aria-label={`Plan Permintaan Besok ${r.label}`}
             />
           </span>
@@ -183,8 +174,9 @@ export function UsulanForm({
             <input
               className="usulan-input"
               inputMode="decimal"
-              value={vals[r.key]?.usulanPenebusan ?? ""}
+              value={vals[r.key]?.usulanPenebusan?.text ?? ""}
               onChange={(e) => set(r.key, "usulanPenebusan", e.target.value)}
+              onBlur={() => compact(r.key, "usulanPenebusan")}
               aria-label={`Usulan Penebusan ${r.label}`}
             />
           </span>

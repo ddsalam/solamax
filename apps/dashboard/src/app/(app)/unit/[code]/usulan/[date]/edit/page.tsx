@@ -91,7 +91,7 @@ export default async function UsulanEditPage({
         </span>
       </div>
 
-      <UsulanForm code={unit.code} date={date} rows={rows} status={status} />
+      <UsulanForm key={`${unit.code}:${date}`} code={unit.code} date={date} rows={rows} status={status} />
 
       <div className="page-foot mt8">
         <span>

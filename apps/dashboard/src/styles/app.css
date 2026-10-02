@@ -621,6 +621,19 @@ body { background: var(--neutral-50); }
   body { background: var(--neutral-0); }
   .doc-sheet { box-shadow: none !important; border: none !important; border-radius: 0 !important; max-width: 100% !important; margin: 0 !important; }
   .doc-section { break-inside: avoid; }
+
+  /* Daftar SO memakai window.print(): sidebar yang disembunyikan masih
+     menyisakan track 232/64px pada shell desktop. Bebaskan seluruh lebar
+     kertas hanya untuk halaman ini; jangan mengandalkan landscape/scale. */
+  .shell:has(.usulan-list-page) { display: block; min-height: 0; }
+  .main:has(> .usulan-list-page) { padding: 0; }
+  .usulan-list-page .tbl-scroll { overflow: visible; width: 100%; box-shadow: none; }
+  .usulan-list-page .cols-usulan-list {
+    min-width: 0; width: 100%; gap: 8px; padding: 8px;
+    font-size: 9pt; line-height: 1.4; break-inside: avoid;
+  }
+  .usulan-list-page .cols-usulan-list > span { font-size: inherit; overflow-wrap: anywhere; }
+  .usulan-list-page .status-pill { font-size: inherit; white-space: normal; padding: 2px 6px; }
 }
 
 /* ===== Footer halaman ===== */
