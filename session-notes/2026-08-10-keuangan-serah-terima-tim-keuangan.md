@@ -164,6 +164,45 @@ ditunjuk, tak seorang pun bisa mengisinya.
 orang mengetik sekaligus menyetujui, tidak ada lagi yang memeriksa. Sistem
 menahannya sendiri, tetapi lebih baik tidak sampai ke situ.
 
+## Bagian 2c — Penanggung jawab tujuh pekerjaan (ditetapkan 17 Agu 2026)
+
+Kolom kosong di Bagian 2 diisi **per peran, bukan per nama orang**: rotasi
+pengawas terlalu cepat untuk dokumen yang akan dipakai berbulan-bulan, dan
+ketujuh pekerjaan ini melekat pada wewenang, bukan pada individu. Tabel di
+Bagian 2 dibiarkan apa adanya sebagai catatan tanggal 10 Agustus; yang berlaku
+adalah tabel di bawah ini.
+
+| # | Pekerjaan | Pengerja | Pemasok bukti | Penyetuju |
+|---|---|---|---|---|
+| 1 | Isi ulang pembelian BBM 29 Jan → sekarang | **Keuangan** | Pengawas unit (DO/faktur Pertamina) | HoF |
+| 2 | Isi harga beli Solar sejak 4 Mar | **Keuangan** | Faktur Pertamina | **HoF** — mengubah HPP setiap hari sesudahnya |
+| 3 | Cocokkan lima saldo bank ke rekening koran | **Keuangan** | **Direksi** — hanya penandatangan rekening yang bisa menarik koran rekening dorman | HoF |
+| 4 | Telusuri piutang pelanggan | **Keuangan** | Pengawas unit | **HoF** — menentukan koreksi menyentuh laba atau hanya neraca adalah pertimbangan, bukan entri |
+| 5 | Telusuri EDC Penampungan → settlement acquirer | **Keuangan** | Direksi/HoF (hubungan merchant) | HoF |
+| 6 | Susun jurnal koreksi | **HoF** | hasil 1–5 | Direksi |
+| 7 | Persetujuan jurnal koreksi | **Direksi** | — | tidak didelegasikan |
+
+Tiga hal yang menyertai penetapan ini:
+
+**Pekerjaan 3 adalah jangkarnya, dan hanya Direksi yang bisa membukanya.** Kas
+satu-satunya pos yang bisa dibuktikan ke pihak luar; enam pekerjaan lain
+bersandar pada angka yang kita hasilkan sendiri. Menarik rekening koran untuk
+empat rekening dorman butuh penandatangan rekening — langkah pertama yang tidak
+bisa dimulai tim keuangan.
+
+**Pekerjaan 1 dan 2 adalah entri berminggu-minggu, bukan berhari-hari.** Enam
+bulan pembelian BBM dan lima bulan harga beli, dari faktur fisik. Dengan satu
+pemegang peran `Keuangan`, ketujuh pekerjaan ini punya satu titik gagal —
+**tunjuk dua pemegang `Keuangan` untuk entri**, dan biarkan HoF tetap di luar
+entri.
+
+⚠️ **Pemisahan tugas ini belum nyata.** Hari ini HoF dan `Keuangan` dipegang dua
+akun milik **orang yang sama** (`ddsalam@solagroup.co` dan
+`ddsalam@solagas.com`). Sistemnya benar; kontrolnya baru jadi kontrol saat akun
+`Keuangan` dipegang manusia yang berbeda dari yang menyetujui. Sampai itu
+terjadi, pekerjaan 1–6 efektif dikerjakan dan disetujui satu orang, dan
+pekerjaan 7 kehilangan artinya sebagai pemeriksaan kedua.
+
 ## Bagian 3 — Tiga pertanyaan yang MASIH terbuka
 
 Tujuh dari sepuluh pertanyaan sudah dijawab dalam rapat **12 Agustus 2026** dan
