@@ -95,6 +95,27 @@ function coreInput(over: Partial<BoardCoreInput> = {}): BoardCoreInput {
 }
 
 describe("buildBoardCore — KPI & struktur", () => {
+  it.each([
+    { gl: 4000, provisional: false, value: "+48,78%", ratio: "48,78%" },
+    { gl: -4000, provisional: false, value: "−48,78%", ratio: "-48,78%" },
+    { gl: 4000, provisional: true, value: "+48,78%", ratio: "48,78%" },
+    { gl: -4000, provisional: true, value: "−48,78%", ratio: "-48,78%" },
+    { gl: 0, provisional: false, value: "0%", ratio: "0%" },
+  ])("labels G/L $gl (provisional=$provisional) without calling a gain a loss", ({ gl, provisional, value, ratio }) => {
+    const m = buildBoardCore(coreInput({
+      units: [IB], dailySales: [s(1, TODAY, "PERTALITE", 8200, 82_000_000)],
+      glRange: new Map([[1, [glRow(gl, provisional)]]]),
+    }));
+    expect(m.kpi[1]).toMatchObject({ value, provisional, subTone: provisional ? "warning" : gl === 0 ? "success" : "danger" });
+    expect(m.ranking[0]).toMatchObject({ gl: value, glAbnormal: gl !== 0, glProvisional: provisional });
+    const chips = m.verdict.chips.filter((c) => /G\/L|Losses/.test(c.text));
+    const notes = m.ranking[0]!.notes.filter((n) => /G\/L|Losses/.test(n.text));
+    expect(chips).toEqual(gl === 0 ? [] : [{ tone: provisional ? "warning" : "danger", text: provisional
+      ? "G/L Imam Bonjol · sementara (opname belum final)" : `G/L Imam Bonjol ${ratio}` }]);
+    expect(notes).toEqual(gl === 0 ? [] : [{ tone: provisional ? "warning" : "danger", text: provisional
+      ? "G/L sementara — menunggu opname penutup" : `G/L ${ratio} — di atas ambang 0,5%/100 L` }]);
+  });
+
   it("baris KPI = 4 keluarga TETAP (omzet, gl, gas, oil) — kepatuhan input BUKAN kartu", () => {
     const m = buildBoardCore(coreInput());
     expect(m.kpi.map((k) => k.key)).toEqual(["omzet", "gl", "gas", "oil"]);

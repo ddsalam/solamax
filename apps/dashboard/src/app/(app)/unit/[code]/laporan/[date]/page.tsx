@@ -343,8 +343,8 @@ export default async function LaporanPage({
           {glTotal === null || glPctDay === null
             ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid. "
             : glProvisional
-              ? `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
-              : `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
+              ? `G/L harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
+              : `G/L harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
           Bauran NPSO: gasoline {gasMix !== null ? pct(gasMix) : "—"} · gasoil{" "}
           {oilMix !== null ? pct(oilMix) : "—"}.
         </div>
