@@ -14,6 +14,10 @@ import {
   buildUpsert,
 } from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
+import {
+  buildGlWindowPrune, contributesToGl, glContentConfig,
+  UPDATE_SYNC_STATE_WITH_GL_REVISION_SQL,
+} from "./gl-content-revision.js";
 import { SnapshotSourceCaptureService } from "../saldo-pelanggan/source-capture.service.js";
 
 @Injectable()
@@ -50,8 +54,9 @@ export class IngestService {
     const totalRows = entries.reduce((n, [, rows]) => n + rows.length, 0);
     const watermark = payload.watermark_high; // ISO string; cast ::timestamptz di SQL
 
-    // replace_window (tebus/delivery/terra_resmi): DELETE jendela [from,to) SEBELUM upsert —
-    // mirror = snapshot sumber per jendela (tangkap DELETE/renumber di EasyMax).
+    // replace_window mirrors [from,to), including source DELETE/renumber.
+    // G/L domains prune only missing keys before guarded UPSERT so an identical
+    // replacement does not rotate content revision. Tebus keeps its old path.
     // Zod @solamax/shared sudah membatasi domain, tapi backend tetap menegakkan
     // whitelist sendiri (defense-in-depth; identifier tak pernah dari input).
     const win = payload.replace_window;
@@ -60,13 +65,12 @@ export class IngestService {
         `replace_window tidak sah untuk domain ${payload.domain}`,
       );
     }
-    const windowDeletes = win
-      ? buildReplaceWindowDeletes(
-          payload.domain as "tebus" | "delivery" | "terra_resmi",
-          unitId,
-          win,
-        )
-      : [];
+    const windowDeletes = !win ? []
+      : payload.domain === "delivery" || payload.domain === "terra_resmi"
+        ? [{ ...buildGlWindowPrune(payload.domain, unitId, win,
+            payload.tables[payload.domain] ?? []), glContributing: true }]
+        : buildReplaceWindowDeletes("tebus", unitId, win)
+          .map(statement => ({ ...statement, glContributing: false }));
 
     // replace_details (sales, rescan per tanggal-bisnis): pangkas detail basi per
     // header — baris NURUT yang ditulis ulang EasyMax tak boleh tinggal di mirror.
@@ -83,12 +87,14 @@ export class IngestService {
     // selain itu UPSERT by natural key. Semua di SATU transaksi (atomik + idempoten).
     const statements = [
       ...windowDeletes,
-      ...(detailPrune ? [detailPrune] : []),
+      ...(detailPrune ? [{ ...detailPrune, glContributing: true }] : []),
       ...entries.flatMap(([table, rows]) => {
         const cfg = TABLE_CONFIG[table]!;
-        return cfg.replaceByBusinessDate
+        const tableStatements = cfg.replaceByBusinessDate
           ? buildReplace(cfg, unitId, rows)
-          : [buildUpsert(cfg, unitId, rows)];
+          : [buildUpsert(glContentConfig(cfg), unitId, rows)];
+        return tableStatements.map(statement => ({ ...statement,
+          glContributing: contributesToGl(cfg.table) }));
       }),
     ];
 
@@ -133,22 +139,20 @@ export class IngestService {
             key,
           );
         }
-        for (const { sql, params } of statements) {
-          await tx.$executeRawUnsafe(sql, ...params);
+        let glChanged = false;
+        for (const { sql, params, glContributing } of statements) {
+          const affected = await tx.$executeRawUnsafe(sql, ...params);
+          if (glContributing && affected > 0) glChanged = true;
         }
         // sync_state ikut transaksi yang sama → ter-commit bersama data, tak pernah
         // mendahuluinya. last_watermark hanya digeser maju (GREATEST).
         await tx.$executeRawUnsafe(
-          `INSERT INTO "sync_state" ("unit_id","domain","last_watermark","last_run_at","last_row_count")
-           VALUES ($1,$2,$3::timestamptz,now(),$4)
-           ON CONFLICT ("unit_id","domain") DO UPDATE SET
-             "last_watermark" = GREATEST(COALESCE(EXCLUDED."last_watermark", "sync_state"."last_watermark"), COALESCE("sync_state"."last_watermark", EXCLUDED."last_watermark")),
-             "last_run_at" = now(),
-             "last_row_count" = EXCLUDED."last_row_count"`,
+          UPDATE_SYNC_STATE_WITH_GL_REVISION_SQL,
           unitId,
           payload.domain,
           watermark,
           totalRows,
+          glChanged,
         );
       },
       // Default Prisma interactive-transaction timeout (5000ms) diamati kena di

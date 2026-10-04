@@ -87,24 +87,33 @@ export async function getSyncByUnit(unitIds: ScopedUnitId[]): Promise<SyncRow[]>
 }
 
 /**
- * Revisi sumber G/L untuk kunci cache historis. last_run_at ikut transaksi
- * ingest yang sama dengan data, termasuk koreksi back-dated tanpa perubahan
- * watermark. Jangan hanya pakai MAX: domain yang menyusul juga harus mengubah
- * token. masters ikut karena nama produk merupakan bagian hasil query G/L.
+ * Revisi sumber G/L untuk kunci cache historis: vektor JSON kanonis per domain.
+ * Counter konten dipercaya hanya jika penanda run cocok dengan last_run_at;
+ * writer lama atau domain yang belum bermigrasi tetap memakai timestamp UTC.
+ * Baca kolom baru melalui to_jsonb agar dashboard juga aman sebelum migrasi.
+ * Semua domain wajib ikut: payload ingest tidak membatasi keanggotaan tabel
+ * per domain. Counter tetap berupa teks agar bigint tidak kehilangan presisi.
  */
 export async function getGlSourceRevision(unit: ScopedUnitId): Promise<string> {
   const rows = await qScoped<{ revision: string }>(
     unit,
-    `SELECT COALESCE(string_agg(domain || ':' ||
-               COALESCE(to_char(last_run_at AT TIME ZONE 'UTC',
-                                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'never'),
-               '|' ORDER BY domain), 'never') AS revision
-     FROM sync_state
-     WHERE unit_id = $1
-       AND domain IN ('sales', 'opname', 'delivery', 'terra_resmi', 'masters')`,
+    `SELECT COALESCE(jsonb_agg(
+               CASE WHEN gl_revision >= 0 AND gl_revision_run_at IS NOT NULL
+                         AND gl_revision_run_at = last_run_at
+                    THEN jsonb_build_array(domain, 'content', gl_revision::text)
+                    ELSE jsonb_build_array(domain, 'legacy',
+                           COALESCE(to_char(last_run_at AT TIME ZONE 'UTC',
+                                            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'), 'never'))
+               END ORDER BY domain COLLATE "C"), '[]'::jsonb)::text AS revision
+     FROM (
+       SELECT s.domain, s.last_run_at,
+              (to_jsonb(s)->>'gl_revision')::bigint AS gl_revision,
+              (to_jsonb(s)->>'gl_revision_run_at')::timestamptz AS gl_revision_run_at
+       FROM sync_state s WHERE s.unit_id = $1
+     ) source`,
     [unit],
   );
-  return rows[0]?.revision ?? "never";
+  return rows[0]?.revision ?? "[]";
 }
 
 // ---------------------------------------------------------------------------
