@@ -681,6 +681,95 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     expect(range.filter(r => r.d === D2)).toEqual(single);
   });
 
+  it("keeps unidentified movements before the first requested closing and with no requested closings", async () => {
+    await stock("2026-09-01", "A", 10_000);
+    await unassignedMovement("receipt", null, D1);
+    await unassignedMovement("sale", "\u00a0", D2);
+    await unassignedMovement("tera", "\ufeff", D3);
+    const withoutClosing = await getDailyGlByProduct(U, D1, D3);
+    expect(withoutClosing).toEqual([
+      expect.objectContaining({ d: D1, ckdbbm: null, pen_do: 100, gl: null, provisional: true }),
+      expect.objectContaining({ d: D2, ckdbbm: null, sales_gross: 100, gl: null, provisional: true }),
+      expect.objectContaining({ d: D3, ckdbbm: null, tera: 100, gl: null, provisional: true }),
+    ]);
+    await stock(D3, "A", 10_000);
+    const withClosing = await getDailyGlByProduct(U, D1, D3);
+    expect(withClosing.filter(r => r.ckdbbm === null)).toEqual(withoutClosing);
+    expect(withClosing.find(r => r.ckdbbm === "P")).toMatchObject({
+      d: D3, fisik_prev: 10_000, pen_do: 0, sales_gross: 0, tera: 0, gl: null, provisional: true,
+    });
+  });
+
+  it.each([30, 365])("retains all movement domains after an anchor %s days before the requested day", async age => {
+    const anchor = new Date(Date.parse(`${D2}T00:00:00Z`) - age * 86_400_000).toISOString().slice(0, 10);
+    const movementDate = nextDay(anchor);
+    await stock(anchor, "A", 10_000); await stock(D2, "A", 10_025);
+    await receipt(movementDate, 8_000); await sale(movementDate, 7_000); await tera(movementDate, 25);
+    await sale(D2, 1_000);
+    // The anchor date itself is outside (previous, D], even for invalid rows.
+    await receipt(anchor, null); await sale(anchor, null); await tera(anchor, null);
+    const beforeAnchor = new Date(Date.parse(`${anchor}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    for (const domain of ["receipt", "sale", "tera"] as const) {
+      await unassignedMovement(domain, null, beforeAnchor);
+      await unassignedMovement(domain, null, anchor);
+    }
+    const current = await day();
+    expect(current).toMatchObject({ fisik_prev: 10_000, pen_do: 8_000,
+      sales_gross: 8_000, tera: 25, gl: 0, provisional: true });
+    const range = await getDailyGlByProduct(U, D1, D3);
+    expect(range.filter(r => r.d === D2)).toEqual([current]);
+  });
+
+  it.each(["receipt", "sale", "tera"] as const)("retains unidentified %s invalidity before from across a long closing gap", async domain => {
+    await stock("2026-09-01", "A", 10_000); await stock(D2, "A", 9_000);
+    await sale("2026-09-15", 1_000);
+    await unassignedMovement(domain, null, "2026-09-20");
+    const current = await day();
+    expect(current).toMatchObject({ fisik_prev: 10_000, sales_gross: 1_000,
+      pen_do: 0, tera: 0, gl: null, provisional: true });
+    // No invented diagnostic date: the unknown movement is outside the output.
+    expect(await getDailyGlByProduct(U, D1, D3)).toEqual([current]);
+  });
+
+  it("aggregates only required daily movements despite a full year of closing history", async () => {
+    // Deterministic execution-work guard, not a machine-dependent timing limit.
+    // Six products, 370 days. The 365-day stock anchor still runs, while a DAY
+    // request needs only six daily groups per movement domain, not 366 * 6.
+    await db.exec(`
+      INSERT INTO opname
+      SELECT 1, 'O'||g||'_'||p, 'T'||p, 'P'||p, DATE '${D2}'-369+g,
+             (DATE '${D2}'-368+g + TIME '06:00') AT TIME ZONE 'Asia/Pontianak',
+             10000, 10000, 0
+      FROM generate_series(0,369) g CROSS JOIN generate_series(1,6) p;
+      INSERT INTO sales_header SELECT 1, 'H'||g, DATE '${D2}'-369+g FROM generate_series(0,369) g;
+      INSERT INTO sales_detail (unit_id,ckdjualbbm,ckdbbm,nvolume)
+      SELECT 1, 'H'||g, 'P'||p, 3000 FROM generate_series(0,369) g CROSS JOIN generate_series(1,6) p;
+      INSERT INTO delivery (unit_id,dtgltrm,ckdbbm,nvoldo,sbatal)
+      SELECT 1, DATE '${D2}'-369+g, 'P'||p, 2000, 0 FROM generate_series(0,369) g CROSS JOIN generate_series(1,6) p;
+      INSERT INTO terra_resmi
+      SELECT 1, DATE '${D2}'-369+g, 'P'||p, 1000, 0 FROM generate_series(0,369) g CROSS JOIN generate_series(1,6) p;
+      ANALYZE opname; ANALYZE sales_header; ANALYZE sales_detail; ANALYZE delivery; ANALYZE terra_resmi;
+    `);
+    const rows = await getDailyGlByProduct(U, D2, D2);
+    expect(rows).toHaveLength(6);
+    for (const row of rows) expect(row).toMatchObject({ pen_do: 2000, sales_gross: 3000,
+      tera: 1000, fisik: 10000, fisik_prev: 10000, gl: 0, provisional: false });
+    const [, sql, params] = qScoped.mock.calls.at(-1)!;
+    type PlanNode = { "Subplan Name"?: string; "Actual Rows"?: number; "Actual Loops"?: number; Plans?: PlanNode[] };
+    const result = await db.query<{ "QUERY PLAN": { Plan: PlanNode }[] }>(
+      `EXPLAIN (ANALYZE, FORMAT JSON, TIMING OFF) ${sql}`, params,
+    );
+    const nodes: PlanNode[] = [];
+    const visit = (node: PlanNode) => { nodes.push(node); node.Plans?.forEach(visit); };
+    visit(result.rows[0]!["QUERY PLAN"][0]!.Plan);
+    for (const domain of ["deliv", "sale", "terad"]) {
+      const aggregate = nodes.find(n => n["Subplan Name"] === `CTE ${domain}`);
+      expect(aggregate, `${domain} must be assessed once`).toBeDefined();
+      expect(aggregate?.["Actual Loops"]).toBe(1);
+      expect(aggregate?.["Actual Rows"]).toBe(6);
+    }
+  });
+
   it("never includes another unit's stock or movements", async () => {
     await baseline();
     await stock(D2, "A", 50_000, 50_000, { unit: 2 });
