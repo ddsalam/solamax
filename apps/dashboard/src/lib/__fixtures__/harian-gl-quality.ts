@@ -50,3 +50,31 @@ export function harianGlStaleUnitFixture() {
     gl: new Map([[1, [row(date, -5)]], [2, [row(before, 7)]]]),
   });
 }
+
+/** Empty scope, or one measured date plus a known date without computed G/L. */
+export function harianGlEmptyWindowFixture(observation?: { day: "earlier" | "current"; gl: number }) {
+  const units = [1, 2, 3].map((id) => ({
+    unit_id: id as ScopedUnitId, code: `SYNTHETIC-EMPTY-${id}`, name: `Empty unit ${id}`,
+  }));
+  const date = "2026-10-02";
+  const before = "2026-10-01";
+  const hasObservation = observation !== undefined;
+  return buildHarianModel({
+    units, date,
+    // Recorded zero-sales dates establish freshness, but a date without a G/L
+    // measurement makes dependent MTD totals unavailable. An observed current
+    // zero remains valid independently of the missing earlier measurement.
+    dailySales: hasObservation ? [before, date].map((d) => ({
+      unit_id: 1, d, ckdbbm: "BB-03", nama: "SOLAR", vol: 0, omzet: 0,
+    })) : [],
+    coverage: units.map((u) => ({ unit_id: u.unit_id,
+      sales_min: hasObservation && u.unit_id === 1 ? before : null })),
+    sync: [],
+    gl: observation ? new Map([[1, [{
+      d: observation.day === "earlier" ? before : date,
+      ckdbbm: "BB-03", nama: "SOLAR", fisik: 1000 + observation.gl,
+      fisik_prev: 1000, pen_do: 0, sales_gross: 0, tera: 0, gl: observation.gl,
+      excluded_tanks: 0, provisional: false,
+    }]]]) : new Map(),
+  });
+}

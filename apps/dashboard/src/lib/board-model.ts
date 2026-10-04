@@ -18,6 +18,7 @@ import {
   aggregateDailyGl,
   bauranVsTargetRange,
   glPercent,
+  normalizeProductIdentity,
   verdictHeadline,
   type BauranStatus,
   type DailyGlInput,
@@ -41,7 +42,7 @@ export interface BoardUnit {
 export interface SalesGrainRow {
   unit_id: number;
   d: string;
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string | null;
   vol: number;
   omzet: number;
@@ -64,20 +65,21 @@ export interface ShiftToday {
 interface SalesAgg {
   vol: number;
   omzet: number;
-  products: { ckdbbm: string; nama: string | null; vol: number }[];
+  products: { ckdbbm: string | null; nama: string | null; vol: number }[];
 }
 
 function sliceSales(rows: SalesGrainRow[], unitIds: ReadonlySet<number>, w: DateRange): SalesAgg {
   let vol = 0;
   let omzet = 0;
-  const byProduct = new Map<string, { ckdbbm: string; nama: string | null; vol: number }>();
+  const byProduct = new Map<string | null, { ckdbbm: string | null; nama: string | null; vol: number }>();
   for (const r of rows) {
     if (!unitIds.has(r.unit_id) || r.d < w.from || r.d > w.to) continue;
     vol += r.vol;
     omzet += r.omzet;
-    const cur = byProduct.get(r.ckdbbm);
+    const product = normalizeProductIdentity(r.ckdbbm);
+    const cur = byProduct.get(product);
     if (cur) cur.vol += r.vol;
-    else byProduct.set(r.ckdbbm, { ckdbbm: r.ckdbbm, nama: r.nama, vol: r.vol });
+    else byProduct.set(product, { ckdbbm: product, nama: r.nama, vol: r.vol });
   }
   return { vol, omzet, products: [...byProduct.values()] };
 }
@@ -91,21 +93,29 @@ function glAgg(
 ): DailyGlAgg {
   const rows: DatedDailyGlInput[] = [];
   const usable = new Set<string>();
+  const usableDays = new Set<string>();
   const key = (uid: number, d: string, product: string) => `${uid}|${d}|${product}`;
   for (const [uid, unitRows] of glByUnit) {
     if (!unitIds.has(uid)) continue;
     for (const r of unitRows) {
       if (r.d < w.from || r.d > w.to) continue;
       rows.push(r);
-      if (r.gl !== null && Number.isFinite(r.gl) && r.excluded_tanks === 0)
-        usable.add(key(uid, r.d, r.ckdbbm));
+      const product = normalizeProductIdentity(r.ckdbbm);
+      if (product !== null && r.gl !== null && Number.isFinite(r.gl) && r.excluded_tanks === 0) {
+        usable.add(key(uid, r.d, product));
+        usableDays.add(`${uid}|${r.d}`);
+      }
     }
   }
   const g = aggregateDailyGl(rows);
-  const missing = sales.some((r) =>
-    unitIds.has(r.unit_id) && r.d >= w.from && r.d <= w.to &&
-    (r.vol !== 0 || r.omzet !== 0) && !usable.has(key(r.unit_id, r.d, r.ckdbbm)),
-  );
+  const missing = sales.some((r) => {
+    if (!unitIds.has(r.unit_id) || r.d < w.from || r.d > w.to) return false;
+    const product = normalizeProductIdentity(r.ckdbbm);
+    // Even a zero-volume sales row establishes a business date requiring
+    // observed G/L. Other dormant products may remain neutral on that day.
+    return product === null || !usableDays.has(`${r.unit_id}|${r.d}`) ||
+      ((r.vol !== 0 || r.omzet !== 0) && !usable.has(key(r.unit_id, r.d, product)));
+  });
   // Sales can be absent together with G/L, so product-key coverage alone is
   // insufficient. A unit with known earlier activity but no sales through the
   // window end is stale. A unit first appearing AFTER that end is not yet
@@ -489,7 +499,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
         .map((p) => ({ p, cls: classifyProduct(p.nama) }))
         .sort((a, b) => (a.cls?.order ?? 9) - (b.cls?.order ?? 9))
         .map(({ p, cls }) => ({
-          name: p.nama ?? p.ckdbbm,
+          name: p.nama ?? p.ckdbbm ?? "Produk tanpa kode",
           volLabel: `${idn(p.vol)} L`,
           widthPct: (p.vol / maxP) * 100,
           fill: (cls?.pso ? "pso" : cls?.order === 3 || cls?.order === 6 ? "npso2" : "npso") as

@@ -1,11 +1,6 @@
 /**
- * Keadaan-keadaan TAMPILAN yang tidak terwakili di data live 2026.
- *
- * Sapuan DB (2026, 7 unit) menunjukkan **nol** hari dengan baris opname di luar
- * batas wajar, jadi jalur `excludedTanks` tidak pernah tersentuh oleh pemeriksaan
- * mata mana pun. Sama halnya baris tanpa opname (`incomplete`). Kalau tidak
- * dikunci di sini, keduanya adalah kode yang tak pernah dilihat siapa pun sampai
- * hari ia benar-benar dibutuhkan.
+ * Synthetic display states for invalid/incomplete source stock. These cases
+ * must remain covered without depending on mutable live business records.
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -59,15 +54,15 @@ describe("ArusMinyakSection", () => {
   });
 
   it("excludedTanks > 0 → catatan kaki menyebut jumlahnya; 0 → senyap", () => {
-    // Jalur ini TIDAK muncul di data 2026 mana pun (sapuan 7 unit) — hanya di sini ia terlihat.
+    // Exercise the source-quality warning with an explicit synthetic count.
     const h = html(arus({ excludedTanks: 3 }));
-    expect(h).toContain("3 baris tangki di luar batas wajar");
-    expect(html(arus({ excludedTanks: 0 }))).not.toContain("di luar batas wajar");
+    expect(h).toContain("3 baris dengan stok atau identitas produk/tangki tidak valid");
+    expect(html(arus({ excludedTanks: 0 }))).not.toContain("identitas produk/tangki tidak valid");
   });
 
-  it("incomplete → catatan '—' tidak ikut TOTAL; lengkap → senyap", () => {
-    expect(html(arus({ incomplete: true }))).toContain("tidak ikut TOTAL");
-    expect(html(arus({ incomplete: false }))).not.toContain("tidak ikut TOTAL");
+  it("incomplete → dependent G/L totals unavailable; complete → no incomplete note", () => {
+    expect(html(arus({ incomplete: true }))).toContain("total G/L yang bergantung padanya belum tersedia");
+    expect(html(arus({ incomplete: false }))).not.toContain("total G/L yang bergantung padanya belum tersedia");
   });
 
   it("tanpa baris → empty state bermakna, TANPA baris TOTAL palsu", () => {

@@ -24,6 +24,7 @@
 import { unstable_cache } from "next/cache";
 import * as React from "react";
 import { addDays, todayWib } from "./periods";
+import { normalizeProductIdentity } from "./derive";
 import { getDailyGlByProduct, getGlSourceRevision, type DailyGlRow } from "./queries";
 import type { ScopedUnitId } from "./scope-rule";
 
@@ -84,7 +85,9 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  * frekuensi cold query mengikuti ingest; ukur ulang latensi setelah staging.
  */
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
-  return rows.length === 0 || rows.some((r) => r.provisional || r.gl === null || r.excluded_tanks > 0);
+  return rows.length === 0 || rows.some((r) =>
+    r.provisional || r.gl === null || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
+  );
 }
 
 /**
@@ -106,7 +109,9 @@ function cachedGl(unit: ScopedUnitId, from: string, to: string, revision: string
   return resolveHistoricPart(
     unstable_cache(
       () => getDailyGlByProduct(unit, from, to),
-      ["gl-window-v2", String(unit), from, to, revision],
+      // v3 also rejects unassigned movements. A source revision does not change
+      // on deployment, so a new namespace must retire pre-identity-guard rows.
+      ["gl-window-v3", String(unit), from, to, revision],
       { revalidate: GL_CACHE_REVALIDATE_S },
     ),
     () => getDailyGlByProduct(unit, from, to),

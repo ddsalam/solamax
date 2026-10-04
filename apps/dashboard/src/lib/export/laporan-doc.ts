@@ -405,9 +405,9 @@ function arusSection(m: LaporanModel): Content[] {
           ? ` Tera ${num2(a.teraTotal)} L hari ini. Mengikuti definisi EasyMax, kolom Penjualan sudah dikurangi tera, tetapi TOTAL Penjualan dan seluruh kolom % memakai penjualan KOTOR — karena itu TOTAL Penjualan lebih besar ${num2(a.teraTotal)} L daripada jumlah kolom di atasnya. Bukan tabel yang rusak.`
           : "") +
         (a.excludedTanks > 0
-          ? ` ${a.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik.`
+          ? ` ${a.excludedTanks} baris dengan stok atau identitas produk/tangki tidak valid membuat Stock Fisik tidak lengkap.`
           : "") +
-        (a.incomplete ? " Produk tanpa opname penutup/awal bertanda “—” dan tidak ikut TOTAL." : ""),
+        (a.incomplete ? " Nilai dengan stok/identitas sumber tidak lengkap bertanda “—”; total G/L yang bergantung padanya belum tersedia." : ""),
       style: "footNote",
       alignment: "left",
     },

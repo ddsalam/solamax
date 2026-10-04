@@ -169,9 +169,15 @@ export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
 // Gain/Loss harian metode RESUME (Σ harian) — agregasi untuk tabel & kumulatif
 // ---------------------------------------------------------------------------
 
+/** An absent product key cannot be joined as if it identified a real product.
+ * Accept unknown defensively: source rows may predate a stricter typed contract. */
+export function normalizeProductIdentity(value: unknown): string | null {
+  return typeof value === "string" ? value.trim() || null : null;
+}
+
 /** Baris harian per produk dari getDailyGlByProduct (struktural; hindari siklus import). */
 export interface DailyGlInput {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string | null;
   /** Optional source balance for the existing zero-closing quality warning. */
   fisik?: number | null;
@@ -197,7 +203,7 @@ export interface DailyGlAgg {
   totalTera: number;
   /** Ada baris provisional / gl tak terhitung → angka belum final. */
   provisional: boolean;
-  /** Σ tangki garbage yang dikecualikan dari Stock Fisik. */
+  /** Σ penutup dengan stok atau identitas produk/tangki tidak valid. */
   excludedTanks: number;
   /** A required row/stock is uncomputable; partial sums are not full totals. */
   incomplete: boolean;
@@ -226,9 +232,17 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
   for (const r of rows) {
     if (r.provisional) provisional = true;
     excludedTanks += r.excluded_tanks;
+    const product = normalizeProductIdentity(r.ckdbbm);
+    if (product === null) {
+      // Do not manufacture a zero-valued product from an unidentified source.
+      incomplete = true;
+      provisional = true;
+      totalTera += r.tera;
+      continue;
+    }
     if (r.gl === null || r.excluded_tanks > 0) { incomplete = true; provisional = true; }
     if (isDailyGlSuspect(r)) { suspect = true; provisional = true; }
-    const cur = byProduct.get(r.ckdbbm) ?? { nama: r.nama, signed: 0, tera: 0 };
+    const cur = byProduct.get(product) ?? { nama: r.nama, signed: 0, tera: 0 };
     cur.tera += r.tera;
     totalTera += r.tera;
     if (r.gl === null) {
@@ -238,7 +252,7 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
       cur.signed += r.gl;
       totalSigned += r.gl;
     }
-    byProduct.set(r.ckdbbm, cur);
+    byProduct.set(product, cur);
   }
   return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl, incomplete, suspect };
 }

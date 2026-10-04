@@ -28,6 +28,13 @@ export type { SaldoPelanggan, SaldoTrio } from "./saldo-snapshot";
 
 const TZ = "Asia/Pontianak";
 
+// Match ECMAScript String.trim() exactly (normalizeProductIdentity in derive.ts).
+// PostgreSQL trim(text) removes only ASCII spaces; its locale-dependent regex
+// whitespace class also differs (notably NBSP/BOM). Keep internal characters.
+const SOURCE_IDENTITY_WHITESPACE = String.raw`U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'`;
+const trimmedSourceIdentity = (column: string) => `btrim(${column}, ${SOURCE_IDENTITY_WHITESPACE})`;
+const sourceIdentity = (column: string) => `NULLIF(${trimmedSourceIdentity(column)}, '')`;
+
 /**
  * Penutup EasyMax = pembacaan pagi terakhir setelah tanggal bisnis, sebelum
  * 08:00 WIB. Entri susulan siang D+1 bukan penutup D (oracle KB 6–7 Agu,
@@ -170,7 +177,7 @@ export async function getDailyOmzet(
 export interface DailySalesRow {
   unit_id: number;
   d: string; // tanggal bisnis
-  ckdbbm: string;
+  ckdbbm: string | null; // null = missing/blank source identity; never a coverage key
   nama: string | null;
   vol: number;
   omzet: number;
@@ -186,16 +193,22 @@ export async function getDailySalesByProduct(
     unitIds,
     `SELECT sd.unit_id,
             to_char(h.dtgljual,'YYYY-MM-DD') AS d,
-            trim(sd.ckdbbm) AS ckdbbm,
-            COALESCE(max(p.vcnmbbm), trim(sd.ckdbbm)) AS nama,
+            ${sourceIdentity("sd.ckdbbm")} AS ckdbbm,
+            COALESCE(max(p.nama), ${sourceIdentity("sd.ckdbbm")}) AS nama,
             COALESCE(sum(sd.nvolume),0)::float8 AS vol,
             COALESCE(sum(sd.nsubtotal),0)::float8 AS omzet
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
-     LEFT JOIN product p ON p.unit_id = sd.unit_id AND p.ckdbbm = sd.ckdbbm
+     -- Collapse normalized master aliases before joining, so padding cannot
+     -- duplicate sales totals when multiple raw master keys normalize alike.
+     LEFT JOIN (
+       SELECT unit_id, ${sourceIdentity("ckdbbm")} AS ckdbbm, max(vcnmbbm) AS nama
+       FROM product WHERE unit_id = ANY($1::int[])
+       GROUP BY unit_id, ${sourceIdentity("ckdbbm")}
+     ) p ON p.unit_id=sd.unit_id AND p.ckdbbm=${sourceIdentity("sd.ckdbbm")}
      WHERE sd.unit_id = ANY($1::int[]) AND h.dtgljual BETWEEN $2::date AND $3::date
-     GROUP BY sd.unit_id, h.dtgljual, trim(sd.ckdbbm)
-     ORDER BY sd.unit_id, h.dtgljual, trim(sd.ckdbbm)`,
+     GROUP BY sd.unit_id, h.dtgljual, ${sourceIdentity("sd.ckdbbm")}
+     ORDER BY sd.unit_id, h.dtgljual, ${sourceIdentity("sd.ckdbbm")}`,
     [unitIds, from, to],
   );
 }
@@ -400,7 +413,7 @@ export interface ZeroClosingRow {
   unit_id: number;
   d: string; // tanggal bisnis penutup yang bernilai 0
   ckdtangki: string;
-  ckdbbm: string;
+  ckdbbm: string | null; // null = missing/blank source identity; never a coverage key
   nama: string | null;
   bk: number; // stok BUKU hari itu (biasanya masih penuh → itulah petunjuknya)
   prev: number; // fisik penutup hari sebelumnya
@@ -442,12 +455,12 @@ export async function getZeroClosingEvents(
   return qScoped<ZeroClosingRow>(
     unitIds,
     `WITH biz AS (
-       SELECT o.unit_id, trim(o.ckdtangki) AS ckdtangki, trim(o.ckdbbm) AS ckdbbm, o.nstockop, o.nstockbk,
+       SELECT o.unit_id, ${trimmedSourceIdentity("o.ckdtangki")} AS ckdtangki, ${sourceIdentity("o.ckdbbm")} AS ckdbbm, o.nstockop, o.nstockbk,
               COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
               row_number() OVER (
                 PARTITION BY o.unit_id,
                              COALESCE(o.dtaglopn,(o.dtgljam AT TIME ZONE '${TZ}')::date),
-                             trim(o.ckdtangki)
+                             ${trimmedSourceIdentity("o.ckdtangki")}
                 ORDER BY ${CLOSING_ORDER}) AS rn
        FROM opname o
        WHERE o.unit_id = ANY($1::int[]) AND COALESCE(o.sbatal,0) = 0
@@ -464,7 +477,7 @@ export async function getZeroClosingEvents(
        WINDOW w AS (PARTITION BY unit_id, ckdtangki ORDER BY bizdate)
      ),
      d AS (
-       SELECT t.unit_id, trim(t.ckdtangki) AS ckdtangki,
+       SELECT t.unit_id, ${trimmedSourceIdentity("t.ckdtangki")} AS ckdtangki,
               COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS dd,
               sum(t.nvoldo)::float8 AS v
        FROM delivery t
@@ -475,9 +488,9 @@ export async function getZeroClosingEvents(
        GROUP BY 1,2,3
      )
      SELECT c.unit_id, to_char(c.bizdate,'YYYY-MM-DD') AS d,
-            trim(c.ckdtangki) AS ckdtangki, c.ckdbbm,
+            ${trimmedSourceIdentity("c.ckdtangki")} AS ckdtangki, c.ckdbbm,
             (SELECT max(p.vcnmbbm) FROM product p
-              WHERE p.unit_id = c.unit_id AND trim(p.ckdbbm) = c.ckdbbm) AS nama,
+              WHERE p.unit_id = c.unit_id AND ${sourceIdentity("p.ckdbbm")} = c.ckdbbm) AS nama,
             c.bk, c.prv AS prev, c.nxt AS next,
             COALESCE((SELECT sum(v) FROM d
                        WHERE d.unit_id = c.unit_id AND d.ckdtangki = c.ckdtangki
@@ -522,15 +535,15 @@ export async function getClosingOpname(
     `WITH biz AS (
        SELECT o.*, COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
               row_number() OVER (
-                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), trim(o.ckdtangki)
+                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), ${trimmedSourceIdentity("o.ckdtangki")}
                 ORDER BY ${CLOSING_ORDER}
               ) AS rn
        FROM opname o
        WHERE o.unit_id = $1 AND COALESCE(o.sbatal,0) = 0
      )
      SELECT to_char(b.bizdate,'YYYY-MM-DD') AS d,
-            trim(b.ckdtangki) AS ckdtangki, trim(b.ckdbbm) AS ckdbbm,
-            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND p.ckdbbm=b.ckdbbm) AS nama,
+            ${trimmedSourceIdentity("b.ckdtangki")} AS ckdtangki, ${sourceIdentity("b.ckdbbm")} AS ckdbbm,
+            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND ${sourceIdentity("p.ckdbbm")}=${sourceIdentity("b.ckdbbm")}) AS nama,
             b.nstockbk::float8 AS bk, b.nstockop::float8 AS op,
             (b.nstockop - b.nstockbk)::float8 AS signed,
             to_char(b.dtgljam AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"') AS dtgljam,
@@ -538,7 +551,7 @@ export async function getClosingOpname(
                  AND (b.dtgljam AT TIME ZONE '${TZ}')::time < TIME '08:00:00') AS provisional
      FROM biz b
      WHERE b.rn = 1 AND b.bizdate BETWEEN $2::date AND $3::date
-     ORDER BY b.bizdate, trim(b.ckdtangki)`,
+     ORDER BY b.bizdate, ${trimmedSourceIdentity("b.ckdtangki")}`,
     [unit, from, to],
   );
 }
@@ -549,7 +562,7 @@ export async function getClosingOpname(
 
 export interface DailyGlRow {
   d: string; // tanggal bisnis
-  ckdbbm: string;
+  ckdbbm: string | null; // null = missing/blank source identity; never a coverage key
   nama: string | null;
   fisik: number | null; // Σ NSTOCKOP penutup; null bila ada stok hilang/tak wajar
   fisik_prev: number | null; // Stock Fisik hari-bisnis sebelumnya (Stock Awal)
@@ -559,7 +572,7 @@ export interface DailyGlRow {
   sales_gross: number; // Σ nvolume jual KOTOR tersedia dlm jendela (prev, D]
   tera: number; // Σ tera (L) tersedia dlm jendela (prev, D]
   gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung
-  excluded_tanks: number; // tangki dengan stok null/garbage pada hari itu
+  excluded_tanks: number; // penutup dengan stok atau identitas produk/tangki tak valid
   provisional: boolean; // penutup/anchor belum final, tak lengkap, atau ada celah
 }
 
@@ -583,6 +596,9 @@ export interface DailyGlRow {
  *   KOTOR dari sales_detail.
  * - Jendela (prev_date, D] menjumlah penerimaan/jual/tera lintas-celah bila suatu
  *   hari tak ada opname (fallback penutup terdekat) → ditandai `provisional`.
+ * - Identitas produk/tangki kosong bukan cakupan yang sah: stok/G/L tak
+ *   tersedia. Mutasi tanpa kode produk tidak dialokasikan ke produk mana pun;
+ *   ia menahan saldo terdampak dan tetap muncul sebagai baris diagnostik null.
  * - Kembalikan baris harian utk SELURUH rentang; pemanggil agregasi harian (kolom
  *   tabel) atau Σ bulanan (G/L kumulatif). Murni SELECT, ter-scope `ScopedUnitId`.
  */
@@ -603,7 +619,7 @@ export async function getDailyGlByProduct(
        SELECT o.ckdtangki, o.ckdbbm, o.nstockop, o.nstockbk,
               COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date) AS bizdate,
               row_number() OVER (
-                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), trim(o.ckdtangki)
+                PARTITION BY COALESCE(o.dtaglopn, (o.dtgljam AT TIME ZONE '${TZ}')::date), ${trimmedSourceIdentity("o.ckdtangki")}
                 ORDER BY ${CLOSING_ORDER}
               ) AS rn,
               NOT (${CLOSING_IS_MORNING}) AS prov_row
@@ -613,9 +629,10 @@ export async function getDailyGlByProduct(
              BETWEEN b.dlo AND b.dto
      ),
      clo AS (
-       SELECT bizdate, trim(ckdbbm) AS ckdbbm, trim(ckdtangki) AS ckdtangki,
+       SELECT bizdate, ${sourceIdentity("ckdbbm")} AS ckdbbm, ${trimmedSourceIdentity("ckdtangki")} AS ckdtangki,
               nstockop::float8 AS op, prov_row,
-              (nstockop IS NULL OR nstockbk IS NULL
+              (${sourceIdentity("ckdbbm")} IS NULL OR ${sourceIdentity("ckdtangki")} IS NULL
+                OR nstockop IS NULL OR nstockbk IS NULL
                 OR nstockop < 0 OR nstockop > ${GARBAGE_STOCK_L}
                 OR nstockbk < 0 OR nstockbk > ${GARBAGE_STOCK_L}
                 OR abs(nstockop - nstockbk) > ${GARBAGE_SELISIH_L}) AS garbage
@@ -639,9 +656,9 @@ export async function getDailyGlByProduct(
      ),
      deliv AS (
        SELECT COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS d,
-              trim(t.ckdbbm) AS ckdbbm,
+              ${sourceIdentity("t.ckdbbm")} AS ckdbbm,
               sum(t.nvoldo) FILTER (WHERE abs(t.nvoldo) <= ${GARBAGE_STOCK_L})::float8 AS v,
-              bool_or(t.nvoldo IS NULL OR abs(t.nvoldo) > ${GARBAGE_STOCK_L}) AS invalid
+              bool_or(${sourceIdentity("t.ckdbbm")} IS NULL OR t.nvoldo IS NULL OR abs(t.nvoldo) > ${GARBAGE_STOCK_L}) AS invalid
        FROM delivery t, bounds b
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
          AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date)
@@ -649,8 +666,8 @@ export async function getDailyGlByProduct(
        GROUP BY 1, 2
      ),
      sale AS (
-       SELECT h.dtgljual AS d, trim(sd.ckdbbm) AS ckdbbm, sum(sd.nvolume)::float8 AS v,
-              bool_or(sd.nvolume IS NULL) AS invalid
+       SELECT h.dtgljual AS d, ${sourceIdentity("sd.ckdbbm")} AS ckdbbm, sum(sd.nvolume)::float8 AS v,
+              bool_or(${sourceIdentity("sd.ckdbbm")} IS NULL OR sd.nvolume IS NULL) AS invalid
        FROM sales_detail sd
        JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
        , bounds b
@@ -660,33 +677,44 @@ export async function getDailyGlByProduct(
      terad AS (
        -- SUMBER TUNGGAL terra = ledger RESMI (terra_resmi), BUKAN tera mentah.
        -- business_date=DTGLTERRA, hanya sbatal=0; Σ nvolume per (hari, produk).
-       SELECT tr.business_date AS d, trim(tr.ckdbbm) AS ckdbbm, sum(tr.nvolume)::float8 AS v,
-              bool_or(tr.nvolume IS NULL) AS invalid
+       SELECT tr.business_date AS d, ${sourceIdentity("tr.ckdbbm")} AS ckdbbm, sum(tr.nvolume)::float8 AS v,
+              bool_or(${sourceIdentity("tr.ckdbbm")} IS NULL OR tr.nvolume IS NULL) AS invalid
        FROM terra_resmi tr, bounds b
        WHERE tr.unit_id = $1 AND COALESCE(tr.sbatal,0) = 0
          AND tr.business_date BETWEEN b.dlo AND b.dto
        GROUP BY 1, 2
      ),
+     unassigned_dates AS (
+       SELECT d FROM deliv WHERE ckdbbm IS NULL
+       UNION SELECT d FROM sale WHERE ckdbbm IS NULL
+       UNION SELECT d FROM terad WHERE ckdbbm IS NULL
+     ),
+     -- An unassigned movement cannot be attributed to a real product. It
+     -- invalidates every balance whose (previous closing, D] window contains it;
+     -- numeric movement fields remain diagnostic assigned-product sums only.
      assessed AS (
        SELECT s.*,
-              (EXISTS (SELECT 1 FROM deliv x WHERE x.ckdbbm=s.ckdbbm AND x.invalid
+              (EXISTS (SELECT 1 FROM deliv x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
                          AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
-               OR EXISTS (SELECT 1 FROM sale x WHERE x.ckdbbm=s.ckdbbm AND x.invalid
+               OR EXISTS (SELECT 1 FROM sale x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
                          AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
-               OR EXISTS (SELECT 1 FROM terad x WHERE x.ckdbbm=s.ckdbbm AND x.invalid
+               OR EXISTS (SELECT 1 FROM terad x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
                          AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
               ) AS movement_invalid
        FROM seq s
      )
      SELECT to_char(s.bizdate,'YYYY-MM-DD') AS d, s.ckdbbm,
-            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND trim(p.ckdbbm)=s.ckdbbm) AS nama,
+            (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND ${sourceIdentity("p.ckdbbm")}=s.ckdbbm) AS nama,
             s.fisik::float8 AS fisik,
             s.fisik_prev::float8 AS fisik_prev,
-            COALESCE((SELECT sum(v) FROM deliv x WHERE x.ckdbbm=s.ckdbbm
+            COALESCE((SELECT sum(v) FROM deliv x WHERE (x.ckdbbm=s.ckdbbm
+                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
                        AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS pen_do,
-            COALESCE((SELECT sum(v) FROM sale x WHERE x.ckdbbm=s.ckdbbm
+            COALESCE((SELECT sum(v) FROM sale x WHERE (x.ckdbbm=s.ckdbbm
+                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
                        AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS sales_gross,
-            COALESCE((SELECT sum(v) FROM terad x WHERE x.ckdbbm=s.ckdbbm
+            COALESCE((SELECT sum(v) FROM terad x WHERE (x.ckdbbm=s.ckdbbm
+                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
                        AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS tera,
             CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL OR s.movement_invalid
                        OR s.tanks IS DISTINCT FROM s.tanks_prev THEN NULL
@@ -706,7 +734,20 @@ export async function getDailyGlByProduct(
               OR s.prev_date <> s.bizdate - 1) AS provisional
      FROM assessed s
      WHERE s.bizdate BETWEEN $2::date AND $3::date
-     ORDER BY s.bizdate, s.ckdbbm`,
+     UNION ALL
+     -- Actual unassigned source movements must remain visible even with no
+     -- opname. They have NO physical stock or computable G/L. Existing unknown
+     -- stock rows already carry same-day unassigned diagnostic sums above.
+     SELECT to_char(u.d,'YYYY-MM-DD') AS d, NULL::text AS ckdbbm, NULL::text AS nama,
+            NULL::float8 AS fisik, NULL::float8 AS fisik_prev,
+            COALESCE((SELECT v FROM deliv x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS pen_do,
+            COALESCE((SELECT v FROM sale x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS sales_gross,
+            COALESCE((SELECT v FROM terad x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS tera,
+            NULL::float8 AS gl, 0::int AS excluded_tanks, true AS provisional
+     FROM unassigned_dates u
+     WHERE u.d BETWEEN $2::date AND $3::date
+       AND NOT EXISTS (SELECT 1 FROM seq s WHERE s.bizdate=u.d AND s.ckdbbm IS NULL)
+     ORDER BY d, ckdbbm`,
     [unit, from, to],
   );
 }

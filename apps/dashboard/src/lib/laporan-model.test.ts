@@ -449,3 +449,71 @@ describe("operational G/L null propagation", () => {
     expect(m.checks.find(r => r.label.startsWith("Losses bulanan"))!.state).toBe("na");
   });
 });
+
+/** Synthetic malformed identities must fail closed even before the SQL guard. */
+describe("operational product identity boundaries", () => {
+  // getSalesByProduct historically declared non-null strings, but SQL/legacy
+  // runtime data can still contain NULL. Exercise that boundary explicitly.
+  const prod = (code: string | null, nama: string | null = null, vol = 10) => ({
+    ckdbbm: code as string, nama: nama as string, vol, omzet: vol * 10000, harga: 10000,
+  });
+  const gl = (code: string | null, value = 0, nama: string | null = null) => ({
+    d: ctx.date, ckdbbm: code, nama, fisik_prev: 100, fisik: 90 + value,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, excluded_tanks: 0, provisional: false,
+  });
+
+  it.each([null, "", "   "])("matching unknown sales/GL identity %j never verifies a zero", (code) => {
+    const unknown = prod(code, "SOLAR");
+    const m = buildLaporanModel({ ...raw, prodDay: [unknown], prodMonth: [unknown], glRows: [gl(code, 0, "SOLAR")] }, ctx);
+    expect(m.sales.rows).toEqual([expect.objectContaining({ ckdbbm: null, nama: "Produk tidak diketahui", gl: null })]);
+    expect(m.glMonthly.rows).toEqual([expect.objectContaining({ ckdbbm: null, nama: "Produk tidak diketahui", selisih: null })]);
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.sales.glProvisional).toBe(true);
+    expect(m.glMonthly.provisional).toBe(true);
+    expect(m.arusMinyak.rows[0]).toMatchObject({ ckdbbm: null, nama: "Produk tidak diketahui", losses: null });
+    expect(m.arusMinyak.total.losses).toBeNull();
+    expect(m.checks.filter((c) => c.label.startsWith("Losses")).every((c) => c.state === "na")).toBe(true);
+    expect(m.target.rows[0]!.nama).toBe("Produk tidak diketahui");
+    expect(m.harga.rows[0]!.nama).toBe("Produk tidak diketahui");
+  });
+
+  it("unknown identity on a zero-volume sales row still invalidates group coverage", () => {
+    const known = prod("KNOWN", "SOLAR");
+    const unknown = prod(null, null, 0);
+    const m = buildLaporanModel({ ...raw, prodDay: [known, unknown], prodMonth: [known, unknown], glRows: [gl("KNOWN")] }, ctx);
+    expect(m.sales.rows.find((r) => r.ckdbbm === "KNOWN")!.gl).toBe(0);
+    expect(m.sales.rows.find((r) => r.ckdbbm === null)!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull();
+  });
+
+  it("normalizes padded identities and preserves separate nonempty unmapped products", () => {
+    const m = buildLaporanModel({ ...raw,
+      prodDay: [prod(" X-UNMAPPED "), prod("Y-UNMAPPED", " ")],
+      prodMonth: [prod("X-UNMAPPED"), prod(" Y-UNMAPPED ", " ")],
+      glRows: [gl("X-UNMAPPED"), gl(" Y-UNMAPPED ", -5)],
+    }, ctx);
+    expect(m.sales.rows.map((r) => [r.ckdbbm, r.nama, r.gl])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0], ["Y-UNMAPPED", "Y-UNMAPPED", -5],
+    ]);
+    expect(m.glMonthly.rows.map((r) => [r.ckdbbm, r.nama, r.selisih, r.vol])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0, 10], ["Y-UNMAPPED", "Y-UNMAPPED", -5, 10],
+    ]);
+    expect(m.sales.glTotal).toBe(-5);
+    expect(m.glMonthly.glMonthTotal).toBe(-5);
+    expect(m.arusMinyak.total.losses).toBe(-5);
+    expect(m.sales.glProvisional).toBe(false);
+    expect(m.glMonthly.provisional).toBe(false);
+  });
+
+  it("a padded invalid source row cannot turn its unpadded aggregate into final zero", () => {
+    const known = prod("KNOWN", "SOLAR");
+    const m = buildLaporanModel({ ...raw, prodDay: [known], prodMonth: [known],
+      glRows: [{ ...gl(" KNOWN "), gl: null, provisional: true }],
+    }, ctx);
+    expect(m.sales.rows[0]!.gl).toBeNull();
+    expect(m.glMonthly.rows[0]!.selisih).toBeNull();
+  });
+});

@@ -3,6 +3,18 @@ import { DO_PRODUCTS } from "@/lib/config";
 import { buildUsulanModel } from "@/lib/usulan-model";
 
 describe("buildUsulanModel", () => {
+  it.each([null, "", "   "])("unidentified stock %s cannot become final inventory through its label", (ckdbbm) => {
+    const product = DO_PRODUCTS[0]!;
+    const m = buildUsulanModel({ glPrev: [{
+      d: "2026-06-01", ckdbbm, nama: product.label, fisik: 1_000, fisik_prev: 1_100,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    }], doDay: [], avg7: [], existing: [] });
+    const row = m.rows.find(r => r.key === product.key)!;
+    expect(row.sisaStock).toBeNull();
+    expect(row.sisaStockProvisional).toBe(true);
+    expect(row.ketahanan).toBeNull();
+  });
+
   it("raw kosong → semua slot DO provisional, total manual kosong, saldo DO terhitung nol, status draft", () => {
     const m = buildUsulanModel({ glPrev: [], doDay: [], avg7: [], existing: [] });
     expect(m.rows).toHaveLength(DO_PRODUCTS.length);

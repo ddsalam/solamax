@@ -7,7 +7,7 @@ import vfsImport from "pdfmake/build/vfs_fonts";
 import { describe, expect, it } from "vitest";
 import { GlBars } from "@/components/harian/HarianCharts";
 import { HarianNotes, HarianSummaryCards, MatrixTable, MonthlyMatrix } from "@/components/harian/HarianSections";
-import { harianGlQualityFixture, harianGlStaleUnitFixture } from "../__fixtures__/harian-gl-quality";
+import { harianGlEmptyWindowFixture, harianGlQualityFixture, harianGlStaleUnitFixture } from "../__fixtures__/harian-gl-quality";
 import { GL_INCOMPLETE_WARNING, GL_MONTHLY_PROVISIONAL_WARNING } from "../harian-gl-display";
 import { buildHarianDocDefinition } from "./harian-doc";
 import { pdfText } from "./glyphs";
@@ -30,19 +30,19 @@ function textIn(node: unknown): string[] {
 }
 
 const model = harianGlQualityFixture();
-const doc = () => buildHarianDocDefinition({ model, meta: {
-  ptLabel: "SYNTHETIC TEST DATA", dateLong: "22 Juli 2026", unitsCount: 7,
-  divisor: 22, generatedLabel: "synthetic fixture", freshnessLabel: "synthetic data; not live",
+const doc = (report = model) => buildHarianDocDefinition({ model: report, meta: {
+  ptLabel: "SYNTHETIC TEST DATA", dateLong: report.date, unitsCount: report.units.length,
+  divisor: report.avgDivisor, generatedLabel: "synthetic fixture", freshnessLabel: "synthetic data; not live",
 } });
 
-function html() {
+function html(report = model) {
   return renderToStaticMarkup(<main className="page">
-    <h1>SYNTHETIC TEST DATA · G/L quality cases · 7 units</h1>
-    <HarianSummaryCards model={model} />
-    <MatrixTable title="Gain / Losses — harian" hint="liter" units={model.units} {...model.glDaily} incomplete={false} signTone provisional={model.glProvisional} glIncomplete={model.glDaily.grandTotal === null} />
-    <GlBars units={model.units} totals={model.glMonthly.totalsByUnit} provisional={model.glMonthlyProvisional} incomplete={model.glIncomplete} />
-    <MonthlyMatrix title="Gain / Losses — bulanan (MTD)" hint="liter · Kumulatif & Rata-Rata" units={model.units} {...model.glMonthly} divisor={22} incomplete={false} signTone provisional={model.glMonthlyProvisional} glIncomplete={model.glIncomplete} />
-    <HarianNotes notes={model.notes} />
+    <h1>SYNTHETIC TEST DATA · G/L quality cases · {report.units.length} units</h1>
+    <HarianSummaryCards model={report} />
+    <MatrixTable title="Gain / Losses — harian" hint="liter" units={report.units} {...report.glDaily} incomplete={report.freshness.incomplete} signTone provisional={report.glProvisional} glIncomplete={report.glDaily.grandTotal === null} />
+    <GlBars units={report.units} totals={report.glMonthly.totalsByUnit} provisional={report.glMonthlyProvisional} incomplete={report.glIncomplete} />
+    <MonthlyMatrix title="Gain / Losses — bulanan (MTD)" hint="liter · Kumulatif & Rata-Rata" units={report.units} {...report.glMonthly} divisor={report.avgDivisor} incomplete={report.freshness.incomplete} signTone provisional={report.glMonthlyProvisional} glIncomplete={report.glIncomplete} />
+    <HarianNotes notes={report.notes} />
   </main>);
 }
 
@@ -142,6 +142,90 @@ describe("G/L screen/PDF quality parity — synthetic seven units", () => {
   });
 });
 
+describe("G/L screen/PDF all-empty scope", () => {
+  it("does not invent measured zero for an empty three-unit scope", () => {
+    const empty = harianGlEmptyWindowFixture();
+    expect(empty.units.every((u) => u.notYet)).toBe(true);
+    expect(empty.glDaily.grandTotal).toBeNull();
+    expect(empty.glMonthly.grand).toEqual({ kum: null, avg: null });
+    expect(empty.glDaily.rows.every((r) => r.total === null)).toBe(true);
+    expect(empty.glMonthly.rows.every((r) => r.total.kum === null && r.total.avg === null)).toBe(true);
+    const markup = html(empty);
+    expect(markup).not.toContain("tanpa selisih");
+    expect(markup).toContain("TIDAK LENGKAP");
+    expect(markup).not.toContain('class="harian-gl-fill"');
+    expect(markup.match(/class="text-h2 t-primary num mt2">([^<]+)/g)?.slice(-2))
+      .toEqual(['class="text-h2 t-primary num mt2">—', 'class="text-h2 t-primary num mt2">—']);
+
+    const content = doc(empty).content as unknown as Array<Record<string, unknown>>;
+    const cards = content.find((c) => Array.isArray(c.columns) && (c.columns as unknown[]).length === 4)!;
+    const columns = cards.columns as unknown[];
+    expect(textIn(columns[2])).toEqual(["G/L hari ini (L)", "—", "TIDAK LENGKAP"]);
+    expect(textIn(columns[3])).toEqual(["G/L bulan berjalan (L)", "—", "TIDAK LENGKAP"]);
+    expect(textIn(content).join(" ")).not.toContain("tanpa selisih");
+    const dailyIndex = content.findIndex((c) => String(c.text).startsWith("Gain / Losses — harian"));
+    const dailyTable = content[dailyIndex + 2]!.table as { body: unknown[][] };
+    const dailyValues = dailyTable.body.slice(1).flatMap((r) => r.slice(1).flatMap(textIn));
+    expect(dailyValues).toHaveLength((empty.glDaily.rows.length + 1) * (empty.units.length + 1));
+    expect(new Set(dailyValues)).toEqual(new Set(["—"]));
+    const monthlyIndex = content.findIndex((c) => String(c.text).startsWith("Gain / Losses — bulanan (MTD)"));
+    const monthlyTable = content[monthlyIndex + 1]!.table as { body: unknown[][] };
+    const monthlyValues = monthlyTable.body.slice(2).flatMap((r) => r.slice(1).flatMap(textIn));
+    expect(monthlyValues).toHaveLength((empty.glMonthly.rows.length + 1) * (empty.units.length + 1) * 2);
+    expect(new Set(monthlyValues)).toEqual(new Set(["—"]));
+  });
+
+  it("withholds an earlier gain when the known current date has no computed G/L", () => {
+    const earlier = harianGlEmptyWindowFixture({ day: "earlier", gl: 7 });
+    expect(earlier.units[0]!.notYet).toBe(false);
+    expect(earlier.units[0]!.stale).toBe(false);
+    expect(earlier.glDaily.grandTotal).toBeNull();
+    expect(earlier.glMonthly.grand).toEqual({ kum: null, avg: null });
+    expect(earlier.glMonthly.totalsByUnit[1]).toEqual({ kum: null, avg: null });
+    expect(earlier.glMonthly.rows.find((r) => r.label === "Solar")?.total)
+      .toEqual({ kum: null, avg: null });
+    expect(earlier.glIncomplete).toBe(true);
+    expect(earlier.glMonthlyProvisional).toBe(true);
+    const cards = renderToStaticMarkup(<HarianSummaryCards model={earlier} />);
+    expect(cards).not.toContain("tanpa selisih");
+    expect(cards.match(/class="text-h2 t-primary num mt2">([^<]+)/g)?.slice(-2))
+      .toEqual(['class="text-h2 t-primary num mt2">—', 'class="text-h2 t-primary num mt2">—']);
+    const markup = html(earlier);
+    expect(markup).toContain(GL_INCOMPLETE_WARNING);
+    expect(markup).not.toContain('class="harian-gl-fill"');
+    const content = doc(earlier).content as unknown as Array<Record<string, unknown>>;
+    const cardRow = content.find((c) => Array.isArray(c.columns) && (c.columns as unknown[]).length === 4)!;
+    const columns = cardRow.columns as unknown[];
+    expect(textIn(columns[2])).toEqual(["G/L hari ini (L)", "—", "TIDAK LENGKAP"]);
+    expect(textIn(columns[3])).toEqual(["G/L bulan berjalan (L)", "—", "TIDAK LENGKAP"]);
+    expect(textIn(content).join(" ")).toContain(pdfText(GL_INCOMPLETE_WARNING));
+    const monthlyIndex = content.findIndex((c) => String(c.text).startsWith("Gain / Losses — bulanan (MTD)"));
+    const monthlyTable = content[monthlyIndex + 1]!.table as { body: unknown[][] };
+    const solar = monthlyTable.body.find((r) => textIn(r[0])[0] === "Solar")!;
+    expect(solar.slice(1).flatMap(textIn).every((value) => value === "—")).toBe(true);
+  });
+
+  it("preserves measured current zero while an earlier missing date withholds MTD", () => {
+    const current = harianGlEmptyWindowFixture({ day: "current", gl: 0 });
+    expect(current.glDaily.grandTotal).toBe(0);
+    expect(current.glDaily.totalsByUnit[1]).toBe(0);
+    expect(current.glProvisional).toBe(false);
+    expect(current.glMonthly.grand).toEqual({ kum: null, avg: null });
+    expect(current.glMonthly.totalsByUnit[1]).toEqual({ kum: null, avg: null });
+    expect(current.glIncomplete).toBe(true);
+    expect(current.glMonthlyProvisional).toBe(true);
+    const cards = renderToStaticMarkup(<HarianSummaryCards model={current} />);
+    expect(cards.match(/class="text-h2 t-primary num mt2">([^<]+)/g)?.slice(-2))
+      .toEqual(['class="text-h2 t-primary num mt2">0', 'class="text-h2 t-primary num mt2">—']);
+    expect(cards.match(/tanpa selisih/g)).toHaveLength(1);
+    const content = doc(current).content as unknown as Array<Record<string, unknown>>;
+    const cardRow = content.find((c) => Array.isArray(c.columns) && (c.columns as unknown[]).length === 4)!;
+    const columns = cardRow.columns as unknown[];
+    expect(textIn(columns[2])).toEqual(["G/L hari ini (L)", "0", "tanpa selisih"]);
+    expect(textIn(columns[3])).toEqual(["G/L bulan berjalan (L)", "—", "TIDAK LENGKAP"]);
+  });
+});
+
 // Optional local visual output, never published and explicitly marked synthetic.
 const output = process.env.HARIAN_QUALITY_RENDER_OUT;
 (output ? it : it.skip)("writes synthetic HTML/PDF and verifies PDF text bytes", async () => {
@@ -156,4 +240,42 @@ const output = process.env.HARIAN_QUALITY_RENDER_OUT;
   expect(text).toContain("SEMENTARA");
   expect(text).toContain("TIDAK LENGKAP");
   expect(text).not.toMatch(/NaN|Infinity|sel tanpa data tampil 0/);
+});
+
+
+(output ? it : it.skip)("writes an actual synthetic empty-scope PDF with unavailable G/L headlines", async () => {
+  mkdirSync(output!, { recursive: true });
+  const empty = harianGlEmptyWindowFixture();
+  writeFileSync(join(output!, "empty-scope.html"), `<!doctype html><meta charset="utf-8"><title>Synthetic empty G/L scope</title><body>${html(empty)}</body>`);
+  const bytes = await new Promise<Buffer>((resolve) => pdfMake.createPdf(doc(empty)).getBuffer(resolve));
+  const pdf = join(output!, "empty-scope.pdf");
+  writeFileSync(pdf, bytes);
+  const text = execFileSync("pdftotext", ["-raw", pdf, "-"], { encoding: "utf8" });
+  expect(text).toContain("SYNTHETIC TEST DATA");
+  expect(text).toMatch(/G\/L hari ini \(L\)\s+—\s+TIDAK LENGKAP/);
+  expect(text).toMatch(/G\/L bulan berjalan \(L\)\s+—\s+TIDAK LENGKAP/);
+  expect(text).not.toMatch(/tanpa selisih|NaN|Infinity/);
+});
+
+(output ? it : it.skip).each([
+  { name: "missing-current-gl", day: "earlier" as const, gl: 7 },
+  { name: "measured-current-zero", day: "current" as const, gl: 0 },
+])("writes an actual synthetic $name PDF with incomplete MTD withheld", async ({ name, day, gl }) => {
+  mkdirSync(output!, { recursive: true });
+  const report = harianGlEmptyWindowFixture({ day, gl });
+  writeFileSync(join(output!, `${name}.html`), `<!doctype html><meta charset="utf-8"><title>Synthetic ${name}</title><body>${html(report)}</body>`);
+  const bytes = await new Promise<Buffer>((resolve) => pdfMake.createPdf(doc(report)).getBuffer(resolve));
+  const pdf = join(output!, `${name}.pdf`);
+  writeFileSync(pdf, bytes);
+  const text = execFileSync("pdftotext", ["-raw", pdf, "-"], { encoding: "utf8" });
+  expect(text).toContain("SYNTHETIC TEST DATA");
+  expect(text).toMatch(/G\/L bulan berjalan \(L\)\s+—\s+TIDAK LENGKAP/);
+  expect(text).not.toMatch(/NaN|Infinity/);
+  if (day === "earlier") {
+    expect(text).toMatch(/G\/L hari ini \(L\)\s+—\s+TIDAK LENGKAP/);
+    expect(text).not.toContain("tanpa selisih");
+  } else {
+    expect(text).toMatch(/G\/L hari ini \(L\)\s+0\s+tanpa selisih/);
+    expect(text.match(/tanpa selisih/g)).toHaveLength(1);
+  }
 });

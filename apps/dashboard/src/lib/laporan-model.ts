@@ -22,7 +22,7 @@ import {
 } from "@/lib/compliance";
 import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
 import { ringkasHarga } from "@/lib/harga-wajar";
-import { aggregateDailyGl, alarmScore, bauran, glPercent, type AlarmCheck } from "@/lib/derive";
+import { aggregateDailyGl, alarmScore, bauran, glPercent, normalizeProductIdentity, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import { uangTunai } from "@/lib/rekon";
 import type * as Q from "@/lib/queries";
@@ -52,7 +52,7 @@ type RpRow = { rp: number };
 export type Tone = "success" | "warning" | "danger";
 
 export interface SalesRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   vol: number;
   gl: number | null;
@@ -60,13 +60,13 @@ export interface SalesRow {
   omzet: number;
 }
 export interface GlMonthRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   selisih: number | null;
   vol: number;
 }
 export interface TargetRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   vol: number;
   avgPerDay: number;
@@ -95,7 +95,7 @@ export interface DoHarianRow {
   alurSelisih: number;
 }
 export interface HargaRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   harga: number | null;
 }
@@ -394,10 +394,10 @@ export function buildLaporanModel(
 ): LaporanModel {
   const { unitCode, date, today, mi, detail } = ctx;
   const {
-    prodDay,
+    prodDay: sourceProdDay,
     glRows,
     zeroClosing,
-    prodMonth,
+    prodMonth: sourceProdMonth,
     delivMonth,
     doDay,
     doAnomalies,
@@ -406,6 +406,17 @@ export function buildLaporanModel(
     cash,
     saldo,
   } = raw;
+
+  // Identity and display label have different contracts: a missing code
+  // stays null for coverage, while every rendered label must be nonempty.
+  const productLabel = (code: string | null, nama: string | null | undefined) =>
+    code === null ? "Produk tidak diketahui" : nama?.trim() || code;
+  const presentProduct = (p: Prod) => {
+    const ckdbbm = normalizeProductIdentity(p.ckdbbm);
+    return { ...p, ckdbbm, nama: productLabel(ckdbbm, p.nama) };
+  };
+  const prodDay = sourceProdDay.map(presentProduct);
+  const prodMonth = sourceProdMonth.map(presentProduct);
 
   // ── DO Harian (6 produk tetap) ──
   const doRows: DoHarianRow[] = DO_PRODUCTS.map((dp) => {
@@ -457,13 +468,15 @@ export function buildLaporanModel(
   const dayAgg = aggregateDailyGl(glRows.filter((r) => r.d === date));
   const monthAgg = aggregateDailyGl(glRows);
   const invalidDayProducts = new Set(glRows.filter((r) => r.d === date &&
-    (r.gl === null || r.excluded_tanks > 0)).map((r) => r.ckdbbm));
+    (r.gl === null || r.excluded_tanks > 0)).map((r) => normalizeProductIdentity(r.ckdbbm)));
   const invalidMonthProducts = new Set(glRows.filter((r) =>
-    r.gl === null || r.excluded_tanks > 0).map((r) => r.ckdbbm));
+    r.gl === null || r.excluded_tanks > 0).map((r) => normalizeProductIdentity(r.ckdbbm)));
   const glByCode = new Map([...dayAgg.byProduct].map(([k, v]) =>
     [k, invalidDayProducts.has(k) ? null : v.signed] as const));
-  const missingDayProduct = prodDay.some((p) => p.vol !== 0 && !glByCode.has(p.ckdbbm));
-  const missingMonthProduct = prodMonth.some((p) => p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm));
+  const unidentifiedZeroDay = zeroClosing.some((z) => z.d === date && normalizeProductIdentity(z.ckdbbm) === null);
+  const unidentifiedZeroMonth = zeroClosing.some((z) => z.d <= date && z.d.slice(0, 7) === date.slice(0, 7) && normalizeProductIdentity(z.ckdbbm) === null);
+  const missingDayProduct = unidentifiedZeroDay || prodDay.some((p) => p.ckdbbm === null || (p.vol !== 0 && !glByCode.has(p.ckdbbm)));
+  const missingMonthProduct = unidentifiedZeroMonth || prodMonth.some((p) => p.ckdbbm === null || (p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm)));
   const teraByCode = new Map([...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const));
   const glTotal = dayAgg.hasGl && !dayAgg.incomplete && !missingDayProduct ? dayAgg.totalSigned : null;
   const totTera = dayAgg.totalTera;
@@ -475,8 +488,8 @@ export function buildLaporanModel(
     ckdbbm: p.ckdbbm,
     nama: p.nama,
     vol: p.vol,
-    gl: glByCode.get(p.ckdbbm) ?? null,
-    tera: teraByCode.get(p.ckdbbm) ?? 0,
+    gl: p.ckdbbm === null ? null : glByCode.get(p.ckdbbm) ?? null,
+    tera: p.ckdbbm === null ? 0 : teraByCode.get(p.ckdbbm) ?? 0,
     omzet: p.omzet,
   }));
 
@@ -693,11 +706,19 @@ export function buildLaporanModel(
   const glMonthRows: GlMonthRow[] = orderBy(
     [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
       ckdbbm,
-      nama: v.nama ?? ckdbbm,
+      nama: productLabel(ckdbbm, v.nama),
       selisih: invalidMonthProducts.has(ckdbbm) ? null : v.signed,
       vol: prodMonth.find((p) => p.ckdbbm === ckdbbm)?.vol ?? 0,
     })),
   );
+
+  if (unidentifiedZeroMonth || prodMonth.some((p) => p.ckdbbm === null) ||
+      glRows.some((r) => normalizeProductIdentity(r.ckdbbm) === null)) {
+    // Aggregation rejects unidentified balances; keep their diagnostic row
+    // visible without inventing a real product or a zero-valued G/L.
+    glMonthRows.push({ ckdbbm: null, nama: productLabel(null, null), selisih: null,
+      vol: prodMonth.filter((p) => p.ckdbbm === null).reduce((sum, p) => sum + p.vol, 0) });
+  }
 
   // ── Realisasi & Target (rows) ──
   const targetRows: TargetRow[] = orderBy(prodMonth).map((p) => {

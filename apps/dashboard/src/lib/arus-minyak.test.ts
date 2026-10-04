@@ -8,6 +8,9 @@
  * DB pilot — jadi tes ini menguji jalur formula, bukan formula menguji dirinya.
  */
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
 import { gradeArus, parseArusHtml, ringkas } from "@/lib/arus-minyak.grade";
 import type { DailyGlRow } from "@/lib/queries";
@@ -347,5 +350,73 @@ describe("badge penutup-nol kelas 1 (tanpa DB, tanpa kalender)", () => {
       [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 1, prev: 1, next: 1, recv_next: 0 }],
     );
     expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["T-05"] });
+  });
+});
+
+/** Synthetic boundary cases: an absent source identity is never a measured zero. */
+describe("Arus Minyak — missing source product identities", () => {
+  const synthetic = (code: string | null, gl = 0): DailyGlRow => ({
+    d: "2026-10-01", ckdbbm: code, nama: "SOLAR", fisik_prev: 100,
+    pen_do: 0, sales_gross: 10, tera: 0, fisik: 90, gl,
+    excluded_tanks: 0, provisional: false,
+  });
+  const zero = (code: string | null): import("./queries").ZeroClosingRow => ({
+    unit_id: 1, d: "2026-10-01", ckdtangki: "SYNTHETIC-TANK", ckdbbm: code,
+    nama: "SOLAR", bk: 2000, prev: 2000, next: 2000, recv_next: 0,
+  });
+
+  it.each([null, "", "   "])("unknown code %j cannot crash or masquerade as known zero", (code) => {
+    const a = buildArusMinyak([synthetic("BB-03"), synthetic(code)], [zero(code)]);
+    expect(a.rows).toHaveLength(2);
+    expect(a.rows[0]).toMatchObject({ ckdbbm: "BB-03", nama: "SOLAR", losses: 0, pct: 0, zeroClosing: null });
+    expect(a.rows[1]).toMatchObject({ ckdbbm: null, nama: "Produk tidak diketahui", losses: null, pct: null });
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+  });
+
+  it.each([null, "", "   "])("unidentified zero-closing %j cannot bless a known-only subtotal", (code) => {
+    const a = buildArusMinyak([synthetic("BB-03", -5)], [zero(code)]);
+    expect(a.rows[0]).toMatchObject({ losses: -5, zeroClosing: null });
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+  });
+
+  it("renders the query's unassigned diagnostic row separately with unavailable losses", () => {
+    const unknown = { ...synthetic(null), nama: null, fisik: null, fisik_prev: null,
+      gl: null, provisional: true };
+    const a = buildArusMinyak([synthetic("BB-03"), unknown], [zero(null)]);
+    const html = renderToStaticMarkup(createElement(ArusMinyakSection, { arus: a }));
+    const cells = parseArusHtml(html);
+    expect(cells.get("SOLAR")?.slice(-2)).toEqual([0, 0]);
+    expect(cells.get("Produk tidak diketahui")?.slice(-2)).toEqual([null, null]);
+    expect(cells.get("TOTAL")?.slice(-2)).toEqual([null, null]);
+    expect(html).toContain("belum final");
+    expect(html).toContain("total G/L yang bergantung padanya belum tersedia");
+    expect(html).not.toContain("tidak ikut TOTAL");
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("keeps nonempty unmapped codes distinct and preserves their measured zero", () => {
+    const a = buildArusMinyak([
+      { ...synthetic(" X-UNMAPPED "), nama: null },
+      { ...synthetic("Y-UNMAPPED", -5), nama: " " },
+      synthetic("BB-03", 7),
+    ]);
+    expect(a.rows.map((r) => [r.ckdbbm, r.nama, r.losses])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0], ["Y-UNMAPPED", "Y-UNMAPPED", -5], ["BB-03", "SOLAR", 7],
+    ]);
+    expect(a.total.losses).toBe(2);
+    expect(a.incomplete).toBe(false);
+    expect(a.provisional).toBe(false);
+  });
+
+  it("matches zero-closing diagnostics only by a nonempty normalized code", () => {
+    const a = buildArusMinyak([synthetic(" BB-03 "), synthetic("X-UNMAPPED")], [zero(" BB-03 ")]);
+    expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["SYNTHETIC-TANK"] });
+    expect(a.rows[1]!.zeroClosing).toBeNull();
   });
 });
