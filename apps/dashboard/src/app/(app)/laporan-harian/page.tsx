@@ -114,9 +114,10 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
     getDailySalesByProduct(unitIds, spanFrom, date),
     getUnitCoverage(unitIds),
     getSyncByUnit(unitIds),
-    // Penutup opname bernilai 0 di bulan berjalan. Dipindai s/d D+1 (dibatasi
-    // hari ini) karena aturannya butuh penutup hari BERIKUTNYA sebagai pembanding.
-    getZeroClosingEvents(unitIds, addDays(mFrom, -1), addDays(date, 1) > today ? today : addDays(date, 1)),
+    // Penutup nol pada mFrom−1 juga memengaruhi anchor hari pertama bulan ini.
+    // Ambil mFrom−2 untuk lag detektor; model membatasi peringatan ke hari/MTD.
+    // Batas akhir D+1 (maksimal hari ini) menyediakan pembanding berikutnya.
+    getZeroClosingEvents(unitIds, addDays(mFrom, -2), addDays(date, 1) > today ? today : addDays(date, 1)),
   ]);
 
   /**

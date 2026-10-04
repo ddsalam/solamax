@@ -10,6 +10,8 @@ import { getClosingOpname, getDailyGlByProduct, getDailySalesByProduct, getDeliv
 
 import { buildLaporanModel, type LaporanRaw } from "./laporan-model";
 import { buildArusMinyak } from "./arus-minyak";
+import { buildHarianModel } from "./harian-model";
+import { addDays } from "./periods";
 
 const U = 1 as ScopedUnitId;
 const D1 = "2026-10-01";
@@ -264,6 +266,68 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     qScoped.mockImplementation(async (_scope, sql, params) => (await db.query(sql, params)).rows);
   });
   afterAll(async () => { await db?.close(); });
+
+  it.each(["2026-10-01", "2026-01-01", "2024-03-01"])(
+    "detects a previous-month zero anchor with predecessor context (%s)", async first => {
+      const previous = addDays(first, -1);
+      const predecessor = addDays(first, -2);
+      const following = addDays(first, 1);
+      await db.exec("INSERT INTO product VALUES (1,'P','SOLAR')");
+      await stock(predecessor, "A", 10_000);
+      await stock(previous, "A", 0, 10_000);
+      await stock(first, "A", 9_000);
+      await stock(following, "A", 8_500);
+      await sale(first, 1_000); await sale(following, 500);
+      // Starting at the candidate zero itself loses its lag and hides the event.
+      expect(await getZeroClosingEvents([U], previous, following)).toEqual([]);
+      const zeros = await getZeroClosingEvents([U], predecessor, following);
+      expect(zeros).toEqual([expect.objectContaining({
+        d: previous, prev: 10_000, next: 9_000, recv_next: 0,
+      })]);
+      const gl = await getDailyGlByProduct(U, first, following);
+      expect(gl[0]).toMatchObject({ fisik_prev: 0, fisik: 9_000, gl: 10_000, provisional: false });
+      const build = async (date: string) => buildHarianModel({
+        units: [{ unit_id: U, code: "SYNTHETIC", name: "Synthetic unit" }], date,
+        dailySales: await getDailySalesByProduct([U], first, date),
+        gl: new Map([[1, gl]]), coverage: [{ unit_id: 1, sales_min: predecessor }],
+        sync: [{ unit_id: 1, last_run: `${following}T01:00:00Z` }],
+        glSuspectDates: zeros.map(z => ({ unitId: z.unit_id, date: z.d })),
+      });
+      const boundary = await build(first);
+      expect(boundary).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: false });
+      expect(boundary.glSuspectUnits.map(u => u.unitId)).toEqual([1]);
+      expect(boundary.glDaily.grandTotal).toBe(10_000);
+      expect(boundary.glMonthly.grand.kum).toBe(10_000);
+      const later = await build(following);
+      expect(later).toMatchObject({ glProvisional: false, glMonthlyProvisional: true });
+      expect(later.glDaily.grandTotal).toBe(0);
+      expect(later.glMonthly.grand.kum).toBe(10_000);
+      // A real refill explains the rebound and must still suppress this warning.
+      await receipt(first, 9_000);
+      expect(await getZeroClosingEvents([U], predecessor, following)).toEqual([]);
+    },
+  );
+
+  it("discards a detected zero whose following anchor precedes the report month", async () => {
+    await db.exec("INSERT INTO product VALUES (1,'P','SOLAR')");
+    await stock("2026-09-28", "A", 10_000);
+    await stock("2026-09-29", "A", 0, 10_000);
+    await stock("2026-09-30", "A", 9_000);
+    await stock(D1, "A", 8_000); await sale(D1, 1_000);
+    const zeros = await getZeroClosingEvents([U], "2026-09-28", D2);
+    expect(zeros).toEqual([expect.objectContaining({ d: "2026-09-29" })]);
+    const model = buildHarianModel({
+      units: [{ unit_id: U, code: "SYNTHETIC", name: "Synthetic unit" }], date: D1,
+      dailySales: await getDailySalesByProduct([U], D1, D1),
+      gl: new Map([[1, await getDailyGlByProduct(U, D1, D1)]]),
+      coverage: [{ unit_id: 1, sales_min: "2026-09-28" }],
+      sync: [{ unit_id: 1, last_run: `${D2}T01:00:00Z` }],
+      glSuspectDates: zeros.map(z => ({ unitId: z.unit_id, date: z.d })),
+    });
+    expect(model).toMatchObject({ glProvisional: false, glMonthlyProvisional: false, glSuspectUnits: [] });
+    expect(model.glDaily.grandTotal).toBe(0);
+    expect(model.glMonthly.grand.kum).toBe(0);
+  });
 
   it("keeps complete matching tank totals and a genuine zero G/L", async () => {
     await baseline();
