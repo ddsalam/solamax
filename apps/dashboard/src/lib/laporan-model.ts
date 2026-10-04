@@ -507,7 +507,7 @@ export function buildLaporanModel(
     ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows),
     ...(missingDayProduct ? {
       provisional: true, incomplete: true,
-      total: { ...arusMinyakRaw.total, losses: null, pct: null },
+      total: { ...arusMinyakRaw.total, awal: null, teori: null, fisik: null, losses: null, pct: null },
     } : {}),
   };
 

@@ -9,6 +9,7 @@ vi.mock("./db", () => ({ q: vi.fn(), qScoped, pool: {} }));
 import { getClosingOpname, getDailyGlByProduct, getDailySalesByProduct, getDeliveryByProduct, getGlSourceRevision, getSalesByProduct, getZeroClosingEvents } from "./queries";
 
 import { buildLaporanModel, type LaporanRaw } from "./laporan-model";
+import { buildArusMinyak } from "./arus-minyak";
 
 const U = 1 as ScopedUnitId;
 const D1 = "2026-10-01";
@@ -612,6 +613,43 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     await sale(D2, 1_000); await receipt(D2, null);
     const [r] = await getDailyGlByProduct(U, D3, D3);
     expect(r).toMatchObject({ sales_gross: 1_000, gl: null, provisional: true });
+  });
+
+  it.each(["receipt", "sale", "tera"] as const)("SQL rejected %s movement cannot become a numeric Arus theory", async domain => {
+    await baseline(); await receipt(D2, 500);
+    if (domain === "receipt") await receipt(D2, null);
+    else if (domain === "sale") await sale(D2, null);
+    else await tera(D2, null);
+    const source = await day();
+    expect(source).toMatchObject({ movement_invalid: true, pen_do: 500,
+      sales_gross: 1_000, tera: 0, gl: null });
+    const model = buildArusMinyak([source]);
+    expect(model.rows[0]).toMatchObject({ awal: 20_000, penerimaan: 500,
+      penjualan: 1_000, teori: null, fisik: 19_000, losses: null });
+    expect(model.total).toMatchObject({ awal: 20_000, teori: null, fisik: 19_000 });
+    expect(model.incomplete).toBe(true); expect(model.provisional).toBe(true);
+  });
+
+  it("SQL valid movements retain theory when only current physical stock is missing", async () => {
+    await stock(D1, "A", 10_000); await stock(D1, "B", 10_000);
+    await stock(D2, "A", null, 9_000); await stock(D2, "B", 10_000);
+    await sale(D2, 1_000);
+    const source = await day();
+    expect(source).toMatchObject({ movement_invalid: false, fisik_prev: 20_000, fisik: null, gl: null });
+    const model = buildArusMinyak([source]);
+    expect(model.rows[0]).toMatchObject({ awal: 20_000, teori: 19_000, fisik: null, losses: null });
+    expect(model.total).toMatchObject({ awal: 20_000, teori: 19_000, fisik: null });
+  });
+
+  it("SQL unknown movements invalidate theory without assigning their diagnostic sums", async () => {
+    await baseline(); await unassignedMovement("receipt", "\u00a0");
+    const source = await getDailyGlByProduct(U, D2, D2);
+    expect(source).toHaveLength(2);
+    expect(source.every(r => r.movement_invalid)).toBe(true);
+    const model = buildArusMinyak(source);
+    expect(model.rows.find(r => r.ckdbbm === "P")).toMatchObject({ penerimaan: 0, teori: null });
+    expect(model.rows.find(r => r.ckdbbm === null)).toMatchObject({ penerimaan: 100, awal: null, teori: null, fisik: null });
+    expect(model.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null });
   });
 
   it("chooses latest morning, ignores 08:00 and later sessions, and preserves unaffected products", async () => {

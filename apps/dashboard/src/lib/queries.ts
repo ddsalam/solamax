@@ -577,6 +577,7 @@ export interface DailyGlRow {
   pen_do: number; // Σ NVOLDO valid (Penerimaan) dlm jendela (prev, D]
   sales_gross: number; // Σ nvolume jual KOTOR tersedia dlm jendela (prev, D]
   tera: number; // Σ tera (L) tersedia dlm jendela (prev, D]
+  movement_invalid: boolean; // true = mutasi hanya subtotal diagnostik, bukan dasar Stock Teori
   gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung
   excluded_tanks: number; // penutup dengan stok atau identitas produk/tangki tak valid
   provisional: boolean; // penutup/anchor belum final, tak lengkap, atau ada celah
@@ -751,7 +752,7 @@ export async function getDailyGlByProduct(
             (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND ${sourceIdentity("p.ckdbbm")}=s.ckdbbm) AS nama,
             s.fisik::float8 AS fisik,
             s.fisik_prev::float8 AS fisik_prev,
-            s.pen_do, s.sales_gross, s.tera,
+            s.pen_do, s.sales_gross, s.tera, s.movement_invalid,
             CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL OR s.movement_invalid
                        OR s.tanks IS DISTINCT FROM s.tanks_prev THEN NULL
                  ELSE (s.fisik - (s.fisik_prev
@@ -773,6 +774,7 @@ export async function getDailyGlByProduct(
             COALESCE((SELECT v FROM deliv x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS pen_do,
             COALESCE((SELECT v FROM sale x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS sales_gross,
             COALESCE((SELECT v FROM terad x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS tera,
+            true AS movement_invalid,
             NULL::float8 AS gl, 0::int AS excluded_tanks, true AS provisional
      FROM unassigned_dates u
      WHERE u.d BETWEEN $2::date AND $3::date

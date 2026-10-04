@@ -331,7 +331,7 @@ describe("G/L", () => {
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional: false,
   });
 
@@ -427,7 +427,7 @@ describe("G/L provisional (hari berjalan)", () => {
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional,
   });
 
@@ -472,7 +472,7 @@ describe("N3 — provisional pada D−1 di JAM PAGI (kondisi harian, bukan tepi)
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional,
   });
 
@@ -551,7 +551,7 @@ describe("D6 — dua skala tren dipisah (batang vs garis TOTAL)", () => {
 describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan KOSONG)", () => {
   const glRow = (d: string, gl: number): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0,
-    sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   const salesDays = (unit: number, days: string[]) =>
     days.map((d) => sale(unit, d, "SOLAR", 1000));
@@ -614,7 +614,7 @@ describe("G/L integrity — product coverage and source quality", () => {
   const row = (over: Partial<DailyGlRow> = {}): DailyGlRow => ({
     d: "2026-10-02", ckdbbm: "BB-03", nama: "SOLAR", fisik: 1000,
     fisik_prev: 1100, pen_do: 0, sales_gross: 100, tera: 0, gl: 0,
-    excluded_tanks: 0, provisional: false, ...over,
+    movement_invalid: false, excluded_tanks: 0, provisional: false, ...over,
   });
   const input = (over: Partial<HarianInput> = {}) => base({
     date: "2026-10-02",
@@ -665,7 +665,7 @@ describe("G/L integrity — product coverage and source quality", () => {
 
 it("distinct unknown product codes cannot mask one another through Lain-lain", () => {
   const m = buildHarianModel(base({ date:"2026-10-02", dailySales:[sale(4,"2026-10-02","P1",100),sale(4,"2026-10-02","P2",200)], gl:new Map([[4,[{
-    d:"2026-10-02",ckdbbm:"P1",nama:null,fisik:100,fisik_prev:200,pen_do:0,sales_gross:100,tera:0,gl:0,excluded_tanks:0,provisional:false,
+    d:"2026-10-02",ckdbbm:"P1",nama:null,fisik:100,fisik_prev:200,pen_do:0,sales_gross:100,tera:0,gl:0,movement_invalid: false, excluded_tanks:0,provisional:false,
   }]]]) }));
   expect(m.glIncomplete).toBe(true);
   expect(m.glDaily.rows.find((r) => r.key === OTHER_KEY)!.byUnit[4]).toBeNull();
@@ -673,7 +673,7 @@ it("distinct unknown product codes cannot mask one another through Lain-lain", (
 
 
 it("dated zero-closing warns its day and following anchor without flagging unrelated days", () => {
-  const r: DailyGlRow = { d:"2026-10-02",ckdbbm:"BB-03",nama:"SOLAR",fisik:500,fisik_prev:400,pen_do:0,sales_gross:0,tera:0,gl:100,excluded_tanks:0,provisional:false };
+  const r: DailyGlRow = { d:"2026-10-02",ckdbbm:"BB-03",nama:"SOLAR",fisik:500,fisik_prev:400,pen_do:0,sales_gross:0,tera:0,gl:100,movement_invalid: false, excluded_tanks:0,provisional:false };
   const input=base({date:"2026-10-02",dailySales:[sale(4,"2026-10-02","SOLAR",0)],gl:new Map([[4,[r]]])});
   for (const day of ["2026-10-01","2026-10-02"]) {
     const m=buildHarianModel({...input,glSuspectDates:[{unitId:4,date:day}]});
@@ -690,7 +690,7 @@ it("dated zero-closing warns its day and following anchor without flagging unrel
 describe("G/L freshness for known active units", () => {
   const glRow = (d: string, gl: number): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 3000,
-    pen_do: 0, sales_gross: 1000, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
 
   it("withholds stale-unit daily and MTD contributions even when every received sales row has G/L", () => {
@@ -733,7 +733,7 @@ describe("Harian G/L rejects absent product identities", () => {
   const date = "2026-10-04";
   const glRow = (ckdbbm: string | null): DailyGlRow => ({
     d: date, ckdbbm, nama: null, fisik: 2000, fisik_prev: 3000,
-    pen_do: 0, sales_gross: 1000, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   const unknownSale = (ckdbbm: string | null): DailySalesRow => ({
     ...sale(4, date, "UNKNOWN", 1000), ckdbbm, nama: null,
@@ -807,7 +807,7 @@ describe("Harian empty G/L windows are unavailable rather than measured zero", (
   const date = "2026-07-22";
   const row = (d: string, gl: number | null): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
-    pen_do: 0, sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
 
   it("all-notYet scope has unavailable product/unit/group totals for both day and month", () => {
@@ -892,7 +892,7 @@ describe("Harian empty G/L windows are unavailable rather than measured zero", (
 it("known zero-sales dates without G/L cannot leave a final partial MTD total", () => {
   const row: DailyGlRow = {
     d: "2026-07-22", ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
-    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
   };
   const m = buildHarianModel(base({
     date: "2026-07-22",
@@ -910,7 +910,7 @@ it("known zero-sales dates without G/L cannot leave a final partial MTD total", 
 it("zero-activity products remain neutral when their unit/date has measured G/L", () => {
   const row: DailyGlRow = {
     d: "2026-07-22", ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
-    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
   };
   const m = buildHarianModel(base({
     date: "2026-07-22",
@@ -926,7 +926,7 @@ it("zero-activity products remain neutral when their unit/date has measured G/L"
 it("exact G/L dates are required even when distinct day counts match", () => {
   const row = (d: string): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
-    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   const m = buildHarianModel(base({
     date: "2026-07-22",

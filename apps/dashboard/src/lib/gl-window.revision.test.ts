@@ -28,7 +28,7 @@ vi.mock("./queries", () => ({
     return [{d:to,ckdbbm:state.product,nama:"DEXLITE",fisik:6000,fisik_prev:9000,
       pen_do:state.gl === 4000 ? 0 : 4000,sales_gross:7000,tera:0,
       gl:state.nullValue ? null : state.gl + (unit === 99 ? 10 : 0),excluded_tanks:state.excluded,
-      provisional:state.provisional}];
+      movement_invalid:false, provisional:state.provisional}];
   },
 }));
 import { getDailyGlWindow } from "./gl-window";
@@ -43,13 +43,13 @@ beforeEach(() => {
 });
 
 describe("source-aware G/L cache", () => {
-  it("retires v2 rows even when the source revision has not changed", async () => {
-    const oldKey = ["gl-window-v2", String(U), "2026-10-02", "2026-10-02", state.revision].join("|");
+  it.each(["v2", "v3"])("retires %s rows even when the source revision has not changed", async version => {
+    const oldKey = [`gl-window-${version}`, String(U), "2026-10-02", "2026-10-02", state.revision].join("|");
     state.cache.set(oldKey, [{ d: "2026-10-02", ckdbbm: "BB-06", gl: 4000, provisional: false }]);
     state.gl=0;
     expect((await getDailyGlWindow(U,"2026-10-02","2026-10-02"))[0]!.gl).toBe(0);
     expect(state.reads).toBe(1);
-    expect([...state.cache.keys()].some(k => k.startsWith("gl-window-v3|"))).toBe(true);
+    expect([...state.cache.keys()].some(k => k.startsWith("gl-window-v4|"))).toBe(true);
   });
   it.each([null, "", "   "])("does not reuse a final-looking unknown product (%s)", async (product) => {
     state.product=product;

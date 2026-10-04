@@ -9,7 +9,7 @@ export function harianGlQualityFixture(completeDaily = false) {
   }));
   const row = (d: string, gl: number | null, provisional = false): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 20000, fisik_prev: 20000,
-    pen_do: 0, sales_gross: 1000, tera: 0, gl, excluded_tanks: gl === null ? 1 : 0, provisional,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl, movement_invalid: false, excluded_tanks: gl === null ? 1 : 0, provisional,
   });
   const before = "2026-07-21";
   const date = "2026-07-22";
@@ -38,7 +38,7 @@ export function harianGlStaleUnitFixture() {
   const date = "2026-10-02";
   const row = (d: string, gl: number): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 10000, fisik_prev: 10000,
-    pen_do: 0, sales_gross: 1000, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   return buildHarianModel({
     units: [current, stale], date,
@@ -74,7 +74,7 @@ export function harianGlEmptyWindowFixture(observation?: { day: "earlier" | "cur
       d: observation.day === "earlier" ? before : date,
       ckdbbm: "BB-03", nama: "SOLAR", fisik: 1000 + observation.gl,
       fisik_prev: 1000, pen_do: 0, sales_gross: 0, tera: 0, gl: observation.gl,
-      excluded_tanks: 0, provisional: false,
+      movement_invalid: false, excluded_tanks: 0, provisional: false,
     }]]]) : new Map(),
   });
 }

@@ -9,7 +9,7 @@ describe("buildUsulanModel", () => {
     const product = DO_PRODUCTS[0]!;
     const m = buildUsulanModel({ glPrev: [{
       d: "2026-06-01", ckdbbm, nama: product.label, fisik: 1_000, fisik_prev: 1_100,
-      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
     }], doDay: [], avg7: [], existing: [] });
     const row = m.rows.find(r => r.key === product.key)!;
     expect(row.sisaStock).toBeNull();
@@ -92,13 +92,13 @@ describe("unassignable closing stock cannot silently finalize a proposal", () =>
   const knownRows = () => DO_PRODUCTS.map((p, i) => ({
     d: "2026-10-03", ckdbbm: `TEST-${i}`, nama: p.label,
     fisik: 1000, fisik_prev: 1100, pen_do: 0, sales_gross: 100, tera: 0,
-    gl: 0, excluded_tanks: 0, provisional: false,
+    gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
   }));
   const build = (glPrev: Parameters<typeof buildUsulanModel>[0]["glPrev"], avg7: Parameters<typeof buildUsulanModel>[0]["avg7"] = []) =>
     buildUsulanModel({ glPrev, doDay: [], avg7, existing: [] });
   const unknown = () => ({
     d: "2026-10-03", ckdbbm: null, nama: null, fisik: null, fisik_prev: null,
-    pen_do: 0, sales_gross: 0, tera: 0, gl: null, excluded_tanks: 1, provisional: true,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: null, movement_invalid: false, excluded_tanks: 1, provisional: true,
   });
 
   it("reproduces PR420: a null-code/null-name stock row is not lost before the identity guard", () => {

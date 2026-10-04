@@ -407,7 +407,7 @@ function arusSection(m: LaporanModel): Content[] {
         (a.excludedTanks > 0
           ? ` ${a.excludedTanks} baris dengan stok atau identitas produk/tangki tidak valid membuat Stock Fisik tidak lengkap.`
           : "") +
-        (a.incomplete ? " Nilai dengan stok/identitas sumber tidak lengkap bertanda “—”; total G/L yang bergantung padanya belum tersedia." : ""),
+        (a.incomplete ? " Nilai dengan stok/identitas sumber tidak lengkap bertanda “—”; total G/L yang bergantung padanya belum tersedia. Stock Teori dan total stok juga tidak tersedia bila inputnya tidak lengkap. Bila mutasi sumber tidak lengkap, angka penerimaan/penjualan/tera yang tersedia hanya bersifat diagnostik." : ""),
       style: "footNote",
       alignment: "left",
     },
