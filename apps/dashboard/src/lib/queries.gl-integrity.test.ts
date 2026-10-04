@@ -6,7 +6,9 @@ import type { ScopedUnitId } from "./scope-rule";
 
 const { qScoped } = vi.hoisted(() => ({ qScoped: vi.fn() }));
 vi.mock("./db", () => ({ q: vi.fn(), qScoped, pool: {} }));
-import { getClosingOpname, getDailyGlByProduct, getDailySalesByProduct, getGlSourceRevision, getZeroClosingEvents } from "./queries";
+import { getClosingOpname, getDailyGlByProduct, getDailySalesByProduct, getDeliveryByProduct, getGlSourceRevision, getSalesByProduct, getZeroClosingEvents } from "./queries";
+
+import { buildLaporanModel, type LaporanRaw } from "./laporan-model";
 
 const U = 1 as ScopedUnitId;
 const D1 = "2026-10-01";
@@ -145,6 +147,7 @@ async function sale(d: string, volume: number | null, product: string | null = "
   const id = `S${++nextId}`;
   await db.query("INSERT INTO sales_header VALUES ($1,$2,$3)", [unit, id, d]);
   await db.query("INSERT INTO sales_detail (unit_id,ckdjualbbm,ckdbbm,nvolume) VALUES ($1,$2,$3,$4)", [unit, id, product, volume]);
+  return id;
 }
 
 async function receipt(d: string | null, volume: number | null, canceled = 0, timestamp = `${D3}T02:00:00+07:00`) {
@@ -244,7 +247,7 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
         dtaglopn date, dtgljam timestamptz, nstockop numeric, nstockbk numeric, sbatal int);
       CREATE TABLE product (unit_id int, ckdbbm char(5), vcnmbbm text);
       CREATE TABLE sales_header (unit_id int, ckdjualbbm text, dtgljual date);
-      CREATE TABLE sales_detail (unit_id int, ckdjualbbm text, ckdbbm char(5), nvolume numeric, nsubtotal numeric);
+      CREATE TABLE sales_detail (unit_id int, ckdjualbbm text, ckdbbm char(5), nvolume numeric, nsubtotal numeric, nhargajual numeric, dtgljam timestamptz);
       CREATE TABLE delivery (unit_id int, dtgltrm date, dtgljam timestamptz, ckdbbm char(5),
         ckdtangki char(5), nvoldo numeric, nvolreal numeric, sbatal int);
       CREATE TABLE terra_resmi (unit_id int, business_date date, ckdbbm char(5), nvolume numeric, sbatal int);
@@ -262,6 +265,89 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
   it("keeps complete matching tank totals and a genuine zero G/L", async () => {
     await baseline();
     expect(await day()).toMatchObject({ fisik: 19_000, fisik_prev: 20_000, gl: 0, excluded_tanks: 0, provisional: false });
+  });
+
+  it.each([" ", "\t", "\n", "\u00a0", "\ufeff"])("sales summary groups boundary aliases (%s) before joining G/L and preserves latest price", async pad => {
+    await db.query("INSERT INTO product VALUES (1,'P','SOLAR'),(1,$1,'SOLAR'),(2,'P','FOREIGN')", [`${pad}P`]);
+    const earlier = await sale(D2, 100, "P");
+    const latest = await sale(D2, 200, `${pad}P${pad}`);
+    await db.query("UPDATE sales_detail SET nsubtotal=1000000, nhargajual=10000, dtgljam=$1 WHERE ckdjualbbm=$2", [`${D2}T01:00:00Z`, earlier]);
+    await db.query("UPDATE sales_detail SET nsubtotal=2460000, nhargajual=12300, dtgljam=$1 WHERE ckdjualbbm=$2", [`${D2}T02:00:00Z`, latest]);
+    await sale(D1, 10_000); await sale(D3, 20_000); await sale(D2, 30_000, "P", 2);
+    expect(await getSalesByProduct(U, D2, D2)).toEqual([
+      { ckdbbm: "P", nama: "SOLAR", vol: 300, omzet: 3_460_000, harga: 12_300 },
+    ]);
+  });
+
+  it("sales summary preserves one unidentified group, case and internal whitespace", async () => {
+    for (const product of UNKNOWN_IDENTITIES) await sale(D2, 1, product);
+    await sale(D2, 2, "P"); await sale(D2, 3, "p"); await sale(D2, 4, "P\tQ");
+    const rows = await getSalesByProduct(U, D2, D2);
+    expect(rows).toHaveLength(4);
+    expect(rows.find(r => r.ckdbbm === null)).toMatchObject({ nama: null, vol: UNKNOWN_IDENTITIES.length });
+    expect(rows.find(r => r.ckdbbm === "P")?.vol).toBe(2);
+    expect(rows.find(r => r.ckdbbm === "p")?.vol).toBe(3);
+    expect(rows.find(r => r.ckdbbm === "P\tQ")?.vol).toBe(4);
+  });
+
+  it.each([false, true])("delivery summary groups aliases with master aliases=%s, preserving receipt filters", async masterAlias => {
+    await db.exec("INSERT INTO product VALUES (1,'P','SOLAR')");
+    if (masterAlias) await db.query("INSERT INTO product VALUES (1,$1,'SOLAR')", ["\u00a0P"]);
+    await receipt(D2, 100);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,$3,'A',200,999999,0)", [D2, `${D3}T02:00:00+07:00`, "\ufeffP\u00a0"]);
+    // Existing NVOLDO/date/cancellation/unit behavior remains unchanged.
+    await receipt(D2, 8_000, 1); await receipt(D1, 9_000); await receipt(D3, 9_000);
+    await receipt(D2, 100_001);
+    await db.query("INSERT INTO delivery VALUES (2,$1,$2,'P','A',9000,9000,0)", [D2, `${D2}T12:00:00Z`]);
+    expect(await getDeliveryByProduct(U, D2, D2)).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 300 }]);
+  });
+
+  it("delivery summary retains one unknown identity without merging real case/internal-space codes", async () => {
+    for (const product of [null, "", "\t", "\u00a0", "\ufeff"]) await unassignedMovement("receipt", product);
+    await unassignedMovement("receipt", "P"); await unassignedMovement("receipt", "p");
+    await unassignedMovement("receipt", "P\tQ");
+    const rows = await getDeliveryByProduct(U, D2, D2);
+    expect(rows).toHaveLength(4);
+    expect(rows.find(r => r.ckdbbm === null)).toEqual({ ckdbbm: null, nama: null, vol: 500 });
+    for (const code of ["P", "p", "P\tQ"]) expect(rows.find(r => r.ckdbbm === code)?.vol).toBe(100);
+  });
+
+  it("SQL summaries feed one operational row with G/L/tera once and the complete monthly denominator", async () => {
+    await db.exec("INSERT INTO product VALUES (1,'P','SOLAR')");
+    await stock(D1, "A", 10_000); await stock(D2, "A", 9_600);
+    await sale(D2, 100, "P"); await sale(D2, 200, "\u00a0P"); await sale(D2, 300, "\ufeffP");
+    await db.exec("UPDATE sales_detail SET nsubtotal=nvolume*10000, nhargajual=10000");
+    await tera(D2, 50);
+    const prodDay = await getSalesByProduct(U, D2, D2);
+    const prodMonth = await getSalesByProduct(U, D1, D2);
+    const glRows = await getDailyGlByProduct(U, D2, D2);
+    const raw: LaporanRaw = {
+      prodDay, prodMonth, glRows, zeroClosing: [], delivMonth: [], doDay: [], doAnomalies: [], doSuspects: [],
+      shift: { shifts: 3, last_dtgljam: null }, hargaDeviasi: [], corrections: 0, cash: [],
+      saldo: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+        akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 } },
+      recapPelanggan: [], recapEdc: [], recapDeposit: [], recapPendapatanLain: [], recapPengeluaran: [],
+      recapSetoran: [], terra: [], tetanggaSebelum: { f: [], g: [], i: [] }, tetanggaSesudah: { f: [], g: [], i: [] },
+    };
+    const model = buildLaporanModel(raw, { unitCode: "6478111", date: D2, today: D3,
+      mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
+    expect(model.sales.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600, omzet: 6_000_000, gl: 150, tera: 50 }]);
+    expect(new Set(model.sales.rows.map(r => r.ckdbbm)).size).toBe(model.sales.rows.length);
+    expect(model.sales.rows.reduce((sum, r) => sum + r.gl!, 0)).toBe(model.sales.glTotal);
+    expect(model.sales.rows.reduce((sum, r) => sum + r.tera, 0)).toBe(model.sales.totTera);
+    expect(model.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(model.glMonthly.glPctMonth).toBe(0.25);
+    expect(model.glMonthly.rows[0]!.selisih! / model.glMonthly.rows[0]!.vol).toBe(0.25);
+    expect(model.arusMinyak.total.losses).toBe(150);
+    // Receipt summaries use the same canonical row grain in target/realization.
+    await receipt(D2, 100);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,$3,'A',200,999999,0)", [D2, `${D3}T02:00:00+07:00`, "\u00a0P"]);
+    const withReceipts = buildLaporanModel({ ...raw, glRows: await getDailyGlByProduct(U, D2, D2),
+      delivMonth: await getDeliveryByProduct(U, D1, D2) },
+      { unitCode: "6478111", date: D2, today: D3, mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
+    expect(withReceipts.target.rows).toHaveLength(1);
+    expect(withReceipts.target.rows[0]!.terima).toBe(300);
+    expect(withReceipts.sales.glTotal).toBe(-150);
   });
 
   it.each(UNKNOWN_IDENTITIES)("unidentified stock product (%s) is preserved as unavailable, not genuine zero", async product => {
