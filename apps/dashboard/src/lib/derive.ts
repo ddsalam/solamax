@@ -173,10 +173,21 @@ export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
 export interface DailyGlInput {
   ckdbbm: string;
   nama: string | null;
+  /** Optional source balance for the existing zero-closing quality warning. */
+  fisik?: number | null;
+  fisik_prev?: number | null;
+  pen_do?: number;
+  sales_gross?: number;
   gl: number | null; // bertanda; null = tak terhitung (anchor D−1 hilang)
   tera: number;
   excluded_tanks: number;
   provisional: boolean;
+}
+
+/** Same class-1 warning as the operational report. Never imputes a stock value. */
+export function isDailyGlSuspect(r: DailyGlInput): boolean {
+  return r.fisik === 0 && r.fisik_prev != null && r.pen_do !== undefined &&
+    r.sales_gross !== undefined && r.fisik_prev + r.pen_do - (r.sales_gross - r.tera) > 1000;
 }
 
 export interface DailyGlAgg {
@@ -188,6 +199,10 @@ export interface DailyGlAgg {
   provisional: boolean;
   /** Σ tangki garbage yang dikecualikan dari Stock Fisik. */
   excludedTanks: number;
+  /** A required row/stock is uncomputable; partial sums are not full totals. */
+  incomplete: boolean;
+  /** Zero closing stock despite >1,000 L theoretical stock; source review needed. */
+  suspect: boolean;
   /** Ada minimal satu baris G/L terhitung (gl != null). */
   hasGl: boolean;
 }
@@ -205,10 +220,14 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
   let provisional = false;
   let excludedTanks = 0;
   let hasGl = false;
+  let incomplete = false;
+  let suspect = false;
 
   for (const r of rows) {
     if (r.provisional) provisional = true;
     excludedTanks += r.excluded_tanks;
+    if (r.gl === null || r.excluded_tanks > 0) { incomplete = true; provisional = true; }
+    if (isDailyGlSuspect(r)) { suspect = true; provisional = true; }
     const cur = byProduct.get(r.ckdbbm) ?? { nama: r.nama, signed: 0, tera: 0 };
     cur.tera += r.tera;
     totalTera += r.tera;
@@ -221,7 +240,7 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
     }
     byProduct.set(r.ckdbbm, cur);
   }
-  return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl };
+  return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl, incomplete, suspect };
 }
 
 /**

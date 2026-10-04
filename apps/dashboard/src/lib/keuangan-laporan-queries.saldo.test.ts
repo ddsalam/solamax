@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScopedUnitId } from "./scope-rule";
+import type { DailyGlRow } from "./queries";
 
 const {
   qScoped,
@@ -11,7 +12,7 @@ const {
   getMutasiKas,
 } = vi.hoisted(() => ({
   qScoped: vi.fn(),
-  getDailyGlByProduct: vi.fn(async () => []),
+  getDailyGlByProduct: vi.fn(async (): Promise<DailyGlRow[]> => []),
   getDoHarian: vi.fn(async () => []),
   getSalesByProduct: vi.fn(async () => []),
   getAkunKas: vi.fn(async () => []),
@@ -40,6 +41,7 @@ const U = 7 as unknown as ScopedUnitId;
 
 describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
   beforeEach(() => {
+    getDailyGlByProduct.mockReset().mockResolvedValue([]);
     qScoped.mockReset().mockImplementation(
       (_unit: ScopedUnitId, sql: string) => Promise.resolve(
         sql.includes("FROM app.saldo_pelanggan_snapshot_pointer")
@@ -56,6 +58,17 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
             : [],
       ),
     );
+  });
+
+  it("baris RESUME yang ditolak mempertahankan status tak terhitung dalam bahan keuangan", async () => {
+    getDailyGlByProduct.mockResolvedValue([{
+      d: "2026-08-04", ckdbbm: "P", nama: "P", fisik: null, fisik_prev: 10_000,
+      pen_do: 0, sales_gross: 1_000, tera: 0, gl: null, excluded_tanks: 1, provisional: true,
+    }]);
+    const bahan = await getBahanLaporan(U, "2026-08-04", "2026-08-03");
+    expect(bahan.totals.inventoryValue).toBeNull();
+    expect(bahan.totals.lossesGainValue).toBeNull();
+    expect(bahan.incomplete).toContain("P");
   });
 
   it("tetap menghasilkan angka piutang dari agregat ledger ketika snapshot belum ada", async () => {

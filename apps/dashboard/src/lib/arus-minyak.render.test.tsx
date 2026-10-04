@@ -657,6 +657,28 @@ const ORACLE_ARMADA: Record<string, { nama: string; hari: Record<string, Record<
   "6478106": {
     nama: "Bundaran Kotabaru",
     hari: {
+      // Oracle penutup pagi: entri siang susulan tidak boleh mengubah Fisik.
+      "2026-08-06": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [12651.13, 0, 3699.2, 8951.93, 8957.49, 5.56, 0.15],
+        SOLAR: [13448.7, 8000, 9981.75, 11466.95, 11546.14, 79.19, 0.79],
+        "PERTAMAX TURBO": [6755.34, 0, 172.12, 6583.22, 6633.66, 50.44, 29.31],
+        PERTALITE: [40605.81, 32000, 28763.83, 43841.98, 43570.18, -271.8, -0.94],
+        DEXLITE: [1882.21, 8000, 2610.7, 7271.51, 7339.25, 67.74, 2.59],
+        "PERTAMINA DEX": [6599.04, 0, 1106.98, 5492.06, 5503.46, 11.4, 1.03],
+        TOTAL: [81942.23, 48000, 46334.58, 83607.65, 83550.18, -57.47, -0.12],
+      },
+      // Anchor hari berikutnya harus mewarisi penutup pagi yang sama.
+      "2026-08-07": {
+        PREMIUM: [0, 0, 0, 0, 0, 0, 0],
+        PERTAMAX: [8957.49, 8000, 3861.2, 13096.29, 13083.6, -12.69, -0.33],
+        SOLAR: [11546.14, 8000, 7824.59, 11721.55, 11555.15, -166.4, -2.13],
+        "PERTAMAX TURBO": [6633.66, 0, 243.65, 6390.01, 6423.42, 33.41, 13.71],
+        PERTALITE: [43570.18, 32000, 30764.49, 44805.69, 45018.3, 212.61, 0.69],
+        DEXLITE: [7339.25, 0, 2389.35, 4949.9, 4934.5, -15.4, -0.64],
+        "PERTAMINA DEX": [5503.46, 0, 659.97, 4843.49, 4848.28, 4.79, 0.73],
+        TOTAL: [83550.18, 48000, 45743.25, 85806.93, 85863.25, 56.32, 0.12],
+      },
       "2026-08-03": {
         PREMIUM: [0, 0, 0, 0, 0, 0, 0],
         PERTAMAX: [15859.9, 0, 3882.65, 11977.25, 12022.1, 44.85, 1.13],
@@ -703,69 +725,6 @@ d("Arus Minyak vs oracle EasyMax — ARMADA (unit non-IB)", () => {
   }
 });
 
-
-/**
- * KARAKTERISASI CACAT HULU — Bundaran Kotabaru 2026-08-07.
- *
- * Tes ini SENGAJA menegaskan bahwa SolaMax MELESET dari oracle, karena cacatnya
- * ada di `getDailyGlByProduct` (aturan pemilihan opname penutup) yang di luar
- * lingkup PR ini. Lihat decision log §P4-4.
- *
- * ⚠️ Kalau tes ini GAGAL setelah perbaikan hulu mendarat, itu BUKAN regresi —
- * itu tandanya cacatnya sudah hilang. HAPUS tes ini dan pindahkan tanggalnya ke
- * ORACLE_ARMADA. Ia ada supaya cacatnya mustahil terlupakan, bukan supaya
- * suite-nya hijau.
- */
-d("KARAKTERISASI cacat hulu (cacat A) — KB 06 & 07 Agu", () => {
-  const KB: Record<string, Record<string, Cells>> = {
-    // Hari DIVERGEN itu sendiri → Fisik meleset (Awal masih benar).
-    "2026-08-06": {
-      PREMIUM: [0, 0, 0, 0, 0, 0, 0],
-      PERTAMAX: [12651.13, 0, 3699.2, 8951.93, 8957.49, 5.56, 0.15],
-      SOLAR: [13448.7, 8000, 9981.75, 11466.95, 11546.14, 79.19, 0.79],
-      "PERTAMAX TURBO": [6755.34, 0, 172.12, 6583.22, 6633.66, 50.44, 29.31],
-      PERTALITE: [40605.81, 32000, 28763.83, 43841.98, 43570.18, -271.8, -0.94],
-      DEXLITE: [1882.21, 8000, 2610.7, 7271.51, 7339.25, 67.74, 2.59],
-      "PERTAMINA DEX": [6599.04, 0, 1106.98, 5492.06, 5503.46, 11.4, 1.03],
-      TOTAL: [81942.23, 48000, 46334.58, 83607.65, 83550.18, -57.47, -0.12],
-    },
-    // Hari SESUDAHNYA → Awal meleset (Fisik sudah benar lagi).
-    "2026-08-07": {
-      PREMIUM: [0, 0, 0, 0, 0, 0, 0],
-      PERTAMAX: [8957.49, 8000, 3861.2, 13096.29, 13083.6, -12.69, -0.33],
-      SOLAR: [11546.14, 8000, 7824.59, 11721.55, 11555.15, -166.4, -2.13],
-      "PERTAMAX TURBO": [6633.66, 0, 243.65, 6390.01, 6423.42, 33.41, 13.71],
-      PERTALITE: [43570.18, 32000, 30764.49, 44805.69, 45018.3, 212.61, 0.69],
-      DEXLITE: [7339.25, 0, 2389.35, 4949.9, 4934.5, -15.4, -0.64],
-      "PERTAMINA DEX": [5503.46, 0, 659.97, 4843.49, 4848.28, 4.79, 0.73],
-      TOTAL: [83550.18, 48000, 45743.25, 85806.93, 85863.25, 56.32, 0.12],
-    },
-  };
-  /**
-   * ⚠️ Tes ini SENGAJA menegaskan SolaMax MELESET — cacatnya di
-   * `getDailyGlByProduct` (sesi hulu terpisah). Kalau ia GAGAL setelah perbaikan
-   * hulu mendarat, itu BUKAN regresi: HAPUS tes ini dan pindahkan kedua tanggal
-   * ke ORACLE_ARMADA. Ia ada supaya cacatnya mustahil terlupakan.
-   *
-   * Bentuk kegagalannya diprediksi DI MUKA (decision log §P5-2) dan berlawanan
-   * arah di kedua hari — itulah yang membuatnya uji, bukan sekadar catatan.
-   */
-  const kasus: Array<[string, string[], string[]]> = [
-    ["2026-08-06", ["Fisik", "Losses", "%"], ["Awal", "Penerimaan", "Penjualan", "Teori"]],
-    ["2026-08-07", ["Awal", "Teori", "Losses", "%"], ["Penerimaan", "Penjualan", "Fisik"]],
-  ];
-  for (const [tgl, kolomMeleset, kolomEksak] of kasus)
-    it(`${tgl}: meleset TEPAT di ${kolomMeleset.join("/")}, eksak di ${kolomEksak.join("/")}`, async () => {
-      const { sel } = await selTerender("6478106", tgl);
-      const hasil = gradeArus({ [tgl]: KB[tgl]! }, { [tgl]: sel }, COLS);
-      const salah = hasil.filter((h) => h.vonis === "mismatch");
-      expect(new Set(salah.map((h) => h.kolom))).toEqual(new Set(kolomMeleset));
-      for (const k of kolomEksak)
-        expect(salah.filter((h) => h.kolom === k), `${k} ikut meleset`).toEqual([]);
-      // DEXLITE = satu-satunya produk tanpa entri telat → harus tetap cocok.
-      expect(salah.some((h) => h.baris === "DEXLITE"), "DEXLITE ikut meleset").toBe(false);
-    }, 120_000);
-});
 
 d("Sapuan konsistensi internal IB — 120 hari, tanpa oracle", () => {
   it("identitas, rantai carry-in, dan ledakan nilai", async () => {

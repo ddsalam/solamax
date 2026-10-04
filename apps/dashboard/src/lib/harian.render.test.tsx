@@ -12,6 +12,7 @@ import {
   StaleBanner,
 } from "@/components/harian/HarianSections";
 import { FLEET_RECORD_FLOOR } from "./config";
+import { glValueText } from "./harian-gl-display";
 import { dateLong, idn } from "./format";
 import { buildHarianModel, harianSpanFrom, type HarianModel } from "./harian-model";
 import { addDays, monthStart } from "./periods";
@@ -154,8 +155,8 @@ function Page({ model }: { model: HarianModel }) {
         {[
           ["Total hari ini (liter)", idn(Math.round(model.daily.grandTotal))],
           ["Total bulan berjalan (liter)", idn(Math.round(model.monthly.grand.kum))],
-          ["Gain / Losses hari ini", idn(Math.round(model.glDaily.grandTotal))],
-          ["Gain / Losses bulan berjalan", idn(Math.round(model.glMonthly.grand.kum))],
+          ["Gain / Losses hari ini", glValueText(model.glDaily.grandTotal)],
+          ["Gain / Losses bulan berjalan", glValueText(model.glMonthly.grand.kum)],
         ].map(([t, v]) => (
           <div key={t} className="kpi-card">
             <div className="text-caption t-tertiary">{t}</div>
@@ -185,6 +186,7 @@ function Page({ model }: { model: HarianModel }) {
         incomplete={model.freshness.incomplete}
         signTone
         provisional={model.glProvisional}
+        glIncomplete={model.glDaily.grandTotal === null}
       />
       <MonthlyMatrix
         title="Omzet penjualan — bulanan (MTD)"
@@ -196,7 +198,7 @@ function Page({ model }: { model: HarianModel }) {
         divisor={model.avgDivisor}
         incomplete={model.freshness.incomplete}
       />
-      <GlBars units={model.units} totals={model.glMonthly.totalsByUnit} />
+      <GlBars units={model.units} totals={model.glMonthly.totalsByUnit} provisional={model.glMonthlyProvisional} incomplete={model.glIncomplete} />
       <MonthlyMatrix
         title="Gain / Losses — bulanan (MTD)"
         hint="liter"
@@ -207,6 +209,8 @@ function Page({ model }: { model: HarianModel }) {
         divisor={model.avgDivisor}
         incomplete={model.freshness.incomplete}
         signTone
+        provisional={model.glMonthlyProvisional}
+        glIncomplete={model.glIncomplete}
       />
       <TrendSection
         units={model.units}

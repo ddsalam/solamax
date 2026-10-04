@@ -83,7 +83,8 @@ describe("efek penandaan macet pada SOValue — 10 tanggal emas", () => {
       const a = computeDay(d.rows.map((r) => toInput(r))).totals;
       const b = computeDay(d.rows.map((r) => toInput(r, MACET_SOLAR))).totals;
       for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "lossesGainValue"] as const) {
-        expect(b[k], `${d.date} · ${k}`).toBeCloseTo(a[k], 2);
+        expect(a[k], `${d.date} · ${k}`).not.toBeNull();
+        expect(b[k], `${d.date} · ${k}`).toBeCloseTo(a[k]!, 2);
       }
     }
   });

@@ -126,6 +126,14 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+      # Run separately against the same disposable PG16 service, never Cloud
+      # SQL. The G/L suite validates endpoint/account/version and rolls back its
+      # unique schema; it cannot overwrite the snapshot suites' public/app data.
+      - name: Gain/loss source-integrity fixtures on PostgreSQL 16
+        run: pnpm --filter @solamax/dashboard exec vitest run src/lib/queries.gl-integrity.test.ts
+        env:
+          GL_SQL_TEST_POSTGRES16: "1"
+          GL_SQL_TEST_POSTGRES16_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
 
   # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
   #

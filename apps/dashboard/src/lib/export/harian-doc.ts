@@ -17,8 +17,10 @@
  */
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import { idn, pct, signed } from "@/lib/format";
+import { GL_DAILY_PROVISIONAL_WARNING, GL_INCOMPLETE_WARNING, GL_MONTHLY_PROVISIONAL_WARNING, glStatusText, glValueText } from "@/lib/harian-gl-display";
 import type {
   HarianModel,
+  MonthlyCell,
   MonthlyRow,
   RatioCell,
   UnitStatus,
@@ -39,18 +41,18 @@ export interface HarianDocMeta {
   freshnessLabel: string;
 }
 
-const cellNum = (v: number, bold = false, danger = false): TableCell => ({
-  text: idn(Math.round(v)),
+const cellNum = (v: number | null, bold = false, danger = false): TableCell => ({
+  text: glValueText(v),
   alignment: "right",
   bold,
   fontSize: 7.5,
-  color: danger && v < 0 ? PDF.danger : PDF.textPrimary,
+  color: v === null ? PDF.textMuted : danger && v < 0 ? PDF.danger : PDF.textPrimary,
 });
 
 /** Sel per-unit: "—" bila belum-ada / basi; angka selainnya. */
-function unitCell(u: UnitStatus, v: number | undefined, opts: { bold?: boolean; danger?: boolean } = {}): TableCell {
+function unitCell(u: UnitStatus, v: number | null | undefined, opts: { bold?: boolean; danger?: boolean } = {}): TableCell {
   if (u.notYet || u.stale) return { text: "—", alignment: "right", fontSize: 7.5, color: PDF.textMuted };
-  return cellNum(v ?? 0, opts.bold, opts.danger);
+  return cellNum(v === undefined ? opts.danger ? null : 0 : v, opts.bold, opts.danger);
 }
 
 /** Header kolom unit — unit basi diberi tanda "!" (glyph ⚠→!) + baris "s/d dd/mm". */
@@ -82,9 +84,9 @@ function matrixTable(
   title: string,
   hint: string,
   units: UnitStatus[],
-  rows: ValueRow[],
-  totalsByUnit: Record<number, number>,
-  grandTotal: number,
+  rows: ValueRow<number | null>[],
+  totalsByUnit: Record<number, number | null>,
+  grandTotal: number | null,
   incomplete: boolean,
   opts: { danger?: boolean; deltaByUnit?: Record<number, number | null>; deltaTotal?: number | null } = {},
 ): Content[] {
@@ -93,7 +95,7 @@ function matrixTable(
   body.push([
     { text: "Produk", style: "th", fontSize: 7 },
     ...units.map(unitHead),
-    { text: pdfText(incomplete ? "TOTAL ⚠" : "TOTAL"), style: "th", alignment: "right", fontSize: 7 },
+    { text: pdfText(opts.danger && grandTotal === null ? "TOTAL · TIDAK LENGKAP" : incomplete ? "TOTAL ⚠" : "TOTAL"), style: "th", alignment: "right", fontSize: 7 },
   ]);
   for (const r of rows) {
     body.push([
@@ -138,28 +140,28 @@ function matrixTable(
 function monthlyTable(
   title: string,
   units: UnitStatus[],
-  rows: MonthlyRow[],
-  totalsByUnit: Record<number, { kum: number; avg: number }>,
-  grand: { kum: number; avg: number },
+  rows: MonthlyRow<number | null>[],
+  totalsByUnit: Record<number, MonthlyCell<number | null>>,
+  grand: MonthlyCell<number | null>,
   divisor: number,
   danger: boolean,
 ): Content[] {
   const widths = ["auto", ...units.flatMap(() => ["*", "auto"]), "*", "auto"];
-  const cell = (u: UnitStatus, c: { kum: number; avg: number } | undefined, bold = false): TableCell[] =>
+  const cell = (u: UnitStatus, c: MonthlyCell<number | null> | undefined, bold = false): TableCell[] =>
     u.notYet || u.stale
       ? [
           { text: "—", alignment: "right", fontSize: 7, color: PDF.textMuted },
           { text: "—", alignment: "right", fontSize: 6.5, color: PDF.textMuted },
         ]
       : [
-          cellNum(c?.kum ?? 0, bold, danger),
-          { text: idn(Math.round(c?.avg ?? 0)), alignment: "right", fontSize: 6.5, color: PDF.textMuted },
+          unitCell(u, c?.kum, { bold, danger }),
+          { text: glValueText(c?.avg === undefined ? danger ? null : 0 : c.avg), alignment: "right", fontSize: 6.5, color: PDF.textMuted },
         ];
   const head: TableCell[] = [{ text: "Produk", style: "th", fontSize: 7 }];
   for (const u of units) {
     head.push({ text: pdfText(`${u.stale ? "⚠ " : ""}${u.name}`), style: "th", alignment: "right", fontSize: 6.5, colSpan: 2 } as TableCell, {} as TableCell);
   }
-  head.push({ text: "TOTAL", style: "th", alignment: "right", fontSize: 6.5, colSpan: 2 } as TableCell, {} as TableCell);
+  head.push({ text: danger && grand.kum === null ? "TOTAL · TIDAK LENGKAP" : "TOTAL", style: "th", alignment: "right", fontSize: 6.5, colSpan: 2 } as TableCell, {} as TableCell);
   const body: TableCell[][] = [head];
   body.push([
     { text: `Kum · Rata (÷${divisor})`, fontSize: 6, italics: true, color: PDF.onNavy, fillColor: PDF.navy },
@@ -171,9 +173,9 @@ function monthlyTable(
     { text: "Rata", fontSize: 6, alignment: "right", color: PDF.onNavy, fillColor: PDF.navy } as TableCell,
   ]);
   for (const r of rows) {
-    body.push([{ text: r.label, fontSize: 7.5 }, ...units.flatMap((u) => cell(u, r.byUnit[u.unitId])), cellNum(r.total.kum, true, danger), { text: idn(Math.round(r.total.avg)), alignment: "right", fontSize: 6.5, color: PDF.textMuted }]);
+    body.push([{ text: r.label, fontSize: 7.5 }, ...units.flatMap((u) => cell(u, r.byUnit[u.unitId])), cellNum(r.total.kum, true, danger), { text: glValueText(r.total.avg), alignment: "right", fontSize: 6.5, color: PDF.textMuted }]);
   }
-  body.push([{ text: "Total", bold: true, fontSize: 7.5, color: PDF.navy }, ...units.flatMap((u) => cell(u, totalsByUnit[u.unitId], true)), cellNum(grand.kum, true, danger), { text: idn(Math.round(grand.avg)), alignment: "right", fontSize: 6.5, bold: true, color: PDF.textMuted }]);
+  body.push([{ text: "Total", bold: true, fontSize: 7.5, color: PDF.navy }, ...units.flatMap((u) => cell(u, totalsByUnit[u.unitId], true)), cellNum(grand.kum, true, danger), { text: glValueText(grand.avg), alignment: "right", fontSize: 6.5, bold: true, color: PDF.textMuted }]);
   return [
     { text: title, style: "sectionTitle", marginTop: 10, marginBottom: 3 },
     { table: { headerRows: 2, dontBreakRows: true, widths, body }, layout: harianLayout },
@@ -301,7 +303,7 @@ export function buildHarianDocDefinition(args: {
           stack: [
             { text: pdfText(`TOTAL TIDAK LENGKAP — ${s.length} dari ${units.length} SPBU belum mengirim data untuk ${meta.dateLong}.`), bold: true, color: PDF.danger, fontSize: 9 },
             { text: pdfText(s.map((u) => (u.lastDataDate ? `${u.name} (terakhir ${u.lastDataDate}, −${u.daysBehind} hari)` : `${u.name} (belum ada data)`)).join(" · ")), fontSize: 7.5, color: PDF.textSecondary, marginTop: 1 },
-            { text: pdfText("Kolom unit yang tertinggal ditandai dan selnya dirender “—” (tidak ada data — bukan nol). TOTAL menjumlah unit yang PUNYA data → terlalu kecil."), fontSize: 7, color: PDF.textMuted, marginTop: 1 },
+            { text: pdfText("Kolom unit yang tertinggal ditandai dan selnya dirender “—” (tidak ada data — bukan nol). TOTAL penjualan menjumlah unit yang PUNYA data → terlalu kecil. Total G/L yang bergantung pada data hilang ditampilkan “—”."), fontSize: 7, color: PDF.textMuted, marginTop: 1 },
           ],
           margin: [6, 4, 6, 4],
         }]],
@@ -326,8 +328,8 @@ export function buildHarianDocDefinition(args: {
     columns: [
       card("Total hari ini (L)", idn(Math.round(model.daily.grandTotal)) + sfx, model.deltaTotal === null ? "Δ vs kemarin —" : `Δ vs kemarin ${idn(Math.round(model.deltaTotal))}`),
       card("Total bulan berjalan (L)", idn(Math.round(model.monthly.grand.kum)) + sfx, `rata-rata ${idn(Math.round(model.monthly.grand.avg))} L/hari (÷${meta.divisor})`),
-      card("G/L hari ini (L)", idn(Math.round(model.glDaily.grandTotal)), model.glDaily.grandTotal < 0 ? "losses" : "gain"),
-      card("G/L bulan berjalan (L)", idn(Math.round(model.glMonthly.grand.kum)), model.glMonthly.grand.kum < 0 ? "losses" : "gain"),
+      card("G/L hari ini (L)", glValueText(model.glDaily.grandTotal), glStatusText(model.glDaily.grandTotal, model.glProvisional)),
+      card("G/L bulan berjalan (L)", glValueText(model.glMonthly.grand.kum), glStatusText(model.glMonthly.grand.kum, model.glMonthlyProvisional)),
     ],
     columnGap: 10,
     marginTop: 8,
@@ -335,12 +337,14 @@ export function buildHarianDocDefinition(args: {
 
   content.push(...matrixTable("Omzet penjualan — harian", `${meta.dateLong} · liter`, units, model.daily.rows, model.daily.totalsByUnit, model.daily.grandTotal, incomplete, { deltaByUnit: model.deltaByUnit, deltaTotal: model.deltaTotal }));
   content.push(...shareSection(model));
-  content.push(...matrixTable("Gain / Losses — harian", "liter · metode RESUME operasional", units, model.glDaily.rows, model.glDaily.totalsByUnit, model.glDaily.grandTotal, incomplete, { danger: true }));
-  if (model.glProvisional) content.push(glWarn("Angka G/L tanggal ini SEMENTARA — opname penutup belum lengkap (baru terekam pagi berikutnya). Nilai akan berubah."));
-  if (model.glIncomplete) content.push(glWarn("Gain/Losses TIDAK LENGKAP — jendela memuat lebih sedikit hari daripada yang punya penjualan; sel tanpa data tampil 0. Jangan dibaca sampai cakupan penuh."));
+  content.push(...matrixTable(`Gain / Losses — harian${model.glProvisional ? " · SEMENTARA" : ""}`, "liter · metode RESUME operasional", units, model.glDaily.rows, model.glDaily.totalsByUnit, model.glDaily.grandTotal, incomplete, { danger: true }));
+  if (model.glProvisional) content.push(glWarn(GL_DAILY_PROVISIONAL_WARNING));
+  if (model.glDaily.grandTotal === null) content.push(glWarn(GL_INCOMPLETE_WARNING));
   content.push(...monthlyTable("Omzet penjualan — bulanan (MTD)", units, model.monthly.rows, model.monthly.totalsByUnit, model.monthly.grand, meta.divisor, false));
   content.push(...divergentSection(model));
-  content.push(...monthlyTable("Gain / Losses — bulanan (MTD)", units, model.glMonthly.rows, model.glMonthly.totalsByUnit, model.glMonthly.grand, meta.divisor, true));
+  content.push(...monthlyTable(`Gain / Losses — bulanan (MTD)${model.glMonthlyProvisional ? " · SEMENTARA" : ""}`, units, model.glMonthly.rows, model.glMonthly.totalsByUnit, model.glMonthly.grand, meta.divisor, true));
+  if (model.glMonthlyProvisional) content.push(glWarn(GL_MONTHLY_PROVISIONAL_WARNING));
+  if (model.glIncomplete) content.push(glWarn(GL_INCOMPLETE_WARNING));
   content.push(...trendCharts(model));
   content.push(...ratioBbkTable(model));
   content.push(...recordSection(model));
@@ -404,21 +408,23 @@ function shareSection(model: HarianModel): Content[] {
 }
 
 function divergentSection(model: HarianModel): Content[] {
-  const units = model.units.map((u) => ({ name: u.name, value: model.glMonthly.totalsByUnit[u.unitId]?.kum ?? 0 }));
-  const max = Math.max(1, ...units.map((u) => Math.abs(u.value)));
+  const units = model.units.map((u) => ({ name: `${u.stale ? "⚠ " : ""}${u.name}`, value: u.notYet || u.stale ? null : model.glMonthly.totalsByUnit[u.unitId]?.kum ?? null }));
+  const max = Math.max(1, ...units.map((u) => u.value === null ? 0 : Math.abs(u.value)));
   const rowH = 12;
   const labels = {
     width: 90,
     stack: units.map((u) => ({ text: pdfText(`${u.name}`), fontSize: 6.5, margin: [0, 2, 0, 2] as [number, number, number, number] })),
   } as unknown as Content;
   const values = {
-    width: 60,
-    stack: units.map((u) => ({ text: u.value < 0 ? `(${idn(Math.round(Math.abs(u.value)))})` : idn(Math.round(u.value)), fontSize: 6.5, alignment: "right" as const, color: u.value < 0 ? PDF.danger : PDF.textPrimary, margin: [0, 2, 0, 2] as [number, number, number, number] })),
+    width: 110,
+    stack: units.map((u) => ({ text: u.value === null ? "— · TIDAK LENGKAP" : u.value < 0 ? `(${idn(Math.round(Math.abs(u.value)))})` : idn(Math.round(u.value)), fontSize: 6.5, alignment: "right" as const, color: u.value === null ? PDF.textMuted : u.value < 0 ? PDF.danger : PDF.textPrimary, margin: [0, 2, 0, 2] as [number, number, number, number] })),
   } as unknown as Content;
   return [
-    { text: "Gain / Losses kumulatif bulan berjalan", style: "sectionTitle", marginTop: 10 },
+    { text: `Gain / Losses kumulatif bulan berjalan${model.glMonthlyProvisional ? " · SEMENTARA" : ""}`, style: "sectionTitle", marginTop: 10 },
     { text: "semua unit memakai nilai Kumulatif (liter) · merah = losses, hijau = gain", style: "hint", marginBottom: 3 },
     { columns: [labels, { width: 300, stack: [divergentGlCanvas(units, max, 300, rowH)] }, values], columnGap: 4 },
+    ...(model.glMonthlyProvisional ? [glWarn(GL_MONTHLY_PROVISIONAL_WARNING)] : []),
+    ...(model.glIncomplete || units.some((u) => u.value === null) ? [glWarn(GL_INCOMPLETE_WARNING)] : []),
   ];
 }
 

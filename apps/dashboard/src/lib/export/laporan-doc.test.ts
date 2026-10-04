@@ -214,6 +214,13 @@ describe("PDF: Arus Minyak Harian", () => {
   const modelArus = buildLaporanModel(
     {
       ...raw,
+      // This fixture covers these two products; the generic P1 sale above is
+      // unrelated and would correctly make a complete G/L total unavailable.
+      prodDay: [
+        { ckdbbm: "BB-02", nama: "PERTAMAX", vol: 2859.71, omzet: 0, harga: null },
+        { ckdbbm: "BB-08", nama: "PERTAMINA DEX", vol: 3003.39, omzet: 0, harga: null },
+      ],
+      prodMonth: [],
       glRows: [
         glRow("BB-02", "PERTAMAX", 18685.01, 8000, 2859.71, 23635.74),
         glRow("BB-08", "PERTAMINA DEX", 2766.43, 8000, 3003.39, 13310),
@@ -274,5 +281,25 @@ describe("PDF: Arus Minyak Harian", () => {
       config: { ...DEFAULT_EXPORT_CONFIG, detail: false },
     });
     expect(JSON.stringify(ringkas.content)).not.toContain("Arus Minyak Harian");
+  });
+});
+
+describe("PDF operational G/L source-integrity nulls", () => {
+  it("unknown rows and totals render as unavailable in daily, cumulative, and Arus sections", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [{
+      d: "2026-06-11", ckdbbm: "P1", nama: "Pertalite", fisik: 900, fisik_prev: 1_000,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: null, excluded_tanks: 0, provisional: true,
+    }] }, { unitCode: "6478111", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, meta, config: DEFAULT_EXPORT_CONFIG });
+    const tables = collectTables(doc.content);
+    const daily = tables.find(t => JSON.stringify(t.table.body[0]).includes("Sales (L)"))!;
+    const monthly = tables.find(t => JSON.stringify(t.table.body[0]).includes("G/L bulan (L)"))!;
+    const text = (r: unknown[], i: number) => (r[i] as { text: string }).text;
+    expect(text(daily.table.body[1]!, 2)).toBe("—");
+    expect(text(daily.table.body.at(-1)!, 2)).toBe("—");
+    expect(text(monthly.table.body[1]!, 1)).toBe("—");
+    expect(text(monthly.table.body[1]!, 2)).toBe("—");
+    expect(JSON.stringify(doc.content)).toContain("G/L belum bisa dihitung lengkap");
   });
 });

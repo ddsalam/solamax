@@ -21,6 +21,7 @@ const D = "2026-07-01";
 // [name, invocation]. Single-unit fns pass U; the one aggregate fn passes [U].
 const CASES: Array<[string, () => Promise<unknown>]> = [
   ["getSyncByUnit", () => Q.getSyncByUnit([U])],
+  ["getGlSourceRevision", () => Q.getGlSourceRevision(U)],
   ["getSalesByProduct", () => Q.getSalesByProduct(U, D, D)],
   ["getDailySalesByProduct", () => Q.getDailySalesByProduct([U], D, D)],
   ["getUnitCoverage", () => Q.getUnitCoverage([U])],

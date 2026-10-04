@@ -4,6 +4,7 @@ import { HarianFilters } from "@/components/harian/HarianFilters";
 import { GlBars, ShareBars, TrendSection } from "@/components/harian/HarianCharts";
 import {
   HarianNotes,
+  HarianSummaryCards,
   MatrixTable,
   MonthlyMatrix,
   RatioBbkTable,
@@ -14,7 +15,7 @@ import { HarianSkeleton } from "@/components/harian/HarianSkeleton";
 import { HarianExport } from "@/components/harian/HarianExport";
 import { mapLimit } from "@/lib/concurrency";
 import { FLEET_RECORD_FLOOR, ptLabelForUnits, unitDotted } from "@/lib/config";
-import { ago, dateLong, dateShort, idn, timeWib } from "@/lib/format";
+import { ago, dateLong, dateShort, timeWib } from "@/lib/format";
 import { getDailyGlWindow } from "@/lib/gl-window";
 import { buildHarianModel, harianSpanFrom, type HarianModel } from "@/lib/harian-model";
 import {
@@ -115,7 +116,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
     getSyncByUnit(unitIds),
     // Penutup opname bernilai 0 di bulan berjalan. Dipindai s/d D+1 (dibatasi
     // hari ini) karena aturannya butuh penutup hari BERIKUTNYA sebagai pembanding.
-    getZeroClosingEvents(unitIds, mFrom, addDays(date, 1) > today ? today : addDays(date, 1)),
+    getZeroClosingEvents(unitIds, addDays(mFrom, -1), addDays(date, 1) > today ? today : addDays(date, 1)),
   ]);
 
   /**
@@ -142,7 +143,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
     gl,
     coverage,
     sync,
-    glSuspect: new Set(zeros.map((z) => z.unit_id)),
+    glSuspectDates: zeros.map((z) => ({ unitId: z.unit_id, date: z.d })),
     recordFloor: FLEET_RECORD_FLOOR,
   });
 
@@ -182,7 +183,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
         </div>
       ) : (
         <>
-          <SummaryCards model={model} />
+          <HarianSummaryCards model={model} />
 
           <MatrixTable
             title="Omzet penjualan — harian"
@@ -208,7 +209,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             incomplete={model.freshness.incomplete}
             signTone
             provisional={model.glProvisional}
-            glIncomplete={model.glIncomplete}
+            glIncomplete={model.glDaily.grandTotal === null}
           />
 
           <MonthlyMatrix
@@ -222,7 +223,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             incomplete={model.freshness.incomplete}
           />
 
-          <GlBars units={model.units} totals={model.glMonthly.totalsByUnit} />
+          <GlBars units={model.units} totals={model.glMonthly.totalsByUnit} provisional={model.glMonthlyProvisional} incomplete={model.glIncomplete} />
 
           <MonthlyMatrix
             title="Gain / Losses — bulanan (MTD)"
@@ -234,6 +235,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             divisor={model.avgDivisor}
             incomplete={model.freshness.incomplete}
             signTone
+            provisional={model.glMonthlyProvisional}
             glIncomplete={model.glIncomplete}
           />
 
@@ -299,33 +301,6 @@ function HarianHead({ model, scopeLabel }: { model: HarianModel; scopeLabel: str
         </div>
       </div>
       <HarianExport model={model} meta={meta} />
-    </div>
-  );
-}
-
-function SummaryCards({ model }: { model: HarianModel }) {
-  const d = model.daily.grandTotal;
-  const m = model.monthly.grand;
-  const gd = model.glDaily.grandTotal;
-  const gm = model.glMonthly.grand.kum;
-  const sfx = model.freshness.incomplete ? " ≥" : "";
-  const cards = [
-    { k: "hari", t: "Total hari ini (liter)", v: `${idn(Math.round(d))}${sfx}`, sub: model.deltaTotal === null ? "Δ vs kemarin —" : `Δ vs kemarin ${idn(Math.round(model.deltaTotal))}` },
-    { k: "mtd", t: "Total bulan berjalan (liter)", v: `${idn(Math.round(m.kum))}${sfx}`, sub: `rata-rata ${idn(Math.round(m.avg))} L/hari (÷${model.avgDivisor})` },
-    { k: "gld", t: "Gain / Losses hari ini (liter)", v: idn(Math.round(gd)), sub: gd < 0 ? "losses" : "gain" },
-    { k: "glm", t: "Gain / Losses bulan berjalan", v: idn(Math.round(gm)), sub: gm < 0 ? "losses" : "gain" },
-  ];
-  return (
-    <div className="kpi-grid harian-kpi mt8">
-      {cards.map((c) => (
-        <div key={c.k} className="kpi-card">
-          <div className="text-caption t-tertiary">{c.t}</div>
-          <div className="text-h2 t-primary num mt2">{c.v}</div>
-          <div className="kpi-note">
-            <span className="fs15 t-tertiary">{c.sub}</span>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

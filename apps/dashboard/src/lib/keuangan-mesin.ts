@@ -44,6 +44,10 @@ export interface DayProductInput {
   stock: number | null;
   /** Gain/Losses Liter (metode RESUME). `null` = tak terhitung. */
   lossesGain: number | null;
+  /** Returned RESUME row rejected by its source-integrity guard; not a dormant missing product. */
+  sourceGlIncomplete?: boolean;
+  /** Returned RESUME stock is incomplete/invalid; distinct from a dormant product without stock. */
+  sourceStockIncomplete?: boolean;
   /** Rp/L, input manual berlaku-sejak. `null` = BELUM DIISI. */
   buyPrice: number | null;
   /**
@@ -74,8 +78,10 @@ export interface DayTotals {
   cogs: number;
   /** `null` = ada produk tanpa harga beli hari itu (§10.23). JANGAN dinolkan. */
   grossProfit: number | null;
-  lossesGainValue: number;
-  inventoryValue: number;
+  /** null bila G/L sumber tak terhitung, bukan subtotal produk lain. */
+  lossesGainValue: number | null;
+  /** null bila stok sumber tak lengkap, bukan subtotal produk lain. */
+  inventoryValue: number | null;
   soValue: number;
   /** Produk yang menyumbang `null` ke salah satu pos di atas. */
   incomplete: ReadonlyArray<string>;
@@ -142,7 +148,7 @@ export function computeDay(inputs: readonly DayProductInput[]): {
     for (const k of ["revenue", "teraValue", "cogs", "lossesGainValue", "inventoryValue", "soValue"] as const) {
       const v = r[k];
       if (v === null) incomplete.add(r.productKey);
-      else totals[k] += v;
+      else totals[k] = (totals[k] ?? 0) + v;
     }
     // ⛔ Yang membuat GP lebih saji BUKAN "ada yang kosong", melainkan
     //    **omzetnya ikut sementara beban pokoknya tidak**. Produk yang tak
@@ -176,6 +182,11 @@ export function computeDay(inputs: readonly DayProductInput[]): {
   //    membuang bukti yang sah bersama angka yang salah.
   totals.grossProfit =
     perusakGp.size > 0 ? null : totals.revenue + totals.teraValue + totals.cogs;
+  // Null dari stok/G/L sumber tidak boleh hilang pada agregasi, lalu dibaca
+  // sebagai persediaan/laba lengkap. Aturan harga-beli/GP §10.23 tetap sama;
+  // ini hanya merambatkan ketidaktahuan SUMBER yang diberikan query RESUME.
+  if (inputs.some((r) => r.sourceGlIncomplete)) totals.lossesGainValue = null;
+  if (inputs.some((r) => r.sourceStockIncomplete)) totals.inventoryValue = null;
   totals.perusakGp = [...perusakGp].sort();
   totals.incomplete = [...incomplete].sort();
   return { rows, totals };

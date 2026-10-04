@@ -2,15 +2,17 @@
  * Seksi tabel Laporan Harian (server component murni — hanya membaca model).
  *
  * Aturan tampilan yang mengikat (keputusan owner №4 + №7):
- *  - Kolom unit BASI ditandai `⚠` + subteks "data s/d …". Sel-selnya TETAP
- *    menampilkan angka — tampilkan, tapi tandai keras.
+ *  - Kolom unit BASI ditandai `⚠` + subteks "data s/d …"; selnya "—".
  *  - Kolom/baris TOTAL diberi label "TIDAK LENGKAP" selama ada unit basi.
  *  - Unit yang BELUM beroperasi pada tanggal itu dirender "—", bukan 0.
  */
+import { Fragment } from "react";
 import { fmtL, idn, pct, signed } from "@/lib/format";
+import { GL_DAILY_PROVISIONAL_WARNING, GL_INCOMPLETE_WARNING, GL_MONTHLY_PROVISIONAL_WARNING, glStatusText, glValueText } from "@/lib/harian-gl-display";
 import type {
   BbkCell,
   HarianModel,
+  MonthlyCell,
   MonthlyRow,
   RatioCell,
   UnitStatus,
@@ -51,18 +53,18 @@ function UnitHeads({ units }: { units: UnitStatus[] }) {
  * beda hal, tak boleh tertukar: yang ini menghilangkan KOLOM, yang itu menggeser
  * digit terakhir.)
  */
-function cellText(u: UnitStatus, v: number | undefined, fmt: (n: number) => string): string {
-  if (u.notYet || u.stale) return "—";
+function cellText(u: UnitStatus, v: number | null | undefined, fmt: (n: number) => string, gl = false): string {
+  if (u.notYet || u.stale || v === null || (gl && v === undefined)) return "—";
   return fmt(v ?? 0);
 }
 
 /** Kelas warna untuk angka bertanda (dipakai tabel G/L): negatif = danger. */
-function toneOf(signTone: boolean, v: number | undefined): string {
+function toneOf(signTone: boolean, v: number | null | undefined): string {
   return signTone && (v ?? 0) < 0 ? " t-danger" : "";
 }
 
 /** Varian per-unit: sel tanpa data ("—") tak boleh diwarnai seolah punya tanda. */
-function toneOfUnit(signTone: boolean, u: UnitStatus, v: number | undefined): string {
+function toneOfUnit(signTone: boolean, u: UnitStatus, v: number | null | undefined): string {
   if (u.notYet || u.stale) return "";
   return toneOf(signTone, v);
 }
@@ -87,9 +89,9 @@ export function MatrixTable({
   title: string;
   hint: string;
   units: UnitStatus[];
-  rows: ValueRow[];
-  totalsByUnit: Record<number, number>;
-  grandTotal: number;
+  rows: ValueRow<number | null>[];
+  totalsByUnit: Record<number, number | null>;
+  grandTotal: number | null;
   incomplete: boolean;
   fmt?: (n: number) => string;
   delta?: Record<number, number | null>;
@@ -98,14 +100,14 @@ export function MatrixTable({
   signTone?: boolean;
   /** true = baris G/L tanggal ini masih provisional (penutup belum final). */
   provisional?: boolean;
-  /** true = jendela G/L kurang hari → sel kosong tampil 0 dan menyesatkan. */
+  /** true = ada sel/total G/L tidak tersedia atau tidak valid. */
   glIncomplete?: boolean;
 }) {
   const style = colStyle(units.length);
   return (
     <div className="mt10">
       <div className="section-h">
-        <div className="text-h5 t-brand">{title}</div>
+        <div className="text-h5 t-brand">{title}{provisional && <span className="t-warning"> · SEMENTARA</span>}</div>
         <span className="fs16 t-tertiary">{hint}</span>
       </div>
       <div className="card tbl-card mt5 harian-scroll">
@@ -113,27 +115,27 @@ export function MatrixTable({
           <div className="grid-head cols-harian" style={style}>
             <span>Produk</span>
             <UnitHeads units={units} />
-            <span className="right">TOTAL{incomplete ? nbsp : ""}</span>
+            <span className="right">TOTAL{signTone && grandTotal === null ? " · TIDAK LENGKAP" : incomplete ? nbsp : ""}</span>
           </div>
           {rows.map((r) => (
             <div key={r.key} className="grid-row cols-harian" style={style}>
               <span className="fs16 t-primary">{r.label}</span>
               {units.map((u) => (
                 <span key={u.unitId} className={`fs16 right num${toneOfUnit(signTone, u, r.byUnit[u.unitId])}`}>
-                  {cellText(u, r.byUnit[u.unitId], fmt)}
+                  {cellText(u, r.byUnit[u.unitId], fmt, signTone)}
                 </span>
               ))}
-              <span className={`fs16 w600 right num${toneOf(signTone, r.total)}`}>{fmt(r.total)}</span>
+              <span className={`fs16 w600 right num${toneOf(signTone, r.total)}`}>{r.total === null ? "—" : fmt(r.total)}</span>
             </div>
           ))}
           <div className="grid-total cols-harian" style={style}>
             <span className="fs16 w700 t-brand">Total</span>
             {units.map((u) => (
               <span key={u.unitId} className={`fs16 w700 right num${toneOfUnit(signTone, u, totalsByUnit[u.unitId])}`}>
-                {cellText(u, totalsByUnit[u.unitId], fmt)}
+                {cellText(u, totalsByUnit[u.unitId], fmt, signTone)}
               </span>
             ))}
-            <span className={`fs16 w700 right num${toneOf(signTone, grandTotal)}`}>{fmt(grandTotal)}</span>
+            <span className={`fs16 w700 right num${toneOf(signTone, grandTotal)}`}>{grandTotal === null ? "—" : fmt(grandTotal)}</span>
           </div>
           {delta && (
             <div className="grid-row cols-harian harian-delta" style={style}>
@@ -164,22 +166,19 @@ export function MatrixTable({
           )}
         </div>
       </div>
-      {incomplete && (
+      {incomplete && !signTone && (
         <div className="fs15 t-warning mt2">
           ⚠ TOTAL menjumlah unit yang datanya belum lengkap untuk tanggal ini — angkanya terlalu kecil.
         </div>
       )}
       {provisional && (
         <div className="fs15 t-warning mt2">
-          ⏳ Angka SEMENTARA — opname penutup tanggal ini belum lengkap (baru terekam pagi
-          berikutnya). Nilai akan berubah.
+          ⏳ {GL_DAILY_PROVISIONAL_WARNING}
         </div>
       )}
       {glIncomplete && (
         <div className="fs15 t-danger mt2">
-          ⚠ Gain/Losses TIDAK LENGKAP — jendela memuat lebih sedikit hari daripada yang punya
-          penjualan. Sel tanpa data tampil <b>0</b>, dan 0 tak bisa dibedakan dari “tak ada
-          selisih”. Jangan baca angka G/L di bawah sampai cakupannya penuh (lihat Catatan data).
+          ⚠ {GL_INCOMPLETE_WARNING}
         </div>
       )}
     </div>
@@ -198,44 +197,46 @@ export function MonthlyMatrix({
   divisor,
   incomplete,
   signTone = false,
+  provisional = false,
   glIncomplete = false,
 }: {
   title: string;
   hint: string;
   units: UnitStatus[];
-  rows: MonthlyRow[];
-  totalsByUnit: Record<number, { kum: number; avg: number }>;
-  grand: { kum: number; avg: number };
+  rows: MonthlyRow<number | null>[];
+  totalsByUnit: Record<number, MonthlyCell<number | null>>;
+  grand: MonthlyCell<number | null>;
   divisor: number;
   incomplete: boolean;
   signTone?: boolean;
+  provisional?: boolean;
   glIncomplete?: boolean;
 }) {
   const style = colStyle(units.length * 2);
-  const cell = (u: UnitStatus, c: { kum: number; avg: number } | undefined, bold = false) =>
+  const cell = (u: UnitStatus, c: MonthlyCell<number | null> | undefined, bold = false) =>
     u.notYet || u.stale ? (
-      <>
+      <Fragment key={u.unitId}>
         <span key={`${u.unitId}k`} className={`fs16 right num${bold ? " w700" : ""}`}>—</span>
         <span key={`${u.unitId}a`} className="fs15 right num t-tertiary">—</span>
-      </>
+      </Fragment>
     ) : (
-      <>
+      <Fragment key={u.unitId}>
         <span
           key={`${u.unitId}k`}
           className={`fs16 right num${bold ? " w700" : ""}${toneOf(signTone, c?.kum)}`}
         >
-          {idn(Math.round(c?.kum ?? 0))}
+          {cellText(u, c?.kum, (n) => idn(Math.round(n)), signTone)}
         </span>
         <span key={`${u.unitId}a`} className="fs15 right num t-tertiary">
-          {idn(Math.round(c?.avg ?? 0))}
+          {cellText(u, c?.avg, (n) => idn(Math.round(n)), signTone)}
         </span>
-      </>
+      </Fragment>
     );
 
   return (
     <div className="mt10">
       <div className="section-h">
-        <div className="text-h5 t-brand">{title}</div>
+        <div className="text-h5 t-brand">{title}{provisional && <span className="t-warning"> · SEMENTARA</span>}</div>
         <span className="fs16 t-tertiary">{hint}</span>
       </div>
       <div className="card tbl-card mt5 harian-scroll">
@@ -250,7 +251,7 @@ export function MonthlyMatrix({
               </span>
             ))}
             <span className="right harian-span2">
-              TOTAL
+              TOTAL{signTone && grand.kum === null ? " · TIDAK LENGKAP" : ""}
               <span className="harian-stale-sub">Kumulatif · Rata-Rata</span>
             </span>
           </div>
@@ -258,26 +259,26 @@ export function MonthlyMatrix({
             <div key={r.key} className="grid-row cols-harian2" style={style}>
               <span className="fs16 t-primary">{r.label}</span>
               {units.map((u) => cell(u, r.byUnit[u.unitId]))}
-              <span className="fs16 w600 right num">{idn(Math.round(r.total.kum))}</span>
-              <span className="fs15 right num t-tertiary">{idn(Math.round(r.total.avg))}</span>
+              <span className="fs16 w600 right num">{glValueText(r.total.kum)}</span>
+              <span className="fs15 right num t-tertiary">{glValueText(r.total.avg)}</span>
             </div>
           ))}
           <div className="grid-total cols-harian2" style={style}>
             <span className="fs16 w700 t-brand">Total</span>
             {units.map((u) => cell(u, totalsByUnit[u.unitId], true))}
-            <span className="fs16 w700 right num">{idn(Math.round(grand.kum))}</span>
-            <span className="fs15 w600 right num t-tertiary">{idn(Math.round(grand.avg))}</span>
+            <span className="fs16 w700 right num">{glValueText(grand.kum)}</span>
+            <span className="fs15 w600 right num t-tertiary">{glValueText(grand.avg)}</span>
           </div>
         </div>
       </div>
       {incomplete && (
         <div className="fs15 t-warning mt2">⚠ TOTAL tidak lengkap — lihat banner di atas halaman.</div>
       )}
+      {provisional && (
+        <div className="fs15 t-warning mt2">⏳ {GL_MONTHLY_PROVISIONAL_WARNING}</div>
+      )}
       {glIncomplete && (
-        <div className="fs15 t-danger mt2">
-          ⚠ Gain/Losses TIDAK LENGKAP — sel tanpa data tampil <b>0</b>. Jangan dibaca sampai
-          cakupannya penuh.
-        </div>
+        <div className="fs15 t-danger mt2">⚠ {GL_INCOMPLETE_WARNING}</div>
       )}
     </div>
   );
@@ -453,8 +454,8 @@ export function StaleBanner({ model }: { model: HarianModel }) {
         </div>
         <div className="fs15 t-tertiary mt2">
           Kolom unit yang tertinggal ditandai ⚠ dan selnya dirender “—” (tidak ada data — bukan nol
-          penjualan). TOTAL tetap ditampilkan sebagai jumlah unit yang PUNYA data, jadi ia terlalu
-          kecil dan tidak sama dengan jumlah kolom yang terlihat.
+          penjualan). TOTAL penjualan menjumlah unit yang PUNYA data, jadi ia terlalu kecil.
+          Total G/L yang bergantung pada data hilang ditampilkan “—”.
         </div>
       </div>
     </div>
@@ -478,3 +479,30 @@ export function HarianNotes({ notes }: { notes: string[] }) {
 }
 
 export { fmtL };
+
+export function HarianSummaryCards({ model }: { model: HarianModel }) {
+  const d = model.daily.grandTotal;
+  const m = model.monthly.grand;
+  const gd = model.glDaily.grandTotal;
+  const gm = model.glMonthly.grand.kum;
+  const sfx = model.freshness.incomplete ? " ≥" : "";
+  const cards = [
+    { k: "hari", t: "Total hari ini (liter)", v: `${idn(Math.round(d))}${sfx}`, sub: model.deltaTotal === null ? "Δ vs kemarin —" : `Δ vs kemarin ${idn(Math.round(model.deltaTotal))}` },
+    { k: "mtd", t: "Total bulan berjalan (liter)", v: `${idn(Math.round(m.kum))}${sfx}`, sub: `rata-rata ${idn(Math.round(m.avg))} L/hari (÷${model.avgDivisor})` },
+    { k: "gld", t: "Gain / Losses hari ini (liter)", v: glValueText(gd), sub: glStatusText(gd, model.glProvisional) },
+    { k: "glm", t: "Gain / Losses bulan berjalan", v: glValueText(gm), sub: glStatusText(gm, model.glMonthlyProvisional) },
+  ];
+  return (
+    <div className="kpi-grid harian-kpi mt8">
+      {cards.map((c) => (
+        <div key={c.k} className="kpi-card">
+          <div className="text-caption t-tertiary">{c.t}</div>
+          <div className="text-h2 t-primary num mt2">{c.v}</div>
+          <div className="kpi-note">
+            <span className="fs15 t-tertiary">{c.sub}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

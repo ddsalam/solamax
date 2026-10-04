@@ -146,7 +146,7 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(lossPct(12.5, 0)).toBeNull();
   });
 
-  it("Stock Fisik NULL → Teori tetap terhitung, Losses & % kosong, TOTAL tak menghitungnya", () => {
+  it("Stock Fisik NULL → Teori tetap terhitung, Losses & % baris/TOTAL kosong", () => {
     const a = buildArusMinyak([
       row({ ckdbbm: "BB-02", nama: "PERTAMAX", fisik_prev: 100, pen_do: 0, sales_gross: 40, tera: 0, fisik: null }),
       row({ ckdbbm: "BB-03", nama: "SOLAR", fisik_prev: 200, pen_do: 100, sales_gross: 50, tera: 0, fisik: 245 }),
@@ -160,8 +160,24 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.provisional).toBe(true); // gl null → jangan mengaku final
     // TOTAL: kolom yang lengkap tetap dijumlah; baris tanpa fisik tak menyumbang.
     expect(a.total.fisik).toBe(245);
-    expect(a.total.losses).toBe(-5);
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
     expect(a.total.teori).toBe(310);
+  });
+
+  it("G/L ditolak query tetap null meskipun seluruh komponen numerik tersedia", () => {
+    const valid = row({ ckdbbm: "P", nama: "P", fisik_prev: 100, pen_do: 0,
+      sales_gross: 40, tera: 0, fisik: 65 });
+    const invalid = { ...valid, ckdbbm: "Q", nama: "Q", gl: null, provisional: true };
+    const a = buildArusMinyak([valid, invalid]);
+    expect(a.rows[0]!.losses).toBe(5);
+    expect(a.rows[1]!.losses).toBeNull();
+    expect(a.rows[1]!.pct).toBeNull();
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+    expect(a.rows[1]!.teori).toBe(60); // komponen tersedia tetap diagnostik
   });
 
   it("Stock Awal NULL (tak ada anchor) → Teori/Losses/% kosong", () => {

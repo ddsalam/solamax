@@ -85,7 +85,7 @@ export interface ArusRow {
   /** Awal + Penerimaan − Penjualan. null bila `awal` null. */
   teori: number | null;
   fisik: number | null;
-  /** Fisik − Teori (+ gain, − loss). null bila salah satu komponen null. */
+  /** G/L kanonik (+ gain, − loss). null bila stok/mutasi tak lengkap. */
   losses: number | null;
   /** Losses ÷ penjualan **KOTOR** × 100. null = tak terdefinisi (lihat lossPct). */
   pct: number | null;
@@ -100,7 +100,7 @@ export interface ArusMinyak {
   provisional: boolean;
   /** Σ tangki di luar batas wajar yang dikecualikan dari Stock Fisik hari itu. */
   excludedTanks: number;
-  /** Ada baris tanpa Stock Awal/Fisik → total kolom itu tidak lengkap. */
+  /** Ada stok/G/L tak terhitung → jangan sajikan subtotal losses sebagai total. */
   incomplete: boolean;
   /** Σ tera hari itu (L). >0 → TOTAL Penjualan sengaja ≠ Σ kolom; catatan kaki wajib. */
   teraTotal: number;
@@ -167,7 +167,9 @@ export function buildArusMinyak(
   const rows: ArusRow[] = glRows.map((r) => {
     const penjualan = r.sales_gross - r.tera;
     const teori = stockTeori(r.fisik_prev, r.pen_do, penjualan);
-    const l = losses(r.fisik, teori);
+    // Query juga memeriksa cakupan tangki dan mutasi NULL/garbage. Menghitung
+    // ulang hanya dari komponen numerik akan menghidupkan lagi G/L yang ditolak.
+    const l = r.gl;
     return {
       ckdbbm: r.ckdbbm,
       nama: r.nama ?? r.ckdbbm,
@@ -196,7 +198,7 @@ export function buildArusMinyak(
   const totPenjualanKotor = nz(rows.map((r) => r.penjualan + r.tera));
   const totFisik = semuaNull((r) => r.fisik) ? null : nz(rows.map((r) => r.fisik));
   const totTeori = semuaNull((r) => r.teori) ? null : nz(rows.map((r) => r.teori));
-  const totLosses = semuaNull((r) => r.losses) ? null : nz(rows.map((r) => r.losses));
+  const totLosses = rows.some((r) => r.losses === null) ? null : nz(rows.map((r) => r.losses));
   const total: ArusRow = {
     ckdbbm: "",
     nama: "TOTAL",
@@ -216,7 +218,7 @@ export function buildArusMinyak(
     total,
     provisional: glRows.some((r) => r.provisional || r.gl === null),
     excludedTanks: glRows.reduce((s, r) => s + r.excluded_tanks, 0),
-    incomplete: rows.some((r) => r.awal === null || r.fisik === null),
+    incomplete: rows.some((r) => r.awal === null || r.fisik === null || r.losses === null),
     teraTotal: total.tera,
     zeroClosingCount: rows.filter((r) => r.zeroClosing !== null).length,
   };

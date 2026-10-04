@@ -39,7 +39,7 @@ d("sisi uang sesudah harga beli terisi", () => {
           revenue: Math.round(b.totals.revenue),
           cogs: Math.round(b.totals.cogs),
           grossProfit: gp === null ? "NULL" : Math.round(gp),
-          inventory: Math.round(b.totals.inventoryValue),
+          inventory: b.totals.inventoryValue === null ? "NULL" : Math.round(b.totals.inventoryValue),
           soValue: Math.round(b.totals.soValue),
           takLengkap: b.incomplete.length === 0 ? "—" : b.incomplete.join(","),
         });

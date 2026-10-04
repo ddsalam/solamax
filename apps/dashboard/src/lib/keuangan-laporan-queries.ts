@@ -150,8 +150,8 @@ async function saldoTitipanPada(
 }
 
 /** Total asset komponen-non-kas pada satu tanggal — untuk LANGKAH harian. */
-function assetNonKas(t: DayTotals): number {
-  return t.inventoryValue + t.soValue;
+function assetNonKas(t: DayTotals): number | null {
+  return t.inventoryValue === null ? null : t.inventoryValue + t.soValue;
 }
 
 /**
@@ -188,6 +188,8 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
         tera: r.tera,
         stock: r.fisik,
         lossesGain: r.gl,
+        sourceGlIncomplete: r.gl === null,
+        sourceStockIncomplete: r.fisik === null,
         buyPrice: effectiveBuyPrice(buyRows, r.ckdbbm, d),
         sisaSo: x === undefined ? null : sisaSoAktif(x.sisa, x.sisa_macet),
       };
@@ -198,7 +200,8 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
   const nonEasymax = deltaKategoriSampai(mutasi, d, "Hutang Piutang");
   // §10.27 — titipan outlet Bright adalah LIABILITAS: mengurangi asset bersih.
   const titipan = await saldoTitipanPada(unit, d, mutasi);
-  return kas + assetNonKas(totals) + piutang + nonEasymax - titipan;
+  const nonKas = assetNonKas(totals);
+  return nonKas === null ? null : kas + nonKas + piutang + nonEasymax - titipan;
 }
 
 export async function getBahanLaporan(
@@ -243,6 +246,8 @@ async function bahanLaporan(
       tera: r.tera,
       stock: r.fisik,
       lossesGain: r.gl,
+      sourceGlIncomplete: r.gl === null,
+      sourceStockIncomplete: r.fisik === null,
       buyPrice: effectiveBuyPrice(buyRows, r.ckdbbm, date),
       // `sisaSoAktif` mengurangi bagian macet — jangan menghitungnya ulang.
       sisaSo: d === undefined ? null : sisaSoAktif(d.sisa, d.sisa_macet),

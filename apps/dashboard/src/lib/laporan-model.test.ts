@@ -389,3 +389,63 @@ describe("penjaga SUMBER: halaman Laporan menyambungkan query yang benar", () =>
     }
   });
 });
+
+describe("operational G/L null propagation", () => {
+  const gl = (ckdbbm: string, value: number | null, d = ctx.date, provisional = false) => ({
+    d, ckdbbm, nama: ckdbbm, fisik_prev: 1_000, fisik: value === null ? null : 990 + value,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, excluded_tanks: value === null ? 1 : 0, provisional,
+  });
+
+  it("unknown product and partial daily/monthly totals stay unavailable in both panels", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 5), gl("P2", null)] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBe(5);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull(); expect(m.arusMinyak.total.pct).toBeNull();
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    const monthly = m.checks.find(r => r.label.startsWith("Losses bulanan"))!;
+    expect(monthly.state).toBe("na"); expect(monthly.label).not.toContain("aman");
+  });
+
+  it("unknown earlier row invalidates only that product's monthly sum and full monthly total", () => {
+    const m = buildLaporanModel({ ...raw,
+      glRows: [gl("P1", null, "2026-06-10"), gl("P1", 5), gl("P2", 3)],
+    }, ctx);
+    expect(m.sales.glTotal).toBe(8);
+    expect(m.arusMinyak.total.losses).toBe(8);
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.selisih).toBeNull();
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBe(3);
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+  });
+
+  it("computed provisional G/L stays visible with provisional monthly alarm", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 5, ctx.date, true), gl("P2", 3)] }, ctx);
+    expect(m.sales.glTotal).toBe(8);
+    expect(m.sales.glProvisional).toBe(true);
+    expect(m.glMonthly.glMonthTotal).toBe(8);
+    expect(m.glMonthly.provisional).toBe(true);
+    expect(m.checks.find(r => r.label.startsWith("Losses bulanan"))!.state).toBe("provisional");
+  });
+
+  it("no G/L rows is unavailable and cannot produce a safe monthly alarm", () => {
+    const m = buildLaporanModel(raw, ctx);
+    expect(m.sales.glTotal).toBeNull(); expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.checks.find(r => r.label.startsWith("Losses bulanan"))!.state).toBe("na");
+  });
+
+  it("an active sales product absent from G/L prevents partial daily and Arus totals", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 0)] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBe(0); // known zero stays known
+    expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull(); expect(m.arusMinyak.total.pct).toBeNull();
+    expect(m.arusMinyak.incomplete).toBe(true);
+  });
+
+  it("active monthly product without any G/L prevents partial month total", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 0)], prodMonth: raw.prodDay }, ctx);
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    expect(m.checks.find(r => r.label.startsWith("Losses bulanan"))!.state).toBe("na");
+  });
+});
