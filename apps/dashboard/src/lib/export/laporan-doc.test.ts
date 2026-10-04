@@ -285,6 +285,38 @@ describe("PDF: Arus Minyak Harian", () => {
 });
 
 describe("PDF operational G/L source-integrity nulls", () => {
+  it("renders one canonical sales row with G/L and tera once and the full monthly denominator", () => {
+    // Same synthetic aggregate as the actual-SQL identity regression: raw
+    // P / NBSP+P / BOM+P sales contribute 100 + 200 + 300 L before grouping.
+    const products = [{ ckdbbm: "P", nama: "SOLAR", vol: 600, omzet: 6000000, harga: 10000 }];
+    const m = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [{ d: "2026-10-02", ckdbbm: "P", nama: "SOLAR", fisik_prev: 10000,
+        fisik: 9600, pen_do: 0, sales_gross: 600, tera: 50, gl: 150,
+        excluded_tanks: 0, provisional: false }],
+    }, { unitCode: "SYNTHETIC", date: "2026-10-02", today: "2026-10-04",
+      mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
+    expect(m.sales.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600,
+      omzet: 6000000, gl: 150, tera: 50 }]);
+    expect(m.sales.glTotal).toBe(150);
+    expect(m.sales.totTera).toBe(50);
+    expect(m.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(m.glMonthly.glPctMonth).toBe(0.25);
+    expect(m.harga.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", harga: 10000 }]);
+
+    const doc = buildLaporanDocDefinition({ model: m, config: DEFAULT_EXPORT_CONFIG,
+      meta: { ...meta, unitDotted: "SYNTHETIC", unitName: "SYNTHETIC PRODUCT SUMMARY",
+        dateLong: "2 Oktober 2026", monthName: "Oktober", dayOfMonth: 2, daysInMonth: 31 } });
+    const tables = collectTables(doc.content);
+    const daily = tables.find((t) => JSON.stringify(t.table.body[0]).includes("Sales (L)"))!;
+    const monthly = tables.find((t) => JSON.stringify(t.table.body[0]).includes("G/L bulan (L)"))!;
+    const cells = (row: unknown[]) => row.map((cell) => (cell as { text: string }).text);
+    expect(daily.table.body).toHaveLength(3); // header, one product, total
+    expect(cells(daily.table.body[1]!)).toEqual(["SOLAR", "600", "+150", "50", "Rp 6.000.000"]);
+    expect(cells(daily.table.body[2]!)).toEqual(["TOTAL", "600", "+150", "50", "Rp 6.000.000"]);
+    expect(monthly.table.body).toHaveLength(2);
+    expect(cells(monthly.table.body[1]!)).toEqual(["SOLAR", "+150 L", "25,00%"]);
+  });
+
   it("unknown rows and totals render as unavailable in daily, cumulative, and Arus sections", () => {
     const m = buildLaporanModel({ ...raw, glRows: [{
       d: "2026-06-11", ckdbbm: "P1", nama: "Pertalite", fisik: 900, fisik_prev: 1_000,

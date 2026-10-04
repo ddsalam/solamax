@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildRincianModel, type RincianRaw } from "./rincian-model";
+import { buildRincianDocDefinition } from "./export/rincian-doc";
+import { DEFAULT_EXPORT_CONFIG } from "./export/config";
 
 /**
  * buildRincianModel — kunci formula rekonsiliasi & pemetaan seksi manual:
@@ -41,6 +43,23 @@ const sum = (m: ReturnType<typeof buildRincianModel>, l: string) =>
   m.summary.find((s) => s.l === l)!;
 
 describe("buildRincianModel — rekonsiliasi & seksi manual", () => {
+  it("keeps nullable sales labels printable without changing volumes or amounts", () => {
+    const m = buildRincianModel(raw({ prod: [
+      { ckdbbm: "\u00a0 P \ufeff", nama: null, vol: 10, omzet: 100000, harga: 10000 },
+      { ckdbbm: "X Y", nama: " \t ", vol: 20, omzet: 200000, harga: 10000 },
+      { ckdbbm: null, nama: null, vol: 30, omzet: 300000, harga: 10000 },
+    ] }));
+    expect(m.sections[0]!.rows.map((r) => r.ket)).toEqual(["P", "X Y", "Produk tidak diketahui"]);
+    expect(m.sections[0]!.totalVol).toBe("60,00");
+    expect(m.sections[0]!.totalRp).toBe("Rp 600.000");
+    expect(sum(m, "A").val).toBe("Rp 600.000");
+    const doc = buildRincianDocDefinition({ model: m, config: DEFAULT_EXPORT_CONFIG,
+      meta: { unitDotted: "SYNTHETIC", unitName: "Synthetic Unit", address: "",
+        pt: "Synthetic", dateLong: "1 Juli 2026", generatedLabel: "Synthetic" } });
+    expect(JSON.stringify(doc.content)).toContain("Produk tidak diketahui");
+    expect(JSON.stringify(doc.content)).toContain("Rp 600.000");
+  });
+
   it("E = A − (B + C + D), dengan formula tercantum", () => {
     const m = buildRincianModel(raw());
     const e = sum(m, "E");

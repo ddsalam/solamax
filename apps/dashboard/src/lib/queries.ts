@@ -112,8 +112,8 @@ export async function getGlSourceRevision(unit: ScopedUnitId): Promise<string> {
 // ---------------------------------------------------------------------------
 
 export interface ProductAgg {
-  ckdbbm: string;
-  nama: string;
+  ckdbbm: string | null; // normalized before aggregation; null = unidentified source
+  nama: string | null;
   vol: number;
   omzet: number;
   /** harga jual terakhir teramati pada rentang (utk tabel harga) */
@@ -128,16 +128,22 @@ export async function getSalesByProduct(
 ): Promise<ProductAgg[]> {
   return qScoped<ProductAgg>(
     unit,
-    `SELECT trim(sd.ckdbbm) AS ckdbbm,
-            COALESCE(max(p.vcnmbbm), trim(sd.ckdbbm)) AS nama,
+    `SELECT ${sourceIdentity("sd.ckdbbm")} AS ckdbbm,
+            COALESCE(max(p.nama), ${sourceIdentity("sd.ckdbbm")}) AS nama,
             COALESCE(sum(sd.nvolume),0)::float8 AS vol,
             COALESCE(sum(sd.nsubtotal),0)::float8 AS omzet,
             (array_agg(sd.nhargajual ORDER BY sd.dtgljam DESC))[1]::float8 AS harga
      FROM sales_detail sd
      JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
-     LEFT JOIN product p ON p.unit_id = sd.unit_id AND p.ckdbbm = sd.ckdbbm
+     -- One canonical identity per summary row. Deduplicate master aliases
+     -- first so normalizing keys cannot multiply sales or repeat G/L downstream.
+     LEFT JOIN (
+       SELECT ${sourceIdentity("ckdbbm")} AS ckdbbm, max(vcnmbbm) AS nama
+       FROM product WHERE unit_id = $1
+       GROUP BY ${sourceIdentity("ckdbbm")}
+     ) p ON p.ckdbbm=${sourceIdentity("sd.ckdbbm")}
      WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN $2::date AND $3::date
-     GROUP BY trim(sd.ckdbbm)
+     GROUP BY ${sourceIdentity("sd.ckdbbm")}
      ORDER BY omzet DESC`,
     [unit, from, to],
   );
@@ -794,8 +800,8 @@ export async function getDeliveryShortfalls(
 // ---------------------------------------------------------------------------
 
 export interface DeliveryAgg {
-  ckdbbm: string;
-  nama: string;
+  ckdbbm: string | null;
+  nama: string | null;
   vol: number;
 }
 
@@ -810,15 +816,19 @@ export async function getDeliveryByProduct(
   // bukan basis Penerimaan. Guard tetap pada kolom yang dipakai (nvoldo).
   return qScoped<DeliveryAgg>(
     unit,
-    `SELECT trim(t.ckdbbm) AS ckdbbm,
-            COALESCE(max(p.vcnmbbm), trim(t.ckdbbm)) AS nama,
+    `SELECT ${sourceIdentity("t.ckdbbm")} AS ckdbbm,
+            COALESCE(max(p.nama), ${sourceIdentity("t.ckdbbm")}) AS nama,
             COALESCE(sum(t.nvoldo),0)::float8 AS vol
      FROM delivery t
-     LEFT JOIN product p ON p.unit_id = t.unit_id AND p.ckdbbm = t.ckdbbm
+     LEFT JOIN (
+       SELECT ${sourceIdentity("ckdbbm")} AS ckdbbm, max(vcnmbbm) AS nama
+       FROM product WHERE unit_id = $1
+       GROUP BY ${sourceIdentity("ckdbbm")}
+     ) p ON p.ckdbbm=${sourceIdentity("t.ckdbbm")}
      WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
        AND abs(COALESCE(t.nvoldo,0)) <= ${GARBAGE_STOCK_L}
        AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) BETWEEN $2::date AND $3::date
-     GROUP BY trim(t.ckdbbm)`,
+     GROUP BY ${sourceIdentity("t.ckdbbm")}`,
     [unit, from, to],
   );
 }
