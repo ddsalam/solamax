@@ -616,9 +616,8 @@ export async function getDailyGlByProduct(
   return qScoped<DailyGlRow>(
     unit,
     `WITH bounds AS (
-       -- Batas bawah pemindaian base-CTE: from − GL_LOOKBACK_DAYS (lihat catatan
-       -- konstanta). dto memakai 'to' apa adanya. Semua base-CTE memfilter ke
-       -- [dlo, dto] agar tak memindai SELURUH sejarah unit untuk 1 bulan output.
+       -- Keep the existing 365-day closing/lag lookback. Movement reads below
+       -- use the actual previous-closing windows of the requested rows.
        SELECT $2::date AS dfrom, $3::date AS dto, ($2::date - ${GL_LOOKBACK_DAYS}) AS dlo
      ),
      biz AS (
@@ -660,15 +659,29 @@ export async function getDailyGlByProduct(
               lag(bizdate) OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS prev_date
        FROM fisik f
      ),
+     requested AS MATERIALIZED (
+       -- Keep the full closing lookback above for lag/tank integrity, but do
+       -- movement work only for the rows the caller will actually receive.
+       SELECT * FROM seq WHERE bizdate BETWEEN $2::date AND $3::date
+     ),
+     movement_bounds AS (
+       -- A gap can start before from; retain its entire (previous, D] window.
+       -- from - 1 also retains unidentified movements when no closing exists.
+       SELECT LEAST($2::date - 1,
+                    min(COALESCE(prev_date, bizdate - 1))) AS after_date,
+              $3::date AS dto
+       FROM requested
+     ),
      deliv AS (
        SELECT COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) AS d,
               ${sourceIdentity("t.ckdbbm")} AS ckdbbm,
               sum(t.nvoldo) FILTER (WHERE abs(t.nvoldo) <= ${GARBAGE_STOCK_L})::float8 AS v,
               bool_or(${sourceIdentity("t.ckdbbm")} IS NULL OR t.nvoldo IS NULL OR abs(t.nvoldo) > ${GARBAGE_STOCK_L}) AS invalid
-       FROM delivery t, bounds b
+       FROM delivery t, movement_bounds b
        WHERE t.unit_id = $1 AND COALESCE(t.sbatal,0) = 0
          AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date)
-             BETWEEN b.dlo AND b.dto
+             > b.after_date
+         AND COALESCE(t.dtgltrm,(t.dtgljam AT TIME ZONE '${TZ}')::date) <= b.dto
        GROUP BY 1, 2
      ),
      sale AS (
@@ -676,8 +689,8 @@ export async function getDailyGlByProduct(
               bool_or(${sourceIdentity("sd.ckdbbm")} IS NULL OR sd.nvolume IS NULL) AS invalid
        FROM sales_detail sd
        JOIN sales_header h ON h.unit_id = sd.unit_id AND h.ckdjualbbm = sd.ckdjualbbm
-       , bounds b
-       WHERE sd.unit_id = $1 AND h.dtgljual BETWEEN b.dlo AND b.dto
+       , movement_bounds b
+       WHERE sd.unit_id = $1 AND h.dtgljual > b.after_date AND h.dtgljual <= b.dto
        GROUP BY 1, 2
      ),
      terad AS (
@@ -685,9 +698,9 @@ export async function getDailyGlByProduct(
        -- business_date=DTGLTERRA, hanya sbatal=0; Σ nvolume per (hari, produk).
        SELECT tr.business_date AS d, ${sourceIdentity("tr.ckdbbm")} AS ckdbbm, sum(tr.nvolume)::float8 AS v,
               bool_or(${sourceIdentity("tr.ckdbbm")} IS NULL OR tr.nvolume IS NULL) AS invalid
-       FROM terra_resmi tr, bounds b
+       FROM terra_resmi tr, movement_bounds b
        WHERE tr.unit_id = $1 AND COALESCE(tr.sbatal,0) = 0
-         AND tr.business_date BETWEEN b.dlo AND b.dto
+         AND tr.business_date > b.after_date AND tr.business_date <= b.dto
        GROUP BY 1, 2
      ),
      unassigned_dates AS (
@@ -700,37 +713,49 @@ export async function getDailyGlByProduct(
      -- numeric movement fields remain diagnostic assigned-product sums only.
      assessed AS (
        SELECT s.*,
-              (EXISTS (SELECT 1 FROM deliv x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
-                         AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
-               OR EXISTS (SELECT 1 FROM sale x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
-                         AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
-               OR EXISTS (SELECT 1 FROM terad x WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL) AND x.invalid
-                         AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate)
-              ) AS movement_invalid
-       FROM seq s
+              COALESCE(d.v,0)::float8 AS pen_do,
+              COALESCE(j.v,0)::float8 AS sales_gross,
+              COALESCE(t.v,0)::float8 AS tera,
+              (COALESCE(d.invalid,false) OR COALESCE(j.invalid,false)
+                OR COALESCE(t.invalid,false)) AS movement_invalid
+       FROM requested s
+       -- Each domain's amount and quality are assessed together once per
+       -- requested closing. Unknown amounts stay at their actual daily grain;
+       -- unknown quality still invalidates every affected product gap window.
+       CROSS JOIN LATERAL (
+         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
+                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
+                bool_or(x.invalid) AS invalid
+         FROM deliv x
+         WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
+           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+       ) d
+       CROSS JOIN LATERAL (
+         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
+                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
+                bool_or(x.invalid) AS invalid
+         FROM sale x
+         WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
+           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+       ) j
+       CROSS JOIN LATERAL (
+         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
+                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
+                bool_or(x.invalid) AS invalid
+         FROM terad x
+         WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
+           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+       ) t
      )
      SELECT to_char(s.bizdate,'YYYY-MM-DD') AS d, s.ckdbbm,
             (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND ${sourceIdentity("p.ckdbbm")}=s.ckdbbm) AS nama,
             s.fisik::float8 AS fisik,
             s.fisik_prev::float8 AS fisik_prev,
-            COALESCE((SELECT sum(v) FROM deliv x WHERE (x.ckdbbm=s.ckdbbm
-                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
-                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS pen_do,
-            COALESCE((SELECT sum(v) FROM sale x WHERE (x.ckdbbm=s.ckdbbm
-                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
-                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS sales_gross,
-            COALESCE((SELECT sum(v) FROM terad x WHERE (x.ckdbbm=s.ckdbbm
-                       OR (x.ckdbbm IS NULL AND s.ckdbbm IS NULL AND x.d=s.bizdate))
-                       AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)::float8 AS tera,
+            s.pen_do, s.sales_gross, s.tera,
             CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL OR s.movement_invalid
                        OR s.tanks IS DISTINCT FROM s.tanks_prev THEN NULL
                  ELSE (s.fisik - (s.fisik_prev
-                       + COALESCE((SELECT sum(v) FROM deliv x WHERE x.ckdbbm=s.ckdbbm
-                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)
-                       - (COALESCE((SELECT sum(v) FROM sale x WHERE x.ckdbbm=s.ckdbbm
-                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0)
-                          - COALESCE((SELECT sum(v) FROM terad x WHERE x.ckdbbm=s.ckdbbm
-                                    AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate),0))
+                       + s.pen_do - (s.sales_gross - s.tera)
                        ))::float8 END AS gl,
             s.excluded_tanks,
             (s.prov OR COALESCE(s.prov_prev, false)
@@ -739,7 +764,6 @@ export async function getDailyGlByProduct(
               OR s.tanks IS DISTINCT FROM s.tanks_prev
               OR s.prev_date <> s.bizdate - 1) AS provisional
      FROM assessed s
-     WHERE s.bizdate BETWEEN $2::date AND $3::date
      UNION ALL
      -- Actual unassigned source movements must remain visible even with no
      -- opname. They have NO physical stock or computable G/L. Existing unknown
@@ -752,7 +776,7 @@ export async function getDailyGlByProduct(
             NULL::float8 AS gl, 0::int AS excluded_tanks, true AS provisional
      FROM unassigned_dates u
      WHERE u.d BETWEEN $2::date AND $3::date
-       AND NOT EXISTS (SELECT 1 FROM seq s WHERE s.bizdate=u.d AND s.ckdbbm IS NULL)
+       AND NOT EXISTS (SELECT 1 FROM requested s WHERE s.bizdate=u.d AND s.ckdbbm IS NULL)
      ORDER BY d, ckdbbm`,
     [unit, from, to],
   );
