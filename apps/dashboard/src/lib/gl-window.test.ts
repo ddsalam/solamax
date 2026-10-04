@@ -61,7 +61,7 @@ describe("splitGlWindow — batas cache G/L (historis = today−2)", () => {
 describe("D13 — jangan sajikan hasil KOSONG dari cache", () => {
   const row = (d: string, gl: number): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0,
-    sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
 
   it("NETRALITAS: cache non-kosong dipakai apa adanya, fresh TIDAK dipanggil", async () => {
@@ -76,6 +76,13 @@ describe("D13 — jangan sajikan hasil KOSONG dari cache", () => {
     );
     expect(out).toBe(cachedRows); // referensi SAMA — tak disalin, tak diubah
     expect(freshCalls).toBe(0); // inilah jaminan /board tak berubah perilaku
+  });
+
+  it.each([true, undefined, null, 0, "false"])("rejects stale or invalid movement quality metadata (%s)", async flag => {
+    const legacy = { ...row("2026-07-01", 0), movement_invalid: flag } as unknown as DailyGlRow;
+    expect(shouldBypassEmptyCache([legacy])).toBe(true);
+    const fresh = [row("2026-07-01", 0)];
+    expect(await resolveHistoricPart(async () => [legacy], async () => fresh)).toBe(fresh);
   });
 
   it("cache KOSONG → fresh dipanggil dan hasilnya dipakai", async () => {

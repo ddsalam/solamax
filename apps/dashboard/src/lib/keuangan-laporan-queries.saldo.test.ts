@@ -67,7 +67,7 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
   it("baris RESUME yang ditolak mempertahankan status tak terhitung dalam bahan keuangan", async () => {
     getDailyGlByProduct.mockResolvedValue([{
       d: "2026-08-04", ckdbbm: "P", nama: "P", fisik: null, fisik_prev: 10_000,
-      pen_do: 0, sales_gross: 1_000, tera: 0, gl: null, excluded_tanks: 1, provisional: true,
+      pen_do: 0, sales_gross: 1_000, tera: 0, gl: null, movement_invalid: false, excluded_tanks: 1, provisional: true,
     }]);
     const bahan = await getBahanLaporan(U, "2026-08-04", "2026-08-03");
     expect(bahan.totals.inventoryValue).toBeNull();
@@ -86,7 +86,7 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
   it.each([null, "", "   "])("unidentified product %s cannot create final financial zero or match a price", async (ckdbbm) => {
     getDailyGlByProduct.mockResolvedValue([{
       d: "2026-08-04", ckdbbm, nama: null, fisik: 1_000, fisik_prev: 1_100,
-      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
     }]);
     getHargaBeliRows.mockResolvedValue([{ productKey: "", effectiveFrom: "2026-01-01", price: 9_000, void: false }]);
     getAkunKas.mockResolvedValue([{ id: "synthetic-account", nama: "Synthetic" }]);
@@ -101,7 +101,7 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
   it("normalizes valid padded identities without rejecting an unmapped product", async () => {
     getDailyGlByProduct.mockResolvedValue([{
       d: "2026-08-04", ckdbbm: " P ", nama: null, fisik: 1_000, fisik_prev: 1_100,
-      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
     }]);
     getSalesByProduct.mockResolvedValue([{ ckdbbm: "P", nama: "Synthetic P", vol: 100, omzet: 1_000_000, harga: 10_000 }]);
     getHargaBeliRows.mockResolvedValue([{ productKey: "P", effectiveFrom: "2026-01-01", price: 9_000, void: false }]);

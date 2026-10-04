@@ -393,7 +393,7 @@ describe("penjaga SUMBER: halaman Laporan menyambungkan query yang benar", () =>
 describe("operational G/L null propagation", () => {
   const gl = (ckdbbm: string, value: number | null, d = ctx.date, provisional = false) => ({
     d, ckdbbm, nama: ckdbbm, fisik_prev: 1_000, fisik: value === null ? null : 990 + value,
-    pen_do: 0, sales_gross: 10, tera: 0, gl: value, excluded_tanks: value === null ? 1 : 0, provisional,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, movement_invalid: false, excluded_tanks: value === null ? 1 : 0, provisional,
   });
 
   it("unknown product and partial daily/monthly totals stay unavailable in both panels", () => {
@@ -440,6 +440,7 @@ describe("operational G/L null propagation", () => {
     expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
     expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
     expect(m.arusMinyak.total.losses).toBeNull(); expect(m.arusMinyak.total.pct).toBeNull();
+    expect(m.arusMinyak.total).toMatchObject({ awal: null, teori: null, fisik: null });
     expect(m.arusMinyak.incomplete).toBe(true);
   });
 
@@ -459,7 +460,7 @@ describe("operational product identity boundaries", () => {
   });
   const gl = (code: string | null, value = 0, nama: string | null = null) => ({
     d: ctx.date, ckdbbm: code, nama, fisik_prev: 100, fisik: 90 + value,
-    pen_do: 0, sales_gross: 10, tera: 0, gl: value, excluded_tanks: 0, provisional: false,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
 
   it.each([null, "", "   "])("matching unknown sales/GL identity %j never verifies a zero", (code) => {

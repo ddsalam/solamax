@@ -40,6 +40,7 @@ function row(c: Comp): DailyGlRow {
     sales_gross: c.sales_gross,
     tera: c.tera,
     gl,
+    movement_invalid: false,
     excluded_tanks: 0,
     provisional: false,
   };
@@ -161,8 +162,8 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(px.pct).toBeNull();
     expect(a.incomplete).toBe(true);
     expect(a.provisional).toBe(true); // gl null → jangan mengaku final
-    // TOTAL: kolom yang lengkap tetap dijumlah; baris tanpa fisik tak menyumbang.
-    expect(a.total.fisik).toBe(245);
+    // Only complete columns are totals; an absent physical reading is not 0.
+    expect(a.total.fisik).toBeNull();
     expect(a.total.losses).toBeNull();
     expect(a.total.pct).toBeNull();
     expect(a.total.teori).toBe(310);
@@ -180,7 +181,7 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.total.pct).toBeNull();
     expect(a.incomplete).toBe(true);
     expect(a.provisional).toBe(true);
-    expect(a.rows[1]!.teori).toBe(60); // komponen tersedia tetap diagnostik
+    expect(a.rows[1]!.teori).toBe(60); // rejected G/L need not mean rejected movements
   });
 
   it("Stock Awal NULL (tak ada anchor) → Teori/Losses/% kosong", () => {
@@ -194,12 +195,50 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.incomplete).toBe(true);
   });
 
-  it("tanpa baris → TOTAL nol, bukan NaN", () => {
+  it("rejected movements keep diagnostic components but cannot produce Stock Teori", () => {
+    const input = { ...row({ ckdbbm: "P", nama: "SYNTHETIC", fisik_prev: 10_000,
+      pen_do: 500, sales_gross: 1_000, tera: 0, fisik: 9_000 }),
+      movement_invalid: true, gl: null, provisional: true };
+    const a = buildArusMinyak([input]);
+    expect(a.rows[0]).toMatchObject({ awal: 10_000, penerimaan: 500,
+      penjualan: 1_000, teori: null, fisik: 9_000, losses: null, pct: null });
+    expect(a.total).toMatchObject({ awal: 10_000, penerimaan: 500, penjualan: 1_000,
+      teori: null, fisik: 9_000, losses: null, pct: null });
+    expect(a.incomplete).toBe(true);
+  });
+
+  it("missing legacy movement metadata withholds theory and marks the result incomplete", () => {
+    const { movement_invalid: _oldShape, ...legacy } = row({ ckdbbm: "P", nama: "SYNTHETIC",
+      fisik_prev: 100, pen_do: 0, sales_gross: 40, tera: 0, fisik: 65 });
+    const a = buildArusMinyak([legacy as DailyGlRow]);
+    expect(a.rows[0]).toMatchObject({ awal: 100, fisik: 65, teori: null, losses: 5 });
+    expect(a.total.teori).toBeNull();
+    expect(a.incomplete).toBe(true); expect(a.provisional).toBe(true);
+  });
+
+  it("a missing prior stock nulls total beginning/theory but preserves complete physical stock", () => {
+    const a = buildArusMinyak([
+      row({ ckdbbm: "P", nama: "P", fisik_prev: null, pen_do: 0, sales_gross: 40, tera: 0, fisik: 60 }),
+      row({ ckdbbm: "Q", nama: "Q", fisik_prev: 200, pen_do: 100, sales_gross: 50, tera: 0, fisik: 245 }),
+    ]);
+    expect(a.rows[1]!.teori).toBe(250);
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: 305, losses: null, pct: null });
+  });
+
+  it("measured zero stock and theory remain valid totals", () => {
+    const a = buildArusMinyak([row({ ckdbbm: "P", nama: "P", fisik_prev: 0,
+      pen_do: 0, sales_gross: 0, tera: 0, fisik: 0 })]);
+    expect(a.total).toMatchObject({ awal: 0, teori: 0, fisik: 0, losses: 0, pct: 0 });
+    expect(a.incomplete).toBe(false); expect(a.provisional).toBe(false);
+  });
+
+  it("tanpa baris → stok dan losses TOTAL tidak tersedia, bukan nol terukur", () => {
     const a = buildArusMinyak([]);
     expect(a.rows).toHaveLength(0);
     expect(a.total.penjualan).toBe(0);
-    expect(a.total.pct).toBe(0);
-    expect(a.incomplete).toBe(false);
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null, pct: null });
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
   });
 });
 
@@ -358,7 +397,7 @@ describe("Arus Minyak — missing source product identities", () => {
   const synthetic = (code: string | null, gl = 0): DailyGlRow => ({
     d: "2026-10-01", ckdbbm: code, nama: "SOLAR", fisik_prev: 100,
     pen_do: 0, sales_gross: 10, tera: 0, fisik: 90, gl,
-    excluded_tanks: 0, provisional: false,
+    movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   const zero = (code: string | null): import("./queries").ZeroClosingRow => ({
     unit_id: 1, d: "2026-10-01", ckdtangki: "SYNTHETIC-TANK", ckdbbm: code,
@@ -372,6 +411,7 @@ describe("Arus Minyak — missing source product identities", () => {
     expect(a.rows[1]).toMatchObject({ ckdbbm: null, nama: "Produk tidak diketahui", losses: null, pct: null });
     expect(a.total.losses).toBeNull();
     expect(a.total.pct).toBeNull();
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null });
     expect(a.incomplete).toBe(true);
     expect(a.provisional).toBe(true);
   });
@@ -379,6 +419,7 @@ describe("Arus Minyak — missing source product identities", () => {
   it.each([null, "", "   "])("unidentified zero-closing %j cannot bless a known-only subtotal", (code) => {
     const a = buildArusMinyak([synthetic("BB-03", -5)], [zero(code)]);
     expect(a.rows[0]).toMatchObject({ losses: -5, zeroClosing: null });
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null });
     expect(a.total.losses).toBeNull();
     expect(a.total.pct).toBeNull();
     expect(a.incomplete).toBe(true);

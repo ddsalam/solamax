@@ -83,7 +83,7 @@ export interface ArusRow {
   penjualan: number;
   /** Tera RESMI (L). Dibawa karena % memakai penyebut KOTOR = penjualan + tera. */
   tera: number;
-  /** Awal + Penerimaan − Penjualan. null bila `awal` null. */
+  /** Awal + Penerimaan − Penjualan. null bila anchor/identitas/mutasi tidak lengkap. */
   teori: number | null;
   fisik: number | null;
   /** G/L kanonik (+ gain, − loss). null bila stok/mutasi tak lengkap. */
@@ -176,7 +176,12 @@ export function buildArusMinyak(
   const rows: ArusRow[] = glRows.map((r) => {
     const code = normalizeProductIdentity(r.ckdbbm);
     const penjualan = r.sales_gross - r.tera;
-    const teori = stockTeori(r.fisik_prev, r.pen_do, penjualan);
+    // Movement sums remain diagnostic when the query rejected any input.
+    // An explicit false also prevents an older cached row with no quality
+    // metadata from reviving theory. Missing current physical stock alone
+    // does not invalidate a complete anchor + movement calculation.
+    const teori = code && r.movement_invalid === false
+      ? stockTeori(r.fisik_prev, r.pen_do, penjualan) : null;
     // Query juga memeriksa cakupan tangki dan mutasi NULL/garbage. Menghitung
     // ulang hanya dari komponen numerik akan menghidupkan lagi G/L yang ditolak.
     const l = code ? r.gl : null;
@@ -205,17 +210,18 @@ export function buildArusMinyak(
   // sedangkan rata-rata ketujuh persen = −7,49.
   const nz = (xs: (number | null)[]): number =>
     xs.reduce<number>((acc, x) => acc + (x ?? 0), 0);
-  const ada = rows.length > 0;
-  const semuaNull = (f: (r: ArusRow) => number | null) => ada && rows.every((r) => f(r) === null);
+  const totalKnown = (f: (r: ArusRow) => number | null): number | null =>
+    rows.length === 0 || unidentifiedZeroClosing || rows.some((r) => r.ckdbbm === null || f(r) === null)
+      ? null : nz(rows.map(f));
   const totPenjualanKotor = nz(rows.map((r) => r.penjualan + r.tera));
-  const totFisik = semuaNull((r) => r.fisik) ? null : nz(rows.map((r) => r.fisik));
-  const totTeori = semuaNull((r) => r.teori) ? null : nz(rows.map((r) => r.teori));
-  const totLosses = unidentifiedZeroClosing || rows.some((r) => r.losses === null) ? null : nz(rows.map((r) => r.losses));
+  const totFisik = totalKnown((r) => r.fisik);
+  const totTeori = totalKnown((r) => r.teori);
+  const totLosses = unidentifiedZeroClosing ? null : totalKnown((r) => r.losses);
   const total: ArusRow = {
     ckdbbm: "",
     nama: "TOTAL",
     zeroClosing: null,
-    awal: semuaNull((r) => r.awal) ? null : nz(rows.map((r) => r.awal)),
+    awal: totalKnown((r) => r.awal),
     penerimaan: nz(rows.map((r) => r.penerimaan)),
     penjualan: totPenjualanKotor,
     tera: nz(rows.map((r) => r.tera)),
@@ -228,9 +234,11 @@ export function buildArusMinyak(
   return {
     rows,
     total,
-    provisional: unidentifiedZeroClosing || glRows.some((r) => r.provisional) || rows.some((r) => r.losses === null),
+    provisional: rows.length === 0 || unidentifiedZeroClosing || glRows.some((r) => r.provisional)
+      || rows.some((r) => r.teori === null || r.losses === null),
     excludedTanks: glRows.reduce((s, r) => s + r.excluded_tanks, 0),
-    incomplete: unidentifiedZeroClosing || rows.some((r) => r.awal === null || r.fisik === null || r.losses === null),
+    incomplete: rows.length === 0 || unidentifiedZeroClosing
+      || rows.some((r) => r.awal === null || r.teori === null || r.fisik === null || r.losses === null),
     teraTotal: total.tera,
     zeroClosingCount: rows.filter((r) => r.zeroClosing !== null).length,
   };

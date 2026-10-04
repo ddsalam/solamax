@@ -86,7 +86,8 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  */
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
   return rows.length === 0 || rows.some((r) =>
-    r.provisional || r.gl === null || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
+    r.provisional || r.gl === null || r.movement_invalid !== false
+      || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
   );
 }
 
@@ -109,9 +110,9 @@ function cachedGl(unit: ScopedUnitId, from: string, to: string, revision: string
   return resolveHistoricPart(
     unstable_cache(
       () => getDailyGlByProduct(unit, from, to),
-      // v3 also rejects unassigned movements. A source revision does not change
-      // on deployment, so a new namespace must retire pre-identity-guard rows.
-      ["gl-window-v3", String(unit), from, to, revision],
+      // v4 carries explicit movement validity for Stock Teori. A source revision
+      // does not change on deployment, so retire older cached result shapes.
+      ["gl-window-v4", String(unit), from, to, revision],
       { revalidate: GL_CACHE_REVALIDATE_S },
     ),
     () => getDailyGlByProduct(unit, from, to),

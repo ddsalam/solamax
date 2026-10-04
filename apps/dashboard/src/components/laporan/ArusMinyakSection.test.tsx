@@ -6,7 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ArusMinyakSection } from "./ArusMinyakSection";
 import { parseArusHtml } from "@/lib/arus-minyak.grade";
-import type { ArusMinyak, ArusRow } from "@/lib/arus-minyak";
+import { buildArusMinyak, type ArusMinyak, type ArusRow } from "@/lib/arus-minyak";
+import type { DailyGlRow } from "@/lib/queries";
 
 const baris = (o: Partial<ArusRow> = {}): ArusRow => ({
   ckdbbm: "BB-02",
@@ -90,5 +91,57 @@ describe("ArusMinyakSection", () => {
   it("warna: Losses negatif t-danger, positif t-success", () => {
     expect(html(arus({ rows: [baris({ losses: -2 })] }))).toContain("t-danger");
     expect(html(arus({ rows: [baris({ losses: 2 })] }))).toContain("t-success");
+  });
+});
+
+describe("ArusMinyakSection source-quality propagation", () => {
+  const source = (overrides: Partial<DailyGlRow> = {}): DailyGlRow => ({
+    d: "2026-06-11", ckdbbm: "P", nama: "SINTETIS P", fisik_prev: 100,
+    pen_do: 50, sales_gross: 30, tera: 0, fisik: 120, gl: 0,
+    movement_invalid: false, excluded_tanks: 0, provisional: false, ...overrides,
+  });
+  const healthy = source({ ckdbbm: "Q", nama: "SINTETIS Q", fisik_prev: 200, fisik: 220 });
+
+  it("keeps invalid-movement subtotals diagnostic and withholds theory without inventing an opname-zero warning", () => {
+    const a = buildArusMinyak([source({ fisik_prev: 2_000, fisik: 0, gl: null,
+      movement_invalid: true, provisional: true }), healthy]);
+    const h = html(a), cells = parseArusHtml(h);
+    expect(cells.get("SINTETIS P")).toEqual([2_000, 50, 30, null, 0, null, null]);
+    expect(cells.get("SINTETIS Q")).toEqual([200, 50, 30, 220, 220, 0, 0]);
+    expect(cells.get("TOTAL")).toEqual([2_200, 100, 60, null, 220, null, null]);
+    expect(h).toContain("belum final");
+    expect(h).not.toContain("zc-note");
+    expect(h).not.toMatch(/NaN|undefined/);
+  });
+
+  it("retains complete theory when only current physical stock is unavailable and withholds partial physical TOTAL", () => {
+    const cells = parseArusHtml(html(buildArusMinyak([
+      source({ fisik: null, gl: null, excluded_tanks: 1, provisional: true }), healthy,
+    ])));
+    expect(cells.get("SINTETIS P")).toEqual([100, 50, 30, 120, null, null, null]);
+    expect(cells.get("TOTAL")).toEqual([300, 100, 60, 340, null, null, null]);
+  });
+
+  it("withholds partial beginning/theory totals while preserving independently measured physical stock", () => {
+    const cells = parseArusHtml(html(buildArusMinyak([
+      source({ fisik_prev: null, gl: null, provisional: true }), healthy,
+    ])));
+    expect(cells.get("TOTAL")).toEqual([null, 100, 60, null, 340, null, null]);
+  });
+
+  it("keeps a measured zero visible beside an unknown product while withholding stock totals", () => {
+    const zero = source({ fisik_prev: 0, fisik: 0, pen_do: 0, sales_gross: 0 });
+    const cells = parseArusHtml(html(buildArusMinyak([zero, source({ ckdbbm: null,
+      nama: null, fisik_prev: null, fisik: null, gl: null, movement_invalid: true, provisional: true })])));
+    expect(cells.get("SINTETIS P")).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(cells.get("Produk tidak diketahui")?.slice(3)).toEqual([null, null, null, null]);
+    expect(cells.get("TOTAL")).toEqual([null, 50, 30, null, null, null, null]);
+  });
+
+  it("empty source data has an explicit empty state and no invented TOTAL", () => {
+    const a = buildArusMinyak([]), h = html(a);
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null, pct: null });
+    expect(h).toContain("Belum ada opname penutup");
+    expect(parseArusHtml(h).size).toBe(0);
   });
 });
