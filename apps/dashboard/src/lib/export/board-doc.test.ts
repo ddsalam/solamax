@@ -84,6 +84,31 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
 }
 
 describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
+  it.each([
+    { gl: 4000, provisional: false, value: "+48,78%", label: "G/L Imam Bonjol 48,78%" },
+    { gl: -4000, provisional: false, value: "−48,78%", label: "G/L Imam Bonjol -48,78%" },
+    { gl: 4000, provisional: true, value: "+48,78%", label: "G/L Imam Bonjol · sementara (opname belum final)" },
+    { gl: -4000, provisional: true, value: "−48,78%", label: "G/L Imam Bonjol · sementara (opname belum final)" },
+    { gl: 0, provisional: false, value: "0%", label: null },
+  ])("PDF preserves neutral G/L labels and signed $gl (provisional=$provisional)", ({ gl, provisional, value, label }) => {
+    const input = {
+      units: [IB], period: PERIOD, today: TODAY,
+      dailySales: [{ ...SALES[0]!, vol: 8200 }],
+    };
+    const glRange = new Map([[1, [{ ...glRow(gl), provisional }]]]);
+    const signedModel: BoardModel = { mode: "kumulatif",
+      core: buildBoardCore({ ...input, mode: "kumulatif", glRange,
+        shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]), anomalies: [] }),
+      eval: buildBoardEval({ ...input,
+        gl: { range: glRange, ytdCur: glRange, momPrev: new Map(), yoyPrev: new Map(), ytdPrev: new Map() },
+        coverage: new Map([[1, TODAY]]), incompleteToday: false }),
+    };
+    const json = JSON.stringify(buildBoardDocDefinition({ model: signedModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
+    if (label !== null) expect(json).toContain(label);
+    expect(json).toContain(value);
+    expect(json).not.toContain("Losses Imam Bonjol");
+  });
+
   it("A4 LANSKAP + footer 'Halaman X dari Y' natif", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");

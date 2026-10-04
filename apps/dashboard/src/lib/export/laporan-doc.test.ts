@@ -63,6 +63,28 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
 }
 
 describe("buildLaporanDocDefinition", () => {
+  it.each([
+    { gl: 4000, provisional: false, signed: "+4.000" },
+    { gl: -4000, provisional: false, signed: "−4.000" },
+    { gl: 4000, provisional: true, signed: "+4.000" },
+    { gl: -4000, provisional: true, signed: "−4.000" },
+    { gl: 0, provisional: false, signed: "0" },
+  ])("PDF alarm and explanation keep G/L $gl sign-neutral (provisional=$provisional)", ({ gl, provisional, signed }) => {
+    const products = [{ ...raw.prodDay[0]!, vol: 8200 }];
+    const signedModel = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [{ d: "2026-06-11", ckdbbm: "P1", nama: "Pertalite", fisik_prev: 20000, fisik: 11800 + gl,
+        pen_do: 0, sales_gross: 8200, tera: 0, gl, provisional, movement_invalid: false, excluded_tanks: 0 }],
+    }, { unitCode: "6478111", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const json = JSON.stringify(buildLaporanDocDefinition({ model: signedModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
+    for (const check of signedModel.checks.filter((c) => /^G\/L (harian|bulanan)/.test(c.label))) {
+      expect(json).toContain(check.label);
+      expect(json).toContain(check.note);
+    }
+    expect(json).toContain(`G/L harian (RESUME) ${signed} L${provisional ? " berjalan — belum final" : " = "}`);
+    expect(json).not.toMatch(/Losses (harian|bulanan)/);
+  });
+
   it("A4 potret + footer 'Halaman X dari Y' natif", () => {
     const doc = buildLaporanDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");

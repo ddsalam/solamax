@@ -372,8 +372,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     } else if (x.glAbnormal && x.glPct !== null) {
       chips.push(
         x.glProvisional
-          ? { tone: "warning", text: `Losses ${x.u.name} · sementara (opname belum final)` }
-          : { tone: "danger", text: `Losses ${x.u.name} ${pct(x.glPct, 2)}` },
+          ? { tone: "warning", text: `G/L ${x.u.name} · sementara (opname belum final)` }
+          : { tone: "danger", text: `G/L ${x.u.name} ${pct(x.glPct, 2)}` },
       );
     } else if (x.glProvisional) {
       chips.push({ tone: "warning", text: `G/L ${x.u.name} · ${glNote(x.gl)}` });
@@ -459,8 +459,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     else if (x.glAbnormal && x.glPct !== null)
       notes.push(
         x.glProvisional
-          ? { tone: "warning", text: "Losses sementara — menunggu opname penutup" }
-          : { tone: "danger", text: `Losses ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` },
+          ? { tone: "warning", text: "G/L sementara — menunggu opname penutup" }
+          : { tone: "danger", text: `G/L ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` },
       );
     else if (x.glProvisional)
       notes.push({ tone: "warning", text: `G/L ${glNote(x.gl)}` });

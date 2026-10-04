@@ -538,19 +538,19 @@ export function buildLaporanModel(
   const dailyLoss = (): AlarmCheck => {
     if (glTotal === null || glPctDay === null)
       return {
-        label: "Losses harian — menunggu opname",
+        label: "G/L harian — menunggu opname",
         state: "na",
         note: "data stok/mutasi belum lengkap atau belum valid",
       };
     if (glProvisional)
       return {
-        label: "Losses harian — sementara",
+        label: "G/L harian — sementara",
         state: "provisional",
         note: `${signed(glTotal)} L berjalan · belum final, menunggu opname penutup${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
       };
     const within = Math.abs(glTotal) <= 100 && Math.abs(glPctDay) <= 0.005;
     return {
-      label: within ? "Losses harian aman" : "Losses harian di atas ambang",
+      label: within ? "G/L harian aman" : "G/L harian di atas ambang",
       state: within ? "ok" : "fail",
       note: `${signed(glTotal)} L · ${pct(Math.abs(glPctDay), 2)}${glGarbageCount > 0 ? ` · ${glGarbageCount} baris dikecualikan` : ""}`,
     };
@@ -558,10 +558,10 @@ export function buildLaporanModel(
 
   const monthlyWithin = glPctMonth !== null && Math.abs(glPctMonth) <= 0.005;
   const monthlyLoss: AlarmCheck = glMonthTotal === null || glPctMonth === null
-    ? { label: "Losses bulanan — data belum lengkap", state: "na", note: "data stok/mutasi belum lengkap atau belum valid" }
+    ? { label: "G/L bulanan — data belum lengkap", state: "na", note: "data stok/mutasi belum lengkap atau belum valid" }
     : glMonthProvisional
-      ? { label: "Losses bulanan — sementara", state: "provisional", note: `${signed(glMonthTotal)} L · belum final` }
-      : { label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
+      ? { label: "G/L bulanan — sementara", state: "provisional", note: `${signed(glMonthTotal)} L · belum final` }
+      : { label: monthlyWithin ? "G/L bulanan aman" : "G/L bulanan di atas ambang",
           state: monthlyWithin ? "ok" : "fail", note: `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` };
 
   const targetCheck = (): AlarmCheck => {

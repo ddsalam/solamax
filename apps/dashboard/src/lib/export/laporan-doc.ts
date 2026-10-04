@@ -109,8 +109,8 @@ function salesSection(m: LaporanModel): Content[] {
     s.glTotal === null || s.glPctDay === null
       ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid."
       : s.glProvisional
-        ? `Losses harian (RESUME) ${signed(s.glTotal)} L berjalan — belum final, menunggu opname penutup${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`
-        : `Losses harian (RESUME) ${signed(s.glTotal)} L = ${pct(Math.abs(s.glPctDay), 2)} dari sales — ambang 100 L / 0,5%${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`;
+        ? `G/L harian (RESUME) ${signed(s.glTotal)} L berjalan — belum final, menunggu opname penutup${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`
+        : `G/L harian (RESUME) ${signed(s.glTotal)} L = ${pct(Math.abs(s.glPctDay), 2)} dari sales — ambang 100 L / 0,5%${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`;
   const bauranNote = `Bauran NPSO: gasoline ${s.gasMix !== null ? pct(s.gasMix) : "—"} · gasoil ${s.oilMix !== null ? pct(s.oilMix) : "—"}.`;
 
   return [
