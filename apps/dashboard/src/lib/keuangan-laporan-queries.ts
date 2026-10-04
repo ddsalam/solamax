@@ -1,6 +1,7 @@
 import { qScoped } from "./db";
 import { ukur } from "./ukur-kueri";
 import { effectiveBuyPrice } from "./harga-beli";
+import { normalizeProductIdentity } from "./derive";
 import {
   kumpulkanBeban,
   pilahManualEntry,
@@ -176,21 +177,28 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
   ]);
   if (akun.length === 0) return null;
 
-  const hargaJual = new Map(sales.map((s) => [s.ckdbbm, s.harga]));
-  const doPer = new Map(doRows.map((x) => [x.ckdbbm, x]));
+  const hargaJual = new Map(sales.flatMap((s) => {
+    const key = normalizeProductIdentity(s.ckdbbm);
+    return key === null ? [] : [[key, s.harga] as const];
+  }));
+  const doPer = new Map(doRows.flatMap((x) => {
+    const key = normalizeProductIdentity(x.ckdbbm);
+    return key === null ? [] : [[key, x] as const];
+  }));
   const { totals } = computeDay(
     gl.map((r) => {
-      const x = doPer.get(r.ckdbbm);
+      const key = normalizeProductIdentity(r.ckdbbm);
+      const x = key === null ? undefined : doPer.get(key);
       return {
-        productKey: r.ckdbbm,
+        productKey: key ?? "Produk tidak diketahui",
         volume: r.sales_gross,
-        sellPrice: hargaJual.get(r.ckdbbm) ?? null,
+        sellPrice: key === null ? null : hargaJual.get(key) ?? null,
         tera: r.tera,
-        stock: r.fisik,
-        lossesGain: r.gl,
-        sourceGlIncomplete: r.gl === null,
-        sourceStockIncomplete: r.fisik === null,
-        buyPrice: effectiveBuyPrice(buyRows, r.ckdbbm, d),
+        stock: key === null ? null : r.fisik,
+        lossesGain: key === null ? null : r.gl,
+        sourceGlIncomplete: key === null || r.gl === null,
+        sourceStockIncomplete: key === null || r.fisik === null,
+        buyPrice: key === null ? null : effectiveBuyPrice(buyRows, key, d),
         sisaSo: x === undefined ? null : sisaSoAktif(x.sisa, x.sisa_macet),
       };
     }),
@@ -234,21 +242,28 @@ async function bahanLaporan(
     totalAssetPada(unit, kemarin),
   ]);
 
-  const hargaJual = new Map(sales.map((s) => [s.ckdbbm, s.harga]));
-  const doPer = new Map(doRows.map((d) => [d.ckdbbm, d]));
+  const hargaJual = new Map(sales.flatMap((s) => {
+    const key = normalizeProductIdentity(s.ckdbbm);
+    return key === null ? [] : [[key, s.harga] as const];
+  }));
+  const doPer = new Map(doRows.flatMap((d) => {
+    const key = normalizeProductIdentity(d.ckdbbm);
+    return key === null ? [] : [[key, d] as const];
+  }));
 
   const inputs: DayProductInput[] = gl.map((r) => {
-    const d = doPer.get(r.ckdbbm);
+    const key = normalizeProductIdentity(r.ckdbbm);
+    const d = key === null ? undefined : doPer.get(key);
     return {
-      productKey: r.ckdbbm,
+      productKey: key ?? "Produk tidak diketahui",
       volume: r.sales_gross,
-      sellPrice: hargaJual.get(r.ckdbbm) ?? null,
+      sellPrice: key === null ? null : hargaJual.get(key) ?? null,
       tera: r.tera,
-      stock: r.fisik,
-      lossesGain: r.gl,
-      sourceGlIncomplete: r.gl === null,
-      sourceStockIncomplete: r.fisik === null,
-      buyPrice: effectiveBuyPrice(buyRows, r.ckdbbm, date),
+      stock: key === null ? null : r.fisik,
+      lossesGain: key === null ? null : r.gl,
+      sourceGlIncomplete: key === null || r.gl === null,
+      sourceStockIncomplete: key === null || r.fisik === null,
+      buyPrice: key === null ? null : effectiveBuyPrice(buyRows, key, date),
       // `sisaSoAktif` mengurangi bagian macet — jangan menghitungnya ulang.
       sisaSo: d === undefined ? null : sisaSoAktif(d.sisa, d.sisa_macet),
     };

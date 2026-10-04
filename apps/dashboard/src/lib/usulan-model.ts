@@ -5,7 +5,7 @@
  * batas tampilan via fmtKL (layar & PDF pakai fungsi sama → identik "ke KL").
  */
 import { DO_PRODUCTS, resolveDoProduct } from "@/lib/config";
-import { enduranceDays, enduranceLevel } from "@/lib/derive";
+import { enduranceDays, enduranceLevel, normalizeProductIdentity } from "@/lib/derive";
 import { sumUsulanQuantities } from "@/lib/usulan-quantities";
 import type * as Q from "@/lib/queries";
 import type { UsulanStatus } from "@/lib/queries";
@@ -59,8 +59,9 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
   for (const r of glPrev) {
     const key = resolveDoProduct(r.nama)?.key;
     if (!key) continue;
-    ckdbbmToKey.set(r.ckdbbm, key);
-    if (r.provisional || r.fisik === null) provByKey.set(key, true);
+    const identity = normalizeProductIdentity(r.ckdbbm);
+    if (identity !== null) ckdbbmToKey.set(identity, key);
+    if (identity === null || r.provisional || r.fisik === null) provByKey.set(key, true);
     else stockByKey.set(key, (stockByKey.get(key) ?? 0) + r.fisik);
   }
   const avgByKey = new Map<string, number>();

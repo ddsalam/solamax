@@ -11,6 +11,7 @@ import {
   glPercent,
   isOpnameGarbage,
   isStockImplausible,
+  normalizeProductIdentity,
   stockNow,
   verdictHeadline,
   type ClosingRow,
@@ -326,5 +327,42 @@ describe("G/L aggregate integrity metadata", () => {
     const a=aggregateDailyGl([row({fisik:0,fisik_prev:5000,pen_do:0,sales_gross:100,gl:-4900})]);
     expect(a).toMatchObject({suspect:true,provisional:true,incomplete:false,totalSigned:-4900});
     expect(aggregateDailyGl([row({fisik:0,fisik_prev:1100,pen_do:0,sales_gross:100})]).suspect).toBe(false);
+  });
+});
+
+describe("aggregateDailyGl product identity integrity", () => {
+  const row = (ckdbbm: string | null, gl = 0): DailyGlInput => ({
+    ckdbbm, nama: null, gl, tera: 2, excluded_tanks: 0, provisional: false,
+  });
+
+  it.each([null, "", "   ", "\t\n"])("cannot create a verified zero-valued product from %j", (identity) => {
+    const a = aggregateDailyGl([row(identity)]);
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+    expect(a.hasGl).toBe(false);
+    expect(a.byProduct.size).toBe(0);
+    expect(a.totalTera).toBe(2);
+  });
+
+  it("unknown rows do not contaminate or silently complete known-product balances", () => {
+    const a = aggregateDailyGl([row(" P1 ", -5), row(null, 7), row("P2", 0)]);
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+    expect(a.hasGl).toBe(true);
+    expect(a.totalSigned).toBe(-5);
+    expect([...a.byProduct.keys()]).toEqual(["P1", "P2"]);
+    expect(a.byProduct.get("P2")!.signed).toBe(0);
+  });
+});
+
+
+describe("normalizeProductIdentity", () => {
+  it.each([null, undefined, "", " ", "\t\n", 0, {}])("rejects missing/malformed runtime identity %j", (value) => {
+    expect(normalizeProductIdentity(value)).toBeNull();
+  });
+  it("normalizes padding without reclassifying nonempty unknown product codes", () => {
+    expect(normalizeProductIdentity(" BB-03 ")).toBe("BB-03");
+    expect(normalizeProductIdentity(" UNMAPPED-A ")).toBe("UNMAPPED-A");
+    expect(normalizeProductIdentity("UNMAPPED-B")).toBe("UNMAPPED-B");
   });
 });

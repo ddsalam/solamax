@@ -303,3 +303,39 @@ describe("PDF operational G/L source-integrity nulls", () => {
     expect(JSON.stringify(doc.content)).toContain("G/L belum bisa dihitung lengkap");
   });
 });
+
+/** Synthetic identities only; NULL source labels must never reach pdfText. */
+describe("PDF operational G/L unidentified products", () => {
+  it.each([null, "", "   "])("renders unknown identity %j safely without merging its zero into a known product", (code) => {
+    const prod = (ckdbbm: string | null, nama: string | null) => ({
+      ckdbbm: ckdbbm as string, nama: nama as string, vol: 10, omzet: 100000, harga: 10000,
+    });
+    const gl = (ckdbbm: string | null, nama: string | null) => ({
+      d: "2026-06-11", ckdbbm, nama, fisik: 90, fisik_prev: 100, pen_do: 0,
+      sales_gross: 10, tera: 0, gl: 0, excluded_tanks: 0, provisional: false,
+    });
+    const products = [prod("KNOWN", "SOLAR"), prod(code, null)];
+    const m = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [gl("KNOWN", "SOLAR"), gl(code, null)],
+      zeroClosing: [{ unit_id: 1, d: "2026-06-11", ckdtangki: "SYNTHETIC-TANK", ckdbbm: code,
+        nama: null, bk: 2000, prev: 2000, next: 2000, recv_next: 0 }],
+    }, { unitCode: "SYNTHETIC", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, meta, config: DEFAULT_EXPORT_CONFIG });
+    const tables = collectTables(doc.content);
+    const text = (r: unknown[], i: number) => (r[i] as { text: string }).text;
+    for (const [header, glColumn] of [["Sales (L)", 2], ["G/L bulan (L)", 1], ["Stock Awal (L)", 6]] as const) {
+      const t = tables.find((t) => JSON.stringify(t.table.body[0]).includes(header))!;
+      expect(t, `missing ${header} table`).toBeDefined();
+      const unknown = t.table.body.find((r) => text(r, 0) === "Produk tidak diketahui")!;
+      const known = t.table.body.find((r) => text(r, 0) === "SOLAR")!;
+      expect(text(unknown, glColumn)).toBe("—");
+      expect(text(known, glColumn)).toMatch(/^0(?:,00)?(?: L)?$/);
+      if (header !== "G/L bulan (L)") expect(text(t.table.body.at(-1)!, glColumn)).toBe("—");
+    }
+    // The monthly aggregate is in its heading rather than a total table row.
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(JSON.stringify(doc.content)).toContain("G/L belum bisa dihitung lengkap");
+    expect(JSON.stringify(doc.content)).not.toMatch(/NaN|undefined/);
+  });
+});

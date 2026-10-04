@@ -6,12 +6,19 @@ import type { ScopedUnitId } from "./scope-rule";
 
 const { qScoped } = vi.hoisted(() => ({ qScoped: vi.fn() }));
 vi.mock("./db", () => ({ q: vi.fn(), qScoped, pool: {} }));
-import { getClosingOpname, getDailyGlByProduct, getGlSourceRevision, getZeroClosingEvents } from "./queries";
+import { getClosingOpname, getDailyGlByProduct, getDailySalesByProduct, getGlSourceRevision, getZeroClosingEvents } from "./queries";
 
 const U = 1 as ScopedUnitId;
 const D1 = "2026-10-01";
 const D2 = "2026-10-02";
 const D3 = "2026-10-03";
+// Identity normalization must match JavaScript trim, including source UTF-8
+// whitespace that PostgreSQL trim(text) and locale regexes do not all remove.
+const UNKNOWN_IDENTITIES = [null, "", "   ", "\t", "\n", "\r\n", "\u00a0", "\u2003", "\ufeff"];
+const BLANK_IDENTITIES = UNKNOWN_IDENTITIES.filter((s): s is string => s !== null);
+const ECMASCRIPT_TRIM = [0x9,0xa,0xb,0xc,0xd,0x20,0xa0,0x1680,
+  0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,0x2009,0x200a,
+  0x2028,0x2029,0x202f,0x205f,0x3000,0xfeff].map(code => String.fromCharCode(code));
 
 /**
  * Actual SQL execution against either isolated in-memory PGlite or the
@@ -123,21 +130,21 @@ const nextDay = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) + 86_
 
 async function stock(
   d: string, tank: string, op: number | null, bk: number | null = op,
-  extra: { timestamp?: string; product?: string; canceled?: number; unit?: number; id?: string; businessDate?: string | null } = {},
+  extra: { timestamp?: string; product?: string | null; canceled?: number; unit?: number; id?: string; businessDate?: string | null } = {},
 ) {
   await db.query(`INSERT INTO opname
     (unit_id, ckdopnbbm, ckdtangki, ckdbbm, dtaglopn, dtgljam, nstockop, nstockbk, sbatal)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
     extra.unit ?? 1, extra.id ?? `O${String(++nextId).padStart(8, "0")}`, tank,
-    extra.product ?? "P", extra.businessDate === undefined ? d : extra.businessDate,
+    extra.product === undefined ? "P" : extra.product, extra.businessDate === undefined ? d : extra.businessDate,
     extra.timestamp ?? `${nextDay(d)}T06:00:00+07:00`, op, bk, extra.canceled ?? 0,
   ]);
 }
 
-async function sale(d: string, volume: number | null, product = "P", unit = 1) {
+async function sale(d: string, volume: number | null, product: string | null = "P", unit = 1) {
   const id = `S${++nextId}`;
   await db.query("INSERT INTO sales_header VALUES ($1,$2,$3)", [unit, id, d]);
-  await db.query("INSERT INTO sales_detail VALUES ($1,$2,$3,$4)", [unit, id, product, volume]);
+  await db.query("INSERT INTO sales_detail (unit_id,ckdjualbbm,ckdbbm,nvolume) VALUES ($1,$2,$3,$4)", [unit, id, product, volume]);
 }
 
 async function receipt(d: string | null, volume: number | null, canceled = 0, timestamp = `${D3}T02:00:00+07:00`) {
@@ -146,6 +153,18 @@ async function receipt(d: string | null, volume: number | null, canceled = 0, ti
 
 async function tera(d: string, volume: number | null, canceled = 0) {
   await db.query("INSERT INTO terra_resmi VALUES (1,$1,'P',$2,$3)", [d, volume, canceled]);
+}
+
+async function unassignedMovement(
+  domain: "receipt" | "sale" | "tera", product: string | null,
+  date = D2, canceled = 0, unit = 1,
+) {
+  if (domain === "sale") await sale(date, 100, product, unit);
+  else if (domain === "receipt") await db.query(
+    "INSERT INTO delivery VALUES ($1,$2,$3,$4,'A',100,100,$5)",
+    [unit, date, `${nextDay(date)}T02:00:00+07:00`, product, canceled],
+  );
+  else await db.query("INSERT INTO terra_resmi VALUES ($1,$2,$3,100,$4)", [unit, date, product, canceled]);
 }
 
 async function baseline() {
@@ -221,11 +240,11 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
       db = new PGlite();
     }
     await db.exec(`
-      CREATE TABLE opname (unit_id int, ckdopnbbm char(15), ckdtangki char(5), ckdbbm char(5),
+      CREATE TABLE opname (unit_id int, ckdopnbbm char(15), ckdtangki char(5) NOT NULL, ckdbbm char(5),
         dtaglopn date, dtgljam timestamptz, nstockop numeric, nstockbk numeric, sbatal int);
       CREATE TABLE product (unit_id int, ckdbbm char(5), vcnmbbm text);
       CREATE TABLE sales_header (unit_id int, ckdjualbbm text, dtgljual date);
-      CREATE TABLE sales_detail (unit_id int, ckdjualbbm text, ckdbbm char(5), nvolume numeric);
+      CREATE TABLE sales_detail (unit_id int, ckdjualbbm text, ckdbbm char(5), nvolume numeric, nsubtotal numeric);
       CREATE TABLE delivery (unit_id int, dtgltrm date, dtgljam timestamptz, ckdbbm char(5),
         ckdtangki char(5), nvoldo numeric, nvolreal numeric, sbatal int);
       CREATE TABLE terra_resmi (unit_id int, business_date date, ckdbbm char(5), nvolume numeric, sbatal int);
@@ -243,6 +262,175 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
   it("keeps complete matching tank totals and a genuine zero G/L", async () => {
     await baseline();
     expect(await day()).toMatchObject({ fisik: 19_000, fisik_prev: 20_000, gl: 0, excluded_tanks: 0, provisional: false });
+  });
+
+  it.each(UNKNOWN_IDENTITIES)("unidentified stock product (%s) is preserved as unavailable, not genuine zero", async product => {
+    await stock(D1, "A", 10_000, 10_000, { product });
+    await stock(D2, "A", 10_000, 10_000, { product });
+    expect(await day()).toMatchObject({ ckdbbm: null, nama: null, fisik: null,
+      fisik_prev: null, gl: null, excluded_tanks: 1, provisional: true });
+    const [closing] = await getClosingOpname(U, D2, D2);
+    expect(closing).toMatchObject({ ckdbbm: null, op: 10_000 }); // raw source stays intact
+  });
+
+  it.each(BLANK_IDENTITIES)("blank tank identity (%s) cannot establish valid stock coverage", async tank => {
+    await stock(D1, tank, 10_000); await stock(D2, tank, 9_000); await sale(D2, 1_000);
+    expect(await day()).toMatchObject({ ckdbbm: "P", fisik: null, fisik_prev: null,
+      gl: null, excluded_tanks: 1, provisional: true });
+  });
+
+  it("invalid prior tank identity cannot turn into a valid recovery balance", async () => {
+    await stock(D1, "", 10_000); await stock(D2, "A", 9_000); await sale(D2, 1_000);
+    expect(await day()).toMatchObject({ fisik: 9_000, fisik_prev: null, gl: null, provisional: true });
+  });
+
+  it.each(UNKNOWN_IDENTITIES)("daily sales preserves unknown product (%s) without inventing an identity", async product => {
+    await sale(D2, 100, product);
+    await db.exec("UPDATE sales_detail SET nsubtotal=1234");
+    expect(await getDailySalesByProduct([U], D2, D2)).toEqual([
+      { unit_id: 1, d: D2, ckdbbm: null, nama: null, vol: 100, omzet: 1234 },
+    ]);
+  });
+
+  it.each(UNKNOWN_IDENTITIES)("zero-closing detector preserves unknown product (%s) without hiding evidence", async product => {
+    await stock(D1, "A", 10_000, 10_000, { product });
+    await stock(D2, "A", 0, 10_000, { product });
+    await stock(D3, "A", 9_500, 9_500, { product });
+    expect(await getZeroClosingEvents([U], D1, D3)).toEqual([
+      expect.objectContaining({ ckdbbm: null, ckdtangki: "A", d: D2 }),
+    ]);
+  });
+
+  it.each((["receipt", "sale", "tera"] as const).flatMap(domain =>
+    UNKNOWN_IDENTITIES.map(product => [domain, product] as const),
+  ))("unknown %s product (%s) invalidates balances without allocating its volume", async (domain, product) => {
+    await baseline();
+    await stock(D1, "C", 5_000, 5_000, { product: "Q" });
+    await stock(D2, "C", 5_000, 5_000, { product: "Q" });
+    await unassignedMovement(domain, product);
+    const rows = await getDailyGlByProduct(U, D2, D2);
+    expect(rows).toHaveLength(3);
+    expect(rows.find(r => r.ckdbbm === "P")).toMatchObject({ pen_do: 0, sales_gross: 1_000,
+      tera: 0, gl: null, provisional: true });
+    expect(rows.find(r => r.ckdbbm === "Q")).toMatchObject({ pen_do: 0, sales_gross: 0,
+      tera: 0, gl: null, provisional: true });
+    expect(rows.find(r => r.ckdbbm === null)).toMatchObject({ fisik: null, fisik_prev: null,
+      gl: null, excluded_tanks: 0, provisional: true,
+      pen_do: domain === "receipt" ? 100 : 0, sales_gross: domain === "sale" ? 100 : 0,
+      tera: domain === "tera" ? 100 : 0 });
+  });
+
+  it.each(["receipt", "sale", "tera"] as const)("unknown %s with no opname still emits an unavailable diagnostic row", async domain => {
+    await unassignedMovement(domain, null);
+    expect(await day()).toMatchObject({ ckdbbm: null, fisik: null, fisik_prev: null,
+      gl: null, excluded_tanks: 0, provisional: true,
+      pen_do: domain === "receipt" ? 100 : 0, sales_gross: domain === "sale" ? 100 : 0,
+      tera: domain === "tera" ? 100 : 0 });
+    expect(await getDailyGlByProduct(U, D3, D3)).toEqual([]); // no invented dates
+  });
+
+  it("deduplicates unknown stock/movement identities and keeps unassigned sums at daily grain", async () => {
+    await stock(D1, "A", 10_000, 10_000, { product: null });
+    await stock(D2, "A", 9_000, 9_000, { product: " " });
+    await unassignedMovement("sale", null, D1);
+    await unassignedMovement("sale", " "); await unassignedMovement("receipt", null);
+    await unassignedMovement("tera", "");
+    const row = await day();
+    expect(row).toMatchObject({ ckdbbm: null, fisik: null, gl: null, excluded_tanks: 1,
+      sales_gross: 100, pen_do: 100, tera: 100, provisional: true });
+    const range = await getDailyGlByProduct(U, D1, D3);
+    expect(range.filter(r => r.d === D2)).toEqual([row]);
+  });
+
+  it("retains numeric zero as diagnostic only when movement identity is missing", async () => {
+    await unassignedMovement("receipt", null);
+    await db.exec("UPDATE delivery SET nvoldo=0");
+    expect(await day()).toMatchObject({ ckdbbm: null, pen_do: 0, gl: null, provisional: true });
+  });
+
+  it("unknown canceled, out-of-window, and foreign-unit movements do not taint a valid day", async () => {
+    await baseline();
+    for (const domain of ["receipt", "sale", "tera"] as const) {
+      await unassignedMovement(domain, null, D1);
+      await unassignedMovement(domain, null, D2, 0, 2);
+    }
+    await unassignedMovement("receipt", "", D2, 1);
+    await unassignedMovement("tera", "", D2, 1);
+    expect(await day()).toMatchObject({ ckdbbm: "P", gl: 0, provisional: false });
+  });
+
+  it("unknown movement inside a closing gap taints the balance and survives single/range queries", async () => {
+    await stock(D1, "A", 10_000); await stock(D3, "A", 9_000); await sale(D3, 1_000);
+    await unassignedMovement("receipt", null);
+    const [current] = await getDailyGlByProduct(U, D3, D3);
+    expect(current).toMatchObject({ d: D3, ckdbbm: "P", gl: null, provisional: true });
+    const range = await getDailyGlByProduct(U, D2, D3);
+    expect(range.filter(r => r.d === D3)).toEqual([current]);
+    expect(range.filter(r => r.d === D2)).toEqual([expect.objectContaining({ ckdbbm: null, gl: null })]);
+  });
+
+  it.each([" ", ...BLANK_IDENTITIES.filter(s => s.length <= 2)])("padded valid product/tank codes (%s) remain valid identities and genuine zero", async pad => {
+    const product = `${pad}P${pad}`; const tank = `${pad}A${pad}`;
+    await stock(D1, tank, 10_000, 10_000, { product });
+    await stock(D2, "A", 9_200, 9_200, { product: "P" }); await sale(D2, 1_000, product);
+    await unassignedMovement("receipt", product); await unassignedMovement("tera", product);
+    expect(await day()).toMatchObject({ ckdbbm: "P", fisik: 9_200, pen_do: 100,
+      sales_gross: 1_000, tera: 100, gl: 0, provisional: false });
+    expect(await getDailySalesByProduct([U], D2, D2)).toEqual([
+      expect.objectContaining({ ckdbbm: "P", nama: "P", vol: 1_000 }),
+    ]);
+  });
+
+  it("normalizes zero-closing tank endpoints and receipt identities consistently", async () => {
+    await stock(D1, "\tA\u00a0", 10_000);
+    await stock(D2, "A", 0, 10_000);
+    await stock(D3, "\nA", 9_500);
+    await receipt(D3, 100);
+    await db.exec("UPDATE delivery SET ckdtangki=U&'\\00A0A\\0009'");
+    expect(await getZeroClosingEvents([U], D1, D3)).toEqual([
+      expect.objectContaining({ d: D2, ckdtangki: "A", prev: 10_000, next: 9_500, recv_next: 100 }),
+    ]);
+  });
+
+  it("keeps internal tank whitespace distinct instead of silently merging tanks", async () => {
+    await stock(D1, "A\tB", 10_000); await stock(D1, "AB", 5_000);
+    await stock(D2, "A\tB", 9_000); await stock(D2, "AB", 5_000); await sale(D2, 1_000);
+    expect(await day()).toMatchObject({ fisik: 14_000, fisik_prev: 15_000,
+      gl: 0, excluded_tanks: 0, provisional: false });
+  });
+
+  it("matches every ECMAScript trim character and keeps internal whitespace", async () => {
+    for (const pad of ECMASCRIPT_TRIM) {
+      expect(pad.trim()).toBe("");
+      await sale(D2, 1, pad); await sale(D2, 1, `${pad}P${pad}`);
+    }
+    await sale(D2, 7, "P\tQ");
+    await sale(D2, 9, "P\u00a0Q");
+    const rows = await getDailySalesByProduct([U], D2, D2);
+    expect(rows).toHaveLength(4);
+    expect(rows.find(r => r.ckdbbm === null)?.vol).toBe(ECMASCRIPT_TRIM.length);
+    expect(rows.find(r => r.ckdbbm === "P")?.vol).toBe(ECMASCRIPT_TRIM.length);
+    expect(rows.find(r => r.ckdbbm === "P\tQ")?.vol).toBe(7);
+    expect(rows.find(r => r.ckdbbm === "P\u00a0Q")?.vol).toBe(9);
+  });
+
+  it("normalized product master matches padded identities without multiplying sales", async () => {
+    await db.exec("INSERT INTO product VALUES (1,'P','SOLAR'),(1,E'\\tP','SOLAR')");
+    await sale(D2, 100, "\u00a0P\t");
+    expect(await getDailySalesByProduct([U], D2, D2)).toEqual([
+      expect.objectContaining({ ckdbbm: "P", nama: "SOLAR", vol: 100 }),
+    ]);
+    await stock(D1, "A", 10_000, 10_000, { product: "\tP" });
+    await stock(D2, "A", 9_900, 9_900, { product: "P\u00a0" });
+    expect(await day()).toMatchObject({ ckdbbm: "P", nama: "SOLAR", gl: 0, provisional: false });
+  });
+
+  it.each(["P\tQ", "P\u00a0Q"])("preserves internal product whitespace (%s) in stock and all movements", async product => {
+    await stock(D1, "A", 10_000, 10_000, { product });
+    await stock(D2, "A", 10_100, 10_100, { product });
+    for (const domain of ["receipt", "sale", "tera"] as const) await unassignedMovement(domain, product);
+    expect(await day()).toMatchObject({ ckdbbm: product, pen_do: 100, sales_gross: 100,
+      tera: 100, gl: 0, provisional: false });
   });
 
   it.each([null, -1, 100_001])("null/garbage physical stock (%s) invalidates the whole product", async (bad) => {

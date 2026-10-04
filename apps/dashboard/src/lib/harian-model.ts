@@ -18,7 +18,7 @@
  *     BL 1 Apr, KR 6 Nov 2021, 28 Okt 7 Jul 2022).
  */
 import { canonicalProductKey, FLEET_RECORD_FLOOR } from "./config";
-import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, type ProductVol } from "./derive";
+import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, type ProductVol } from "./derive";
 import { worstSyncAt, worstSyncUnitId } from "./freshness";
 import { addDays, monthInfo, monthStart } from "./periods";
 import type { DailyGlRow, DailySalesRow, SyncRow, UnitCoverageRow } from "./queries";
@@ -245,8 +245,8 @@ export function harianSpanFrom(date: string, recordFloor = FLEET_RECORD_FLOOR): 
 
 const zero = (): Record<number, number> => ({});
 
-function rowKeyOf(nama: string | null, ckdbbm: string): RowKey {
-  return (canonicalProductKey(nama ?? ckdbbm) as HarianProductKey | null) ?? OTHER_KEY;
+function rowKeyOf(nama: string | null, ckdbbm: string | null): RowKey {
+  return (canonicalProductKey(nama ?? normalizeProductIdentity(ckdbbm)) as HarianProductKey | null) ?? OTHER_KEY;
 }
 
 function labelOf(key: RowKey): string {
@@ -438,7 +438,8 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   for (const id of unitIds) {
     for (const r of gl.get(id) ?? []) {
       if (r.d < mFrom || r.d > date) continue;
-      const invalid = r.gl === null || r.excluded_tanks > 0;
+      const product = normalizeProductIdentity(r.ckdbbm);
+      const invalid = product === null || r.gl === null || r.excluded_tanks > 0;
       const suspect = isDailyGlSuspect(r);
       if (suspect) suspectIds.add(id);
       if (r.provisional || invalid || suspect) {
@@ -447,7 +448,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
       }
       const key = rowKeyOf(r.nama, r.ckdbbm);
       const k = `${id}|${key}`;
-      glSeen.add(`${id}|${r.d}|${r.ckdbbm.trim()}`);
+      if (product !== null && !invalid) glSeen.add(`${id}|${r.d}|${product}`);
       if (r.d === date) addGl(glDayCell, k, invalid ? null : r.gl);
       if (r.d >= mFrom && r.d <= date) {
         addGl(glMtdCell, k, invalid ? null : r.gl);
@@ -461,9 +462,14 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   // Coverage is unit × business date × product. One valid product cannot
   // hide a missing product on the same day. A genuine measured zero stays zero.
   for (const r of dailySales) {
-    if (!unitIds.includes(r.unit_id) || r.d < mFrom || r.d > date || r.vol === 0) continue;
-    const key = rowKeyOf(r.nama, r.ckdbbm);
-    if (glSeen.has(`${r.unit_id}|${r.d}|${r.ckdbbm.trim()}`)) continue;
+    if (!unitIds.includes(r.unit_id) || r.d < mFrom || r.d > date) continue;
+    const product = normalizeProductIdentity(r.ckdbbm);
+    // A zero-volume sales row proves that the business date exists, not that
+    // its unobserved G/L was zero. Neutral absent-product zeros require at
+    // least one usable G/L observation for this unit/date.
+    const hasGlDay = glDaysByUnit.get(r.unit_id)?.has(r.d) ?? false;
+    if (product !== null && ((r.vol === 0 && r.omzet === 0 && hasGlDay) || glSeen.has(`${r.unit_id}|${r.d}|${product}`))) continue;
+    const key = rowKeyOf(r.nama, product);
     const k = `${r.unit_id}|${key}`;
     glMtdCell.set(k, null);
     glMonthlyProvisional = true;
@@ -479,22 +485,27 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     glKeys.push(OTHER_KEY);
   }
   const mkValueRows = (src: Map<string, number | null>) => {
+    // Empty scopes/windows have no measured balance. Zero is only a neutral
+    // absent-product contribution once this window contains an observed G/L.
+    const hasObservedGl = [...src.values()].some((v) => v !== null);
     const rows: ValueRow<number | null>[] = glKeys.map((key) => {
       const byUnit: Record<number, number | null> = {};
       for (const id of unitIds) {
         const k = `${id}|${key}`;
         // A known active unit without current sales has unknown movements,
         // even if old G/L rows cover every sales row received so far.
-        byUnit[id] = staleGlUnits.has(id) ? null : src.has(k) ? src.get(k)! : 0;
+        byUnit[id] = !hasObservedGl || staleGlUnits.has(id) ? null : src.has(k) ? src.get(k)! : 0;
       }
-      return { key, label: labelOf(key), byUnit, total: sumGl(unitIds.map((id) => byUnit[id]!)) };
+      return { key, label: labelOf(key), byUnit, total: hasObservedGl ? sumGl(unitIds.map((id) => byUnit[id]!)) : null };
     });
     const totalsByUnit: Record<number, number | null> = {};
     for (const id of unitIds) totalsByUnit[id] = sumGl(rows.map((r) => r.byUnit[id]!));
-    return { rows, totalsByUnit, grandTotal: sumGl(unitIds.map((id) => totalsByUnit[id]!)) };
+    return { rows, totalsByUnit, grandTotal: hasObservedGl ? sumGl(unitIds.map((id) => totalsByUnit[id]!)) : null };
   };
   const glDaily = mkValueRows(glDayCell);
   const glMonthlyFlat = mkValueRows(glMtdCell);
+  if (glDaily.grandTotal === null) glProvisional = true;
+  if (glMonthlyFlat.grandTotal === null) glMonthlyProvisional = true;
   const monthlyGl = (v: number | null): MonthlyCell<number | null> => ({
     kum: v, avg: v === null ? null : v / dayOfMonth,
   });
@@ -628,7 +639,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   // ── Catatan kaki ──────────────────────────────────────────────────────────
   const notes: string[] = [];
   if (hasOther) {
-    const codes = [...new Set(dailySales.filter((r) => rowKeyOf(r.nama, r.ckdbbm) === OTHER_KEY).map((r) => r.ckdbbm))];
+    const codes = [...new Set(dailySales.filter((r) => rowKeyOf(r.nama, r.ckdbbm) === OTHER_KEY).map((r) => normalizeProductIdentity(r.ckdbbm) ?? "tanpa kode produk"))];
     notes.push(
       `Baris "Lain-lain" memuat kode produk yang tak dikenali klasifikasi SolaMax (${codes.join(", ")}). Nilainya TETAP ikut TOTAL.`,
     );
@@ -654,8 +665,9 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     salesDays: salesDaysByUnit.get(s.unitId)?.size ?? 0,
     glDays: glDaysByUnit.get(s.unitId)?.size ?? 0,
   }));
-  const glShort = glCoverage.filter((c) => c.glDays < c.salesDays);
-  const glIncomplete = staleGlUnits.size > 0 || glShort.length > 0 || [...glMtdCell.values()].some((v) => v === null);
+  // Counts are diagnostic only. Exact unit/date/product coverage above has
+  // already propagated every missing contribution to the dependent total.
+  const glIncomplete = glMonthly.grand.kum === null;
   if (glIncomplete) {
     notes.push(
       'Gain/Losses TIDAK LENGKAP: ada produk/hari tanpa G/L terhitung atau stok penutup tidak valid. Sel tersebut dan total yang bergantung padanya tampil “—”, bukan 0. Periksa laporan operasional unit dan data opname/penjualan/penerimaan di EasyMax.',

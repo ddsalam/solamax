@@ -237,6 +237,8 @@ d("Arus Minyak vs oracle EasyMax — IB 1–6 Agustus 2026 (dari HTML terender)"
     const rows = await Q.getDailyGlByProduct(u!.unit_id as SUID, "2026-08-01", "2026-08-06");
     const byDay = new Map<string, Map<string, (typeof rows)[number]>>();
     for (const r of rows) {
+      if (r.ckdbbm === null || r.ckdbbm.trim() === "")
+        throw new Error("Known oracle fixture contains an unidentified product");
       if (!byDay.has(r.d)) byDay.set(r.d, new Map());
       byDay.get(r.d)!.set(r.ckdbbm, r);
     }
@@ -759,10 +761,15 @@ d("Sapuan konsistensi internal IB — 120 hari, tanpa oracle", () => {
           langgar.push(`${tgl} ${r.nama}: Teori != Awal+Penerimaan-Penjualan`);
         if (r.fisik !== null && r.teori !== null && Math.abs((r.losses ?? NaN) - (r.fisik - r.teori)) > 0.005)
           langgar.push(`${tgl} ${r.nama}: Losses != Fisik-Teori`);
-        const prev = fisikPrev.get(r.ckdbbm);
+        const prev = r.ckdbbm === null ? undefined : fisikPrev.get(r.ckdbbm);
         if (prev && r.awal !== null && prev.v !== null && Math.abs(r.awal - prev.v) > 0.005 && !a.provisional)
           langgar.push(`${tgl} ${r.nama}: carry-in putus (awal ${r.awal} vs fisik ${prev.d} ${prev.v}) tanpa penanda`);
-        fisikPrev.set(r.ckdbbm, { d: tgl, v: r.fisik });
+        if (r.ckdbbm !== null) fisikPrev.set(r.ckdbbm, { d: tgl, v: r.fisik });
+        else {
+          expect(r.losses, "unidentified product must not have computed losses").toBeNull();
+          expect(a.incomplete).toBe(true);
+          expect(a.provisional).toBe(true);
+        }
         // Nilai stok yang mustahil secara fisik.
         //
         // CATATAN METODE: percobaan pertama memakai batas "|Losses| <= Awal +

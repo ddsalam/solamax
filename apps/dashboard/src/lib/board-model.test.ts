@@ -327,8 +327,8 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "stok fisik 0 perlu verifikasi" });
   });
 
-  it("does not demand G/L for a zero-sales row, but does demand it for a nonzero adjustment", () => {
-    const zero = s(1, "2026-07-14", "PERTAMAX", 0, 0);
+  it("does not demand G/L for a dormant product on an observed day, but does for a nonzero adjustment", () => {
+    const zero = s(1, TODAY, "NEW-PRODUCT", 0, 0);
     const m = buildBoardCore(coreInput({ dailySales: [...SALES, zero] }));
     expect(glCard(m).value).toBe("−0,67%");
     expectIncomplete(coreInput({ dailySales: [...SALES, { ...zero, vol: -1, omzet: -10_000 }] }));
@@ -480,5 +480,117 @@ describe("board G/L freshness", () => {
     expect(card.value).toBe("−1,00%");
     expect(card.sub).toBe("−5 L");
     expect(card.provisional).toBe(false);
+  });
+});
+
+describe("board G/L rejects absent product identities", () => {
+  it.each([null, "", "   ", "\t\n"])("cannot verify zero from matching unidentified sales and stock (%j)", (ckdbbm) => {
+    const dailySales = [{ ...s(1, TODAY, "UNKNOWN", 1000, 10_000_000), ckdbbm, nama: null }];
+    const glRange = new Map([[1, [{ ...glRow(0), ckdbbm, nama: null }]]]);
+    const m = buildBoardCore(coreInput({ units: [IB], dailySales, glRange, mode: "banding" }));
+    const card = m.kpi.find((k) => k.key === "gl")!;
+    expect(card.value).toBe("—");
+    expect(card.sub).toBe("G/L belum lengkap");
+    expect(card.subTone).toBe("warning");
+    expect(card.provisional).toBe(true);
+    expect(m.ranking[0]!.gl).toBe("—");
+    expect(m.ranking[0]!.products[0]!.name).toBe("Produk tanpa kode");
+    expect(m.verdict.headline).not.toBe("Grup sehat.");
+  });
+
+  it.each([null, "", "   "])("unidentified active sales with no stock invalidate dependent totals (%j)", (ckdbbm) => {
+    const m = buildBoardCore(coreInput({
+      units: [IB],
+      dailySales: [...SALES, { ...s(1, TODAY, "UNKNOWN", 1000, 10_000_000), ckdbbm, nama: null }],
+    }));
+    expect(m.kpi.find((k) => k.key === "gl")!.value).toBe("—");
+    expect(m.kpi.find((k) => k.key === "gl")!.subTone).toBe("warning");
+  });
+
+  it("does not count unidentified stock as coverage for a known sales product", () => {
+    const glRange = new Map([[1, [glRow(0), { ...glRow(0), ckdbbm: null, nama: "PERTAMAX" }]]]);
+    const m = buildBoardCore(coreInput({ units: [IB], glRange }));
+    expect(m.kpi.find((k) => k.key === "gl")!.value).toBe("—");
+  });
+
+  it.each(["range", "momPrev", "yoyPrev", "ytdCur", "ytdPrev"] as const)(
+    "rejects unknown product identities in %s evaluation source rows",
+    (window) => {
+      const gl = glWindows();
+      gl[window] = new Map([[1, gl[window].get(1)!.map((r, i) => i === 0 ? { ...r, ckdbbm: null, gl: 0 } : r)]]);
+      const e = buildBoardEval(evalInput({ gl }));
+      const keys: ("mom" | "yoy" | "ytdDelta")[] = window === "range" ? ["mom", "yoy"]
+        : window === "momPrev" ? ["mom"] : window === "yoyPrev" ? ["yoy"] : ["ytdDelta"];
+      for (const key of keys) {
+        expect(e.cards.gl[key].text).toBe("—");
+        expect(e.cards.gl[key].note).toBe("G/L belum lengkap");
+        expect(e.cards.gl[key].provisional).toBe(true);
+      }
+    },
+  );
+
+  it("keeps trimmed nonempty unmapped identities valid and distinct", () => {
+    const dailySales = [s(1, TODAY, "UNMAPPED-A", 100, 1000), s(1, TODAY, "UNMAPPED-B", 200, 2000)];
+    const glRange = new Map([[1, [
+      { ...glRow(0), ckdbbm: " UNMAPPED-A ", nama: null },
+      { ...glRow(0), ckdbbm: "UNMAPPED-B", nama: null },
+    ]]]);
+    const m = buildBoardCore(coreInput({ units: [IB], dailySales, glRange }));
+    expect(m.kpi.find((k) => k.key === "gl")!.value).toBe("0%");
+    expect(m.kpi.find((k) => k.key === "gl")!.subTone).toBe("success");
+    expect(m.kpi.find((k) => k.key === "gl")!.provisional).toBe(false);
+    glRange.set(1, glRange.get(1)!.slice(0, 1));
+    expect(buildBoardCore(coreInput({ units: [IB], dailySales, glRange })).kpi.find((k) => k.key === "gl")!.value).toBe("—");
+  });
+
+  it("does not let out-of-scope or out-of-window unknown identities poison valid totals", () => {
+    const m = buildBoardCore(coreInput({
+      units: [IB],
+      dailySales: [...SALES,
+        { ...s(2, TODAY, "UNKNOWN", 1000, 1000), ckdbbm: null },
+        { ...s(1, "2026-08-01", "UNKNOWN", 1000, 1000), ckdbbm: null }],
+      glRange: new Map([[1, [...GL_RANGE.get(1)!, { ...glRow(0), ckdbbm: null, d: "2026-08-01" }]],
+        [2, [{ ...glRow(0), ckdbbm: null }]]]),
+    }));
+    expect(m.kpi.find((k) => k.key === "gl")!.value).toBe("−1,00%");
+    expect(m.kpi.find((k) => k.key === "gl")!.provisional).toBe(false);
+  });
+});
+
+it("board does not label an unidentified zero-volume sales row as a verified G/L zero", () => {
+  const m = buildBoardCore(coreInput({
+    units: [IB], dailySales: [{ ...s(1, TODAY, "UNKNOWN", 0, 0), ckdbbm: null, nama: null }],
+    glRange: new Map([[1, [{ ...glRow(0), ckdbbm: null, nama: null }]]]),
+  }));
+  const card = m.kpi.find((k) => k.key === "gl")!;
+  expect(card.value).toBe("—");
+  expect(card.sub).toBe("G/L belum lengkap");
+  expect(card.subTone).toBe("warning");
+});
+
+
+describe("board exact sales-date G/L coverage", () => {
+  it("does not let G/L on dates 1 and 2 mask missing zero-sales date 3", () => {
+    const dailySales = [s(1, "2026-07-14", "PERTALITE", 1000, 10_000_000), s(1, TODAY, "PERTALITE", 0, 0)];
+    const glRange = new Map([[1, [{ ...glRow(0), d: "2026-07-14" }, { ...glRow(0), d: "2026-07-15" }]]]);
+    const m = buildBoardCore(coreInput({ units: [IB], dailySales, glRange }));
+    const card = m.kpi.find((k) => k.key === "gl")!;
+    expect(card.value).toBe("—");
+    expect(card.sub).toBe("G/L belum lengkap");
+    expect(card.provisional).toBe(true);
+  });
+
+  it.each([
+    ["range", "2026-07-14", "mom"], ["momPrev", "2026-06-14", "mom"],
+    ["yoyPrev", "2025-07-14", "yoy"], ["ytdCur", "2026-05-14", "ytdDelta"],
+    ["ytdPrev", "2025-05-14", "ytdDelta"],
+  ] as const)("requires exact known zero-sales dates in %s", (window, missingDate, cell) => {
+    const dailySales = [...SALES, s(1, missingDate, "PERTALITE", 0, 0)];
+    const gl = glWindows();
+    gl[window] = new Map([[1, [...gl[window].get(1)!, { ...glRow(0), d: missingDate.slice(0, 8) + "15" }]]]);
+    const e = buildBoardEval(evalInput({ dailySales, gl }));
+    expect(e.cards.gl[cell].text).toBe("—");
+    expect(e.cards.gl[cell].note).toBe("G/L belum lengkap");
+    expect(e.cards.gl[cell].provisional).toBe(true);
   });
 });

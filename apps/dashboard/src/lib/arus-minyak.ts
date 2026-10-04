@@ -42,6 +42,7 @@
  * keputusan owner; secara informasi ia memang redundan.
  */
 import type { DailyGlRow, ZeroClosingRow } from "./queries";
+import { normalizeProductIdentity } from "./derive";
 
 /**
  * Ambang "teori mengatakan tangki mestinya berisi". Dipakai HANYA untuk menandai
@@ -73,7 +74,7 @@ export interface ZeroFlag {
 }
 
 export interface ArusRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   /** Stock Fisik hari-bisnis sebelumnya. null = anchor tak ada. */
   awal: number | null;
@@ -98,7 +99,7 @@ export interface ArusMinyak {
   total: ArusRow;
   /** Ada baris yang G/L-nya belum final (opname penutup belum ada / ada celah). */
   provisional: boolean;
-  /** Σ tangki di luar batas wajar yang dikecualikan dari Stock Fisik hari itu. */
+  /** Σ penutup dengan stok/identitas tidak valid; Stock Fisik produk tak lengkap. */
   excludedTanks: number;
   /** Ada stok/G/L tak terhitung → jangan sajikan subtotal losses sebagai total. */
   incomplete: boolean;
@@ -159,20 +160,31 @@ export function buildArusMinyak(
   /** Kejadian penutup-nol untuk (unit, tanggal) ini — dari getZeroClosingEvents. */
   zeroClosing: ZeroClosingRow[] = [],
 ): ArusMinyak {
+  // Query output normally contains a trimmed string. Defend the rendering
+  // boundary too: legacy/runtime rows can still carry SQL NULL or whitespace.
   const zcByProduk = new Map<string, string[]>();
+  let unidentifiedZeroClosing = false;
   for (const z of zeroClosing) {
-    const k = z.ckdbbm.trim();
+    const k = normalizeProductIdentity(z.ckdbbm);
+    if (!k) {
+      // An unassigned tank cannot safely be attributed to any known product.
+      unidentifiedZeroClosing = true;
+      continue;
+    }
     zcByProduk.set(k, [...(zcByProduk.get(k) ?? []), z.ckdtangki]);
   }
   const rows: ArusRow[] = glRows.map((r) => {
+    const code = normalizeProductIdentity(r.ckdbbm);
     const penjualan = r.sales_gross - r.tera;
     const teori = stockTeori(r.fisik_prev, r.pen_do, penjualan);
     // Query juga memeriksa cakupan tangki dan mutasi NULL/garbage. Menghitung
     // ulang hanya dari komponen numerik akan menghidupkan lagi G/L yang ditolak.
-    const l = r.gl;
+    const l = code ? r.gl : null;
     return {
-      ckdbbm: r.ckdbbm,
-      nama: r.nama ?? r.ckdbbm,
+      ckdbbm: code,
+      // A familiar name does not recover a missing identity. Keep the source
+      // quantities diagnostic, but never label this as a verified known fuel.
+      nama: code ? r.nama?.trim() || code : "Produk tidak diketahui",
       awal: r.fisik_prev,
       penerimaan: r.pen_do,
       penjualan,
@@ -181,7 +193,7 @@ export function buildArusMinyak(
       fisik: r.fisik,
       losses: l,
       pct: lossPct(l, r.sales_gross), // penyebut KOTOR
-      zeroClosing: flagPenutupNol(zcByProduk.get(r.ckdbbm), r.fisik, teori),
+      zeroClosing: flagPenutupNol(code ? zcByProduk.get(code) : undefined, r.fisik, teori),
     };
   });
 
@@ -198,7 +210,7 @@ export function buildArusMinyak(
   const totPenjualanKotor = nz(rows.map((r) => r.penjualan + r.tera));
   const totFisik = semuaNull((r) => r.fisik) ? null : nz(rows.map((r) => r.fisik));
   const totTeori = semuaNull((r) => r.teori) ? null : nz(rows.map((r) => r.teori));
-  const totLosses = rows.some((r) => r.losses === null) ? null : nz(rows.map((r) => r.losses));
+  const totLosses = unidentifiedZeroClosing || rows.some((r) => r.losses === null) ? null : nz(rows.map((r) => r.losses));
   const total: ArusRow = {
     ckdbbm: "",
     nama: "TOTAL",
@@ -216,9 +228,9 @@ export function buildArusMinyak(
   return {
     rows,
     total,
-    provisional: glRows.some((r) => r.provisional || r.gl === null),
+    provisional: unidentifiedZeroClosing || glRows.some((r) => r.provisional) || rows.some((r) => r.losses === null),
     excludedTanks: glRows.reduce((s, r) => s + r.excluded_tanks, 0),
-    incomplete: rows.some((r) => r.awal === null || r.fisik === null || r.losses === null),
+    incomplete: unidentifiedZeroClosing || rows.some((r) => r.awal === null || r.fisik === null || r.losses === null),
     teraTotal: total.tera,
     zeroClosingCount: rows.filter((r) => r.zeroClosing !== null).length,
   };
