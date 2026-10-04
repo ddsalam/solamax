@@ -85,6 +85,11 @@ describe("D13 — jangan sajikan hasil KOSONG dari cache", () => {
     expect(await resolveHistoricPart(async () => [legacy], async () => fresh)).toBe(fresh);
   });
 
+  it.each([NaN, Infinity, -Infinity, undefined])("does not serialize invalid G/L (%s) into a cached zero/null", value => {
+    const invalid = { ...row("2026-07-01", 0), gl: value } as unknown as DailyGlRow;
+    expect(shouldBypassEmptyCache([invalid])).toBe(true);
+  });
+
   it("cache KOSONG → fresh dipanggil dan hasilnya dipakai", async () => {
     let freshCalls = 0;
     const out = await resolveHistoricPart(

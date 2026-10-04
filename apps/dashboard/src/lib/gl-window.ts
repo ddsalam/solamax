@@ -1,10 +1,14 @@
 /**
  * G/L per jendela dengan CACHE SERVER untuk jendela HISTORIS (keputusan owner
- * FASE 0 №2): unstable_cache Next.js, revalidate 24 jam (selaras cadence
- * deep-rescan), key = (unit_id, from, to, committed source revision). Cache per UNIT — BUKAN per user —
+ * FASE 0 №2): cache proses server, maksimum umur 24 jam, key = (unit_id,
+ * from, to), nilai membawa revisi sumber committed. Cache per UNIT — BUKAN per user —
  * dan HANYA dibaca setelah intersect RBAC menentukan unit yang boleh dirender
- * (parseBoardParams ∩ getDataScope) → tidak ada jalur bocor. Mekanisme bawaan
- * Next — TANPA tabel cache di DB (read-only penuh).
+ * (parseBoardParams ∩ getDataScope) → tidak ada jalur bocor. Tetap read-only,
+ * tanpa tabel cache DB. LRU proses menggantikan unstable_cache Next: kunci
+ * revisi lama sebelumnya meninggalkan file yang tidak dihapus oleh revalidate.
+ * Batas: 256 jendela / 16 MiB serialisasi / 2 MiB per entri, 32 slot pending.
+ * Cache terpisah per proses/instance dan hilang saat restart. Revisi tetap
+ * diperiksa sebelum reuse; TTL bukan izin menyajikan koreksi yang sudah basi.
  *
  * Batas "historis": `to ≤ hari-ini − 2` (SEDIKIT lebih ketat dari "to < hari
  * ini" di spec — pengetatan yang diungkap & disetujui arahnya oleh invarian
@@ -21,10 +25,10 @@
  * Fisik(D−1) & jendela celah lintas batas pecahan) — tidak ada state antar
  * baris output. Hasil historis provisional/null juga selalu dibaca ulang.
  */
-import { unstable_cache } from "next/cache";
 import * as React from "react";
 import { addDays, todayWib } from "./periods";
 import { normalizeProductIdentity } from "./derive";
+import { createGlHistoryCache } from "./gl-history-cache";
 import { getDailyGlByProduct, getGlSourceRevision, type DailyGlRow } from "./queries";
 import type { ScopedUnitId } from "./scope-rule";
 
@@ -44,9 +48,6 @@ export function splitGlWindow(from: string, to: string, today: string): GlWindow
   return { cached: { from, to: histTo }, fresh: { from: addDays(histTo, 1), to } };
 }
 
-/** Revalidate 24 jam — selaras cadence deep-rescan agent (koreksi back-dated). */
-const GL_CACHE_REVALIDATE_S = 86_400;
-
 /**
  * JANGAN SAJIKAN HASIL KOSONG DARI CACHE (keputusan owner D13, 2026-07-25).
  *
@@ -64,10 +65,10 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  *
  * Hasil nol BARIS berbeda dari nol NILAI. Unit yang sah-sah saja tak punya
  * selisih (Σ gl = 0) tetap ter-cache bila lengkap/final. Hasil tanpa baris,
- * provisional, null atau tangki dikecualikan dibaca ulang.
+ * provisional, null atau tangki dikecualikan tidak disimpan.
  *
  * Extended after the October incident: null, excluded, or provisional rows
- * also bypass a cached result. Committed sync revisions invalidate nonempty
+ * are never retained. Committed content revisions invalidate nonempty
  * previously-final results when late receipts/corrections arrive.
  *
  * ⚠️ INI MELENGKAPI `glIncomplete` (harian-model.ts), BUKAN MENGGANTIKANNYA.
@@ -86,7 +87,7 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  */
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
   return rows.length === 0 || rows.some((r) =>
-    r.provisional || r.gl === null || r.movement_invalid !== false
+    r.provisional || !Number.isFinite(r.gl) || r.movement_invalid !== false
       || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
   );
 }
@@ -94,8 +95,8 @@ export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
 /**
  * Ambil prefiks historis. Valid/final → NILAI CACHE dipakai apa adanya dan
  * `fresh` TIDAK pernah dipanggil (netralitas perilaku untuk `/board`).
- * Terpisah dari `cachedGl` agar keputusannya teruji tanpa runtime Next
- * (`unstable_cache` melempar di luar RSC).
+ * Helper kompatibilitas untuk pemanggil yang menyediakan cache sendiri.
+ * Cache historis di bawah menolak hasil tak lengkap saat admission.
  */
 export async function resolveHistoricPart(
   cached: () => Promise<DailyGlRow[]>,
@@ -106,24 +107,32 @@ export async function resolveHistoricPart(
   return fresh();
 }
 
-function cachedGl(unit: ScopedUnitId, from: string, to: string, revision: string): Promise<DailyGlRow[]> {
-  return resolveHistoricPart(
-    unstable_cache(
-      () => getDailyGlByProduct(unit, from, to),
-      // v4 carries explicit movement validity for Stock Teori. A source revision
-      // does not change on deployment, so retire older cached result shapes.
-      ["gl-window-v4", String(unit), from, to, revision],
-      { revalidate: GL_CACHE_REVALIDATE_S },
-    ),
-    () => getDailyGlByProduct(unit, from, to),
-  );
+declare global {
+  // eslint-disable-next-line no-var
+  var __solamaxGlHistoryCacheV1: ReturnType<typeof createGlHistoryCache> | undefined;
+}
+
+// Share one bounded store even if server bundles evaluate this module twice.
+// Old Next v2/v3/v4 disk entries are never read by this store.
+const historyCache = globalThis.__solamaxGlHistoryCacheV1 ??= createGlHistoryCache(
+  (rows) => !shouldBypassEmptyCache(rows),
+);
+
+function cachedGl(unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> {
+  return historyCache.get(JSON.stringify([unit, from, to]), {
+    readRevision: () => sourceRevision(unit),
+    load: () => getDailyGlByProduct(unit, from, to),
+    // A cold fill crossing a source commit must not be retained under the old
+    // token. This read intentionally bypasses React's per-request memoization.
+    verifyRevision: () => getGlSourceRevision(unit),
+  });
 }
 
 // React.cache hanya ada di build server (RSC); fallback identity utk vitest.
 const reactCache: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R =
   (React as unknown as { cache?: typeof reactCache }).cache ?? ((fn) => fn);
 
-/** Source commits invalidate ALL overlapping windows for this unit. This is
+/** Content changes invalidate ALL historical windows for this unit. This is
  * request-memoized so board comparison windows share one tiny scoped read. */
 const sourceRevision = reactCache(getGlSourceRevision);
 
@@ -135,9 +144,8 @@ const sourceRevision = reactCache(getGlSourceRevision);
 export const getDailyGlWindow = reactCache(
   async (unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> => {
     const split = splitGlWindow(from, to, todayWib());
-    const revision = split.cached ? await sourceRevision(unit) : "";
     const [hist, fresh] = await Promise.all([
-      split.cached ? cachedGl(unit, split.cached.from, split.cached.to, revision) : Promise.resolve([]),
+      split.cached ? cachedGl(unit, split.cached.from, split.cached.to) : Promise.resolve([]),
       split.fresh
         ? getDailyGlByProduct(unit, split.fresh.from, split.fresh.to)
         : Promise.resolve([]),

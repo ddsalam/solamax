@@ -40,6 +40,8 @@ model SyncState {
   lastWatermark DateTime? @map("last_watermark") @db.Timestamptz()
   lastRunAt     DateTime? @map("last_run_at") @db.Timestamptz()
   lastRowCount  Int?      @map("last_row_count")
+  glRevision    BigInt?   @map("gl_revision")
+  glRevisionRunAt DateTime? @map("gl_revision_run_at") @db.Timestamptz()
 
   @@id([unitId, domain])
   @@map("sync_state")

@@ -186,20 +186,22 @@ async function day() {
 // Wiring remains an unconditional CI guard even without the optional engine.
 describe("G/L source revision wiring", () => {
   beforeEach(() => qScoped.mockReset());
-  it("uses the authorized unit and every contributing source, including masters", async () => {
+  it("uses the authorized unit and a schema-compatible, domain-complete source vector", async () => {
     qScoped.mockResolvedValue([{ revision: "source-vector" }]);
     expect(await getGlSourceRevision(U)).toBe("source-vector");
     const [unit, sql, params] = qScoped.mock.calls[0]!;
     expect(unit).toBe(U); expect(params).toEqual([U]);
-    for (const domain of ["sales", "opname", "delivery", "terra_resmi", "masters"])
-      expect(sql).toContain(`'${domain}'`);
+    expect(sql).toContain("s.unit_id = $1");
+    expect(sql).toContain("to_jsonb(s)->>'gl_revision'");
+    expect(sql).toContain("to_jsonb(s)->>'gl_revision_run_at'");
     expect(sql).toContain("ORDER BY domain");
     expect(sql).toContain("SS.US");
+    expect(sql).not.toMatch(/domain\s+(?:IN|=)/i);
     expect(sql).not.toMatch(/max\s*\(/i);
   });
-  it("returns an explicit sentinel when no source revision exists", async () => {
+  it("returns the empty vector when no source revision exists", async () => {
     qScoped.mockResolvedValue([]);
-    expect(await getGlSourceRevision(U)).toBe("never");
+    expect(await getGlSourceRevision(U)).toBe("[]");
   });
 });
 
@@ -820,17 +822,122 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     expect(await day()).toMatchObject({ fisik_prev: null, gl: null, provisional: true });
   });
 
-  it("the source revision changes for each domain, even a late older transaction", async () => {
-    expect(await getGlSourceRevision(U)).toBe("never");
-    for (const domain of ["sales", "opname", "delivery", "terra_resmi", "masters"])
+  it("old-schema revisions cover every domain, even a late older transaction", async () => {
+    expect(await getGlSourceRevision(U)).toBe("[]");
+    const domains = ["sales", "opname", "delivery", "terra_resmi", "masters", "cash", "future|domain:with\"punctuation"];
+    for (const domain of domains)
       await db.query("INSERT INTO sync_state VALUES (1,$1,$2)", [domain, `${D2}T10:00:00.123456Z`]);
     let previous = await getGlSourceRevision(U);
-    for (const domain of ["sales", "opname", "delivery", "terra_resmi", "masters"]) {
+    expect(JSON.parse(previous)).toEqual([...domains].sort().map(domain => [domain, "legacy", `${D2}T10:00:00.123456Z`]));
+    for (const domain of domains) {
       await db.query("UPDATE sync_state SET last_run_at=$1 WHERE unit_id=1 AND domain=$2", [`${D2}T09:00:00.123457Z`, domain]);
       const revision = await getGlSourceRevision(U);
       expect(revision).not.toBe(previous); previous = revision;
     }
-    await db.query("INSERT INTO sync_state VALUES (2,'opname',$1),(1,'cash',$1)", [`${D3}T12:00:00Z`]);
+    await db.query("INSERT INTO sync_state VALUES (2,'opname',$1),(2,'cash',$1)", [`${D3}T12:00:00Z`]);
     expect(await getGlSourceRevision(U)).toBe(previous);
+  });
+
+  it("old-schema null timestamps have stable explicit legacy entries", async () => {
+    await db.exec("INSERT INTO sync_state VALUES (1,'cash',NULL),(1,'sales',NULL)");
+    expect(JSON.parse(await getGlSourceRevision(U))).toEqual([
+      ["cash", "legacy", "never"], ["sales", "legacy", "never"],
+    ]);
+  });
+
+  describe("content revision columns after migration", () => {
+    beforeAll(async () => {
+      await db.exec("ALTER TABLE sync_state ADD COLUMN gl_revision bigint, ADD COLUMN gl_revision_run_at timestamptz");
+    });
+    afterAll(async () => {
+      await db.exec("ALTER TABLE sync_state DROP COLUMN gl_revision, DROP COLUMN gl_revision_run_at");
+    });
+
+    it("returns an empty vector without source data after migration", async () => {
+      expect(await getGlSourceRevision(U)).toBe("[]");
+    });
+
+    it("keeps bigint revisions exact beyond JavaScript safe integers", async () => {
+      await db.query("INSERT INTO sync_state VALUES (1,'sales',$1,9007199254740992,$1)", [`${D2}T10:00:00.123456Z`]);
+      let previous = await getGlSourceRevision(U);
+      expect(JSON.parse(previous)).toEqual([["sales", "content", "9007199254740992"]]);
+      for (const counter of ["9007199254740993", "9223372036854775807"]) {
+        await db.query("UPDATE sync_state SET gl_revision=$1", [counter]);
+        const revision = await getGlSourceRevision(U);
+        expect(JSON.parse(revision)).toEqual([["sales", "content", counter]]);
+        expect(revision).not.toBe(previous); previous = revision;
+      }
+    });
+
+    it("changes for a content revision in every domain, including arbitrary domains", async () => {
+      const domains = ["sales", "cash", "opname", "delivery", "masters", "realtank", "deposit",
+        "edc", "pelanggan", "tebus", "tera", "terra_resmi", "piutang", "hutang", "future|domain:with\"punctuation"];
+      for (const domain of domains)
+        await db.query("INSERT INTO sync_state VALUES (1,$1,$2,0,$2)", [domain, `${D2}T10:00:00.123456Z`]);
+      let previous = await getGlSourceRevision(U);
+      expect(JSON.parse(previous)).toEqual([...domains].sort().map(domain => [domain, "content", "0"]));
+      for (const domain of domains) {
+        await db.query("UPDATE sync_state SET gl_revision=gl_revision+1, last_run_at=$1, gl_revision_run_at=$1 WHERE unit_id=1 AND domain=$2",
+          [`${D2}T09:00:00.123457Z`, domain]);
+        const revision = await getGlSourceRevision(U);
+        expect(revision, domain).not.toBe(previous); previous = revision;
+      }
+      await db.query("INSERT INTO sync_state VALUES (2,'opname',$1,999,$1),(2,'cash',$1,999,$1)", [`${D3}T12:00:00Z`]);
+      expect(await getGlSourceRevision(U)).toBe(previous);
+    });
+
+    it("keeps a mixed ordered vector stable through no-op runs and inactive legacy domains", async () => {
+      await db.query(`INSERT INTO sync_state VALUES
+        (1,'terra_resmi',$1,7,$1), (1,'sales',$1,0,$1), (1,'opname',$1,2,$1),
+        (1,'masters',$1,3,$1), (1,'delivery',$1,4,$1), (1,'cash',$2,NULL,NULL),
+        (1,'future|domain:with"punctuation',NULL,NULL,NULL)`, [`${D2}T10:00:00.123456Z`, `${D1}T17:00:00.654321+07:00`]);
+      const previous = await getGlSourceRevision(U);
+      expect(JSON.parse(previous)).toEqual([
+        ["cash", "legacy", `${D1}T10:00:00.654321Z`],
+        ["delivery", "content", "4"], ["future|domain:with\"punctuation", "legacy", "never"],
+        ["masters", "content", "3"], ["opname", "content", "2"],
+        ["sales", "content", "0"], ["terra_resmi", "content", "7"],
+      ]);
+      for (const timestamp of [`${D2}T10:00:00.123457Z`, `${D3}T19:00:00.123456+07:00`]) {
+        await db.query("UPDATE sync_state SET last_run_at=$1, gl_revision_run_at=$1 WHERE gl_revision IS NOT NULL", [timestamp]);
+        expect(await getGlSourceRevision(U)).toBe(previous);
+      }
+    });
+
+    it.each([
+      { counter: null, lastRun: `${D2}T10:00:00.123456Z`, marker: `${D2}T10:00:00.123456Z` },
+      { counter: "-1", lastRun: `${D2}T10:00:00.123456Z`, marker: `${D2}T10:00:00.123456Z` },
+      { counter: "0", lastRun: `${D2}T10:00:00.123456Z`, marker: null },
+      { counter: "5", lastRun: `${D2}T10:00:00.123456Z`, marker: `${D2}T10:00:00.123457Z` },
+      { counter: "7", lastRun: null, marker: `${D2}T10:00:00.123456Z` },
+      { counter: "0", lastRun: null, marker: null },
+      { counter: null, lastRun: null, marker: null },
+    ])("falls back to legacy when the content counter/run is untrusted (%#)", async ({ counter, lastRun, marker }) => {
+      await db.query("INSERT INTO sync_state VALUES (1,'sales',$1,$2,$3)", [lastRun, counter, marker]);
+      expect(JSON.parse(await getGlSourceRevision(U))).toEqual([["sales", "legacy", lastRun ?? "never"]]);
+    });
+
+    it("detects an old writer by marker mismatch and keeps invalidating on its later runs", async () => {
+      await db.query("INSERT INTO sync_state VALUES (1,'sales',$1,6,$1)", [`${D2}T10:00:00.123456Z`]);
+      const contentRevision = await getGlSourceRevision(U);
+      let previous = contentRevision;
+      for (const timestamp of [`${D2}T10:00:00.123457Z`, `${D2}T10:00:00.123458Z`]) {
+        await db.query("UPDATE sync_state SET last_run_at=$1", [timestamp]);
+        const revision = await getGlSourceRevision(U);
+        expect(JSON.parse(revision)).toEqual([["sales", "legacy", timestamp]]);
+        expect(revision).not.toBe(previous); previous = revision;
+      }
+      await db.exec("UPDATE sync_state SET gl_revision=7, gl_revision_run_at=last_run_at");
+      const restored = await getGlSourceRevision(U);
+      expect(JSON.parse(restored)).toEqual([["sales", "content", "7"]]);
+      expect(restored).not.toBe(previous);
+      expect(restored).not.toBe(contentRevision);
+    });
+
+    it("compares run markers as timestamps across timezone offsets", async () => {
+      await db.query("INSERT INTO sync_state VALUES (1,'sales',$1,0,$2)",
+        [`${D2}T10:00:00.123456Z`, `${D2}T17:00:00.123456+07:00`]);
+      expect(JSON.parse(await getGlSourceRevision(U))).toEqual([["sales", "content", "0"]]);
+    });
   });
 });

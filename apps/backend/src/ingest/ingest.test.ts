@@ -101,7 +101,7 @@ describe("IngestService", () => {
     expect(executed[2]!.sql).toContain('"sales_detail"');
     expect(executed[3]!.sql).toContain('"sync_state"');
     expect(executed[3]!.params).toEqual([
-      1, "sales", "2026-06-11T07:30:00.000Z", 2,
+      1, "sales", "2026-06-11T07:30:00.000Z", 2, true,
     ]);
   });
 
@@ -191,7 +191,7 @@ describe("IngestService", () => {
     expect(executed[1]!.params).toEqual(["replace_window:terra_resmi:7"]);
     expect(sqls[2]).toContain('DELETE FROM "terra_resmi"');
     expect(sqls[2]).toContain('"unit_id" = $1');
-    expect(executed[2]!.params).toEqual([7, "2026-08-27", "2026-08-28"]);
+    expect(executed[2]!.params).toEqual([7, "2026-08-27", "2026-08-28", [], []]);
     expect(sqls.some((sql) => sql.includes('INSERT INTO "terra_resmi"'))).toBe(false);
     expect(sqls.at(-1)).toContain('"sync_state"');
   });

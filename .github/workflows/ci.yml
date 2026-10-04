@@ -135,6 +135,14 @@ jobs:
           GL_SQL_TEST_POSTGRES16: "1"
           GL_SQL_TEST_POSTGRES16_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
 
+      # Separate invocation: this suite commits only its unique owned schema so
+      # native connections can prove races, then drops/verifies that schema.
+      - name: Gain/loss ingest content revision on PostgreSQL 16
+        run: pnpm --filter @solamax/backend exec vitest run src/ingest/gl-content-revision.postgres.test.ts
+        env:
+          GL_SQL_TEST_POSTGRES16: "1"
+          GL_SQL_TEST_POSTGRES16_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+
   # ── Gerbang "migrasinya dapat DI-DEPLOY" ────────────────────────────────────
   #
   # Job `snapshot-postgres-16` di atas membuktikan SQL migrasi 0039 benar. Pada
