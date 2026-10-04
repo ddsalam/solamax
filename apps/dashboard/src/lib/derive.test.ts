@@ -308,3 +308,23 @@ describe("unitLabel (№7: kanonik bertitik + nama)", () => {
     expect(unitLabel("9999999", "Contoh")).toBe("9999999 — Contoh");
   });
 });
+
+
+describe("G/L aggregate integrity metadata", () => {
+  const row = (over: Partial<DailyGlInput> = {}): DailyGlInput => ({ckdbbm:"BB-03",nama:"SOLAR",gl:0,tera:0,excluded_tanks:0,provisional:false,...over});
+  it("partial product sums expose incomplete even when another product is valid", () => {
+    const a=aggregateDailyGl([row({gl:null}),row({ckdbbm:"BB-07",gl:12})]);
+    expect(a.hasGl).toBe(true); expect(a.incomplete).toBe(true); expect(a.provisional).toBe(true);
+  });
+  it("excluded tank marks the whole aggregate incomplete", () => {
+    expect(aggregateDailyGl([row({gl:-6000,excluded_tanks:1})]).incomplete).toBe(true);
+  });
+  it("valid zero is complete", () => {
+    expect(aggregateDailyGl([row()])).toMatchObject({hasGl:true,incomplete:false,suspect:false,totalSigned:0});
+  });
+  it("zero-closing warning preserves values and uses the operational 1000L threshold", () => {
+    const a=aggregateDailyGl([row({fisik:0,fisik_prev:5000,pen_do:0,sales_gross:100,gl:-4900})]);
+    expect(a).toMatchObject({suspect:true,provisional:true,incomplete:false,totalSigned:-4900});
+    expect(aggregateDailyGl([row({fisik:0,fisik_prev:1100,pen_do:0,sales_gross:100})]).suspect).toBe(false);
+  });
+});

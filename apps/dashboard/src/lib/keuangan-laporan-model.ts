@@ -27,6 +27,7 @@ export type SebabKosong =
   | "produk_tanpa_harga_beli"
   | "belum_ada_harga_beli"
   | "belum_ada_opname"
+  | "data_stok_gl_tak_lengkap"
   | "belum_ada_saldo_pembuka"
   | "tak_bersumber";
 
@@ -54,6 +55,10 @@ export const PENJELASAN_KOSONG: Record<SebabKosong, string> = {
   belum_ada_harga_beli:
     "Harga beli produk belum diisi untuk tanggal ini — tim keuangan, di Layar 3 blok 1.",
   belum_ada_opname: "Opname penutup hari ini belum masuk dari EasyMax.",
+  data_stok_gl_tak_lengkap:
+    "Data stok atau mutasi minyak dari EasyMax belum lengkap atau tidak valid — " +
+    "Gain/Losses dan nilai turunannya belum bisa dihitung. Periksa laporan operasional; " +
+    "produk terdampak disebut di peringatan halaman.",
   belum_ada_saldo_pembuka:
     "Saldo pembuka ekuitas belum punya sumber di SolaMax — ia hidup di workbook, " +
     "dan impor riwayat belum dikerjakan.",
@@ -191,13 +196,16 @@ export function panelIncome(i: IncomeInput): PanelLaporan & { marginBersih: numb
   // ⛔ RAMBATAN `null` YANG DISENGAJA (§10.23). Setiap pos di bawah GP mewarisi
   //    ketidaktahuannya; menggantinya dengan 0 di sini akan mengembalikan persis
   //    angka lebih saji yang keputusan itu tutup, satu baris lebih rendah.
-  const operating = t.grossProfit === null ? null : t.grossProfit + t.lossesGainValue;
+  const operating = t.grossProfit === null || t.lossesGainValue === null
+    ? null : t.grossProfit + t.lossesGainValue;
   const net = operating === null ? null : operating + biaya + i.pendapatanLain;
   const margin = net === null || t.revenue === 0 ? null : net / t.revenue;
   // Sebabnya mengikuti himpunan yang BENAR-BENAR merusak GP — syarat yang sama
   // dengan `grossProfit === null`. Dua tempat dengan himpunan berbeda akan
   // menghasilkan "belum bisa dihitung" tanpa sebab, atau sebab tanpa null.
   const sebabGp = t.perusakGp.length > 0 ? ("produk_tanpa_harga_beli" as const) : undefined;
+  const sebabGl = t.lossesGainValue === null ? ("data_stok_gl_tak_lengkap" as const) : undefined;
+  const sebabLaba = sebabGp ?? sebabGl;
 
   return {
     baris: [
@@ -205,18 +213,18 @@ export function panelIncome(i: IncomeInput): PanelLaporan & { marginBersih: numb
       { label: "Tera nozzle", nilai: t.teraValue },
       { label: "COGS", nilai: t.cogs },
       { label: "Gross profit", nilai: t.grossProfit, sum: true, sebab: sebabGp },
-      { label: "Gain / losses", nilai: t.lossesGainValue },
-      { label: "Operating profit", nilai: operating, sum: true, sebab: sebabGp },
+      { label: "Gain / losses", nilai: t.lossesGainValue, sebab: sebabGl },
+      { label: "Operating profit", nilai: operating, sum: true, sebab: sebabLaba },
       { label: "Biaya operasional", nilai: biaya },
       { label: "Pendapatan lain-lain", nilai: i.pendapatanLain },
-      { label: "Net profit", nilai: net, sum: true, sebab: sebabGp },
+      { label: "Net profit", nilai: net, sum: true, sebab: sebabLaba },
       {
         label: "Income adjustment",
         nilai: i.incomeAdjustment,
         sebab: i.incomeAdjustment === null ? "tak_bersumber" : undefined,
       },
     ],
-    pemeriksa: { label: "Margin bersih", nilai: margin, sebab: sebabGp },
+    pemeriksa: { label: "Margin bersih", nilai: margin, sebab: sebabLaba },
     marginBersih: margin,
   };
 }
@@ -229,7 +237,7 @@ export interface BalanceInput {
   /** Sebab kosong sisi kas — WAJIB disebut pemanggil, tidak ditebak (§10.21). */
   sebabKas: SebabKasInput;
   cashOnHand: number | null;
-  inventoryValue: number;
+  inventoryValue: number | null;
   soValue: number;
   piutangEasymax: number | null;
   hutangPiutangNonEasymax: number | null;
@@ -256,11 +264,11 @@ export interface PanelBalance extends PanelLaporan {
 }
 
 export function panelBalance(i: BalanceInput): PanelBalance {
-  const komponen = [i.cashOnHand, i.piutangEasymax, i.hutangPiutangNonEasymax];
+  const komponen = [i.cashOnHand, i.inventoryValue, i.piutangEasymax, i.hutangPiutangNonEasymax];
   const asset = komponen.some((k) => k === null)
     ? null
     : (i.cashOnHand ?? 0) +
-      i.inventoryValue +
+      (i.inventoryValue ?? 0) +
       i.soValue +
       (i.piutangEasymax ?? 0) +
       (i.hutangPiutangNonEasymax ?? 0) -
@@ -286,9 +294,11 @@ export function panelBalance(i: BalanceInput): PanelBalance {
 
   return {
     baris: [
-      { label: "Asset − liabilities", nilai: asset, sum: true },
+      { label: "Asset − liabilities", nilai: asset, sum: true,
+        sebab: i.inventoryValue === null ? "data_stok_gl_tak_lengkap" : undefined },
       { label: "Cash on hand", nilai: i.cashOnHand, ind: true, sebab: i.cashOnHand === null ? sebabKas(i.sebabKas) : undefined },
-      { label: "Nilai stock", nilai: i.inventoryValue, ind: true },
+      { label: "Nilai stock", nilai: i.inventoryValue, ind: true,
+        sebab: i.inventoryValue === null ? "data_stok_gl_tak_lengkap" : undefined },
       { label: "Nilai DO", nilai: i.soValue, ind: true },
       { label: "Hutang piutang pelanggan EasyMax", nilai: i.piutangEasymax, ind: true, sebab: i.piutangEasymax === null ? "tak_bersumber" : undefined },
       { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined },

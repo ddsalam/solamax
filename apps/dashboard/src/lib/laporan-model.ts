@@ -62,7 +62,7 @@ export interface SalesRow {
 export interface GlMonthRow {
   ckdbbm: string;
   nama: string;
-  selisih: number;
+  selisih: number | null;
   vol: number;
 }
 export interface TargetRow {
@@ -125,7 +125,7 @@ export interface LaporanModel {
     rows: SalesRow[];
     totVol: number;
     totOmzet: number;
-    glTotal: number;
+    glTotal: number | null;
     totTera: number;
     glPctDay: number | null;
     glProvisional: boolean;
@@ -141,8 +141,9 @@ export interface LaporanModel {
   };
   glMonthly: {
     rows: GlMonthRow[];
-    glMonthTotal: number;
+    glMonthTotal: number | null;
     glPctMonth: number | null;
+    provisional: boolean;
   };
   /** Arus Minyak Harian — dekomposisi G/L RESUME per produk (lihat arus-minyak.ts). */
   arusMinyak: ArusMinyak;
@@ -455,12 +456,19 @@ export function buildLaporanModel(
   const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
   const dayAgg = aggregateDailyGl(glRows.filter((r) => r.d === date));
   const monthAgg = aggregateDailyGl(glRows);
-  const glByCode = new Map([...dayAgg.byProduct].map(([k, v]) => [k, v.signed] as const));
+  const invalidDayProducts = new Set(glRows.filter((r) => r.d === date &&
+    (r.gl === null || r.excluded_tanks > 0)).map((r) => r.ckdbbm));
+  const invalidMonthProducts = new Set(glRows.filter((r) =>
+    r.gl === null || r.excluded_tanks > 0).map((r) => r.ckdbbm));
+  const glByCode = new Map([...dayAgg.byProduct].map(([k, v]) =>
+    [k, invalidDayProducts.has(k) ? null : v.signed] as const));
+  const missingDayProduct = prodDay.some((p) => p.vol !== 0 && !glByCode.has(p.ckdbbm));
+  const missingMonthProduct = prodMonth.some((p) => p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm));
   const teraByCode = new Map([...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const));
-  const glTotal = dayAgg.totalSigned;
+  const glTotal = dayAgg.hasGl && !dayAgg.incomplete && !missingDayProduct ? dayAgg.totalSigned : null;
   const totTera = dayAgg.totalTera;
-  const glPctDay = dayAgg.hasGl ? glPercent(glTotal, totSales) : null;
-  const glProvisional = dayAgg.provisional;
+  const glPctDay = glTotal === null ? null : glPercent(glTotal, totSales);
+  const glProvisional = dayAgg.provisional || missingDayProduct;
   const glGarbageCount = dayAgg.excludedTanks;
 
   const salesRows: SalesRow[] = orderBy(prodDay).map((p) => ({
@@ -482,11 +490,18 @@ export function buildLaporanModel(
     glRows.filter((r) => r.d === date),
     zeroClosing.filter((z) => z.d === date),
   );
-  const arusMinyak: ArusMinyak = { ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows) };
+  const arusMinyak: ArusMinyak = {
+    ...arusMinyakRaw, rows: orderBy(arusMinyakRaw.rows),
+    ...(missingDayProduct ? {
+      provisional: true, incomplete: true,
+      total: { ...arusMinyakRaw.total, losses: null, pct: null },
+    } : {}),
+  };
 
   const volMonth = prodMonth.reduce((s, p) => s + p.vol, 0);
-  const glMonthTotal = monthAgg.totalSigned;
-  const glPctMonth = monthAgg.hasGl ? glPercent(glMonthTotal, volMonth) : null;
+  const glMonthTotal = monthAgg.hasGl && !monthAgg.incomplete && !missingMonthProduct ? monthAgg.totalSigned : null;
+  const glPctMonth = glMonthTotal === null ? null : glPercent(glMonthTotal, volMonth);
+  const glMonthProvisional = monthAgg.provisional || missingMonthProduct;
 
   const isToday = date === today;
   const isPartial = isToday && shift.shifts < 3;
@@ -508,11 +523,11 @@ export function buildLaporanModel(
   });
 
   const dailyLoss = (): AlarmCheck => {
-    if (glPctDay === null)
+    if (glTotal === null || glPctDay === null)
       return {
         label: "Losses harian — menunggu opname",
         state: "na",
-        note: "opname penutup belum ada",
+        note: "data stok/mutasi belum lengkap atau belum valid",
       };
     if (glProvisional)
       return {
@@ -528,12 +543,13 @@ export function buildLaporanModel(
     };
   };
 
-  const monthlyWithin = glPctMonth === null || Math.abs(glPctMonth) <= 0.005;
-  const monthlyLoss: AlarmCheck = {
-    label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
-    state: monthlyWithin ? "ok" : "fail",
-    note: glPctMonth !== null ? `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` : "—",
-  };
+  const monthlyWithin = glPctMonth !== null && Math.abs(glPctMonth) <= 0.005;
+  const monthlyLoss: AlarmCheck = glMonthTotal === null || glPctMonth === null
+    ? { label: "Losses bulanan — data belum lengkap", state: "na", note: "data stok/mutasi belum lengkap atau belum valid" }
+    : glMonthProvisional
+      ? { label: "Losses bulanan — sementara", state: "provisional", note: `${signed(glMonthTotal)} L · belum final` }
+      : { label: monthlyWithin ? "Losses bulanan aman" : "Losses bulanan di atas ambang",
+          state: monthlyWithin ? "ok" : "fail", note: `${signed(glMonthTotal)} L · ${pct(Math.abs(glPctMonth), 2)}` };
 
   const targetCheck = (): AlarmCheck => {
     if (!hasTarget)
@@ -678,7 +694,7 @@ export function buildLaporanModel(
     [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
       ckdbbm,
       nama: v.nama ?? ckdbbm,
-      selisih: v.signed,
+      selisih: invalidMonthProducts.has(ckdbbm) ? null : v.signed,
       vol: prodMonth.find((p) => p.ckdbbm === ckdbbm)?.vol ?? 0,
     })),
   );
@@ -747,7 +763,7 @@ export function buildLaporanModel(
       oilMix,
     },
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
-    glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth },
+    glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth, provisional: glMonthProvisional },
     arusMinyak,
     target: { rows: targetRows },
     doHarian: {

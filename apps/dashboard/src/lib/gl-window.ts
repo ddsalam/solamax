@@ -1,7 +1,7 @@
 /**
  * G/L per jendela dengan CACHE SERVER untuk jendela HISTORIS (keputusan owner
  * FASE 0 №2): unstable_cache Next.js, revalidate 24 jam (selaras cadence
- * deep-rescan), key = (unit_id, from, to). Cache per UNIT — BUKAN per user —
+ * deep-rescan), key = (unit_id, from, to, committed source revision). Cache per UNIT — BUKAN per user —
  * dan HANYA dibaca setelah intersect RBAC menentukan unit yang boleh dirender
  * (parseBoardParams ∩ getDataScope) → tidak ada jalur bocor. Mekanisme bawaan
  * Next — TANPA tabel cache di DB (read-only penuh).
@@ -12,18 +12,19 @@
  * terekam, dan penutup untuk D=kemarin baru masuk PAGI INI — meng-cache jendela
  * berujung kemarin bisa mengawetkan baris provisional 24 jam (dilarang spec:
  * "baris provisional tidak boleh awet di cache"). D = hari-ini−2 penutupnya
- * kemarin pagi (data: 0 hari opname bolong dari 400 hari, kedua unit) → final.
+ * kemarin pagi pada operasi normal. Umur tanggal BUKAN bukti kelengkapan:
+ * sinkron terlambat/koreksi tetap membatalkan cache melalui revisi sumber.
  *
  * Jendela yang menyentuh hari berjalan dipecah: prefix historis (cache) +
  * suffix segar. EKSAK karena tiap baris harian getDailyGlByProduct dihitung
  * mandiri dari data ≤ D (lookback 365 hari di dalam query menyediakan anchor
  * Fisik(D−1) & jendela celah lintas batas pecahan) — tidak ada state antar
- * baris output. Baris provisional dengan demikian HANYA pernah lewat jalur segar.
+ * baris output. Hasil historis provisional/null juga selalu dibaca ulang.
  */
 import { unstable_cache } from "next/cache";
 import * as React from "react";
 import { addDays, todayWib } from "./periods";
-import { getDailyGlByProduct, type DailyGlRow } from "./queries";
+import { getDailyGlByProduct, getGlSourceRevision, type DailyGlRow } from "./queries";
 import type { ScopedUnitId } from "./scope-rule";
 
 export interface GlWindowSplit {
@@ -60,10 +61,13 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  * `/board` atau `/laporan-harian` saat backfill unit baru masih berjalan akan
  * mengunci G/L unit itu jadi 0 sampai sehari penuh.
  *
- * ATURAN: **nol BARIS**, bukan nol NILAI. Unit yang sah-sah saja tak punya
- * selisih (Σ gl = 0) tetap ter-cache seperti biasa — yang ditolak hanyalah
- * "query tak mengembalikan baris sama sekali", yang untuk prefiks HISTORIS
- * berarti datanya belum ada, bukan bahwa tak ada yang terjadi.
+ * Hasil nol BARIS berbeda dari nol NILAI. Unit yang sah-sah saja tak punya
+ * selisih (Σ gl = 0) tetap ter-cache bila lengkap/final. Hasil tanpa baris,
+ * provisional, null atau tangki dikecualikan dibaca ulang.
+ *
+ * Extended after the October incident: null, excluded, or provisional rows
+ * also bypass a cached result. Committed sync revisions invalidate nonempty
+ * previously-final results when late receipts/corrections arrive.
  *
  * ⚠️ INI MELENGKAPI `glIncomplete` (harian-model.ts), BUKAN MENGGANTIKANNYA.
  * Jangan hapus salah satunya karena mengira redundan:
@@ -76,17 +80,15 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  *   nol baris  AS Sep 2025  →  154 ms      nol baris  AS Ags 2025 →  135 ms
  *   berisi     AS Jun 2026  →  224 ms      berisi     IB Jun 2026 →  415 ms
  * Jadi jendela nol-baris memang dihitung ulang tiap request, ~135–155 ms per
- * unit-jendela — LEBIH MURAH daripada jendela berisi (query berhenti lebih awal
- * karena tak ada baris opname untuk dirangkai). Yang terkena hanyalah unit
- * SEBELUM tanggal onboarding-nya; unit aktif selalu punya baris sehingga
- * jalurnya tak pernah tersentuh.
+ * unit-jendela pada pengukuran lama. Setelah invalidasi berbasis sumber,
+ * frekuensi cold query mengikuti ingest; ukur ulang latensi setelah staging.
  */
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
-  return rows.length === 0;
+  return rows.length === 0 || rows.some((r) => r.provisional || r.gl === null || r.excluded_tanks > 0);
 }
 
 /**
- * Ambil prefiks historis. Non-kosong → NILAI CACHE dipakai apa adanya dan
+ * Ambil prefiks historis. Valid/final → NILAI CACHE dipakai apa adanya dan
  * `fresh` TIDAK pernah dipanggil (netralitas perilaku untuk `/board`).
  * Terpisah dari `cachedGl` agar keputusannya teruji tanpa runtime Next
  * (`unstable_cache` melempar di luar RSC).
@@ -100,11 +102,11 @@ export async function resolveHistoricPart(
   return fresh();
 }
 
-function cachedGl(unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> {
+function cachedGl(unit: ScopedUnitId, from: string, to: string, revision: string): Promise<DailyGlRow[]> {
   return resolveHistoricPart(
     unstable_cache(
       () => getDailyGlByProduct(unit, from, to),
-      ["gl-window", String(unit), from, to],
+      ["gl-window-v2", String(unit), from, to, revision],
       { revalidate: GL_CACHE_REVALIDATE_S },
     ),
     () => getDailyGlByProduct(unit, from, to),
@@ -115,6 +117,10 @@ function cachedGl(unit: ScopedUnitId, from: string, to: string): Promise<DailyGl
 const reactCache: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R =
   (React as unknown as { cache?: typeof reactCache }).cache ?? ((fn) => fn);
 
+/** Source commits invalidate ALL overlapping windows for this unit. This is
+ * request-memoized so board comparison windows share one tiny scoped read. */
+const sourceRevision = reactCache(getGlSourceRevision);
+
 /**
  * Baris G/L harian per produk utk jendela [from..to] — historis dari cache,
  * hari berjalan segar. React cache() = memo per-request: jendela identik yang
@@ -123,8 +129,9 @@ const reactCache: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R
 export const getDailyGlWindow = reactCache(
   async (unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> => {
     const split = splitGlWindow(from, to, todayWib());
+    const revision = split.cached ? await sourceRevision(unit) : "";
     const [hist, fresh] = await Promise.all([
-      split.cached ? cachedGl(unit, split.cached.from, split.cached.to) : Promise.resolve([]),
+      split.cached ? cachedGl(unit, split.cached.from, split.cached.to, revision) : Promise.resolve([]),
       split.fresh
         ? getDailyGlByProduct(unit, split.fresh.from, split.fresh.to)
         : Promise.resolve([]),
