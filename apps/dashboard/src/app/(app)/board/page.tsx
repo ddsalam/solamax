@@ -123,7 +123,8 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
   const [dailySales, coverageRows, shiftPairs] = await Promise.all([
     getDailySalesByProduct(units.map((u) => u.unit_id), spanFrom, range.to),
     getUnitCoverage(units.map((u) => u.unit_id)),
-    mapLimit(units, 2, async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, today)] as const),
+    // Input describes the final business day in the selected period.
+    mapLimit(units, 2, async (u) => [u.unit_id as number, await getShiftInfo(u.unit_id, range.to)] as const),
   ]);
   const anomalies = await getAnomalies(units);
   const glRange = await glWindow(range);
