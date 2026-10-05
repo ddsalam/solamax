@@ -25,6 +25,7 @@ export interface RankRow {
   gl: string;
   glAbnormal: boolean;
   glProvisional: boolean;
+  glStatus?: "SEMENTARA" | "TIDAK LENGKAP" | "PERLU PERIKSA" | null;
   rg: string;
   /** NPSO gasoil (kolom baru redesign direksi). */
   rd: string;
@@ -50,7 +51,7 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
         <span className="right">Gain/Loss</span>
         <span className="right">NPSO (G)</span>
         <span className="right">NPSO (D)</span>
-        <span>Input</span>
+        <span>Input akhir periode</span>
         <span />
       </div>
       {rows.map((u) => {
@@ -78,6 +79,7 @@ export function RankingTable({ rows }: { rows: RankRow[] }) {
                 className={`right fs16 w600 num ${u.glProvisional ? "t-warning" : u.glAbnormal ? "t-danger" : "t-secondary"}`}
               >
                 {u.gl}
+                {u.glProvisional && <span className="fs15"><br />{u.glStatus ?? "SEMENTARA"}</span>}
               </span>
               <span className="right fs16 t-secondary num">{u.rg}</span>
               <span className="right fs16 t-secondary num">{u.rd}</span>
