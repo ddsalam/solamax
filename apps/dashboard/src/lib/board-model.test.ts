@@ -107,7 +107,7 @@ describe("buildBoardCore — KPI & struktur", () => {
       glRange: new Map([[1, [glRow(gl, provisional)]]]),
     }));
     expect(m.kpi[1]).toMatchObject({ value, provisional, subTone: provisional ? "warning" : gl === 0 ? "success" : "danger" });
-    expect(m.ranking[0]).toMatchObject({ gl: value, glAbnormal: gl !== 0, glProvisional: provisional });
+    expect(m.ranking[0]).toMatchObject({ gl: value, glAbnormal: gl !== 0, glProvisional: provisional, glStatus: provisional ? "SEMENTARA" : null });
     const chips = m.verdict.chips.filter((c) => /G\/L|Losses/.test(c.text));
     const notes = m.ranking[0]!.notes.filter((n) => /G\/L|Losses/.test(n.text));
     expect(chips).toEqual(gl === 0 ? [] : [{ tone: provisional ? "warning" : "danger", text: provisional

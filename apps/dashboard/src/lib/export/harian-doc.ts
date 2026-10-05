@@ -221,7 +221,7 @@ function trendCharts(model: HarianModel): Content[] {
       total: mode === "kum" ? m.totalKl : m.avgTotalKl,
       partial: m.partial,
     }));
-    const w = CW / 2 - 6;
+    const w = (CW - 16) / 2;
     const h = 92;
     const { canvas } = harianTrendCanvas({ months, unitCount: units.length, barMax, totalMax, width: w, height: h });
     // Canvas adalah anak LANGSUNG stack (bukan nested columns) → tinggi
@@ -229,16 +229,22 @@ function trendCharts(model: HarianModel): Content[] {
     // kedua sumbu diberi label) — lebih robust dari kolom angka-tick yang
     // hilang saat di-nest (ditemukan pemeriksaan mata Gate PDF-B).
     return {
-      width: CW / 2,
+      width: w,
       stack: [
         { text: title, fontSize: 7.5, bold: true, color: PDF.textSecondary } as Content,
         { text: pdfText(`sumbu KIRI ▮ KL/unit 0–${idn(Math.round(barMax))} · sumbu KANAN —— KL TOTAL grup 0–${idn(Math.round(totalMax))}`), fontSize: 5.5, color: PDF.textMuted } as Content,
         canvas,
-        { text: months.map((m) => m.label).join("  "), fontSize: 4.4, color: PDF.textMuted, marginTop: 1 } as Content,
+        {
+          columns: months.map((m) => ({
+            width: w / months.length, text: m.label, alignment: "center",
+            fontSize: 4.4, color: PDF.textMuted,
+          })),
+          columnGap: 0, marginTop: 1,
+        } as Content,
       ],
     } as unknown as Content;
   };
-  return [
+  return [{ unbreakable: true, stack: [
     { text: "Penjualan 13 bulan terakhir — satuan KL, dua sumbu", style: "sectionTitle", marginTop: 10, marginBottom: 3 },
     {
       columns: [
@@ -248,7 +254,7 @@ function trendCharts(model: HarianModel): Content[] {
       columnGap: 16,
     },
     ...legendRow(units),
-  ];
+  ] } as Content];
 }
 function legendRow(units: UnitStatus[]): Content[] {
   return [

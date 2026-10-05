@@ -491,6 +491,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
       glProvisional: x.glProvisional,
+      glStatus: !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
+        : x.gl.suspect ? "PERLU PERIKSA" : x.glProvisional ? "SEMENTARA" : null,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       rd: x.oil.actual !== null ? pct(x.oil.actual) : "—",
       inputTone: x.sh.shifts >= 3 ? "success" : x.sh.shifts > 0 ? "warning" : "danger",

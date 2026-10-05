@@ -228,7 +228,7 @@ function rankingTable(model: BoardModel): Content {
       th("Gain/Loss", "right"),
       th("NPSO gas", "right"),
       th("NPSO gasoil", "right"),
-      th("Input"),
+      th("Input akhir periode"),
     ],
   ];
   for (const r of model.core.ranking) {
@@ -238,7 +238,7 @@ function rankingTable(model: BoardModel): Content {
       { text: r.omzet, alignment: "right", noWrap: true },
       { text: r.vol, alignment: "right", noWrap: true },
       {
-        text: r.gl + (r.glProvisional ? " *" : ""),
+        text: r.gl + (r.glProvisional ? ` · ${r.glStatus ?? "SEMENTARA"}` : ""),
         alignment: "right",
         color: r.glAbnormal ? (r.glProvisional ? PDF.warning : PDF.danger) : PDF.textPrimary,
         bold: r.glAbnormal,
