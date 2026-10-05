@@ -69,6 +69,7 @@ export const SNAPSHOT_SKIP_CLASSIFICATION: Readonly<Record<string, { http: numbe
     // sendiri, sehingga request log saja sudah cukup untuk melihatnya.
     disk_review_required: { http: 507, incident: true },
     // Baris gerbang tidak terbaca — keadaan tak dapat dinilai, bukan normal.
+    source_finalization_failed: { http: HttpStatus.SERVICE_UNAVAILABLE, incident: true },
     operational_gate_unavailable: { http: HttpStatus.SERVICE_UNAVAILABLE, incident: true },
     // Normal: 21 dari 24 jam berada di luar jendela 02.00-05.00 WIB.
     outside_build_window: { http: 425, incident: false },

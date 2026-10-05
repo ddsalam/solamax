@@ -402,7 +402,7 @@ export class SnapshotSourceCaptureService {
           );
         }
         await hooks.beforeStep?.("prune_source_cuts");
-        await this.pruneRetiredSourceRows(tx, unitId);
+        // Physical row retirement belongs to the independent bounded collector.
         return {
           outcome: "obsolete" as const,
           cycleId,
@@ -527,7 +527,7 @@ export class SnapshotSourceCaptureService {
         unitId,
         sequence,
       );
-      await this.pruneRetiredSourceRows(tx, unitId);
+      // Keep promotion/dirty/enqueue atomic; collectRetiredSources drains rows separately.
 
       return {
         outcome: "complete" as const,
@@ -552,15 +552,6 @@ export class SnapshotSourceCaptureService {
       await tx.$executeRawUnsafe(ENQUEUE_BACKFILL_SQL, unitId, priorDays,
         cut.source_cycle_id, cut.source_cycle_sequence);
     }, { timeout: 120_000 });
-  }
-
-  /** Satu lintasan berbatas per tabel. Memulangkan jumlah baris yang terhapus. */
-  private async pruneRetiredSourceRows(tx: Tx, unitId: number): Promise<number> {
-    let deleted = 0;
-    for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) {
-      deleted += await tx.$executeRawUnsafe(sql, unitId, SNAPSHOT_RETIREMENT_LIMITS.batchRows);
-    }
-    return deleted;
   }
 
   private async readCycle(

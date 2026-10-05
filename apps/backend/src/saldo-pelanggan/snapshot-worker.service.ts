@@ -401,6 +401,7 @@ export class SnapshotWorkerService {
         await this.sourceCapture.finalizeReady(unitId);
       } catch (error) {
         process.stderr.write(`snapshot source finalization warning: ${errorText(error)}\n`);
+        return { status: "skipped", reason: "source_finalization_failed" };
       }
       if (deadlineExpired()) return { status: "skipped", reason: "request_deadline_exhausted" };
       await this.sourceCapture.enqueueBackfill(unitId, backfillDays);
