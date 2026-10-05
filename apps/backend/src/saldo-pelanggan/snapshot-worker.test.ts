@@ -146,7 +146,7 @@ describe("snapshot worker durable queue", () => {
     expect(builder.build).not.toHaveBeenCalled();
   });
 
-  it("keeps leasing queued work when ready-cut finalization fails", async () => {
+  it("reports finalization failure without leasing or publishing queued work", async () => {
     const warning = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const { service, builder, sourceCapture } = harness({ leased: work });
@@ -160,8 +160,9 @@ describe("snapshot worker durable queue", () => {
         outcome: "published",
       });
 
-      await expect(service.runOnce(1, "worker-1")).resolves.toMatchObject({ status: "done" });
-      expect(builder.build).toHaveBeenCalledOnce();
+      await expect(service.runOnce(1, "worker-1")).resolves.toMatchObject({ status: "skipped", reason: "source_finalization_failed" });
+      expect(builder.build).not.toHaveBeenCalled();
+      expect(sourceCapture.enqueueBackfill).not.toHaveBeenCalled();
       expect(warning).toHaveBeenCalledWith(
         expect.stringContaining("snapshot source finalization warning: injected:diff_changes"),
       );

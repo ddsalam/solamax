@@ -161,7 +161,7 @@ describe("SnapshotSourceCaptureService", () => {
       calls.indexOf(ENQUEUE_STALE_POINTERS_SQL),
     );
     expect(calls).toContain(FAIL_SUPERSEDED_STAGING_CYCLES_SQL);
-    for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) expect(calls).toContain(sql);
+    for (const sql of PRUNE_RETIRED_SOURCE_ROWS_SQL) expect(calls).not.toContain(sql);
   });
 
   it("rejects a final chunk whose staged full-key count is incomplete", async () => {
