@@ -50,6 +50,16 @@ async function rejected(call: Promise<unknown>): Promise<{ status: number; respo
 }
 
 describe("SnapshotTriggerController", () => {
+  it("returns 503 and the fixed reason when source finalization fails", async () => {
+    vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
+    try {
+      const { controller, response } = harness({ status: "skipped", reason: "source_finalization_failed" });
+      await expect(rejected(controller.trigger(SECRET, { unit_id: 1 }, response))).resolves.toEqual({
+        status: 503, response: { status: "skipped", reason: "source_finalization_failed", processedCount: 0, completedCount: 0, supersededCount: 0 },
+      });
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("menolak secret salah dan unit tak dikenal dengan respons identik", async () => {
     vi.stubEnv("SNAPSHOT_TRIGGER_SECRET", SECRET);
     try {
