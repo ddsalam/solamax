@@ -196,7 +196,7 @@ export function buildRincianModel(raw: RincianRaw): RincianModel {
       meta: "per produk · totalisator nozzle",
       rows: ordered.map((p, i) => ({
         no: String(i + 1),
-        ket: p.nama,
+        ket: p.nama?.trim() || p.ckdbbm?.trim() || "Produk tidak diketahui",
         vol: idn(p.vol, 2),
         rpv: rp(p.omzet),
       })),

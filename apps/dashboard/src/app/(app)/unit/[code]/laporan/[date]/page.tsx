@@ -332,19 +332,19 @@ export default async function LaporanPage({
           <div className="grid-total cols-sales">
             <span className="text-caption w700">TOTAL</span>
             <span className="right w700 num lap-totnum">{idn(totSales)}</span>
-            <span className={`right w700 num lap-totnum ${glTotal < 0 ? "t-danger" : "t-success"}`}>
-              {signed(glTotal)}
+            <span className={`right w700 num lap-totnum ${glTotal === null ? "t-tertiary" : glTotal < 0 ? "t-danger" : "t-success"}`}>
+              {glTotal === null ? "—" : signed(glTotal)}
             </span>
             <span className="right fs16 t-tertiary num">{totTera > 0 ? idn(totTera) : "—"}</span>
             <span className="right w700 num nowrap lap-totnum">{rp(totOmzet)}</span>
           </div>
         </div>
         <div className="fs15 t-tertiary mt2">
-          {glPctDay === null
-            ? "Opname penutup tanggal bisnis ini belum ada. "
+          {glTotal === null || glPctDay === null
+            ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid. "
             : glProvisional
-              ? `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
-              : `Losses harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
+              ? `G/L harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
+              : `G/L harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L = ${pct(Math.abs(glPctDay), 2)} dari sales — ambang 100 L / 0,5%${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan (lihat anomali kualitas data)` : ""}. `}
           Bauran NPSO: gasoline {gasMix !== null ? pct(gasMix) : "—"} · gasoil{" "}
           {oilMix !== null ? pct(oilMix) : "—"}.
         </div>
@@ -417,16 +417,19 @@ export default async function LaporanPage({
                 <span className="fs15 t-tertiary">
                   bulan berjalan · 1–{mi.dayOfMonth} {dateLong(date).split(" ")[2]}
                 </span>
-                {glPctMonth !== null && (
+                {glPctMonth !== null && glMonthTotal !== null && (
                   <span className="lap-cardhead-right">
                     <span
-                      className={`dot ${Math.abs(glPctMonth) <= 0.005 ? "success" : "danger"}`}
+                      className={`dot ${glMonthly.provisional ? "warning" : Math.abs(glPctMonth) <= 0.005 ? "success" : "danger"}`}
                     />
                     <span className="fs15 t-secondary">
                       {signed(glMonthTotal)} L · {pct(Math.abs(glPctMonth), 2)} —{" "}
-                      {Math.abs(glPctMonth) <= 0.005 ? "aman" : "di atas ambang"}
+                      {glMonthly.provisional ? "belum final" : Math.abs(glPctMonth) <= 0.005 ? "aman" : "di atas ambang"}
                     </span>
                   </span>
+                )}
+                {glMonthTotal === null && (
+                  <span className="fs15 t-warning">G/L belum bisa dihitung lengkap</span>
                 )}
               </div>
               <div className="grid-head cols-glkum">
@@ -438,12 +441,12 @@ export default async function LaporanPage({
                 <div key={g.ckdbbm} className="grid-row cols-glkum">
                   <span className="fs16">{g.nama}</span>
                   <span
-                    className={`right fs16 num ${g.selisih < 0 ? (g.selisih < -100 ? "t-danger w700" : "t-danger") : g.selisih > 0 ? "t-success" : "t-tertiary"}`}
+                    className={`right fs16 num ${g.selisih === null ? "t-tertiary" : g.selisih < 0 ? (g.selisih < -100 ? "t-danger w700" : "t-danger") : g.selisih > 0 ? "t-success" : "t-tertiary"}`}
                   >
-                    {signed(g.selisih)} L
+                    {g.selisih === null ? "—" : `${signed(g.selisih)} L`}
                   </span>
                   <span className="right fs16 t-tertiary num">
-                    {g.vol > 0 ? pct(Math.abs(g.selisih) / g.vol, 2) : "—"}
+                    {g.selisih !== null && g.vol > 0 ? pct(Math.abs(g.selisih) / g.vol, 2) : "—"}
                   </span>
                 </div>
               ))}

@@ -1,10 +1,14 @@
 /**
  * G/L per jendela dengan CACHE SERVER untuk jendela HISTORIS (keputusan owner
- * FASE 0 №2): unstable_cache Next.js, revalidate 24 jam (selaras cadence
- * deep-rescan), key = (unit_id, from, to). Cache per UNIT — BUKAN per user —
+ * FASE 0 №2): cache proses server, maksimum umur 24 jam, key = (unit_id,
+ * from, to), nilai membawa revisi sumber committed. Cache per UNIT — BUKAN per user —
  * dan HANYA dibaca setelah intersect RBAC menentukan unit yang boleh dirender
- * (parseBoardParams ∩ getDataScope) → tidak ada jalur bocor. Mekanisme bawaan
- * Next — TANPA tabel cache di DB (read-only penuh).
+ * (parseBoardParams ∩ getDataScope) → tidak ada jalur bocor. Tetap read-only,
+ * tanpa tabel cache DB. LRU proses menggantikan unstable_cache Next: kunci
+ * revisi lama sebelumnya meninggalkan file yang tidak dihapus oleh revalidate.
+ * Batas: 256 jendela / 16 MiB serialisasi / 2 MiB per entri, 32 slot pending.
+ * Cache terpisah per proses/instance dan hilang saat restart. Revisi tetap
+ * diperiksa sebelum reuse; TTL bukan izin menyajikan koreksi yang sudah basi.
  *
  * Batas "historis": `to ≤ hari-ini − 2` (SEDIKIT lebih ketat dari "to < hari
  * ini" di spec — pengetatan yang diungkap & disetujui arahnya oleh invarian
@@ -12,18 +16,20 @@
  * terekam, dan penutup untuk D=kemarin baru masuk PAGI INI — meng-cache jendela
  * berujung kemarin bisa mengawetkan baris provisional 24 jam (dilarang spec:
  * "baris provisional tidak boleh awet di cache"). D = hari-ini−2 penutupnya
- * kemarin pagi (data: 0 hari opname bolong dari 400 hari, kedua unit) → final.
+ * kemarin pagi pada operasi normal. Umur tanggal BUKAN bukti kelengkapan:
+ * sinkron terlambat/koreksi tetap membatalkan cache melalui revisi sumber.
  *
  * Jendela yang menyentuh hari berjalan dipecah: prefix historis (cache) +
  * suffix segar. EKSAK karena tiap baris harian getDailyGlByProduct dihitung
  * mandiri dari data ≤ D (lookback 365 hari di dalam query menyediakan anchor
  * Fisik(D−1) & jendela celah lintas batas pecahan) — tidak ada state antar
- * baris output. Baris provisional dengan demikian HANYA pernah lewat jalur segar.
+ * baris output. Hasil historis provisional/null juga selalu dibaca ulang.
  */
-import { unstable_cache } from "next/cache";
 import * as React from "react";
 import { addDays, todayWib } from "./periods";
-import { getDailyGlByProduct, type DailyGlRow } from "./queries";
+import { normalizeProductIdentity } from "./derive";
+import { createGlHistoryCache } from "./gl-history-cache";
+import { getDailyGlByProduct, getGlSourceRevision, type DailyGlRow } from "./queries";
 import type { ScopedUnitId } from "./scope-rule";
 
 export interface GlWindowSplit {
@@ -42,9 +48,6 @@ export function splitGlWindow(from: string, to: string, today: string): GlWindow
   return { cached: { from, to: histTo }, fresh: { from: addDays(histTo, 1), to } };
 }
 
-/** Revalidate 24 jam — selaras cadence deep-rescan agent (koreksi back-dated). */
-const GL_CACHE_REVALIDATE_S = 86_400;
-
 /**
  * JANGAN SAJIKAN HASIL KOSONG DARI CACHE (keputusan owner D13, 2026-07-25).
  *
@@ -60,10 +63,13 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  * `/board` atau `/laporan-harian` saat backfill unit baru masih berjalan akan
  * mengunci G/L unit itu jadi 0 sampai sehari penuh.
  *
- * ATURAN: **nol BARIS**, bukan nol NILAI. Unit yang sah-sah saja tak punya
- * selisih (Σ gl = 0) tetap ter-cache seperti biasa — yang ditolak hanyalah
- * "query tak mengembalikan baris sama sekali", yang untuk prefiks HISTORIS
- * berarti datanya belum ada, bukan bahwa tak ada yang terjadi.
+ * Hasil nol BARIS berbeda dari nol NILAI. Unit yang sah-sah saja tak punya
+ * selisih (Σ gl = 0) tetap ter-cache bila lengkap/final. Hasil tanpa baris,
+ * provisional, null atau tangki dikecualikan tidak disimpan.
+ *
+ * Extended after the October incident: null, excluded, or provisional rows
+ * are never retained. Committed content revisions invalidate nonempty
+ * previously-final results when late receipts/corrections arrive.
  *
  * ⚠️ INI MELENGKAPI `glIncomplete` (harian-model.ts), BUKAN MENGGANTIKANNYA.
  * Jangan hapus salah satunya karena mengira redundan:
@@ -76,20 +82,21 @@ const GL_CACHE_REVALIDATE_S = 86_400;
  *   nol baris  AS Sep 2025  →  154 ms      nol baris  AS Ags 2025 →  135 ms
  *   berisi     AS Jun 2026  →  224 ms      berisi     IB Jun 2026 →  415 ms
  * Jadi jendela nol-baris memang dihitung ulang tiap request, ~135–155 ms per
- * unit-jendela — LEBIH MURAH daripada jendela berisi (query berhenti lebih awal
- * karena tak ada baris opname untuk dirangkai). Yang terkena hanyalah unit
- * SEBELUM tanggal onboarding-nya; unit aktif selalu punya baris sehingga
- * jalurnya tak pernah tersentuh.
+ * unit-jendela pada pengukuran lama. Setelah invalidasi berbasis sumber,
+ * frekuensi cold query mengikuti ingest; ukur ulang latensi setelah staging.
  */
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
-  return rows.length === 0;
+  return rows.length === 0 || rows.some((r) =>
+    r.provisional || !Number.isFinite(r.gl) || r.movement_invalid !== false
+      || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
+  );
 }
 
 /**
- * Ambil prefiks historis. Non-kosong → NILAI CACHE dipakai apa adanya dan
+ * Ambil prefiks historis. Valid/final → NILAI CACHE dipakai apa adanya dan
  * `fresh` TIDAK pernah dipanggil (netralitas perilaku untuk `/board`).
- * Terpisah dari `cachedGl` agar keputusannya teruji tanpa runtime Next
- * (`unstable_cache` melempar di luar RSC).
+ * Helper kompatibilitas untuk pemanggil yang menyediakan cache sendiri.
+ * Cache historis di bawah menolak hasil tak lengkap saat admission.
  */
 export async function resolveHistoricPart(
   cached: () => Promise<DailyGlRow[]>,
@@ -100,20 +107,34 @@ export async function resolveHistoricPart(
   return fresh();
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __solamaxGlHistoryCacheV1: ReturnType<typeof createGlHistoryCache> | undefined;
+}
+
+// Share one bounded store even if server bundles evaluate this module twice.
+// Old Next v2/v3/v4 disk entries are never read by this store.
+const historyCache = globalThis.__solamaxGlHistoryCacheV1 ??= createGlHistoryCache(
+  (rows) => !shouldBypassEmptyCache(rows),
+);
+
 function cachedGl(unit: ScopedUnitId, from: string, to: string): Promise<DailyGlRow[]> {
-  return resolveHistoricPart(
-    unstable_cache(
-      () => getDailyGlByProduct(unit, from, to),
-      ["gl-window", String(unit), from, to],
-      { revalidate: GL_CACHE_REVALIDATE_S },
-    ),
-    () => getDailyGlByProduct(unit, from, to),
-  );
+  return historyCache.get(JSON.stringify([unit, from, to]), {
+    readRevision: () => sourceRevision(unit),
+    load: () => getDailyGlByProduct(unit, from, to),
+    // A cold fill crossing a source commit must not be retained under the old
+    // token. This read intentionally bypasses React's per-request memoization.
+    verifyRevision: () => getGlSourceRevision(unit),
+  });
 }
 
 // React.cache hanya ada di build server (RSC); fallback identity utk vitest.
 const reactCache: <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A) => R =
   (React as unknown as { cache?: typeof reactCache }).cache ?? ((fn) => fn);
+
+/** Content changes invalidate ALL historical windows for this unit. This is
+ * request-memoized so board comparison windows share one tiny scoped read. */
+const sourceRevision = reactCache(getGlSourceRevision);
 
 /**
  * Baris G/L harian per produk utk jendela [from..to] — historis dari cache,

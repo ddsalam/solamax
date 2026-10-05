@@ -376,6 +376,11 @@ describe("penjaga SUMBER: halaman Laporan menyambungkan query yang benar", () =>
     expect(iTerraQ).toBeLessThan(iTetanggaQ);
   });
 
+  it("screen explanations use neutral G/L wording in both final and provisional branches", () => {
+    expect(HALAMAN.match(/G\/L harian \(metode RESUME:/g)).toHaveLength(2);
+    expect(HALAMAN).not.toContain("Losses harian");
+  });
+
   it("tetangga diambil DUA ARAH: D−1 dan D+1, ketiga seksinya", () => {
     // Aturan satu arah menangkap 0 dari 1 kejadian nyata. Kalau salah satu dari
     // enam query ini hilang, tetangganya jadi setengah dan kebutaan itu kembali.
@@ -387,5 +392,157 @@ describe("penjaga SUMBER: halaman Laporan menyambungkan query yang benar", () =>
         ).toContain(`getManualEntries(unit.unit_id, addDays(date, ${arah}), "${seksi}")`);
       }
     }
+  });
+});
+
+describe("operational G/L null propagation", () => {
+  const gl = (ckdbbm: string, value: number | null, d = ctx.date, provisional = false) => ({
+    d, ckdbbm, nama: ckdbbm, fisik_prev: 1_000, fisik: value === null ? null : 990 + value,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, movement_invalid: false, excluded_tanks: value === null ? 1 : 0, provisional,
+  });
+
+  it.each([
+    { value: 4000, provisional: false, signed: "+4.000", state: "fail" },
+    { value: -4000, provisional: false, signed: "−4.000", state: "fail" },
+    { value: 4000, provisional: true, signed: "+4.000", state: "provisional" },
+    { value: -4000, provisional: true, signed: "−4.000", state: "provisional" },
+    { value: 0, provisional: false, signed: "0", state: "ok" },
+  ])("uses neutral daily/monthly alarm labels for $value (provisional=$provisional)", ({ value, provisional, signed, state }) => {
+    const products = [{ ...raw.prodDay[0]!, vol: 8200 }];
+    const m = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [{ ...gl("P1", value, ctx.date, provisional), fisik_prev: 20000, fisik: 11800 + value, sales_gross: 8200 }],
+    }, ctx);
+    expect(m.sales.glTotal).toBe(value);
+    expect(m.glMonthly.glMonthTotal).toBe(value);
+    const checks = m.checks.filter((c) => /^(G\/L|Losses) (harian|bulanan)/.test(c.label));
+    expect(checks).toHaveLength(2);
+    for (const [i, check] of checks.entries()) {
+      expect(check.state).toBe(state);
+      expect(check.label).toBe(`G/L ${i === 0 ? "harian" : "bulanan"}${provisional ? " — sementara" : value === 0 ? " aman" : " di atas ambang"}`);
+      expect(check.note).toContain(`${signed} L`);
+      expect(check.note).toContain(provisional ? "belum final" : value === 0 ? "0,00%" : "48,78%");
+    }
+  });
+
+  it("unknown product and partial daily/monthly totals stay unavailable in both panels", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 5), gl("P2", null)] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBe(5);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull(); expect(m.arusMinyak.total.pct).toBeNull();
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    const monthly = m.checks.find(r => r.label.startsWith("G/L bulanan"))!;
+    expect(monthly.state).toBe("na"); expect(monthly.label).not.toContain("aman");
+  });
+
+  it("unknown earlier row invalidates only that product's monthly sum and full monthly total", () => {
+    const m = buildLaporanModel({ ...raw,
+      glRows: [gl("P1", null, "2026-06-10"), gl("P1", 5), gl("P2", 3)],
+    }, ctx);
+    expect(m.sales.glTotal).toBe(8);
+    expect(m.arusMinyak.total.losses).toBe(8);
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.selisih).toBeNull();
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBe(3);
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+  });
+
+  it("computed provisional G/L stays visible with provisional monthly alarm", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 5, ctx.date, true), gl("P2", 3)] }, ctx);
+    expect(m.sales.glTotal).toBe(8);
+    expect(m.sales.glProvisional).toBe(true);
+    expect(m.glMonthly.glMonthTotal).toBe(8);
+    expect(m.glMonthly.provisional).toBe(true);
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("provisional");
+  });
+
+  it("no G/L rows is unavailable and cannot produce a safe monthly alarm", () => {
+    const m = buildLaporanModel(raw, ctx);
+    expect(m.sales.glTotal).toBeNull(); expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("na");
+  });
+
+  it("an active sales product absent from G/L prevents partial daily and Arus totals", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 0)] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBe(0); // known zero stays known
+    expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull(); expect(m.arusMinyak.total.pct).toBeNull();
+    expect(m.arusMinyak.total).toMatchObject({ awal: null, teori: null, fisik: null });
+    expect(m.arusMinyak.incomplete).toBe(true);
+  });
+
+  it("active monthly product without any G/L prevents partial month total", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [gl("P1", 0)], prodMonth: raw.prodDay }, ctx);
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("na");
+  });
+});
+
+/** Synthetic malformed identities must fail closed even before the SQL guard. */
+describe("operational product identity boundaries", () => {
+  // getSalesByProduct historically declared non-null strings, but SQL/legacy
+  // runtime data can still contain NULL. Exercise that boundary explicitly.
+  const prod = (code: string | null, nama: string | null = null, vol = 10) => ({
+    ckdbbm: code as string, nama: nama as string, vol, omzet: vol * 10000, harga: 10000,
+  });
+  const gl = (code: string | null, value = 0, nama: string | null = null) => ({
+    d: ctx.date, ckdbbm: code, nama, fisik_prev: 100, fisik: 90 + value,
+    pen_do: 0, sales_gross: 10, tera: 0, gl: value, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+
+  it.each([null, "", "   "])("matching unknown sales/GL identity %j never verifies a zero", (code) => {
+    const unknown = prod(code, "SOLAR");
+    const m = buildLaporanModel({ ...raw, prodDay: [unknown], prodMonth: [unknown], glRows: [gl(code, 0, "SOLAR")] }, ctx);
+    expect(m.sales.rows).toEqual([expect.objectContaining({ ckdbbm: null, nama: "Produk tidak diketahui", gl: null })]);
+    expect(m.glMonthly.rows).toEqual([expect.objectContaining({ ckdbbm: null, nama: "Produk tidak diketahui", selisih: null })]);
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.sales.glProvisional).toBe(true);
+    expect(m.glMonthly.provisional).toBe(true);
+    expect(m.arusMinyak.rows[0]).toMatchObject({ ckdbbm: null, nama: "Produk tidak diketahui", losses: null });
+    expect(m.arusMinyak.total.losses).toBeNull();
+    expect(m.checks.filter((c) => c.label.startsWith("G/L")).every((c) => c.state === "na")).toBe(true);
+    expect(m.target.rows[0]!.nama).toBe("Produk tidak diketahui");
+    expect(m.harga.rows[0]!.nama).toBe("Produk tidak diketahui");
+  });
+
+  it("unknown identity on a zero-volume sales row still invalidates group coverage", () => {
+    const known = prod("KNOWN", "SOLAR");
+    const unknown = prod(null, null, 0);
+    const m = buildLaporanModel({ ...raw, prodDay: [known, unknown], prodMonth: [known, unknown], glRows: [gl("KNOWN")] }, ctx);
+    expect(m.sales.rows.find((r) => r.ckdbbm === "KNOWN")!.gl).toBe(0);
+    expect(m.sales.rows.find((r) => r.ckdbbm === null)!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.arusMinyak.total.losses).toBeNull();
+  });
+
+  it("normalizes padded identities and preserves separate nonempty unmapped products", () => {
+    const m = buildLaporanModel({ ...raw,
+      prodDay: [prod(" X-UNMAPPED "), prod("Y-UNMAPPED", " ")],
+      prodMonth: [prod("X-UNMAPPED"), prod(" Y-UNMAPPED ", " ")],
+      glRows: [gl("X-UNMAPPED"), gl(" Y-UNMAPPED ", -5)],
+    }, ctx);
+    expect(m.sales.rows.map((r) => [r.ckdbbm, r.nama, r.gl])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0], ["Y-UNMAPPED", "Y-UNMAPPED", -5],
+    ]);
+    expect(m.glMonthly.rows.map((r) => [r.ckdbbm, r.nama, r.selisih, r.vol])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0, 10], ["Y-UNMAPPED", "Y-UNMAPPED", -5, 10],
+    ]);
+    expect(m.sales.glTotal).toBe(-5);
+    expect(m.glMonthly.glMonthTotal).toBe(-5);
+    expect(m.arusMinyak.total.losses).toBe(-5);
+    expect(m.sales.glProvisional).toBe(false);
+    expect(m.glMonthly.provisional).toBe(false);
+  });
+
+  it("a padded invalid source row cannot turn its unpadded aggregate into final zero", () => {
+    const known = prod("KNOWN", "SOLAR");
+    const m = buildLaporanModel({ ...raw, prodDay: [known], prodMonth: [known],
+      glRows: [{ ...gl(" KNOWN "), gl: null, provisional: true }],
+    }, ctx);
+    expect(m.sales.rows[0]!.gl).toBeNull();
+    expect(m.glMonthly.rows[0]!.selisih).toBeNull();
   });
 });

@@ -100,17 +100,17 @@ function salesSection(m: LaporanModel): Content[] {
   body.push([
     { text: "TOTAL", style: "totalCell", fillColor: tf },
     { text: idn(s.totVol), style: "totalCell", alignment: "right", fillColor: tf },
-    { text: signed(s.glTotal), bold: true, alignment: "right", color: s.glTotal < 0 ? PDF.danger : PDF.success, fillColor: tf },
+    { text: s.glTotal === null ? "—" : signed(s.glTotal), bold: true, alignment: "right", color: glColor(s.glTotal), fillColor: tf },
     { text: s.totTera > 0 ? idn(s.totTera) : "—", alignment: "right", color: PDF.textMuted, fillColor: tf },
     { text: rp(s.totOmzet), style: "totalCell", alignment: "right", noWrap: true, fillColor: tf },
   ]);
 
   const lossNote =
-    s.glPctDay === null
-      ? "Opname penutup tanggal bisnis ini belum ada."
+    s.glTotal === null || s.glPctDay === null
+      ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid."
       : s.glProvisional
-        ? `Losses harian (RESUME) ${signed(s.glTotal)} L berjalan — belum final, menunggu opname penutup${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`
-        : `Losses harian (RESUME) ${signed(s.glTotal)} L = ${pct(Math.abs(s.glPctDay), 2)} dari sales — ambang 100 L / 0,5%${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`;
+        ? `G/L harian (RESUME) ${signed(s.glTotal)} L berjalan — belum final, menunggu opname penutup${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`
+        : `G/L harian (RESUME) ${signed(s.glTotal)} L = ${pct(Math.abs(s.glPctDay), 2)} dari sales — ambang 100 L / 0,5%${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`;
   const bauranNote = `Bauran NPSO: gasoline ${s.gasMix !== null ? pct(s.gasMix) : "—"} · gasoil ${s.oilMix !== null ? pct(s.oilMix) : "—"}.`;
 
   return [
@@ -164,16 +164,16 @@ function glMonthlySection(m: LaporanModel, meta: LaporanDocMeta): Content[] {
   for (const r of g.rows) {
     body.push([
       { text: pdfText(r.nama) },
-      { text: `${signed(r.selisih)} L`, alignment: "right", color: glColor(r.selisih), bold: r.selisih < -100 },
-      { text: r.vol > 0 ? pct(Math.abs(r.selisih) / r.vol, 2) : "—", alignment: "right", color: PDF.textMuted },
+      { text: r.selisih === null ? "—" : `${signed(r.selisih)} L`, alignment: "right", color: glColor(r.selisih), bold: r.selisih !== null && r.selisih < -100 },
+      { text: r.selisih !== null && r.vol > 0 ? pct(Math.abs(r.selisih) / r.vol, 2) : "—", alignment: "right", color: PDF.textMuted },
     ]);
   }
   if (g.rows.length === 0)
     body.push([{ text: "Belum ada opname penutup bulan ini.", colSpan: 3, italics: true, color: PDF.textMuted }, "", ""]);
   const metaLine =
-    g.glPctMonth !== null
-      ? `bulan berjalan 1–${meta.dayOfMonth} ${meta.monthName} · ${signed(g.glMonthTotal)} L · ${pct(Math.abs(g.glPctMonth), 2)}`
-      : `bulan berjalan 1–${meta.dayOfMonth} ${meta.monthName}`;
+    g.glPctMonth !== null && g.glMonthTotal !== null
+      ? `bulan berjalan 1–${meta.dayOfMonth} ${meta.monthName} · ${signed(g.glMonthTotal)} L · ${pct(Math.abs(g.glPctMonth), 2)}${g.provisional ? " · belum final" : ""}`
+      : `bulan berjalan 1–${meta.dayOfMonth} ${meta.monthName} · G/L belum bisa dihitung lengkap`;
   return [sectionHeading("Gain (Losses) Kumulatif", metaLine), table(["*", 110, 90], body)];
 }
 
@@ -405,9 +405,9 @@ function arusSection(m: LaporanModel): Content[] {
           ? ` Tera ${num2(a.teraTotal)} L hari ini. Mengikuti definisi EasyMax, kolom Penjualan sudah dikurangi tera, tetapi TOTAL Penjualan dan seluruh kolom % memakai penjualan KOTOR — karena itu TOTAL Penjualan lebih besar ${num2(a.teraTotal)} L daripada jumlah kolom di atasnya. Bukan tabel yang rusak.`
           : "") +
         (a.excludedTanks > 0
-          ? ` ${a.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik.`
+          ? ` ${a.excludedTanks} baris dengan stok atau identitas produk/tangki tidak valid membuat Stock Fisik tidak lengkap.`
           : "") +
-        (a.incomplete ? " Produk tanpa opname penutup/awal bertanda “—” dan tidak ikut TOTAL." : ""),
+        (a.incomplete ? " Nilai dengan stok/identitas sumber tidak lengkap bertanda “—”; total G/L yang bergantung padanya belum tersedia. Stock Teori dan total stok juga tidak tersedia bila inputnya tidak lengkap. Bila mutasi sumber tidak lengkap, angka penerimaan/penjualan/tera yang tersedia hanya bersifat diagnostik." : ""),
       style: "footNote",
       alignment: "left",
     },

@@ -222,7 +222,7 @@ export function harianTrendCanvas(args: {
  * garis-nol + isi per unit (semua rect/line, aman).
  */
 export function divergentGlCanvas(
-  units: Array<{ name: string; value: number }>,
+  units: Array<{ name: string; value: number | null }>,
   max: number,
   width: number,
   rowH: number,
@@ -230,6 +230,8 @@ export function divergentGlCanvas(
   const mid = width / 2;
   const ops: unknown[] = [{ type: "line", x1: mid, y1: 0, x2: mid, y2: units.length * rowH, lineWidth: 0.5, lineColor: PDF.borderStrong }];
   units.forEach((u, i) => {
+    // Keep the row position for missing data, but never invent a zero/gain bar.
+    if (u.value === null) return;
     const y = i * rowH + rowH * 0.2;
     const h = rowH * 0.6;
     const w = (Math.abs(u.value) / Math.max(1, max)) * (width / 2 - 2);

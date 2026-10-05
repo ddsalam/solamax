@@ -5,7 +5,7 @@
  * batas tampilan via fmtKL (layar & PDF pakai fungsi sama → identik "ke KL").
  */
 import { DO_PRODUCTS, resolveDoProduct } from "@/lib/config";
-import { enduranceDays, enduranceLevel } from "@/lib/derive";
+import { enduranceDays, enduranceLevel, normalizeProductIdentity } from "@/lib/derive";
 import { sumUsulanQuantities } from "@/lib/usulan-quantities";
 import type * as Q from "@/lib/queries";
 import type { UsulanStatus } from "@/lib/queries";
@@ -56,16 +56,29 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
   const stockByKey = new Map<string, number>();
   const provByKey = new Map<string, boolean>();
   const ckdbbmToKey = new Map<string, string>();
+  let unassignedStock = false;
   for (const r of glPrev) {
+    const identity = normalizeProductIdentity(r.ckdbbm);
     const key = resolveDoProduct(r.nama)?.key;
-    if (!key) continue;
-    ckdbbmToKey.set(r.ckdbbm, key);
-    if (r.provisional || r.fisik === null) provByKey.set(key, true);
+    if (!key) {
+      // An unidentified/unsupported closing may belong to any proposal slot;
+      // dropping it would make a partial stock picture look final. Only a
+      // known, fully measured, final all-zero dormant product is neutral.
+      const dormant = identity !== null && !r.provisional && r.excluded_tanks === 0
+        && r.fisik === 0 && r.fisik_prev === 0 && r.pen_do === 0
+        && r.sales_gross === 0 && r.tera === 0 && r.gl === 0;
+      if (!dormant) unassignedStock = true;
+      continue;
+    }
+    if (identity !== null) ckdbbmToKey.set(identity, key);
+    if (identity === null || r.provisional || r.fisik === null) provByKey.set(key, true);
     else stockByKey.set(key, (stockByKey.get(key) ?? 0) + r.fisik);
   }
   const avgByKey = new Map<string, number>();
   for (const a of avg7) {
-    const key = ckdbbmToKey.get(a.ckdbbm) ?? resolveDoProduct(a.ckdbbm)?.key;
+    const identity = normalizeProductIdentity(a.ckdbbm);
+    if (identity === null) continue;
+    const key = ckdbbmToKey.get(identity) ?? resolveDoProduct(identity)?.key;
     if (!key) continue;
     avgByKey.set(key, (avgByKey.get(key) ?? 0) + a.avg_vol);
   }
@@ -78,7 +91,7 @@ export function buildUsulanModel(raw: UsulanRaw): UsulanModel {
   const status: UsulanStatus = existing[0]?.status ?? "draft";
 
   const rows: UsulanRow[] = DO_PRODUCTS.map((p) => {
-    const provisional = provByKey.get(p.key) ?? !stockByKey.has(p.key);
+    const provisional = unassignedStock || (provByKey.get(p.key) ?? !stockByKey.has(p.key));
     const sisaStock = provisional ? null : stockByKey.get(p.key)!;
     const days = enduranceDays(sisaStock, avgByKey.get(p.key) ?? 0);
     const s = savedByKey.get(p.key);

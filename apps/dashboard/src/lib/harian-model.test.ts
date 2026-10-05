@@ -20,10 +20,14 @@ const KB = U(4, "6478106", "Bundaran Kotabaru");
 const IB = U(1, "6478111", "Imam Bonjol");
 const AS = U(3, "6478101", "Adisucipto");
 
+const productCode = (nama: string): string => ({
+  PERTAMAX: "BB-02", SOLAR: "BB-03", "PERTAMAX TURBO": "BB-04", DEXLITE: "BB-06",
+  PERTALITE: "BB-07", "PERTAMINA DEX": "BB-08",
+})[nama] ?? nama;
 const sale = (unit_id: number, d: string, nama: string, vol: number, omzet = vol * 10000): DailySalesRow => ({
   unit_id,
   d,
-  ckdbbm: nama === "P1" ? "P1" : "BB-x",
+  ckdbbm: productCode(nama),
   nama: nama === "P1" ? null : nama,
   vol,
   omzet,
@@ -319,7 +323,7 @@ describe("Δ vs hari sebelumnya", () => {
 describe("G/L", () => {
   const glRow = (d: string, nama: string, gl: number | null): DailyGlRow => ({
     d,
-    ckdbbm: "BB-x",
+    ckdbbm: productCode(nama),
     nama,
     fisik: 0,
     fisik_prev: 0,
@@ -327,13 +331,14 @@ describe("G/L", () => {
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional: false,
   });
 
   it("harian difilter dari jendela MTD; MTD = Σ seluruh jendela", () => {
     const m = buildHarianModel(
       base({
+        dailySales: [sale(4, "2026-07-22", "SOLAR", 0)],
         gl: new Map([
           [4, [glRow("2026-07-20", "SOLAR", 10), glRow("2026-07-22", "SOLAR", 42), glRow("2026-07-22", "PERTALITE", 107)]],
         ]),
@@ -345,11 +350,11 @@ describe("G/L", () => {
     expect(m.glMonthly.totalsByUnit[4]!.avg).toBeCloseTo(159 / 22, 9);
   });
 
-  it("baris gl null dilewati (tak dihitung 0)", () => {
+  it("baris gl null dipertahankan dan total tidak memalsukan nol", () => {
     const m = buildHarianModel(
       base({ gl: new Map([[4, [glRow("2026-07-22", "SOLAR", null)]]]) }),
     );
-    expect(m.glDaily.totalsByUnit[4]).toBe(0);
+    expect(m.glDaily.totalsByUnit[4]).toBeNull();
   });
 
   it("unit dengan penutup opname 0 dicatat di catatan kaki", () => {
@@ -422,13 +427,13 @@ describe("G/L provisional (hari berjalan)", () => {
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional,
   });
 
   it("baris hari-D provisional → ditandai & dicatat, TIDAK disembunyikan", () => {
     const m = buildHarianModel(
-      base({ gl: new Map([[4, [glRow("2026-07-22", -116_445, true)]]]) }),
+      base({ dailySales: [sale(4, "2026-07-22", "SOLAR", 0)], gl: new Map([[4, [glRow("2026-07-22", -116_445, true)]]]) }),
     );
     expect(m.glProvisional).toBe(true);
     expect(m.glDaily.totalsByUnit[4]).toBe(-116_445); // angkanya TETAP tampil
@@ -437,7 +442,7 @@ describe("G/L provisional (hari berjalan)", () => {
 
   it("baris final → tak ada penanda", () => {
     const m = buildHarianModel(
-      base({ gl: new Map([[4, [glRow("2026-07-22", 58, false)]]]) }),
+      base({ dailySales: [sale(4, "2026-07-22", "SOLAR", 0)], gl: new Map([[4, [glRow("2026-07-22", 58, false)]]]) }),
     );
     expect(m.glProvisional).toBe(false);
     expect(m.notes.join(" ")).not.toContain("SEMENTARA");
@@ -445,7 +450,7 @@ describe("G/L provisional (hari berjalan)", () => {
 
   it("provisional pada hari LAIN dalam jendela MTD tidak menandai hari-D", () => {
     const m = buildHarianModel(
-      base({ gl: new Map([[4, [glRow("2026-07-20", 10, true), glRow("2026-07-22", 5, false)]]]) }),
+      base({ dailySales: [sale(4, "2026-07-22", "SOLAR", 0)], gl: new Map([[4, [glRow("2026-07-20", 10, true), glRow("2026-07-22", 5, false)]]]) }),
     );
     expect(m.glProvisional).toBe(false);
   });
@@ -467,7 +472,7 @@ describe("N3 — provisional pada D−1 di JAM PAGI (kondisi harian, bukan tepi)
     sales_gross: 0,
     tera: 0,
     gl,
-    excluded_tanks: 0,
+    movement_invalid: false, excluded_tanks: 0,
     provisional,
   });
 
@@ -546,7 +551,7 @@ describe("D6 — dua skala tren dipisah (batang vs garis TOTAL)", () => {
 describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan KOSONG)", () => {
   const glRow = (d: string, gl: number): DailyGlRow => ({
     d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0,
-    sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: false,
+    sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
   });
   const salesDays = (unit: number, days: string[]) =>
     days.map((d) => sale(unit, d, "SOLAR", 1000));
@@ -560,13 +565,13 @@ describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan 
       }),
     );
     expect(m.glDaily.totalsByUnit[4]).toBe(100);
-    expect(m.glMonthly.totalsByUnit[4]!.kum).toBe(100); // identik — inilah gejalanya
+    expect(m.glMonthly.totalsByUnit[4]!.kum).toBeNull(); // tidak menjumlah jendela parsial
     expect(m.glIncomplete).toBe(true); // …dan sekarang MENYALAK
     expect(m.notes.join(" ")).toContain("Gain/Losses TIDAK LENGKAP");
-    expect(m.notes.join(" ")).toContain("1/3 hari");
+    expect(m.glCoverage.find((c) => c.unitId === 4)).toMatchObject({ glDays: 1, salesDays: 3 });
   });
 
-  it("GEJALA KEDUA: jendela KOSONG total → semua sel 0 → DITANDAI", () => {
+  it("jendela KOSONG total → sel dan total tidak tersedia, bukan 0", () => {
     const m = buildHarianModel(
       base({
         date: "2026-07-22",
@@ -574,7 +579,7 @@ describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan 
         gl: new Map([[4, []]]),
       }),
     );
-    expect(m.glDaily.totalsByUnit[4]).toBe(0);
+    expect(m.glDaily.totalsByUnit[4]).toBeNull();
     expect(m.glIncomplete).toBe(true);
     expect(m.glCoverage.find((c) => c.unitId === 4)).toMatchObject({ glDays: 0, salesDays: 2 });
   });
@@ -602,4 +607,335 @@ describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan 
     );
     expect(m.glIncomplete).toBe(false);
   });
+});
+
+
+describe("G/L integrity — product coverage and source quality", () => {
+  const row = (over: Partial<DailyGlRow> = {}): DailyGlRow => ({
+    d: "2026-10-02", ckdbbm: "BB-03", nama: "SOLAR", fisik: 1000,
+    fisik_prev: 1100, pen_do: 0, sales_gross: 100, tera: 0, gl: 0,
+    movement_invalid: false, excluded_tanks: 0, provisional: false, ...over,
+  });
+  const input = (over: Partial<HarianInput> = {}) => base({
+    date: "2026-10-02",
+    dailySales: [sale(4, "2026-10-02", "SOLAR", 100), sale(4, "2026-10-02", "PERTALITE", 200)],
+    gl: new Map([[4, [row(), row({ ckdbbm: "BB-07", nama: "PERTALITE", gl: 12 })]]]), ...over,
+  });
+  it("one absent product is not hidden by another product on the same day", () => {
+    const m = buildHarianModel(input({ gl: new Map([[4, [row()]]]) }));
+    expect(m.glCoverage[0]).toMatchObject({ salesDays: 1, glDays: 1 });
+    expect(m.glIncomplete).toBe(true);
+    expect(m.glDaily.rows.find((r) => r.key === "PERTALITE")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glMonthly.grand.avg).toBeNull();
+  });
+  it("null product and excluded partial product cannot become zero or a signed result", () => {
+    const m = buildHarianModel(input({ gl: new Map([[4, [row({ gl: null }), row({
+      ckdbbm: "BB-07", nama: "PERTALITE", gl: -6000, excluded_tanks: 1,
+    })]]]) }));
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.rows.find((r) => r.key === "PERTALITE")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glProvisional).toBe(true);
+    expect(m.glMonthlyProvisional).toBe(true);
+  });
+  it("a measured zero stays numeric, while unused products stay zero", () => {
+    const m = buildHarianModel(input());
+    expect(m.glIncomplete).toBe(false);
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.byUnit[4]).toBe(0);
+    expect(m.glDaily.rows.find((r) => r.key === "PERTAMAX TURBO")!.byUnit[4]).toBe(0);
+    expect(m.glDaily.grandTotal).toBe(12);
+  });
+  it("provisional earlier day affects MTD but not final selected day", () => {
+    const m = buildHarianModel(input({ gl: new Map([[4, [row(), row({ckdbbm:"BB-07",nama:"PERTALITE",gl:12}), row({d:"2026-10-01", gl:7, provisional:true})]]]) }));
+    expect(m.glProvisional).toBe(false);
+    expect(m.glMonthlyProvisional).toBe(true);
+    expect(m.glMonthly.grand.kum).toBe(19);
+  });
+  it("source zero-closing is warned, never silently repaired", () => {
+    const m = buildHarianModel(input({dailySales: [sale(4,"2026-10-02","SOLAR",100)], gl:new Map([[4,[row({fisik:0,fisik_prev:5000,gl:-4900})]]])}));
+    expect(m.glDaily.grandTotal).toBe(-4900);
+    expect(m.glProvisional).toBe(true);
+    expect(m.glSuspectUnits.map((u) => u.unitId)).toEqual([4]);
+    expect(m.notes.join(" ")).toContain("penutup opname bernilai 0");
+  });
+});
+
+
+it("distinct unknown product codes cannot mask one another through Lain-lain", () => {
+  const m = buildHarianModel(base({ date:"2026-10-02", dailySales:[sale(4,"2026-10-02","P1",100),sale(4,"2026-10-02","P2",200)], gl:new Map([[4,[{
+    d:"2026-10-02",ckdbbm:"P1",nama:null,fisik:100,fisik_prev:200,pen_do:0,sales_gross:100,tera:0,gl:0,movement_invalid: false, excluded_tanks:0,provisional:false,
+  }]]]) }));
+  expect(m.glIncomplete).toBe(true);
+  expect(m.glDaily.rows.find((r) => r.key === OTHER_KEY)!.byUnit[4]).toBeNull();
+});
+
+
+it("dated zero-closing warns its day and following anchor without flagging unrelated days", () => {
+  const r: DailyGlRow = { d:"2026-10-02",ckdbbm:"BB-03",nama:"SOLAR",fisik:500,fisik_prev:400,pen_do:0,sales_gross:0,tera:0,gl:100,movement_invalid: false, excluded_tanks:0,provisional:false };
+  const input=base({date:"2026-10-02",dailySales:[sale(4,"2026-10-02","SOLAR",0)],gl:new Map([[4,[r]]])});
+  for (const day of ["2026-10-01","2026-10-02"]) {
+    const m=buildHarianModel({...input,glSuspectDates:[{unitId:4,date:day}]});
+    expect(m.glProvisional).toBe(true);expect(m.glMonthlyProvisional).toBe(true);
+    expect(m.glDaily.grandTotal).toBe(100);
+  }
+  const before=buildHarianModel({...input,glSuspectDates:[{unitId:4,date:"2026-09-30"}]});
+  expect(before.glProvisional).toBe(false);expect(before.glMonthlyProvisional).toBe(true);
+  const future=buildHarianModel({...input,glSuspectDates:[{unitId:4,date:"2026-10-03"}]});
+  expect(future.glProvisional).toBe(false);expect(future.glMonthlyProvisional).toBe(false);
+});
+
+
+describe("G/L freshness for known active units", () => {
+  const glRow = (d: string, gl: number): DailyGlRow => ({
+    d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 3000,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+
+  it("withholds stale-unit daily and MTD contributions even when every received sales row has G/L", () => {
+    const m = buildHarianModel(base({
+      units: [KB, IB], date: "2026-10-04",
+      dailySales: [sale(4, "2026-10-04", "SOLAR", 1000), sale(1, "2026-10-03", "SOLAR", 1000)],
+      gl: new Map([[4, [glRow("2026-10-04", -5)]], [1, [glRow("2026-10-03", 7)]]]),
+      coverage: [cov(4, "2011-10-06"), cov(1, "2022-08-31")],
+    }));
+    expect(m.freshness.incomplete).toBe(true);
+    expect(m.glDaily.totalsByUnit[4]).toBe(-5);
+    expect(m.glMonthly.totalsByUnit[4]).toEqual({ kum: -5, avg: -1.25 });
+    expect(m.glDaily.totalsByUnit[1]).toBeNull();
+    expect(m.glMonthly.totalsByUnit[1]).toEqual({ kum: null, avg: null });
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand).toEqual({ kum: null, avg: null });
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.total).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+    expect(m.glProvisional).toBe(true);
+    expect(m.glMonthlyProvisional).toBe(true);
+  });
+
+  it("keeps not-yet-operating units neutral instead of declaring historical group totals missing", () => {
+    const m = buildHarianModel(base({
+      units: [KB, IB], date: "2026-10-04",
+      dailySales: [sale(4, "2026-10-04", "SOLAR", 1000)],
+      gl: new Map([[4, [glRow("2026-10-04", -5)]]]),
+      coverage: [cov(4, "2011-10-06"), cov(1, "2026-10-05")],
+    }));
+    expect(m.units.find((u) => u.unitId === 1)!.notYet).toBe(true);
+    expect(m.freshness.incomplete).toBe(false);
+    expect(m.glDaily.grandTotal).toBe(-5);
+    expect(m.glMonthly.grand.kum).toBe(-5);
+    expect(m.glIncomplete).toBe(false);
+    expect(m.glProvisional).toBe(false);
+  });
+});
+
+describe("Harian G/L rejects absent product identities", () => {
+  const date = "2026-10-04";
+  const glRow = (ckdbbm: string | null): DailyGlRow => ({
+    d: date, ckdbbm, nama: null, fisik: 2000, fisik_prev: 3000,
+    pen_do: 0, sales_gross: 1000, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+  const unknownSale = (ckdbbm: string | null): DailySalesRow => ({
+    ...sale(4, date, "UNKNOWN", 1000), ckdbbm, nama: null,
+  });
+
+  it.each([null, "", "   ", "\t\n"])("does not crash or verify zero for matching unidentified sales/stock (%j)", (ckdbbm) => {
+    const m = buildHarianModel(base({ date, dailySales: [unknownSale(ckdbbm)], gl: new Map([[4, [glRow(ckdbbm)]]]) }));
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glDaily.rows.find((r) => r.key === OTHER_KEY)!.byUnit[4]).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+    expect(m.glProvisional).toBe(true);
+    expect(m.glMonthlyProvisional).toBe(true);
+    expect(m.glCoverage[0]!.glDays).toBe(0);
+    expect(m.notes.join(" ")).toContain("tanpa kode produk");
+  });
+
+  it.each([null, "", "   "])("unknown active sales without G/L invalidate product and dependent totals (%j)", (ckdbbm) => {
+    const m = buildHarianModel(base({ date, dailySales: [unknownSale(ckdbbm)], gl: new Map() }));
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+  });
+
+  it("unknown stock cannot satisfy a known sales product by borrowing its name", () => {
+    const m = buildHarianModel(base({
+      date, dailySales: [sale(4, date, "SOLAR", 1000)],
+      gl: new Map([[4, [{ ...glRow(null), nama: "SOLAR" }]]]),
+    }));
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+  });
+
+  it("keeps trimmed nonempty unmapped codes valid and distinct", () => {
+    const dailySales = [unknownSale("UNMAPPED-A"), unknownSale("UNMAPPED-B")];
+    const gl = new Map([[4, [glRow(" UNMAPPED-A "), glRow("UNMAPPED-B")]]]);
+    const m = buildHarianModel(base({ date, dailySales, gl }));
+    expect(m.glDaily.grandTotal).toBe(0);
+    expect(m.glMonthly.grand.kum).toBe(0);
+    expect(m.glIncomplete).toBe(false);
+    expect(m.glProvisional).toBe(false);
+    gl.set(4, [glRow("UNMAPPED-A")]);
+    const missing = buildHarianModel(base({ date, dailySales, gl }));
+    expect(missing.glDaily.grandTotal).toBeNull();
+    expect(missing.glIncomplete).toBe(true);
+  });
+
+  it("ignores unknown identities outside the requested units and dates", () => {
+    const m = buildHarianModel(base({
+      date,
+      dailySales: [unknownSale("UNMAPPED-A"), { ...unknownSale(null), unit_id: 1 }, { ...unknownSale(null), d: "2026-11-01" }],
+      gl: new Map([[4, [glRow("UNMAPPED-A"), { ...glRow(null), d: "2026-11-01" }]], [1, [glRow(null)]]]),
+    }));
+    expect(m.glDaily.grandTotal).toBe(0);
+    expect(m.glIncomplete).toBe(false);
+  });
+});
+
+it("Harian does not infer measured zero from an unidentified zero-volume sales row without G/L", () => {
+  const m = buildHarianModel(base({
+    date: "2026-10-04",
+    dailySales: [{ ...sale(4, "2026-10-04", "UNKNOWN", 0), ckdbbm: null, nama: null }],
+  }));
+  expect(m.glDaily.grandTotal).toBeNull();
+  expect(m.glMonthly.grand.kum).toBeNull();
+  expect(m.glIncomplete).toBe(true);
+});
+
+describe("Harian empty G/L windows are unavailable rather than measured zero", () => {
+  const date = "2026-07-22";
+  const row = (d: string, gl: number | null): DailyGlRow => ({
+    d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
+    pen_do: 0, sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+
+  it("all-notYet scope has unavailable product/unit/group totals for both day and month", () => {
+    const m = buildHarianModel(base({
+      units: [KB, IB], date, dailySales: [], gl: new Map(),
+      coverage: [cov(4, null), cov(1, "2026-08-01")],
+    }));
+    expect(m.units.every((u) => u.notYet)).toBe(true);
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand).toEqual({ kum: null, avg: null });
+    expect(Object.values(m.glDaily.totalsByUnit)).toEqual([null, null]);
+    expect(Object.values(m.glMonthly.totalsByUnit)).toEqual([{ kum: null, avg: null }, { kum: null, avg: null }]);
+    for (const r of m.glDaily.rows) {
+      expect(r.total).toBeNull();
+      expect(Object.values(r.byUnit).every((v) => v === null)).toBe(true);
+    }
+    for (const r of m.glMonthly.rows) {
+      expect(r.total).toEqual({ kum: null, avg: null });
+      expect(Object.values(r.byUnit).every((v) => v.kum === null && v.avg === null)).toBe(true);
+    }
+    expect(m.glIncomplete).toBe(true);
+  });
+
+  it("a known empty selected day also invalidates the incomplete MTD sum", () => {
+    const m = buildHarianModel(base({
+      date, dailySales: [sale(4, date, "SOLAR", 0), sale(4, "2026-07-21", "SOLAR", 0)],
+      gl: new Map([[4, [row("2026-07-21", 7)]]]),
+    }));
+    expect(m.freshness.incomplete).toBe(false);
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glDaily.rows.every((r) => r.total === null)).toBe(true);
+    expect(m.glProvisional).toBe(true);
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glMonthly.grand.avg).toBeNull();
+    expect(m.glMonthly.rows.find((r) => r.key === "SOLAR")!.byUnit[4]!.kum).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+    expect(m.glMonthlyProvisional).toBe(true);
+  });
+
+  it("a valid selected-day zero stays measured while an earlier unknown balance blocks MTD", () => {
+    const m = buildHarianModel(base({
+      date, dailySales: [sale(4, date, "SOLAR", 0), sale(4, "2026-07-21", "SOLAR", 0)],
+      gl: new Map([[4, [row("2026-07-21", null), row(date, 0)]]]),
+    }));
+    expect(m.glDaily.grandTotal).toBe(0);
+    expect(m.glProvisional).toBe(false);
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glIncomplete).toBe(true);
+  });
+
+  it("a genuine observed zero keeps notYet units neutral in the group", () => {
+    const m = buildHarianModel(base({
+      units: [KB, IB], date, dailySales: [sale(4, date, "SOLAR", 0)],
+      gl: new Map([[4, [row(date, 0)]]]),
+      coverage: [cov(4, "2011-10-06"), cov(1, "2026-08-01")],
+    }));
+    expect(m.units.find((u) => u.unitId === 1)!.notYet).toBe(true);
+    expect(m.glDaily.grandTotal).toBe(0);
+    expect(m.glMonthly.grand.kum).toBe(0);
+    expect(m.glIncomplete).toBe(false);
+    expect(m.glProvisional).toBe(false);
+  });
+
+  it("does not infer window evidence from out-of-scope or out-of-window rows", () => {
+    const m = buildHarianModel(base({
+      date, dailySales: [], coverage: [cov(4, null)],
+      gl: new Map([[1, [row(date, 0)]], [4, [row("2026-06-30", 0), row("2026-07-23", 0)]]]),
+    }));
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+  });
+
+  it("empty unit selection also has no observed G/L", () => {
+    const m = buildHarianModel(base({ units: [], date, dailySales: [], gl: new Map(), coverage: [] }));
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glDaily.rows.every((r) => r.total === null)).toBe(true);
+  });
+});
+
+
+it("known zero-sales dates without G/L cannot leave a final partial MTD total", () => {
+  const row: DailyGlRow = {
+    d: "2026-07-22", ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  };
+  const m = buildHarianModel(base({
+    date: "2026-07-22",
+    dailySales: [sale(4, "2026-07-21", "SOLAR", 0), sale(4, "2026-07-22", "SOLAR", 0)],
+    gl: new Map([[4, [row]]]),
+  }));
+  expect(m.glDaily.grandTotal).toBe(0);
+  expect(m.glProvisional).toBe(false);
+  expect(m.glMonthly.grand.kum).toBeNull();
+  expect(m.glMonthly.grand.avg).toBeNull();
+  expect(m.glMonthlyProvisional).toBe(true);
+  expect(m.glIncomplete).toBe(true);
+});
+
+it("zero-activity products remain neutral when their unit/date has measured G/L", () => {
+  const row: DailyGlRow = {
+    d: "2026-07-22", ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  };
+  const m = buildHarianModel(base({
+    date: "2026-07-22",
+    dailySales: [sale(4, "2026-07-22", "SOLAR", 0), sale(4, "2026-07-22", "PERTALITE", 0)],
+    gl: new Map([[4, [row]]]),
+  }));
+  expect(m.glDaily.grandTotal).toBe(0);
+  expect(m.glMonthly.grand.kum).toBe(0);
+  expect(m.glIncomplete).toBe(false);
+});
+
+
+it("exact G/L dates are required even when distinct day counts match", () => {
+  const row = (d: string): DailyGlRow => ({
+    d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 2000, fisik_prev: 2000,
+    pen_do: 0, sales_gross: 0, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+  const m = buildHarianModel(base({
+    date: "2026-07-22",
+    dailySales: [sale(4, "2026-07-20", "SOLAR", 0), sale(4, "2026-07-22", "SOLAR", 0)],
+    gl: new Map([[4, [row("2026-07-20"), row("2026-07-21")]]]),
+  }));
+  expect(m.glCoverage[0]).toMatchObject({ salesDays: 2, glDays: 2 });
+  expect(m.glDaily.grandTotal).toBeNull();
+  expect(m.glMonthly.grand.kum).toBeNull();
+  expect(m.glMonthlyProvisional).toBe(true);
+  expect(m.glIncomplete).toBe(true);
 });

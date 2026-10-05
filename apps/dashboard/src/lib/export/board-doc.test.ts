@@ -7,9 +7,9 @@ import {
   buildBoardEval,
   type BoardModel,
   type BoardUnit,
+  type DatedDailyGlInput,
   type SalesGrainRow,
 } from "@/lib/board-model";
-import type { DailyGlInput } from "@/lib/derive";
 import { resolveBoardPeriod } from "@/lib/periods";
 
 const NOW = new Date("2026-07-16T03:00:00Z");
@@ -18,15 +18,16 @@ const PERIOD = resolveBoardPeriod("bulan", {}, NOW);
 const IB: BoardUnit = { unit_id: 1, code: "6478111", name: "Imam Bonjol" };
 
 const SALES: SalesGrainRow[] = [
-  { unit_id: 1, d: "2026-07-10", ckdbbm: "PL", nama: "PERTALITE", vol: 1000, omzet: 10_000_000 },
-  { unit_id: 1, d: "2026-07-10", ckdbbm: "PX", nama: "PERTAMAX", vol: 120, omzet: 1_800_000 },
-  { unit_id: 1, d: "2026-06-10", ckdbbm: "PL", nama: "PERTALITE", vol: 800, omzet: 8_000_000 },
-  { unit_id: 1, d: "2025-07-10", ckdbbm: "PL", nama: "PERTALITE", vol: 500, omzet: 5_000_000 },
+  { unit_id: 1, d: "2026-07-16", ckdbbm: "PL", nama: "PERTALITE", vol: 1000, omzet: 10_000_000 },
+  { unit_id: 1, d: "2026-07-16", ckdbbm: "PX", nama: "PERTAMAX", vol: 120, omzet: 1_800_000 },
+  { unit_id: 1, d: "2026-06-16", ckdbbm: "PL", nama: "PERTALITE", vol: 800, omzet: 8_000_000 },
+  { unit_id: 1, d: "2025-07-16", ckdbbm: "PL", nama: "PERTALITE", vol: 500, omzet: 5_000_000 },
 ];
 
-const glRow = (gl: number): DailyGlInput => ({
-  ckdbbm: "PL",
-  nama: "PERTALITE",
+const glRow = (gl: number, d = "2026-07-16", ckdbbm = "PL"): DatedDailyGlInput => ({
+  d,
+  ckdbbm,
+  nama: ckdbbm === "PX" ? "PERTAMAX" : "PERTALITE",
   gl,
   tera: 0,
   excluded_tanks: 0,
@@ -39,7 +40,7 @@ const core = buildBoardCore({
   mode: "kumulatif",
   today: TODAY,
   dailySales: SALES,
-  glRange: new Map([[1, [glRow(-2)]]]),
+  glRange: new Map([[1, [glRow(-2), glRow(0, "2026-07-16", "PX")]]]),
   shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]),
   anomalies: [],
 });
@@ -50,11 +51,11 @@ const evalM = buildBoardEval({
   today: TODAY,
   dailySales: SALES,
   gl: {
-    range: new Map([[1, [glRow(-2)]]]),
-    momPrev: new Map([[1, [glRow(-1)]]]),
-    yoyPrev: new Map([[1, [glRow(-1)]]]),
-    ytdCur: new Map([[1, [glRow(-3)]]]),
-    ytdPrev: new Map([[1, [glRow(-1)]]]),
+    range: new Map([[1, [glRow(-2), glRow(0, "2026-07-16", "PX")]]]),
+    momPrev: new Map([[1, [glRow(-1, "2026-06-16")]]]),
+    yoyPrev: new Map([[1, [glRow(-1, "2025-07-16")]]]),
+    ytdCur: new Map([[1, [glRow(-2), glRow(0, "2026-07-16", "PX"), glRow(-1, "2026-06-16")]]]),
+    ytdPrev: new Map([[1, [glRow(-1, "2025-07-16")]]]),
   },
   coverage: new Map([[1, "2022-08-31"]]),
   incompleteToday: false,
@@ -83,6 +84,31 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
 }
 
 describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
+  it.each([
+    { gl: 4000, provisional: false, value: "+48,78%", label: "G/L Imam Bonjol 48,78%" },
+    { gl: -4000, provisional: false, value: "−48,78%", label: "G/L Imam Bonjol -48,78%" },
+    { gl: 4000, provisional: true, value: "+48,78%", label: "G/L Imam Bonjol · sementara (opname belum final)" },
+    { gl: -4000, provisional: true, value: "−48,78%", label: "G/L Imam Bonjol · sementara (opname belum final)" },
+    { gl: 0, provisional: false, value: "0%", label: null },
+  ])("PDF preserves neutral G/L labels and signed $gl (provisional=$provisional)", ({ gl, provisional, value, label }) => {
+    const input = {
+      units: [IB], period: PERIOD, today: TODAY,
+      dailySales: [{ ...SALES[0]!, vol: 8200 }],
+    };
+    const glRange = new Map([[1, [{ ...glRow(gl), provisional }]]]);
+    const signedModel: BoardModel = { mode: "kumulatif",
+      core: buildBoardCore({ ...input, mode: "kumulatif", glRange,
+        shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]), anomalies: [] }),
+      eval: buildBoardEval({ ...input,
+        gl: { range: glRange, ytdCur: glRange, momPrev: new Map(), yoyPrev: new Map(), ytdPrev: new Map() },
+        coverage: new Map([[1, TODAY]]), incompleteToday: false }),
+    };
+    const json = JSON.stringify(buildBoardDocDefinition({ model: signedModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
+    if (label !== null) expect(json).toContain(label);
+    expect(json).toContain(value);
+    expect(json).not.toContain("Losses Imam Bonjol");
+  });
+
   it("A4 LANSKAP + footer 'Halaman X dari Y' natif", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");
@@ -157,4 +183,35 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
     expect(JSON.stringify(docAs.content)).not.toContain("PT Sola Petra Abadi");
     expect(docAs.info?.title).toContain("PT Sola Adis Raya");
   });
+
+  it("prints incomplete G/L warnings without a partial liter subtotal or ratio", () => {
+    const partialCore = buildBoardCore({
+      units: [IB], period: PERIOD, mode: "banding", today: TODAY,
+      dailySales: SALES,
+      glRange: new Map([[1, [glRow(-2)]]]), // same day, missing Pertamax
+      shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]), anomalies: [],
+    });
+    const partialEval = buildBoardEval({
+      units: [IB], period: PERIOD, today: TODAY, dailySales: SALES,
+      gl: {
+        range: new Map([[1, [glRow(-2)]]]),
+        momPrev: new Map([[1, [glRow(-1, "2026-06-16")]]]),
+        yoyPrev: new Map([[1, [glRow(-1, "2025-07-16")]]]),
+        ytdCur: new Map([[1, [glRow(-3)]]]),
+        ytdPrev: new Map([[1, [glRow(-1, "2025-07-16")]]]),
+      },
+      coverage: new Map([[1, "2022-08-31"]]), incompleteToday: false,
+    });
+    const doc = buildBoardDocDefinition({
+      model: { mode: "banding", core: partialCore, eval: partialEval },
+      meta, config: DEFAULT_EXPORT_CONFIG,
+    });
+    const json = JSON.stringify(doc.content);
+    expect(json).toContain("G/L belum lengkap");
+    expect(json).not.toContain("-2 L");
+    expect(json).not.toContain("−2 L");
+    expect(json).not.toContain("-0,18%");
+    expect(json).not.toContain("−0,18%");
+  });
+
 });

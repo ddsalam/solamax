@@ -70,10 +70,10 @@ function render(doc: unknown): Promise<Buffer> {
 
 const U = (id: number, code: string, name: string): ScopedUnit => ({ unit_id: id as ScopedUnitId, code, name });
 const UNITS = [U(1, "6478111", "Imam Bonjol"), U(2, "6378301", "Bakau"), U(3, "6478101", "Adisucipto")];
-const sale = (u: number, d: string, nama: string, vol: number): DailySalesRow => ({ unit_id: u, d, ckdbbm: "BB-x", nama, vol, omzet: vol * 10000 });
+const sale = (u: number, d: string, nama: string, vol: number): DailySalesRow => ({ unit_id: u, d, ckdbbm: "BB-03", nama, vol, omzet: vol * 10000 });
 const cov = (u: number, m: string | null): UnitCoverageRow => ({ unit_id: u, sales_min: m });
 const syn = (u: number, r: string): SyncRow => ({ unit_id: u, last_run: r });
-const glRow = (d: string, gl: number, prov = false): DailyGlRow => ({ d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0, sales_gross: 0, tera: 0, gl, excluded_tanks: 0, provisional: prov });
+const glRow = (d: string, gl: number, prov = false): DailyGlRow => ({ d, ckdbbm: "BB-03", nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0, sales_gross: 0, tera: 0, gl, movement_invalid: false, excluded_tanks: 0, provisional: prov });
 const META: HarianDocMeta = { ptLabel: "PT Uji", dateLong: "Rabu, 22 Juli 2026", unitsCount: 3, divisor: 22, generatedLabel: "x", freshnessLabel: "sinkron terlama: Bakau, 34 jam lalu" };
 
 function base(over: Partial<HarianInput> = {}): HarianInput {

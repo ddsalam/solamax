@@ -8,6 +8,9 @@
  * DB pilot — jadi tes ini menguji jalur formula, bukan formula menguji dirinya.
  */
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
 import { gradeArus, parseArusHtml, ringkas } from "@/lib/arus-minyak.grade";
 import type { DailyGlRow } from "@/lib/queries";
@@ -37,6 +40,7 @@ function row(c: Comp): DailyGlRow {
     sales_gross: c.sales_gross,
     tera: c.tera,
     gl,
+    movement_invalid: false,
     excluded_tanks: 0,
     provisional: false,
   };
@@ -146,7 +150,7 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(lossPct(12.5, 0)).toBeNull();
   });
 
-  it("Stock Fisik NULL → Teori tetap terhitung, Losses & % kosong, TOTAL tak menghitungnya", () => {
+  it("Stock Fisik NULL → Teori tetap terhitung, Losses & % baris/TOTAL kosong", () => {
     const a = buildArusMinyak([
       row({ ckdbbm: "BB-02", nama: "PERTAMAX", fisik_prev: 100, pen_do: 0, sales_gross: 40, tera: 0, fisik: null }),
       row({ ckdbbm: "BB-03", nama: "SOLAR", fisik_prev: 200, pen_do: 100, sales_gross: 50, tera: 0, fisik: 245 }),
@@ -158,10 +162,26 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(px.pct).toBeNull();
     expect(a.incomplete).toBe(true);
     expect(a.provisional).toBe(true); // gl null → jangan mengaku final
-    // TOTAL: kolom yang lengkap tetap dijumlah; baris tanpa fisik tak menyumbang.
-    expect(a.total.fisik).toBe(245);
-    expect(a.total.losses).toBe(-5);
+    // Only complete columns are totals; an absent physical reading is not 0.
+    expect(a.total.fisik).toBeNull();
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
     expect(a.total.teori).toBe(310);
+  });
+
+  it("G/L ditolak query tetap null meskipun seluruh komponen numerik tersedia", () => {
+    const valid = row({ ckdbbm: "P", nama: "P", fisik_prev: 100, pen_do: 0,
+      sales_gross: 40, tera: 0, fisik: 65 });
+    const invalid = { ...valid, ckdbbm: "Q", nama: "Q", gl: null, provisional: true };
+    const a = buildArusMinyak([valid, invalid]);
+    expect(a.rows[0]!.losses).toBe(5);
+    expect(a.rows[1]!.losses).toBeNull();
+    expect(a.rows[1]!.pct).toBeNull();
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+    expect(a.rows[1]!.teori).toBe(60); // rejected G/L need not mean rejected movements
   });
 
   it("Stock Awal NULL (tak ada anchor) → Teori/Losses/% kosong", () => {
@@ -175,12 +195,50 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.incomplete).toBe(true);
   });
 
-  it("tanpa baris → TOTAL nol, bukan NaN", () => {
+  it("rejected movements keep diagnostic components but cannot produce Stock Teori", () => {
+    const input = { ...row({ ckdbbm: "P", nama: "SYNTHETIC", fisik_prev: 10_000,
+      pen_do: 500, sales_gross: 1_000, tera: 0, fisik: 9_000 }),
+      movement_invalid: true, gl: null, provisional: true };
+    const a = buildArusMinyak([input]);
+    expect(a.rows[0]).toMatchObject({ awal: 10_000, penerimaan: 500,
+      penjualan: 1_000, teori: null, fisik: 9_000, losses: null, pct: null });
+    expect(a.total).toMatchObject({ awal: 10_000, penerimaan: 500, penjualan: 1_000,
+      teori: null, fisik: 9_000, losses: null, pct: null });
+    expect(a.incomplete).toBe(true);
+  });
+
+  it("missing legacy movement metadata withholds theory and marks the result incomplete", () => {
+    const { movement_invalid: _oldShape, ...legacy } = row({ ckdbbm: "P", nama: "SYNTHETIC",
+      fisik_prev: 100, pen_do: 0, sales_gross: 40, tera: 0, fisik: 65 });
+    const a = buildArusMinyak([legacy as DailyGlRow]);
+    expect(a.rows[0]).toMatchObject({ awal: 100, fisik: 65, teori: null, losses: 5 });
+    expect(a.total.teori).toBeNull();
+    expect(a.incomplete).toBe(true); expect(a.provisional).toBe(true);
+  });
+
+  it("a missing prior stock nulls total beginning/theory but preserves complete physical stock", () => {
+    const a = buildArusMinyak([
+      row({ ckdbbm: "P", nama: "P", fisik_prev: null, pen_do: 0, sales_gross: 40, tera: 0, fisik: 60 }),
+      row({ ckdbbm: "Q", nama: "Q", fisik_prev: 200, pen_do: 100, sales_gross: 50, tera: 0, fisik: 245 }),
+    ]);
+    expect(a.rows[1]!.teori).toBe(250);
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: 305, losses: null, pct: null });
+  });
+
+  it("measured zero stock and theory remain valid totals", () => {
+    const a = buildArusMinyak([row({ ckdbbm: "P", nama: "P", fisik_prev: 0,
+      pen_do: 0, sales_gross: 0, tera: 0, fisik: 0 })]);
+    expect(a.total).toMatchObject({ awal: 0, teori: 0, fisik: 0, losses: 0, pct: 0 });
+    expect(a.incomplete).toBe(false); expect(a.provisional).toBe(false);
+  });
+
+  it("tanpa baris → stok dan losses TOTAL tidak tersedia, bukan nol terukur", () => {
     const a = buildArusMinyak([]);
     expect(a.rows).toHaveLength(0);
     expect(a.total.penjualan).toBe(0);
-    expect(a.total.pct).toBe(0);
-    expect(a.incomplete).toBe(false);
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null, pct: null });
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
   });
 });
 
@@ -331,5 +389,75 @@ describe("badge penutup-nol kelas 1 (tanpa DB, tanpa kalender)", () => {
       [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 1, prev: 1, next: 1, recv_next: 0 }],
     );
     expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["T-05"] });
+  });
+});
+
+/** Synthetic boundary cases: an absent source identity is never a measured zero. */
+describe("Arus Minyak — missing source product identities", () => {
+  const synthetic = (code: string | null, gl = 0): DailyGlRow => ({
+    d: "2026-10-01", ckdbbm: code, nama: "SOLAR", fisik_prev: 100,
+    pen_do: 0, sales_gross: 10, tera: 0, fisik: 90, gl,
+    movement_invalid: false, excluded_tanks: 0, provisional: false,
+  });
+  const zero = (code: string | null): import("./queries").ZeroClosingRow => ({
+    unit_id: 1, d: "2026-10-01", ckdtangki: "SYNTHETIC-TANK", ckdbbm: code,
+    nama: "SOLAR", bk: 2000, prev: 2000, next: 2000, recv_next: 0,
+  });
+
+  it.each([null, "", "   "])("unknown code %j cannot crash or masquerade as known zero", (code) => {
+    const a = buildArusMinyak([synthetic("BB-03"), synthetic(code)], [zero(code)]);
+    expect(a.rows).toHaveLength(2);
+    expect(a.rows[0]).toMatchObject({ ckdbbm: "BB-03", nama: "SOLAR", losses: 0, pct: 0, zeroClosing: null });
+    expect(a.rows[1]).toMatchObject({ ckdbbm: null, nama: "Produk tidak diketahui", losses: null, pct: null });
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null });
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+  });
+
+  it.each([null, "", "   "])("unidentified zero-closing %j cannot bless a known-only subtotal", (code) => {
+    const a = buildArusMinyak([synthetic("BB-03", -5)], [zero(code)]);
+    expect(a.rows[0]).toMatchObject({ losses: -5, zeroClosing: null });
+    expect(a.total).toMatchObject({ awal: null, teori: null, fisik: null });
+    expect(a.total.losses).toBeNull();
+    expect(a.total.pct).toBeNull();
+    expect(a.incomplete).toBe(true);
+    expect(a.provisional).toBe(true);
+  });
+
+  it("renders the query's unassigned diagnostic row separately with unavailable losses", () => {
+    const unknown = { ...synthetic(null), nama: null, fisik: null, fisik_prev: null,
+      gl: null, provisional: true };
+    const a = buildArusMinyak([synthetic("BB-03"), unknown], [zero(null)]);
+    const html = renderToStaticMarkup(createElement(ArusMinyakSection, { arus: a }));
+    const cells = parseArusHtml(html);
+    expect(cells.get("SOLAR")?.slice(-2)).toEqual([0, 0]);
+    expect(cells.get("Produk tidak diketahui")?.slice(-2)).toEqual([null, null]);
+    expect(cells.get("TOTAL")?.slice(-2)).toEqual([null, null]);
+    expect(html).toContain("belum final");
+    expect(html).toContain("total G/L yang bergantung padanya belum tersedia");
+    expect(html).not.toContain("tidak ikut TOTAL");
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("keeps nonempty unmapped codes distinct and preserves their measured zero", () => {
+    const a = buildArusMinyak([
+      { ...synthetic(" X-UNMAPPED "), nama: null },
+      { ...synthetic("Y-UNMAPPED", -5), nama: " " },
+      synthetic("BB-03", 7),
+    ]);
+    expect(a.rows.map((r) => [r.ckdbbm, r.nama, r.losses])).toEqual([
+      ["X-UNMAPPED", "X-UNMAPPED", 0], ["Y-UNMAPPED", "Y-UNMAPPED", -5], ["BB-03", "SOLAR", 7],
+    ]);
+    expect(a.total.losses).toBe(2);
+    expect(a.incomplete).toBe(false);
+    expect(a.provisional).toBe(false);
+  });
+
+  it("matches zero-closing diagnostics only by a nonempty normalized code", () => {
+    const a = buildArusMinyak([synthetic(" BB-03 "), synthetic("X-UNMAPPED")], [zero(" BB-03 ")]);
+    expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["SYNTHETIC-TANK"] });
+    expect(a.rows[1]!.zeroClosing).toBeNull();
   });
 });

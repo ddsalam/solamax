@@ -18,9 +18,11 @@ import {
   aggregateDailyGl,
   bauranVsTargetRange,
   glPercent,
+  normalizeProductIdentity,
   verdictHeadline,
   type BauranStatus,
   type DailyGlInput,
+  type DailyGlAgg,
   type VerdictChip,
 } from "@/lib/derive";
 import { dateShort, fmtKL, idn, pct, rpShort, signed, timeWib } from "@/lib/format";
@@ -40,10 +42,15 @@ export interface BoardUnit {
 export interface SalesGrainRow {
   unit_id: number;
   d: string;
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string | null;
   vol: number;
   omzet: number;
+}
+
+/** Dates are required to prove unit × business-day × product coverage. */
+export interface DatedDailyGlInput extends DailyGlInput {
+  d: string;
 }
 
 export interface ShiftToday {
@@ -58,28 +65,89 @@ export interface ShiftToday {
 interface SalesAgg {
   vol: number;
   omzet: number;
-  products: { ckdbbm: string; nama: string | null; vol: number }[];
+  products: { ckdbbm: string | null; nama: string | null; vol: number }[];
 }
 
 function sliceSales(rows: SalesGrainRow[], unitIds: ReadonlySet<number>, w: DateRange): SalesAgg {
   let vol = 0;
   let omzet = 0;
-  const byProduct = new Map<string, { ckdbbm: string; nama: string | null; vol: number }>();
+  const byProduct = new Map<string | null, { ckdbbm: string | null; nama: string | null; vol: number }>();
   for (const r of rows) {
     if (!unitIds.has(r.unit_id) || r.d < w.from || r.d > w.to) continue;
     vol += r.vol;
     omzet += r.omzet;
-    const cur = byProduct.get(r.ckdbbm);
+    const product = normalizeProductIdentity(r.ckdbbm);
+    const cur = byProduct.get(product);
     if (cur) cur.vol += r.vol;
-    else byProduct.set(r.ckdbbm, { ckdbbm: r.ckdbbm, nama: r.nama, vol: r.vol });
+    else byProduct.set(product, { ckdbbm: product, nama: r.nama, vol: r.vol });
   }
   return { vol, omzet, products: [...byProduct.values()] };
 }
 
-function glAgg(glByUnit: ReadonlyMap<number, DailyGlInput[]>, unitIds: ReadonlySet<number>) {
-  const rows: DailyGlInput[] = [];
-  for (const [uid, r] of glByUnit) if (unitIds.has(uid)) rows.push(...r);
-  return aggregateDailyGl(rows);
+/** Never divide a partial G/L sum by the complete sales denominator. */
+function glAgg(
+  glByUnit: ReadonlyMap<number, DatedDailyGlInput[]>,
+  unitIds: ReadonlySet<number>,
+  sales: SalesGrainRow[],
+  w: DateRange,
+): DailyGlAgg {
+  const rows: DatedDailyGlInput[] = [];
+  const usable = new Set<string>();
+  const usableDays = new Set<string>();
+  const key = (uid: number, d: string, product: string) => `${uid}|${d}|${product}`;
+  for (const [uid, unitRows] of glByUnit) {
+    if (!unitIds.has(uid)) continue;
+    for (const r of unitRows) {
+      if (r.d < w.from || r.d > w.to) continue;
+      rows.push(r);
+      const product = normalizeProductIdentity(r.ckdbbm);
+      if (product !== null && r.gl !== null && Number.isFinite(r.gl) && r.excluded_tanks === 0) {
+        usable.add(key(uid, r.d, product));
+        usableDays.add(`${uid}|${r.d}`);
+      }
+    }
+  }
+  const g = aggregateDailyGl(rows);
+  const missing = sales.some((r) => {
+    if (!unitIds.has(r.unit_id) || r.d < w.from || r.d > w.to) return false;
+    const product = normalizeProductIdentity(r.ckdbbm);
+    // Even a zero-volume sales row establishes a business date requiring
+    // observed G/L. Other dormant products may remain neutral on that day.
+    return product === null || !usableDays.has(`${r.unit_id}|${r.d}`) ||
+      ((r.vol !== 0 || r.omzet !== 0) && !usable.has(key(r.unit_id, r.d, product)));
+  });
+  // Sales can be absent together with G/L, so product-key coverage alone is
+  // insufficient. A unit with known earlier activity but no sales through the
+  // window end is stale. A unit first appearing AFTER that end is not yet
+  // operating in this window and must not invalidate historical group totals.
+  const salesThrough = new Map<number, string>();
+  for (const r of sales) {
+    if (!unitIds.has(r.unit_id) || r.d > w.to) continue;
+    if (r.d > (salesThrough.get(r.unit_id) ?? "")) salesThrough.set(r.unit_id, r.d);
+  }
+  const stale = [...salesThrough.values()].some((d) => d < w.to);
+  const incomplete = g.incomplete || missing || stale;
+  return { ...g, incomplete, provisional: g.provisional || incomplete };
+}
+
+const GL_INCOMPLETE = "G/L belum lengkap";
+const GL_SUSPECT = "stok fisik 0 perlu verifikasi";
+
+function glNeedsReview(g: DailyGlAgg): boolean {
+  return g.provisional || g.incomplete || g.suspect;
+}
+
+function glNote(g: DailyGlAgg): string | null {
+  if (g.incomplete) return GL_INCOMPLETE;
+  if (g.suspect) return GL_SUSPECT;
+  if (g.provisional) return "sementara (opname belum final)";
+  if (!g.hasGl) return "belum terhitung";
+  return null;
+}
+
+function glSub(g: DailyGlAgg): string {
+  if (g.incomplete || !g.hasGl) return glNote(g)!;
+  return `${signed(g.totalSigned, 0)} L${glNote(g) ? ` · ${glNote(g)}` : ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +256,7 @@ export interface BoardCoreInput {
   /** grain sales — minimal mencakup [range.from − 13 hr .. range.to] */
   dailySales: SalesGrainRow[];
   /** baris G/L jendela aktif per unit_id */
-  glRange: ReadonlyMap<number, DailyGlInput[]>;
+  glRange: ReadonlyMap<number, DatedDailyGlInput[]>;
   shift: ReadonlyMap<number, ShiftToday>;
   anomalies: AnomalyItem[];
 }
@@ -203,21 +271,21 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
   const perUnit = units.map((u) => {
     const ids = new Set([u.unit_id]);
     const sales = sliceSales(dailySales, ids, range);
-    const gl = glAgg(glRange, ids);
-    const glPct = gl.hasGl ? glPercent(gl.totalSigned, sales.vol) : null;
+    const gl = glAgg(glRange, ids, dailySales, range);
+    const glPct = gl.hasGl && !gl.incomplete ? glPercent(gl.totalSigned, sales.vol) : null;
     const glAbnormal = glPct !== null && Math.abs(glPct) > 0.005;
     const gas = bauranVsTargetRange(sales.products, u.code, range, "gasoline");
     const oil = bauranVsTargetRange(sales.products, u.code, range, "gasoil");
     const sh = shift.get(u.unit_id) ?? { shifts: 0, last_dtgljam: null };
-    return { u, sales, gl, glPct, glAbnormal, glProvisional: gl.provisional, gas, oil, sh };
+    return { u, sales, gl, glPct, glAbnormal, glProvisional: glNeedsReview(gl), gas, oil, sh };
   });
 
   const incompleteToday = touchesToday && perUnit.some((x) => x.sh.shifts < 3);
 
   // ── KPI agregat ──
   const groupSales = sliceSales(dailySales, allIds, range);
-  const groupGl = glAgg(glRange, allIds);
-  const groupGlPct = groupGl.hasGl ? glPercent(groupGl.totalSigned, groupSales.vol) : null;
+  const groupGl = glAgg(glRange, allIds, dailySales, range);
+  const groupGlPct = groupGl.hasGl && !groupGl.incomplete ? glPercent(groupGl.totalSigned, groupSales.vol) : null;
   const firstCode = units[0]?.code ?? "";
   const gasGroup = bauranVsTargetRange(groupSales.products, firstCode, range, "gasoline");
   const oilGroup = bauranVsTargetRange(groupSales.products, firstCode, range, "gasoil");
@@ -250,16 +318,17 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
       key: "gl",
       title: "Gain / Loss",
       value: groupGlPct !== null ? `${signed(groupGlPct * 100, 2)}%` : "—",
-      sub: groupGl.hasGl ? `${signed(groupGl.totalSigned, 0)} L` : "belum terhitung",
+      sub: glSub(groupGl),
       subTone:
-        confirmedAbnormal > 0 ? "danger" : provisionalUnits > 0 ? "warning" : "success",
-      provisional: groupGl.provisional,
+        groupGl.incomplete || groupGl.suspect || !groupGl.hasGl ? "warning"
+          : confirmedAbnormal > 0 ? "danger" : provisionalUnits > 0 ? "warning" : "success",
+      provisional: glNeedsReview(groupGl),
       perUnit:
         mode === "banding"
           ? perUnit.map((x) => ({
               name: x.u.name,
               value: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
-              sub: x.gl.hasGl ? `${signed(x.gl.totalSigned, 0)} L` : null,
+              sub: glSub(x.gl),
             }))
           : null,
     },
@@ -298,12 +367,16 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
   // ── Verdict chips (identitas halaman: management by exception) ──
   const chips: VerdictChip[] = [];
   for (const x of perUnit) {
-    if (x.glAbnormal && x.glPct !== null) {
+    if (x.gl.incomplete || x.gl.suspect || !x.gl.hasGl) {
+      chips.push({ tone: "warning", text: `${x.u.name}: ${glNote(x.gl)}` });
+    } else if (x.glAbnormal && x.glPct !== null) {
       chips.push(
         x.glProvisional
-          ? { tone: "warning", text: `Losses ${x.u.name} · sementara (opname belum final)` }
-          : { tone: "danger", text: `Losses ${x.u.name} ${pct(x.glPct, 2)}` },
+          ? { tone: "warning", text: `G/L ${x.u.name} · sementara (opname belum final)` }
+          : { tone: "danger", text: `G/L ${x.u.name} ${pct(x.glPct, 2)}` },
       );
+    } else if (x.glProvisional) {
+      chips.push({ tone: "warning", text: `G/L ${x.u.name} · ${glNote(x.gl)}` });
     }
   }
   if (perUnit.some((x) => x.gas.below) || perUnit.some((x) => x.oil.below))
@@ -381,12 +454,16 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     const sparkVals14 = sparkDays.map((d) => daily.get(d) ?? 0);
     const sMax = Math.max(...sparkVals14, 1);
     const notes: RankRow["notes"] = [];
-    if (x.glAbnormal && x.glPct !== null)
+    if (x.gl.incomplete || x.gl.suspect || !x.gl.hasGl)
+      notes.push({ tone: "warning", text: glNote(x.gl)! });
+    else if (x.glAbnormal && x.glPct !== null)
       notes.push(
         x.glProvisional
-          ? { tone: "warning", text: "Losses sementara — menunggu opname penutup" }
-          : { tone: "danger", text: `Losses ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` },
+          ? { tone: "warning", text: "G/L sementara — menunggu opname penutup" }
+          : { tone: "danger", text: `G/L ${pct(x.glPct, 2)} — di atas ambang 0,5%/100 L` },
       );
+    else if (x.glProvisional)
+      notes.push({ tone: "warning", text: `G/L ${glNote(x.gl)}` });
     if (x.gas.below && x.gas.deltaPt !== null)
       notes.push({
         tone: "warning",
@@ -422,7 +499,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
         .map((p) => ({ p, cls: classifyProduct(p.nama) }))
         .sort((a, b) => (a.cls?.order ?? 9) - (b.cls?.order ?? 9))
         .map(({ p, cls }) => ({
-          name: p.nama ?? p.ckdbbm,
+          name: p.nama ?? p.ckdbbm ?? "Produk tanpa kode",
           volLabel: `${idn(p.vol)} L`,
           widthPct: (p.vol / maxP) * 100,
           fill: (cls?.pso ? "pso" : cls?.order === 3 || cls?.order === 6 ? "npso2" : "npso") as
@@ -461,7 +538,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
 
 export type GlWindows = Record<
   "range" | "momPrev" | "yoyPrev" | "ytdCur" | "ytdPrev",
-  ReadonlyMap<number, DailyGlInput[]>
+  ReadonlyMap<number, DatedDailyGlInput[]>
 >;
 
 export interface BoardEvalInput {
@@ -538,10 +615,10 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
   const metricsFor = (subset: BoardUnit[]) => {
     const ids = new Set(subset.map((u) => u.unit_id));
     const firstCode = subset[0]?.code ?? "";
-    const win = (w: DateRange, glMap: ReadonlyMap<number, DailyGlInput[]>, withTarget: boolean) => {
+    const win = (w: DateRange, glMap: ReadonlyMap<number, DatedDailyGlInput[]>, withTarget: boolean) => {
       const sales = sliceSales(dailySales, ids, w);
-      const g = glAgg(glMap, ids);
-      const glPct = g.hasGl ? glPercent(g.totalSigned, sales.vol) : null;
+      const g = glAgg(glMap, ids, dailySales, w);
+      const glPct = g.hasGl && !g.incomplete ? glPercent(g.totalSigned, sales.vol) : null;
       const gas = bauranVsTargetRange(sales.products, firstCode, w, "gasoline", withTarget);
       const oil = bauranVsTargetRange(sales.products, firstCode, w, "gasoil", withTarget);
       return { sales, g, glPct, gas, oil };
@@ -572,13 +649,32 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
           : ptDelta(curV.pt![0], curV.pt![1], provisional),
       );
 
-    return { cur, mom, yoy, ytd, ytdPrev, missMom, missYoy, missYtdPrev, evalOf };
+    /** Source quality of EITHER window must survive into every comparison. */
+    const evalGl = (
+      current: ReturnType<typeof win>,
+      previous: ReturnType<typeof win>,
+      miss: BoardUnit[],
+      reason: string,
+    ): DeltaCell => {
+      const needsReview = glNeedsReview(current.g) || glNeedsReview(previous.g);
+      const cell = evalOf({ pt: [current.glPct, previous.glPct] }, miss, reason, needsReview);
+      const sourceNote = current.g.incomplete || previous.g.incomplete ? GL_INCOMPLETE
+        : current.g.suspect || previous.g.suspect ? GL_SUSPECT : null;
+      return {
+        ...cell,
+        provisional: needsReview || undefined,
+        ...(sourceNote ? {
+          note: cell.note && cell.note !== "tak terhitung" ? `${cell.note} · ${sourceNote}` : sourceNote,
+        } : {}),
+      };
+    };
+
+    return { cur, mom, yoy, ytd, ytdPrev, missMom, missYoy, missYtdPrev, evalOf, evalGl };
   };
 
   /** Sel kartu KPI agregat. */
   const m = metricsFor(units);
-  const glProvAny = m.cur.g.provisional;
-  const ytdProv = m.ytd.g.provisional;
+  const ytdProv = glNeedsReview(m.ytd.g);
 
   const cards: BoardEval["cards"] = {
     omzet: {
@@ -589,10 +685,10 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
       ytdProvisional: incompleteToday,
     },
     gl: {
-      mom: m.evalOf({ pt: [m.cur.glPct, m.mom.glPct] }, m.missMom, "histori tak mencakup", glProvAny || m.mom.g.provisional),
-      yoy: m.evalOf({ pt: [m.cur.glPct, m.yoy.glPct] }, m.missYoy, "histori < 1 tahun", glProvAny || m.yoy.g.provisional),
+      mom: m.evalGl(m.cur, m.mom, m.missMom, "histori tak mencakup"),
+      yoy: m.evalGl(m.cur, m.yoy, m.missYoy, "histori < 1 tahun"),
       ytdValue: m.ytd.glPct !== null ? `${signed(m.ytd.glPct * 100, 2)}%` : "—",
-      ytdDelta: m.evalOf({ pt: [m.ytd.glPct, m.ytdPrev.glPct] }, m.missYtdPrev, "histori < 1 tahun", ytdProv),
+      ytdDelta: m.evalGl(m.ytd, m.ytdPrev, m.missYtdPrev, "histori < 1 tahun"),
       ytdProvisional: ytdProv,
     },
     gas: {
@@ -614,7 +710,7 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
   // ── Blok evaluasi per cabang: 5 baris metrik per unit ──
   const unitBlocks: EvalUnitBlock[] = units.map((u) => {
     const s = metricsFor([u]);
-    const glProv = s.cur.g.provisional;
+    const glProv = glNeedsReview(s.cur.g);
     const rows: EvalMetricRow[] = [
       {
         metric: "Omset",
@@ -638,10 +734,10 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
         metric: "Gain/Loss",
         cur: s.cur.glPct !== null ? `${signed(s.cur.glPct * 100, 2)}%` : "—",
         curProvisional: glProv,
-        mom: s.evalOf({ pt: [s.cur.glPct, s.mom.glPct] }, s.missMom, "histori tak mencakup", glProv || s.mom.g.provisional),
-        yoy: s.evalOf({ pt: [s.cur.glPct, s.yoy.glPct] }, s.missYoy, "histori < 1 tahun", glProv || s.yoy.g.provisional),
+        mom: s.evalGl(s.cur, s.mom, s.missMom, "histori tak mencakup"),
+        yoy: s.evalGl(s.cur, s.yoy, s.missYoy, "histori < 1 tahun"),
         ytd: s.ytd.glPct !== null ? `${signed(s.ytd.glPct * 100, 2)}%` : "—",
-        ytdDelta: s.evalOf({ pt: [s.ytd.glPct, s.ytdPrev.glPct] }, s.missYtdPrev, "histori < 1 tahun", s.ytd.g.provisional),
+        ytdDelta: s.evalGl(s.ytd, s.ytdPrev, s.missYtdPrev, "histori < 1 tahun"),
       },
       {
         metric: "NPSO (G)",

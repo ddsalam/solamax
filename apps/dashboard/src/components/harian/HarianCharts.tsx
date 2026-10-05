@@ -7,7 +7,8 @@
  * Penggantinya bar 100 % + nilai + persen — bisa dibaca, bisa diurutkan.
  */
 import { idn, pct } from "@/lib/format";
-import type { ShareRow, TrendMonth, UnitStatus } from "@/lib/harian-model";
+import { GL_INCOMPLETE_WARNING, GL_MONTHLY_PROVISIONAL_WARNING } from "@/lib/harian-gl-display";
+import type { MonthlyCell, ShareRow, TrendMonth, UnitStatus } from "@/lib/harian-model";
 
 /** Palet aman-grayscale: 7 langkah kontras berbeda (bukan hue saja). */
 const SERIES = [
@@ -64,22 +65,28 @@ export function ShareBars({ share, incomplete }: { share: ShareRow[]; incomplete
 export function GlBars({
   units,
   totals,
+  provisional = false,
+  incomplete = false,
 }: {
   units: UnitStatus[];
-  totals: Record<number, { kum: number; avg: number }>;
+  totals: Record<number, MonthlyCell<number | null>>;
+  provisional?: boolean;
+  incomplete?: boolean;
 }) {
-  const vals = units.map((u) => totals[u.unitId]?.kum ?? 0);
-  const max = Math.max(1, ...vals.map((v) => Math.abs(v)));
+  const value = (u: UnitStatus) => u.notYet || u.stale ? null : totals[u.unitId]?.kum ?? null;
+  const vals = units.map(value);
+  const max = Math.max(1, ...vals.map((v) => v === null ? 0 : Math.abs(v)));
+  const hasUnknown = incomplete || vals.some((v) => v === null);
   return (
     <div className="mt10">
       <div className="section-h">
-        <div className="text-h5 t-brand">Gain / Losses kumulatif bulan berjalan</div>
+        <div className="text-h5 t-brand">Gain / Losses kumulatif bulan berjalan{provisional && <span className="t-warning"> · SEMENTARA</span>}</div>
         <span className="fs16 t-tertiary">semua unit memakai nilai Kumulatif (liter)</span>
       </div>
       <div className="card card-pad-lg mt5">
         {units.map((u) => {
-          const v = totals[u.unitId]?.kum ?? 0;
-          const w = (Math.abs(v) / max) * 50;
+          const v = value(u);
+          const w = v === null ? 0 : (Math.abs(v) / max) * 50;
           return (
             <div key={u.unitId} className="harian-gl-row">
               <div className="fs16 t-primary harian-gl-name">
@@ -91,21 +98,24 @@ export function GlBars({
                 {/* Warna HANYA menyandikan TANDA. Memakai palet per-unit di sini
                     membuat unit ke-2 (merah) tampak rugi padahal untung — cacat
                     yang tertangkap saat pemeriksaan render, bukan oleh test. */}
-                <div
+                {v !== null && <div
                   className="harian-gl-fill"
                   style={{
                     left: v < 0 ? `${50 - w}%` : "50%",
                     width: `${w}%`,
                     background: v < 0 ? "var(--color-danger)" : "var(--color-success)",
                   }}
-                />
+                />}
               </div>
-              <div className={`fs16 w600 num right ${v < 0 ? "t-danger" : ""}`}>
-                {v < 0 ? `(${idn(Math.round(Math.abs(v)))})` : idn(Math.round(v))}
+              <div className={`fs16 w600 num right ${v !== null && v < 0 ? "t-danger" : ""}`}>
+                {v === null ? "—" : v < 0 ? `(${idn(Math.round(Math.abs(v)))})` : idn(Math.round(v))}
+                {v === null && <span className="harian-stale-sub t-warning">TIDAK LENGKAP</span>}
               </div>
             </div>
           );
         })}
+        {provisional && <div className="fs15 t-warning mt3">⏳ {GL_MONTHLY_PROVISIONAL_WARNING}</div>}
+        {hasUnknown && <div className="fs15 t-danger mt3">⚠ {GL_INCOMPLETE_WARNING}</div>}
       </div>
     </div>
   );

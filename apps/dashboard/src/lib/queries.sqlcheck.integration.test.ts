@@ -88,6 +88,7 @@ beforeAll(async () => {
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
 const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
   ["getSyncByUnit", () => Q.getSyncByUnit([U])],
+  ["getGlSourceRevision", () => Q.getGlSourceRevision(U)],
   ["getSalesByProduct", () => Q.getSalesByProduct(U, D, D)],
   ["getDailySalesByProduct", () => Q.getDailySalesByProduct([U], D, D)],
   ["getUnitCoverage", () => Q.getUnitCoverage([U])],

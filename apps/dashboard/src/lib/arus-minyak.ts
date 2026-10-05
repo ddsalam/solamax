@@ -42,6 +42,7 @@
  * keputusan owner; secara informasi ia memang redundan.
  */
 import type { DailyGlRow, ZeroClosingRow } from "./queries";
+import { normalizeProductIdentity } from "./derive";
 
 /**
  * Ambang "teori mengatakan tangki mestinya berisi". Dipakai HANYA untuk menandai
@@ -73,7 +74,7 @@ export interface ZeroFlag {
 }
 
 export interface ArusRow {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string;
   /** Stock Fisik hari-bisnis sebelumnya. null = anchor tak ada. */
   awal: number | null;
@@ -82,10 +83,10 @@ export interface ArusRow {
   penjualan: number;
   /** Tera RESMI (L). Dibawa karena % memakai penyebut KOTOR = penjualan + tera. */
   tera: number;
-  /** Awal + Penerimaan − Penjualan. null bila `awal` null. */
+  /** Awal + Penerimaan − Penjualan. null bila anchor/identitas/mutasi tidak lengkap. */
   teori: number | null;
   fisik: number | null;
-  /** Fisik − Teori (+ gain, − loss). null bila salah satu komponen null. */
+  /** G/L kanonik (+ gain, − loss). null bila stok/mutasi tak lengkap. */
   losses: number | null;
   /** Losses ÷ penjualan **KOTOR** × 100. null = tak terdefinisi (lihat lossPct). */
   pct: number | null;
@@ -98,9 +99,9 @@ export interface ArusMinyak {
   total: ArusRow;
   /** Ada baris yang G/L-nya belum final (opname penutup belum ada / ada celah). */
   provisional: boolean;
-  /** Σ tangki di luar batas wajar yang dikecualikan dari Stock Fisik hari itu. */
+  /** Σ penutup dengan stok/identitas tidak valid; Stock Fisik produk tak lengkap. */
   excludedTanks: number;
-  /** Ada baris tanpa Stock Awal/Fisik → total kolom itu tidak lengkap. */
+  /** Ada stok/G/L tak terhitung → jangan sajikan subtotal losses sebagai total. */
   incomplete: boolean;
   /** Σ tera hari itu (L). >0 → TOTAL Penjualan sengaja ≠ Σ kolom; catatan kaki wajib. */
   teraTotal: number;
@@ -159,18 +160,36 @@ export function buildArusMinyak(
   /** Kejadian penutup-nol untuk (unit, tanggal) ini — dari getZeroClosingEvents. */
   zeroClosing: ZeroClosingRow[] = [],
 ): ArusMinyak {
+  // Query output normally contains a trimmed string. Defend the rendering
+  // boundary too: legacy/runtime rows can still carry SQL NULL or whitespace.
   const zcByProduk = new Map<string, string[]>();
+  let unidentifiedZeroClosing = false;
   for (const z of zeroClosing) {
-    const k = z.ckdbbm.trim();
+    const k = normalizeProductIdentity(z.ckdbbm);
+    if (!k) {
+      // An unassigned tank cannot safely be attributed to any known product.
+      unidentifiedZeroClosing = true;
+      continue;
+    }
     zcByProduk.set(k, [...(zcByProduk.get(k) ?? []), z.ckdtangki]);
   }
   const rows: ArusRow[] = glRows.map((r) => {
+    const code = normalizeProductIdentity(r.ckdbbm);
     const penjualan = r.sales_gross - r.tera;
-    const teori = stockTeori(r.fisik_prev, r.pen_do, penjualan);
-    const l = losses(r.fisik, teori);
+    // Movement sums remain diagnostic when the query rejected any input.
+    // An explicit false also prevents an older cached row with no quality
+    // metadata from reviving theory. Missing current physical stock alone
+    // does not invalidate a complete anchor + movement calculation.
+    const teori = code && r.movement_invalid === false
+      ? stockTeori(r.fisik_prev, r.pen_do, penjualan) : null;
+    // Query juga memeriksa cakupan tangki dan mutasi NULL/garbage. Menghitung
+    // ulang hanya dari komponen numerik akan menghidupkan lagi G/L yang ditolak.
+    const l = code ? r.gl : null;
     return {
-      ckdbbm: r.ckdbbm,
-      nama: r.nama ?? r.ckdbbm,
+      ckdbbm: code,
+      // A familiar name does not recover a missing identity. Keep the source
+      // quantities diagnostic, but never label this as a verified known fuel.
+      nama: code ? r.nama?.trim() || code : "Produk tidak diketahui",
       awal: r.fisik_prev,
       penerimaan: r.pen_do,
       penjualan,
@@ -179,7 +198,7 @@ export function buildArusMinyak(
       fisik: r.fisik,
       losses: l,
       pct: lossPct(l, r.sales_gross), // penyebut KOTOR
-      zeroClosing: flagPenutupNol(zcByProduk.get(r.ckdbbm), r.fisik, teori),
+      zeroClosing: flagPenutupNol(code ? zcByProduk.get(code) : undefined, r.fisik, teori),
     };
   });
 
@@ -191,17 +210,18 @@ export function buildArusMinyak(
   // sedangkan rata-rata ketujuh persen = −7,49.
   const nz = (xs: (number | null)[]): number =>
     xs.reduce<number>((acc, x) => acc + (x ?? 0), 0);
-  const ada = rows.length > 0;
-  const semuaNull = (f: (r: ArusRow) => number | null) => ada && rows.every((r) => f(r) === null);
+  const totalKnown = (f: (r: ArusRow) => number | null): number | null =>
+    rows.length === 0 || unidentifiedZeroClosing || rows.some((r) => r.ckdbbm === null || f(r) === null)
+      ? null : nz(rows.map(f));
   const totPenjualanKotor = nz(rows.map((r) => r.penjualan + r.tera));
-  const totFisik = semuaNull((r) => r.fisik) ? null : nz(rows.map((r) => r.fisik));
-  const totTeori = semuaNull((r) => r.teori) ? null : nz(rows.map((r) => r.teori));
-  const totLosses = semuaNull((r) => r.losses) ? null : nz(rows.map((r) => r.losses));
+  const totFisik = totalKnown((r) => r.fisik);
+  const totTeori = totalKnown((r) => r.teori);
+  const totLosses = unidentifiedZeroClosing ? null : totalKnown((r) => r.losses);
   const total: ArusRow = {
     ckdbbm: "",
     nama: "TOTAL",
     zeroClosing: null,
-    awal: semuaNull((r) => r.awal) ? null : nz(rows.map((r) => r.awal)),
+    awal: totalKnown((r) => r.awal),
     penerimaan: nz(rows.map((r) => r.penerimaan)),
     penjualan: totPenjualanKotor,
     tera: nz(rows.map((r) => r.tera)),
@@ -214,9 +234,11 @@ export function buildArusMinyak(
   return {
     rows,
     total,
-    provisional: glRows.some((r) => r.provisional || r.gl === null),
+    provisional: rows.length === 0 || unidentifiedZeroClosing || glRows.some((r) => r.provisional)
+      || rows.some((r) => r.teori === null || r.losses === null),
     excludedTanks: glRows.reduce((s, r) => s + r.excluded_tanks, 0),
-    incomplete: rows.some((r) => r.awal === null || r.fisik === null),
+    incomplete: rows.length === 0 || unidentifiedZeroClosing
+      || rows.some((r) => r.awal === null || r.teori === null || r.fisik === null || r.losses === null),
     teraTotal: total.tera,
     zeroClosingCount: rows.filter((r) => r.zeroClosing !== null).length,
   };

@@ -18,7 +18,7 @@
  *     BL 1 Apr, KR 6 Nov 2021, 28 Okt 7 Jul 2022).
  */
 import { canonicalProductKey, FLEET_RECORD_FLOOR } from "./config";
-import { bauran, GARBAGE_DAY_SALES_L, type ProductVol } from "./derive";
+import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, type ProductVol } from "./derive";
 import { worstSyncAt, worstSyncUnitId } from "./freshness";
 import { addDays, monthInfo, monthStart } from "./periods";
 import type { DailyGlRow, DailySalesRow, SyncRow, UnitCoverageRow } from "./queries";
@@ -74,23 +74,23 @@ export interface UnitStatus extends UnitRef {
   stale: boolean;
 }
 
-export interface ValueRow {
+export interface ValueRow<T = number> {
   key: RowKey;
   label: string;
   /** nilai per unitId; undefined = unit tak punya baris (dirender "—"/0 sesuai konteks) */
-  byUnit: Record<number, number>;
-  total: number;
+  byUnit: Record<number, T>;
+  total: T;
 }
 
-export interface MonthlyCell {
-  kum: number;
-  avg: number;
+export interface MonthlyCell<T = number> {
+  kum: T;
+  avg: T;
 }
-export interface MonthlyRow {
+export interface MonthlyRow<T = number> {
   key: RowKey;
   label: string;
-  byUnit: Record<number, MonthlyCell>;
-  total: MonthlyCell;
+  byUnit: Record<number, MonthlyCell<T>>;
+  total: MonthlyCell<T>;
 }
 
 export interface TrendMonth {
@@ -157,8 +157,9 @@ export interface HarianModel {
   deltaByUnit: Record<number, number | null>;
   deltaTotal: number | null;
   monthly: { rows: MonthlyRow[]; totalsByUnit: Record<number, MonthlyCell>; grand: MonthlyCell };
-  glDaily: { rows: ValueRow[]; totalsByUnit: Record<number, number>; grandTotal: number };
-  glMonthly: { rows: MonthlyRow[]; totalsByUnit: Record<number, MonthlyCell>; grand: MonthlyCell };
+  glDaily: { rows: ValueRow<number | null>[]; totalsByUnit: Record<number, number | null>; grandTotal: number | null };
+  glMonthly: { rows: MonthlyRow<number | null>[]; totalsByUnit: Record<number, MonthlyCell<number | null>>; grand: MonthlyCell<number | null> };
+  glMonthlyProvisional: boolean;
   share: ShareRow[];
   /**
    * Skala tren DIPISAH: batang per-unit dan garis TOTAL punya orde berbeda
@@ -185,14 +186,8 @@ export interface HarianModel {
    * Ditandai, BUKAN disembunyikan.
    */
   glProvisional: boolean;
-  /**
-   * true = jendela G/L memuat LEBIH SEDIKIT hari daripada yang punya penjualan.
-   * Sel G/L yang kosong dirender 0, dan 0 TIDAK BISA dibedakan dari "tak ada
-   * selisih" — persis kelas gagal-senyap yang menjatuhkan Gate 4: cache
-   * `unstable_cache` 24 jam di gl-window.ts:46 menyimpan hasil KOSONG yang
-   * dihitung sebelum data masuk, lalu menyajikannya seharian. Halaman kini
-   * menyalak alih-alih menampilkan nol yang meyakinkan.
-   */
+  /** Missing product/day or uncomputable stock in MTD. Null cells and any
+   * dependent total stay unavailable; one valid product cannot hide another. */
   glIncomplete: boolean;
   /** Cakupan per unit: hari berpenjualan vs hari ber-baris-G/L dalam jendela. */
   glCoverage: Array<{ unitId: number; code: string; salesDays: number; glDays: number }>;
@@ -210,6 +205,8 @@ export interface HarianInput {
   sync: SyncRow[];
   /** Unit yang punya penutup opname 0 mencurigakan dalam bulan berjalan. */
   glSuspect?: Set<number>;
+  /** Dated zero-closing events affect that day and its following stock anchor. */
+  glSuspectDates?: Array<{ unitId: number; date: string }>;
   recordFloor?: string;
 }
 
@@ -248,8 +245,8 @@ export function harianSpanFrom(date: string, recordFloor = FLEET_RECORD_FLOOR): 
 
 const zero = (): Record<number, number> => ({});
 
-function rowKeyOf(nama: string | null, ckdbbm: string): RowKey {
-  return (canonicalProductKey(nama ?? ckdbbm) as HarianProductKey | null) ?? OTHER_KEY;
+function rowKeyOf(nama: string | null, ckdbbm: string | null): RowKey {
+  return (canonicalProductKey(nama ?? normalizeProductIdentity(ckdbbm)) as HarianProductKey | null) ?? OTHER_KEY;
 }
 
 function labelOf(key: RowKey): string {
@@ -417,26 +414,69 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   }
 
   // ── G/L ───────────────────────────────────────────────────────────────────
-  const glDayCell = new Map<string, number>();
-  const glMtdCell = new Map<string, number>();
-  let glProvisional = false;
+  const glDayCell = new Map<string, number | null>();
+  const glMtdCell = new Map<string, number | null>();
+  const glSeen = new Set<string>();
+  const staleGlUnits = new Set(staleUnits.map((u) => u.unitId));
+  let glMonthlyProvisional = staleGlUnits.size > 0 || units.some((u) => input.glSuspect?.has(u.unit_id));
+  const suspectIds = new Set(input.glSuspect ?? []);
+  const addGl = (map: Map<string, number | null>, key: string, value: number | null) => {
+    map.set(key, value === null || map.get(key) === null ? null : (map.get(key) ?? 0) + value);
+  };
+  let glProvisional = staleGlUnits.size > 0;
+  for (const suspect of input.glSuspectDates ?? []) {
+    if (!unitIds.includes(suspect.unitId)) continue;
+    const following = addDays(suspect.date, 1);
+    if (suspect.date <= date && following >= mFrom) {
+      suspectIds.add(suspect.unitId);
+      glMonthlyProvisional = true;
+    }
+    if (suspect.date === date || following === date) glProvisional = true;
+  }
   /** Hari unik ber-baris-G/L per unit dalam [mFrom..date] — bahan guard cakupan. */
   const glDaysByUnit = new Map<number, Set<string>>();
   for (const id of unitIds) {
     for (const r of gl.get(id) ?? []) {
-      if (r.d === date && r.provisional) glProvisional = true;
-      if (r.gl === null) continue;
+      if (r.d < mFrom || r.d > date) continue;
+      const product = normalizeProductIdentity(r.ckdbbm);
+      const invalid = product === null || r.gl === null || r.excluded_tanks > 0;
+      const suspect = isDailyGlSuspect(r);
+      if (suspect) suspectIds.add(id);
+      if (r.provisional || invalid || suspect) {
+        glMonthlyProvisional = true;
+        if (r.d === date) glProvisional = true;
+      }
       const key = rowKeyOf(r.nama, r.ckdbbm);
       const k = `${id}|${key}`;
-      if (r.d === date) glDayCell.set(k, (glDayCell.get(k) ?? 0) + r.gl);
+      if (product !== null && !invalid) glSeen.add(`${id}|${r.d}|${product}`);
+      if (r.d === date) addGl(glDayCell, k, invalid ? null : r.gl);
       if (r.d >= mFrom && r.d <= date) {
-        glMtdCell.set(k, (glMtdCell.get(k) ?? 0) + r.gl);
+        addGl(glMtdCell, k, invalid ? null : r.gl);
+        if (invalid) continue;
         const set = glDaysByUnit.get(id) ?? new Set<string>();
         set.add(r.d);
         glDaysByUnit.set(id, set);
       }
     }
   }
+  // Coverage is unit × business date × product. One valid product cannot
+  // hide a missing product on the same day. A genuine measured zero stays zero.
+  for (const r of dailySales) {
+    if (!unitIds.includes(r.unit_id) || r.d < mFrom || r.d > date) continue;
+    const product = normalizeProductIdentity(r.ckdbbm);
+    // A zero-volume sales row proves that the business date exists, not that
+    // its unobserved G/L was zero. Neutral absent-product zeros require at
+    // least one usable G/L observation for this unit/date.
+    const hasGlDay = glDaysByUnit.get(r.unit_id)?.has(r.d) ?? false;
+    if (product !== null && ((r.vol === 0 && r.omzet === 0 && hasGlDay) || glSeen.has(`${r.unit_id}|${r.d}|${product}`))) continue;
+    const key = rowKeyOf(r.nama, product);
+    const k = `${r.unit_id}|${key}`;
+    glMtdCell.set(k, null);
+    glMonthlyProvisional = true;
+    if (r.d === date) { glDayCell.set(k, null); glProvisional = true; }
+  }
+  const sumGl = (values: Array<number | null>): number | null =>
+    values.reduce<number | null>((sum, value) => sum === null || value === null ? null : sum + value, 0);
   const glKeys: RowKey[] = [...HARIAN_PRODUCTS.map((p) => p.key as RowKey)];
   if (
     [...glDayCell.keys()].some((k) => k.endsWith(`|${OTHER_KEY}`)) ||
@@ -444,41 +484,39 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   ) {
     glKeys.push(OTHER_KEY);
   }
-  const mkValueRows = (src: Map<string, number>): { rows: ValueRow[]; totalsByUnit: Record<number, number>; grandTotal: number } => {
-    const rows: ValueRow[] = glKeys.map((key) => {
-      const byUnit = zero();
-      let total = 0;
+  const mkValueRows = (src: Map<string, number | null>) => {
+    // Empty scopes/windows have no measured balance. Zero is only a neutral
+    // absent-product contribution once this window contains an observed G/L.
+    const hasObservedGl = [...src.values()].some((v) => v !== null);
+    const rows: ValueRow<number | null>[] = glKeys.map((key) => {
+      const byUnit: Record<number, number | null> = {};
       for (const id of unitIds) {
-        const v = src.get(`${id}|${key}`) ?? 0;
-        byUnit[id] = v;
-        total += v;
+        const k = `${id}|${key}`;
+        // A known active unit without current sales has unknown movements,
+        // even if old G/L rows cover every sales row received so far.
+        byUnit[id] = !hasObservedGl || staleGlUnits.has(id) ? null : src.has(k) ? src.get(k)! : 0;
       }
-      return { key, label: labelOf(key), byUnit, total };
+      return { key, label: labelOf(key), byUnit, total: hasObservedGl ? sumGl(unitIds.map((id) => byUnit[id]!)) : null };
     });
-    const totalsByUnit = zero();
-    let grandTotal = 0;
-    for (const id of unitIds) {
-      const v = rows.reduce((s, r) => s + (r.byUnit[id] ?? 0), 0);
-      totalsByUnit[id] = v;
-      grandTotal += v;
-    }
-    return { rows, totalsByUnit, grandTotal };
+    const totalsByUnit: Record<number, number | null> = {};
+    for (const id of unitIds) totalsByUnit[id] = sumGl(rows.map((r) => r.byUnit[id]!));
+    return { rows, totalsByUnit, grandTotal: hasObservedGl ? sumGl(unitIds.map((id) => totalsByUnit[id]!)) : null };
   };
   const glDaily = mkValueRows(glDayCell);
   const glMonthlyFlat = mkValueRows(glMtdCell);
+  if (glDaily.grandTotal === null) glProvisional = true;
+  if (glMonthlyFlat.grandTotal === null) glMonthlyProvisional = true;
+  const monthlyGl = (v: number | null): MonthlyCell<number | null> => ({
+    kum: v, avg: v === null ? null : v / dayOfMonth,
+  });
   const glMonthly = {
     rows: glMonthlyFlat.rows.map((r) => ({
-      key: r.key,
-      label: r.label,
-      byUnit: Object.fromEntries(
-        unitIds.map((id) => [id, { kum: r.byUnit[id] ?? 0, avg: (r.byUnit[id] ?? 0) / dayOfMonth }]),
-      ) as Record<number, MonthlyCell>,
-      total: { kum: r.total, avg: r.total / dayOfMonth },
+      key: r.key, label: r.label,
+      byUnit: Object.fromEntries(unitIds.map((id) => [id, monthlyGl(r.byUnit[id]!)])),
+      total: monthlyGl(r.total),
     })),
-    totalsByUnit: Object.fromEntries(
-      unitIds.map((id) => [id, { kum: glMonthlyFlat.totalsByUnit[id] ?? 0, avg: (glMonthlyFlat.totalsByUnit[id] ?? 0) / dayOfMonth }]),
-    ) as Record<number, MonthlyCell>,
-    grand: { kum: glMonthlyFlat.grandTotal, avg: glMonthlyFlat.grandTotal / dayOfMonth },
+    totalsByUnit: Object.fromEntries(unitIds.map((id) => [id, monthlyGl(glMonthlyFlat.totalsByUnit[id]!)])),
+    grand: monthlyGl(glMonthlyFlat.grandTotal),
   };
 
   // ── Share (pengganti pie) ─────────────────────────────────────────────────
@@ -601,7 +639,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   // ── Catatan kaki ──────────────────────────────────────────────────────────
   const notes: string[] = [];
   if (hasOther) {
-    const codes = [...new Set(dailySales.filter((r) => rowKeyOf(r.nama, r.ckdbbm) === OTHER_KEY).map((r) => r.ckdbbm))];
+    const codes = [...new Set(dailySales.filter((r) => rowKeyOf(r.nama, r.ckdbbm) === OTHER_KEY).map((r) => normalizeProductIdentity(r.ckdbbm) ?? "tanpa kode produk"))];
     notes.push(
       `Baris "Lain-lain" memuat kode produk yang tak dikenali klasifikasi SolaMax (${codes.join(", ")}). Nilainya TETAP ikut TOTAL.`,
     );
@@ -616,9 +654,10 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   }
   if (glProvisional) {
     notes.push(
-      "Gain/Losses tanggal ini masih SEMENTARA: opname penutup hari itu belum lengkap (penutup harian baru terekam pagi berikutnya). Angka akan berubah — jangan diambil sebagai kesimpulan.",
+      "Gain/Losses tanggal ini masih SEMENTARA: opname penutup/awal belum final atau belum valid. Angka akan berubah — jangan diambil sebagai kesimpulan.",
     );
   }
+  if (glMonthlyProvisional) notes.push('Gain/Losses bulan berjalan SEMENTARA: ada hari yang belum final atau belum terhitung dalam jendela MTD.');
   // ── Guard cakupan G/L ─────────────────────────────────────────────────────
   const glCoverage = statuses.map((s) => ({
     unitId: s.unitId,
@@ -626,20 +665,19 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     salesDays: salesDaysByUnit.get(s.unitId)?.size ?? 0,
     glDays: glDaysByUnit.get(s.unitId)?.size ?? 0,
   }));
-  const glShort = glCoverage.filter((c) => c.glDays < c.salesDays);
-  const glIncomplete = glShort.length > 0;
+  // Counts are diagnostic only. Exact unit/date/product coverage above has
+  // already propagated every missing contribution to the dependent total.
+  const glIncomplete = glMonthly.grand.kum === null;
   if (glIncomplete) {
     notes.push(
-      `Gain/Losses TIDAK LENGKAP: ${glShort
-        .map((c) => `${statuses.find((s) => s.unitId === c.unitId)?.name ?? c.code} ${c.glDays}/${c.salesDays} hari`)
-        .join(" · ")}. Sel tanpa baris G/L tampil 0 dan 0 tak bisa dibedakan dari "tak ada selisih" — jangan baca angka G/L di halaman ini sampai cakupannya penuh.`,
+      'Gain/Losses TIDAK LENGKAP: ada produk/hari tanpa G/L terhitung atau stok penutup tidak valid. Sel tersebut dan total yang bergantung padanya tampil “—”, bukan 0. Periksa laporan operasional unit dan data opname/penjualan/penerimaan di EasyMax.',
     );
   }
 
-  const suspects = statuses.filter((s) => input.glSuspect?.has(s.unitId));
+  const suspects = statuses.filter((s) => suspectIds.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
-      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — angkanya bergeser besar di hari itu dan berbalik keesokan harinya. Angka tidak dikoreksi; perlu perbaikan entri di EasyMax.`,
+      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Angka tidak dikoreksi; perlu perbaikan entri di EasyMax.`,
     );
   }
 
@@ -671,6 +709,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     record,
     glSuspectUnits: suspects.map((s) => ({ unitId: s.unitId, code: s.code, name: s.name })),
     glProvisional,
+    glMonthlyProvisional,
     glIncomplete,
     glCoverage,
     notes,

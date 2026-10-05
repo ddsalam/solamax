@@ -115,7 +115,8 @@ describe("REGRESI: mesin mereproduksi 10 tanggal emas", () => {
       it("total harian cocok dengan segel", () => {
         const tol = d.rows.length * SEN;
         for (const k of ["revenue", "cogs", "teraValue", "inventoryValue", "soValue", "lossesGainValue"] as const) {
-          expect(Math.abs(totals[k] - d.totals[k]), `${d.date} · ${k}`).toBeLessThanOrEqual(tol);
+          expect(totals[k], `${d.date} · ${k}`).not.toBeNull();
+          expect(Math.abs(totals[k]! - d.totals[k]), `${d.date} · ${k}`).toBeLessThanOrEqual(tol);
         }
       });
 
@@ -289,5 +290,62 @@ describe("§10.23 · rambatan null sampai gerbang tutup hari", () => {
     });
     // Gerbang tutup hari TIDAK bisa lulus — konsekuensi yang disengaja.
     expect(bs.langkahHarian).toBeNull();
+  });
+});
+
+// Returned RESUME rows rejected by source-integrity guards are different from
+// dormant products absent from the source, which remain covered by gold fixtures.
+describe("G/L source integrity propagates through financial totals", () => {
+  const input: DayProductInput = {
+    productKey: "P", volume: 100, sellPrice: 10_000, tera: 0,
+    stock: 1_000, lossesGain: 5, buyPrice: 9_000, sisaSo: 0,
+  };
+
+  it("one rejected source G/L blocks total and dependent profit, leaving GP unchanged", async () => {
+    const { panelIncome, panelBalance } = await import("./keuangan-laporan-model");
+    const { totals } = computeDay([input, { ...input, productKey: "Q", lossesGain: null, sourceGlIncomplete: true }]);
+    expect(totals.lossesGainValue).toBeNull();
+    expect(totals.inventoryValue).toBe(18_000_000);
+    expect(totals.grossProfit).toBe(200_000);
+    expect(totals.incomplete).toEqual(["Q"]);
+    const panel = panelIncome({ totals, beban: [], pendapatanLain: 0, incomeAdjustment: null });
+    for (const label of ["Gain / losses", "Operating profit", "Net profit"]) {
+      expect(panel.baris.find(r => r.label === label)).toMatchObject({
+        nilai: null, sebab: "data_stok_gl_tak_lengkap",
+      });
+    }
+    expect(panel.marginBersih).toBeNull();
+    const balance = panelBalance({
+      sebabKas: null, cashOnHand: 0, inventoryValue: totals.inventoryValue, soValue: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      netIncome: panel.baris.find(r => r.label === "Net profit")!.nilai,
+      incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null, saldoTitipanBright: 0,
+    });
+    expect(balance.langkahHarian).toBeNull();
+  });
+
+  it("one rejected source stock blocks inventory/assets instead of counting a subtotal", async () => {
+    const { panelBalance } = await import("./keuangan-laporan-model");
+    const { totals } = computeDay([input, { ...input, productKey: "Q", stock: null, sourceStockIncomplete: true }]);
+    expect(totals.inventoryValue).toBeNull();
+    expect(totals.lossesGainValue).toBe(90_000);
+    expect(totals.grossProfit).toBe(200_000);
+    const balance = panelBalance({
+      sebabKas: null, cashOnHand: 0, inventoryValue: totals.inventoryValue, soValue: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      netIncome: 100, incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null, saldoTitipanBright: 0,
+    });
+    expect(balance.baris.find(r => r.label === "Nilai stock")).toMatchObject({ nilai: null });
+    expect(balance.baris.find(r => r.label === "Asset − liabilities")).toMatchObject({ nilai: null });
+    expect(balance.langkahHarian).toBeNull();
+  });
+
+  it("a dormant unpriced product without a source row does not null valid totals", () => {
+    const dormant = { ...input, productKey: "DORM", volume: 0, sellPrice: 0, buyPrice: null,
+      stock: null, lossesGain: null, sisaSo: 0 };
+    const { totals } = computeDay([input, dormant]);
+    expect(totals.lossesGainValue).toBe(45_000);
+    expect(totals.inventoryValue).toBe(9_000_000);
+    expect(totals.grossProfit).toBe(100_000);
   });
 });

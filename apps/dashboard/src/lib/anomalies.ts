@@ -304,7 +304,7 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
         tier: lossTier(Math.abs(r.gl), ratio),
         sev: Math.abs(r.gl),
         dateIso: r.d,
-        title: `Losses ${signedFmt(r.gl)} L${pctTxt}`,
+        title: `G/L ${signedFmt(r.gl)} L${pctTxt}`,
         unit: unitTag,
         desc: `Gain/Losses operasional ${r.nama ?? r.ckdbbm} (metode RESUME: fisik − [fisik D−1 + ΣDO − jual bersih]) — di atas ambang 100 L / 0,5%. Kekurangan kiriman DO tergabung di sini${doCtx}.`,
         time: r.d,

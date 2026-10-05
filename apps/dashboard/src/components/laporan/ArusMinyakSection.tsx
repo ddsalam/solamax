@@ -109,9 +109,9 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
             </>
           )}
           {arus.excludedTanks > 0 &&
-            ` ${arus.excludedTanks} baris tangki di luar batas wajar dikecualikan dari Stock Fisik (lihat anomali kualitas data).`}
+            ` ${arus.excludedTanks} baris dengan stok atau identitas produk/tangki tidak valid membuat Stock Fisik tidak lengkap (lihat anomali kualitas data).`}
           {arus.incomplete &&
-            " Sebagian produk belum punya opname penutup/awal — kolomnya bertanda “—” dan tidak ikut TOTAL."}
+            " Nilai dengan stok/identitas sumber tidak lengkap bertanda “—”; total G/L yang bergantung padanya belum tersedia. Stock Teori dan total stok juga tidak tersedia bila inputnya tidak lengkap. Bila mutasi sumber tidak lengkap, angka penerimaan/penjualan/tera yang tersedia hanya bersifat diagnostik."}
         </div>
       </div>
     </div>

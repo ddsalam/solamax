@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_EXPORT_CONFIG } from "./config";
 import { buildLaporanDocDefinition, type LaporanDocMeta } from "./laporan-doc";
 import { buildLaporanModel, type LaporanRaw } from "@/lib/laporan-model";
+import type { DailyGlRow } from "@/lib/queries";
 
 const raw = {
   prodDay: [{ ckdbbm: "P1", nama: "Pertalite", vol: 1000, omzet: 10_000_000, harga: 10000 }],
@@ -62,6 +63,28 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
 }
 
 describe("buildLaporanDocDefinition", () => {
+  it.each([
+    { gl: 4000, provisional: false, signed: "+4.000" },
+    { gl: -4000, provisional: false, signed: "−4.000" },
+    { gl: 4000, provisional: true, signed: "+4.000" },
+    { gl: -4000, provisional: true, signed: "−4.000" },
+    { gl: 0, provisional: false, signed: "0" },
+  ])("PDF alarm and explanation keep G/L $gl sign-neutral (provisional=$provisional)", ({ gl, provisional, signed }) => {
+    const products = [{ ...raw.prodDay[0]!, vol: 8200 }];
+    const signedModel = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [{ d: "2026-06-11", ckdbbm: "P1", nama: "Pertalite", fisik_prev: 20000, fisik: 11800 + gl,
+        pen_do: 0, sales_gross: 8200, tera: 0, gl, provisional, movement_invalid: false, excluded_tanks: 0 }],
+    }, { unitCode: "6478111", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const json = JSON.stringify(buildLaporanDocDefinition({ model: signedModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
+    for (const check of signedModel.checks.filter((c) => /^G\/L (harian|bulanan)/.test(c.label))) {
+      expect(json).toContain(check.label);
+      expect(json).toContain(check.note);
+    }
+    expect(json).toContain(`G/L harian (RESUME) ${signed} L${provisional ? " berjalan — belum final" : " = "}`);
+    expect(json).not.toMatch(/Losses (harian|bulanan)/);
+  });
+
   it("A4 potret + footer 'Halaman X dari Y' natif", () => {
     const doc = buildLaporanDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");
@@ -206,6 +229,7 @@ describe("PDF: Arus Minyak Harian", () => {
     pen_do,
     sales_gross,
     tera: 0,
+    movement_invalid: false,
     gl: fisik - (fisik_prev + pen_do - sales_gross),
     excluded_tanks: 0,
     provisional: false,
@@ -214,6 +238,13 @@ describe("PDF: Arus Minyak Harian", () => {
   const modelArus = buildLaporanModel(
     {
       ...raw,
+      // This fixture covers these two products; the generic P1 sale above is
+      // unrelated and would correctly make a complete G/L total unavailable.
+      prodDay: [
+        { ckdbbm: "BB-02", nama: "PERTAMAX", vol: 2859.71, omzet: 0, harga: null },
+        { ckdbbm: "BB-08", nama: "PERTAMINA DEX", vol: 3003.39, omzet: 0, harga: null },
+      ],
+      prodMonth: [],
       glRows: [
         glRow("BB-02", "PERTAMAX", 18685.01, 8000, 2859.71, 23635.74),
         glRow("BB-08", "PERTAMINA DEX", 2766.43, 8000, 3003.39, 13310),
@@ -274,5 +305,152 @@ describe("PDF: Arus Minyak Harian", () => {
       config: { ...DEFAULT_EXPORT_CONFIG, detail: false },
     });
     expect(JSON.stringify(ringkas.content)).not.toContain("Arus Minyak Harian");
+  });
+});
+
+describe("PDF operational G/L source-integrity nulls", () => {
+  it("renders one canonical sales row with G/L and tera once and the full monthly denominator", () => {
+    // Same synthetic aggregate as the actual-SQL identity regression: raw
+    // P / NBSP+P / BOM+P sales contribute 100 + 200 + 300 L before grouping.
+    const products = [{ ckdbbm: "P", nama: "SOLAR", vol: 600, omzet: 6000000, harga: 10000 }];
+    const m = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [{ d: "2026-10-02", ckdbbm: "P", nama: "SOLAR", fisik_prev: 10000,
+        fisik: 9600, pen_do: 0, sales_gross: 600, tera: 50, gl: 150, movement_invalid: false,
+        excluded_tanks: 0, provisional: false }],
+    }, { unitCode: "SYNTHETIC", date: "2026-10-02", today: "2026-10-04",
+      mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
+    expect(m.sales.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600,
+      omzet: 6000000, gl: 150, tera: 50 }]);
+    expect(m.sales.glTotal).toBe(150);
+    expect(m.sales.totTera).toBe(50);
+    expect(m.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(m.glMonthly.glPctMonth).toBe(0.25);
+    expect(m.harga.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", harga: 10000 }]);
+
+    const doc = buildLaporanDocDefinition({ model: m, config: DEFAULT_EXPORT_CONFIG,
+      meta: { ...meta, unitDotted: "SYNTHETIC", unitName: "SYNTHETIC PRODUCT SUMMARY",
+        dateLong: "2 Oktober 2026", monthName: "Oktober", dayOfMonth: 2, daysInMonth: 31 } });
+    const tables = collectTables(doc.content);
+    const daily = tables.find((t) => JSON.stringify(t.table.body[0]).includes("Sales (L)"))!;
+    const monthly = tables.find((t) => JSON.stringify(t.table.body[0]).includes("G/L bulan (L)"))!;
+    const cells = (row: unknown[]) => row.map((cell) => (cell as { text: string }).text);
+    expect(daily.table.body).toHaveLength(3); // header, one product, total
+    expect(cells(daily.table.body[1]!)).toEqual(["SOLAR", "600", "+150", "50", "Rp 6.000.000"]);
+    expect(cells(daily.table.body[2]!)).toEqual(["TOTAL", "600", "+150", "50", "Rp 6.000.000"]);
+    expect(monthly.table.body).toHaveLength(2);
+    expect(cells(monthly.table.body[1]!)).toEqual(["SOLAR", "+150 L", "25,00%"]);
+  });
+
+  it("unknown rows and totals render as unavailable in daily, cumulative, and Arus sections", () => {
+    const m = buildLaporanModel({ ...raw, glRows: [{
+      d: "2026-06-11", ckdbbm: "P1", nama: "Pertalite", fisik: 900, fisik_prev: 1_000,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: null, movement_invalid: true, excluded_tanks: 0, provisional: true,
+    }] }, { unitCode: "6478111", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, meta, config: DEFAULT_EXPORT_CONFIG });
+    const tables = collectTables(doc.content);
+    const daily = tables.find(t => JSON.stringify(t.table.body[0]).includes("Sales (L)"))!;
+    const monthly = tables.find(t => JSON.stringify(t.table.body[0]).includes("G/L bulan (L)"))!;
+    const text = (r: unknown[], i: number) => (r[i] as { text: string }).text;
+    expect(text(daily.table.body[1]!, 2)).toBe("—");
+    expect(text(daily.table.body.at(-1)!, 2)).toBe("—");
+    expect(text(monthly.table.body[1]!, 1)).toBe("—");
+    expect(text(monthly.table.body[1]!, 2)).toBe("—");
+    expect(JSON.stringify(doc.content)).toContain("G/L belum bisa dihitung lengkap");
+  });
+});
+
+/** Synthetic identities only; NULL source labels must never reach pdfText. */
+describe("PDF operational G/L unidentified products", () => {
+  it.each([null, "", "   "])("renders unknown identity %j safely without merging its zero into a known product", (code) => {
+    const prod = (ckdbbm: string | null, nama: string | null) => ({
+      ckdbbm: ckdbbm as string, nama: nama as string, vol: 10, omzet: 100000, harga: 10000,
+    });
+    const gl = (ckdbbm: string | null, nama: string | null) => ({
+      d: "2026-06-11", ckdbbm, nama, fisik: 90, fisik_prev: 100, pen_do: 0,
+      sales_gross: 10, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+    });
+    const products = [prod("KNOWN", "SOLAR"), prod(code, null)];
+    const m = buildLaporanModel({ ...raw, prodDay: products, prodMonth: products,
+      glRows: [gl("KNOWN", "SOLAR"), gl(code, null)],
+      zeroClosing: [{ unit_id: 1, d: "2026-06-11", ckdtangki: "SYNTHETIC-TANK", ckdbbm: code,
+        nama: null, bk: 2000, prev: 2000, next: 2000, recv_next: 0 }],
+    }, { unitCode: "SYNTHETIC", date: "2026-06-11", today: "2026-07-02",
+      mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, meta, config: DEFAULT_EXPORT_CONFIG });
+    const tables = collectTables(doc.content);
+    const text = (r: unknown[], i: number) => (r[i] as { text: string }).text;
+    for (const [header, glColumn] of [["Sales (L)", 2], ["G/L bulan (L)", 1], ["Stock Awal (L)", 6]] as const) {
+      const t = tables.find((t) => JSON.stringify(t.table.body[0]).includes(header))!;
+      expect(t, `missing ${header} table`).toBeDefined();
+      const unknown = t.table.body.find((r) => text(r, 0) === "Produk tidak diketahui")!;
+      const known = t.table.body.find((r) => text(r, 0) === "SOLAR")!;
+      expect(text(unknown, glColumn)).toBe("—");
+      expect(text(known, glColumn)).toMatch(/^0(?:,00)?(?: L)?$/);
+      if (header !== "G/L bulan (L)") expect(text(t.table.body.at(-1)!, glColumn)).toBe("—");
+    }
+    // The monthly aggregate is in its heading rather than a total table row.
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(JSON.stringify(doc.content)).toContain("G/L belum bisa dihitung lengkap");
+    expect(JSON.stringify(doc.content)).not.toMatch(/NaN|undefined/);
+  });
+});
+
+describe("PDF Arus stock and movement completeness", () => {
+  const source = (overrides: Partial<DailyGlRow> = {}): DailyGlRow => ({
+    d: "2026-06-11", ckdbbm: "P", nama: "SINTETIS P", fisik_prev: 100,
+    pen_do: 50, sales_gross: 30, tera: 0, fisik: 120, gl: 0,
+    movement_invalid: false, excluded_tanks: 0, provisional: false, ...overrides,
+  });
+  const healthy = source({ ckdbbm: "Q", nama: "SINTETIS Q", fisik_prev: 200, fisik: 220 });
+  const render = (glRows: DailyGlRow[]) => {
+    const products = glRows.map((r) => ({ ckdbbm: r.ckdbbm, nama: r.nama,
+      vol: r.sales_gross, omzet: r.sales_gross * 10_000, harga: 10_000 }));
+    const m = buildLaporanModel({ ...raw, glRows, prodDay: products, prodMonth: products },
+      { unitCode: "SYNTHETIC", date: "2026-06-11", today: "2026-07-02",
+        mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, config: DEFAULT_EXPORT_CONFIG,
+      meta: { ...meta, unitDotted: "SYNTHETIC", unitName: "SYNTHETIC ARUS" } });
+    const table = collectTables(doc.content).find((t) => JSON.stringify(t.table.body[0]).includes("Stock Awal (L)"));
+    const cells = (label: string) => table?.table.body
+      .find((row) => (row[0] as { text?: string }).text === label)
+      ?.map((cell) => (cell as { text: string }).text);
+    return { m, doc, table, cells };
+  };
+
+  it("prints invalid-movement diagnostics but leaves theory and its TOTAL unavailable", () => {
+    const { doc, cells } = render([source({ fisik_prev: 2_000, fisik: 0, gl: null,
+      movement_invalid: true, provisional: true }), healthy]);
+    expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "2.000,00", "50,00", "30,00", "—", "0,00", "—", "—"]);
+    expect(cells("TOTAL")).toEqual(["TOTAL", "2.200,00", "100,00", "60,00", "—", "220,00", "—", "—"]);
+    expect(JSON.stringify(doc.content)).toContain("belum final");
+    expect(JSON.stringify(doc.content)).not.toContain("[opname 0]");
+    expect(JSON.stringify(doc.content)).not.toMatch(/NaN|undefined/);
+  });
+
+  it("prints valid theory when only current physical is missing, with unavailable physical TOTAL", () => {
+    const { cells } = render([source({ fisik: null, gl: null, excluded_tanks: 1, provisional: true }), healthy]);
+    expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "100,00", "50,00", "30,00", "120,00", "—", "—", "—"]);
+    expect(cells("TOTAL")).toEqual(["TOTAL", "300,00", "100,00", "60,00", "340,00", "—", "—", "—"]);
+  });
+
+  it("does not print a known-product subtotal as complete beginning or theoretical stock", () => {
+    const { cells } = render([source({ fisik_prev: null, gl: null, provisional: true }), healthy]);
+    expect(cells("TOTAL")).toEqual(["TOTAL", "—", "100,00", "60,00", "—", "340,00", "—", "—"]);
+  });
+
+  it("preserves measured zero while unknown-product stock makes dependent totals unavailable", () => {
+    const zero = source({ fisik_prev: 0, fisik: 0, pen_do: 0, sales_gross: 0 });
+    const { cells } = render([zero, source({ ckdbbm: null, nama: null,
+      fisik_prev: null, fisik: null, gl: null, movement_invalid: true, provisional: true })]);
+    expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00"]);
+    expect(cells("TOTAL")).toEqual(["TOTAL", "—", "50,00", "30,00", "—", "—", "—", "—"]);
+  });
+
+  it("omits the empty Arus table instead of exporting an invented zero stock TOTAL", () => {
+    const { m, doc, table } = render([]);
+    expect(m.arusMinyak.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null, pct: null });
+    expect(table).toBeUndefined();
+    expect(JSON.stringify(doc.content)).not.toContain("Arus Minyak Harian");
   });
 });

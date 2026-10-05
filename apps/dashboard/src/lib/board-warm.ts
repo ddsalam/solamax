@@ -2,7 +2,9 @@
  * Pre-warm cache G/L board (keputusan owner 2026-07-16 №2) — bagian MURNI,
  * teruji unit. Route /api/warm-board memakai ini lalu memanggil
  * getDailyGlWindow() LANGSUNG (bukan fetch halaman /board yang terkunci OAuth)
- * → mengisi unstable_cache dengan KEY IDENTIK dengan yang diminta halaman.
+ * → mengisi LRU G/L proses dengan KEY IDENTIK dengan yang diminta halaman.
+ * Cache dibatasi jumlah/byte dan hanya menghangatkan instance yang menerima
+ * permintaan ini; revisi sumber tetap diperiksa sebelum setiap reuse.
  *
  * Cakupan: jendela SEMUA preset (today/7d/30d/bulan) × (range, MoM-prev,
  * YoY-prev, YTD-cur, YTD-prev), didedup. Key cache per (unit,from,to) →

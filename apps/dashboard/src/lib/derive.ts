@@ -169,14 +169,31 @@ export function aggregateClosingGl(rows: ClosingRow[]): ClosingAgg {
 // Gain/Loss harian metode RESUME (Σ harian) — agregasi untuk tabel & kumulatif
 // ---------------------------------------------------------------------------
 
+/** An absent product key cannot be joined as if it identified a real product.
+ * Accept unknown defensively: source rows may predate a stricter typed contract. */
+export function normalizeProductIdentity(value: unknown): string | null {
+  return typeof value === "string" ? value.trim() || null : null;
+}
+
 /** Baris harian per produk dari getDailyGlByProduct (struktural; hindari siklus import). */
 export interface DailyGlInput {
-  ckdbbm: string;
+  ckdbbm: string | null;
   nama: string | null;
+  /** Optional source balance for the existing zero-closing quality warning. */
+  fisik?: number | null;
+  fisik_prev?: number | null;
+  pen_do?: number;
+  sales_gross?: number;
   gl: number | null; // bertanda; null = tak terhitung (anchor D−1 hilang)
   tera: number;
   excluded_tanks: number;
   provisional: boolean;
+}
+
+/** Same class-1 warning as the operational report. Never imputes a stock value. */
+export function isDailyGlSuspect(r: DailyGlInput): boolean {
+  return r.fisik === 0 && r.fisik_prev != null && r.pen_do !== undefined &&
+    r.sales_gross !== undefined && r.fisik_prev + r.pen_do - (r.sales_gross - r.tera) > 1000;
 }
 
 export interface DailyGlAgg {
@@ -186,8 +203,12 @@ export interface DailyGlAgg {
   totalTera: number;
   /** Ada baris provisional / gl tak terhitung → angka belum final. */
   provisional: boolean;
-  /** Σ tangki garbage yang dikecualikan dari Stock Fisik. */
+  /** Σ penutup dengan stok atau identitas produk/tangki tidak valid. */
   excludedTanks: number;
+  /** A required row/stock is uncomputable; partial sums are not full totals. */
+  incomplete: boolean;
+  /** Zero closing stock despite >1,000 L theoretical stock; source review needed. */
+  suspect: boolean;
   /** Ada minimal satu baris G/L terhitung (gl != null). */
   hasGl: boolean;
 }
@@ -205,11 +226,23 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
   let provisional = false;
   let excludedTanks = 0;
   let hasGl = false;
+  let incomplete = false;
+  let suspect = false;
 
   for (const r of rows) {
     if (r.provisional) provisional = true;
     excludedTanks += r.excluded_tanks;
-    const cur = byProduct.get(r.ckdbbm) ?? { nama: r.nama, signed: 0, tera: 0 };
+    const product = normalizeProductIdentity(r.ckdbbm);
+    if (product === null) {
+      // Do not manufacture a zero-valued product from an unidentified source.
+      incomplete = true;
+      provisional = true;
+      totalTera += r.tera;
+      continue;
+    }
+    if (r.gl === null || r.excluded_tanks > 0) { incomplete = true; provisional = true; }
+    if (isDailyGlSuspect(r)) { suspect = true; provisional = true; }
+    const cur = byProduct.get(product) ?? { nama: r.nama, signed: 0, tera: 0 };
     cur.tera += r.tera;
     totalTera += r.tera;
     if (r.gl === null) {
@@ -219,9 +252,9 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
       cur.signed += r.gl;
       totalSigned += r.gl;
     }
-    byProduct.set(r.ckdbbm, cur);
+    byProduct.set(product, cur);
   }
-  return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl };
+  return { byProduct, totalSigned, totalTera, provisional, excludedTanks, hasGl, incomplete, suspect };
 }
 
 /**
