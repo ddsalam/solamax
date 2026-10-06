@@ -27,6 +27,7 @@ import {
   type VerdictChip,
 } from "@/lib/derive";
 import { dateShort, fmtKL, idn, pct, rpShort, signed, timeWib } from "@/lib/format";
+import { collectGlMissing, collectGlUnverified, GL_UNVERIFIED, GL_UNVERIFIED_TITLE, sortGlUnverified, type GlUnverifiedItem } from "@/lib/gl-verification";
 import { addDays, rangeDays, type BoardPeriod, type DateRange } from "@/lib/periods";
 import type { AnomalyItem } from "@/lib/anomalies";
 import type { RankRow } from "@/components/board/RankingTable";
@@ -133,8 +134,8 @@ function glAgg(
 }
 
 const GL_INCOMPLETE = "G/L belum lengkap";
-/** Artefak input (penutup 0, heuristik): tidak dijumlah, bukan kerugian. */
-const GL_SUSPECT = "data sumber perlu verifikasi";
+/** Pola penutup 0 (heuristik): tidak dijumlah; belum tentu rugi/untung. */
+const GL_SUSPECT = GL_UNVERIFIED_TITLE;
 
 function glNeedsReview(g: DailyGlAgg): boolean {
   return g.provisional || g.incomplete || g.suspect;
@@ -269,6 +270,8 @@ export interface BoardCore {
   unitsCount: number;
   /** rentang menyentuh hari ini & ada unit shift < 3 (badge sel terpengaruh) */
   incompleteToday: boolean;
+  /** G/L "Belum terverifikasi" jendela aktif per unit/tanggal/produk (terbaru dulu). */
+  glUnverified: GlUnverifiedItem[];
 }
 
 export interface BoardCoreInput {
@@ -514,7 +517,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
       glProvisional: x.glProvisional,
-      glStatus: x.gl.suspect ? "PERLU PERIKSA" : !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
+      glStatus: x.gl.suspect ? GL_UNVERIFIED : !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
         : x.glProvisional ? "SEMENTARA" : null,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       rd: x.oil.actual !== null ? pct(x.oil.actual) : "—",
@@ -546,6 +549,15 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
 
   const feedRange = anomalyFeedRange(today);
 
+  // Baris yang SAMA yang ditolak glAgg/usableGl di jendela aktif, ditambah produk
+  // terjual tanpa baris G/L di tanggalnya (R1; glAgg sudah menandainya missing).
+  const glUnverified = sortGlUnverified(units.flatMap((u) => {
+    const unit = { code: u.code, name: u.name };
+    const rows = (glRange.get(u.unit_id) ?? []).filter((r) => r.d >= range.from && r.d <= range.to);
+    const sales = dailySales.filter((r) => r.unit_id === u.unit_id && r.d >= range.from && r.d <= range.to);
+    return [...collectGlUnverified(rows, unit), ...collectGlMissing(rows, sales, unit)];
+  }));
+
   return {
     verdict: { headline: verdictHeadline(chips), chips },
     kpi,
@@ -560,6 +572,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     lastShift,
     unitsCount: units.length,
     incompleteToday,
+    glUnverified,
   };
 }
 

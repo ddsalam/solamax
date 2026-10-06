@@ -12,6 +12,7 @@ import { buildLaporanModel, type LaporanRaw } from "./laporan-model";
 import { buildArusMinyak } from "./arus-minyak";
 import { aggregateDailyGl } from "./derive";
 import { buildHarianModel } from "./harian-model";
+import { glUnverifiedItem } from "./gl-verification";
 import { addDays } from "./periods";
 
 const U = 1 as ScopedUnitId;
@@ -424,11 +425,20 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     };
     const model = buildLaporanModel(raw, { unitCode: "6478111", date: D2, today: D3,
       mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
-    expect(model.sales.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600, omzet: 6_000_000, gl: 150, tera: 50 }]);
+    // Business fields: exact independent oracle (unchanged). Guidance flags and the
+    // optional SQL source metadata are verified SEPARATELY below.
+    expect(model.sales.rows.map(({ glUnverified: _f, ...biz }) => biz))
+      .toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600, omzet: 6_000_000, gl: 150, tera: 50 }]);
     expect(new Set(model.sales.rows.map(r => r.ckdbbm)).size).toBe(model.sales.rows.length);
     expect(model.sales.rows.reduce((sum, r) => sum + r.gl!, 0)).toBe(model.sales.glTotal);
     expect(model.sales.rows.reduce((sum, r) => sum + r.tera, 0)).toBe(model.sales.totTera);
-    expect(model.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(model.glMonthly.rows.map(({ unverified: _f, ...biz }) => biz))
+      .toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(model.sales.rows.map(r => r.glUnverified)).toEqual([false]);
+    expect(model.glMonthly.rows.map(r => r.unverified)).toEqual([false]);
+    expect(model.glUnverified).toEqual([]);
+    expect(glRows.map(r => [r.tanks, r.tanks_invalid, r.tanks_prev, r.prev_date, r.prior_teori]))
+      .toEqual([[["A"], null, ["A"], D1, null]]);
     expect(model.glMonthly.glPctMonth).toBe(0.25);
     expect(model.glMonthly.rows[0]!.selisih! / model.glMonthly.rows[0]!.vol).toBe(0.25);
     expect(model.arusMinyak.total.losses).toBe(150);
@@ -1154,6 +1164,32 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     await db.exec("TRUNCATE opname");
     await stock(D1, "A", 10_000); await stock(D2, "A", 0); await receipt(D2, null);
     expect(await day()).toMatchObject({ movement_invalid: true, gl: null, gl_raw: null, gl_suspect: null });
+  });
+
+  it("returns source tank/anchor detail for Belum terverifikasi guidance without changing any G/L value", async () => {
+    await stock(D1, "A", 6_000); await stock(D1, "B", 4_000);
+    await stock(D2, "A", 0, 6_000); await stock(D2, "B", 0, 4_000);
+    await stock(D3, "A", 3_000); await stock(D3, "B", 2_000);
+    const [d2] = await getDailyGlByProduct(U, D2, D2);
+    expect(d2).toMatchObject({ fisik: 0, fisik_prev: 10_000, gl: null, gl_raw: -10_000, gl_suspect: "penutup_nol",
+      tanks: ["A", "B"], tanks_prev: ["A", "B"], tanks_invalid: null, prev_date: D1, prior_teori: null });
+    const [d3] = await getDailyGlByProduct(U, D3, D3);
+    expect(d3).toMatchObject({ fisik_prev: 0, fisik: 5_000, gl: null, gl_raw: 5_000, gl_suspect: "jangkar_nol",
+      tanks: ["A", "B"], prev_date: D2, prior_teori: 10_000 });
+    // Range and single-day rows carry identical metadata (no window dependence).
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([d3]);
+    expect(glUnverifiedItem(d3!)).toMatchObject({ reason: "jangkar_nol", tangki: ["A", "B"], prevDate: D2,
+      priorTeori: 10_000, audit: { awal: 0, teori: 0, fisik: 5_000, mentah: 5_000 } });
+
+    await db.exec("TRUNCATE opname");
+    await stock(D1, "A", 10_000); await stock(D2, "A", 9_000); await stock(D2, "B", 1_000);
+    const changed = await day();
+    expect(changed).toMatchObject({ gl: null, gl_raw: null, gl_suspect: null, tanks: ["A", "B"], tanks_prev: ["A"] });
+    expect(glUnverifiedItem(changed)).toMatchObject({ reason: "tangki_berubah", audit: null });
+    await db.query("UPDATE opname SET nstockop=NULL WHERE dtaglopn=$1 AND ckdtangki='B'", [D2]);
+    const guarded = await day();
+    expect(guarded).toMatchObject({ fisik: null, excluded_tanks: 1, tanks_invalid: ["B"] });
+    expect(glUnverifiedItem(guarded)).toMatchObject({ reason: "tangki_tak_valid", tangki: ["B"] });
   });
 
   it("SQL artefact feeds Laporan, Arus and Harian as unavailable while keeping raw audit values", async () => {

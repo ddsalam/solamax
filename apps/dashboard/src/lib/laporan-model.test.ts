@@ -506,6 +506,35 @@ describe("operational G/L null propagation", () => {
     expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("na");
   });
 
+  // R1 guidance: the KNOWN missing row carries the explicit label and details from
+  // sales context only — no opname row, tank, stock or raw number is invented.
+  it.each([
+    { name: "past date", over: {}, shift: { shifts: 3, last_dtgljam: null } },
+    { name: "today, business day still running", over: { today: ctx.date }, shift: { shifts: 2, last_dtgljam: null } },
+  ])("R1 ($name): Q sold on D without a G/L row is “Belum terverifikasi”; P's measured 0 stays known", ({ over, shift }) => {
+    const m = buildLaporanModel({ ...raw, prodMonth: raw.prodDay, shift,
+      glRows: [gl("P1", 0, "2026-06-10"), gl("P1", 0), gl("P2", 3, "2026-06-10")] }, { ...ctx, ...over });
+    expect(m.sales.rows.map((r) => [r.ckdbbm, r.gl, r.glUnverified])).toEqual([["P1", 0, false], ["P2", null, true]]);
+    expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    expect(m.glMonthly.rows.map((r) => [r.ckdbbm, r.selisih, r.unverified])).toEqual([["P1", 0, false], ["P2", null, true]]);
+    expect(m.glUnverified).toEqual([{ unit: null, d: ctx.date, ckdbbm: "P2", produk: "Pertamax", reason: "penutup_tak_ada",
+      tangki: null, prevDate: null, priorTeori: null, audit: null, terjual: 500 }]);
+    // The generic status coexists and points to the details; no G/L alarm fires.
+    const g = m.checks.filter((c) => c.label.startsWith("G/L"));
+    expect(g.map((c) => [c.label, c.state])).toEqual([
+      ["G/L harian — menunggu opname", "na"], ["G/L bulanan — data belum lengkap", "na"]]);
+    for (const c of g) expect(c.note).toContain("1 produk “Belum terverifikasi”, rincian di panel “G/L Belum terverifikasi”");
+  });
+
+  it("R1 boundary: a zero-volume product without a G/L row is not relabelled", () => {
+    const m = buildLaporanModel({ ...raw, prodDay: [raw.prodDay[0]!, { ...raw.prodDay[1]!, vol: 0, omzet: 0 }],
+      glRows: [gl("P1", 0)] }, ctx);
+    expect(m.sales.glTotal).toBe(0);
+    expect(m.glUnverified).toEqual([]);
+    expect(m.sales.rows.every((r) => !r.glUnverified)).toBe(true);
+  });
+
   it("complete month with a measured 0 on D stays final (no false gating)", () => {
     const m = buildLaporanModel({ ...raw, prodMonth: raw.prodDay,
       glRows: [gl("P1", 0, "2026-06-10"), gl("P1", 0), gl("P2", 3, "2026-06-10"), gl("P2", 0)] }, ctx);
@@ -529,10 +558,15 @@ describe("operational G/L null propagation", () => {
       expect(m.sales.glTotal).toBeNull(); expect(m.sales.glPctDay).toBeNull();
       expect(m.sales.glProvisional).toBe(true);
       const daily = m.checks.find(r => r.label.startsWith("G/L harian"))!;
-      expect(daily).toMatchObject({ state: "na", label: "G/L harian — perlu periksa data sumber" });
-      expect(daily.note).toContain("bukan kerugian");
+      // No alarm fires and no categorical "not a loss" claim is made.
+      expect(daily).toMatchObject({ state: "na", label: "G/L harian — Belum terverifikasi" });
+      expect(daily.note).not.toMatch(/bukan kerugian|artefak/i);
       const monthly = m.checks.find(r => r.label.startsWith("G/L bulanan"))!;
-      expect(monthly).toMatchObject({ state: "na", label: "G/L bulanan — perlu periksa data sumber" });
+      expect(monthly).toMatchObject({ state: "na", label: "G/L bulanan — Belum terverifikasi" });
+      expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.glUnverified).toBe(true);
+      expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.glUnverified).toBe(false);
+      expect(m.glUnverified).toEqual([expect.objectContaining({ d: ctx.date, ckdbbm: "P1", reason,
+        audit: expect.objectContaining({ awal: 5_000, fisik: 0, teori: 4_990, mentah: -4_990 }) })]);
       expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.selisih).toBeNull();
       expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
       const arus = m.arusMinyak.rows.find(r => r.ckdbbm === "P1")!;
@@ -552,7 +586,9 @@ describe("operational G/L null propagation", () => {
     expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBe(3);
     expect(m.glMonthly.glMonthTotal).toBeNull();
     expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))).toMatchObject({
-      state: "na", label: "G/L bulanan — perlu periksa data sumber" });
+      state: "na", label: "G/L bulanan — Belum terverifikasi" });
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.unverified).toBe(true);
+    expect(m.glUnverified.map(i => i.d)).toEqual(["2026-06-10"]);
   });
 
   it("a legacy numeric zero-closing row without SQL verdict is withheld the same way", () => {

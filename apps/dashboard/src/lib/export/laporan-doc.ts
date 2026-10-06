@@ -11,10 +11,12 @@ import type { ExportConfig } from "./config";
 import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, keepHeadingsWithTable, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
-import { arusArtefakNote, arusTag } from "@/lib/arus-minyak";
+import { arusQualityNote, arusTag } from "@/lib/arus-minyak";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { fmtL, idn, isNegative, num2, parenNeg, pct, rp, rpParen, signed } from "@/lib/format";
+import { GL_UNVERIFIED, GL_UNVERIFIED_TITLE } from "@/lib/gl-verification";
 import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
+import { glUnverifiedSection } from "./gl-unverified-doc";
 
 export interface LaporanDocMeta {
   unitDotted: string;
@@ -93,6 +95,7 @@ function salesSection(m: LaporanModel): Content[] {
     body.push([
       { text: pdfText(r.nama), color: PDF.textPrimary },
       { text: idn(r.vol), alignment: "right" },
+      // Unverified stays a plain "—"; the section right below names each one.
       { text: r.gl !== null ? signed(r.gl) : "—", alignment: "right", color: glColor(r.gl), bold: r.gl !== null && r.gl < 0 },
       { text: r.tera > 0 ? idn(r.tera) : "—", alignment: "right", color: PDF.textMuted },
       { text: rp(r.omzet), alignment: "right", noWrap: true },
@@ -108,7 +111,9 @@ function salesSection(m: LaporanModel): Content[] {
   ]);
 
   const lossNote =
-    s.glTotal === null || s.glPctDay === null
+    s.rows.some((r) => r.glUnverified)
+      ? `Gain/Losses ditahan: ada nilai “${GL_UNVERIFIED}” — sebab, hitungan mentah, dan cara verifikasi di seksi “${GL_UNVERIFIED_TITLE}”.`
+      : s.glTotal === null || s.glPctDay === null
       ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid."
       : s.glProvisional
         ? `G/L harian (RESUME) ${signed(s.glTotal)} L berjalan — belum final, menunggu opname penutup${s.glGarbageCount > 0 ? `; ${s.glGarbageCount} baris dikecualikan` : ""}.`
@@ -385,10 +390,10 @@ function arusSection(m: LaporanModel): Content[] {
   const out: Content[] = [
     sectionHeading("Arus Minyak Harian", a.provisional ? "belum final" : undefined),
   ];
-  const artefakNote = arusArtefakNote(a, num2);
-  if (artefakNote)
+  const qualityNote = arusQualityNote(a, num2);
+  if (qualityNote)
     out.push({
-      text: pdfText(artefakNote),
+      text: pdfText(qualityNote),
       style: "footNote",
       alignment: "left",
       color: PDF.warning,
@@ -503,6 +508,8 @@ export function buildLaporanDocDefinition(args: {
     { text: scopeBits.join("   ·   "), style: "scopeLine", marginBottom: 2 },
     ...alarmSection(model),
     ...salesSection(model),
+    // Versi ringkas maupun lengkap: rincian tak boleh hanya ada di Arus (lengkap saja).
+    ...glUnverifiedSection(model.glUnverified, { hint: `bulan berjalan 1–${meta.dayOfMonth} ${meta.monthName}` }),
     ...recapSection(model),
   ];
 

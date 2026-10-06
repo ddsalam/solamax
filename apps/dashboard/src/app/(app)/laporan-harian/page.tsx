@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AgoLive } from "@/components/AgoLive";
+import { GlUnverifiedPanel } from "@/components/GlUnverifiedPanel";
 import { HarianFilters } from "@/components/harian/HarianFilters";
 import { GlBars, ShareBars, TrendSection } from "@/components/harian/HarianCharts";
 import {
@@ -251,6 +252,11 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
 
           <RatioBbkTable units={model.units} model={model} />
           <RecordCard units={model.units} model={model} />
+          <GlUnverifiedPanel
+            items={model.glUnverified}
+            withUnit
+            hint={`1 – ${date.slice(8)} ${dateLong(date).split(" ").slice(2).join(" ")} · ditahan dari total, persen & alarm`}
+          />
           <HarianNotes notes={model.notes} />
         </>
       )}

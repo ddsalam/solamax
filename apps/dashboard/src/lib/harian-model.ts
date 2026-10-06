@@ -20,6 +20,7 @@
 import { canonicalProductKey, FLEET_RECORD_FLOOR } from "./config";
 import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, usableGl, type ProductVol } from "./derive";
 import { worstSyncAt, worstSyncUnitId } from "./freshness";
+import { collectGlMissing, collectGlUnverified, GL_UNVERIFIED, GL_UNVERIFIED_TITLE, sortGlUnverified, type GlUnverifiedItem } from "./gl-verification";
 import { addDays, monthInfo, monthStart } from "./periods";
 import type { DailyGlRow, DailySalesRow, SyncRow, UnitCoverageRow } from "./queries";
 import type { ScopedUnit } from "./scope-rule";
@@ -178,6 +179,8 @@ export interface HarianModel {
   record: RecordFact;
   /** Sel G/L yang tersentuh penutup opname bernilai NOL (lihat glZeroNotes). */
   glSuspectUnits: UnitRef[];
+  /** G/L "Belum terverifikasi" MTD per unit/tanggal/produk (terbaru dulu). */
+  glUnverified: GlUnverifiedItem[];
   /**
    * true = ADA baris G/L hari-D yang masih PROVISIONAL (penutup D+1 belum
    * terekam / anchor D−1 hilang / ada celah opname). Terjadi setiap kali D =
@@ -666,19 +669,29 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     salesDays: salesDaysByUnit.get(s.unitId)?.size ?? 0,
     glDays: glDaysByUnit.get(s.unitId)?.size ?? 0,
   }));
+  // Baris yang SAMA yang ditolak usableGl di atas — rincian per unit/tanggal/produk —
+  // ditambah produk terjual tanpa baris G/L di tanggalnya (R1; selnya sudah "—").
+  const glUnverified = sortGlUnverified(statuses.flatMap((s) => {
+    const unit = { code: s.code, name: s.name };
+    const rows = (gl.get(s.unitId) ?? []).filter((r) => r.d >= mFrom && r.d <= date);
+    const sales = dailySales.filter((r) => r.unit_id === s.unitId && r.d >= mFrom && r.d <= date);
+    return [...collectGlUnverified(rows, unit), ...collectGlMissing(rows, sales, unit)];
+  }));
+
   // Counts are diagnostic only. Exact unit/date/product coverage above has
   // already propagated every missing contribution to the dependent total.
   const glIncomplete = glMonthly.grand.kum === null;
   if (glIncomplete) {
     notes.push(
-      'Gain/Losses TIDAK LENGKAP: ada produk/hari tanpa G/L terhitung atau stok penutup tidak valid. Sel tersebut dan total yang bergantung padanya tampil “—”, bukan 0. Periksa laporan operasional unit dan data opname/penjualan/penerimaan di EasyMax.',
+      `Gain/Losses TIDAK LENGKAP: ada produk/hari tanpa G/L terhitung atau stok penutup tidak valid. Sel tersebut dan total yang bergantung padanya tampil “—”, bukan 0. Periksa laporan operasional unit dan data opname/penjualan/penerimaan di EasyMax.${
+        glUnverified.length > 0 ? ` Rincian per unit/tanggal/produk yang diketahui ada di panel “${GL_UNVERIFIED_TITLE}”.` : ""}`,
     );
   }
 
   const suspects = statuses.filter((s) => suspectIds.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
-      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Sel yang terdeteksi sebagai artefak input tampil “—” dan tidak dijumlahkan (bukan kerugian); angka mentahnya ada di Arus Minyak laporan operasional unit. Perlu perbaikan entri di EasyMax.`,
+      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — data sumbernya perlu diperiksa. Nilai G/L yang ditahan karenanya berstatus “${GL_UNVERIFIED}”: tampil “—”, tidak dijumlahkan, dan bukan angka gain/loss final. Rincian, hitungan mentah (audit), dan cara verifikasinya ada di panel “${GL_UNVERIFIED_TITLE}”.`,
     );
   }
 
@@ -709,6 +722,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     bbk: { monthly: bbkMonthly, monthlyTotal: bbkOf(toProductVol(mtdAll)) },
     record,
     glSuspectUnits: suspects.map((s) => ({ unitId: s.unitId, code: s.code, name: s.name })),
+    glUnverified,
     glProvisional,
     glMonthlyProvisional,
     glIncomplete,

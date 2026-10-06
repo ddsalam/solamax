@@ -25,7 +25,7 @@ export interface RankRow {
   gl: string;
   glAbnormal: boolean;
   glProvisional: boolean;
-  glStatus?: "SEMENTARA" | "TIDAK LENGKAP" | "PERLU PERIKSA" | null;
+  glStatus?: "SEMENTARA" | "TIDAK LENGKAP" | "Belum terverifikasi" | null;
   rg: string;
   /** NPSO gasoil (kolom baru redesign direksi). */
   rd: string;

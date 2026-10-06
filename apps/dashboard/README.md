@@ -55,20 +55,55 @@ Perbaikan 2026-06-13 (akar masalah losses "ngawur" 1.744%):
   - volume DO `> 100.000 L` (mis. entri 452.729 L).
   Ambang ini **fisik** (tangki SPBU 20–40 KL), bukan ambang losses operasional —
   losses besar-tapi-mungkin (mis. −6.109 L) TIDAK disembunyikan, justru menyala merah.
-- **Artefak input** (`gl_suspect`, ambang **heuristik** 1.000 L, [queries.ts](src/lib/queries.ts)
-  `getDailyGlByProduct`): penutup produk (semua tangki) 0 padahal stok teori > 1.000 L,
-  dan Stock Awal yang berasal dari penutup yang sendirinya tertahan sebagai penutup-0
-  tersebut (`jangkar_nol`; penerimaan hari ini dan stok buku tidak merehabilitasinya,
-  sedangkan tangki yang kosong sah tetap jangkar terukur). Satu tangki 0 di produk
-  multi-tangki dan stok teori negatif **tidak** ditahan (kebijakan menunggu owner) —
-  saldonya tetap terukur, bukan dinyatakan sah. Riwayat tangki hanya dipakai bila tiap penutup pendahulunya berproduk sama dan
-  lolos guard buku; stok buku tidak berperan lain. Peringatan penutup-nol lama
-  (`getZeroClosingEvents`) tetap hanya peringatan, bukan dasar vonis. Rumus tak berubah;
-  angkanya tetap di `gl_raw` untuk audit, tetapi `gl` = null → sel, total
-  harian/MTD/unit/grup, persen, alarm dan PDF tampil "—" + "perlu periksa", bukan
-  kerugian. Ambang 1.000 L dipinjam dari detektor penutup-nol, **bukan toleransi
-  stok yang terukur**: nilai di bawah ambang (stok 0 kecil) hanya tidak ditahan —
-  tidak dinyatakan wajar. Cache historis tidak menyimpan jendela berisi artefak.
+- **"Belum terverifikasi"** (kebijakan owner disetujui 2026-10-06 17:13 UTC; model &
+  panduan tunggal di [gl-verification.ts](src/lib/gl-verification.ts)). G/L yang tidak bisa
+  dipastikan dari sumber diberi label persis **Belum terverifikasi** — belum tentu rugi
+  atau untung, dan belum tentu salah input.
+  - **Pola penahanan** (`gl_suspect`, ambang **heuristik** 1.000 L,
+    [queries.ts](src/lib/queries.ts) `getDailyGlByProduct`): penutup produk (semua
+    tangki) 0 padahal stok teori > 1.000 L (`penutup_nol`), dan Stock Awal yang berasal
+    dari penutup yang sendirinya tertahan sebagai penutup-0 tersebut (`jangkar_nol`;
+    penerimaan hari ini dan stok buku tidak merehabilitasinya, sedangkan tangki yang
+    kosong sah tetap jangkar terukur). Riwayat tangki hanya dipakai bila tiap penutup
+    pendahulunya berproduk sama dan lolos guard buku; stok buku tidak berperan lain.
+    Peringatan penutup-nol lama (`getZeroClosingEvents`) tetap hanya peringatan, bukan
+    dasar vonis. Rumus tak berubah.
+  - **Ditahan:** `gl` = null → sel tampil "—"; total harian/MTD/unit/grup, persen, dan
+    alarm G/L yang bergantung padanya ditahan (alarm tidak menyala dari nilai itu).
+  - **Audit mentah saja:** angka rumus tetap di `gl_raw` dan hanya tampil sebagai
+    "Hitungan mentah — Belum terverifikasi" (Fisik − Teori; Teori = Awal + DO nominal −
+    (jual kotor − tera resmi)), hanya untuk `penutup_nol`/`jangkar_nol` — tidak pernah
+    sebagai Losses, sel, atau total.
+  - **Panduan bersama** (panel "G/L Belum terverifikasi", sama di layar dan PDF laporan
+    operasional, laporan harian direksi, dan board): per baris unit · tanggal · produk ·
+    tangki (dari metadata penutup baris itu; bila tak ada → "tidak tersedia di sumber") ·
+    sebab spesifik · hitungan mentah (bila komponennya ada) · cara memverifikasi
+    (catatan fisik dipping/ATG, dokumen DO, totalisator/shift; ralat di EasyMax, tunggu
+    sinkron, periksa ulang). Panel memuat 12 baris terbaru dan menyebut jumlah sisanya;
+    semuanya tetap ditahan.
+  - **Yang dinamai** hanya baris yang sudah ditolak `usableGl` (produk tak dikenal,
+    tangki tak valid, mutasi tak valid, `penutup_nol`, `jangkar_nol`, Stock Awal tak
+    ada, susunan tangki berubah, tak terhitung), ditambah R1: produk dikenal yang
+    terjual (vol ≠ 0) pada tanggal tanpa baris penutup sama sekali (`penutup_tak_ada`;
+    hanya fakta penjualan — tanpa tangki, stok, atau hitungan mentah). Baris yang lolos
+    **tidak** disebut "terverifikasi": terhitung ≠ tersertifikasi.
+  - **Batas klaim:** volume REAL penerimaan saja bukan verifikasi; ralat sumber atau
+    hilangnya penanda saja tidak membuat angka tersertifikasi; stok fisik 0 yang memang
+    benar (tangki kosong) bukan otomatis salah input.
+  - **Tidak ditahan** (tak ada vonis atau ambang baru): satu tangki 0 di produk
+    multi-tangki, penutup sebagian kosong yang sah, dan stok teori negatif — saldonya
+    tetap terukur dan ikut dihitung, bukan dinyatakan sah. Ambang 1.000 L dipinjam dari
+    detektor penutup-nol, **bukan toleransi stok yang terukur**: nilai di bawah ambang
+    (stok 0 kecil) hanya tidak ditahan — tidak dinyatakan wajar.
+  - **Cakupan terbatas** (panel tidak mengklaim lengkap): penjualan bervolume 0 dan
+    penjualan tanpa kode produk tidak dicantumkan sebagai R1. Laporan operasional hanya
+    menanggali R1 untuk hari D; produk yang terjual di hari lebih awal bulan itu tanpa
+    baris G/L membuat MTD "data belum lengkap" tanpa tanggal (penjualan bulan
+    teragregasi). Direksi/board hanya melihat jendela penjualan yang dimuat (MTD /
+    rentang aktif); tanggal baris hilang di luar itu (cakupan R2) tidak tersedia.
+    Ketidaklengkapan struktural tetap berstatus umum "G/L belum lengkap / TIDAK LENGKAP".
+  - Cache historis tidak menyimpan jendela berisi baris yang ditahan, jadi rincian
+    sumbernya selalu segar.
 - **Provisional** (edge-case hari berjalan): bila opname penutup D+1 belum terekam,
   G/L dihitung dari sesi terakhir tersedia + ditandai "provisional · opname penutup
   belum ada" — tidak menyesatkan diam-diam.
