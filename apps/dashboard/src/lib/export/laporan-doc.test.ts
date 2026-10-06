@@ -64,6 +64,27 @@ function collectTables(node: unknown, out: ContentTable[] = []): ContentTable[] 
 }
 
 describe("buildLaporanDocDefinition", () => {
+  it("every section heading travels with its table (incl. Alokasi) instead of ending a page alone", () => {
+    const withAlokasi = buildLaporanModel({ ...raw, doSuspects: [{ cnoso: "4060546316", ckdbbm: "BB-04",
+      nama: "PERTAMAX TURBO", ditebus: 16000, diterima: 0, outstanding: 16000, sejak: "2026-03-15",
+      umur_hari: 119, aktif: true }] } as unknown as LaporanRaw, { unitCode: "6478111", date: "2026-06-11",
+      today: "2026-07-02", mi: { month: 6, year: 2026, dayOfMonth: 11, daysInMonth: 30 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: withAlokasi, meta, config: DEFAULT_EXPORT_CONFIG });
+    expect(doc.pageBreakBefore).toBeTypeOf("function");
+    const content = doc.content as unknown as Record<string, unknown>[];
+    const headings = content.filter((c) => c.headlineLevel === 1);
+    expect(JSON.stringify(headings)).toContain("Alokasi Penerimaan Tidak Sesuai");
+    for (const h of headings) {
+      const i = content.indexOf(h);
+      const body = content.findIndex((c) => c.id === `${h.id}-body`);
+      expect(body, JSON.stringify(h)).toBeGreaterThan(i);
+      expect("table" in content[body]!).toBe(true);
+      expect(JSON.stringify(content[body]), JSON.stringify(h)).toContain(`"id":"${h.id}-row"`);
+      // Nothing but notes between a heading and its table; never another heading.
+      expect(content.slice(i + 1, body).every((c) => c.headlineLevel === undefined && !("table" in c))).toBe(true);
+    }
+  });
+
   it.each([
     { gl: 4000, provisional: false, signed: "+4.000" },
     { gl: -4000, provisional: false, signed: "−4.000" },
@@ -471,5 +492,16 @@ describe("PDF Arus stock and movement completeness", () => {
     expect(m.arusMinyak.total).toMatchObject({ awal: null, teori: null, fisik: null, losses: null, pct: null });
     expect(table).toBeUndefined();
     expect(JSON.stringify(doc.content)).not.toContain("Arus Minyak Harian");
+  });
+});
+
+describe("PDF historis: sumber target tetap disebut", () => {
+  it("laporan Feb 2024 dinilai terhadap target workbook 2026 dan mengatakannya (label lama tak berubah)", () => {
+    const m = buildLaporanModel(raw, { unitCode: "6478111", date: "2024-02-10", today: "2026-10-06",
+      mi: { month: 2, year: 2024, dayOfMonth: 10, daysInMonth: 29 }, detail: true });
+    const doc = buildLaporanDocDefinition({ model: m, config: DEFAULT_EXPORT_CONFIG,
+      meta: { ...meta, dateLong: "Sabtu, 10 Februari 2024", monthName: "Februari", dayOfMonth: 10, daysInMonth: 29 } });
+    expect(m.target.rows[0]!.alok).not.toBeNull(); // target 2026 tetap dipakai (semantik dipertahankan)
+    expect(JSON.stringify(doc.content)).toContain("vs prorata 10/29 hari · workbook 2026");
   });
 });

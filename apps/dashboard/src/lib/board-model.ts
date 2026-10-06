@@ -239,6 +239,23 @@ export interface TrendModel {
   runningIdx: number | null;
 }
 
+/**
+ * Sumber target bauran — TARGET_BAURAN tak berdimensi tahun (config.ts, "workbook
+ * 2026"); periode historis pun dinilai terhadap angka ini, jadi labelnya wajib
+ * menyebut sumbernya. Frasa sama dengan laporan-doc ("workbook 2026").
+ */
+export const TARGET_SOURCE_LABEL = "workbook 2026";
+
+/**
+ * Jendela feed anomali board = `today − 6 … today` (WIB), batas yang sama dengan
+ * buildAnomalies (anomalies.ts) — TIDAK mengikuti filter periode. Diturunkan dari
+ * `today` request, BUKAN dari min/max tanggal item: feed jarang/kosong tetap
+ * mencakup tujuh hari penuh.
+ */
+export function anomalyFeedRange(today: string): DateRange {
+  return { from: addDays(today, -6), to: today };
+}
+
 export interface BoardCore {
   verdict: { headline: string; chips: VerdictChip[] };
   kpi: KpiCardCore[];
@@ -246,6 +263,8 @@ export interface BoardCore {
   ratios: { rg: RatioRow[]; rd: RatioRow[]; gasGroup: BauranStatus; oilGroup: BauranStatus };
   ranking: RankRow[];
   anomalies: AnomalyItem[];
+  /** rentang feed anomali yang SEBENARNYA + label konteksnya (layar & PDF) */
+  anomalyFeed: { range: DateRange; label: string };
   lastShift: string | undefined;
   unitsCount: number;
   /** rentang menyentuh hari ini & ada unit shift < 3 (badge sel terpengaruh) */
@@ -298,7 +317,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
 
   const bauranSub = (st: BauranStatus): { sub: string | null; subTone: KpiCardCore["subTone"] } =>
     st.target !== null
-      ? { sub: `target rata-rata periode ${pct(st.target)}`, subTone: st.below ? "warning" : "success" }
+      ? { sub: `target rata-rata periode ${pct(st.target)} · ${TARGET_SOURCE_LABEL}`, subTone: st.below ? "warning" : "success" }
       : { sub: null, subTone: "muted" };
 
   const kpi: KpiCardCore[] = [
@@ -525,6 +544,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     .sort()
     .pop();
 
+  const feedRange = anomalyFeedRange(today);
+
   return {
     verdict: { headline: verdictHeadline(chips), chips },
     kpi,
@@ -532,6 +553,10 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     ratios: { rg: mkRatio("gas"), rd: mkRatio("oil"), gasGroup, oilGroup },
     ranking,
     anomalies,
+    anomalyFeed: {
+      range: feedRange,
+      label: `Feed 7 hari terakhir · ${dateShort(feedRange.from)} – ${dateShort(feedRange.to)} · tidak mengikuti filter periode`,
+    },
     lastShift,
     unitsCount: units.length,
     incompleteToday,

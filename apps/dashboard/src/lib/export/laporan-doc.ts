@@ -9,7 +9,7 @@
 import type { Content, ContentTable, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { ExportConfig } from "./config";
 import { pdfText } from "./glyphs";
-import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from "./pdf-layout";
+import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, keepHeadingsWithTable, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import { arusArtefakNote, arusTag } from "@/lib/arus-minyak";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
@@ -39,6 +39,7 @@ function sectionHeading(title: string, meta?: string): Content {
     ],
     marginTop: 12,
     marginBottom: 3,
+    headlineLevel: 1, // tak boleh yatim — lihat keepHeadingsWithTable
   };
 }
 
@@ -526,7 +527,7 @@ export function buildLaporanDocDefinition(args: {
   });
 
   return {
-    content,
+    ...keepHeadingsWithTable(content),
     pageSize: "A4",
     pageOrientation: "portrait",
     pageMargins: [40, 40, 40, 44],
