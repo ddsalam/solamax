@@ -475,8 +475,12 @@ export function buildLaporanModel(
     [k, invalidDayProducts.has(k) ? null : v.signed] as const));
   const unidentifiedZeroDay = zeroClosing.some((z) => z.d === date && normalizeProductIdentity(z.ckdbbm) === null);
   const unidentifiedZeroMonth = zeroClosing.some((z) => z.d <= date && z.d.slice(0, 7) === date.slice(0, 7) && normalizeProductIdentity(z.ckdbbm) === null);
+  /** Terjual hari D tapi tanpa baris G/L hari D: MTD-nya tak mencakup D. */
+  const soldWithoutGlDay = (code: string) => !glByCode.has(code) && prodDay.some((p) => p.ckdbbm === code && p.vol !== 0);
   const missingDayProduct = unidentifiedZeroDay || prodDay.some((p) => p.ckdbbm === null || (p.vol !== 0 && !glByCode.has(p.ckdbbm)));
-  const missingMonthProduct = unidentifiedZeroMonth || prodMonth.some((p) => p.ckdbbm === null || (p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm)));
+  // Hari D tak lengkap ⇒ MTD 1–D tak lengkap, walau baris hari sebelumnya sehat.
+  const missingMonthProduct = missingDayProduct || unidentifiedZeroMonth ||
+    prodMonth.some((p) => p.ckdbbm === null || (p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm)));
   const teraByCode = new Map([...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const));
   const glTotal = dayAgg.hasGl && !dayAgg.incomplete && !missingDayProduct ? dayAgg.totalSigned : null;
   const totTera = dayAgg.totalTera;
@@ -716,7 +720,7 @@ export function buildLaporanModel(
     [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
       ckdbbm,
       nama: productLabel(ckdbbm, v.nama),
-      selisih: invalidMonthProducts.has(ckdbbm) ? null : v.signed,
+      selisih: invalidMonthProducts.has(ckdbbm) || soldWithoutGlDay(ckdbbm) ? null : v.signed,
       vol: prodMonth.find((p) => p.ckdbbm === ckdbbm)?.vol ?? 0,
     })),
   );
