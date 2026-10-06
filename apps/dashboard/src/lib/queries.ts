@@ -1,5 +1,5 @@
 import { qScoped } from "./db";
-import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L } from "./derive";
+import { GARBAGE_SELISIH_L, GARBAGE_STOCK_L, GL_ARTEFACT_MIN_L, type GlSuspect } from "./derive";
 import type { ScopedUnitId } from "./scope";
 import { getSaldoSnapshot, saldoFromSnapshotTotals } from "./saldo-snapshot";
 import type { SaldoPelanggan, SaldoTrio } from "./saldo-snapshot";
@@ -587,7 +587,12 @@ export interface DailyGlRow {
   sales_gross: number; // Σ nvolume jual KOTOR tersedia dlm jendela (prev, D]
   tera: number; // Σ tera (L) tersedia dlm jendela (prev, D]
   movement_invalid: boolean; // true = mutasi hanya subtotal diagnostik, bukan dasar Stock Teori
-  gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung
+  gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung ATAU artefak input
+  /** Rumus G/L sebelum vonis artefak — audit saja, jangan dijumlah. null = tak terhitung.
+   *  Selalu ada dari query; opsional hanya untuk baris struktural/legacy. */
+  gl_raw?: number | null;
+  /** Vonis artefak input (derive.ts GlSuspect); null = heuristik tak menyala (bukan sertifikat sah). Lihat getDailyGlByProduct. */
+  gl_suspect?: GlSuspect | null;
   excluded_tanks: number; // penutup dengan stok atau identitas produk/tangki tak valid
   provisional: boolean; // penutup/anchor belum final, tak lengkap, atau ada celah
 }
@@ -615,6 +620,38 @@ export interface DailyGlRow {
  * - Identitas produk/tangki kosong bukan cakupan yang sah: stok/G/L tak
  *   tersedia. Mutasi tanpa kode produk tidak dialokasikan ke produk mana pun;
  *   ia menahan saldo terdampak dan tetap muncul sebagai baris diagnostik null.
+ * - ARTEFAK INPUT (`gl_suspect`, ambang HEURISTIK GL_ARTEFACT_MIN_L = 1.000 L).
+ *   Rumusnya tidak berubah dan hasilnya tetap di `gl_raw` untuk audit, tetapi
+ *   `gl` = null dan baris provisional — angka itu bukan losses/gain nyata dan tak
+ *   boleh masuk total/persen mana pun (pemanggil memperlakukannya seperti tak
+ *   terhitung). NULL = heuristik tidak menyala, BUKAN sertifikat bahwa stoknya sah:
+ *     penutup_nol   Fisik 0 ∧ Teori > 1.000 (kelas 1 Arus Minyak, kini di sini),
+ *                   atau satu tangki yang penutup sebelumnya > 1.000 kini 0 ∧
+ *                   Teori − Fisik > 1.000. Tangki yang kemarin ≤ 1.000 atau
+ *                   kekurangan produk ≤ 1.000 tidak ditahan oleh aturan ini.
+ *     jangkar_nol   Stock Awal = penutup pendahulu yang SENDIRINYA penutup_nol
+ *                   (aturan di atas, dinilai dari Stock Fisik pendahulunya dan
+ *                   mutasi jendelanya sendiri) → stok awal itu bukan stok nyata.
+ *                   Penerimaan hari ini dan stok buku penutup-0 itu tidak
+ *                   merehabilitasinya. Tangki yang kosong sah (penutup 0 yang
+ *                   koheren dengan stok & mutasi sebelumnya) bukan penutup_nol,
+ *                   jadi pengisian/surplus DO berikutnya tetap terukur. Vonis
+ *                   teori_negatif pendahulu tidak membatalkan stok fisiknya.
+ *                   Detektor peringatan getZeroClosingEvents (lookahead
+ *                   penerimaan) BUKAN dasar vonis ini.
+ *     teori_negatif Teori < −1.000 (ambang heuristik, positif-palsunya BELUM
+ *                   diukur). Stok negatif tak mungkin sebagai stok nyata; sebabnya
+ *                   tidak disimpulkan. Teori negatif ≥ −1.000 tidak ditahan di
+ *                   sini — bukan berarti dinyatakan wajar.
+ *   Hanya dinilai bila G/L terhitung. Riwayat tangki = urutan penutup AKTUAL
+ *   tangki itu (tanpa partisi produk) di lookback yang sama; tiap penutup
+ *   pendahulu harus berproduk sama dan lolos guard buku, kalau tidak rantainya
+ *   putus (tak menyertifikasi apa pun). Stok buku hanya berperan di guard itu.
+ *   Pendahulu penutup-0 dan jangkarnya sendiri harus berada dalam lookback baris
+ *   yang dinilai, sehingga tiap baris tetap mandiri terhadap rentang
+ *   (cache/pecahan jendela tetap eksak); jendela mutasi hanya bertambah dengan
+ *   jendela milik pendahulu yang perlu dinilai itu. Penutup yang sah sesudahnya
+ *   memulihkan saldo berikutnya.
  * - Kembalikan baris harian utk SELURUH rentang; pemanggil agregasi harian (kolom
  *   tabel) atau Σ bulanan (G/L kumulatif). Murni SELECT, ter-scope `ScopedUnitId`.
  */
@@ -653,32 +690,66 @@ export async function getDailyGlByProduct(
                 OR abs(nstockop - nstockbk) > ${GARBAGE_SELISIH_L}) AS garbage
        FROM biz WHERE rn = 1
      ),
+     tank AS (
+       -- Comparable tank history = the tank's ACTUAL previous closing(s), in
+       -- order, each carrying this row's product and passing the book guard.
+       -- Not partitioned by product: an intervening remap or a guard-excluded/
+       -- unknown closing breaks the chain (NULL) instead of being skipped.
+       SELECT c.*,
+              CASE WHEN lag(c.ckdbbm) OVER w = c.ckdbbm AND NOT lag(c.garbage) OVER w
+                   THEN lag(c.op) OVER w END AS op_prev,
+              CASE WHEN lag(c.ckdbbm) OVER w = c.ckdbbm AND NOT lag(c.garbage) OVER w
+                    AND lag(c.ckdbbm, 2) OVER w = c.ckdbbm AND NOT lag(c.garbage, 2) OVER w
+                   THEN lag(c.op, 2) OVER w END AS op_prev2
+       FROM clo c
+       WINDOW w AS (PARTITION BY c.ckdtangki ORDER BY c.bizdate)
+     ),
      fisik AS (
        SELECT bizdate, ckdbbm,
               CASE WHEN bool_or(garbage) THEN NULL ELSE sum(op) END AS fisik,
               count(*) FILTER (WHERE garbage)::int AS excluded_tanks,
               array_agg(ckdtangki ORDER BY ckdtangki) AS tanks,
-              bool_or(prov_row) AS prov
-       FROM clo GROUP BY bizdate, ckdbbm
+              bool_or(prov_row) AS prov,
+              COALESCE(bool_or(NOT garbage AND op = 0 AND op_prev > ${GL_ARTEFACT_MIN_L}), false) AS zero_tank,
+              -- A tank whose comparable previous closing is a zero that itself
+              -- has comparable history: only then can that closing's own
+              -- penutup_nol verdict carry into this balance.
+              COALESCE(bool_or(NOT garbage AND op_prev = 0 AND op_prev2 IS NOT NULL), false) AS zero_link
+       FROM tank GROUP BY bizdate, ckdbbm
      ),
      seq AS (
        SELECT f.*,
-              lag(fisik)   OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS fisik_prev,
-              lag(tanks)   OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS tanks_prev,
-              lag(prov)    OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS prov_prev,
-              lag(bizdate) OVER (PARTITION BY ckdbbm ORDER BY bizdate) AS prev_date
+              lag(fisik)      OVER w AS fisik_prev,
+              lag(tanks)      OVER w AS tanks_prev,
+              lag(prov)       OVER w AS prov_prev,
+              lag(bizdate)    OVER w AS prev_date,
+              lag(zero_tank)  OVER w AS zero_tank_prev,
+              lag(fisik, 2)   OVER w AS fisik_prev2,
+              lag(tanks, 2)   OVER w AS tanks_prev2,
+              lag(bizdate, 2) OVER w AS prev2_date
        FROM fisik f
+       WINDOW w AS (PARTITION BY ckdbbm ORDER BY bizdate)
      ),
      requested AS MATERIALIZED (
        -- Keep the full closing lookback above for lag/tank integrity, but do
        -- movement work only for the rows the caller will actually receive.
-       SELECT * FROM seq WHERE bizdate BETWEEN $2::date AND $3::date
+       -- needs_prior: the previous closing may be a zero placeholder, so its
+       -- own verdict is needed. Its own anchor must lie inside THIS row's
+       -- lookback, so single, range and split windows classify identically.
+       SELECT s.*,
+              COALESCE(s.zero_link AND s.fisik IS NOT NULL AND s.tanks = s.tanks_prev
+                AND s.fisik_prev IS NOT NULL AND s.fisik_prev2 IS NOT NULL
+                AND s.tanks_prev = s.tanks_prev2
+                AND s.prev2_date >= s.bizdate - ${GL_LOOKBACK_DAYS}, false) AS needs_prior
+       FROM seq s WHERE s.bizdate BETWEEN $2::date AND $3::date
      ),
      movement_bounds AS (
        -- A gap can start before from; retain its entire (previous, D] window.
        -- from - 1 also retains unidentified movements when no closing exists.
+       -- A dependency adds only its previous closing's own window.
        SELECT LEAST($2::date - 1,
-                    min(COALESCE(prev_date, bizdate - 1))) AS after_date,
+                    min(COALESCE(prev_date, bizdate - 1)),
+                    min(prev2_date) FILTER (WHERE needs_prior)) AS after_date,
               $3::date AS dto
        FROM requested
      ),
@@ -727,53 +798,96 @@ export async function getDailyGlByProduct(
               COALESCE(j.v,0)::float8 AS sales_gross,
               COALESCE(t.v,0)::float8 AS tera,
               (COALESCE(d.invalid,false) OR COALESCE(j.invalid,false)
-                OR COALESCE(t.invalid,false)) AS movement_invalid
+                OR COALESCE(t.invalid,false)) AS movement_invalid,
+              COALESCE(d.prior_v,0)::float8 AS prior_pen_do,
+              COALESCE(j.prior_v,0)::float8 AS prior_sales_gross,
+              COALESCE(t.prior_v,0)::float8 AS prior_tera,
+              (COALESCE(d.prior_invalid,false) OR COALESCE(j.prior_invalid,false)
+                OR COALESCE(t.prior_invalid,false)) AS prior_movement_invalid
        FROM requested s
        -- Each domain's amount and quality are assessed together once per
        -- requested closing. Unknown amounts stay at their actual daily grain;
        -- unknown quality still invalidates every affected product gap window.
+       -- prior_*: the previous closing's own (previous, prev] window, read only
+       -- when needs_prior, exactly as that closing's own row would assess it.
        CROSS JOIN LATERAL (
-         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
-                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
-                bool_or(x.invalid) AS invalid
+         SELECT sum(v) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)
+                   AND (x.ckdbbm=s.ckdbbm OR (s.ckdbbm IS NULL AND x.d=s.bizdate))) AS v,
+                bool_or(x.invalid) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)) AS invalid,
+                sum(v) FILTER (WHERE x.d <= s.prev_date AND x.ckdbbm=s.ckdbbm) AS prior_v,
+                bool_or(x.invalid) FILTER (WHERE x.d <= s.prev_date) AS prior_invalid
          FROM deliv x
          WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
-           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+           AND x.d > CASE WHEN s.needs_prior THEN s.prev2_date
+                          ELSE COALESCE(s.prev_date, s.bizdate - 1) END
+           AND x.d <= s.bizdate
        ) d
        CROSS JOIN LATERAL (
-         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
-                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
-                bool_or(x.invalid) AS invalid
+         SELECT sum(v) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)
+                   AND (x.ckdbbm=s.ckdbbm OR (s.ckdbbm IS NULL AND x.d=s.bizdate))) AS v,
+                bool_or(x.invalid) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)) AS invalid,
+                sum(v) FILTER (WHERE x.d <= s.prev_date AND x.ckdbbm=s.ckdbbm) AS prior_v,
+                bool_or(x.invalid) FILTER (WHERE x.d <= s.prev_date) AS prior_invalid
          FROM sale x
          WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
-           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+           AND x.d > CASE WHEN s.needs_prior THEN s.prev2_date
+                          ELSE COALESCE(s.prev_date, s.bizdate - 1) END
+           AND x.d <= s.bizdate
        ) j
        CROSS JOIN LATERAL (
-         SELECT sum(v) FILTER (WHERE x.ckdbbm=s.ckdbbm
-                   OR (s.ckdbbm IS NULL AND x.d=s.bizdate)) AS v,
-                bool_or(x.invalid) AS invalid
+         SELECT sum(v) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)
+                   AND (x.ckdbbm=s.ckdbbm OR (s.ckdbbm IS NULL AND x.d=s.bizdate))) AS v,
+                bool_or(x.invalid) FILTER (WHERE x.d > COALESCE(s.prev_date, s.bizdate - 1)) AS invalid,
+                sum(v) FILTER (WHERE x.d <= s.prev_date AND x.ckdbbm=s.ckdbbm) AS prior_v,
+                bool_or(x.invalid) FILTER (WHERE x.d <= s.prev_date) AS prior_invalid
          FROM terad x
          WHERE (x.ckdbbm=s.ckdbbm OR x.ckdbbm IS NULL)
-           AND x.d > COALESCE(s.prev_date, s.bizdate - 1) AND x.d <= s.bizdate
+           AND x.d > CASE WHEN s.needs_prior THEN s.prev2_date
+                          ELSE COALESCE(s.prev_date, s.bizdate - 1) END
+           AND x.d <= s.bizdate
        ) t
+     ),
+     theory AS (
+       SELECT s.*,
+              CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL OR s.movement_invalid
+                         OR s.tanks IS DISTINCT FROM s.tanks_prev THEN NULL
+                   ELSE (s.fisik_prev + s.pen_do - (s.sales_gross - s.tera))::float8 END AS teori,
+              -- The previous closing's own Stock Teori (same formula, own anchor).
+              CASE WHEN s.needs_prior AND NOT s.prior_movement_invalid
+                   THEN (s.fisik_prev2 + s.prior_pen_do - (s.prior_sales_gross - s.prior_tera))::float8
+              END AS prior_teori
+       FROM assessed s
+     ),
+     judged AS (
+       -- Source-artefact verdict; judged only when the balance is computable.
+       -- jangkar_nol = the previous closing is itself penutup_nol by the very
+       -- rule above. Today's receipts or that zero's book never rehabilitate it.
+       SELECT s.*,
+              CASE WHEN s.teori IS NULL THEN NULL
+                   WHEN (s.fisik = 0 AND s.teori > ${GL_ARTEFACT_MIN_L})
+                     OR (s.zero_tank AND s.teori - s.fisik > ${GL_ARTEFACT_MIN_L}) THEN 'penutup_nol'
+                   WHEN (s.fisik_prev = 0 AND s.prior_teori > ${GL_ARTEFACT_MIN_L})
+                     OR (s.zero_tank_prev AND s.prior_teori - s.fisik_prev > ${GL_ARTEFACT_MIN_L}) THEN 'jangkar_nol'
+                   WHEN s.teori < -${GL_ARTEFACT_MIN_L} THEN 'teori_negatif'
+              END AS gl_suspect
+       FROM theory s
      )
      SELECT to_char(s.bizdate,'YYYY-MM-DD') AS d, s.ckdbbm,
             (SELECT max(p.vcnmbbm) FROM product p WHERE p.unit_id=$1 AND ${sourceIdentity("p.ckdbbm")}=s.ckdbbm) AS nama,
             s.fisik::float8 AS fisik,
             s.fisik_prev::float8 AS fisik_prev,
             s.pen_do, s.sales_gross, s.tera, s.movement_invalid,
-            CASE WHEN s.fisik IS NULL OR s.fisik_prev IS NULL OR s.movement_invalid
-                       OR s.tanks IS DISTINCT FROM s.tanks_prev THEN NULL
-                 ELSE (s.fisik - (s.fisik_prev
-                       + s.pen_do - (s.sales_gross - s.tera)
-                       ))::float8 END AS gl,
+            CASE WHEN s.gl_suspect IS NULL THEN (s.fisik - s.teori)::float8 END AS gl,
+            (s.fisik - s.teori)::float8 AS gl_raw,
+            s.gl_suspect,
             s.excluded_tanks,
             (s.prov OR COALESCE(s.prov_prev, false)
               OR s.fisik IS NULL OR s.fisik_prev IS NULL
               OR s.movement_invalid
               OR s.tanks IS DISTINCT FROM s.tanks_prev
-              OR s.prev_date <> s.bizdate - 1) AS provisional
-     FROM assessed s
+              OR s.prev_date <> s.bizdate - 1
+              OR s.gl_suspect IS NOT NULL) AS provisional
+     FROM judged s
      UNION ALL
      -- Actual unassigned source movements must remain visible even with no
      -- opname. They have NO physical stock or computable G/L. Existing unknown
@@ -784,7 +898,8 @@ export async function getDailyGlByProduct(
             COALESCE((SELECT v FROM sale x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS sales_gross,
             COALESCE((SELECT v FROM terad x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS tera,
             true AS movement_invalid,
-            NULL::float8 AS gl, 0::int AS excluded_tanks, true AS provisional
+            NULL::float8 AS gl, NULL::float8 AS gl_raw, NULL::text AS gl_suspect,
+            0::int AS excluded_tanks, true AS provisional
      FROM unassigned_dates u
      WHERE u.d BETWEEN $2::date AND $3::date
        AND NOT EXISTS (SELECT 1 FROM requested s WHERE s.bizdate=u.d AND s.ckdbbm IS NULL)

@@ -47,4 +47,15 @@ describe("synthetic anomaly G/L sign labels", () => {
       expect(await buildAnomalies(units)).toEqual([]);
     },
   );
+
+  it.each([
+    { ...row(-4000), excluded_tanks: 1 },
+    { ...row(-4000), movement_invalid: true },
+    { ...row(-4000), ckdbbm: " " },
+    { ...row(-4000), gl: Number.NEGATIVE_INFINITY },
+    { ...row(-4000), gl: null, gl_raw: -4000, gl_suspect: "penutup_nol" as const },
+  ])("never raises a loss item from an unusable structural row: %j", async (input) => {
+    vi.mocked(getDailyGlByProduct).mockResolvedValue([input]);
+    expect(await buildAnomalies(units)).toEqual([]);
+  });
 });

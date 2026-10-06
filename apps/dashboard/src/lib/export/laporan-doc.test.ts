@@ -2,6 +2,7 @@ import type { Content, ContentTable } from "pdfmake/interfaces";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EXPORT_CONFIG } from "./config";
 import { buildLaporanDocDefinition, type LaporanDocMeta } from "./laporan-doc";
+import { num2 } from "@/lib/format";
 import { buildLaporanModel, type LaporanRaw } from "@/lib/laporan-model";
 import type { DailyGlRow } from "@/lib/queries";
 
@@ -445,6 +446,24 @@ describe("PDF Arus stock and movement completeness", () => {
       fisik_prev: null, fisik: null, gl: null, movement_invalid: true, provisional: true })]);
     expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00", "0,00"]);
     expect(cells("TOTAL")).toEqual(["TOTAL", "—", "50,00", "30,00", "—", "—", "—", "—"]);
+  });
+
+  it.each([
+    { reason: "penutup_nol" as const, tag: "SINTETIS P  [opname 0]", awal: 6_000, fisik: 0, sales: 30, raw: -5_970 },
+    { reason: "teori_negatif" as const, tag: "SINTETIS P  [perlu periksa]", awal: 100, fisik: 900, sales: 3_030, raw: 3_830 },
+  ])("prints a $reason artefact with raw stock but never as Losses, % or TOTAL", ({ reason, tag, awal, fisik, sales, raw }) => {
+    const { doc, cells, m } = render([source({ fisik_prev: awal, fisik, pen_do: 0, sales_gross: sales,
+      gl: null, gl_raw: raw, gl_suspect: reason, provisional: true }), healthy]);
+    const row = cells(tag);
+    expect(row).toBeDefined();
+    expect(row!.slice(1)).toEqual([num2(awal), "0,00", num2(sales), num2(awal - sales), num2(fisik), "—", "—"]);
+    expect(cells("TOTAL")!.slice(-2)).toEqual(["—", "—"]);
+    expect(m.sales.glTotal).toBeNull();
+    const text = JSON.stringify(doc.content);
+    expect(text).toContain("BUKAN kerugian");
+    expect(text).toContain("mentah");
+    expect(text).not.toContain("sengaja tidak dikoreksi");
+    expect(text).not.toMatch(/NaN|undefined/);
   });
 
   it("omits the empty Arus table instead of exporting an invented zero stock TOTAL", () => {

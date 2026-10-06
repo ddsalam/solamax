@@ -109,6 +109,23 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
     expect(json).not.toContain("Losses Imam Bonjol");
   });
 
+  it("PDF never prints a source-artefact G/L as a percentage or loss", () => {
+    const input = { units: [IB], period: PERIOD, today: TODAY, dailySales: [{ ...SALES[0]!, vol: 8200 }] };
+    // Synthetic: raw −6.000 L would print as −73,17% if it were summed.
+    const glRange = new Map([[1, [{ ...glRow(-6000), gl: null, gl_suspect: "penutup_nol" as const, provisional: true }]]]);
+    const suspectModel: BoardModel = { mode: "kumulatif",
+      core: buildBoardCore({ ...input, mode: "kumulatif", glRange,
+        shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]), anomalies: [] }),
+      eval: buildBoardEval({ ...input,
+        gl: { range: glRange, ytdCur: glRange, momPrev: new Map(), yoyPrev: new Map(), ytdPrev: new Map() },
+        coverage: new Map([[1, TODAY]]), incompleteToday: false }),
+    };
+    const json = JSON.stringify(buildBoardDocDefinition({ model: suspectModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
+    expect(json).toContain("data sumber perlu verifikasi");
+    expect(json).toContain("PERLU PERIKSA");
+    expect(json).not.toMatch(/73,17|6\.000 L/);
+  });
+
   it("A4 LANSKAP + footer 'Halaman X dari Y' natif", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     expect(doc.pageSize).toBe("A4");

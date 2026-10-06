@@ -1,4 +1,5 @@
-import type { ArusMinyak, ArusRow, ZeroFlag } from "@/lib/arus-minyak";
+import { arusArtefakNote, arusTag, type ArusMinyak, type ArusRow, type ZeroFlag } from "@/lib/arus-minyak";
+import type { GlSuspect } from "@/lib/derive";
 import { num2 as liter2 } from "@/lib/format";
 
 /**
@@ -16,6 +17,7 @@ import { num2 as liter2 } from "@/lib/format";
  * sesi tidak boleh disentuh.
  */
 export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
+  const artefakNote = arusArtefakNote(arus, liter2);
   return (
     <div className="mt10">
       <div className="section-h">
@@ -40,16 +42,9 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
           <span className="right">Losses (L)</span>
           <span className="right">%</span>
         </div>
-        {arus.zeroClosingCount > 0 && (
+        {artefakNote && (
           <div className="empty-inline t-warning zc-note">
-            <strong>
-              ⚠ {arus.zeroClosingCount} produk: opname penutup tercatat 0 padahal tangki mestinya
-              berisi.
-            </strong>{" "}
-            Losses &amp; % pada baris bertanda &ldquo;opname 0&rdquo; adalah artefak input EasyMax,
-            BUKAN kerugian — angkanya sengaja tidak dikoreksi di sini agar tetap sama dengan panel
-            Gain/Losses. Yang harus dilakukan: buka opname hari itu di EasyMax, isi angka
-            sesungguhnya, lalu muat ulang halaman ini.
+            <strong>⚠ {artefakNote}</strong>
           </div>
         )}
         {arus.rows.length === 0 && (
@@ -61,9 +56,9 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
           <div key={p.ckdbbm} className="grid-row cols-arus" data-arus-row={p.nama}>
             <span className="text-caption w600">
               {p.nama}
-              {p.zeroClosing && (
-                <span className="anom-tag zc-tag" title={zcPesan(p.zeroClosing)}>
-                  opname 0
+              {arusTag(p) && (
+                <span className="anom-tag zc-tag" title={tagPesan(p)}>
+                  {arusTag(p)}
                 </span>
               )}
             </span>
@@ -119,16 +114,28 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
 }
 
 /**
- * Pesan penanda penutup-nol — menyebut APA YANG HARUS DILAKUKAN, bukan sekadar
- * bahwa ada sesuatu. Kelas 2 menyebut tangkinya karena di situlah ralatnya.
+ * Pesan penanda — menyebut APA YANG HARUS DILAKUKAN, bukan sekadar bahwa ada
+ * sesuatu. Kelas 2 menyebut tangkinya karena di situlah ralatnya.
  */
-function zcPesan(z: ZeroFlag): string {
-  const asal =
-    z.kelas === 2
-      ? `Tangki ${z.tangki.join(", ")}: penutup opname 0 sementara hari sebelum & sesudahnya berisi, tanpa DO yang menjelaskan.`
-      : "Penutup opname 0 padahal Stock Teori menunjukkan tangki mestinya berisi ribuan liter.";
-  return `${asal} Losses & % baris ini artefak input, BUKAN kerugian. Ralat opname hari ini di EasyMax, lalu muat ulang.`;
+function tagPesan(p: ArusRow): string {
+  const asal = p.zeroClosing ? zcAsal(p.zeroClosing) : ARTEFAK_ASAL[p.artefak!];
+  const status = p.artefak
+    ? ` Losses & % baris ini artefak input, BUKAN kerugian. Angka mentah Fisik − Teori ${liter2(p.glMentah)} L tidak dihitung.`
+    : " Losses yang tampil tetap hasil ukur kanonis; peringatan ini saja tidak membuktikan kerugian maupun saldo yang tidak sah.";
+  return `${asal}${status} Periksa entri di EasyMax; bila salah, ralat lalu muat ulang.`;
 }
+
+function zcAsal(z: ZeroFlag): string {
+  return z.kelas === 2
+    ? `Tangki ${z.tangki.join(", ")}: penutup opname 0 sementara hari sebelum & sesudahnya berisi, tanpa DO yang menjelaskan.`
+    : "Penutup opname 0 padahal Stock Teori menunjukkan tangki mestinya berisi ribuan liter.";
+}
+
+const ARTEFAK_ASAL: Record<GlSuspect, string> = {
+  penutup_nol: "Satu tangki tercatat 0 padahal kemarin berisi dan Stock Teori jauh lebih besar.",
+  jangkar_nol: "Stock Awal berasal dari penutup opname 0 sebelumnya yang sudah ditahan (bukan stok nyata); selisih hari ini tidak terukur.",
+  teori_negatif: "Stock Teori di bawah −1.000 L (ambang heuristik): tak mungkin sebagai stok nyata; sebabnya belum diketahui — periksa penerimaan, penjualan, tanggal, dan Stock Awal.",
+};
 
 /** Warna Losses/% — konvensi sama dgn kolom Gain/Losses panel Omset. */
 function lossTone(v: number | null): string {

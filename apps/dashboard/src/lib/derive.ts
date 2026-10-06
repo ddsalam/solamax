@@ -175,6 +175,33 @@ export function normalizeProductIdentity(value: unknown): string | null {
   return typeof value === "string" ? value.trim() || null : null;
 }
 
+/**
+ * Ambang HEURISTIK artefak input G/L (L), dipinjam dari `prev > 1000` detektor
+ * tertala `getZeroClosingEvents` dan kelas-1 Arus Minyak. Itu ambang deteksi
+ * penutup-nol, BUKAN toleransi stok yang terukur: tingkat positif-palsu
+ * teori_negatif pada ambang ini belum diukur, dan nilai di bawah ambang (stok 0
+ * atau stok teori negatif ≥ −1.000 L) TIDAK dinyatakan sah — hanya tidak ditahan
+ * oleh heuristik ini. Dipakai SQL getDailyGlByProduct dan fallback di bawah.
+ */
+export const GL_ARTEFACT_MIN_L = 1000;
+
+/**
+ * Vonis artefak input dari getDailyGlByProduct (null = heuristik tidak menyala,
+ * bukan sertifikat sah). Angka G/L mentahnya tetap di `gl_raw`, tetapi `gl` =
+ * null: bukan losses/gain nyata.
+ * - penutup_nol: penutup 0 padahal stok teori > 1.000 L (kelas 1), atau satu
+ *   tangki yang penutup sebelumnya (produk sama, lolos guard) > 1.000 L kini 0
+ *   dan produk kekurangan > 1.000 L;
+ * - jangkar_nol: Stock Awal = penutup pendahulu (riwayat tangki koheren: produk
+ *   sama, lolos guard) yang sendirinya penutup_nol → stok awal bukan stok nyata.
+ *   Penerimaan hari ini maupun stok buku tidak merehabilitasinya; tangki yang
+ *   kosong sah bukan penutup_nol, jadi pengisian berikutnya tetap terukur;
+ * - teori_negatif: stok teori < −1.000 L (ambang heuristik). Stok negatif tak
+ *   mungkin sebagai stok nyata; sebabnya (mutasi hilang/salah tanggal, Stock
+ *   Awal salah) tidak disimpulkan.
+ */
+export type GlSuspect = "penutup_nol" | "jangkar_nol" | "teori_negatif";
+
 /** Baris harian per produk dari getDailyGlByProduct (struktural; hindari siklus import). */
 export interface DailyGlInput {
   ckdbbm: string | null;
@@ -185,15 +212,42 @@ export interface DailyGlInput {
   pen_do?: number;
   sales_gross?: number;
   gl: number | null; // bertanda; null = tak terhitung (anchor D−1 hilang)
+  /** SQL verdict; absent only on structural/legacy rows (fallback rule below). */
+  gl_suspect?: GlSuspect | null;
+  /** true = mutasi ditolak query; absent only on structural/legacy rows. */
+  movement_invalid?: boolean;
   tera: number;
   excluded_tanks: number;
   provisional: boolean;
 }
 
-/** Same class-1 warning as the operational report. Never imputes a stock value. */
+/**
+ * Artefak input: jangan pernah dijumlah sebagai G/L. Vonis SQL berwenang bila
+ * ada; baris tanpa vonis memakai aturan kelas-1 lama, dan seperti SQL hanya
+ * menilai saldo yang terhitung (gl ≠ null). Tak pernah mengimputasi stok.
+ */
+export function glSuspectReason(r: DailyGlInput): GlSuspect | null {
+  if (r.gl_suspect !== undefined) return r.gl_suspect;
+  return r.gl !== null && r.fisik === 0 && r.fisik_prev != null && r.pen_do !== undefined &&
+    r.sales_gross !== undefined && r.fisik_prev + r.pen_do - (r.sales_gross - r.tera) > GL_ARTEFACT_MIN_L
+    ? "penutup_nol" : null;
+}
+
 export function isDailyGlSuspect(r: DailyGlInput): boolean {
-  return r.fisik === 0 && r.fisik_prev != null && r.pen_do !== undefined &&
-    r.sales_gross !== undefined && r.fisik_prev + r.pen_do - (r.sales_gross - r.tera) > 1000;
+  return glSuspectReason(r) !== null;
+}
+
+/**
+ * G/L yang boleh dijumlah; null bila tak terhitung ATAU artefak input. Query
+ * kanonis sudah menolak identitas kosong, tangki ter-guard, mutasi tak valid
+ * dan angka tak hingga; baris struktural/legacy dinilai ulang di sini agar
+ * tidak ada konsumen yang menerbitkan nilai itu hanya karena SQL biasanya
+ * me-null-kannya. Tak pernah mengimputasi.
+ */
+export function usableGl(r: DailyGlInput): number | null {
+  if (normalizeProductIdentity(r.ckdbbm) === null || r.gl === null || !Number.isFinite(r.gl)
+    || r.excluded_tanks !== 0 || r.movement_invalid === true || isDailyGlSuspect(r)) return null;
+  return r.gl;
 }
 
 export interface DailyGlAgg {
@@ -207,16 +261,18 @@ export interface DailyGlAgg {
   excludedTanks: number;
   /** A required row/stock is uncomputable; partial sums are not full totals. */
   incomplete: boolean;
-  /** Zero closing stock despite >1,000 L theoretical stock; source review needed. */
+  /** Ada artefak input (isDailyGlSuspect): tidak dijumlah, agregat incomplete. */
   suspect: boolean;
-  /** Ada minimal satu baris G/L terhitung (gl != null). */
+  /** Ada minimal satu baris G/L yang boleh dijumlah (usableGl != null). */
   hasGl: boolean;
 }
 
 /**
  * Agregasi G/L harian (metode RESUME) per produk untuk satu hari (filter ke
- * tanggal di pemanggil) atau seluruh bulan (Σ harian → kumulatif). Baris gl=null
- * (anchor D−1 hilang) dilewati dari jumlah tapi menandai provisional. Tera tetap
+ * tanggal di pemanggil) atau seluruh bulan (Σ harian → kumulatif). Baris yang
+ * tak lolos usableGl (anchor D−1 hilang, tangki ter-guard, mutasi tak valid,
+ * angka tak hingga, artefak input) dilewati dari jumlah tapi menandai
+ * incomplete — totalSigned saat itu hanya subtotal diagnostik. Tera tetap
  * dijumlah (kolom info, tak tergantung G/L terhitung).
  */
 export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
@@ -240,17 +296,19 @@ export function aggregateDailyGl(rows: DailyGlInput[]): DailyGlAgg {
       totalTera += r.tera;
       continue;
     }
-    if (r.gl === null || r.excluded_tanks > 0) { incomplete = true; provisional = true; }
-    if (isDailyGlSuspect(r)) { suspect = true; provisional = true; }
+    if (isDailyGlSuspect(r)) suspect = true;
     const cur = byProduct.get(product) ?? { nama: r.nama, signed: 0, tera: 0 };
     cur.tera += r.tera;
     totalTera += r.tera;
-    if (r.gl === null) {
-      provisional = true; // tak terhitung → jangan klaim final
+    const gl = usableGl(r);
+    if (gl === null) {
+      // tak terhitung/ter-guard/artefak → jumlah hanya subtotal, jangan klaim final
+      incomplete = true;
+      provisional = true;
     } else {
       hasGl = true;
-      cur.signed += r.gl;
-      totalSigned += r.gl;
+      cur.signed += gl;
+      totalSigned += gl;
     }
     byProduct.set(product, cur);
   }

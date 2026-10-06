@@ -285,7 +285,10 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
         d: previous, prev: 10_000, next: 9_000, recv_next: 0,
       })]);
       const gl = await getDailyGlByProduct(U, first, following);
-      expect(gl[0]).toMatchObject({ fisik_prev: 0, fisik: 9_000, gl: 10_000, provisional: false });
+      // The mirror gain on a placeholder-zero anchor is withheld, raw kept for audit.
+      expect(gl[0]).toMatchObject({ fisik_prev: 0, fisik: 9_000, gl: null, gl_raw: 10_000,
+        gl_suspect: "jangkar_nol", provisional: true });
+      expect(gl[1]).toMatchObject({ fisik_prev: 9_000, fisik: 8_500, gl: 0, gl_raw: 0, gl_suspect: null });
       const build = async (date: string) => buildHarianModel({
         units: [{ unit_id: U, code: "SYNTHETIC", name: "Synthetic unit" }], date,
         dailySales: await getDailySalesByProduct([U], first, date),
@@ -294,17 +297,20 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
         glSuspectDates: zeros.map(z => ({ unitId: z.unit_id, date: z.d })),
       });
       const boundary = await build(first);
-      expect(boundary).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: false });
+      expect(boundary).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: true });
       expect(boundary.glSuspectUnits.map(u => u.unitId)).toEqual([1]);
-      expect(boundary.glDaily.grandTotal).toBe(10_000);
-      expect(boundary.glMonthly.grand.kum).toBe(10_000);
+      expect(boundary.glDaily.grandTotal).toBeNull();
+      expect(boundary.glMonthly.grand.kum).toBeNull();
       const later = await build(following);
-      expect(later).toMatchObject({ glProvisional: false, glMonthlyProvisional: true });
+      expect(later).toMatchObject({ glProvisional: false, glMonthlyProvisional: true, glIncomplete: true });
       expect(later.glDaily.grandTotal).toBe(0);
-      expect(later.glMonthly.grand.kum).toBe(10_000);
-      // A real refill explains the rebound and must still suppress this warning.
+      expect(later.glMonthly.grand.kum).toBeNull();
+      // A refill satisfies the legacy warning detector, but cannot rehabilitate
+      // a zero already classified penutup_nol: the dependent balance stays out.
       await receipt(first, 9_000);
       expect(await getZeroClosingEvents([U], predecessor, following)).toEqual([]);
+      expect((await getDailyGlByProduct(U, first, first))[0]).toMatchObject({
+        fisik_prev: 0, pen_do: 9_000, gl: null, gl_raw: 1_000, gl_suspect: "jangkar_nol", provisional: true });
     },
   );
 
@@ -331,7 +337,8 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
 
   it("keeps complete matching tank totals and a genuine zero G/L", async () => {
     await baseline();
-    expect(await day()).toMatchObject({ fisik: 19_000, fisik_prev: 20_000, gl: 0, excluded_tanks: 0, provisional: false });
+    expect(await day()).toMatchObject({ fisik: 19_000, fisik_prev: 20_000, gl: 0, gl_raw: 0,
+      gl_suspect: null, excluded_tanks: 0, provisional: false });
   });
 
   it.each([" ", "\t", "\n", "\u00a0", "\ufeff"])("sales summary groups boundary aliases (%s) before joining G/L and preserves latest price", async pad => {
@@ -766,9 +773,334 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     await stock(D1, "A", 10_000);
     await stock(D2, "A", 0, 10_000);
     await stock(D3, "A", 9_500);
-    expect(await day()).toMatchObject({ fisik: 0, gl: -10_000, provisional: false });
+    // The zero stays the recorded stock; only its derived G/L is withheld.
+    expect(await day()).toMatchObject({ fisik: 0, fisik_prev: 10_000, gl: null, gl_raw: -10_000,
+      gl_suspect: "penutup_nol", provisional: true });
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ fisik_prev: 0, fisik: 9_500,
+      gl: null, gl_raw: 9_500, gl_suspect: "jangkar_nol", provisional: true });
     const events = await getZeroClosingEvents([U], D1, D3);
     expect(events).toHaveLength(1); expect(events[0]).toMatchObject({ d: D2, ckdtangki: "A" });
+  });
+
+  // ---- Source-artefact verdict (synthetic tanks/quantities only) ----
+
+  it("a placeholder zero tank inside a multi-tank product is an artefact", async () => {
+    await stock(D1, "A", 6_000); await stock(D1, "B", 4_000);
+    await stock(D2, "A", 0, 5_500); await stock(D2, "B", 3_800);
+    await sale(D2, 700);
+    expect(await day()).toMatchObject({ fisik: 3_800, fisik_prev: 10_000, gl: null, gl_raw: -5_500,
+      gl_suspect: "penutup_nol", excluded_tanks: 0, provisional: true });
+  });
+
+  it("a legitimately empty tank inside a multi-tank product is not penalized", async () => {
+    await stock(D1, "A", 6_000); await stock(D1, "B", 0);
+    await stock(D2, "A", 5_300); await stock(D2, "B", 0);
+    await sale(D2, 700);
+    expect(await day()).toMatchObject({ fisik: 5_300, gl: 0, gl_raw: 0, gl_suspect: null, provisional: false });
+  });
+
+  it("a tank sold down to zero (explained by sales) is not an artefact, even beside a full tank", async () => {
+    await stock(D1, "A", 2_000); await stock(D1, "B", 5_000);
+    await stock(D2, "A", 0); await stock(D2, "B", 5_000);
+    await sale(D2, 2_000);
+    expect(await day()).toMatchObject({ fisik: 5_000, gl: 0, gl_raw: 0, gl_suspect: null, provisional: false });
+  });
+
+  it("uses the operational 1,000 L threshold strictly for a single-tank zero", async () => {
+    await stock(D1, "A", 1_000); await stock(D2, "A", 0);
+    expect(await day()).toMatchObject({ fisik: 0, gl: -1_000, gl_raw: -1_000, gl_suspect: null, provisional: false });
+    await db.query("UPDATE opname SET nstockop=1000.01, nstockbk=1000.01 WHERE dtaglopn=$1", [D1]);
+    expect(await day()).toMatchObject({ gl: null, gl_raw: -1_000.01, gl_suspect: "penutup_nol" });
+  });
+
+  it("a material negative theoretical stock is an artefact; receipts/cancellation/date boundary keep their semantics", async () => {
+    await stock(D1, "A", 2_000); await stock(D2, "A", 9_000);
+    await sale(D2, 5_000);
+    // Theory 2.000 − 5.000 = −3.000 L: physically impossible stock.
+    expect(await day()).toMatchObject({ pen_do: 0, gl: null, gl_raw: 12_000, gl_suspect: "teori_negatif", provisional: true });
+    await receipt(D2, 8_000, 1); // canceled: still missing
+    await receipt(D3, 8_000);    // business date after D2: outside (D1, D2]
+    expect(await day()).toMatchObject({ pen_do: 0, gl_suspect: "teori_negatif" });
+    await receipt(D2, 8_000);
+    expect(await day()).toMatchObject({ pen_do: 8_000, gl: 4_000, gl_raw: 4_000, gl_suspect: null, provisional: false });
+  });
+
+  it("does not withhold negative theory at or above the heuristic −1,000 L threshold (no validity claim) and nets official tera", async () => {
+    await stock(D1, "A", 1_000); await stock(D2, "A", 50);
+    await sale(D2, 1_800);
+    // Theory −800 L: below zero yet not flagged — the threshold is a heuristic, not a measured tolerance.
+    expect(await day()).toMatchObject({ gl: 850, gl_raw: 850, gl_suspect: null });
+    // Net sales = gross − official tera: 2.900 − 900 keeps theory above −1.000.
+    await sale(D2, 1_100); await tera(D2, 900);
+    expect(await day()).toMatchObject({ sales_gross: 2_900, tera: 900, gl: 1_050, gl_suspect: null });
+    await tera(D2, 900, 1); // canceled tera does not net sales
+    expect(await day()).toMatchObject({ tera: 900, gl_suspect: null });
+  });
+
+  it("zero-anchor artefact needs predecessor context and is identical for single, range and split windows", async () => {
+    const before = addDays(D1, -1);
+    await stock(before, "A", 10_000); await stock(D1, "A", 0, 10_000);
+    await stock(D2, "A", 9_000); await stock(D3, "A", 8_000);
+    await sale(D2, 1_000); await sale(D3, 1_000);
+    const range = await getDailyGlByProduct(U, D1, D3);
+    expect(range.map(r => [r.d, r.gl, r.gl_raw, r.gl_suspect])).toEqual([
+      [D1, null, -10_000, "penutup_nol"], [D2, null, 10_000, "jangkar_nol"], [D3, 0, 0, null]]);
+    expect(await getDailyGlByProduct(U, D2, D2)).toEqual(range.filter(r => r.d === D2));
+    const split = [...await getDailyGlByProduct(U, D1, D1), ...await getDailyGlByProduct(U, D2, D3)];
+    expect(split).toEqual(range);
+    // A receipt covering the rebound cannot rehabilitate the known bad anchor.
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',9000,9000,0)", [D2, `${D2}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ pen_do: 9_000, gl: null, gl_raw: 1_000,
+      gl_suspect: "jangkar_nol", provisional: true });
+  });
+
+  it("a known bad anchor on normalized tank endpoints is not rehabilitated by any receipt", async () => {
+    await stock(D1, "\tA ", 10_000); await stock(D2, "A", 0, 10_000); await stock(D3, "\nA", 9_500);
+    await receipt(D3, 9_500, 1); // canceled
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ pen_do: 0, gl: null, gl_raw: 9_500,
+      gl_suspect: "jangkar_nol" });
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P',U&'\\00A0A\\0009',9500,9500,0)", [D3, `${D3}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ pen_do: 9_500, gl: null, gl_raw: 0,
+      gl_suspect: "jangkar_nol", provisional: true });
+  });
+
+  it("receipts of any product, unit or tank cannot rehabilitate a known bad zero anchor", async () => {
+    await stock(D1, "A", 5_000); await stock(D2, "A", 0, 5_000); await stock(D3, "A", 5_000);
+    // Another product delivered into the same tank is not product P's receipt.
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'Q','A',5000,5000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    // Neither is the same product/tank in another unit.
+    await db.query("INSERT INTO delivery VALUES (2,$1,$2,'P','A',5000,5000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ ckdbbm: "P", fisik_prev: 0, fisik: 5_000,
+      pen_do: 0, gl: null, gl_raw: 5_000, gl_suspect: "jangkar_nol", provisional: true });
+    // The same normalized product enters Penerimaan, yet the anchor stays bad.
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,' P ','A',5000,5000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ ckdbbm: "P", pen_do: 5_000,
+      gl: null, gl_raw: 0, gl_suspect: "jangkar_nol", provisional: true });
+  });
+
+  it("tank history from another product cannot certify a zero-anchor artefact", async () => {
+    await stock(D1, "A", 5_000); // product P
+    await stock(D2, "A", 0, 0, { product: "Q" }); await stock(D3, "A", 5_000, 5_000, { product: "Q" });
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ ckdbbm: "Q", fisik_prev: 0, fisik: 5_000,
+      gl: 5_000, gl_raw: 5_000, gl_suspect: null, provisional: false });
+  });
+
+  it.each([0, 5_000])("an intervening product remap breaks the tank chain instead of being skipped (zero's book %s)", async book => {
+    const before = addDays(D1, -1);
+    await stock(before, "A", 5_000); await stock(D1, "A", 5_000, 5_000, { product: "Q" });
+    await stock(D2, "A", 0, book); await stock(D3, "A", 5_000);
+    // D2 itself stays a product-level zero closing (rule a, independent of tank history).
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik_prev: 5_000, fisik: 0,
+      gl: null, gl_suspect: "penutup_nol" });
+    // The zero's own predecessor in tank A held Q: no comparable P history certifies D3.
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ fisik_prev: 0, fisik: 5_000,
+      gl: 5_000, gl_raw: 5_000, gl_suspect: null });
+  });
+
+  it("a remapped tank predecessor cannot certify a multi-tank placeholder zero", async () => {
+    const before = addDays(D1, -1);
+    await stock(before, "A", 500); await stock(before, "B", 5_000);
+    await stock(D1, "A", 5_000, 5_000, { product: "Q" });
+    await stock(D2, "A", 0); await stock(D2, "B", 5_000);
+    await receipt(D1, 2_000);
+    // P's comparable predecessor in tank A was 500 L (near empty), not Q's 5.000 L.
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik_prev: 5_500, fisik: 5_000,
+      pen_do: 2_000, gl: -2_500, gl_raw: -2_500, gl_suspect: null, provisional: true });
+  });
+
+  it.each([
+    ["guard-excluded book stock", { bk: 999_999, product: "P" }],
+    ["unknown product identity", { bk: 9_000, product: null }],
+  ] as const)("%s in tank history cannot certify a zero-anchor artefact", async (_name, prior) => {
+    await stock(D1, "A", 9_000, prior.bk, { product: prior.product });
+    await stock(D2, "A", 0); await stock(D3, "A", 5_000);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ ckdbbm: "P", fisik_prev: 0, fisik: 5_000,
+      gl: 5_000, gl_raw: 5_000, gl_suspect: null, excluded_tanks: 0 });
+    // The existing book guard itself is unchanged: that closing stays excluded.
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik_prev: null, gl: null, gl_suspect: null });
+    // The zero's own book value does not supply the missing history either.
+    await db.query("UPDATE opname SET nstockbk=5000 WHERE dtaglopn=$1", [D2]);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ fisik_prev: 0, gl: 5_000, gl_suspect: null });
+  });
+
+  // ---- Anchor validity at the closing grain (synthetic tanks/quantities only) ----
+  // A zero closing invalidates the NEXT balance exactly when that comparable prior
+  // closing is itself classified penutup_nol, from its own prior measured stock
+  // and its own movements on coherent tank history. Book stock only keeps its
+  // existing guard role; receipts on the dependent day never rehabilitate it.
+
+  it("a same-product receipt without a tank keeps the measured G/L after a sold-empty tank", async () => {
+    await stock(D1, "A", 5_000); await stock(D2, "A", 0); await sale(D2, 5_000); await stock(D3, "A", 5_000);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P',NULL,5000,5000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    // D2 is a coherent measured empty closing: its sales explain the zero.
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik: 0, gl: 0, gl_raw: 0, gl_suspect: null });
+    const [current] = await getDailyGlByProduct(U, D3, D3);
+    expect(current).toMatchObject({ fisik_prev: 0, fisik: 5_000, pen_do: 5_000, gl: 0, gl_raw: 0,
+      gl_suspect: null, provisional: false });
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([current]);
+  });
+
+  it.each([
+    { surplus: 50, book: 0, sold: 0 }, { surplus: 1_500, book: 0, sold: 0 },
+    { surplus: 50, book: 0, sold: 1_000 }, { surplus: 1_500, book: 3_000, sold: 1_000 },
+  ])("a sold-empty tank keeps the next-day nominal-DO surplus +$surplus L (zero's book $book ignored, sold $sold)", async ({ surplus, book, sold }) => {
+    const teraL = sold ? 100 : 0;
+    await stock(D1, "A", 5_000); await stock(D2, "A", 0, book); await sale(D2, 5_000);
+    await stock(D3, "A", 5_000 - (sold - teraL) + surplus);
+    if (sold) { await sale(D3, sold); await tera(D3, teraL); }
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',5000,$3,0)", [D3, `${D3}T10:00:00+07:00`, 5_000 + surplus]);
+    // The prior balance is coherent: a legitimately empty physical closing.
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik: 0, gl: 0, gl_suspect: null });
+    const [current] = await getDailyGlByProduct(U, D3, D3);
+    // Nominal NVOLDO, gross sales and official tera keep their existing semantics.
+    expect(current).toMatchObject({ fisik_prev: 0, pen_do: 5_000, sales_gross: sold, tera: teraL,
+      gl: surplus, gl_raw: surplus, gl_suspect: null, provisional: false });
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([current]);
+  });
+
+  it.each(["2026-10-02", "2026-09-30", "2025-12-31"])(
+    "a prior zero classified penutup_nol stays a bad anchor though today's receipt covers the rebound (zero %s)", async zero => {
+      const before = addDays(zero, -1), after = addDays(zero, 1), recover = addDays(zero, 2);
+      await stock(before, "A", 10_000); await stock(zero, "A", 0, 10_000);
+      await stock(after, "A", 8_000); await stock(recover, "A", 7_500);
+      await sale(after, 1_000); await sale(recover, 500);
+      await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',9000,9000,0)", [after, `${after}T10:00:00+07:00`]);
+      const range = await getDailyGlByProduct(U, before, recover);
+      expect(range.map(r => [r.d, r.gl, r.gl_raw, r.gl_suspect, r.provisional])).toEqual([
+        [before, null, null, null, true], [zero, null, -10_000, "penutup_nol", true],
+        [after, null, 0, "jangkar_nol", true], [recover, 0, 0, null, false]]);
+      expect(range[2]).toMatchObject({ fisik_prev: 0, fisik: 8_000, pen_do: 9_000, sales_gross: 1_000, tera: 0 });
+      for (const row of range) expect(await getDailyGlByProduct(U, row.d, row.d)).toEqual([row]);
+      // Split exactly at the dependent day (a month/year boundary for the later cases).
+      expect([...await getDailyGlByProduct(U, before, zero), ...await getDailyGlByProduct(U, after, recover)]).toEqual(range);
+    },
+  );
+
+  it("a bad anchor carries across a closing gap and the next valid physical closing restores the balance", async () => {
+    const d4 = addDays(D3, 1), d5 = addDays(D3, 2);
+    await stock(D1, "A", 10_000); await stock(D2, "A", 0, 10_000);
+    await stock(d4, "A", 9_000); await stock(d5, "A", 8_500);
+    await sale(D3, 400); await sale(d4, 600); await sale(d5, 500);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',10000,10000,0)", [d4, `${d4}T10:00:00+07:00`]);
+    const range = await getDailyGlByProduct(U, D1, d5);
+    expect(range.map(r => [r.d, r.gl, r.gl_raw, r.gl_suspect, r.provisional])).toEqual([
+      [D1, null, null, null, true], [D2, null, -10_000, "penutup_nol", true],
+      [d4, null, 0, "jangkar_nol", true], [d5, 0, 0, null, false]]);
+    expect(range[2]).toMatchObject({ fisik_prev: 0, pen_do: 10_000, sales_gross: 1_000 });
+    expect(await getDailyGlByProduct(U, d4, d4)).toEqual([range[2]]);
+    expect([...await getDailyGlByProduct(U, D1, D3), ...await getDailyGlByProduct(U, d4, d5)]).toEqual(range);
+  });
+
+  it("a placeholder zero tank in a multi-tank prior closing invalidates the next balance whatever its book", async () => {
+    await stock(D1, "A", 6_000); await stock(D1, "B", 4_000);
+    await stock(D2, "A", 0, 5_500); await stock(D2, "B", 3_800); await sale(D2, 700);
+    await stock(D3, "A", 5_000); await stock(D3, "B", 3_500); await sale(D3, 300);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',5000,5000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ gl: null, gl_raw: -5_500, gl_suspect: "penutup_nol" });
+    const [bad] = await getDailyGlByProduct(U, D3, D3);
+    expect(bad).toMatchObject({ fisik_prev: 3_800, fisik: 8_500, pen_do: 5_000, gl: null, gl_raw: 0,
+      gl_suspect: "jangkar_nol", provisional: true });
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([bad]);
+    await db.query("UPDATE opname SET nstockbk=0 WHERE dtaglopn=$1 AND ckdtangki='A'", [D2]);
+    // A zero book does not rehabilitate it: 5.000 L prior + shortfall still qualify penutup_nol.
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ gl: null, gl_raw: -5_500, gl_suspect: "penutup_nol" });
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toEqual(bad);
+  });
+
+  it.each([10_000, 0])("a placeholder zero (book %s) stays a bad anchor though today's DO and sales balance exactly", async book => {
+    await stock(D1, "A", 10_000); await stock(D2, "A", 0, book);
+    await stock(D3, "A", 8_000); await sale(D3, 1_000);
+    await db.query("INSERT INTO delivery VALUES (1,$1,$2,'P','A',9000,9000,0)", [D3, `${D3}T10:00:00+07:00`]);
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik_prev: 10_000, fisik: 0,
+      gl: null, gl_raw: -10_000, gl_suspect: "penutup_nol" });
+    const [current] = await getDailyGlByProduct(U, D3, D3);
+    expect(current).toMatchObject({ fisik_prev: 0, fisik: 8_000, pen_do: 9_000, sales_gross: 1_000,
+      gl: null, gl_raw: 0, gl_suspect: "jangkar_nol", provisional: true });
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([current]);
+  });
+
+  it("a negative-theory verdict alone does not invalidate its physical closing as the next anchor", async () => {
+    await stock(D1, "A", 2_000); await stock(D2, "A", 0); await sale(D2, 5_000);
+    await stock(D3, "A", 5_100); await receipt(D3, 5_000);
+    expect((await getDailyGlByProduct(U, D2, D2))[0]).toMatchObject({ fisik: 0, gl: null,
+      gl_raw: 3_000, gl_suspect: "teori_negatif" });
+    const [current] = await getDailyGlByProduct(U, D3, D3);
+    expect(current).toMatchObject({ fisik_prev: 0, pen_do: 5_000, gl: 100, gl_raw: 100,
+      gl_suspect: null, provisional: false });
+    expect((await getDailyGlByProduct(U, D1, D3)).filter(r => r.d === D3)).toEqual([current]);
+  });
+
+  it("a sold-empty tank refilled with a recorded surplus above 1.000 L stays measured despite the legacy warning", async () => {
+    await stock(D1, "A", 5_000); await stock(D2, "A", 0); await sale(D2, 5_000);
+    await stock(D3, "A", 6_500); await receipt(D3, 5_000);
+    // The legacy warning detector still lists the zero (its own heuristic, unchanged).
+    expect(await getZeroClosingEvents([U], D1, D3)).toEqual([expect.objectContaining({ d: D2, ckdtangki: "A" })]);
+    expect((await getDailyGlByProduct(U, D3, D3))[0]).toMatchObject({ fisik_prev: 0, pen_do: 5_000,
+      gl: 1_500, gl_raw: 1_500, gl_suspect: null, provisional: false });
+  });
+
+  it.each([365, 366])("the bad-anchor dependency stays inside the dependent day's horizon (prior anchor %s days back)", async age => {
+    const anchor = addDays(D2, -age);
+    await stock(anchor, "A", 10_000); await stock(D1, "A", 0, 10_000); await stock(D2, "A", 9_000);
+    const single = await getDailyGlByProduct(U, D2, D2);
+    expect(single[0]).toMatchObject({ fisik_prev: 0, fisik: 9_000, gl_raw: 9_000,
+      gl_suspect: age <= 365 ? "jangkar_nol" : null });
+    const range = await getDailyGlByProduct(U, anchor, D2);
+    expect(range.filter(r => r.d === D2)).toEqual(single);
+    // The zero itself is classified whenever its own anchor is in the query.
+    expect(range.find(r => r.d === D1)).toMatchObject({ gl: null, gl_suspect: "penutup_nol" });
+  });
+
+  it("a canceled zero session cannot become the closing or an artefact", async () => {
+    await baseline();
+    await stock(D2, "A", 0, 9_000, { canceled: 1, timestamp: `${D3}T07:30:00+07:00` });
+    expect(await day()).toMatchObject({ fisik: 19_000, gl: 0, gl_suspect: null, provisional: false });
+  });
+
+  it("unknown stock, tank-set change and invalid movement stay unknown, not artefacts", async () => {
+    await baseline();
+    await db.query("UPDATE opname SET nstockop=NULL WHERE dtaglopn=$1 AND ckdtangki='B'", [D2]);
+    expect(await day()).toMatchObject({ gl: null, gl_raw: null, gl_suspect: null, excluded_tanks: 1 });
+    await db.exec("TRUNCATE opname, sales_header, sales_detail");
+    await stock(D1, "A", 10_000); await stock(D2, "A", 0); await stock(D2, "B", 0);
+    expect(await day()).toMatchObject({ gl: null, gl_raw: null, gl_suspect: null, provisional: true });
+    await db.exec("TRUNCATE opname");
+    await stock(D1, "A", 10_000); await stock(D2, "A", 0); await receipt(D2, null);
+    expect(await day()).toMatchObject({ movement_invalid: true, gl: null, gl_raw: null, gl_suspect: null });
+  });
+
+  it("SQL artefact feeds Laporan, Arus and Harian as unavailable while keeping raw audit values", async () => {
+    await db.exec("INSERT INTO product VALUES (1,'P','SOLAR'),(1,'Q','PERTALITE')");
+    await stock(D1, "A", 6_000); await stock(D2, "A", 0, 5_000);
+    await stock(D1, "C", 3_000, 3_000, { product: "Q" }); await stock(D2, "C", 2_900, 2_900, { product: "Q" });
+    await sale(D2, 1_000, "P"); await sale(D2, 100, "Q");
+    await db.exec("UPDATE sales_detail SET nsubtotal=nvolume*10000, nhargajual=10000");
+    const glRows = await getDailyGlByProduct(U, D1, D2);
+    const prodDay = await getSalesByProduct(U, D2, D2);
+    const raw: LaporanRaw = {
+      prodDay, prodMonth: prodDay, glRows, zeroClosing: [], delivMonth: [], doDay: [], doAnomalies: [], doSuspects: [],
+      shift: { shifts: 3, last_dtgljam: null }, hargaDeviasi: [], corrections: 0, cash: [],
+      saldo: { awal: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 },
+        akhir: { piutangLokal: 0, piutangOnline: 0, hutangLokal: 0 } },
+      recapPelanggan: [], recapEdc: [], recapDeposit: [], recapPendapatanLain: [], recapPengeluaran: [],
+      recapSetoran: [], terra: [], tetanggaSebelum: { f: [], g: [], i: [] }, tetanggaSesudah: { f: [], g: [], i: [] },
+    };
+    const model = buildLaporanModel(raw, { unitCode: "SYNTHETIC", date: D2, today: D3,
+      mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
+    expect(model.sales.rows.find(r => r.ckdbbm === "P")!.gl).toBeNull();
+    expect(model.sales.rows.find(r => r.ckdbbm === "Q")!.gl).toBe(0);
+    expect(model.sales.glTotal).toBeNull(); expect(model.glMonthly.glMonthTotal).toBeNull();
+    expect(model.arusMinyak.rows.find(r => r.ckdbbm === "P")).toMatchObject({
+      awal: 6_000, teori: 5_000, fisik: 0, losses: null, pct: null, artefak: "penutup_nol", glMentah: -5_000 });
+    expect(model.arusMinyak.total.losses).toBeNull();
+    const harian = buildHarianModel({
+      units: [{ unit_id: U, code: "SYNTHETIC", name: "Synthetic unit" }], date: D2,
+      dailySales: await getDailySalesByProduct([U], D1, D2), gl: new Map([[1, glRows]]),
+      coverage: [{ unit_id: 1, sales_min: D1 }], sync: [{ unit_id: 1, last_run: `${D3}T01:00:00Z` }],
+    });
+    expect(harian.glDaily.totalsByUnit[1]).toBeNull();
+    expect(harian.glDaily.grandTotal).toBeNull();
+    expect(harian.glSuspectUnits.map(u => u.unitId)).toEqual([1]);
   });
 
   it("preserves gap-window movements and flags the gap", async () => {
@@ -858,20 +1190,31 @@ describe.skipIf(!enginePath && !postgresRequested).sequential("G/L SQL integrity
     expect(rows).toHaveLength(6);
     for (const row of rows) expect(row).toMatchObject({ pen_do: 2000, sales_gross: 3000,
       tera: 1000, fisik: 10000, fisik_prev: 10000, gl: 0, provisional: false });
-    const [, sql, params] = qScoped.mock.calls.at(-1)!;
     type PlanNode = { "Subplan Name"?: string; "Actual Rows"?: number; "Actual Loops"?: number; Plans?: PlanNode[] };
-    const result = await db.query<{ "QUERY PLAN": { Plan: PlanNode }[] }>(
-      `EXPLAIN (ANALYZE, FORMAT JSON, TIMING OFF) ${sql}`, params,
-    );
-    const nodes: PlanNode[] = [];
-    const visit = (node: PlanNode) => { nodes.push(node); node.Plans?.forEach(visit); };
-    visit(result.rows[0]!["QUERY PLAN"][0]!.Plan);
-    for (const domain of ["deliv", "sale", "terad"]) {
-      const aggregate = nodes.find(n => n["Subplan Name"] === `CTE ${domain}`);
-      expect(aggregate, `${domain} must be assessed once`).toBeDefined();
-      expect(aggregate?.["Actual Loops"]).toBe(1);
-      expect(aggregate?.["Actual Rows"]).toBe(6);
-    }
+    const expectMovementGroups = async (groups: number) => {
+      const [, sql, params] = qScoped.mock.calls.at(-1)!;
+      const result = await db.query<{ "QUERY PLAN": { Plan: PlanNode }[] }>(
+        `EXPLAIN (ANALYZE, FORMAT JSON, TIMING OFF) ${sql}`, params,
+      );
+      const nodes: PlanNode[] = [];
+      const visit = (node: PlanNode) => { nodes.push(node); node.Plans?.forEach(visit); };
+      visit(result.rows[0]!["QUERY PLAN"][0]!.Plan);
+      for (const domain of ["deliv", "sale", "terad"]) {
+        const aggregate = nodes.find(n => n["Subplan Name"] === `CTE ${domain}`);
+        expect(aggregate, `${domain} must be assessed once`).toBeDefined();
+        expect(aggregate?.["Actual Loops"]).toBe(1);
+        expect(aggregate?.["Actual Rows"]).toBe(groups);
+      }
+    };
+    await expectMovementGroups(6);
+    // A placeholder zero in the directly preceding closing adds only that
+    // closing's own window (one more day of six products), never the year.
+    await db.exec(`UPDATE opname SET nstockop=0 WHERE ckdbbm='P1' AND dtaglopn=DATE '${D2}'-1`);
+    const withDependency = await getDailyGlByProduct(U, D2, D2);
+    expect(withDependency.find(r => r.ckdbbm === "P1")).toMatchObject({ fisik_prev: 0, fisik: 10000,
+      gl: null, gl_raw: 10000, gl_suspect: "jangkar_nol" });
+    expect(withDependency.filter(r => r.ckdbbm !== "P1").map(r => r.gl)).toEqual([0, 0, 0, 0, 0]);
+    await expectMovementGroups(12);
   });
 
   it("never includes another unit's stock or movements", async () => {

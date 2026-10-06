@@ -19,6 +19,7 @@ import {
   bauranVsTargetRange,
   glPercent,
   normalizeProductIdentity,
+  usableGl,
   verdictHeadline,
   type BauranStatus,
   type DailyGlInput,
@@ -101,7 +102,8 @@ function glAgg(
       if (r.d < w.from || r.d > w.to) continue;
       rows.push(r);
       const product = normalizeProductIdentity(r.ckdbbm);
-      if (product !== null && r.gl !== null && Number.isFinite(r.gl) && r.excluded_tanks === 0) {
+      // usableGl also rejects unknown identity, guarded tanks, invalid movement and non-finite values.
+      if (product !== null && usableGl(r) !== null) {
         usable.add(key(uid, r.d, product));
         usableDays.add(`${uid}|${r.d}`);
       }
@@ -131,15 +133,17 @@ function glAgg(
 }
 
 const GL_INCOMPLETE = "G/L belum lengkap";
-const GL_SUSPECT = "stok fisik 0 perlu verifikasi";
+/** Artefak input (penutup 0 / stok teori < −1.000 L, heuristik): tidak dijumlah, bukan kerugian. */
+const GL_SUSPECT = "data sumber perlu verifikasi";
 
 function glNeedsReview(g: DailyGlAgg): boolean {
   return g.provisional || g.incomplete || g.suspect;
 }
 
+/** Suspect implies incomplete; name the actionable cause first. */
 function glNote(g: DailyGlAgg): string | null {
-  if (g.incomplete) return GL_INCOMPLETE;
   if (g.suspect) return GL_SUSPECT;
+  if (g.incomplete) return GL_INCOMPLETE;
   if (g.provisional) return "sementara (opname belum final)";
   if (!g.hasGl) return "belum terhitung";
   return null;
@@ -491,8 +495,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
       glProvisional: x.glProvisional,
-      glStatus: !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
-        : x.gl.suspect ? "PERLU PERIKSA" : x.glProvisional ? "SEMENTARA" : null,
+      glStatus: x.gl.suspect ? "PERLU PERIKSA" : !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
+        : x.glProvisional ? "SEMENTARA" : null,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       rd: x.oil.actual !== null ? pct(x.oil.actual) : "—",
       inputTone: x.sh.shifts >= 3 ? "success" : x.sh.shifts > 0 ? "warning" : "danger",
@@ -660,8 +664,8 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
     ): DeltaCell => {
       const needsReview = glNeedsReview(current.g) || glNeedsReview(previous.g);
       const cell = evalOf({ pt: [current.glPct, previous.glPct] }, miss, reason, needsReview);
-      const sourceNote = current.g.incomplete || previous.g.incomplete ? GL_INCOMPLETE
-        : current.g.suspect || previous.g.suspect ? GL_SUSPECT : null;
+      const sourceNote = current.g.suspect || previous.g.suspect ? GL_SUSPECT
+        : current.g.incomplete || previous.g.incomplete ? GL_INCOMPLETE : null;
       return {
         ...cell,
         provisional: needsReview || undefined,
