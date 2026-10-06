@@ -49,8 +49,8 @@ describe("buildHarianDocDefinition — struktur", () => {
   });
 });
 
-describe("buildHarianDocDefinition — artefak G/L", () => {
-  it("prints the unit cell and group total as “—”, never the artefact liters", () => {
+describe("buildHarianDocDefinition — G/L Belum terverifikasi", () => {
+  it("prints the unit cell and group total as “—”; raw liters only as the labelled audit", () => {
     // Synthetic: unit 1 has a placeholder-zero artefact (raw −7.777 L), unit 2 a clean −12 L.
     const row = (gl: number | null, extra: Partial<DailyGlRow> = {}): DailyGlRow => ({ d: "2026-07-22", ckdbbm: "BB-x",
       nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0, sales_gross: 0, tera: 0, gl, movement_invalid: false,
@@ -63,8 +63,13 @@ describe("buildHarianDocDefinition — artefak G/L", () => {
     expect(model.glDaily.totalsByUnit[2]).toBe(-12);
     expect(model.glDaily.grandTotal).toBeNull();
     const json = JSON.stringify(buildHarianDocDefinition({ model, meta: META }).content);
-    expect(json).toContain("artefak input");
-    expect(json).not.toContain("7.777");
+    expect(json).toContain("G/L Belum terverifikasi");
+    expect(json).toContain("Hitungan mentah — Belum terverifikasi");
+    expect(json).not.toMatch(/bukan kerugian|artefak/i);
+    // The raw value appears exactly once: inside the audit formula, never as a cell or total.
+    const hits = json.match(/"text":"[^"]*7\.777[^"]*"/g) ?? [];
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/^"text":"Fisik .* = .7\.777,00 L \(Teori = /);
   });
 });
 

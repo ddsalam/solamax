@@ -84,6 +84,24 @@ describe("keepHeadingsWithTable — pemasangan", () => {
       .content as unknown as Node[];
     expect(bodyOf(headerOnly[1])[0]).toEqual([{ text: "KEPALA", id: "keep-0-row" }]);
   });
+
+  it("setiap judul (berpasangan atau tidak) atomik; isi lain & tabel tetap boleh pecah; input tak dimutasi", () => {
+    const status: Content = { columns: [{ text: "Arus" }, { text: "belum final" }], headlineLevel: 1 };
+    const input: Content[] = [status, { text: "catatan" }, tableOf(["r1", "r2"]), heading("Tanpa tabel")];
+    const out = keepHeadingsWithTable(input).content as unknown as Node[];
+    expect(out.map((n) => n.unbreakable)).toEqual([true, undefined, undefined, true]);
+    expect((input[0] as unknown as Node).unbreakable).toBeUndefined();
+  });
+
+  it("judul `columns` berpasangan: teks pertamanya ditandai keep-i-head; judul teks tidak; input tak dimutasi", () => {
+    const status: Content = { columns: [{ text: "" }, { text: "Arus", bold: true }, { text: "belum final" }], headlineLevel: 1 };
+    const input: Content[] = [status, tableOf(["r1"]), heading("Teks"), tableOf(["t1"])];
+    const out = keepHeadingsWithTable(input).content as unknown as Node[];
+    expect(out[0]).toMatchObject({ id: "keep-0", unbreakable: true, headlineLevel: 1,
+      columns: [{ text: "" }, { text: "Arus", bold: true, id: "keep-0-head" }, { text: "belum final" }] });
+    expect(out[2]).toEqual({ text: "Teks", headlineLevel: 1, unbreakable: true, id: "keep-2" });
+    expect((status as unknown as { columns: Node[] }).columns[1]!.id).toBeUndefined();
+  });
 });
 
 describe("orphanHeadingBreak — predikat", () => {
@@ -104,6 +122,18 @@ describe("orphanHeadingBreak — predikat", () => {
     expect(orphanHeadingBreak(h, [row(3)], [], [])).toBe(false);
     expect(orphanHeadingBreak(h, [row(3)], [], [{ id: "root", startPosition: { pageNumber: 2, top: 700 } }])).toBe(false);
     expect(orphanHeadingBreak(h, [row(3)], [], [{ id: "prev", startPosition: { pageNumber: 1, top: 100 } }])).toBe(false);
+  });
+  it("halaman judul dibaca dari penanda teksnya (kontainer `columns` bisa melapor halaman lama)", () => {
+    const stale = { id: "keep-3", startPosition: { pageNumber: 2, top: 787 } };
+    const head = (pageNumber: number) => ({ id: "keep-3-head", startPosition: { pageNumber, top: 787 } });
+    // Didorong utuh ke halaman 3 bersama barisnya: tetap.
+    expect(orphanHeadingBreak(stale, [], [head(3), row(3)], [above])).toBe(false);
+    // Kontrol: tanpa penanda, halaman lama kontainer → dipindah tanpa perlu.
+    expect(orphanHeadingBreak(stale, [], [row(3)], [above])).toBe(true);
+    // Penanda sehalaman dengan kontainer, baris di halaman berikut: yatim → pindah.
+    expect(orphanHeadingBreak(stale, [head(2)], [row(3)], [above])).toBe(true);
+    // Sudah di puncak halaman 3 (tak ada isi lain di halaman itu), baris di halaman 4: tetap.
+    expect(orphanHeadingBreak(stale, [], [head(3)], [above])).toBe(false);
   });
   it("arity 4: pdfmake hanya mengisi daftar next/previous bila pageBreakBefore.length > 2", () => {
     expect(orphanHeadingBreak.length).toBe(4);
@@ -129,6 +159,13 @@ const linesOf = (pages: any[]) => pages.flatMap((p, page) => p.items
 const pageOfText = (lines: { page: number; text: string }[], s: string) => lines.find((l) => l.text.includes(s))?.page ?? -1;
 const BASE: Omit<TDocumentDefinitions, "content"> = { pageSize: "A4", pageMargins: [40, 40, 40, 44], defaultStyle: { font: "Roboto", fontSize: 10 } };
 const filler = (n: number): Content[] => Array.from({ length: n }, (_, i) => ({ text: `isi ${i}` }));
+/** Judul berstatus seperti laporan (sectionHeading): `columns` [judul 14 pt | status], marginTop 12. */
+const colHeading = (text: string): Content =>
+  ({ columns: [{ text, fontSize: 14 }, { text: "status", width: "auto" }], marginTop: 12, headlineLevel: 1 });
+const lineOf = (lines: { page: number; y: number; text: string }[], s: string) => lines.find((l) => l.text === s);
+/** Hasil keepHeadingsWithTable TANPA penanda teks judul (kontrol: perilaku sebelum keep-i-head). */
+const unmarked = (content: Content[]): Content[] => (content as unknown as Node[]).map((n) => Array.isArray(n.columns)
+  ? { ...n, columns: (n.columns as Node[]).map((c) => Object.fromEntries(Object.entries(c).filter(([key]) => key !== "id"))) } : n) as unknown as Content[];
 
 describe("kontrak pdfmake yang diandalkan penjaga", () => {
   it("nomor halaman sel penanda baris pertama final; posisi tabel & top penanda tentatif", async () => {
@@ -152,6 +189,28 @@ describe("kontrak pdfmake yang diandalkan penjaga", () => {
         // Tabel melapor halaman lama; top penanda = top tabel (bukan posisi barisnya).
         expect(log[`keep-${lines}-row`]!.top).toBe(log[`keep-${lines}-body`]!.top);
       }
+    }
+    expect(seen).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("judul atomik `columns` yang didorong utuh: halaman kontainer tanpa penanda lama, halaman penanda teksnya final", async () => {
+    let seen = 0;
+    for (let lines = 55; lines <= 66; lines++) {
+      const log = async (mark: boolean) => {
+        const kept = keepHeadingsWithTable([...filler(lines), colHeading("JUDULKOLOM"), tableOf(["BARISSATU"])]);
+        const pages: Record<string, number> = {};
+        const doc: TDocumentDefinitions = { ...BASE, content: mark ? kept.content : unmarked(kept.content),
+          pageBreakBefore: (n) => {
+            const id = (n as { id?: string }).id;
+            if (id === `keep-${lines}` || id === `keep-${lines}-head`) pages[id] = n.startPosition.pageNumber - 1;
+            return false;
+          } };
+        return { pages, final: pageOfText(linesOf(await pagesOf(doc)), "JUDULKOLOM") };
+      };
+      const [marked, bare] = [await log(true), await log(false)];
+      expect(marked.pages[`keep-${lines}-head`]).toBe(marked.final);
+      expect(bare.final).toBe(marked.final);
+      if (bare.pages[`keep-${lines}`] !== bare.final) seen++;
     }
     expect(seen).toBeGreaterThan(0);
   }, 60_000);
@@ -218,6 +277,26 @@ describe("PDF sungguhan (tata letak pdfmake)", () => {
     }
     expect(moved).toBeGreaterThan(0);
     expect(corruptedWithoutRestore).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("judul `columns` yang sudah didorong utuh ke halaman barisnya tak dipindah lagi (kontrol tanpa penanda teks: dipindah)", async () => {
+    let pushed = 0;
+    let spurious = 0;
+    for (let lines = 55; lines <= 66; lines++) {
+      const content = (): Content[] => [...filler(lines), colHeading("JUDULKOLOM"), tableOf(["BARISSATU", "baris dua"])];
+      const u = linesOf(await pagesOf({ ...BASE, content: content() }));
+      const g = linesOf(await pagesOf({ ...BASE, ...keepHeadingsWithTable(content()) }));
+      const k = keepHeadingsWithTable(content());
+      const s = linesOf(await pagesOf({ ...BASE, content: unmarked(k.content), pageBreakBefore: k.pageBreakBefore }));
+      expect(pageOfText(g, "JUDULKOLOM")).toBe(pageOfText(g, "BARISSATU"));
+      if (pageOfText(u, "JUDULKOLOM") !== pageOfText(u, "BARISSATU")) continue;
+      // Tanpa penjaga judul sudah sehalaman dengan barisnya: penjaga tak mengubah posisinya sama sekali.
+      expect(lineOf(g, "JUDULKOLOM")).toEqual(lineOf(u, "JUDULKOLOM"));
+      if (lineOf(u, `isi ${lines - 1}`)!.page < lineOf(u, "JUDULKOLOM")!.page) pushed++;
+      if (JSON.stringify(lineOf(s, "JUDULKOLOM")) !== JSON.stringify(lineOf(u, "JUDULKOLOM"))) spurious++;
+    }
+    expect(pushed).toBeGreaterThan(0);
+    expect(spurious).toBeGreaterThan(0);
   }, 60_000);
 
   it("baris pertama raksasa di puncak halaman: penjaga tak menambah halaman kosong", async () => {

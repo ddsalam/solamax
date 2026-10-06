@@ -43,20 +43,22 @@
  */
 import type { DailyGlRow, ZeroClosingRow } from "./queries";
 import { GL_ARTEFACT_MIN_L, glSuspectReason, normalizeProductIdentity, usableGl, type GlSuspect } from "./derive";
+import { GL_UNVERIFIED, GL_UNVERIFIED_TITLE, glUnverifiedReason, type GlUnverifiedReason } from "./gl-verification";
 
 /**
  * Ambang "teori mengatakan tangki mestinya berisi" untuk penanda penutup-nol
  * kelas 1 (lihat ZeroFlag). Nilainya menyamai `prev > 1000` pada aturan tertala
  * `getZeroClosingEvents`, dengan alasan yang sama: di bawah itu, "0" adalah
  * pembacaan yang masuk akal untuk tangki yang memang hampir kering. Ambang yang
- * sama dipakai heuristik penahanan G/L artefak (GL_ARTEFACT_MIN_L) agar penanda &
+ * sama dipakai heuristik penahanan G/L (GL_ARTEFACT_MIN_L) agar penanda &
  * penahanan sejalan — ambang deteksi, bukan toleransi stok yang terukur.
  */
 export const ZERO_CLOSING_TEORI_MIN_L = GL_ARTEFACT_MIN_L;
 
 /**
- * Penanda penutup-nol. Losses tetap ≡ `gl` panel Gain/Losses; untuk artefak
- * keduanya "—" (lihat ArusRow.artefak), stok mentahnya tetap tampil.
+ * Penanda penutup-nol. Losses tetap ≡ `gl` panel Gain/Losses; untuk G/L yang
+ * "Belum terverifikasi" keduanya "—" (lihat ArusRow.unverified), stok mentahnya
+ * tetap tampil.
  *
  * - **kelas 2** = detektor tertala `getZeroClosingEvents` (op=0 ∧ prev>1.000 ∧
  *   next>1.000 ∧ ΣDO hari-berikutnya < next). Inilah yang BERBAHAYA: pada hari
@@ -92,11 +94,13 @@ export interface ArusRow {
   losses: number | null;
   /** Losses ÷ penjualan **KOTOR** × 100. null = tak terdefinisi (lihat lossPct). */
   pct: number | null;
-  /** Penutup-nol terdeteksi → angkanya artefak input, BUKAN kerugian. */
+  /** Peringatan penutup-nol (sumber perlu diperiksa; bukan vonis atas angkanya). */
   zeroClosing: ZeroFlag | null;
-  /** Vonis artefak input baris ini: Losses & % ditahan ("—"), tak ikut TOTAL. */
+  /** Pola penahanan baris ini (penutup/jangkar nol): Losses & % ditahan ("—"), tak ikut TOTAL. */
   artefak: GlSuspect | null;
-  /** Fisik − Teori mentah untuk audit, hanya bila `artefak` (bukan kerugian). */
+  /** Sebab G/L baris ini "Belum terverifikasi" (semua penahanan); null = terhitung. */
+  unverified: GlUnverifiedReason | null;
+  /** Fisik − Teori mentah untuk audit, hanya bila `artefak` — Belum terverifikasi, bukan hasil G/L. */
   glMentah: number | null;
 }
 
@@ -113,8 +117,10 @@ export interface ArusMinyak {
   teraTotal: number;
   /** Jumlah baris produk ber-penanda penutup-nol (0 = penanda PADAM). */
   zeroClosingCount: number;
-  /** Jumlah baris produk ber-vonis artefak input (G/L ditahan). */
+  /** Jumlah baris produk ber-pola penahanan penutup/jangkar nol. */
   artefakCount: number;
+  /** Jumlah baris produk yang G/L-nya "Belum terverifikasi". */
+  unverifiedCount: number;
 }
 
 export function stockTeori(
@@ -192,9 +198,10 @@ export function buildArusMinyak(
       ? stockTeori(r.fisik_prev, r.pen_do, penjualan) : null;
     // Query juga memeriksa cakupan tangki dan mutasi NULL/garbage. Menghitung
     // ulang hanya dari komponen numerik akan menghidupkan lagi G/L yang ditolak.
-    // Artefak input ditahan di sini juga, sama dengan panel Gain/Losses.
+    // G/L Belum terverifikasi ditahan di sini juga, sama dengan panel Gain/Losses.
     const l = code ? usableGl(r) : null;
     const artefak = code ? glSuspectReason(r) : null;
+    const unverified = glUnverifiedReason(r);
     // A guard-excluded closing leaves only a partial tank sum, not product Fisik
     // (the query reports null). Never let a structural row total it as complete.
     const fisik = r.excluded_tanks === 0 ? r.fisik : null;
@@ -213,6 +220,7 @@ export function buildArusMinyak(
       pct: lossPct(l, r.sales_gross), // penyebut KOTOR
       zeroClosing: flagPenutupNol(code ? zcByProduk.get(code) : undefined, fisik, teori),
       artefak,
+      unverified,
       glMentah: artefak ? r.gl_raw ?? r.gl : null,
     };
   });
@@ -237,6 +245,7 @@ export function buildArusMinyak(
     nama: "TOTAL",
     zeroClosing: null,
     artefak: null,
+    unverified: null,
     glMentah: null,
     awal: totalKnown((r) => r.awal),
     penerimaan: nz(rows.map((r) => r.penerimaan)),
@@ -259,37 +268,41 @@ export function buildArusMinyak(
     teraTotal: total.tera,
     zeroClosingCount: rows.filter((r) => r.zeroClosing !== null).length,
     artefakCount: rows.filter((r) => r.artefak !== null).length,
+    unverifiedCount: rows.filter((r) => r.unverified !== null).length,
   };
 }
 
-/** Label penanda baris (layar & PDF): penutup-nol dulu, lalu artefak lain. */
-export function arusTag(r: ArusRow): "opname 0" | "perlu periksa" | null {
-  return r.zeroClosing ? "opname 0" : r.artefak ? "perlu periksa" : null;
+/**
+ * Label penanda baris (layar & PDF): status G/L dulu, lalu peringatan
+ * penutup-nol. Baris tanpa kode produk sudah berlabel "Produk tidak diketahui".
+ */
+export function arusTag(r: ArusRow): typeof GL_UNVERIFIED | "opname 0" | null {
+  return r.unverified && r.ckdbbm !== null ? GL_UNVERIFIED : r.zeroClosing ? "opname 0" : null;
 }
 
 /**
- * Peringatan bersama layar & PDF. Menyebut angka mentah (audit) tanpa pernah
- * menyebutnya losses. Baris ber-peringatan penutup-nol lama yang G/L-nya tak
- * ditahan menampilkan hasil ukur kanonis (sama dengan panel Gain/Losses) —
- * berapa pun besarnya: tangki yang kosong sah lalu diisi bisa memicu peringatan
- * itu dengan surplus tercatat yang besar.
+ * Catatan bersama layar & PDF. Hitungan mentah disebut sebagai audit yang
+ * belum terverifikasi — tidak pernah sebagai losses, dan tidak pernah sebagai
+ * "bukan kerugian". Baris ber-peringatan penutup-nol yang G/L-nya tak ditahan
+ * menampilkan hasil ukur kanonis (sama dengan panel Gain/Losses) — berapa pun
+ * besarnya: tangki yang kosong sah lalu diisi bisa memicu peringatan itu.
  */
-export function arusArtefakNote(a: ArusMinyak, liter: (v: number | null) => string): string | null {
-  const tagged = a.rows.filter((r) => arusTag(r) !== null);
-  if (tagged.length === 0) return null;
-  const held = tagged.filter((r) => r.artefak !== null);
-  const shown = tagged.filter((r) => r.artefak === null && r.losses !== null);
-  return `PERINGATAN — ${tagged.length} produk bertanda [opname 0]/[perlu periksa]: data sumber perlu diperiksa ` +
-    "(penutup opname 0 padahal tangki mestinya berisi — ambang heuristik 1.000 L). " +
-    (held.length > 0
-      ? "Losses & % baris artefak tidak dihitung (“—”) dan tidak masuk TOTAL maupun panel Gain/Losses — BUKAN kerugian. " +
-        `Angka mentah Stock Fisik − Stock Teori (audit): ${held.map((r) => `${r.nama} ${liter(r.glMentah)} L`).join("; ")}. `
-      : "") +
+export function arusQualityNote(a: ArusMinyak, liter: (v: number | null) => string): string | null {
+  const held = a.rows.filter((r) => r.unverified !== null);
+  const shown = a.rows.filter((r) => r.unverified === null && r.zeroClosing !== null && r.losses !== null);
+  if (held.length === 0 && shown.length === 0) return null;
+  const audit = held.filter((r) => r.glMentah !== null);
+  return (held.length > 0
+    ? `${held.length} produk “${GL_UNVERIFIED}”: Losses & % tampil “—” dan tidak masuk TOTAL, panel Gain/Losses, maupun alarm. ` +
+      (audit.length > 0
+        ? `Hitungan mentah Stock Fisik − Stock Teori (${GL_UNVERIFIED}, audit saja): ${audit.map((r) => `${r.nama} ${liter(r.glMentah)} L`).join("; ")}. `
+        : "") +
+      `Rincian sebab dan cara verifikasinya ada di panel “${GL_UNVERIFIED_TITLE}”. `
+    : "") +
     (shown.length > 0
-      ? "Pada baris [opname 0] yang Losses-nya tetap tampil, angka itu hasil ukur kanonis dan sama dengan panel Gain/Losses; " +
-        "peringatan penutup-nol saja tidak membuktikan kerugian maupun saldo yang tidak sah. "
-      : "") +
-    "Periksa opname dan penerimaan pada hari terkait beserta penutup sebelumnya; ralat di EasyMax bila ditemukan kesalahan, lalu muat ulang.";
+      ? "Baris [opname 0]: ada penutup opname 0 yang perlu diperiksa di sumber; Losses yang tampil tetap hasil ukur kanonis dan sama dengan panel Gain/Losses. " +
+        "Peringatan penutup-nol saja tidak membuktikan kerugian maupun saldo yang tidak sah."
+      : "");
 }
 
 /** kelas 2 menang atas kelas 1 (detektor tertala lebih informatif). */

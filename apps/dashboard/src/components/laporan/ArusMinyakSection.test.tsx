@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ArusMinyakSection } from "./ArusMinyakSection";
 import { parseArusHtml } from "@/lib/arus-minyak.grade";
 import { buildArusMinyak, type ArusMinyak, type ArusRow } from "@/lib/arus-minyak";
+import { num2 } from "@/lib/format";
 import type { DailyGlRow } from "@/lib/queries";
 
 const baris = (o: Partial<ArusRow> = {}): ArusRow => ({
@@ -22,6 +23,7 @@ const baris = (o: Partial<ArusRow> = {}): ArusRow => ({
   pct: -6.67,
   zeroClosing: null,
   artefak: null,
+  unverified: null,
   glMentah: null,
   ...o,
 });
@@ -35,6 +37,7 @@ const arus = (o: Partial<ArusMinyak> = {}): ArusMinyak => ({
   teraTotal: 0,
   zeroClosingCount: 0,
   artefakCount: 0,
+  unverifiedCount: 0,
   ...o,
 });
 
@@ -113,7 +116,9 @@ describe("ArusMinyakSection source-quality propagation", () => {
     expect(cells.get("SINTETIS Q")).toEqual([200, 50, 30, 220, 220, 0, 0]);
     expect(cells.get("TOTAL")).toEqual([2_200, 100, 60, null, 220, null, null]);
     expect(h).toContain("belum final");
-    expect(h).not.toContain("zc-note");
+    // No opname-zero warning is invented; the withheld G/L is labelled, not explained away.
+    expect(h).not.toMatch(/opname 0|penutup opname 0/);
+    expect(h).toContain("Belum terverifikasi");
     expect(h).not.toMatch(/NaN|undefined/);
   });
 
@@ -144,16 +149,18 @@ describe("ArusMinyakSection source-quality propagation", () => {
   it.each([
     { reason: "jangkar_nol" as const, row: { fisik_prev: 0, fisik: 3_000, gl_raw: 3_030 } },
     { reason: "penutup_nol" as const, row: { fisik_prev: 6_000, sales_gross: 30, fisik: 0, gl_raw: -5_970 } },
-  ])("renders a $reason artefact with raw stock, '—' Losses/% and an audit note", ({ reason, row }) => {
+  ])("renders a $reason uncertain G/L with raw stock, '—' Losses/% and a labelled audit note", ({ reason, row }) => {
     const a = buildArusMinyak([source({ pen_do: 0, ...row, gl: null, gl_suspect: reason, provisional: true }), healthy]);
     const h = html(a), cells = parseArusHtml(h);
     const p = cells.get("SINTETIS P")!;
     expect(p[4]).toBe(row.fisik);       // raw physical stays visible
     expect(p.slice(5)).toEqual([null, null]);
     expect(cells.get("TOTAL")!.slice(5)).toEqual([null, null]);
-    expect(h).toContain("perlu periksa");
-    expect(h).toContain("BUKAN kerugian");
+    expect(h).toContain("Belum terverifikasi");
     expect(h).toContain("mentah");
+    expect(h).toContain(num2(row.gl_raw)); // raw audit value, as computed by SQL
+    // Approved policy: no categorical "not a loss"/artefact claim for uncertain G/L.
+    expect(h).not.toMatch(/bukan kerugian|artefak|bukan stok nyata|perlu periksa/i);
     expect(h).not.toMatch(/NaN|undefined|sengaja tidak dikoreksi/);
   });
 

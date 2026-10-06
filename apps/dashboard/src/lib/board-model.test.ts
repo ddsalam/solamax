@@ -373,6 +373,15 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     expectIncomplete(coreInput({ glRange }));
   });
 
+  it("R1: the product sold without a G/L row is detailed as “Belum terverifikasi”; generic status coexists", () => {
+    const glRange = new Map(GL_RANGE);
+    glRange.set(1, [glRow(-11.2)]);
+    const m = expectIncomplete(coreInput({ glRange }));
+    // Only the known missing row, from sales context; no tank, stock or raw number is invented.
+    expect(m.glUnverified).toEqual([{ unit: { code: IB.code, name: IB.name }, d: TODAY, ckdbbm: "PERTAMAX",
+      produk: "PERTAMAX", reason: "penutup_tak_ada", tangki: null, prevDate: null, priorTeori: null, audit: null, terjual: 120 }]);
+  });
+
   it.each([
     { name: "null G/L", patch: { gl: null } },
     { name: "excluded tank with a partial numeric G/L", patch: { excluded_tanks: 1 } },
@@ -400,14 +409,17 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     } : r)]]);
     const m = buildBoardCore(coreInput({ units: [IB], mode: "banding", glRange }));
     expect(glCard(m).value).toBe("—");
-    expect(glCard(m).sub).toBe("data sumber perlu verifikasi"); // no artefact liters
+    expect(glCard(m).sub).toBe("G/L Belum terverifikasi"); // no raw liters
     expect(glCard(m).subTone).toBe("warning");
     expect(glCard(m).provisional).toBe(true);
-    expect(glCard(m).perUnit![0]).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi" });
-    expect(m.verdict.chips).toContainEqual({ tone: "warning", text: "Imam Bonjol: data sumber perlu verifikasi" });
+    expect(glCard(m).perUnit![0]).toMatchObject({ value: "—", sub: "G/L Belum terverifikasi" });
+    expect(m.verdict.chips).toContainEqual({ tone: "warning", text: "Imam Bonjol: G/L Belum terverifikasi" });
     expect(m.verdict.chips.some((c) => c.tone === "danger")).toBe(false);
-    expect(m.ranking[0]).toMatchObject({ gl: "—", glAbnormal: false, glProvisional: true, glStatus: "PERLU PERIKSA" });
-    expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "data sumber perlu verifikasi" });
+    expect(m.ranking[0]).toMatchObject({ gl: "—", glAbnormal: false, glProvisional: true, glStatus: "Belum terverifikasi" });
+    expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "G/L Belum terverifikasi" });
+    // Details: the withheld row with its unit/date/product and reason (no tank metadata → none invented).
+    expect(m.glUnverified).toEqual([expect.objectContaining({ unit: { code: IB.code, name: IB.name },
+      reason: "penutup_nol", tangki: null })]);
   });
 
   it.each(["penutup_nol", "jangkar_nol"] as const)(
@@ -415,11 +427,12 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
       const glRange = new Map(GL_RANGE);
       glRange.set(1, GL_RANGE.get(1)!.map((r, i) => i === 0 ? { ...r, gl: null, gl_suspect: reason, provisional: true } : r));
       const m = buildBoardCore(coreInput({ mode: "banding", glRange }));
-      expect(glCard(m)).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi", provisional: true });
-      expect(glCard(m).perUnit!.find((u) => u.name === IB.name)).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi" });
+      expect(glCard(m)).toMatchObject({ value: "—", sub: "G/L Belum terverifikasi", provisional: true });
+      expect(glCard(m).perUnit!.find((u) => u.name === IB.name)).toMatchObject({ value: "—", sub: "G/L Belum terverifikasi" });
       // Bakau has its own complete (provisional) window: still numeric.
       expect(glCard(m).perUnit!.find((u) => u.name === BK.name)!.value).toBe("+0,25%");
-      expect(m.ranking.find((r) => r.code === IB.code)).toMatchObject({ gl: "—", glStatus: "PERLU PERIKSA" });
+      expect(m.ranking.find((r) => r.code === IB.code)).toMatchObject({ gl: "—", glStatus: "Belum terverifikasi" });
+      expect(m.glUnverified.map((i) => [i.unit?.code, i.reason])).toEqual([[IB.code, reason]]);
       expect(m.ranking.find((r) => r.code === BK.code)!.gl).toBe("+0,25%");
     });
 
@@ -556,7 +569,7 @@ describe("buildBoardEval — G/L completeness across every window", () => {
       for (const key of affected) {
         expect(e.cards.gl[key].text).toBe("—");
         expect(e.cards.gl[key].provisional).toBe(true);
-        expect(e.cards.gl[key].note).toBe("data sumber perlu verifikasi");
+        expect(e.cards.gl[key].note).toBe("G/L Belum terverifikasi");
         expect(unit[key]).toEqual(e.cards.gl[key]);
       }
       if (window === "range") {

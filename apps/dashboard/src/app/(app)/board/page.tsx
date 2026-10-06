@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { AnomalyFeed } from "@/components/AnomalyFeed";
+import { GlUnverifiedPanel } from "@/components/GlUnverifiedPanel";
 import { BoardExport } from "@/components/board/BoardExport";
 import { BoardFilters } from "@/components/board/BoardFilters";
 import { RankingTable } from "@/components/board/RankingTable";
@@ -321,6 +322,12 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
           </div>
         )}
       </div>
+
+      <GlUnverifiedPanel
+        items={core.glUnverified}
+        withUnit
+        hint={`periode ${periodLabel} · ditahan dari total, persen & alarm`}
+      />
 
       {/* Anomali & exception (identitas halaman — dipertahankan) */}
       <div className="mt10">

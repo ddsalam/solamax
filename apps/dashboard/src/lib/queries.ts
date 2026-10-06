@@ -587,13 +587,20 @@ export interface DailyGlRow {
   sales_gross: number; // Σ nvolume jual KOTOR tersedia dlm jendela (prev, D]
   tera: number; // Σ tera (L) tersedia dlm jendela (prev, D]
   movement_invalid: boolean; // true = mutasi hanya subtotal diagnostik, bukan dasar Stock Teori
-  gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung ATAU artefak input
-  /** Rumus G/L sebelum vonis artefak — audit saja, jangan dijumlah. null = tak terhitung.
-   *  Selalu ada dari query; opsional hanya untuk baris struktural/legacy. */
+  gl: number | null; // Gain/Losses bertanda (+ gain, − loss); null = tak terhitung ATAU Belum terverifikasi
+  /** Rumus G/L sebelum penahanan — audit "Belum terverifikasi" saja, jangan dijumlah.
+   *  null = tak terhitung. Selalu ada dari query; opsional hanya untuk baris struktural/legacy. */
   gl_raw?: number | null;
-  /** Vonis artefak input (derive.ts GlSuspect); null = heuristik tak menyala (bukan sertifikat sah). Lihat getDailyGlByProduct. */
+  /** Pola penahanan (derive.ts GlSuspect); null = heuristik tak menyala (bukan sertifikat sah). Lihat getDailyGlByProduct. */
   gl_suspect?: GlSuspect | null;
   excluded_tanks: number; // penutup dengan stok atau identitas produk/tangki tak valid
+  /** Rincian sumber untuk panduan verifikasi (gl-verification.ts) — tak pernah
+   *  masuk hitungan. Opsional: baris lama/struktural tidak membawanya. */
+  tanks?: (string | null)[] | null; // kode tangki penutup produk hari itu
+  tanks_invalid?: (string | null)[] | null; // tangki penutup yang ditolak guard
+  tanks_prev?: (string | null)[] | null; // kode tangki penutup pendahulu
+  prev_date?: string | null; // tanggal bisnis penutup pendahulu (Stock Awal)
+  prior_teori?: number | null; // Stock Teori pendahulu penutup-0 yang dinilai (jangkar_nol)
   provisional: boolean; // penutup/anchor belum final, tak lengkap, atau ada celah
 }
 
@@ -620,16 +627,17 @@ export interface DailyGlRow {
  * - Identitas produk/tangki kosong bukan cakupan yang sah: stok/G/L tak
  *   tersedia. Mutasi tanpa kode produk tidak dialokasikan ke produk mana pun;
  *   ia menahan saldo terdampak dan tetap muncul sebagai baris diagnostik null.
- * - ARTEFAK INPUT (`gl_suspect`, ambang HEURISTIK GL_ARTEFACT_MIN_L = 1.000 L).
+ * - BELUM TERVERIFIKASI (`gl_suspect`, ambang HEURISTIK GL_ARTEFACT_MIN_L = 1.000 L).
  *   Rumusnya tidak berubah dan hasilnya tetap di `gl_raw` untuk audit, tetapi
- *   `gl` = null dan baris provisional — angka itu bukan losses/gain nyata dan tak
- *   boleh masuk total/persen mana pun (pemanggil memperlakukannya seperti tak
- *   terhitung). NULL = heuristik tidak menyala, BUKAN sertifikat bahwa stoknya sah:
+ *   `gl` = null dan baris provisional — angka itu belum terverifikasi (belum
+ *   tentu rugi/untung, belum tentu salah input) dan tak boleh masuk total/persen/
+ *   alarm mana pun (pemanggil memperlakukannya seperti tak terhitung). NULL =
+ *   heuristik tidak menyala, BUKAN sertifikat bahwa stoknya sah:
  *     penutup_nol   Fisik produk (semua tangki) 0 ∧ Teori > 1.000 (kelas 1
  *                   Arus Minyak, kini di sini).
  *     jangkar_nol   Stock Awal = penutup pendahulu yang SENDIRINYA penutup_nol
  *                   (aturan di atas, dinilai dari Stock Fisik pendahulunya dan
- *                   mutasi jendelanya sendiri) → stok awal itu bukan stok nyata.
+ *                   mutasi jendelanya sendiri) → stok awal itu belum terverifikasi.
  *                   Penerimaan hari ini dan stok buku penutup-0 itu tidak
  *                   merehabilitasinya. Tangki yang kosong sah (penutup 0 yang
  *                   koheren dengan stok & mutasi sebelumnya) bukan penutup_nol,
@@ -704,6 +712,8 @@ export async function getDailyGlByProduct(
               CASE WHEN bool_or(garbage) THEN NULL ELSE sum(op) END AS fisik,
               count(*) FILTER (WHERE garbage)::int AS excluded_tanks,
               array_agg(ckdtangki ORDER BY ckdtangki) AS tanks,
+              -- Display metadata only (which closings the guard rejected).
+              array_agg(ckdtangki ORDER BY ckdtangki) FILTER (WHERE garbage) AS tanks_invalid,
               bool_or(prov_row) AS prov,
               -- A tank whose comparable previous closing is a zero that itself
               -- has comparable history: only then can that closing's own
@@ -872,6 +882,11 @@ export async function getDailyGlByProduct(
             (s.fisik - s.teori)::float8 AS gl_raw,
             s.gl_suspect,
             s.excluded_tanks,
+            -- Source detail for the "Belum terverifikasi" guidance; values the
+            -- CTEs above already hold. Never inputs to gl/gl_raw/provisional.
+            s.tanks, s.tanks_invalid, s.tanks_prev,
+            to_char(s.prev_date,'YYYY-MM-DD') AS prev_date,
+            s.prior_teori::float8 AS prior_teori,
             (s.prov OR COALESCE(s.prov_prev, false)
               OR s.fisik IS NULL OR s.fisik_prev IS NULL
               OR s.movement_invalid
@@ -890,7 +905,10 @@ export async function getDailyGlByProduct(
             COALESCE((SELECT v FROM terad x WHERE x.ckdbbm IS NULL AND x.d=u.d),0)::float8 AS tera,
             true AS movement_invalid,
             NULL::float8 AS gl, NULL::float8 AS gl_raw, NULL::text AS gl_suspect,
-            0::int AS excluded_tanks, true AS provisional
+            0::int AS excluded_tanks,
+            NULL::text[] AS tanks, NULL::text[] AS tanks_invalid, NULL::text[] AS tanks_prev,
+            NULL::text AS prev_date, NULL::float8 AS prior_teori,
+            true AS provisional
      FROM unassigned_dates u
      WHERE u.d BETWEEN $2::date AND $3::date
        AND NOT EXISTS (SELECT 1 FROM requested s WHERE s.bizdate=u.d AND s.ckdbbm IS NULL)
