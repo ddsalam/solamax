@@ -18,7 +18,7 @@
  *     BL 1 Apr, KR 6 Nov 2021, 28 Okt 7 Jul 2022).
  */
 import { canonicalProductKey, FLEET_RECORD_FLOOR } from "./config";
-import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, type ProductVol } from "./derive";
+import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, usableGl, type ProductVol } from "./derive";
 import { worstSyncAt, worstSyncUnitId } from "./freshness";
 import { addDays, monthInfo, monthStart } from "./periods";
 import type { DailyGlRow, DailySalesRow, SyncRow, UnitCoverageRow } from "./queries";
@@ -439,20 +439,21 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     for (const r of gl.get(id) ?? []) {
       if (r.d < mFrom || r.d > date) continue;
       const product = normalizeProductIdentity(r.ckdbbm);
-      const invalid = product === null || r.gl === null || r.excluded_tanks > 0;
+      // A source artefact is withheld exactly like an uncomputable balance.
       const suspect = isDailyGlSuspect(r);
+      const value = usableGl(r);
       if (suspect) suspectIds.add(id);
-      if (r.provisional || invalid || suspect) {
+      if (r.provisional || value === null) {
         glMonthlyProvisional = true;
         if (r.d === date) glProvisional = true;
       }
       const key = rowKeyOf(r.nama, r.ckdbbm);
       const k = `${id}|${key}`;
-      if (product !== null && !invalid) glSeen.add(`${id}|${r.d}|${product}`);
-      if (r.d === date) addGl(glDayCell, k, invalid ? null : r.gl);
+      if (product !== null && value !== null) glSeen.add(`${id}|${r.d}|${product}`);
+      if (r.d === date) addGl(glDayCell, k, value);
       if (r.d >= mFrom && r.d <= date) {
-        addGl(glMtdCell, k, invalid ? null : r.gl);
-        if (invalid) continue;
+        addGl(glMtdCell, k, value);
+        if (value === null) continue;
         const set = glDaysByUnit.get(id) ?? new Set<string>();
         set.add(r.d);
         glDaysByUnit.set(id, set);
@@ -677,7 +678,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   const suspects = statuses.filter((s) => suspectIds.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
-      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Angka tidak dikoreksi; perlu perbaikan entri di EasyMax.`,
+      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 atau stok teori di bawah −1.000 L (ambang heuristik) pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Sel yang terdeteksi sebagai artefak input tampil “—” dan tidak dijumlahkan (bukan kerugian); angka mentahnya ada di Arus Minyak laporan operasional unit. Perlu perbaikan entri di EasyMax.`,
     );
   }
 

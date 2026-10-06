@@ -55,6 +55,21 @@ Perbaikan 2026-06-13 (akar masalah losses "ngawur" 1.744%):
   - volume DO `> 100.000 L` (mis. entri 452.729 L).
   Ambang ini **fisik** (tangki SPBU 20–40 KL), bukan ambang losses operasional —
   losses besar-tapi-mungkin (mis. −6.109 L) TIDAK disembunyikan, justru menyala merah.
+- **Artefak input** (`gl_suspect`, ambang **heuristik** 1.000 L, [queries.ts](src/lib/queries.ts)
+  `getDailyGlByProduct`): penutup 0 padahal stok teori > 1.000 L (termasuk satu
+  tangki yang penutup sebelumnya > 1.000 L kini 0 sementara produk kurang > 1.000 L),
+  Stock Awal yang berasal dari penutup yang sendirinya tertahan sebagai penutup-0
+  tersebut (`jangkar_nol`; penerimaan hari ini dan stok buku tidak merehabilitasinya,
+  sedangkan tangki yang kosong sah tetap jangkar terukur), atau stok teori < −1.000 L.
+  Riwayat tangki hanya dipakai bila tiap penutup pendahulunya berproduk sama dan
+  lolos guard buku; stok buku tidak berperan lain. Peringatan penutup-nol lama
+  (`getZeroClosingEvents`) tetap hanya peringatan, bukan dasar vonis. Rumus tak berubah;
+  angkanya tetap di `gl_raw` untuk audit, tetapi `gl` = null → sel, total
+  harian/MTD/unit/grup, persen, alarm dan PDF tampil "—" + "perlu periksa", bukan
+  kerugian. Ambang 1.000 L dipinjam dari detektor penutup-nol, **bukan toleransi
+  stok yang terukur**: positif-palsu `teori_negatif` belum diukur, dan nilai di
+  bawah ambang (stok 0 kecil, stok teori negatif ≥ −1.000 L) hanya tidak ditahan —
+  tidak dinyatakan wajar. Cache historis tidak menyimpan jendela berisi artefak.
 - **Provisional** (edge-case hari berjalan): bila opname penutup D+1 belum terekam,
   G/L dihitung dari sesi terakhir tersedia + ditandai "provisional · opname penutup
   belum ada" — tidak menyesatkan diam-diam.

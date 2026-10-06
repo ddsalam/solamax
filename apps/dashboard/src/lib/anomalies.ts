@@ -36,6 +36,7 @@ import {
   GARBAGE_STOCK_L,
   isSelisihAbnormal,
   stockNow,
+  usableGl,
 } from "./derive";
 import { unitDotted } from "./config";
 
@@ -292,19 +293,21 @@ export async function buildAnomalies(units: ScopedUnit[]): Promise<AnomalyItem[]
     // Ambang sama (isSelisihAbnormal: |L|>100 atau >0,5% vs jual kotor hari itu).
     // Shortfall kiriman DO TERGABUNG di sini (keputusan owner — satu angka; item
     // "Kekurangan kiriman" di bawah tetap ada sebagai diagnostik terpisah). Baris
-    // provisional / gl tak terhitung dilewati — hanya losses FINAL yang menyala.
+    // provisional / gl tak terhitung / tak lolos usableGl dilewati — hanya losses
+    // FINAL yang menyala.
     for (const r of glRows) {
-      if (r.gl === null || r.provisional) continue;
-      if (!isSelisihAbnormal(r.gl, r.sales_gross)) continue;
-      const ratio = r.sales_gross > 0 ? Math.abs(r.gl) / r.sales_gross : null;
+      const gl = usableGl(r);
+      if (gl === null || r.provisional) continue;
+      if (!isSelisihAbnormal(gl, r.sales_gross)) continue;
+      const ratio = r.sales_gross > 0 ? Math.abs(gl) / r.sales_gross : null;
       const pctTxt = ratio !== null ? ` (${pct(ratio, 2)})` : "";
       const doCtx = r.pen_do > 0 ? ` · terima DO ${fmtL(r.pen_do)} (konteks)` : "";
       items.push({
         tone: "danger",
-        tier: lossTier(Math.abs(r.gl), ratio),
-        sev: Math.abs(r.gl),
+        tier: lossTier(Math.abs(gl), ratio),
+        sev: Math.abs(gl),
         dateIso: r.d,
-        title: `G/L ${signedFmt(r.gl)} L${pctTxt}`,
+        title: `G/L ${signedFmt(gl)} L${pctTxt}`,
         unit: unitTag,
         desc: `Gain/Losses operasional ${r.nama ?? r.ckdbbm} (metode RESUME: fisik − [fisik D−1 + ΣDO − jual bersih]) — di atas ambang 100 L / 0,5%. Kekurangan kiriman DO tergabung di sini${doCtx}.`,
         time: r.d,

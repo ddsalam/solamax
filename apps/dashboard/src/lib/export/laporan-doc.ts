@@ -11,6 +11,7 @@ import type { ExportConfig } from "./config";
 import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_PORTRAIT as CW, headerOnlyLayout, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
+import { arusArtefakNote, arusTag } from "@/lib/arus-minyak";
 import { DOMAIN, REKON_READY } from "@/lib/flags";
 import { fmtL, idn, isNegative, num2, parenNeg, pct, rp, rpParen, signed } from "@/lib/format";
 import { alurSelisihNote, type LaporanModel } from "@/lib/laporan-model";
@@ -352,11 +353,12 @@ function arusSection(m: LaporanModel): Content[] {
     ],
   ];
   for (const r of a.rows) {
+    const tag = arusTag(r);
     body.push([
       {
-        text: pdfText(r.zeroClosing ? `${r.nama}  [opname 0]` : r.nama),
-        color: r.zeroClosing ? PDF.warning : PDF.textPrimary,
-        bold: r.zeroClosing != null,
+        text: pdfText(tag ? `${r.nama}  [${tag}]` : r.nama),
+        color: tag ? PDF.warning : PDF.textPrimary,
+        bold: tag !== null,
       },
       { text: num2(r.awal), alignment: "right", color: PDF.textSecondary },
       { text: num2(r.penerimaan), alignment: "right", color: PDF.textSecondary },
@@ -382,12 +384,10 @@ function arusSection(m: LaporanModel): Content[] {
   const out: Content[] = [
     sectionHeading("Arus Minyak Harian", a.provisional ? "belum final" : undefined),
   ];
-  if (a.zeroClosingCount > 0)
+  const artefakNote = arusArtefakNote(a, num2);
+  if (artefakNote)
     out.push({
-      text:
-        `PERINGATAN — ${a.zeroClosingCount} produk bertanda [opname 0]: penutup opname tercatat 0 padahal tangki mestinya berisi. ` +
-        "Losses & % baris itu artefak input EasyMax, BUKAN kerugian; angkanya sengaja tidak dikoreksi agar tetap sama dengan panel Gain/Losses. " +
-        "Ralat opname hari itu di EasyMax, lalu cetak ulang.",
+      text: pdfText(artefakNote),
       style: "footNote",
       alignment: "left",
       color: PDF.warning,

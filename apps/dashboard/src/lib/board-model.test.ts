@@ -333,19 +333,55 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     expect(m.verdict.chips.some((c) => /G\/L|stok fisik/.test(c.text))).toBe(false);
   });
 
-  it("retains suspicious source zero numerically, with explicit quality warnings instead of confirmed losses", () => {
+  it("withholds a suspicious source zero from totals and percentages, with explicit quality warnings", () => {
     const glRange = new Map([[1, glWindow(1, PERIOD.range, -5000).map((r, i) => i === 0 ? {
       ...r, fisik: 0, fisik_prev: 6000, pen_do: 0, sales_gross: 1000,
     } : r)]]);
     const m = buildBoardCore(coreInput({ units: [IB], mode: "banding", glRange }));
-    expect(glCard(m).value).toBe("−446,43%");
-    expect(glCard(m).sub).toBe("−5.000 L · stok fisik 0 perlu verifikasi");
+    expect(glCard(m).value).toBe("—");
+    expect(glCard(m).sub).toBe("data sumber perlu verifikasi"); // no artefact liters
     expect(glCard(m).subTone).toBe("warning");
     expect(glCard(m).provisional).toBe(true);
-    expect(glCard(m).perUnit![0]!.sub).toContain("stok fisik 0 perlu verifikasi");
-    expect(m.verdict.chips).toContainEqual({ tone: "warning", text: "Imam Bonjol: stok fisik 0 perlu verifikasi" });
+    expect(glCard(m).perUnit![0]).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi" });
+    expect(m.verdict.chips).toContainEqual({ tone: "warning", text: "Imam Bonjol: data sumber perlu verifikasi" });
     expect(m.verdict.chips.some((c) => c.tone === "danger")).toBe(false);
-    expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "stok fisik 0 perlu verifikasi" });
+    expect(m.ranking[0]).toMatchObject({ gl: "—", glAbnormal: false, glProvisional: true, glStatus: "PERLU PERIKSA" });
+    expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "data sumber perlu verifikasi" });
+  });
+
+  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+    "SQL artefact verdict %s gates its unit and the group, not an unaffected unit", (reason) => {
+      const glRange = new Map(GL_RANGE);
+      glRange.set(1, GL_RANGE.get(1)!.map((r, i) => i === 0 ? { ...r, gl: null, gl_suspect: reason, provisional: true } : r));
+      const m = buildBoardCore(coreInput({ mode: "banding", glRange }));
+      expect(glCard(m)).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi", provisional: true });
+      expect(glCard(m).perUnit!.find((u) => u.name === IB.name)).toMatchObject({ value: "—", sub: "data sumber perlu verifikasi" });
+      // Bakau has its own complete (provisional) window: still numeric.
+      expect(glCard(m).perUnit!.find((u) => u.name === BK.name)!.value).toBe("+0,25%");
+      expect(m.ranking.find((r) => r.code === IB.code)).toMatchObject({ gl: "—", glStatus: "PERLU PERIKSA" });
+      expect(m.ranking.find((r) => r.code === BK.code)!.gl).toBe("+0,25%");
+    });
+
+  it.each([
+    ["invalid movement", { movement_invalid: true }],
+    ["non-finite G/L", { gl: Number.NaN }],
+  ] as const)("a structural %s row gates its unit and the group as incomplete, not as an artefact", (_name, over) => {
+    const glRange = new Map(GL_RANGE);
+    glRange.set(1, GL_RANGE.get(1)!.map((r, i) => i === 0 ? { ...r, ...over } : r));
+    const m = buildBoardCore(coreInput({ mode: "banding", glRange }));
+    expect(glCard(m)).toMatchObject({ value: "—", sub: "G/L belum lengkap", provisional: true });
+    expect(glCard(m).perUnit!.find((u) => u.name === IB.name)).toMatchObject({ value: "—", sub: "G/L belum lengkap" });
+    expect(glCard(m).perUnit!.find((u) => u.name === BK.name)!.value).toBe("+0,25%");
+    expect(m.ranking.find((r) => r.code === IB.code)).toMatchObject({ gl: "—", glStatus: "TIDAK LENGKAP" });
+  });
+
+  it("a zero-stock row with an explicit null SQL verdict is not withheld (heuristic did not fire)", () => {
+    const glRange = new Map([[1, glWindow(1, PERIOD.range, -11.2).map((r) => ({
+      ...r, fisik: 0, fisik_prev: 6000, pen_do: 0, sales_gross: 1000, gl_suspect: null,
+    }))]]);
+    const m = buildBoardCore(coreInput({ units: [IB], glRange }));
+    expect(glCard(m).value).toBe("−1,00%");
+    expect(glCard(m).provisional).toBe(false);
   });
 
   it("does not demand G/L for a dormant product on an observed day, but does for a nonzero adjustment", () => {
@@ -446,9 +482,8 @@ describe("buildBoardEval — G/L completeness across every window", () => {
   );
 
   it.each(["range", "momPrev", "yoyPrev", "ytdCur", "ytdPrev"] as const)(
-    "propagates suspicious-zero source warnings from %s without changing arithmetic",
+    "withholds suspicious-zero artefacts from %s comparisons with a source warning",
     (window) => {
-      const baseline = buildBoardEval(evalInput());
       const gl = glWindows();
       gl[window] = new Map([[1, gl[window].get(1)!.map((r, i) => i === 0 ? {
         ...r, fisik: 0, fisik_prev: 6000, pen_do: 0, sales_gross: 1000,
@@ -458,13 +493,19 @@ describe("buildBoardEval — G/L completeness across every window", () => {
       const affected: ("mom" | "yoy" | "ytdDelta")[] = window === "range" ? ["mom", "yoy"]
         : window === "momPrev" ? ["mom"] : window === "yoyPrev" ? ["yoy"] : ["ytdDelta"];
       for (const key of affected) {
-        expect(e.cards.gl[key].text).toBe(baseline.cards.gl[key].text);
+        expect(e.cards.gl[key].text).toBe("—");
         expect(e.cards.gl[key].provisional).toBe(true);
-        expect(e.cards.gl[key].note).toBe("stok fisik 0 perlu verifikasi");
+        expect(e.cards.gl[key].note).toBe("data sumber perlu verifikasi");
         expect(unit[key]).toEqual(e.cards.gl[key]);
       }
-      if (window === "range") expect(unit.curProvisional).toBe(true);
-      if (window === "ytdCur") expect(e.cards.gl.ytdProvisional).toBe(true);
+      if (window === "range") {
+        expect(unit.cur).toBe("—");
+        expect(unit.curProvisional).toBe(true);
+      }
+      if (window === "ytdCur") {
+        expect(e.cards.gl.ytdValue).toBe("—");
+        expect(e.cards.gl.ytdProvisional).toBe(true);
+      }
     },
   );
 });

@@ -9,10 +9,12 @@ import {
   enduranceDays,
   enduranceLevel,
   glPercent,
+  isDailyGlSuspect,
   isOpnameGarbage,
   isStockImplausible,
   normalizeProductIdentity,
   stockNow,
+  usableGl,
   verdictHeadline,
   type ClosingRow,
   type DailyGlInput,
@@ -290,14 +292,14 @@ describe("aggregateDailyGl (G/L metode RESUME — Σ harian)", () => {
     expect(agg.byProduct.get("BB-02")?.signed).toBe(0); // tak ada gl terhitung
   });
 
-  it("provisional & excludedTanks ter-propagasi", () => {
+  it("provisional & excludedTanks ter-propagasi; G/L baris ter-guard tidak dijumlah", () => {
     const agg = aggregateDailyGl([
       row({ gl: 3, provisional: true, excluded_tanks: 1 }),
       row({ ckdbbm: "BB-03", gl: 4, excluded_tanks: 2 }),
     ]);
     expect(agg.provisional).toBe(true);
     expect(agg.excludedTanks).toBe(3);
-    expect(agg.hasGl).toBe(true);
+    expect(agg).toMatchObject({ incomplete: true, hasGl: false, totalSigned: 0 });
   });
 });
 
@@ -323,10 +325,96 @@ describe("G/L aggregate integrity metadata", () => {
   it("valid zero is complete", () => {
     expect(aggregateDailyGl([row()])).toMatchObject({hasGl:true,incomplete:false,suspect:false,totalSigned:0});
   });
-  it("zero-closing warning preserves values and uses the operational 1000L threshold", () => {
+  it("zero-closing artefact is withheld from totals and uses the operational 1000L threshold", () => {
     const a=aggregateDailyGl([row({fisik:0,fisik_prev:5000,pen_do:0,sales_gross:100,gl:-4900})]);
-    expect(a).toMatchObject({suspect:true,provisional:true,incomplete:false,totalSigned:-4900});
-    expect(aggregateDailyGl([row({fisik:0,fisik_prev:1100,pen_do:0,sales_gross:100})]).suspect).toBe(false);
+    expect(a).toMatchObject({suspect:true,provisional:true,incomplete:true,hasGl:false,totalSigned:0});
+    expect(a.byProduct.get("BB-03")!.signed).toBe(0);
+    // A genuinely sold-down tank (theory <= 1000 L) remains a measured value.
+    const empty=aggregateDailyGl([row({fisik:0,fisik_prev:1100,pen_do:0,sales_gross:100,gl:0})]);
+    expect(empty).toMatchObject({suspect:false,incomplete:false,hasGl:true,totalSigned:0});
+  });
+});
+
+describe("G/L source-artefact verdict (getDailyGlByProduct gl_suspect)", () => {
+  // Synthetic products/quantities only.
+  const row = (over: Partial<DailyGlInput> = {}): DailyGlInput => ({
+    ckdbbm: "X-1", nama: "PRODUK A", fisik: 4_000, fisik_prev: 4_200, pen_do: 0, sales_gross: 150,
+    gl: -50, gl_suspect: null, tera: 0, excluded_tanks: 0, provisional: false, ...over,
+  });
+
+  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+    "SQL reason %s is suspect, incomplete, and never summed", (reason) => {
+      const r = row({ gl: null, gl_suspect: reason, provisional: true });
+      expect(isDailyGlSuspect(r)).toBe(true);
+      const a = aggregateDailyGl([r, row({ ckdbbm: "X-2", nama: "PRODUK B", gl: 30 })]);
+      expect(a).toMatchObject({ suspect: true, incomplete: true, provisional: true, hasGl: true, totalSigned: 30 });
+      expect(a.byProduct.get("X-1")!.signed).toBe(0);
+      expect(a.byProduct.get("X-2")!.signed).toBe(30);
+    });
+
+  it("an explicit SQL non-suspect verdict is authoritative over the legacy fallback", () => {
+    // Multi-tank product whose zero tank is legitimately empty: product fisik is
+    // the other tank, so no legacy signal fires either way.
+    expect(isDailyGlSuspect(row())).toBe(false);
+    // SQL said "not suspect": e.g. theory needed tank-set integrity it lacked.
+    expect(isDailyGlSuspect(row({ fisik: 0, fisik_prev: 9_000, sales_gross: 100, gl: null, gl_suspect: null }))).toBe(false);
+  });
+
+  it("legacy rows without SQL verdict still use the existing zero-closing rule", () => {
+    const legacy = row({ fisik: 0, fisik_prev: 9_000, sales_gross: 100, gl: -8_900 });
+    delete (legacy as { gl_suspect?: unknown }).gl_suspect;
+    expect(isDailyGlSuspect(legacy)).toBe(true);
+    expect(aggregateDailyGl([legacy])).toMatchObject({ suspect: true, incomplete: true, hasGl: false, totalSigned: 0 });
+  });
+
+  it("mixed days: valid days of the same product are kept per row but the window is incomplete", () => {
+    const a = aggregateDailyGl([
+      row({ gl: -20 }),
+      row({ gl: null, gl_suspect: "penutup_nol", provisional: true }),
+      row({ gl: null, gl_suspect: "jangkar_nol", provisional: true }),
+      row({ gl: 15 }),
+    ]);
+    expect(a).toMatchObject({ suspect: true, incomplete: true, hasGl: true });
+    // Diagnostic partial only — callers must not publish it as the window total.
+    expect(a.totalSigned).toBe(-5);
+  });
+
+  it("genuine zero G/L stays a complete measured zero", () => {
+    expect(aggregateDailyGl([row({ gl: 0 })])).toMatchObject({ suspect: false, incomplete: false, hasGl: true, totalSigned: 0 });
+  });
+});
+
+describe("usableGl — pre-existing validity of structural rows", () => {
+  // Synthetic. The canonical SQL already nulls these, but structural/legacy
+  // rows must not publish an invalid value just because SQL normally would.
+  const row = (over: Partial<DailyGlInput> = {}): DailyGlInput => ({
+    ckdbbm: "X-1", nama: "PRODUK A", gl: -40, tera: 5, excluded_tanks: 0, provisional: false, ...over,
+  });
+
+  it.each([
+    ["unknown identity (null)", { ckdbbm: null }],
+    ["unknown identity (blank)", { ckdbbm: " \t" }],
+    ["guard-excluded tank", { excluded_tanks: 1 }],
+    ["invalid movement", { movement_invalid: true }],
+    ["NaN", { gl: Number.NaN }],
+    ["+Infinity", { gl: Number.POSITIVE_INFINITY }],
+    ["-Infinity", { gl: Number.NEGATIVE_INFINITY }],
+  ] as const)("%s → unusable, aggregate incomplete, never summed, not an artefact", (_name, over) => {
+    const bad = row(over);
+    expect(usableGl(bad)).toBeNull();
+    const a = aggregateDailyGl([bad, row({ ckdbbm: "X-2", nama: "PRODUK B", gl: 30, tera: 2 })]);
+    // Tera stays an informational total; the 30 is a diagnostic partial only.
+    expect(a).toMatchObject({ incomplete: true, provisional: true, hasGl: true, suspect: false,
+      totalSigned: 30, totalTera: 7 });
+    for (const v of a.byProduct.values()) expect(Number.isFinite(v.signed)).toBe(true);
+  });
+
+  it("valid rows, genuine zero and legacy rows without movement metadata stay usable", () => {
+    expect(usableGl(row({ gl: 0 }))).toBe(0);
+    expect(usableGl(row({ movement_invalid: false }))).toBe(-40);
+    expect(usableGl(row())).toBe(-40);
+    expect(aggregateDailyGl([row({ gl: 0, movement_invalid: false })]))
+      .toMatchObject({ incomplete: false, provisional: false, hasGl: true, totalSigned: 0, totalTera: 5 });
   });
 });
 

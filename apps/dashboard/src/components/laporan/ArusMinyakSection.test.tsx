@@ -21,6 +21,8 @@ const baris = (o: Partial<ArusRow> = {}): ArusRow => ({
   losses: -2,
   pct: -6.67,
   zeroClosing: null,
+  artefak: null,
+  glMentah: null,
   ...o,
 });
 
@@ -32,6 +34,7 @@ const arus = (o: Partial<ArusMinyak> = {}): ArusMinyak => ({
   incomplete: false,
   teraTotal: 0,
   zeroClosingCount: 0,
+  artefakCount: 0,
   ...o,
 });
 
@@ -136,6 +139,22 @@ describe("ArusMinyakSection source-quality propagation", () => {
     expect(cells.get("SINTETIS P")).toEqual([0, 0, 0, 0, 0, 0, 0]);
     expect(cells.get("Produk tidak diketahui")?.slice(3)).toEqual([null, null, null, null]);
     expect(cells.get("TOTAL")).toEqual([null, 50, 30, null, null, null, null]);
+  });
+
+  it.each([
+    { reason: "jangkar_nol" as const, row: { fisik_prev: 0, fisik: 3_000, gl_raw: 3_030 } },
+    { reason: "teori_negatif" as const, row: { fisik_prev: 100, sales_gross: 2_500, fisik: 40, gl_raw: 2_440 } },
+  ])("renders a $reason artefact with raw stock, '—' Losses/% and an audit note", ({ reason, row }) => {
+    const a = buildArusMinyak([source({ pen_do: 0, ...row, gl: null, gl_suspect: reason, provisional: true }), healthy]);
+    const h = html(a), cells = parseArusHtml(h);
+    const p = cells.get("SINTETIS P")!;
+    expect(p[4]).toBe(row.fisik);       // raw physical stays visible
+    expect(p.slice(5)).toEqual([null, null]);
+    expect(cells.get("TOTAL")!.slice(5)).toEqual([null, null]);
+    expect(h).toContain("perlu periksa");
+    expect(h).toContain("BUKAN kerugian");
+    expect(h).toContain("mentah");
+    expect(h).not.toMatch(/NaN|undefined|sengaja tidak dikoreksi/);
   });
 
   it("empty source data has an explicit empty state and no invented TOTAL", () => {

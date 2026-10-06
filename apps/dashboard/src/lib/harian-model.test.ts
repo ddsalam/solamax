@@ -362,6 +362,59 @@ describe("G/L", () => {
     expect(m.glSuspectUnits.map((u) => u.code)).toEqual(["6478106"]);
     expect(m.notes.join(" ")).toContain("penutup opname bernilai 0");
   });
+
+  // Synthetic two-unit window; one product-day carries a SQL artefact verdict.
+  const twoUnits = (reason: "penutup_nol" | "jangkar_nol" | "teori_negatif", d = "2026-07-22") => base({
+    units: [KB, IB],
+    coverage: [cov(4, "2011-10-06"), cov(1, "2022-08-31")],
+    sync: [syn(4, "2026-07-24T07:33:00Z"), syn(1, "2026-07-24T07:33:00Z")],
+    dailySales: [sale(4, "2026-07-21", "SOLAR", 100), sale(4, "2026-07-22", "SOLAR", 100), sale(4, "2026-07-22", "PERTALITE", 100),
+      sale(1, "2026-07-21", "SOLAR", 100), sale(1, "2026-07-22", "SOLAR", 100)],
+    gl: new Map([
+      [4, [glRow("2026-07-22", "PERTALITE", 7),
+        { ...glRow(d, "SOLAR", null), gl_raw: -6_000, gl_suspect: reason, provisional: true },
+        d === "2026-07-22" ? glRow("2026-07-21", "SOLAR", -3) : glRow("2026-07-22", "SOLAR", 2)]],
+      [1, [glRow("2026-07-21", "SOLAR", 4), glRow("2026-07-22", "SOLAR", -1)]],
+    ]),
+  });
+
+  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+    "artefak %s: sel/total unit & grup “—”, unit lain tetap utuh, catatan menyebut sumber", (reason) => {
+      const m = buildHarianModel(twoUnits(reason));
+      const solar = m.glDaily.rows.find((r) => r.key === "SOLAR")!;
+      expect(solar.byUnit[4]).toBeNull();
+      expect(solar.byUnit[1]).toBe(-1);
+      expect(solar.total).toBeNull();
+      expect(m.glDaily.rows.find((r) => r.key === "PERTALITE")!.byUnit[4]).toBe(7);
+      expect(m.glDaily.totalsByUnit[4]).toBeNull();
+      expect(m.glDaily.totalsByUnit[1]).toBe(-1);
+      expect(m.glDaily.grandTotal).toBeNull();
+      expect(m.glMonthly.totalsByUnit[4]!.kum).toBeNull();
+      expect(m.glMonthly.totalsByUnit[1]!.kum).toBe(3);
+      expect(m.glMonthly.grand.kum).toBeNull();
+      expect(m).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: true });
+      expect(m.glSuspectUnits.map((u) => u.unitId)).toEqual([4]);
+      expect(m.notes.join(" ")).toContain("artefak input");
+    });
+
+  it("artefak hari sebelumnya: hari-D tetap angka, MTD unit & grup “—”", () => {
+    const m = buildHarianModel(twoUnits("penutup_nol", "2026-07-21"));
+    expect(m.glDaily.totalsByUnit[4]).toBe(9);
+    expect(m.glDaily.grandTotal).toBe(8);
+    expect(m.glMonthly.rows.find((r) => r.key === "SOLAR")!.byUnit[4]!.kum).toBeNull();
+    expect(m.glMonthly.totalsByUnit[1]!.kum).toBe(3);
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glProvisional).toBe(false);
+  });
+
+  it("baris stok 0 dengan vonis SQL null tidak ditahan (heuristik tak menyala)", () => {
+    const m = buildHarianModel(base({
+      dailySales: [sale(4, "2026-07-22", "SOLAR", 100)],
+      gl: new Map([[4, [{ ...glRow("2026-07-22", "SOLAR", -5), gl_suspect: null, gl_raw: -5 }]]]),
+    }));
+    expect(m.glDaily.totalsByUnit[4]).toBe(-5);
+    expect(m.glSuspectUnits).toEqual([]);
+  });
 });
 
 describe("share (pengganti pie)", () => {
@@ -653,12 +706,27 @@ describe("G/L integrity — product coverage and source quality", () => {
     expect(m.glMonthlyProvisional).toBe(true);
     expect(m.glMonthly.grand.kum).toBe(19);
   });
-  it("source zero-closing is warned, never silently repaired", () => {
+  it("source zero-closing is warned and withheld, never silently repaired or summed", () => {
     const m = buildHarianModel(input({dailySales: [sale(4,"2026-10-02","SOLAR",100)], gl:new Map([[4,[row({fisik:0,fisik_prev:5000,gl:-4900})]]])}));
-    expect(m.glDaily.grandTotal).toBe(-4900);
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glIncomplete).toBe(true);
     expect(m.glProvisional).toBe(true);
     expect(m.glSuspectUnits.map((u) => u.unitId)).toEqual([4]);
     expect(m.notes.join(" ")).toContain("penutup opname bernilai 0");
+  });
+  it.each([
+    ["invalid movement", { movement_invalid: true }],
+    ["non-finite G/L", { gl: Number.NaN }],
+  ] as const)("structural %s row is unavailable, never a signed cell or total", (_name, over) => {
+    const m = buildHarianModel(input({ gl: new Map([[4, [row({ gl: -40, ...over }),
+      row({ ckdbbm: "BB-07", nama: "PERTALITE", gl: 12 })]]]) }));
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.rows.find((r) => r.key === "PERTALITE")!.byUnit[4]).toBe(12);
+    expect(m.glDaily.totalsByUnit[4]).toBeNull();
+    expect(m.glDaily.grandTotal).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: true });
+    expect(m.glSuspectUnits).toEqual([]);
   });
 });
 

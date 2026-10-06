@@ -312,8 +312,9 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
     expect(kena.length, "badge padam pada kasus kelas 2").toBeGreaterThan(0);
     expect(kena.every((r) => r.zeroClosing!.kelas === 2)).toBe(true);
     expect(kena[0]!.zeroClosing!.tangki).toContain("T-05");
-    // Angkanya TIDAK boleh berubah: badge menandai, bukan menambal.
+    // Badge menandai, bukan menambal: stok tetap mentah; G/L artefak ditahan.
     expect(m.arusMinyak.rows.every((r) => r.losses === null || Number.isFinite(r.losses))).toBe(true);
+    expect(kena.every((r) => r.artefak === null || r.losses === null)).toBe(true);
   }, 120_000);
 
   it("BADGE PADAM di KETUJUH hari oracle bersih — penanda yang selalu menyala tak berinformasi", async () => {
@@ -362,8 +363,11 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
         const [awal, pen, jual, teori, fisik, loss, persen] = c as (number | null)[];
         if (awal != null && teori != null && pen != null && jual != null)
           expect(teori, `${code} ${nama} Teori`).toBeCloseTo(awal + pen - jual, 2);
-        if (fisik != null && teori != null)
+        // Artefak input: stok mentah tampil, Losses ditahan ("—").
+        const artefak = model.arusMinyak.rows.find((r) => r.nama === nama)?.artefak ?? null;
+        if (fisik != null && teori != null && artefak === null)
           expect(loss, `${code} ${nama} Losses`).toBeCloseTo(fisik - teori, 2);
+        if (artefak !== null) expect(loss, `${code} ${nama} artefak tampil sbg Losses`).toBeNull();
         if (loss != null && jual != null && jual !== 0 && persen != null)
           expect(persen, `${code} ${nama} %`).toBeCloseTo((loss / jual) * 100, 1);
         // Nilai mustahil secara fisik: stok negatif atau di luar kapasitas tangki.

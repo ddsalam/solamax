@@ -27,7 +27,7 @@
  */
 import * as React from "react";
 import { addDays, todayWib } from "./periods";
-import { normalizeProductIdentity } from "./derive";
+import { isDailyGlSuspect, normalizeProductIdentity } from "./derive";
 import { createGlHistoryCache } from "./gl-history-cache";
 import { getDailyGlByProduct, getGlSourceRevision, type DailyGlRow } from "./queries";
 import type { ScopedUnitId } from "./scope-rule";
@@ -69,7 +69,10 @@ export function splitGlWindow(from: string, to: string, today: string): GlWindow
  *
  * Extended after the October incident: null, excluded, or provisional rows
  * are never retained. Committed content revisions invalidate nonempty
- * previously-final results when late receipts/corrections arrive.
+ * previously-final results when late receipts/corrections arrive. A source
+ * artefact verdict (isDailyGlSuspect) also bypasses on its own: such a window
+ * awaits an EasyMax correction, so it is re-read like any non-final window
+ * (same pending/fan-out bounds; no extra query per row).
  *
  * ⚠️ INI MELENGKAPI `glIncomplete` (harian-model.ts), BUKAN MENGGANTIKANNYA.
  * Jangan hapus salah satunya karena mengira redundan:
@@ -88,7 +91,8 @@ export function splitGlWindow(from: string, to: string, today: string): GlWindow
 export function shouldBypassEmptyCache(rows: readonly DailyGlRow[]): boolean {
   return rows.length === 0 || rows.some((r) =>
     r.provisional || !Number.isFinite(r.gl) || r.movement_invalid !== false
-      || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null,
+      || r.excluded_tanks > 0 || normalizeProductIdentity(r.ckdbbm) === null
+      || isDailyGlSuspect(r),
   );
 }
 

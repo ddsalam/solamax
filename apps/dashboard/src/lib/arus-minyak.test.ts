@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
-import { buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
+import { arusArtefakNote, buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
 import { gradeArus, parseArusHtml, ringkas } from "@/lib/arus-minyak.grade";
 import type { DailyGlRow } from "@/lib/queries";
 
@@ -207,6 +207,23 @@ describe("Arus Minyak — formula murni & tepi", () => {
     expect(a.incomplete).toBe(true);
   });
 
+  it.each([
+    ["guard-excluded tank", { excluded_tanks: 1 }, null],
+    ["non-finite G/L", { gl: Number.NaN }, 9_000],
+  ] as const)("structural %s row keeps diagnostics but never a Losses figure or partial total", (_name, over, fisik) => {
+    const input = { ...row({ ckdbbm: "P", nama: "SYNTHETIC", fisik_prev: 10_000,
+      pen_do: 500, sales_gross: 1_000, tera: 0, fisik: 9_000 }), ...over };
+    const ok = row({ ckdbbm: "Q", nama: "OTHER", fisik_prev: 200, pen_do: 0, sales_gross: 50, tera: 0, fisik: 145 });
+    const a = buildArusMinyak([input, ok]);
+    // A guard-excluded closing makes product stock a partial tank sum, never Fisik.
+    expect(a.rows[0]).toMatchObject({ awal: 10_000, penerimaan: 500, penjualan: 1_000, teori: 9_500,
+      fisik, losses: null, pct: null, artefak: null });
+    expect(a.rows[1]).toMatchObject({ losses: -5 });
+    expect(a.total).toMatchObject({ awal: 10_200, teori: 9_650, losses: null, pct: null });
+    expect(a.total.fisik).toBe(fisik === null ? null : 9_145);
+    expect(a.incomplete).toBe(true); expect(a.provisional).toBe(true);
+  });
+
   it("missing legacy movement metadata withholds theory and marks the result incomplete", () => {
     const { movement_invalid: _oldShape, ...legacy } = row({ ckdbbm: "P", nama: "SYNTHETIC",
       fisik_prev: 100, pen_do: 0, sales_gross: 40, tera: 0, fisik: 65 });
@@ -389,6 +406,22 @@ describe("badge penutup-nol kelas 1 (tanpa DB, tanpa kalender)", () => {
       [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 1, prev: 1, next: 1, recv_next: 0 }],
     );
     expect(a.rows[0]!.zeroClosing).toEqual({ kelas: 2, tangki: ["T-05"] });
+  });
+
+  it("peringatan lama pada G/L kanonis yang tampil tidak mengklaim batas deviasi ataupun kerugian", () => {
+    // Synthetic: a legitimately emptied tank refilled with a recorded surplus
+    // above 1.000 L can still trip the legacy detector; its G/L stays measured.
+    const a = buildArusMinyak(
+      [row({ ckdbbm: "BB-02", nama: "PERTAMAX", fisik_prev: 0, pen_do: 5000, sales_gross: 0, tera: 0, fisik: 6500 })],
+      [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 0, prev: 5000, next: 6500, recv_next: 5000 }],
+    );
+    expect(a.rows[0]).toMatchObject({ losses: 1500, artefak: null, zeroClosing: { kelas: 2 } });
+    const note = arusArtefakNote(a, (v) => String(v))!;
+    expect(note).toContain("hasil ukur kanonis");
+    expect(note).toContain("tidak membuktikan kerugian maupun saldo yang tidak sah");
+    expect(note).not.toMatch(/≤ 1\.000|BUKAN kerugian/);
+    const h = renderToStaticMarkup(createElement(ArusMinyakSection, { arus: a }));
+    expect(h).not.toContain("artefak input");
   });
 });
 
