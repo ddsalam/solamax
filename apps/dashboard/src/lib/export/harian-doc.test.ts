@@ -34,6 +34,19 @@ describe("buildHarianDocDefinition — struktur", () => {
   it("presentation-only: dibangun dari model tanpa melempar", () => {
     expect(() => buildHarianDocDefinition({ model: buildHarianModel(input), meta: META })).not.toThrow();
   });
+  it("judul tabel (termasuk MTD) berpasangan dengan tabelnya; header tabel membawa baris pertama", () => {
+    expect(doc.pageBreakBefore).toBeTypeOf("function");
+    const content = doc.content as unknown as Record<string, unknown>[];
+    const headings = content.filter((c) => c.headlineLevel === 1);
+    expect(headings.map((h) => h.text)).toEqual(expect.arrayContaining([
+      "Omzet penjualan — bulanan (MTD)", "Gain / Losses — bulanan (MTD) · SEMENTARA"]));
+    for (const h of headings) {
+      const body = content.find((c) => c.id === `${h.id}-body`) as { table?: { headerRows?: number; keepWithHeaderRows?: number } };
+      expect(body?.table, String(h.text)).toBeDefined();
+      expect(JSON.stringify(body), String(h.text)).toContain(`"id":"${h.id}-row"`);
+      if (body.table!.headerRows) expect(body.table!.keepWithHeaderRows, String(h.text)).toBe(1);
+    }
+  });
 });
 
 describe("buildHarianDocDefinition — artefak G/L", () => {

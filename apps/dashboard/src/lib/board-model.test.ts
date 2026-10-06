@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { AnomalyItem } from "@/lib/anomalies";
 import {
+  anomalyFeedRange,
   buildBoardCore,
   buildBoardEval,
+  TARGET_SOURCE_LABEL,
   type BoardCoreInput,
   type BoardEvalInput,
   type BoardUnit,
@@ -9,7 +14,8 @@ import {
   type GlWindows,
   type SalesGrainRow,
 } from "@/lib/board-model";
-import { resolveBoardPeriod, type DateRange } from "@/lib/periods";
+import { dateShort } from "@/lib/format";
+import { addDays, rangeDays, resolveBoardPeriod, todayWib, type DateRange } from "@/lib/periods";
 
 // 2026-07-16 WIB
 const NOW = new Date("2026-07-16T03:00:00Z");
@@ -148,6 +154,61 @@ describe("buildBoardCore — KPI & struktur", () => {
     expect(m.ranking.map((r) => r.name)).toEqual(["Imam Bonjol", "Bakau"]);
     expect(m.ranking[0]!.rd).toBeDefined();
     expect(m.ranking[0]!.laporanHref).toContain(PERIOD.range.to);
+  });
+});
+
+describe("buildBoardCore — label konteks: feed anomali & sumber target", () => {
+  // Laporan historis (Feb 2024) dibuka saat feed hidup berada di Okt 2026.
+  const FEED_NOW = new Date("2026-10-06T03:00:00Z");
+  const FEED_TODAY = todayWib(FEED_NOW);
+  const FEB_2024 = resolveBoardPeriod("custom", { from: "2024-02-01", to: "2024-02-29" }, FEED_NOW);
+  const febSales = [s(1, "2024-02-10", "PERTALITE", 1000, 10_000_000), s(1, "2024-02-10", "PERTAMAX", 120, 1_800_000)];
+  const historical = (anomalies: AnomalyItem[]) => buildBoardCore(coreInput({
+    units: [IB], period: FEB_2024, today: FEED_TODAY, dailySales: febSales, glRange: new Map(), anomalies,
+  }));
+  const item = (dateIso: string): AnomalyItem => ({
+    tone: "warning", tier: "major", sev: 1, dateIso, title: "Uji", unit: "64.781.11", desc: "", time: "",
+  });
+  const fullWeek = { from: addDays(FEED_TODAY, -6), to: FEED_TODAY };
+
+  it("feed kosong pada periode historis tetap menyebut tujuh hari penuh s/d hari ini, bukan periode laporan", () => {
+    const m = historical([]);
+    expect(FEB_2024.range).toEqual({ from: "2024-02-01", to: "2024-02-29" });
+    expect(m.anomalyFeed.range).toEqual(fullWeek);
+    expect(rangeDays(m.anomalyFeed.range)).toBe(7);
+    expect(m.anomalyFeed.label).toContain(`${dateShort(fullWeek.from)} – ${dateShort(fullWeek.to)}`);
+    expect(m.anomalyFeed.label).toContain("tidak mengikuti filter periode");
+    expect(m.anomalyFeed.label).not.toContain("2024");
+  });
+
+  it("feed jarang: rentang TIDAK diturunkan dari min/max tanggal item; item diteruskan apa adanya", () => {
+    const items = [item(addDays(FEED_TODAY, -2)), item(addDays(FEED_TODAY, -3))];
+    const m = historical(items);
+    expect(m.anomalyFeed.range).toEqual(fullWeek);
+    expect(m.anomalies).toBe(items);
+  });
+
+  it("rentang feed sama untuk setiap filter periode", () => {
+    const ranges = (["today", "7d", "bulan"] as const)
+      .map((k) => resolveBoardPeriod(k, {}, FEED_NOW))
+      .concat(FEB_2024)
+      .map((period) => buildBoardCore(coreInput({ period, today: FEED_TODAY })).anomalyFeed.range);
+    for (const r of ranges) expect(r).toEqual(fullWeek);
+  });
+
+  it("target bauran periode historis tetap dihitung (semantik tak berubah) dan menyebut workbook 2026", () => {
+    const gas = historical([]).kpi.find((k) => k.key === "gas")!;
+    expect(gas.sub).toBe(`target rata-rata periode 10,7% · ${TARGET_SOURCE_LABEL}`); // Feb: .107
+    expect(TARGET_SOURCE_LABEL).toBe("workbook 2026");
+  });
+
+  it("batas feed sama dengan buildAnomalies (today − 6 … today)", () => {
+    // Penjaga drift: bila jendela anomalies.ts berubah, label ini wajib ikut.
+    const src = readFileSync(resolve(__dirname, "anomalies.ts"), "utf8");
+    expect(src).toContain("const dari = addDays(today, -6);");
+    expect(src).toContain("getDailyGlByProduct(u.unit_id, addDays(today, -6), today)");
+    expect(src).toContain("getZeroClosingEvents(unitIds, addDays(today, -6), today)");
+    expect(anomalyFeedRange(FEED_TODAY)).toEqual(fullWeek);
   });
 });
 
@@ -349,7 +410,7 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "data sumber perlu verifikasi" });
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "SQL artefact verdict %s gates its unit and the group, not an unaffected unit", (reason) => {
       const glRange = new Map(GL_RANGE);
       glRange.set(1, GL_RANGE.get(1)!.map((r, i) => i === 0 ? { ...r, gl: null, gl_suspect: reason, provisional: true } : r));

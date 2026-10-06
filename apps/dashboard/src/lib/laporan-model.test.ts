@@ -478,13 +478,50 @@ describe("operational G/L null propagation", () => {
     expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("na");
   });
 
+  // R1: earlier healthy rows must not make days 1–D look complete when day D
+  // itself has sales but no G/L row (directors' MTD shows "—" here too).
+  it("product sold on D with no G/L row on D keeps the month total unknown, not final", () => {
+    const sold = [raw.prodDay[0]!];
+    const m = buildLaporanModel({ ...raw, prodDay: sold, prodMonth: sold,
+      glRows: [gl("P1", 5, "2026-06-10")] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull(); expect(m.glMonthly.glPctMonth).toBeNull();
+    expect(m.glMonthly.provisional).toBe(true);
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))).toMatchObject({
+      state: "na", label: "G/L bulanan — data belum lengkap" });
+    // The product's own 1–D row lacks day D as well.
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.selisih).toBeNull();
+  });
+
+  it("mixed day: measured 0 for P stays known while Q's missing D gates day and month totals", () => {
+    const m = buildLaporanModel({ ...raw, prodMonth: raw.prodDay,
+      glRows: [gl("P1", 0, "2026-06-10"), gl("P1", 0), gl("P2", 3, "2026-06-10")] }, ctx);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBe(0);
+    expect(m.sales.rows.find(r => r.ckdbbm === "P2")!.gl).toBeNull();
+    expect(m.sales.glTotal).toBeNull();
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P1")!.selisih).toBe(0);
+    expect(m.glMonthly.rows.find(r => r.ckdbbm === "P2")!.selisih).toBeNull();
+    expect(m.glMonthly.glMonthTotal).toBeNull();
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("na");
+  });
+
+  it("complete month with a measured 0 on D stays final (no false gating)", () => {
+    const m = buildLaporanModel({ ...raw, prodMonth: raw.prodDay,
+      glRows: [gl("P1", 0, "2026-06-10"), gl("P1", 0), gl("P2", 3, "2026-06-10"), gl("P2", 0)] }, ctx);
+    expect(m.sales.glTotal).toBe(0);
+    expect(m.glMonthly.glMonthTotal).toBe(3);
+    expect(m.glMonthly.provisional).toBe(false);
+    expect(m.checks.find(r => r.label.startsWith("G/L bulanan"))!.state).toBe("ok");
+  });
+
   // Synthetic source artefact: closing placeholder 0 while theory says ~990 L+.
-  const artefact = (ckdbbm: string, reason: "penutup_nol" | "jangkar_nol" | "teori_negatif", d = ctx.date) => ({
+  const artefact = (ckdbbm: string, reason: "penutup_nol" | "jangkar_nol", d = ctx.date) => ({
     ...gl(ckdbbm, 0, d), fisik_prev: 5_000, fisik: 0, sales_gross: 10, gl: null, gl_raw: -4_990,
     gl_suspect: reason, excluded_tanks: 0, provisional: true,
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "artefact %s is withheld from product, day, Arus and month totals but stays auditable", (reason) => {
       const m = buildLaporanModel({ ...raw, glRows: [artefact("P1", reason), gl("P2", 3)] }, ctx);
       expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBeNull();

@@ -143,7 +143,7 @@ describe("ArusMinyakSection source-quality propagation", () => {
 
   it.each([
     { reason: "jangkar_nol" as const, row: { fisik_prev: 0, fisik: 3_000, gl_raw: 3_030 } },
-    { reason: "teori_negatif" as const, row: { fisik_prev: 100, sales_gross: 2_500, fisik: 40, gl_raw: 2_440 } },
+    { reason: "penutup_nol" as const, row: { fisik_prev: 6_000, sales_gross: 30, fisik: 0, gl_raw: -5_970 } },
   ])("renders a $reason artefact with raw stock, '—' Losses/% and an audit note", ({ reason, row }) => {
     const a = buildArusMinyak([source({ pen_do: 0, ...row, gl: null, gl_suspect: reason, provisional: true }), healthy]);
     const h = html(a), cells = parseArusHtml(h);

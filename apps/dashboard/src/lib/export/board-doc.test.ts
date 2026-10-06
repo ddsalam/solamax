@@ -2,6 +2,8 @@ import type { Content, ContentTable } from "pdfmake/interfaces";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_EXPORT_CONFIG } from "./config";
 import { buildBoardDocDefinition, type BoardDocMeta } from "./board-doc";
+import { ledgerLayout } from "./pdf-layout";
+import { PDF } from "./pdf-tokens";
 import {
   buildBoardCore,
   buildBoardEval,
@@ -10,7 +12,9 @@ import {
   type DatedDailyGlInput,
   type SalesGrainRow,
 } from "@/lib/board-model";
-import { resolveBoardPeriod } from "@/lib/periods";
+import type { AnomalyItem } from "@/lib/anomalies";
+import { dateLong, dateShort } from "@/lib/format";
+import { addDays, resolveBoardPeriod, todayWib } from "@/lib/periods";
 
 const NOW = new Date("2026-07-16T03:00:00Z");
 const TODAY = "2026-07-16";
@@ -147,6 +151,32 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
     expect(json).toContain("Imam Bonjol");
   });
 
+  it("header tabel ber-fill navy tercetak putih (bukan teks default hitam)", () => {
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    expect(doc.styles?.th).toMatchObject({ color: PDF.onNavy, bold: true });
+    const tables = collectTables(doc.content);
+    expect(tables).toHaveLength(3); // evaluasi, ranking, anomali
+    for (const t of tables) {
+      expect(t.layout).toBe(ledgerLayout);
+      for (const cell of t.table.body[0]!) expect(cell).toMatchObject({ style: "th" });
+    }
+  });
+
+  it("judul seksi berpasangan dengan tabelnya agar tak yatim di dasar halaman", () => {
+    const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
+    expect(doc.pageBreakBefore).toBeTypeOf("function");
+    expect(doc.pageBreakBefore!.length).toBe(4); // pdfmake hanya mengisi daftar next/previous bila > 2
+    const content = doc.content as unknown as Record<string, unknown>[];
+    const headings = content.filter((c) => c.headlineLevel === 1);
+    expect(headings.map((h) => h.text)).toEqual(["Evaluasi per cabang", "Ranking 1 unit", "Anomali & Exception"]);
+    for (const h of headings) {
+      const body = content.find((c) => c.id === `${h.id}-body`);
+      expect(body && "table" in body, `${h.text} paired with its table`).toBe(true);
+      // Baris badan pertama membawa penanda yang dicek pageBreakBefore.
+      expect(JSON.stringify(body), String(h.text)).toContain(`"id":"${h.id}-row"`);
+    }
+  });
+
   it("PARITAS FILTER: unit terpilih, periode, dan mode aktif tercetak", () => {
     const doc = buildBoardDocDefinition({ model, meta, config: DEFAULT_EXPORT_CONFIG });
     const json = JSON.stringify(doc.content);
@@ -231,4 +261,50 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
     expect(json).not.toContain("−0,18%");
   });
 
+  describe("PDF historis Feb 2024 dengan feed anomali hidup Okt 2026", () => {
+    const FEED_NOW = new Date("2026-10-06T03:00:00Z");
+    const FEED_TODAY = todayWib(FEED_NOW);
+    const FEB = resolveBoardPeriod("custom", { from: "2024-02-01", to: "2024-02-29" }, FEED_NOW);
+    const febSales = [{ ...SALES[0]!, d: "2024-02-10" }, { ...SALES[1]!, d: "2024-02-10" }];
+    const febMeta: BoardDocMeta = {
+      ...meta,
+      dateLong: dateLong(FEB.range.to),
+      periodLabel: `${dateShort(FEB.range.from)} – ${dateShort(FEB.range.to)}`,
+    };
+    const docFor = (anomalies: AnomalyItem[]) => {
+      const input = { units: [IB], period: FEB, today: FEED_TODAY, dailySales: febSales };
+      const m: BoardModel = { mode: "kumulatif",
+        core: buildBoardCore({ ...input, mode: "kumulatif", glRange: new Map(),
+          shift: new Map([[1, { shifts: 3, last_dtgljam: null }]]), anomalies }),
+        eval: buildBoardEval({ ...input,
+          gl: { range: new Map(), ytdCur: new Map(), momPrev: new Map(), yoyPrev: new Map(), ytdPrev: new Map() },
+          coverage: new Map([[1, "2022-08-31"]]), incompleteToday: false }),
+      };
+      return buildBoardDocDefinition({ model: m, meta: febMeta, config: DEFAULT_EXPORT_CONFIG });
+    };
+    const feedText = `${dateShort(addDays(FEED_TODAY, -6))} – ${dateShort(FEED_TODAY)}`;
+
+    it.each([
+      { name: "kosong", anomalies: [] as AnomalyItem[] },
+      { name: "jarang", anomalies: [{ tone: "warning", tier: "major", sev: 1, dateIso: addDays(FEED_TODAY, -2),
+        title: "Uji jarang", unit: "64.781.11", desc: "", time: "" }] as AnomalyItem[] },
+    ])("feed $name: rentang tujuh hari sebenarnya tercetak di antara judul Anomali dan tabelnya", ({ anomalies }) => {
+      const doc = docFor(anomalies);
+      const content = doc.content as unknown as Record<string, unknown>[];
+      const h = content.findIndex((c) => c.text === "Anomali & Exception");
+      const body = content.findIndex((c) => c.id === `${content[h]!.id}-body`);
+      const between = JSON.stringify(content.slice(h + 1, body));
+      expect(between).toContain(feedText);
+      expect(between).toContain("tidak mengikuti filter periode");
+      // Kop tetap menyebut periode laporan; feed tak menyamar sebagai periode itu.
+      expect(JSON.stringify(content[0])).toContain("Periode 1 Feb 2024 – 29 Feb 2024");
+      expect(between).not.toContain("2024");
+    });
+
+    it("target bauran historis disebut bersumber workbook 2026 (kartu KPI & seksi Bauran)", () => {
+      const json = JSON.stringify(docFor([]).content);
+      expect(json).toContain("target rata-rata periode 10,7% · workbook 2026");
+      expect(json).toContain("target rata-rata periode (workbook 2026)");
+    });
+  });
 });
