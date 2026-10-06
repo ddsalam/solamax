@@ -364,7 +364,7 @@ describe("G/L", () => {
   });
 
   // Synthetic two-unit window; one product-day carries a SQL artefact verdict.
-  const twoUnits = (reason: "penutup_nol" | "jangkar_nol" | "teori_negatif", d = "2026-07-22") => base({
+  const twoUnits = (reason: "penutup_nol" | "jangkar_nol", d = "2026-07-22") => base({
     units: [KB, IB],
     coverage: [cov(4, "2011-10-06"), cov(1, "2022-08-31")],
     sync: [syn(4, "2026-07-24T07:33:00Z"), syn(1, "2026-07-24T07:33:00Z")],
@@ -378,7 +378,7 @@ describe("G/L", () => {
     ]),
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "artefak %s: sel/total unit & grup “—”, unit lain tetap utuh, catatan menyebut sumber", (reason) => {
       const m = buildHarianModel(twoUnits(reason));
       const solar = m.glDaily.rows.find((r) => r.key === "SOLAR")!;

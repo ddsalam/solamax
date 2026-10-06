@@ -479,12 +479,12 @@ describe("operational G/L null propagation", () => {
   });
 
   // Synthetic source artefact: closing placeholder 0 while theory says ~990 L+.
-  const artefact = (ckdbbm: string, reason: "penutup_nol" | "jangkar_nol" | "teori_negatif", d = ctx.date) => ({
+  const artefact = (ckdbbm: string, reason: "penutup_nol" | "jangkar_nol", d = ctx.date) => ({
     ...gl(ckdbbm, 0, d), fisik_prev: 5_000, fisik: 0, sales_gross: 10, gl: null, gl_raw: -4_990,
     gl_suspect: reason, excluded_tanks: 0, provisional: true,
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "artefact %s is withheld from product, day, Arus and month totals but stays auditable", (reason) => {
       const m = buildLaporanModel({ ...raw, glRows: [artefact("P1", reason), gl("P2", 3)] }, ctx);
       expect(m.sales.rows.find(r => r.ckdbbm === "P1")!.gl).toBeNull();

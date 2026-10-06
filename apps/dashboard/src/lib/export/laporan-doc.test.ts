@@ -450,7 +450,7 @@ describe("PDF Arus stock and movement completeness", () => {
 
   it.each([
     { reason: "penutup_nol" as const, tag: "SINTETIS P  [opname 0]", awal: 6_000, fisik: 0, sales: 30, raw: -5_970 },
-    { reason: "teori_negatif" as const, tag: "SINTETIS P  [perlu periksa]", awal: 100, fisik: 900, sales: 3_030, raw: 3_830 },
+    { reason: "jangkar_nol" as const, tag: "SINTETIS P  [perlu periksa]", awal: 0, fisik: 3_000, sales: 0, raw: 3_000 },
   ])("prints a $reason artefact with raw stock but never as Losses, % or TOTAL", ({ reason, tag, awal, fisik, sales, raw }) => {
     const { doc, cells, m } = render([source({ fisik_prev: awal, fisik, pen_do: 0, sales_gross: sales,
       gl: null, gl_raw: raw, gl_suspect: reason, provisional: true }), healthy]);

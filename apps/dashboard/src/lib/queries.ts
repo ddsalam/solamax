@@ -625,25 +625,20 @@ export interface DailyGlRow {
  *   `gl` = null dan baris provisional — angka itu bukan losses/gain nyata dan tak
  *   boleh masuk total/persen mana pun (pemanggil memperlakukannya seperti tak
  *   terhitung). NULL = heuristik tidak menyala, BUKAN sertifikat bahwa stoknya sah:
- *     penutup_nol   Fisik 0 ∧ Teori > 1.000 (kelas 1 Arus Minyak, kini di sini),
- *                   atau satu tangki yang penutup sebelumnya > 1.000 kini 0 ∧
- *                   Teori − Fisik > 1.000. Tangki yang kemarin ≤ 1.000 atau
- *                   kekurangan produk ≤ 1.000 tidak ditahan oleh aturan ini.
+ *     penutup_nol   Fisik produk (semua tangki) 0 ∧ Teori > 1.000 (kelas 1
+ *                   Arus Minyak, kini di sini).
  *     jangkar_nol   Stock Awal = penutup pendahulu yang SENDIRINYA penutup_nol
  *                   (aturan di atas, dinilai dari Stock Fisik pendahulunya dan
  *                   mutasi jendelanya sendiri) → stok awal itu bukan stok nyata.
  *                   Penerimaan hari ini dan stok buku penutup-0 itu tidak
  *                   merehabilitasinya. Tangki yang kosong sah (penutup 0 yang
  *                   koheren dengan stok & mutasi sebelumnya) bukan penutup_nol,
- *                   jadi pengisian/surplus DO berikutnya tetap terukur. Vonis
- *                   teori_negatif pendahulu tidak membatalkan stok fisiknya.
+ *                   jadi pengisian/surplus DO berikutnya tetap terukur.
  *                   Detektor peringatan getZeroClosingEvents (lookahead
  *                   penerimaan) BUKAN dasar vonis ini.
- *     teori_negatif Teori < −1.000 (ambang heuristik, positif-palsunya BELUM
- *                   diukur). Stok negatif tak mungkin sebagai stok nyata; sebabnya
- *                   tidak disimpulkan. Teori negatif ≥ −1.000 tidak ditahan di
- *                   sini — bukan berarti dinyatakan wajar.
- *   Hanya dinilai bila G/L terhitung. Riwayat tangki = urutan penutup AKTUAL
+ *   Satu tangki 0 di produk multi-tangki dan Teori negatif TIDAK dinilai di
+ *   sini (kebijakan menunggu keputusan owner): saldonya tetap terukur — itu
+ *   bukan klaim bahwa saldonya sah. Hanya dinilai bila G/L terhitung. Riwayat tangki = urutan penutup AKTUAL
  *   tangki itu (tanpa partisi produk) di lookback yang sama; tiap penutup
  *   pendahulu harus berproduk sama dan lolos guard buku, kalau tidak rantainya
  *   putus (tak menyertifikasi apa pun). Stok buku hanya berperan di guard itu.
@@ -710,7 +705,6 @@ export async function getDailyGlByProduct(
               count(*) FILTER (WHERE garbage)::int AS excluded_tanks,
               array_agg(ckdtangki ORDER BY ckdtangki) AS tanks,
               bool_or(prov_row) AS prov,
-              COALESCE(bool_or(NOT garbage AND op = 0 AND op_prev > ${GL_ARTEFACT_MIN_L}), false) AS zero_tank,
               -- A tank whose comparable previous closing is a zero that itself
               -- has comparable history: only then can that closing's own
               -- penutup_nol verdict carry into this balance.
@@ -723,7 +717,6 @@ export async function getDailyGlByProduct(
               lag(tanks)      OVER w AS tanks_prev,
               lag(prov)       OVER w AS prov_prev,
               lag(bizdate)    OVER w AS prev_date,
-              lag(zero_tank)  OVER w AS zero_tank_prev,
               lag(fisik, 2)   OVER w AS fisik_prev2,
               lag(tanks, 2)   OVER w AS tanks_prev2,
               lag(bizdate, 2) OVER w AS prev2_date
@@ -733,12 +726,13 @@ export async function getDailyGlByProduct(
      requested AS MATERIALIZED (
        -- Keep the full closing lookback above for lag/tank integrity, but do
        -- movement work only for the rows the caller will actually receive.
-       -- needs_prior: the previous closing may be a zero placeholder, so its
-       -- own verdict is needed. Its own anchor must lie inside THIS row's
-       -- lookback, so single, range and split windows classify identically.
+       -- needs_prior: the previous closing is a whole-product zero that may be
+       -- a placeholder, so its own verdict is needed. Its own anchor must lie
+       -- inside THIS row's lookback, so single, range and split windows
+       -- classify identically. A nonzero previous closing never needs it.
        SELECT s.*,
               COALESCE(s.zero_link AND s.fisik IS NOT NULL AND s.tanks = s.tanks_prev
-                AND s.fisik_prev IS NOT NULL AND s.fisik_prev2 IS NOT NULL
+                AND s.fisik_prev = 0 AND s.fisik_prev2 IS NOT NULL
                 AND s.tanks_prev = s.tanks_prev2
                 AND s.prev2_date >= s.bizdate - ${GL_LOOKBACK_DAYS}, false) AS needs_prior
        FROM seq s WHERE s.bizdate BETWEEN $2::date AND $3::date
@@ -864,11 +858,8 @@ export async function getDailyGlByProduct(
        -- rule above. Today's receipts or that zero's book never rehabilitate it.
        SELECT s.*,
               CASE WHEN s.teori IS NULL THEN NULL
-                   WHEN (s.fisik = 0 AND s.teori > ${GL_ARTEFACT_MIN_L})
-                     OR (s.zero_tank AND s.teori - s.fisik > ${GL_ARTEFACT_MIN_L}) THEN 'penutup_nol'
-                   WHEN (s.fisik_prev = 0 AND s.prior_teori > ${GL_ARTEFACT_MIN_L})
-                     OR (s.zero_tank_prev AND s.prior_teori - s.fisik_prev > ${GL_ARTEFACT_MIN_L}) THEN 'jangkar_nol'
-                   WHEN s.teori < -${GL_ARTEFACT_MIN_L} THEN 'teori_negatif'
+                   WHEN s.fisik = 0 AND s.teori > ${GL_ARTEFACT_MIN_L} THEN 'penutup_nol'
+                   WHEN s.fisik_prev = 0 AND s.prior_teori > ${GL_ARTEFACT_MIN_L} THEN 'jangkar_nol'
               END AS gl_suspect
        FROM theory s
      )

@@ -139,7 +139,7 @@ describe("D13 — jangan sajikan hasil KOSONG dari cache", () => {
     expect(shouldBypassEmptyCache([row("2026-07-01", 0)])).toBe(false);
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "never admits a window holding a source-artefact verdict (%s), even if flags look final", reason => {
       // Defensive: a verdict must bypass by itself, not only through gl/provisional.
       const suspect: DailyGlRow = { ...row("2026-07-01", 0), gl: -5_000, gl_raw: -5_000, gl_suspect: reason };

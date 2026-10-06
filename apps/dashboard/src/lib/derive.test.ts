@@ -342,7 +342,7 @@ describe("G/L source-artefact verdict (getDailyGlByProduct gl_suspect)", () => {
     gl: -50, gl_suspect: null, tera: 0, excluded_tanks: 0, provisional: false, ...over,
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "SQL reason %s is suspect, incomplete, and never summed", (reason) => {
       const r = row({ gl: null, gl_suspect: reason, provisional: true });
       expect(isDailyGlSuspect(r)).toBe(true);

@@ -280,7 +280,7 @@ export function arusArtefakNote(a: ArusMinyak, liter: (v: number | null) => stri
   const held = tagged.filter((r) => r.artefak !== null);
   const shown = tagged.filter((r) => r.artefak === null && r.losses !== null);
   return `PERINGATAN — ${tagged.length} produk bertanda [opname 0]/[perlu periksa]: data sumber perlu diperiksa ` +
-    "(penutup opname 0 padahal tangki mestinya berisi, atau stok teori di bawah −1.000 L — ambang heuristik). " +
+    "(penutup opname 0 padahal tangki mestinya berisi — ambang heuristik 1.000 L). " +
     (held.length > 0
       ? "Losses & % baris artefak tidak dihitung (“—”) dan tidak masuk TOTAL maupun panel Gain/Losses — BUKAN kerugian. " +
         `Angka mentah Stock Fisik − Stock Teori (audit): ${held.map((r) => `${r.nama} ${liter(r.glMentah)} L`).join("; ")}. `

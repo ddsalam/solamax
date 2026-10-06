@@ -132,9 +132,8 @@ function zcAsal(z: ZeroFlag): string {
 }
 
 const ARTEFAK_ASAL: Record<GlSuspect, string> = {
-  penutup_nol: "Satu tangki tercatat 0 padahal kemarin berisi dan Stock Teori jauh lebih besar.",
+  penutup_nol: "Penutup opname produk tercatat 0 padahal Stock Teori > 1.000 L.",
   jangkar_nol: "Stock Awal berasal dari penutup opname 0 sebelumnya yang sudah ditahan (bukan stok nyata); selisih hari ini tidak terukur.",
-  teori_negatif: "Stock Teori di bawah −1.000 L (ambang heuristik): tak mungkin sebagai stok nyata; sebabnya belum diketahui — periksa penerimaan, penjualan, tanggal, dan Stock Awal.",
 };
 
 /** Warna Losses/% — konvensi sama dgn kolom Gain/Losses panel Omset. */

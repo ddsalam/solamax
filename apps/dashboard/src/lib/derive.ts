@@ -178,10 +178,9 @@ export function normalizeProductIdentity(value: unknown): string | null {
 /**
  * Ambang HEURISTIK artefak input G/L (L), dipinjam dari `prev > 1000` detektor
  * tertala `getZeroClosingEvents` dan kelas-1 Arus Minyak. Itu ambang deteksi
- * penutup-nol, BUKAN toleransi stok yang terukur: tingkat positif-palsu
- * teori_negatif pada ambang ini belum diukur, dan nilai di bawah ambang (stok 0
- * atau stok teori negatif ≥ −1.000 L) TIDAK dinyatakan sah — hanya tidak ditahan
- * oleh heuristik ini. Dipakai SQL getDailyGlByProduct dan fallback di bawah.
+ * penutup-nol, BUKAN toleransi stok yang terukur: nilai di bawah ambang (stok 0)
+ * TIDAK dinyatakan sah — hanya tidak ditahan oleh heuristik ini. Dipakai SQL
+ * getDailyGlByProduct dan fallback di bawah.
  */
 export const GL_ARTEFACT_MIN_L = 1000;
 
@@ -189,18 +188,16 @@ export const GL_ARTEFACT_MIN_L = 1000;
  * Vonis artefak input dari getDailyGlByProduct (null = heuristik tidak menyala,
  * bukan sertifikat sah). Angka G/L mentahnya tetap di `gl_raw`, tetapi `gl` =
  * null: bukan losses/gain nyata.
- * - penutup_nol: penutup 0 padahal stok teori > 1.000 L (kelas 1), atau satu
- *   tangki yang penutup sebelumnya (produk sama, lolos guard) > 1.000 L kini 0
- *   dan produk kekurangan > 1.000 L;
+ * - penutup_nol: penutup produk (semua tangki) 0 padahal stok teori > 1.000 L
+ *   (kelas 1);
  * - jangkar_nol: Stock Awal = penutup pendahulu (riwayat tangki koheren: produk
  *   sama, lolos guard) yang sendirinya penutup_nol → stok awal bukan stok nyata.
  *   Penerimaan hari ini maupun stok buku tidak merehabilitasinya; tangki yang
- *   kosong sah bukan penutup_nol, jadi pengisian berikutnya tetap terukur;
- * - teori_negatif: stok teori < −1.000 L (ambang heuristik). Stok negatif tak
- *   mungkin sebagai stok nyata; sebabnya (mutasi hilang/salah tanggal, Stock
- *   Awal salah) tidak disimpulkan.
+ *   kosong sah bukan penutup_nol, jadi pengisian berikutnya tetap terukur.
+ * Satu tangki 0 di produk multi-tangki dan stok teori negatif tidak divonis
+ * (kebijakan menunggu owner) — bukan klaim bahwa saldonya sah.
  */
-export type GlSuspect = "penutup_nol" | "jangkar_nol" | "teori_negatif";
+export type GlSuspect = "penutup_nol" | "jangkar_nol";
 
 /** Baris harian per produk dari getDailyGlByProduct (struktural; hindari siklus import). */
 export interface DailyGlInput {

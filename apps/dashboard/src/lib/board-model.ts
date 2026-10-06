@@ -133,7 +133,7 @@ function glAgg(
 }
 
 const GL_INCOMPLETE = "G/L belum lengkap";
-/** Artefak input (penutup 0 / stok teori < −1.000 L, heuristik): tidak dijumlah, bukan kerugian. */
+/** Artefak input (penutup 0, heuristik): tidak dijumlah, bukan kerugian. */
 const GL_SUSPECT = "data sumber perlu verifikasi";
 
 function glNeedsReview(g: DailyGlAgg): boolean {

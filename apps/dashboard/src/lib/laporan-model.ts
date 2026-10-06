@@ -539,7 +539,7 @@ export function buildLaporanModel(
   const artefakCheck = (label: string): AlarmCheck => ({
     label: `${label} — perlu periksa data sumber`,
     state: "na",
-    note: "artefak input (penutup opname 0 / stok teori di bawah −1.000 L, ambang heuristik) — bukan kerugian; angka mentah di Arus Minyak. Periksa entri EasyMax.",
+    note: "artefak input (penutup opname 0, ambang heuristik) — bukan kerugian; angka mentah di Arus Minyak. Periksa entri EasyMax.",
   });
 
   const dailyLoss = (): AlarmCheck => {

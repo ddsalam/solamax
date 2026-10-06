@@ -678,7 +678,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   const suspects = statuses.filter((s) => suspectIds.has(s.unitId));
   if (suspects.length > 0) {
     notes.push(
-      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 atau stok teori di bawah −1.000 L (ambang heuristik) pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Sel yang terdeteksi sebagai artefak input tampil “—” dan tidak dijumlahkan (bukan kerugian); angka mentahnya ada di Arus Minyak laporan operasional unit. Perlu perbaikan entri di EasyMax.`,
+      `Gain/Losses ${suspects.map((s) => s.name).join(", ")} tersentuh penutup opname bernilai 0 pada bulan ini — hasil G/L perlu pemeriksaan data sumber. Sel yang terdeteksi sebagai artefak input tampil “—” dan tidak dijumlahkan (bukan kerugian); angka mentahnya ada di Arus Minyak laporan operasional unit. Perlu perbaikan entri di EasyMax.`,
     );
   }
 

@@ -349,7 +349,7 @@ describe("buildBoardCore — G/L completeness and source quality", () => {
     expect(m.ranking[0]!.notes).toContainEqual({ tone: "warning", text: "data sumber perlu verifikasi" });
   });
 
-  it.each(["penutup_nol", "jangkar_nol", "teori_negatif"] as const)(
+  it.each(["penutup_nol", "jangkar_nol"] as const)(
     "SQL artefact verdict %s gates its unit and the group, not an unaffected unit", (reason) => {
       const glRange = new Map(GL_RANGE);
       glRange.set(1, GL_RANGE.get(1)!.map((r, i) => i === 0 ? { ...r, gl: null, gl_suspect: reason, provisional: true } : r));
