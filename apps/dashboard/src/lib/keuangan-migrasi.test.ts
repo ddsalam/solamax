@@ -93,6 +93,7 @@ const sql0028 = MIG("0028_so_macet");
 const sql0029 = MIG("0029_cash_ledger");
 const sql0030 = MIG("0030_edc_settlement");
 const sql0031 = MIG("0031_noncash_expense");
+const sql0049 = MIG("0049_pihak_lawan");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -116,6 +117,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0043", MIG("0043_edc_per_shift"), ["edc_kartu_acquirer", "edc_shift_cek"]],
     // §10.28 — rekening pencairan tiap EDC, bertanggal berlaku (26 Sep 2026).
     ["0046", MIG("0046_edc_rekening_pencairan"), ["edc_rekening_pencairan"]],
+    // Rencana 2026-10-29 U1 — pihak lawan & saldo pembukanya (KTD1, KTD2).
+    ["0049", sql0049, ["pihak_lawan", "pihak_lawan_saldo_awal"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -787,6 +790,7 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
     ["0029_cash_ledger", sql0029],
     ["0030_edc_settlement", sql0030],
     ["0031_noncash_expense", sql0031],
+    ["0049_pihak_lawan", sql0049],
   ];
 
   /** Tabel yang DIBUAT di migrasi ini dan punya kolom `unit_id` NOT NULL. */
@@ -802,7 +806,13 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
       if (rls < 0) return; // migrasi tanpa RLS: tak ada yang bisa dilanggar
 
       for (const t of tabelTerScope(sql)) {
-        const ins = sql.indexOf(`INSERT INTO "app"."${t}"`);
+        // lastIndexOf, bukan indexOf: tabel dengan DUA blok seed (0049 —
+        // pasangan unit + Outlet Bright) lolos bila hanya seed PERTAMA yang
+        // diperiksa. Ditemukan lewat uji mutasi: memindahkan seed kedua ke
+        // bawah RLS tetap hijau.
+        // Batas: `"${t}"` dengan tanda kutip penutup, jadi `pihak_lawan`
+        // tidak tertukar dengan `pihak_lawan_saldo_awal`.
+        const ins = sql.lastIndexOf(`INSERT INTO "app"."${t}"`);
         if (ins < 0) continue; // tabel ini memang tidak di-seed
         expect(
           ins,
@@ -822,6 +832,9 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
       return tabelTerScope(sql).some((t) => sql.includes(`INSERT INTO "app"."${t}"`));
     });
     expect(berseed.map(([n]) => n)).toContain("0029_cash_ledger");
+    // 0049 menyemai pihak lawan per unit — subjek kedua, dan yang pertama
+    // yang seed-nya diturunkan dari `public.unit`, bukan daftar tangan.
+    expect(berseed.map(([n]) => n)).toContain("0049_pihak_lawan");
   });
 
   it("tabel TANPA unit_id tidak ikut dijaga — itu sebabnya seed kategori lolos", () => {
@@ -1029,3 +1042,213 @@ describe("0034_manual_entry_source_door — satu-satunya migrasi K2 atas tabel p
   });
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0049 — pihak lawan, tanggal buku maju, penampung (rencana 2026-10-29 U1)
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0049_pihak_lawan — struktur fase A", () => {
+  const sql = sql0049;
+  const st = pernyataan(sql);
+
+  it("pihak lawan: jenis daftar TERTUTUP — persis enam jenis", () => {
+    const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
+    expect(t, "tabel pihak_lawan tidak ditemukan utuh").not.toBe("");
+    expect(t).toMatch(
+      /CHECK \(\s*"jenis" IN \('unit', 'afiliasi', 'titipan', 'kreditur', 'karyawan', 'lain'\)\s*\)/,
+    );
+  });
+
+  it("pihak lawan berjenis unit WAJIB menyebut unit lawannya — dan hanya dia", () => {
+    const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
+    expect(t).toMatch(/\("jenis" = 'unit'\) = \("lawan_unit_id" IS NOT NULL\)/);
+    // Unit tak bisa berhutang pada dirinya sendiri.
+    expect(t).toMatch(/"lawan_unit_id" IS NULL OR "lawan_unit_id" <> "unit_id"/);
+    expect(t).toMatch(/FOREIGN KEY \("lawan_unit_id"\)\s*REFERENCES "public"\."unit"\("unit_id"\)/);
+  });
+
+  it("⛔ penanda 'satu PT' TIDAK disimpan — diturunkan dari peta tenant saat baca (KTD1)", () => {
+    const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
+    expect(t).not.toMatch(/tenant|satu_pt/i);
+  });
+
+  it("target FK komposit (id, unit_id) ada di pihak_lawan", () => {
+    const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
+    expect(t).toMatch(/CONSTRAINT "pihak_lawan_unit_uq" UNIQUE \("id", "unit_id"\)/);
+  });
+
+  it("seed DITURUNKAN dari public.unit — tanpa id unit yang dipatok tangan", () => {
+    const ins = pernyataanYangDimulai(sql, 'INSERT INTO "app"."pihak_lawan"');
+    expect(ins, "seed pihak lawan tidak ditemukan").not.toBe("");
+    expect(ins).toMatch(/FROM "public"\."unit"/);
+    expect(ins).not.toMatch(/VALUES/);
+    // Semua seed pihak lawan, bukan hanya yang pertama.
+    const semuaIns = st.split('INSERT INTO "app"."pihak_lawan"').slice(1);
+    expect(semuaIns.length).toBe(2);
+    for (const i of semuaIns) expect(i.slice(0, i.indexOf(";"))).not.toMatch(/VALUES/);
+  });
+
+  it("seed: setiap unit mendapat pihak lawan berjenis unit untuk SETIAP unit lain", () => {
+    const ins = pernyataanYangDimulai(sql, 'INSERT INTO "app"."pihak_lawan"');
+    expect(ins).toMatch(/'unit'/);
+    expect(ins).toMatch(/"lawan"\."unit_id" <> "u"\."unit_id"/);
+    expect(ins).toMatch(/ON CONFLICT DO NOTHING/);
+  });
+
+  it("seed: 'Outlet Bright' berjenis titipan di setiap unit (KTD11)", () => {
+    const i = st.indexOf("'Outlet Bright'");
+    expect(i).toBeGreaterThan(-1);
+    const ins = st.slice(st.lastIndexOf('INSERT INTO "app"."pihak_lawan"', i), st.indexOf(";", i));
+    expect(ins).toMatch(/'titipan'/);
+    expect(ins).toMatch(/FROM "public"\."unit"/);
+    expect(ins).toMatch(/ON CONFLICT DO NOTHING/);
+  });
+
+  it("seed yang terlewat diam-diam (ON CONFLICT) membatalkan migrasi, bukan hijau", () => {
+    // Dua unit bernama sama akan membuat satu pasangan tertelan ON CONFLICT.
+    expect(st).toMatch(/RAISE EXCEPTION '0049 batal: [^']*pihak lawan/);
+  });
+
+  it("saldo pembuka pihak lawan: FK komposit, bertanda, nol hanya bila sementara, void-audit", () => {
+    const t = pernyataanYangDimulai(
+      sql,
+      'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan_saldo_awal" (',
+    );
+    expect(t, "tabel saldo awal tidak ditemukan utuh").not.toBe("");
+    expect(t).toMatch(/"amount"\s+DECIMAL\(17,2\) NOT NULL/);
+    expect(t).toMatch(/"tanggal"\s+DATE NOT NULL/);
+    expect(t).toMatch(/"sementara"\s+BOOLEAN NOT NULL DEFAULT false/);
+    expect(t).toMatch(/"created_by_user_id"\s+INTEGER NOT NULL/);
+    expect(t).toMatch(
+      /FOREIGN KEY \("pihak_lawan_id", "unit_id"\)\s*REFERENCES "app"\."pihak_lawan"\("id", "unit_id"\)/,
+    );
+    expect(t).toMatch(/"amount" <> 0 OR "sementara"/);
+    expect(t).toMatch(
+      /"void" = \("voided_at" IS NOT NULL\) AND "void" = \("voided_by_user_id" IS NOT NULL\)/,
+    );
+  });
+
+  it("satu saldo pembuka AKTIF per (unit, pihak lawan) — penggantian lewat void", () => {
+    const ix = pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "pihak_lawan_saldo_awal_aktif_uq"');
+    expect(ix).toMatch(/\("unit_id", "pihak_lawan_id"\) WHERE NOT "void"/);
+  });
+
+  it("cash_ledger: kolom baru aditif, nullable, idempoten", () => {
+    for (const k of [
+      '"pihak_lawan_id" UUID',
+      '"pasangan_uuid" UUID',
+      '"tanggal_asal" DATE',
+      '"alasan_maju" TEXT',
+      '"alasan_maju_applies_to" TEXT',
+      '"parkir_sumber_id" UUID',
+    ]) {
+      expect(st).toContain(`ADD COLUMN IF NOT EXISTS ${k}`);
+    }
+    expect(st).not.toMatch(/ADD COLUMN IF NOT EXISTS "(pihak_lawan_id|pasangan_uuid|tanggal_asal|alasan_maju|parkir_sumber_id)" [A-Z]+ NOT NULL/);
+  });
+
+  it("🔴 cash_ledger → pihak lawan unit yang SAMA (FK komposit)", () => {
+    expect(st).toMatch(
+      /ADD CONSTRAINT "cash_ledger_pihak_lawan_fk"\s*FOREIGN KEY \("pihak_lawan_id", "unit_id"\)\s*REFERENCES "app"\."pihak_lawan"\("id", "unit_id"\)/,
+    );
+  });
+
+  it("baris parkir menunjuk baris kas unit yang SAMA (FK komposit ke dirinya)", () => {
+    expect(st).toMatch(/ADD CONSTRAINT "cash_ledger_unit_uq" UNIQUE \("id", "unit_id"\)/);
+    expect(st).toMatch(
+      /ADD CONSTRAINT "cash_ledger_parkir_sumber_fk"\s*FOREIGN KEY \("parkir_sumber_id", "unit_id"\)\s*REFERENCES "app"\."cash_ledger"\("id", "unit_id"\)/,
+    );
+  });
+
+  it("alasan maju terkunci ke reason_code grup adjustment (idiom 0027/0030)", () => {
+    expect(st).toMatch(
+      /FOREIGN KEY \("alasan_maju", "alasan_maju_applies_to"\)\s*REFERENCES "app"\."reason_code"\("code", "applies_to"\)/,
+    );
+    expect(st).toMatch(/"alasan_maju_applies_to" IS NULL OR "alasan_maju_applies_to" = 'adjustment'/);
+    expect(st).toMatch(/\("alasan_maju" IS NULL\) = \("alasan_maju_applies_to" IS NULL\)/);
+  });
+
+  it("baris yang terdorong maju WAJIB membawa kode alasan; tanggal asal tak boleh sesudah hari buku (R28)", () => {
+    expect(st).toMatch(/"tanggal_asal" IS NULL OR "tanggal_asal" <= "business_date"/);
+    expect(st).toMatch(
+      /"tanggal_asal" IS NULL OR "tanggal_asal" = "business_date" OR "alasan_maju" IS NOT NULL/,
+    );
+  });
+
+  it("🔴 KTD3: kategori pihak lawan ⇒ pihak lawan terisi, ditambahkan NOT VALID", () => {
+    const c = pernyataanYangDimulai(sql, 'ALTER TABLE "app"."cash_ledger" ADD CONSTRAINT "cash_ledger_pihak_lawan_wajib"');
+    expect(c, "CHECK pihak lawan wajib tidak ditemukan utuh").not.toBe("");
+    expect(c).toMatch(
+      /CHECK \(\s*"void"\s+OR "category_label" IS NULL\s+OR "category_label" NOT IN \('Hutang Piutang', 'Penyerahan titipan'\)\s+OR "pihak_lawan_id" IS NOT NULL\s*\) NOT VALID/,
+    );
+  });
+
+  it("CHECK NOT VALID tidak di-VALIDATE di migrasi ini — baris Oktober lama tetap sah", () => {
+    expect(st).not.toMatch(/VALIDATE CONSTRAINT/);
+  });
+
+  it("manual_entry: pemilik titipan nullable, FK komposit ke pihak lawan unit yang sama", () => {
+    expect(st).toMatch(/ALTER TABLE "app"\."manual_entry"\s*ADD COLUMN IF NOT EXISTS "pihak_lawan_id" UUID;/);
+    expect(st).toMatch(
+      /ADD CONSTRAINT "manual_entry_pihak_lawan_fk"\s*FOREIGN KEY \("pihak_lawan_id", "unit_id"\)\s*REFERENCES "app"\."pihak_lawan"\("id", "unit_id"\)/,
+    );
+  });
+
+  it("kategori baru: penampung di KEDUA sisi + Penyerahan titipan (kredit)", () => {
+    const ins = pernyataanYangDimulai(sql, 'INSERT INTO "app"."cash_mutation_category"');
+    expect(ins).toContain("('debet',  'Mutasi Belum Teridentifikasi')");
+    expect(ins).toContain("('kredit', 'Mutasi Belum Teridentifikasi')");
+    expect(ins).toContain("('kredit', 'Penyerahan titipan')");
+    expect(ins).toMatch(/ON CONFLICT \("side", "label"\) DO NOTHING/);
+  });
+
+  it("kode alasan maju: lima kode adjustment, satu per sumber (KTD5)", () => {
+    const ins = pernyataanYangDimulai(sql, 'INSERT INTO "app"."reason_code"');
+    const kode = [...ins.matchAll(/\('(ADJ-[A-Z-]+)',\s*'[^']+',\s*'adjustment'/g)].map((m) => m[1]);
+    expect(kode).toEqual([
+      "ADJ-FWD-IMPORT",
+      "ADJ-FWD-INTERUNIT",
+      "ADJ-FWD-PURCHASE",
+      "ADJ-FWD-SUSPENSE",
+      "ADJ-FWD-REVERSAL",
+    ]);
+    expect(ins).not.toMatch(/'closing'|'reclass'/);
+    expect(ins).toMatch(/ON CONFLICT \("code"\) DO NOTHING/);
+  });
+
+  it("cash_account.nomor_rekening diisi dari pola nama yang ditegakkan form (KTD13)", () => {
+    expect(st).toMatch(/ALTER TABLE "app"\."cash_account"\s*ADD COLUMN IF NOT EXISTS "nomor_rekening" TEXT;/);
+    const blok = st.slice(st.indexOf('UPDATE "app"."cash_account"'));
+    expect(blok).toContain("'^Bank\\s+.+\\s-\\s*\\d+$'");
+    expect(blok).toMatch(/"kind" = 'bank'/);
+    expect(blok).toMatch(/"nomor_rekening" IS NULL/);
+  });
+
+  it("🔴 backfill cash_account berjalan DI BAWAH scope — FORCE RLS memulangkan nol baris tanpa galat", () => {
+    const i = st.indexOf('UPDATE "app"."cash_account"');
+    expect(i).toBeGreaterThan(-1);
+    const sebelum = st.slice(0, i);
+    const sc = sebelum.lastIndexOf("set_config('app.unit_ids'");
+    expect(sc, "set_config tidak mendahului backfill").toBeGreaterThan(-1);
+    // Scope diambil dari public.unit, dibuktikan terpasang, dan dipulihkan.
+    expect(sebelum.slice(sc)).toMatch(/FROM "public"\."unit"/);
+    const sesudah = st.slice(i);
+    expect(sesudah).toMatch(/RAISE EXCEPTION '0049 batal: [^']*nomor_rekening/);
+    expect(sesudah).toMatch(/set_config\('app\.unit_ids', COALESCE\(scope_lama, ''\), true\)/);
+  });
+
+  it("hak akses: dua tabel baru SELECT/INSERT/UPDATE, DELETE di-REVOKE", () => {
+    for (const t of ["pihak_lawan", "pihak_lawan_saldo_awal"]) {
+      expect(st).toContain(`GRANT SELECT, INSERT, UPDATE ON "app"."${t}" TO dashboard_app`);
+      expect(st).toContain(`REVOKE DELETE ON "app"."${t}" FROM dashboard_app`);
+    }
+  });
+
+  it("⛔ BUKAN lingkup U1: tidak menyentuh day_close (koreksi susulan = U12)", () => {
+    expect(st).not.toMatch(/day_close/);
+  });
+
+  it("⛔ tidak menambahkan kolom saldo pada pihak_lawan — saldo adalah turunan (KTD2)", () => {
+    const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
+    expect(t).not.toMatch(/saldo|balance/i);
+  });
+});

@@ -624,6 +624,10 @@ model ManualEntry {
   /// `createdByUserId` saat dibaca: peran orang berubah, dan sejarah tidak
   /// boleh ikut berubah. CHECK di DB membatasi nilainya ke dua itu.
   sourceDoor          String            @default("pengawas") @map("source_door")
+  /// Pemilik titipan (0049, KTD11) — FK komposit (pihak_lawan_id, unit_id) ke
+  /// app.pihak_lawan. Milik pengawas; NULL untuk baris lama (pengenal
+  /// `titipan-bright.ts` tetap memetakan baris Bright lama).
+  pihakLawanId        String?           @map("pihak_lawan_id") @db.Uuid
 
   @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])
@@ -890,6 +894,9 @@ model CashAccount {
   openedAt  DateTime?       @map("opened_at") @db.Date
   closedAt  DateTime?       @map("closed_at") @db.Date
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  /// Nomor rekening (0049, KTD13) — diisi dari pola `nama` bank
+  /// (`^Bank\s+.+\s-\s*\d+$`); impor rekening koran membandingkannya.
+  nomorRekening String?     @map("nomor_rekening")
 
   @@unique([unitId, nama])
   /// Target FK komposit dari app.cash_ledger (0029): mengunci mutasi ke akun
@@ -944,10 +951,69 @@ model CashLedger {
   // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
   // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
   sourceManualEntryId String?           @map("source_manual_entry_id") @db.Uuid
+  /// Pihak lawan (0049, KTD2/KTD3). FK komposit ke app.pihak_lawan unit yang
+  /// SAMA. Wajib untuk baris baru berkategori "Hutang Piutang" / "Penyerahan
+  /// titipan" (CHECK NOT VALID `cash_ledger_pihak_lawan_wajib`).
+  pihakLawanId        String?           @map("pihak_lawan_id") @db.Uuid
+  /// Kunci pasangan antar unit (KTD4): dua kaki di dua unit berbagi nilai ini.
+  pasanganUuid        String?           @map("pasangan_uuid") @db.Uuid
+  /// Tanggal transaksi asli bila dibukukan maju (R28); `businessDate` = hari buku.
+  tanggalAsal         DateTime?         @map("tanggal_asal") @db.Date
+  /// Kode alasan pembukuan maju — reason_code grup `adjustment` (FK komposit).
+  alasanMaju          String?           @map("alasan_maju")
+  /// Bayangan reason_code.applies_to; CHECK = 'adjustment'.
+  alasanMajuAppliesTo String?           @map("alasan_maju_applies_to")
+  /// Baris penampung yang dipindahkan oleh baris ini (KTD8), unit yang SAMA.
+  parkirSumberId      String?           @map("parkir_sumber_id") @db.Uuid
 
+  /// Target FK komposit tautan baris parkir (0049).
+  @@unique([id, unitId])
   @@index([unitId, accountId, businessDate])
   @@index([unitId, categorySide, categoryLabel, businessDate])
   @@map("cash_ledger")
+  @@schema("app")
+}
+
+// Pihak lawan BER-UNIT (0049, KTD1) — bukan master global: nama afiliasi/
+// kreditur satu tenant tak boleh bocor ke tenant lain (RLS unit_scope).
+// `jenis` daftar tertutup (CHECK): unit | afiliasi | titipan | kreditur |
+// karyawan | lain. Jenis `unit` wajib `lawanUnitId`. Penanda "satu PT" (R5)
+// TIDAK disimpan — diturunkan dari peta tenant saat baca. Saldo = turunan.
+model PihakLawan {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  jenis           String
+  nama            String
+  lawanUnitId     Int?     @map("lawan_unit_id") @db.SmallInt
+  aktif           Boolean  @default(true)
+  /// NULL = disemai migrasi 0049.
+  createdByUserId Int?     @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, nama])
+  /// Target FK komposit dari cash_ledger, manual_entry, pihak_lawan_saldo_awal.
+  @@unique([id, unitId])
+  @@map("pihak_lawan")
+  @@schema("app")
+}
+
+// Saldo pembuka per pihak lawan (0049, R7). BERTANDA: positif = piutang,
+// negatif = hutang. Rp 0 hanya sah bila `sementara`. Satu baris aktif per
+// (unit, pihak lawan) — mengganti = void + insert. VOID-only.
+model PihakLawanSaldoAwal {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  pihakLawanId    String    @map("pihak_lawan_id") @db.Uuid
+  tanggal         DateTime  @db.Date
+  amount          Decimal   @db.Decimal(17, 2)
+  sementara       Boolean   @default(false)
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("pihak_lawan_saldo_awal")
   @@schema("app")
 }
 
