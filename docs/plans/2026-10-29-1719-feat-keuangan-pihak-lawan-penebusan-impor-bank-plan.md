@@ -632,7 +632,7 @@ Empat fase, masing-masing bisa menjadi satu PR ke `staging`:
 **Patterns to follow:** model murni + test bersebelahan; berkas sementara di `/tmp` kontainer dihapus di `finally`.
 
 **Test scenarios:**
-- Fixture sintetis giro: 6 baris (setoran jemputan, B2B Pertamina dengan SO, biaya adm, BI-FAST tanpa nama, KORCPU, pajak bunga) ⇒ 6 baris, nominal sen tepat, SO terekstrak `4060000001`.
+- Fixture sintetis giro: 6 baris (setoran jemputan, B2B Pertamina dengan SO, biaya adm, BI-FAST tanpa nama, KORCPU, pajak bunga) ⇒ 6 baris, nominal sen tepat, SO terekstrak `7654321987`.
 - Keterangan yang memuat "SALDO AWAL :" di ekor baris terakhir (pola rekening EDC) tidak merusak nominal baris itu.
 - Kaki tidak cocok Rp 0,01 ⇒ galat "kaki tidak cocok", tidak ada baris dikembalikan (AE3).
 - Kepala rekening "5 125 03 6811" ⇒ nomor ternormalisasi `5125036811`.
