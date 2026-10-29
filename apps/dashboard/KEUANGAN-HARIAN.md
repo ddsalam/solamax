@@ -1879,6 +1879,274 @@ kini melihat "Reklasifikasi oleh staf Keuangan / Head of Finance", bukan nama ti
 **Belum:** `Tinjau`, `Kembalikan untuk perbaikan`, `Koreksi / balik` (nominal/tanggal
 salah sesudah hari ditutup — `correction_entry` dengan approver ≠ pengaju).
 
+### 10.30 K5 · Buku pembantu pihak lawan — master per unit (29 Oktober 2026)
+
+Rencana: [`docs/plans/2026-10-29-1719-feat-keuangan-pihak-lawan-penebusan-impor-bank-plan.md`](../../docs/plans/2026-10-29-1719-feat-keuangan-pihak-lawan-penebusan-impor-bank-plan.md)
+(KTD1–KTD3). Berlaku untuk §10.30–§10.42.
+
+**Temuan:** agregat "Hutang Piutang" non-EasyMax tak menjawab "berapa hutang/piutang
+kita ke pihak X per tanggal D", dan tandanya di neraca terbalik.
+
+**Keputusan owner:** buku pembantu di **atas** buku kas yang ada, bukan jurnal
+berpasangan penuh (session-settled). Mesin CF/IS/BS dan gerbang tutup hari tidak dibongkar.
+
+**Perlakuan:**
+
+| Hal | Aturan |
+|---|---|
+| Master | `app.pihak_lawan` **per unit** (RLS `unit_scope`), jenis: unit · afiliasi · pemilik titipan · kreditur · karyawan · lain-lain (0049). Nama satu tenant tak bocor ke tenant lain |
+| Seed | pihak lawan berjenis unit untuk setiap unit lain + "Outlet Bright", **sebelum** blok RLS (0049) |
+| "Satu PT" | diturunkan dari `tenant_id` saat baca, tidak disimpan |
+| Saldo | **saldo pembuka − Σ amount** baris kas bertautan sesudah tanggal pembuka. **Piutang positif**: kas keluar (kredit) menambah piutang |
+| Saldo pembuka | `pihak_lawan_saldo_awal`, terpisah dari baris kas, bertanda **sementara**, HoF (`canTetapkanSaldoAwalPihakLawan`); untuk pihak lawan berjenis unit satu pengisian menulis kedua sisi (gerbang dua unit §10.31) |
+| Wajib untuk baris baru | CHECK `cash_ledger_pihak_lawan_wajib` **`NOT VALID`**: kategori `Hutang Piutang` / `Penyerahan titipan` ⇒ pihak lawan terisi (atau void). Baris lama Oktober tak dipaksa dan tetap bisa di-void |
+| Baris lama | tindakan bernama **"Tetapkan pihak lawan"** (Keuangan): isi **sekali** (`WHERE pihak_lawan_id IS NULL`) + `audit_log`; nominal, tanggal, kategori tak berubah. Sampai ditetapkan, neraca menampung di baris "pihak lawan belum ditetapkan" dan Pemantauan menandainya |
+| Pecahan | `pecahMutasi`: satu mutasi → N baris, Σ **tepat** = nominal sumber (mis. angsuran BPR = pokok + bunga), lewat aturan tanggal buku §10.33 |
+| Wewenang | tambah/nonaktifkan = Keuangan; pihak lawan nonaktif **tetap tampil** berikut saldonya (karena itu bukan HoF, beda dari §10.18) |
+
+⚠️ **Batas:** CHECK `NOT VALID` tidak pernah memvalidasi baris lama — kebenarannya
+bergantung pada Finance menyelesaikan daftar "belum ditetapkan". Tanpa ekspor CSV buku
+pembantu (dipertimbangkan, tidak dibangun).
+
+### 10.31 K5 · Pinjaman antar unit dicatat sekali, dua sisi (29 Oktober 2026)
+
+**Keputusan owner:** satu catatan Keuangan membentuk kedua sisi — saldo per pasangan
+unit tak bisa berbeda antar buku. Pencatat lintas PT wajib berperan Keuangan di
+**kedua** unit (session-settled).
+
+**Perlakuan:**
+
+| Hal | Aturan |
+|---|---|
+| Bentuk | dua baris `cash_ledger` dalam **satu transaksi**, satu `kunci_pasangan`, pihak lawan = unit lawan; pemberi kredit, penerima debet. Tak ada tabel pasangan lintas unit |
+| Gerbang dua unit | peran **global** (`canCatatAntarUnit`) **dan** `scope.requireUnit` untuk **kedua** unit lolos **sebelum** koneksi DB; baru `app.unit_ids` = kedua unit. Gagal satu ⇒ ditolak utuh, nol sisi tertulis (AE12) |
+| Hari buku | tiap kaki di hari terbuka **unitnya sendiri** (§10.33) |
+| Status kaki | "dalam perjalanan" sampai mutasi bank unit itu dicocokkan (§10.39) |
+| Paritas | pembaca dua unit membedakan "menunggu sisi lawan" dari "tidak seimbang"; yang terakhir = cacat di Pemantauan |
+| Balik pasangan | `balikPasanganAntarUnit` — **HoF/super admin**, kode alasan wajib: kaki di hari terbuka di-void, kaki di hari tertutup dibalik maju (`ADJ-FWD-REVERSAL`). Ditolak selama ada kaki yang tercocokkan |
+
+⚠️ **Batas:** ini **tulis lintas unit pertama**. RLS tidak melindungi dari scope yang
+salah (`0016/CORRECTION.md`) — keamanannya sepenuhnya dua `requireUnit` + predikat. Uji
+isolasi dua-unit ber-gerbang env (lihat Batas di §10.42). Bunga/angsuran/jatuh tempo di
+luar cakupan.
+
+### 10.32 K5 · Titipan per pemilik — generalisasi §10.27 (29 Oktober 2026)
+
+**Keputusan owner:** titipan Bright yang sudah hidup **diperluas**, bukan dibangun
+ulang; pemilik lain (Kebab) berperilaku sama.
+
+**Perlakuan:** pengawas memilih **pemilik titipan** (pihak lawan berjenis titipan,
+kolom `manual_entry` milik pengawas §2.1) setiap kali titipan dicentang. Baris baru
+berkategori generik **"Titipan outlet"**; label lama `Titipan outlet Bright` dan baris
+tanpa pemilik tetap dibaca sebagai Outlet Bright lewat pengenal §10.27. Penyerahan =
+kredit **"Penyerahan titipan"** (wajib pihak lawan) — kini mengurangi **liabilitas**,
+bukan hanya kas; "Penyerahan titipan Bright" lama tetap dihitung untuk Bright. Saldo
+titipan per pemilik = saldo pembuka + diterima − diserahkan. Angka acuan §10.27 IB
+24-09 **tetap −119.737.483** (diuji).
+
+⚠️ **Batas:** pemilik baru **tidak** dikenali dari kata — tanpa pilihan pengawas,
+setoran Kebab tak terbaca titipan. Prefill Bright hanya bila aturan kata §10.27 cocok.
+
+### 10.33 K5 · Tanggal buku maju — koreksi selalu ke hari terbuka (29 Oktober 2026)
+
+**Keputusan owner:** hari yang sudah ditutup **tidak pernah disunting**; koreksi
+dibukukan maju (session-settled; meneruskan "koreksi MAJU, bukan sunting MUNDUR").
+
+**Aturan (R28, KTD5)** — satu fungsi murni `tentukanHariBuku` untuk **semua** jalur
+tulis baru (impor, klasifikasi, pemindahan penampung, antar unit, penebusan, pembatalan):
+
+1. tanggal < cut-over (saldo pembuka rekening, jatuh ke cut-over terawal unit) ⇒
+   **pra-cut-over, tidak dibukukan** (R22);
+2. selainnya hari buku = hari pertama ≥ tanggal yang `day_close`-nya tidak `closed`;
+3. baris yang terdorong maju menyimpan `tanggal_asal` + kode alasan `ADJ-FWD-*`
+   (`IMPORT`, `INTERUNIT`, `PURCHASE`, `SUSPENSE`, `REVERSAL`) + tautan ke sumbernya.
+
+**Konkurensi:** `hariBukuTerkunci` dipanggil **di dalam** transaksi penulis dan
+mengambil advisory lock **bersama** per (unit, hari); `tutupHari` mengambil kunci yang
+sama **eksklusif**, lalu **menghitung ulang** langkah harian di bawah kuncinya
+(`langkahHarianDari`, satu jalur dengan layar) — baris yang masuk sesudah layar dibuka
+ikut terhitung, dan penutupan tak bisa menyelip di antara periksa dan tulis.
+
+⚖️ **Beda dari teks rencana:** KTD5 menyebut placeholder `day_close` (`INSERT … ON
+CONFLICT DO NOTHING` + `FOR SHARE`). Yang dibangun advisory lock, sebab 0026 mewajibkan
+`difference_rp` dan Rp 0 palsu dilarang §10.15.
+
+🔴 **Celah lama, belum ditutup (keputusan Dion):** `simpanMutasiKas` dan `voidMutasiKas`
+(ketik/batal mutasi manual yang sudah ada) masih bisa menulis ke hari tertutup tanpa jejak
+di gerbang mana pun. Rencana ini hanya menjaga jalur **baru**. Rekomendasi: terapkan aturan
+ini ke jalur lama dalam PR terpisah.
+
+### 10.34 K5 · Koreksi susulan dipisah dari selisih yang dinilai (29 Oktober 2026)
+
+**Keputusan owner:** baris yang dibukukan maju **tidak** memaksa override Direksi tiap
+hari impor, dan selisih asli hari itu tidak tersembunyi di dalamnya (session-settled, R32).
+
+**Perlakuan (KTD15):** langkah neraca hari D dihitung dua kali — **penuh** (semua baris)
+dan **dinilai** (tanpa baris kas yang tanggal asalnya < D). **Koreksi susulan = penuh −
+dinilai**, tampil terpisah di layar tutup hari, tertaut ke baris & kode alasannya.
+**Tier §3 diambil dari `dinilai`**; tangga toleransi sendiri tidak berubah.
+
+Baris susulan berpihak lawan menyumbang nol (sudah seimbang di dalam SolaMax). Yang
+menyumbang: baris yang lawannya sudah tercatat di EasyMax pada tanggal asal (transfer
+pelanggan, penebusan).
+
+⚠️ **Batas:** kolom penyimpan koreksi susulan di `day_close` lahir di migrasi tutup bulan
+(U12, §10.41). Koreksi susulan **tidak dinilai** siapa pun secara otomatis — angka besar
+hanya terlihat, tidak menahan.
+
+### 10.35 K5 · Neraca: tanda hutang-piutang diperbaiki + tiga term yang hilang (29 Oktober 2026)
+
+**Temuan:** term "Hutang Piutang" non-EasyMax di neraca bertanda terbalik
+(`keuangan-laporan-queries.ts`): pinjaman diterima Rp 1 jt membuat langkah harian
+bergeser alih-alih seimbang. Kategori Temporary Investment, Tambahan Modal, dan
+Kontribusi ke Pusat menggerakkan kas tanpa padanan di neraca.
+
+**Perlakuan:**
+
+| Term | Rumus |
+|---|---|
+| Hutang-piutang non-EasyMax | Σ saldo pihak lawan (§10.30; piutang = −Σ amount) + baris lama "pihak lawan belum ditetapkan" |
+| Penampung "Mutasi Belum Teridentifikasi" | −Σ amount (§10.40) — langkah harian tidak bergerak saat baris diparkir |
+| Temporary Investment | −Σ amount (saldo) + arus hari itu |
+| Tambahan Modal / Kontribusi ke Pusat | ekuitas lewat `deltaKontribusi` (§10.29) |
+| Titipan | per pemilik, termasuk saldo pembukanya (§10.32) |
+
+Uji mutan tanda membuktikan langkah memerah bila tanda dibalik.
+
+⚖️ **Hari terbuka sesudah rilis memakai rumus baru; hari tertutup TIDAK dihitung ulang**
+(arsip tutup beku, §10.15). Akibatnya langkah harian pertama sesudah rilis bisa berbeda
+dari pola sebelumnya — perbedaan itu milik rumus, bukan mutasi.
+
+### 10.36 K5 · Cek arus kas kini terhitung (29 Oktober 2026)
+
+**Temuan:** baris arus kas "Penebusan SO" selalu kosong, sehingga cek arus kas tak
+pernah terhitung. Mengisinya menyalakan cek untuk pertama kalinya — tanpa pemetaan
+lengkap ia penuh alarm palsu.
+
+**Perlakuan (KTD12):** **setiap kategori kas → tepat satu baris arus kas.** Guard test
+membaca label kategori dari migrasi dan membandingkannya dengan peta baris arus kas;
+kategori baru tanpa baris arus kas memerahkan uji. "Penebusan SO" = Σ baris kas kategori
+Pembelian BBM per hari (tak ada hitung ganda dengan tabel penebusan).
+
+⚠️ **Batas:** cek yang baru menyala akan menemukan kategori yang dipetakan salah di
+masa lalu — alarmnya sah, bukan regresi.
+
+### 10.37 K5 · Penebusan per SO — pajak terpisah, HPP tetap (29 Oktober 2026)
+
+**Keputusan owner:** komponen pajak **disimpan terpisah**, HPP tetap Gross ÷ liter;
+perlakuan PPN masukan/PPh 22 milik konsultan pajak (session-settled). Komponen
+**diketik**, tanpa unggah bukti — bukti tetap di Drive. Mengetik penebusan langsung
+membukukan pembayaran bank-nya (R29) agar neraca tak melompat (kasus lompatan hampir −Rp 1 M 2 Okt).
+
+**Perlakuan (KTD9, 0050):**
+
+| Hal | Aturan |
+|---|---|
+| Tabel | `app.penebusan` per unit, SO ternormalisasi `lower(trim())`, **unik per SO** |
+| Jumlah | CHECK DB: **Net + PPN + PPh + PBBKB + Nota = Gross**, toleransi Rp 0 |
+| Baris kas | mengikat baris **Pembelian BBM yang sudah ada** bila tepat satu kandidat; lebih dari satu ⇒ pilihan; tak ada ⇒ kredit Pembelian BBM sebesar Gross di rekening terpilih lewat §10.33 (`ADJ-FWD-PURCHASE`) |
+| HPP / harga beli / laba | **tidak disentuh** |
+| Rekap | pajak bulanan per unit/PT + CSV (tanpa keterangan bank); daftar SO belum tertaut ke EasyMax |
+| Batal | `voidMutasiKas` menolak baris milik penebusan; void penebusan oleh Keuangan (`canBatalkanPenebusan`) hanya bila hari masih terbuka dan baris kasnya belum dicocokkan |
+
+⚠️ **Batas:** satu SO dibayar dua debit = satu penebusan, satu baris kas Gross — kelompok
+2:1 harus disusun **manual** (§10.39). Pembatalan sesudah hari tertutup/tercocokkan menuntut
+pembalikan maju yang belum dibangun. Tanda Nota Debet/Kredit belum diuji pada bukti nyata.
+
+### 10.38 K5 · Impor rekening koran BCA (29 Oktober 2026)
+
+**Keputusan owner:** tahap ini **hanya e-statement PDF BCA** (session-settled); bank lain
+dan CSV tetap diketik manual.
+
+**Perlakuan (KTD10, KTD13, 0051):**
+
+| Hal | Aturan |
+|---|---|
+| Pembaca | `pdftotext -layout` (poppler di image dashboard) + parser TS murni, nominal **sen bulat**. Uji asli 18/18 berkas Bakau, jumlah baris identik dengan simulasi (ber-gerbang `REKENING_KORAN_DIR`) |
+| Validasi kaki | total CR/DB, jumlah mutasi, saldo akhir harus **sama persis** — tidak ⇒ berkas ditolak **utuh**, sebelum koneksi DB |
+| Rekening | rekening **bank BCA aktif bernomor** milik unit itu; `cash_account.nomor_rekening` (diisi ulang dari pola nama) harus cocok dengan kepala (nol di depan diabaikan) |
+| Idempoten | berkas identik (sha256) untuk (rekening, bulan) aktif = "sudah ada"; berkas **lain** ditolak sampai HoF **menarik** yang lama (`canTarikRekeningKoran`, kode alasan + catatan) |
+| Pra-cut-over | baris sebelum cut-over **disimpan** `pra_cutover`, tak pernah dicocokkan/dibukukan |
+| Saldo awal | dibandingkan dengan saldo buku menurut **tanggal asal**; selisih ditampilkan, tidak menolak |
+| Buku | impor **tidak pernah** menulis `cash_ledger` (KTD6); aplikasi hanya SELECT/INSERT baris impor |
+
+⚠️ **Batas:** BCA saja. Tarik ditolak selama ada baris yang tercocokkan.
+
+### 10.39 K5 · Kelompok cocok — tautan, bukan suntingan (29 Oktober 2026)
+
+**Keputusan owner:** mutasi BCA yang sudah diketik manual **dicocokkan**, tidak dicatat
+dua kali; pembatalan hanya milik HoF.
+
+**Perlakuan (KTD6, KTD7, 0052):**
+
+| Hal | Aturan |
+|---|---|
+| Bentuk | `cocok_bank` + `cocok_bank_baris`: N baris impor ↔ M baris kas. Satu baris impor / baris kas hanya di **satu kelompok aktif** (partial unique) |
+| Σ | kelompok manual wajib **Σ = 0 per rekening**; integritas memeriksa Σ dan keanggotaan ganda |
+| Kunci per jenis | debit B2B Pertamina **hanya lewat nomor SO** (nominal hanya diperiksa) · KURANG BAYAR lewat `dok_ref` · setoran jemputan & EDC jendela 0..+3 hari · pindah buku = rekening terdaftar di unit yang sama · ketikan manual & kaki antar unit pada tanggal asal |
+| Otomatis | **hanya bila tepat satu kandidat**; kandidat yang diperebutkan tidak dicocokkan. Berjalan sesudah unggah, transaksi sendiri (gagalnya tak membatalkan impor) |
+| Pembatalan | `canBatalkanCocokBank` — **HoF/super admin**; kaki antar unit lewat gerbang dua unit. `voidMutasiKas` menolak baris yang tercocokkan |
+
+⚠️ **Batas:** tanpa subset-sum otomatis (dipertimbangkan, tidak dibangun) — banyak-ke-banyak
+(mis. KORCPU, satu SO dua debit) dipilih manusia.
+
+### 10.40 K5 · Klasifikasi & penampung "Mutasi Belum Teridentifikasi" (29 Oktober 2026)
+
+**Keputusan owner:** mutasi tak dikenal masuk penampung yang **wajib nol sebelum tutup
+bulan**, tanpa menahan tutup hari (session-settled).
+
+**Perlakuan (KTD8, 0053):**
+
+- Klasifikasi baris tak bertaut = **baris kas baru** lewat §10.33 pada tanggal bank
+  (`ADJ-FWD-IMPORT` bila hari tertutup), bertanda `lahir_dari_cocok_id`, + kelompok
+  cocok — satu transaksi. Jenis: cocokkan kandidat · kategori + pihak lawan · antar unit
+  · penebusan · pecah · parkir.
+- 🔴 **Kategori beban/pendapatan lain juga menulis `manual_entry` pintu Finance**
+  (`manual_entry.cash_ledger_id`, 0053) — tanpa itu laba tak melihat bebannya. Perbaikan
+  yang sama untuk `pecahMutasi`.
+- Penampung = **kategori** (debet & kredit) di rekening bank aslinya, bukan akun kas: saldo
+  bank tetap benar; neraca mengimbangi dengan term penampung (§10.35).
+- Pemindahan = dua baris di rekening yang sama pada hari buku §10.33 (pembalik di penampung
+  + baris tujuan, `ADJ-FWD-SUSPENSE`), di kelompok baris parkir; baris parkir **tak pernah
+  disunting**.
+- Tutup hari tetap boleh selama penampung bersaldo (R24); Pemantauan menandai penampung
+  bersaldo.
+
+### 10.41 K5 · Tutup bulan — empat syarat (29 Oktober 2026)
+
+**Keputusan owner:** HoF menutup bulan per unit (R25, R26).
+
+**Perlakuan (KTD14, rencana U12 — dibangun paralel; teks ini mengikuti rencana):** satu
+pembuat vonis murni; aksi menulis hanya bila vonis lolos, oleh **HoF atau super admin**,
+idempoten, audit `tutup_bulan.tutup`. Ditolak selama:
+
+1. ada hari di bulan itu yang belum ditutup;
+2. ada baris parkir yang belum dipindahkan dengan **tanggal bank** di bulan itu — bukan
+   tanggal buku: mutasi 20 Okt yang dibukukan 3 Nov menahan **Oktober**;
+3. ada rekening BCA aktif bernomor tanpa rekening koran aktif bulan itu;
+4. ada baris buku di rekening itu (tanggal asal di bulan itu) tanpa kelompok cocok aktif —
+   **kecuali** saldo pembuka dan pasangan batal + pembalik majunya yang bertaut dan Σ Rp 0.
+
+Bulan tertutup tidak membuka jalan baru: hari-harinya sudah tertutup, jadi §10.33 otomatis
+mendorong koreksi ke bulan berikutnya. Membuka kembali bulan/hari = di luar cakupan.
+
+### 10.42 K5 · Batas yang diketahui / keputusan menunggu Dion (29 Oktober 2026)
+
+| # | Batas | Yang dibutuhkan |
+|---|---|---|
+| a | `simpanMutasiKas` / `voidMutasiKas` masih bisa menulis ke **hari tertutup** (§10.33) | keputusan Dion: terapkan §10.33 ke jalur manual (PR terpisah) |
+| b | Pembayaran pelanggan unit A yang **masuk ke rekening unit B** (mis. pelanggan BK membayar ke rekening IB). ⚖️ **Keputusan owner 29 Okt 2026: tunda.** Sementara ini Finance **memarkir** mutasinya di penampung "Mutasi Belum Teridentifikasi" (§10.40) dan **HoF** yang menyelesaikannya — sebelum tutup bulan unit B, karena penampung wajib nol (§10.40). ⛔ **Jangan** diklasifikasi "Antar unit": itu menulis **baris kas** di rekening unit A yang tak pernah muncul di rekening koran A ⇒ syarat 4 §10.41 **menahan tutup bulan** unit A | desain **kaki non-kas** (sisi yang tak menyentuh bank unit A) — brainstorm terpisah |
+| c | Tanda **Nota Debet/Kredit** pada CHECK penebusan (§10.37) belum dicek ke bukti nyata | satu bukti Nota Kredit + satu Nota Debet nyata |
+| d | Void penebusan diberikan ke **Keuangan**; R26 menyebut pembatalan milik HoF (R31 tak menyebut penebusan) | konfirmasi Dion |
+| e | Satu SO dibayar **dua debit** harus dikelompokkan manual (2:1) | diterima, atau minta usulan otomatis |
+| f | Uji integrasi ber-gerbang env (`PIHAK_LAWAN_LIVE_DB`, `HARI_BUKU_LIVE_DB`, dua-unit, `SQLCHECK_DB`) **belum pernah dijalankan** | **wajib** dijalankan di tier testing `solamax-pg-rlsstg` sebelum promosi |
+
+Uji ulang Jan–Sep Bakau (Success Criteria butir 1): `apps/dashboard/scripts/uji-ulang-rekening-koran.ts`
+— unit fiktif 8810 di tier testing, hanya hitungan dicetak; **`--bersihkan` (role `ingest`)
+wajib** sesudah laporan disimpan. Skrip tidak mengetik penebusan, jadi debit Pertamina
+berakhir "penebusan belum diketik" — hitungan debit Pertamina itu dibuktikan sebagai *debit ber-SO*, bukan
+sebagai cocok.
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

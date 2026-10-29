@@ -78,12 +78,29 @@ describe("Layar 2 — read-only, dan itu ditegakkan", () => {
   it("🔴 neraca memakai SALDO, cash flow memakai ARUS — tak boleh tertukar", () => {
     // Dua angka sah dari kategori yang sama; yang salah hanya tempatnya, dan
     // itu tak memunculkan galat apa pun. Diikat per-variabel ke fungsinya.
-    expect(KUERI).toMatch(/const saldoNonEasymax = adaAkun \? deltaKategoriSampai\(/);
-    expect(KUERI).toMatch(/const arusNonEasymax = adaAkun \? deltaKategori\(/);
+    // U6: saldo lahir dari `sisiKasNeraca` (term pihak lawan, KTD2), arus dari
+    // `arusBukuKas` lewat peta kategori → baris arus kas (KTD12).
+    expect(KUERI).toMatch(/const saldoNonEasymax = sisi\.penuh\.hutangPiutangNonEasymax;/);
+    expect(KUERI).toMatch(/const arusNonEasymax = arusDari\("Transaksi hutang piutang non-EasyMax"\);/);
+    expect(KUERI).toMatch(/const sisi = await sisiKasPada\(/);
+    expect(KUERI).toMatch(/const arus = arusBukuKas\(mutasi, date\);/);
     // …dan masing-masing dipakai di tempat yang benar.
     expect(KUERI).toMatch(/hutangPiutangNonEasymax: saldoNonEasymax/);
     expect(KUERI).toMatch(/arusHutangPiutangNonEasymax: arusNonEasymax/);
-    expect(HAL).toMatch(/hutangPiutangNonEasymax: b\.arusHutangPiutangNonEasymax/);
+    expect(MODEL).toMatch(/hutangPiutangNonEasymax: b\.arusHutangPiutangNonEasymax/);
+    expect(MODEL).toMatch(/hutangPiutangNonEasymax: sisi\.hutangPiutangNonEasymax/);
+    // Layar memakai penyusun TUNGGAL, bukan susunan inline yang bisa tertinggal.
+    expect(HAL).toMatch(/panelCashFlow\(cashFlowInputDari\(b\)\)/);
+    expect(HAL).toMatch(/panelBalance\(balanceInputDari\(b, netProfit\)\)/);
+  });
+
+  it("🔴 term lama 'Hutang Piutang' yang TANDANYA TERBALIK tidak kembali (U6, KTD2)", () => {
+    // Kode lama menambahkan +Σ amount kategori Hutang Piutang ke aset padahal
+    // kas sudah memuatnya: pinjaman diterima 1 jt ⇒ langkah −2 jt. Perilakunya
+    // diuji di keuangan-laporan-queries.pihak-lawan.test.ts; ini menjaga agar
+    // agregat itu tak diselipkan kembali sebagai jalan pintas.
+    expect(KUERI).not.toMatch(/deltaKategoriSampai\([^)]*"Hutang Piutang"\)/);
+    expect(KUERI).not.toMatch(/deltaKategori\([^)]*"Hutang Piutang"\)/);
   });
 
   it("batas SOValue (B7) disebut DI LAYAR, bukan hanya di dokumen", () => {

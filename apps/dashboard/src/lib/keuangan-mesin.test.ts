@@ -283,7 +283,7 @@ describe("§10.23 · rambatan null sampai gerbang tutup hari", () => {
 
     const bs = panelBalance({
       sebabKas: null, cashOnHand: 0, inventoryValue: 0, soValue: 0,
-      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, penampung: 0, temporaryInvestment: 0, openedRetainedEarnings: 0,
       netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
       incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null,
       saldoTitipanBright: 0,
@@ -317,7 +317,7 @@ describe("G/L source integrity propagates through financial totals", () => {
     expect(panel.marginBersih).toBeNull();
     const balance = panelBalance({
       sebabKas: null, cashOnHand: 0, inventoryValue: totals.inventoryValue, soValue: 0,
-      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, penampung: 0, temporaryInvestment: 0, openedRetainedEarnings: 0,
       netIncome: panel.baris.find(r => r.label === "Net profit")!.nilai,
       incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null, saldoTitipanBright: 0,
     });
@@ -332,7 +332,7 @@ describe("G/L source integrity propagates through financial totals", () => {
     expect(totals.grossProfit).toBe(200_000);
     const balance = panelBalance({
       sebabKas: null, cashOnHand: 0, inventoryValue: totals.inventoryValue, soValue: 0,
-      piutangEasymax: 0, hutangPiutangNonEasymax: 0, openedRetainedEarnings: 0,
+      piutangEasymax: 0, hutangPiutangNonEasymax: 0, penampung: 0, temporaryInvestment: 0, openedRetainedEarnings: 0,
       netIncome: 100, incomeAdjustment: null, totalAssetKemarin: 0, deltaKontribusi: null, saldoTitipanBright: 0,
     });
     expect(balance.baris.find(r => r.label === "Nilai stock")).toMatchObject({ nilai: null });

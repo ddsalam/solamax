@@ -27,7 +27,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
     const { q } = await import("./db");
     const { getAkunKas, getDayClose } = await import("./keuangan-input-queries");
     const { getBahanLaporan } = await import("./keuangan-laporan-queries");
-    const { panelBalance, panelIncome } = await import("./keuangan-laporan-model");
+    const { balanceInputDari, panelBalance, panelIncome } = await import("./keuangan-laporan-model");
     const { barisUnit, ringkasPapan } = await import("./keuangan-papan-model");
     type SUID = Parameters<typeof getBahanLaporan>[0];
 
@@ -59,20 +59,7 @@ d("bagan akun tak lengkap — apa yang dilihat direksi", () => {
         pendapatanLain: bahan.pendapatanLain, incomeAdjustment: null,
       });
       const net = is.baris.find((x) => x.label === "Net profit")!.nilai;
-      const bs = panelBalance({
-        cashOnHand: bahan.kasAkhir,
-        sebabKas: bahan.sebabKas,
-        inventoryValue: bahan.totals.inventoryValue,
-        soValue: bahan.totals.soValue,
-        piutangEasymax: bahan.piutangEasymax,
-        hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
-        openedRetainedEarnings: null,
-        netIncome: net,
-        incomeAdjustment: null,
-        totalAssetKemarin: bahan.totalAssetKemarin,
-        deltaKontribusi: null,
-        saldoTitipanBright: bahan.saldoTitipanBright,
-      });
+      const bs = panelBalance({ ...balanceInputDari(bahan, net), deltaKontribusi: null });
       const b = barisUnit({
         unitId: u.unit_id, code: u.code, nama: u.name, adaAkunKas: true,
         kindAkun: akun.map((a) => a.kind),

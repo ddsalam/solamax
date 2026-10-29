@@ -1,0 +1,76 @@
+                                                           REKENING GIRO
+    KCP CONTOH RAYA
+
+
+    C ON TOH J A YA PT                                                             NO. RE KE NING             :    9 876 54 3210
+    JL KA RAN GAN NO 1                                                             HALAMAN                    :    1 / 2
+    RT 001 /R W 0 0 1
+                                                                                   PE RIOD E                  :    MARE T 2027
+    JL C ON TOH
+    KO TA FIK SI 1 2 3 4 5                                                         MATA U ANG                 :    ID R
+    I ND ONES IA
+
+
+
+CATATAN:
+
+•    Teks catatan sintetis untuk uji pembaca rekening koran.
+     Baris kedua catatan sintetis.
+
+
+    T ANG G A L                          KET ER A N GA N                       C BG               MU TASI                           SALD O
+
+       01/03         SALDO AWAL                                                                                                        500,000,000.00
+
+       03/03         KR OTOMATIS                 SETORAN JEMPUTAN              0981                12,345,000.00
+                                                 STR030327
+
+       03/03         TRSF E-BANKING DB           0303/FTSCY/WS99999                                98,765,432.10 DB                    413,579,567.90
+                                                 H00001234567654321
+                                                 98722161409
+                                                 PT MIGAS KARANGAN
+
+
+
+
+                                                                                                          Bersambung ke halaman berikut
+                                                           REKENING GIRO
+    KCP CONTOH RAYA
+
+
+    C ON TOH J A YA PT                                                             NO. RE KE NING             :    9 876 54 3210
+    JL KA RAN GAN NO 1                                                             HALAMAN                    :    2 / 2
+    RT 001 /R W 0 0 1
+                                                                                   PE RIOD E                  :    MARE T 2027
+    JL C ON TOH
+    KO TA FIK SI 1 2 3 4 5                                                         MATA U ANG                 :    ID R
+    I ND ONES IA
+
+
+
+CATATAN:
+
+•    Teks catatan sintetis untuk uji pembaca rekening koran.
+     Baris kedua catatan sintetis.
+
+
+    T ANG G A L                          KET ER A N GA N                       C BG               MU TASI                           SALD O
+
+       04/03         BIAYA ADM                                                 0998                    30,000.00 DB
+
+       05/03         BI-FAST CR                  BIF TRANSFER DR                                    1,250,000.55
+
+       05/03         ND-LAINNYA                  KORCPU 04032027               0981                    50,000.00 DB
+                                                 CONTOH PNYH
+                                                 05030027
+
+       31/03         PAJAK BUNGA                                                                        4,321.09 DB                    414,745,247.36
+
+
+
+
+                                                    SALDO AWAL      :             500,000,000.00
+                                                    MUTASI CR       :              13,595,000.55            2
+                                                    MUTASI DB       :              98,849,753.19            4
+                                                    SALDO AKHIR     :             414,745,247.36
+

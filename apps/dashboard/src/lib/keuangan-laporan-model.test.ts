@@ -5,6 +5,8 @@ import {
   PENJELASAN_KOSONG,
   deltaKategori,
   deltaKategoriSampai,
+  langkahHarianDari,
+  langkahHarianRinci,
   nadaPemeriksa,
   panelBalance,
   panelCashFlow,
@@ -39,6 +41,8 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
   transaksiPiutangEasymax: -50_000,
   hutangPiutangNonEasymax: 10_000,
   penebusanSo: 0,
+  temporaryInvestment: 0,
+  penampung: 0,
   pendapatanLain: 500,
   biayaOperasional: -40_500,
   arusTitipanBright: 0,
@@ -53,6 +57,8 @@ const bs = (o: Partial<BalanceInput> = {}): BalanceInput => ({
   soValue: 573_658_336,
   piutangEasymax: 7_245_821_009,
   hutangPiutangNonEasymax: -2_177_793_746,
+  penampung: 0,
+  temporaryInvestment: 0,
   openedRetainedEarnings: 13_682_504_614,
   netIncome: 11_875_869,
   incomeAdjustment: 0,
@@ -252,5 +258,109 @@ describe("saldo vs arus — dua angka dari kategori yang SAMA", () => {
 
     const besok = [...mut, { ...mut[1]!, id: "e", businessDate: "2026-01-20", amount: 7_000 }];
     expect(deltaKategoriSampai(besok, "2026-01-15", "Hutang Piutang")).toBe(1_250_000);
+  });
+});
+
+describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U2, KTD5)", () => {
+  // Bahan berbentuk keluaran getBahanLaporan; angkanya karangan yang seimbang.
+  const bahan = {
+    totals: totals(),
+    kasAkhir: 1_000_000_000,
+    sebabKas: null,
+    piutangEasymax: 200_000_000,
+    hutangPiutangNonEasymax: 0,
+    penampung: 0,
+    temporaryInvestment: 0,
+    beban: beban(-1_000_000),
+    pendapatanLain: 0,
+    totalAssetKemarin: 2_509_000_000,
+    kontribusi: 0,
+    saldoTitipanBright: 0,
+  };
+
+  it("sama persis dengan panelBalance(panelIncome(...)) yang dulu ditulis inline di halaman", () => {
+    const ni = panelIncome({ totals: bahan.totals, beban: bahan.beban, pendapatanLain: 0, incomeAdjustment: null })
+      .baris.find((x) => x.label === "Net profit")!.nilai;
+    const manual = panelBalance({
+      cashOnHand: bahan.kasAkhir,
+      sebabKas: null,
+      inventoryValue: bahan.totals.inventoryValue,
+      soValue: bahan.totals.soValue,
+      piutangEasymax: bahan.piutangEasymax,
+      hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
+      penampung: 0,
+      temporaryInvestment: 0,
+      openedRetainedEarnings: null,
+      netIncome: ni,
+      incomeAdjustment: null,
+      totalAssetKemarin: bahan.totalAssetKemarin,
+      deltaKontribusi: bahan.kontribusi,
+      saldoTitipanBright: bahan.saldoTitipanBright,
+    }).langkahHarian;
+    expect(manual).not.toBeNull();
+    expect(langkahHarianDari(bahan)).toBe(manual);
+  });
+
+  it("🔴 baris kas yang masuk SESUDAH layar dibuka mengubah selisih penutupan", () => {
+    // Baris kas BIASA (bukan susulan) yang masuk sesudah layar dibuka — kas
+    // naik Rp 160.000.000 tanpa pasangan di EasyMax. Selisih yang tersimpan
+    // saat layar dibuka sudah basi; tutupHari wajib menghitung ulang dari bahan
+    // TERKINI. (Bila baris itu SUSULAN — AE13, tanggal asal 2 Okt — ia keluar
+    // dari yang dinilai sebagai koreksi susulan: uji AE13 di
+    // keuangan-laporan-queries.pihak-lawan.test.ts.)
+    const saatDibuka = langkahHarianDari(bahan)!;
+    const saatDitutup = langkahHarianDari({ ...bahan, kasAkhir: bahan.kasAkhir + 160_000_000 })!;
+    expect(saatDitutup - saatDibuka).toBe(-160_000_000);
+  });
+
+  it("bahan tak lengkap ⇒ null, tidak pernah 0 (§10.15: nol terbaca 'seimbang')", () => {
+    expect(langkahHarianDari({ ...bahan, kasAkhir: null, sebabKas: "belum_ada_mutasi_kas" })).toBeNull();
+    expect(langkahHarianDari({ ...bahan, totalAssetKemarin: null })).toBeNull();
+  });
+});
+
+describe("langkahHarianRinci — KTD15: koreksi susulan terpisah dari yang dinilai", () => {
+  const bahan = {
+    totals: totals(),
+    kasAkhir: 1_000_000_000,
+    sebabKas: null,
+    piutangEasymax: 200_000_000,
+    hutangPiutangNonEasymax: 0,
+    penampung: 0,
+    temporaryInvestment: 0,
+    beban: beban(-1_000_000),
+    pendapatanLain: 0,
+    totalAssetKemarin: 2_509_000_000,
+    kontribusi: 0,
+    saldoTitipanBright: 0,
+  };
+
+  it("tanpa baris susulan ⇒ penuh = dinilai, koreksi 0", () => {
+    const r = langkahHarianRinci(bahan);
+    expect(r.penuh).toBe(r.dinilai);
+    expect(r.koreksiSusulan).toBe(0);
+  });
+
+  it("🔴 langkahHarianDari mengembalikan yang DINILAI, bukan yang penuh", () => {
+    const b = { ...bahan, kasAkhir: bahan.kasAkhir + 160_000_000, tanpaSusulan: { ...bahan } };
+    const r = langkahHarianRinci(b);
+    expect(r.koreksiSusulan).toBe(-160_000_000);
+    expect(langkahHarianDari(b)).toBe(r.dinilai);
+    expect(langkahHarianDari(b)).not.toBe(r.penuh);
+  });
+
+  it("🔴 dinilai memakai laba TANPA beban yang bertaut baris susulan (§10.34) — pasangan seimbang menyumbang 0", () => {
+    // Penuh: kas −7,5 jt & beban 7,5 jt (pasangan klasifikasi). Dinilai: kakinya
+    // yang kas DAN bebannya keluar bersama ⇒ koreksi 0.
+    const penuh = { ...bahan, kasAkhir: bahan.kasAkhir - 7_500_000, beban: [...bahan.beban, ...beban(7_500_000)] };
+    const r = langkahHarianRinci({ ...penuh, tanpaSusulan: { ...bahan } });
+    expect(r.dinilai).toBe(r.penuh);
+    expect(r.koreksiSusulan).toBe(0);
+  });
+
+  it("null merambat: dinilai tak terhitung ⇒ koreksi null (bukan 0)", () => {
+    const r = langkahHarianRinci({ ...bahan, tanpaSusulan: { ...bahan, kasAkhir: null } });
+    expect(r.dinilai).toBeNull();
+    expect(r.koreksiSusulan).toBeNull();
   });
 });

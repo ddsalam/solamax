@@ -11,6 +11,7 @@ import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { adopsiRincian, UNIT_DISPLAY, unitDotted } from "@/lib/config";
 import { REKON_READY } from "@/lib/flags";
 import { dateLong, dateShort, timeWib } from "@/lib/format";
+import { getPemilikTitipanAktif } from "@/lib/titipan-queries";
 import { addDays, todayWib } from "@/lib/periods";
 import {
   getDepositForDate,
@@ -85,11 +86,13 @@ export default async function RincianPage({
     ]);
 
   // §10.25 — EDC per shift: bahan panel cocokkan-slip pengawas (no-print).
-  const [edcShift, petaKartu, cekSlip, acquirerDikenal] = await Promise.all([
+  const [edcShift, petaKartu, cekSlip, acquirerDikenal, pemilikTitipan] = await Promise.all([
     getEdcPerShift(unit.unit_id, date),
     getPetaKartu(unit.unit_id),
     getCekSlip(unit.unit_id, date),
     getAcquirerDikenal(unit.unit_id),
+    // U5 — pilihan pemilik titipan (Pendapatan Lain).
+    getPemilikTitipanAktif(unit.unit_id),
   ]);
   const edcPerShift = rakitShiftEdc(edcShift, petaKartu, cekSlip);
   const wewenang = { role: scope.role, email: scope.email };
@@ -310,6 +313,7 @@ export default async function RincianPage({
             section="pendapatan_lain"
             title="5 · Pendapatan Lain"
             entries={pendapatanLain}
+            pemilikTitipan={pemilikTitipan}
           />
           <ManualEntryForm
             code={unit.code}

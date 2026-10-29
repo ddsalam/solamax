@@ -22,7 +22,7 @@ import {
 } from "@/lib/compliance";
 import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
 import { ringkasHarga } from "@/lib/harga-wajar";
-import { aggregateDailyGl, alarmScore, bauran, glPercent, normalizeProductIdentity, type AlarmCheck } from "@/lib/derive";
+import { aggregateDailyGl, alarmScore, bauran, glPercent, normalizeProductIdentity, usableGl, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
 import { uangTunai } from "@/lib/rekon";
 import type * as Q from "@/lib/queries";
@@ -467,16 +467,20 @@ export function buildLaporanModel(
   const totOmzet = prodDay.reduce((s, p) => s + p.omzet, 0);
   const dayAgg = aggregateDailyGl(glRows.filter((r) => r.d === date));
   const monthAgg = aggregateDailyGl(glRows);
-  const invalidDayProducts = new Set(glRows.filter((r) => r.d === date &&
-    (r.gl === null || r.excluded_tanks > 0)).map((r) => normalizeProductIdentity(r.ckdbbm)));
-  const invalidMonthProducts = new Set(glRows.filter((r) =>
-    r.gl === null || r.excluded_tanks > 0).map((r) => normalizeProductIdentity(r.ckdbbm)));
+  const invalidDayProducts = new Set(glRows.filter((r) => r.d === date && usableGl(r) === null)
+    .map((r) => normalizeProductIdentity(r.ckdbbm)));
+  const invalidMonthProducts = new Set(glRows.filter((r) => usableGl(r) === null)
+    .map((r) => normalizeProductIdentity(r.ckdbbm)));
   const glByCode = new Map([...dayAgg.byProduct].map(([k, v]) =>
     [k, invalidDayProducts.has(k) ? null : v.signed] as const));
   const unidentifiedZeroDay = zeroClosing.some((z) => z.d === date && normalizeProductIdentity(z.ckdbbm) === null);
   const unidentifiedZeroMonth = zeroClosing.some((z) => z.d <= date && z.d.slice(0, 7) === date.slice(0, 7) && normalizeProductIdentity(z.ckdbbm) === null);
+  /** Terjual hari D tapi tanpa baris G/L hari D: MTD-nya tak mencakup D. */
+  const soldWithoutGlDay = (code: string) => !glByCode.has(code) && prodDay.some((p) => p.ckdbbm === code && p.vol !== 0);
   const missingDayProduct = unidentifiedZeroDay || prodDay.some((p) => p.ckdbbm === null || (p.vol !== 0 && !glByCode.has(p.ckdbbm)));
-  const missingMonthProduct = unidentifiedZeroMonth || prodMonth.some((p) => p.ckdbbm === null || (p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm)));
+  // Hari D tak lengkap ⇒ MTD 1–D tak lengkap, walau baris hari sebelumnya sehat.
+  const missingMonthProduct = missingDayProduct || unidentifiedZeroMonth ||
+    prodMonth.some((p) => p.ckdbbm === null || (p.vol !== 0 && !monthAgg.byProduct.has(p.ckdbbm)));
   const teraByCode = new Map([...dayAgg.byProduct].map(([k, v]) => [k, v.tera] as const));
   const glTotal = dayAgg.hasGl && !dayAgg.incomplete && !missingDayProduct ? dayAgg.totalSigned : null;
   const totTera = dayAgg.totalTera;
@@ -535,7 +539,15 @@ export function buildLaporanModel(
     note: `belum tersedia · ${domain}`,
   });
 
+  // Artefak input menahan G/L; alarmnya menyebut sebabnya, bukan "losses".
+  const artefakCheck = (label: string): AlarmCheck => ({
+    label: `${label} — perlu periksa data sumber`,
+    state: "na",
+    note: "artefak input (penutup opname 0, ambang heuristik) — bukan kerugian; angka mentah di Arus Minyak. Periksa entri EasyMax.",
+  });
+
   const dailyLoss = (): AlarmCheck => {
+    if (dayAgg.suspect) return artefakCheck("G/L harian");
     if (glTotal === null || glPctDay === null)
       return {
         label: "G/L harian — menunggu opname",
@@ -557,7 +569,8 @@ export function buildLaporanModel(
   };
 
   const monthlyWithin = glPctMonth !== null && Math.abs(glPctMonth) <= 0.005;
-  const monthlyLoss: AlarmCheck = glMonthTotal === null || glPctMonth === null
+  const monthlyLoss: AlarmCheck = monthAgg.suspect ? artefakCheck("G/L bulanan")
+    : glMonthTotal === null || glPctMonth === null
     ? { label: "G/L bulanan — data belum lengkap", state: "na", note: "data stok/mutasi belum lengkap atau belum valid" }
     : glMonthProvisional
       ? { label: "G/L bulanan — sementara", state: "provisional", note: `${signed(glMonthTotal)} L · belum final` }
@@ -707,7 +720,7 @@ export function buildLaporanModel(
     [...monthAgg.byProduct].map(([ckdbbm, v]) => ({
       ckdbbm,
       nama: productLabel(ckdbbm, v.nama),
-      selisih: invalidMonthProducts.has(ckdbbm) ? null : v.signed,
+      selisih: invalidMonthProducts.has(ckdbbm) || soldWithoutGlDay(ckdbbm) ? null : v.signed,
       vol: prodMonth.find((p) => p.ckdbbm === ckdbbm)?.vol ?? 0,
     })),
   );

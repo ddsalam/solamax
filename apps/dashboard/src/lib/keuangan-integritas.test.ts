@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANGGOTA_COCOK_AKTIF_SQL,
+  periksaKelompokCocok,
+  ringkasTemuanCocok,
+  type AnggotaCocok,
   cariYatim,
   ringkasTemuan,
   SUMBER_ID_SQL,
@@ -102,5 +106,62 @@ describe("daftar sumber tetap sinkron dengan pengambil id-nya", () => {
       expect(SUMBER_ID_SQL[s]).toMatch(/SELECT id::text FROM app\./);
     }
     expect(Object.keys(SUMBER_ID_SQL).sort()).toEqual([...SUMBER_SAH].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U10 — kelompok cocok (KTD6)
+// ---------------------------------------------------------------------------
+
+const ang = (over: Partial<AnggotaCocok>): AnggotaCocok => ({
+  cocokId: "g1",
+  unitId: 2,
+  jenis: "kas",
+  anggotaId: "k1",
+  accountId: "bca",
+  amountSen: 100,
+  void: false,
+  mutasiTakSah: false,
+  ...over,
+});
+
+describe("periksaKelompokCocok — Σ kelompok = 0, keanggotaan tunggal", () => {
+  const sah = [ang({ jenis: "mutasi", anggotaId: "m1" }), ang({ anggotaId: "k1" })];
+
+  it("kelompok seimbang ⇒ bersih", () => {
+    expect(periksaKelompokCocok(sah)).toEqual([]);
+    expect(ringkasTemuanCocok([])).toBe("integritas kelompok cocok: bersih");
+  });
+
+  it("🔴 baris kas di DUA kelompok aktif ⇒ terdeteksi (dari kedua sisi)", () => {
+    const t = periksaKelompokCocok([...sah, ang({ cocokId: "g2", jenis: "mutasi", anggotaId: "m2" }), ang({ cocokId: "g2", anggotaId: "k1" })]);
+    const ganda = t.filter((x) => x.masalah === "keanggotaan-ganda");
+    expect(ganda.map((x) => [x.cocokId, x.anggotaId, x.cocokLain])).toEqual([
+      ["g1", "k1", ["g2"]],
+      ["g2", "k1", ["g1"]],
+    ]);
+  });
+
+  it("🔴 Σ ≠ 0 per rekening ⇒ terdeteksi dengan selisihnya; total sama tapi rekening tertukar tetap terdeteksi", () => {
+    expect(periksaKelompokCocok([ang({ jenis: "mutasi", anggotaId: "m1", amountSen: 101 }), ang({})])).toEqual([
+      { masalah: "sigma-tidak-nol", cocokId: "g1", unitId: 2, accountId: "bca", selisihSen: 1 },
+    ]);
+    const tertukar = periksaKelompokCocok([ang({ jenis: "mutasi", anggotaId: "m1" }), ang({ accountId: "bca2" })]);
+    expect(tertukar.filter((x) => x.masalah === "sigma-tidak-nol")).toHaveLength(2);
+  });
+
+  it("anggota kas void, baris bank tak sah, kelompok tanpa baris bank ⇒ terdeteksi", () => {
+    expect(periksaKelompokCocok([ang({ jenis: "mutasi", anggotaId: "m1" }), ang({ void: true })]).map((x) => x.masalah)).toEqual(["anggota-void"]);
+    expect(periksaKelompokCocok([ang({ jenis: "mutasi", anggotaId: "m1", mutasiTakSah: true }), ang({})]).map((x) => x.masalah)).toEqual([
+      "baris-bank-tak-sah",
+    ]);
+    expect(periksaKelompokCocok([ang({ amountSen: 0 })]).map((x) => x.masalah)).toEqual(["tanpa-baris-bank"]);
+  });
+
+  it("SQL membaca anggota AKTIF saja, dengan FK komposit unit di join", () => {
+    const s = ANGGOTA_COCOK_AKTIF_SQL.replace(/\s+/g, " ");
+    expect(s).toMatch(/WHERE b\.aktif/);
+    expect(s).toMatch(/m\.id = b\.mutasi_bank_id AND m\.unit_id = b\.unit_id/);
+    expect(s).toMatch(/l\.id = b\.cash_ledger_id AND l\.unit_id = b\.unit_id/);
   });
 });

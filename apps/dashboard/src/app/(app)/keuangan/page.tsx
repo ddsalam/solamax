@@ -10,7 +10,7 @@ import { dateShort, timeWib } from "@/lib/format";
 import { notFound } from "next/navigation";
 import { unitLabel } from "@/lib/config";
 import { getAkunKas, getDayClose } from "@/lib/keuangan-input-queries";
-import { panelBalance, panelIncome } from "@/lib/keuangan-laporan-model";
+import { labaBersihDari, langkahHarianDari } from "@/lib/keuangan-laporan-model";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
 import {
   barisUnit,
@@ -294,29 +294,11 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
   }
 
   const bahan = await getBahanLaporan(u.unit_id, date, kemarin);
-  const is = panelIncome({
-    totals: bahan.totals,
-    beban: bahan.beban,
-    pendapatanLain: bahan.pendapatanLain,
-    incomeAdjustment: null,
-  });
-  const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai;
-  const bs = panelBalance({
-    cashOnHand: bahan.kasAkhir,
-    sebabKas: bahan.sebabKas,
-    inventoryValue: bahan.totals.inventoryValue,
-    soValue: bahan.totals.soValue,
-    piutangEasymax: bahan.piutangEasymax,
-    hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    // §10.23 — JANGAN `?? 0`: itu memasukkan kembali laba lebih saji.
-    netIncome: netProfit,
-    incomeAdjustment: null,
-    totalAssetKemarin: bahan.totalAssetKemarin,
-    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
-    deltaKontribusi: bahan.kontribusi,
-    saldoTitipanBright: bahan.saldoTitipanBright,
-  });
+  // §10.23 — JANGAN `?? 0`: laba yang tak diketahui bukan laba nol.
+  const netProfit = labaBersihDari(bahan);
+  // ⛔ Papan menilai TIER, jadi memakai langkah yang DINILAI — jalur yang sama
+  //    dengan Layar 4 & `tutupHari` (KTD15: tanpa koreksi susulan).
+  const langkah = langkahHarianDari(bahan);
 
   return barisUnit({
     unitId: u.unit_id,
@@ -326,7 +308,7 @@ async function barisUntukUnit(u: ScopedUnit, date: string, kemarin: string): Pro
     kindAkun: akun.map((a) => a.kind),
     labaBersih: netProfit,
     kasAkhir: bahan.kasAkhir,
-    langkahHarian: bs.langkahHarian,
+    langkahHarian: langkah,
     dayClose: dayClose === null ? null : { status: dayClose.status, differenceRp: dayClose.differenceRp },
   });
 }

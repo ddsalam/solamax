@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHarianModel, type HarianInput } from "@/lib/harian-model";
-import type { DailySalesRow } from "@/lib/queries";
+import type { DailyGlRow, DailySalesRow } from "@/lib/queries";
 import type { ScopedUnit, ScopedUnitId } from "@/lib/scope-rule";
 import { buildHarianDocDefinition, type HarianDocMeta } from "./harian-doc";
 
@@ -33,6 +33,38 @@ describe("buildHarianDocDefinition — struktur", () => {
   });
   it("presentation-only: dibangun dari model tanpa melempar", () => {
     expect(() => buildHarianDocDefinition({ model: buildHarianModel(input), meta: META })).not.toThrow();
+  });
+  it("judul tabel (termasuk MTD) berpasangan dengan tabelnya; header tabel membawa baris pertama", () => {
+    expect(doc.pageBreakBefore).toBeTypeOf("function");
+    const content = doc.content as unknown as Record<string, unknown>[];
+    const headings = content.filter((c) => c.headlineLevel === 1);
+    expect(headings.map((h) => h.text)).toEqual(expect.arrayContaining([
+      "Omzet penjualan — bulanan (MTD)", "Gain / Losses — bulanan (MTD) · SEMENTARA"]));
+    for (const h of headings) {
+      const body = content.find((c) => c.id === `${h.id}-body`) as { table?: { headerRows?: number; keepWithHeaderRows?: number } };
+      expect(body?.table, String(h.text)).toBeDefined();
+      expect(JSON.stringify(body), String(h.text)).toContain(`"id":"${h.id}-row"`);
+      if (body.table!.headerRows) expect(body.table!.keepWithHeaderRows, String(h.text)).toBe(1);
+    }
+  });
+});
+
+describe("buildHarianDocDefinition — artefak G/L", () => {
+  it("prints the unit cell and group total as “—”, never the artefact liters", () => {
+    // Synthetic: unit 1 has a placeholder-zero artefact (raw −7.777 L), unit 2 a clean −12 L.
+    const row = (gl: number | null, extra: Partial<DailyGlRow> = {}): DailyGlRow => ({ d: "2026-07-22", ckdbbm: "BB-x",
+      nama: "SOLAR", fisik: 1, fisik_prev: 1, pen_do: 0, sales_gross: 0, tera: 0, gl, movement_invalid: false,
+      excluded_tanks: 0, provisional: false, ...extra });
+    const model = buildHarianModel({ ...input, gl: new Map([
+      [1, [row(null, { gl_raw: -7_777, gl_suspect: "penutup_nol", provisional: true })]],
+      [2, [row(-12)]],
+    ]) });
+    expect(model.glDaily.totalsByUnit[1]).toBeNull();
+    expect(model.glDaily.totalsByUnit[2]).toBe(-12);
+    expect(model.glDaily.grandTotal).toBeNull();
+    const json = JSON.stringify(buildHarianDocDefinition({ model, meta: META }).content);
+    expect(json).toContain("artefak input");
+    expect(json).not.toContain("7.777");
   });
 });
 

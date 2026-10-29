@@ -1,5 +1,6 @@
 import { qScoped } from "./db";
 import { addDays } from "./periods";
+import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 import type { ScopedUnitId } from "./scope";
 import {
   getHargaBeliRows,
@@ -7,7 +8,10 @@ import {
   getProdukUnit,
 } from "./keuangan-input-queries";
 import { barisHargaBeli, type BarisHargaBeli } from "./keuangan-harga-model";
-import { sqlTitipanBright } from "./titipan-bright";
+import { sqlTitipan } from "./titipan-bright";
+import { getBahanParitas, type KakiAntarUnitPantau, type SaldoAwalAntarUnitPantau } from "./antar-unit-queries";
+
+export type { KakiAntarUnitPantau, SaldoAwalAntarUnitPantau };
 
 /**
  * Bahan mentah Layar "Pemantauan pemakaian keuangan" — SELURUHNYA BACA.
@@ -104,7 +108,9 @@ export type JenisKejadian =
   | "selisih_slip_edc"
   | "rekening_edc_diubah"
   | "rekening_pencairan_beda"
-  | "reklasifikasi_biaya";
+  | "reklasifikasi_biaya"
+  | "balik_antar_unit"
+  | "tarik_rekening_koran";
 
 export interface KejadianPantau {
   unitId: number;
@@ -147,6 +153,23 @@ export interface BahanPantau {
   harga: Map<number, BarisHargaBeli[]>;
   /** §10.28 — kode kartu yang BERJUALAN dalam jendela, dengan EDC & rekening pencairannya. */
   edcPengaturan: EdcPengaturanPantau[];
+  /** U6 — penampung, baris tanpa pihak lawan, dan bahan kesamaan saldo antar unit. */
+  pihakLawan: PihakLawanPantau;
+}
+
+/**
+ * U6 — fakta buku pihak lawan per unit, SAMPAI tanggal akhir jendela. Tak ada
+ * vonis di sini; `temuanPihakLawan` (model) yang menilai.
+ */
+export interface PihakLawanPantau {
+  /** KTD8 — Σ penampung (bertanda buku kas) & baris parkir yang belum dipindahkan. */
+  penampung: { unitId: number; saldo: number; nParkir: number; tertua: string | null }[];
+  /** KTD3 — baris lama "Hutang Piutang" tanpa pihak lawan. */
+  tanpaPihakLawan: { unitId: number; n: number; rp: number; tertua: string | null }[];
+  /** R4 — kaki Hutang Piutang ber-pihak-lawan unit, SEMUA tanggal (jendela butuh baris sesudah `sampai`). */
+  kakiAntarUnit: KakiAntarUnitPantau[];
+  /** R4/R7 — saldo pembuka pihak lawan berjenis unit. */
+  saldoAwalAntarUnit: SaldoAwalAntarUnitPantau[];
 }
 
 export interface EdcPengaturanPantau {
@@ -183,7 +206,10 @@ export async function getBahanPantau(
   const ids = units.map(Number);
   const p = [ids, dari, sampai];
 
-  const [hariJual, edcHari, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga, edcPengaturan] =
+  const [
+    hariJual, edcHari, akun, bukuKas, setoran, tutupHari, tanpaHarga, kejadian, aktivitas, harga, edcPengaturan,
+    pihakLawan,
+  ] =
     await Promise.all([
       // Penyebut: hari yang PUNYA penjualan. Hari tanpa penjualan (unit tutup,
       // agent mati) tidak boleh dihitung sebagai "hari yang lupa dibukukan".
@@ -348,6 +374,7 @@ export async function getBahanPantau(
           ORDER BY 1, 2`,
         p,
       ),
+      pihakLawanPantau(units, sampai),
     ]);
 
   return {
@@ -364,7 +391,55 @@ export async function getBahanPantau(
     aktivitas,
     harga,
     edcPengaturan,
+    pihakLawan,
   };
+}
+
+/**
+ * U6 — fakta buku pihak lawan. Empat kueri ber-`qScoped(units)`: RLS hanya
+ * memulangkan baris unit dalam jangkauan pembaca, jadi kesamaan saldo antar
+ * unit (R4) hanya bisa dinilai untuk pasangan yang KEDUA unitnya ia pegang —
+ * model melewati pasangan setengah-terlihat, tak pernah menebak sisi lawannya.
+ */
+async function pihakLawanPantau(units: readonly ScopedUnitId[], sampai: string): Promise<PihakLawanPantau> {
+  const ids = units.map(Number);
+  const [penampung, tanpaPihakLawan, paritas] = await Promise.all([
+    qScoped<PihakLawanPantau["penampung"][number]>(
+      units,
+      `SELECT l.unit_id::int                    AS "unitId",
+              COALESCE(sum(l.amount), 0)::float8 AS saldo,
+              count(*) FILTER (
+                WHERE l.parkir_sumber_id IS NULL
+                  AND NOT EXISTS (
+                        SELECT 1 FROM app.cash_ledger x
+                         WHERE x.parkir_sumber_id = l.id AND x.unit_id = l.unit_id AND NOT x.void
+                      )
+              )::int                             AS "nParkir",
+              to_char(min(l.business_date) FILTER (WHERE l.parkir_sumber_id IS NULL), 'YYYY-MM-DD')
+                                                 AS tertua
+         FROM app.cash_ledger l
+        WHERE l.unit_id = ANY($1::int[]) AND NOT l.void
+          AND l.category_label = 'Mutasi Belum Teridentifikasi'
+          AND l.business_date <= $2::date
+        GROUP BY l.unit_id`,
+      [ids, sampai],
+    ),
+    qScoped<PihakLawanPantau["tanpaPihakLawan"][number]>(
+      units,
+      `SELECT unit_id::int                       AS "unitId",
+              count(*)::int                      AS n,
+              COALESCE(sum(amount), 0)::float8   AS rp,
+              to_char(min(business_date), 'YYYY-MM-DD') AS tertua
+         FROM app.cash_ledger
+        WHERE unit_id = ANY($1::int[]) AND NOT void
+          AND category_label = 'Hutang Piutang' AND pihak_lawan_id IS NULL
+          AND business_date <= $2::date
+        GROUP BY unit_id`,
+      [ids, sampai],
+    ),
+    getBahanParitas(units),
+  ]);
+  return { penampung, tanpaPihakLawan, ...paritas };
 }
 
 /**
@@ -407,6 +482,8 @@ const KUERI_KEJADIAN = `
     SELECT l.unit_id::int AS "unitId",
            (CASE WHEN l.saldo_awal THEN 'batal_saldo_awal'
                  WHEN l.edc_settlement_id IS NOT NULL THEN 'batal_kaki_edc'
+                 -- U6 — kaki pasangan antar unit hanya di-void lewat "Balik pasangan" (HoF, R31).
+                 WHEN l.pasangan_uuid IS NOT NULL THEN 'balik_antar_unit'
                  ELSE 'batal_mutasi_kas' END) AS jenis,
            ${WIB_TEKS("l.voided_at")} AS waktu,
            to_char(l.business_date, 'YYYY-MM-DD') AS "tanggalBisnis",
@@ -418,6 +495,21 @@ const KUERI_KEJADIAN = `
       JOIN app.cash_account a ON a.id = l.account_id
       LEFT JOIN app.users u ON u.id = l.voided_by_user_id
      WHERE l.unit_id = ANY($1::int[]) AND l.void AND ${SAAT_DALAM_JENDELA("l.voided_at")}
+
+    -- U6 — pembalik MAJU pasangan antar unit (R31, kaki yang harinya sudah
+    -- tertutup). Dibaca dari buku kas ber-RLS, BUKAN dari audit_log yang tak
+    -- ber-unit: pemantau hanya melihat pembalik di unit yang ia pegang.
+    UNION ALL
+    SELECT l.unit_id::int, 'balik_antar_unit', ${WIB_TEKS("l.created_at")},
+           to_char(l.business_date, 'YYYY-MM-DD'), u.email,
+           (a.nama || ' — ' || l.keterangan || ' · asal ' || COALESCE(to_char(l.tanggal_asal, 'YYYY-MM-DD'), '-')),
+           l.amount::float8, NULL
+      FROM app.cash_ledger l
+      JOIN app.cash_account a ON a.id = l.account_id
+      LEFT JOIN app.users u ON u.id = l.created_by_user_id
+     WHERE l.unit_id = ANY($1::int[]) AND NOT l.void AND l.alasan_maju = '${KODE_MAJU_REVERSAL}'
+       AND l.pasangan_uuid IS NOT NULL
+       AND ${SAAT_DALAM_JENDELA("l.created_at")}
 
     UNION ALL
     SELECT pp.unit_id::int, 'batal_harga_beli', ${WIB_TEKS("pp.voided_at")},
@@ -436,6 +528,18 @@ const KUERI_KEJADIAN = `
       FROM app.edc_settlement s
       LEFT JOIN app.users u ON u.id = s.voided_by_user_id
      WHERE s.unit_id = ANY($1::int[]) AND s.void AND ${SAAT_DALAM_JENDELA("s.voided_at")}
+
+    -- U9 — rekening koran yang DITARIK HoF (R31). Dari tabel ber-RLS 0051,
+    -- bukan audit_log: pemantau hanya melihat unit yang ia pegang.
+    UNION ALL
+    SELECT r.unit_id::int, 'tarik_rekening_koran', ${WIB_TEKS("r.ditarik_at")},
+           to_char(r.periode, 'YYYY-MM-DD'), u.email,
+           (a.nama || ' — ' || to_char(r.periode, 'YYYY-MM') || ' · ' || r.ditarik_alasan || ' · ' || r.ditarik_catatan),
+           NULL::float8, NULL
+      FROM app.rekening_koran r
+      JOIN app.cash_account a ON a.id = r.account_id
+      LEFT JOIN app.users u ON u.id = r.ditarik_by_user_id
+     WHERE r.unit_id = ANY($1::int[]) AND r.status = 'ditarik' AND ${SAAT_DALAM_JENDELA("r.ditarik_at")}
 
     UNION ALL
     SELECT n.unit_id::int, 'batal_beban_nonkas', ${WIB_TEKS("n.voided_at")},
@@ -521,7 +625,7 @@ const KUERI_KEJADIAN = `
        AND m.keterangan ~* '(setor|prive|pindah ?buku|pinjam|kasbon|transfer)'
        -- §10.27 — titipan outlet Bright sudah DIKENALI (liabilitas, bukan laba):
        -- bukan lagi pos janggal. Tanpa ini 105 baris produksi 12–25 Sep tetap menjerit.
-       AND NOT ${sqlTitipanBright("m")}
+       AND NOT ${sqlTitipan("m")}
        -- §10.29 — sudah ditinjau Finance lewat reklasifikasi: bukan lagi pos
        -- yang menunggu, melainkan kejadian 'reklasifikasi_biaya' di bawah.
        AND NOT EXISTS (

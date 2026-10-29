@@ -624,6 +624,15 @@ model ManualEntry {
   /// `createdByUserId` saat dibaca: peran orang berubah, dan sejarah tidak
   /// boleh ikut berubah. CHECK di DB membatasi nilainya ke dua itu.
   sourceDoor          String            @default("pengawas") @map("source_door")
+  /// Pemilik titipan (0049, KTD11) — FK komposit (pihak_lawan_id, unit_id) ke
+  /// app.pihak_lawan. Milik pengawas; NULL untuk baris lama (pengenal
+  /// `titipan-bright.ts` tetap memetakan baris Bright lama).
+  pihakLawanId        String?           @map("pihak_lawan_id") @db.Uuid
+  /// Baris kas bank yang MEREALISASIKAN beban/pendapatan pintu Finance ini
+  /// (0053, rencana 2026-10-29 U11) — FK komposit (cash_ledger_id, unit_id) ke
+  /// app.cash_ledger; hanya `source_door = 'finance'`. Membatalkan baris kas
+  /// membatalkan beban ini juga, supaya kas dan laba tak berpisah.
+  cashLedgerId        String?           @map("cash_ledger_id") @db.Uuid
 
   @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])
@@ -782,6 +791,9 @@ model DayClose {
   status       DayCloseStatus @default(open)
   differenceRp Decimal        @map("difference_rp") @db.Decimal(17, 2)
   tier         DayCloseTier
+  /// KTD15 (0054) — pengaruh baris susulan hari itu, DI SAMPING `differenceRp`
+  /// (yang dinilai tangga §3.2). NULL = hari ditutup sebelum 0054 (tak tercatat).
+  koreksiSusulanRp Decimal? @map("koreksi_susulan_rp") @db.Decimal(17, 2)
 
   reasonCode           String?   @map("reason_code")
   reasonRequiresTarget Boolean?  @map("reason_requires_target")
@@ -798,6 +810,21 @@ model DayClose {
   @@id([unitId, businessDate])
   @@index([unitId, status, businessDate])
   @@map("day_close")
+  @@schema("app")
+}
+
+// Penutupan BULAN per unit (0054, rencana 2026-10-29 U12; R25, KTD14). Ada
+// baris = bulan tertutup; syaratnya diputuskan `tutup-bulan-model.ts`.
+// `bulan` = hari pertama bulan (CHECK). dashboard_app: SELECT, INSERT saja —
+// bulan tertutup beku, tak ada jalur buka ulang.
+model TutupBulan {
+  unitId          Int      @map("unit_id") @db.SmallInt
+  bulan           DateTime @db.Date
+  ditutupByUserId Int      @map("ditutup_by_user_id")
+  ditutupAt       DateTime @default(now()) @map("ditutup_at") @db.Timestamptz()
+
+  @@id([unitId, bulan])
+  @@map("tutup_bulan")
   @@schema("app")
 }
 
@@ -890,6 +917,9 @@ model CashAccount {
   openedAt  DateTime?       @map("opened_at") @db.Date
   closedAt  DateTime?       @map("closed_at") @db.Date
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  /// Nomor rekening (0049, KTD13) — diisi dari pola `nama` bank
+  /// (`^Bank\s+.+\s-\s*\d+$`); impor rekening koran membandingkannya.
+  nomorRekening String?     @map("nomor_rekening")
 
   @@unique([unitId, nama])
   /// Target FK komposit dari app.cash_ledger (0029): mengunci mutasi ke akun
@@ -944,10 +974,213 @@ model CashLedger {
   // Tautan ke setoran pengawas yang DITAWARKAN dan disetujui (0033). Indeks
   // unik parsial di DB memastikan satu setoran = paling banyak satu baris aktif.
   sourceManualEntryId String?           @map("source_manual_entry_id") @db.Uuid
+  /// Pihak lawan (0049, KTD2/KTD3). FK komposit ke app.pihak_lawan unit yang
+  /// SAMA. Wajib untuk baris baru berkategori "Hutang Piutang" / "Penyerahan
+  /// titipan" (CHECK NOT VALID `cash_ledger_pihak_lawan_wajib`).
+  pihakLawanId        String?           @map("pihak_lawan_id") @db.Uuid
+  /// Kunci pasangan antar unit (KTD4): dua kaki di dua unit berbagi nilai ini.
+  pasanganUuid        String?           @map("pasangan_uuid") @db.Uuid
+  /// Tanggal transaksi asli bila dibukukan maju (R28); `businessDate` = hari buku.
+  tanggalAsal         DateTime?         @map("tanggal_asal") @db.Date
+  /// Kode alasan pembukuan maju — reason_code grup `adjustment` (FK komposit).
+  alasanMaju          String?           @map("alasan_maju")
+  /// Bayangan reason_code.applies_to; CHECK = 'adjustment'.
+  alasanMajuAppliesTo String?           @map("alasan_maju_applies_to")
+  /// Baris penampung yang dipindahkan oleh baris ini (KTD8), unit yang SAMA.
+  parkirSumberId      String?           @map("parkir_sumber_id") @db.Uuid
+  /// Kelompok cocok bank yang MELAHIRKAN baris ini lewat klasifikasi (0052,
+  /// U10/U11). FK komposit (id, unit_id) ke app.cocok_bank. NULL untuk baris
+  /// yang hanya dicocokkan — pencocokan tak menulis baris kas (KTD6).
+  lahirDariCocokId    String?           @map("lahir_dari_cocok_id") @db.Uuid
 
+  /// Target FK komposit tautan baris parkir (0049).
+  @@unique([id, unitId])
   @@index([unitId, accountId, businessDate])
   @@index([unitId, categorySide, categoryLabel, businessDate])
   @@map("cash_ledger")
+  @@schema("app")
+}
+
+// Pihak lawan BER-UNIT (0049, KTD1) — bukan master global: nama afiliasi/
+// kreditur satu tenant tak boleh bocor ke tenant lain (RLS unit_scope).
+// `jenis` daftar tertutup (CHECK): unit | afiliasi | titipan | kreditur |
+// karyawan | lain. Jenis `unit` wajib `lawanUnitId`. Penanda "satu PT" (R5)
+// TIDAK disimpan — diturunkan dari peta tenant saat baca. Saldo = turunan.
+model PihakLawan {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  jenis           String
+  nama            String
+  lawanUnitId     Int?     @map("lawan_unit_id") @db.SmallInt
+  aktif           Boolean  @default(true)
+  /// NULL = disemai migrasi 0049.
+  createdByUserId Int?     @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, nama])
+  /// Target FK komposit dari cash_ledger, manual_entry, pihak_lawan_saldo_awal.
+  @@unique([id, unitId])
+  @@map("pihak_lawan")
+  @@schema("app")
+}
+
+// Saldo pembuka per pihak lawan (0049, R7). BERTANDA: positif = piutang,
+// negatif = hutang. Rp 0 hanya sah bila `sementara`. Satu baris aktif per
+// (unit, pihak lawan) — mengganti = void + insert. VOID-only.
+model PihakLawanSaldoAwal {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  pihakLawanId    String    @map("pihak_lawan_id") @db.Uuid
+  tanggal         DateTime  @db.Date
+  amount          Decimal   @db.Decimal(17, 2)
+  sementara       Boolean   @default(false)
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("pihak_lawan_saldo_awal")
+  @@schema("app")
+}
+
+// Penebusan BBM per nomor SO (0050, U7; R10–R16, R29; KTD9). CHECK DB:
+// net + ppn + pph + pbbkb + nota = gross (Rp 0). MEMILIKI satu baris kas
+// "Pembelian BBM" −gross lewat FK komposit (cash_ledger_id, unit_id) — arus kas
+// tetap Σ baris kas, penebusan tak menambah baris kedua. `noSo` ternormalisasi
+// lower(btrim()). HPP/harga beli TIDAK disentuh (R14). VOID-only.
+model Penebusan {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  noSo            String    @map("no_so")
+  tanggalBayar    DateTime  @map("tanggal_bayar") @db.Date
+  accountId       String    @map("account_id") @db.Uuid
+  net             Decimal   @db.Decimal(17, 2)
+  ppn             Decimal   @db.Decimal(17, 2)
+  pph             Decimal   @db.Decimal(17, 2)
+  pbbkb           Decimal   @db.Decimal(17, 2)
+  /// BERTANDA: nota debet +, nota kredit −.
+  nota            Decimal   @default(0) @db.Decimal(17, 2)
+  gross           Decimal   @db.Decimal(17, 2)
+  cashLedgerId    String    @map("cash_ledger_id") @db.Uuid
+  /// true = baris kas dibuat penebusan ini; false = baris manual yang diikat.
+  kasDibuat       Boolean   @map("kas_dibuat")
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, tanggalBayar])
+  @@map("penebusan")
+  @@schema("app")
+}
+
+// Rekening koran BCA yang diimpor (0051, rencana 2026-10-29 U9; R17–R19, R31).
+// Satu AKTIF per (rekening, bulan) — partial unique `rekening_koran_aktif_uq`
+// (tak terungkap di Prisma). Kaki menutup ditegakkan CHECK. Ditarik oleh HoF
+// dengan kode alasan `reason_code` adjustment + catatan; tak pernah dihapus.
+model RekeningKoran {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId                 Int       @map("unit_id") @db.SmallInt
+  accountId              String    @map("account_id") @db.Uuid
+  /// Hari pertama bulan e-statement.
+  periode                DateTime  @db.Date
+  saldoAwal              Decimal   @map("saldo_awal") @db.Decimal(17, 2)
+  saldoAkhir             Decimal   @map("saldo_akhir") @db.Decimal(17, 2)
+  totalCr                Decimal   @map("total_cr") @db.Decimal(17, 2)
+  nCr                    Int       @map("n_cr")
+  totalDb                Decimal   @map("total_db") @db.Decimal(17, 2)
+  nDb                    Int       @map("n_db")
+  fileSha256             String    @map("file_sha256")
+  uploadedByUserId       Int       @map("uploaded_by_user_id")
+  uploadedAt             DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz()
+  /// 'aktif' | 'ditarik' (CHECK).
+  status                 String    @default("aktif")
+  ditarikAt              DateTime? @map("ditarik_at") @db.Timestamptz()
+  ditarikByUserId        Int?      @map("ditarik_by_user_id")
+  ditarikAlasan          String?   @map("ditarik_alasan")
+  ditarikAlasanAppliesTo String?   @map("ditarik_alasan_applies_to")
+  ditarikCatatan         String?   @map("ditarik_catatan")
+
+  /// Target FK komposit mutasi_bank — juga cermin status (ON UPDATE CASCADE).
+  @@unique([id, unitId, accountId, status], map: "rekening_koran_cermin_uq")
+  @@index([unitId, periode])
+  @@map("rekening_koran")
+  @@schema("app")
+}
+
+// Baris mutasi rekening koran (0051). ⛔ Tak pernah menyentuh cash_ledger —
+// pencocokan (U10) adalah tautan. `rkStatus` dicerminkan dari rekening koran
+// oleh FK ON UPDATE CASCADE, bukan ditulis aplikasi. dashboard_app: SELECT,
+// INSERT saja.
+model MutasiBank {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  rekeningKoranId String   @map("rekening_koran_id") @db.Uuid
+  accountId       String   @map("account_id") @db.Uuid
+  rkStatus        String   @default("aktif") @map("rk_status")
+  tanggalBank     DateTime @map("tanggal_bank") @db.Date
+  urutan          Int
+  keterangan      String
+  /// BERTANDA: CR +, DB −.
+  amount          Decimal  @db.Decimal(17, 2)
+  saldoSetelah    Decimal? @map("saldo_setelah") @db.Decimal(17, 2)
+  so              String?
+  dokRef          String?  @map("dok_ref")
+  /// R22: tanggal bank sebelum cut-over — disimpan, tak pernah dibukukan.
+  praCutover      Boolean  @map("pra_cutover")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([id, unitId], map: "mutasi_bank_unit_uq")
+  @@unique([rekeningKoranId, tanggalBank, urutan], map: "mutasi_bank_alami_uq")
+  @@index([unitId, tanggalBank])
+  @@map("mutasi_bank")
+  @@schema("app")
+}
+
+// Kelompok cocok rekening koran ↔ buku kas (0052, rencana 2026-10-29 U10;
+// R19, R20, R31; KTD6, KTD7). TAUTAN, bukan suntingan buku: Σ baris impor =
+// Σ baris kas (per rekening) ditegakkan aksi & pemeriksa integritas. Dibatalkan
+// HoF dengan kode alasan `reason_code` adjustment + catatan; tak pernah dihapus.
+model CocokBank {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId                    Int       @map("unit_id") @db.SmallInt
+  /// 'otomatis' | 'manual' (CHECK).
+  cara                      String
+  dibuatByUserId            Int       @map("dibuat_by_user_id")
+  dibuatAt                  DateTime  @default(now()) @map("dibuat_at") @db.Timestamptz()
+  /// Dicerminkan ke anggota lewat FK ON UPDATE CASCADE.
+  aktif                     Boolean   @default(true)
+  dibatalkanAt              DateTime? @map("dibatalkan_at") @db.Timestamptz()
+  dibatalkanByUserId        Int?      @map("dibatalkan_by_user_id")
+  dibatalkanAlasan          String?   @map("dibatalkan_alasan")
+  dibatalkanAlasanAppliesTo String?   @map("dibatalkan_alasan_applies_to")
+  dibatalkanCatatan         String?   @map("dibatalkan_catatan")
+
+  @@unique([id, unitId], map: "cocok_bank_unit_uq")
+  @@unique([id, unitId, aktif], map: "cocok_bank_cermin_uq")
+  @@index([unitId, dibuatAt])
+  @@map("cocok_bank")
+  @@schema("app")
+}
+
+// Anggota kelompok cocok (0052): TEPAT SATU dari baris impor / baris kas
+// (CHECK). Satu kelompok AKTIF per baris — partial unique (tak terungkap di
+// Prisma). `aktif` dicerminkan dari induk oleh FK ON UPDATE CASCADE, bukan
+// ditulis aplikasi. dashboard_app: SELECT, INSERT saja.
+model CocokBankBaris {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId       Int     @map("unit_id") @db.SmallInt
+  cocokId      String  @map("cocok_id") @db.Uuid
+  aktif        Boolean @default(true)
+  mutasiBankId String? @map("mutasi_bank_id") @db.Uuid
+  cashLedgerId String? @map("cash_ledger_id") @db.Uuid
+
+  @@unique([cocokId, mutasiBankId], map: "cocok_bank_baris_mutasi_uq")
+  @@unique([cocokId, cashLedgerId], map: "cocok_bank_baris_kas_uq")
+  @@index([unitId, cocokId])
+  @@map("cocok_bank_baris")
   @@schema("app")
 }
 

@@ -12,7 +12,9 @@ import {
   getKelengkapanInput,
 } from "@/lib/keuangan-input-queries";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
-import { panelBalance, panelCashFlow, panelIncome } from "@/lib/keuangan-laporan-model";
+import { cashFlowInputDari, langkahHarianRinci, panelCashFlow } from "@/lib/keuangan-laporan-model";
+import { getBarisMajuKe, getParkirTerbukaSampai } from "@/lib/tutup-bulan-queries";
+import { TutupHariSusulan } from "@/components/keuangan/TutupHariSusulan";
 import { bolehMenutup, tierFor } from "@/lib/keuangan-tutup-hari";
 import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
@@ -47,35 +49,9 @@ export default async function TutupHariPage({
     .toISOString()
     .slice(0, 10);
 
-  const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
-  const bsAwal = panelBalance({
-    cashOnHand: bahanAwal.kasAkhir,
-    sebabKas: bahanAwal.sebabKas,
-    inventoryValue: bahanAwal.totals.inventoryValue,
-    soValue: bahanAwal.totals.soValue,
-    piutangEasymax: bahanAwal.piutangEasymax,
-    hutangPiutangNonEasymax: bahanAwal.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome:
-      panelIncome({
-        totals: bahanAwal.totals,
-        beban: bahanAwal.beban,
-        pendapatanLain: bahanAwal.pendapatanLain,
-        incomeAdjustment: null,
-      }).baris.find((x) => x.label === "Net profit")!.nilai,
-    incomeAdjustment: null,
-    totalAssetKemarin: bahanAwal.totalAssetKemarin,
-    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
-    deltaKontribusi: bahanAwal.kontribusi,
-    saldoTitipanBright: bahanAwal.saldoTitipanBright,
-  });
-  // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
-  // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
-  await pastikanBarisDayClose(unit.unit_id, date, bsAwal.langkahHarian);
-
-  const [bahan, dayClose, overrides, kelengkapan, reasonCodes] = await Promise.all([
-    Promise.resolve(bahanAwal),
-    getDayClose(unit.unit_id, date),
+  // Bacaan yang TAK bergantung pada bahan laporan maupun baris `day_close`
+  // dimulai SEKARANG, bersamaan dengan `getBahanLaporan` (hanya baca).
+  const lainP = Promise.all([
     getBackdateOverride(unit.unit_id, date),
     getKelengkapanInput(unit.unit_id, date),
     qScoped<{ code: string; label: string; requiresTarget: boolean }>(
@@ -85,49 +61,46 @@ export default async function TutupHariPage({
         WHERE applies_to = 'closing' AND active
         ORDER BY code`,
     ),
+    // R24 — baris maju ke hari ini & baris yang masih diparkir.
+    getBarisMajuKe(unit.unit_id, date),
+    getParkirTerbukaSampai(unit.unit_id, date),
+  ]);
+  // Galatnya tetap dilempar di `await lainP` di bawah; ini hanya mencegah
+  // "unhandled rejection" bila `getBahanLaporan` gagal lebih dulu.
+  lainP.catch(() => {});
+
+  const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
+  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianRinci`.
+  //    Aksi menghitung ulang di bawah kuncinya; dua susunan berbeda akan
+  //    menutup hari dengan angka yang bukan yang tampil di layar.
+  const rinci = langkahHarianRinci(bahanAwal);
+  const langkahAwal = rinci.dinilai;
+  // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
+  // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
+  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
+
+  // `getDayClose` SESUDAH `pastikanBarisDayClose` — ia membaca baris yang baru lahir.
+  const bahan = bahanAwal;
+  const [dayClose, [overrides, kelengkapan, reasonCodes, maju, parkir]] = await Promise.all([
+    getDayClose(unit.unit_id, date),
+    lainP,
   ]);
 
-  const cf = panelCashFlow({
-    kasAwalPerAkun: bahan.kasAwalPerAkun,
-    sebabKas: bahan.sebabKas,
-    kasAkhir: bahan.kasAkhir,
-    omzet: bahan.totals.revenue,
-    teraValue: bahan.totals.teraValue,
-    transaksiPiutangEasymax: bahan.deltaPiutangEasymax,
-    hutangPiutangNonEasymax: bahan.arusHutangPiutangNonEasymax,
-    penebusanSo: bahan.penebusanSo,
-    pendapatanLain: bahan.pendapatanLain,
-    biayaOperasional: -bahan.beban.reduce((s, x) => s + x.amountRp, 0),
-    arusTitipanBright: bahan.arusTitipanBright,
-    kontribusiPemilik: bahan.kontribusi,
-  });
-  const is = panelIncome({
-    totals: bahan.totals,
-    beban: bahan.beban,
-    pendapatanLain: bahan.pendapatanLain,
-    incomeAdjustment: null,
-  });
-  const bs = panelBalance({
-    cashOnHand: bahan.kasAkhir,
-    sebabKas: bahan.sebabKas,
-    inventoryValue: bahan.totals.inventoryValue,
-    soValue: bahan.totals.soValue,
-    piutangEasymax: bahan.piutangEasymax,
-    hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
-    incomeAdjustment: null,
-    totalAssetKemarin: bahan.totalAssetKemarin,
-    deltaKontribusi: bahan.kontribusi,
-    saldoTitipanBright: bahan.saldoTitipanBright,
-  });
+  const cf = panelCashFlow(cashFlowInputDari(bahan));
+  // ⛔ KTD15 — yang DINILAI tangga toleransi adalah langkah TANPA koreksi
+  //    susulan (`rinci.dinilai`), sama dengan `tutupHari` dan baris
+  //    `day_close` di atas. Koreksi susulannya tampil TERPISAH (R32): hari
+  //    tertutup menampilkan angka yang DISIMPAN saat ditutup (bila tercatat).
+  const langkahDinilai = langkahAwal;
+  const koreksiSusulan =
+    dayClose?.status === "closed" && dayClose.koreksiSusulanRp != null ? dayClose.koreksiSusulanRp : rinci.koreksiSusulan;
 
   // Wewenang dihitung DI SERVER. Layar tidak boleh menyimpulkannya sendiri —
   // kesimpulan klien bisa dibuat benar dengan mengubah state di peramban.
   const bolehMenutupTier =
-    bs.langkahHarian === null
+    langkahDinilai === null
       ? false
-      : bolehMenutup(tierFor(bs.langkahHarian), { role: scope.role, email: scope.email });
+      : bolehMenutup(tierFor(langkahDinilai), { role: scope.role, email: scope.email });
 
   return (
     <>
@@ -158,8 +131,8 @@ export default async function TutupHariPage({
             generated: date,
           })}
           dayClose={dayClose}
-          langkahHarian={bs.langkahHarian}
-          tier={bs.langkahHarian === null ? null : tierFor(bs.langkahHarian)}
+          langkahHarian={langkahDinilai}
+          tier={langkahDinilai === null ? null : tierFor(langkahDinilai)}
           overrides={overrides}
           labelReason={Object.fromEntries(reasonCodes.map((r) => [r.code, r.label]))}
         />
@@ -172,14 +145,16 @@ export default async function TutupHariPage({
         <TutupHariPanel
           code={unit.code}
           date={date}
-          langkahHarian={bs.langkahHarian}
+          langkahHarian={langkahDinilai}
           cashFlowCheck={cf.pemeriksa.nilai}
           kelengkapan={kelengkapan}
           reasonCodes={reasonCodes}
           overrides={overrides}
           sudahDitutup={dayClose?.status === "closed"}
           bolehMenutupTier={bolehMenutupTier}
+          koreksiSusulan={koreksiSusulan}
         />
+        <TutupHariSusulan code={unit.code} date={date} maju={maju} parkir={parkir} koreksiSusulan={koreksiSusulan} />
       </div>
     </>
   );

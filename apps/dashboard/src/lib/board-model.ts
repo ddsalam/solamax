@@ -19,6 +19,7 @@ import {
   bauranVsTargetRange,
   glPercent,
   normalizeProductIdentity,
+  usableGl,
   verdictHeadline,
   type BauranStatus,
   type DailyGlInput,
@@ -101,7 +102,8 @@ function glAgg(
       if (r.d < w.from || r.d > w.to) continue;
       rows.push(r);
       const product = normalizeProductIdentity(r.ckdbbm);
-      if (product !== null && r.gl !== null && Number.isFinite(r.gl) && r.excluded_tanks === 0) {
+      // usableGl also rejects unknown identity, guarded tanks, invalid movement and non-finite values.
+      if (product !== null && usableGl(r) !== null) {
         usable.add(key(uid, r.d, product));
         usableDays.add(`${uid}|${r.d}`);
       }
@@ -131,15 +133,17 @@ function glAgg(
 }
 
 const GL_INCOMPLETE = "G/L belum lengkap";
-const GL_SUSPECT = "stok fisik 0 perlu verifikasi";
+/** Artefak input (penutup 0, heuristik): tidak dijumlah, bukan kerugian. */
+const GL_SUSPECT = "data sumber perlu verifikasi";
 
 function glNeedsReview(g: DailyGlAgg): boolean {
   return g.provisional || g.incomplete || g.suspect;
 }
 
+/** Suspect implies incomplete; name the actionable cause first. */
 function glNote(g: DailyGlAgg): string | null {
-  if (g.incomplete) return GL_INCOMPLETE;
   if (g.suspect) return GL_SUSPECT;
+  if (g.incomplete) return GL_INCOMPLETE;
   if (g.provisional) return "sementara (opname belum final)";
   if (!g.hasGl) return "belum terhitung";
   return null;
@@ -235,6 +239,23 @@ export interface TrendModel {
   runningIdx: number | null;
 }
 
+/**
+ * Sumber target bauran — TARGET_BAURAN tak berdimensi tahun (config.ts, "workbook
+ * 2026"); periode historis pun dinilai terhadap angka ini, jadi labelnya wajib
+ * menyebut sumbernya. Frasa sama dengan laporan-doc ("workbook 2026").
+ */
+export const TARGET_SOURCE_LABEL = "workbook 2026";
+
+/**
+ * Jendela feed anomali board = `today − 6 … today` (WIB), batas yang sama dengan
+ * buildAnomalies (anomalies.ts) — TIDAK mengikuti filter periode. Diturunkan dari
+ * `today` request, BUKAN dari min/max tanggal item: feed jarang/kosong tetap
+ * mencakup tujuh hari penuh.
+ */
+export function anomalyFeedRange(today: string): DateRange {
+  return { from: addDays(today, -6), to: today };
+}
+
 export interface BoardCore {
   verdict: { headline: string; chips: VerdictChip[] };
   kpi: KpiCardCore[];
@@ -242,6 +263,8 @@ export interface BoardCore {
   ratios: { rg: RatioRow[]; rd: RatioRow[]; gasGroup: BauranStatus; oilGroup: BauranStatus };
   ranking: RankRow[];
   anomalies: AnomalyItem[];
+  /** rentang feed anomali yang SEBENARNYA + label konteksnya (layar & PDF) */
+  anomalyFeed: { range: DateRange; label: string };
   lastShift: string | undefined;
   unitsCount: number;
   /** rentang menyentuh hari ini & ada unit shift < 3 (badge sel terpengaruh) */
@@ -294,7 +317,7 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
 
   const bauranSub = (st: BauranStatus): { sub: string | null; subTone: KpiCardCore["subTone"] } =>
     st.target !== null
-      ? { sub: `target rata-rata periode ${pct(st.target)}`, subTone: st.below ? "warning" : "success" }
+      ? { sub: `target rata-rata periode ${pct(st.target)} · ${TARGET_SOURCE_LABEL}`, subTone: st.below ? "warning" : "success" }
       : { sub: null, subTone: "muted" };
 
   const kpi: KpiCardCore[] = [
@@ -491,8 +514,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
       gl: x.glPct !== null ? `${signed(x.glPct * 100, 2)}%` : "—",
       glAbnormal: x.glAbnormal,
       glProvisional: x.glProvisional,
-      glStatus: !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
-        : x.gl.suspect ? "PERLU PERIKSA" : x.glProvisional ? "SEMENTARA" : null,
+      glStatus: x.gl.suspect ? "PERLU PERIKSA" : !x.gl.hasGl || x.gl.incomplete ? "TIDAK LENGKAP"
+        : x.glProvisional ? "SEMENTARA" : null,
       rg: x.gas.actual !== null ? pct(x.gas.actual) : "—",
       rd: x.oil.actual !== null ? pct(x.oil.actual) : "—",
       inputTone: x.sh.shifts >= 3 ? "success" : x.sh.shifts > 0 ? "warning" : "danger",
@@ -521,6 +544,8 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     .sort()
     .pop();
 
+  const feedRange = anomalyFeedRange(today);
+
   return {
     verdict: { headline: verdictHeadline(chips), chips },
     kpi,
@@ -528,6 +553,10 @@ export function buildBoardCore(input: BoardCoreInput): BoardCore {
     ratios: { rg: mkRatio("gas"), rd: mkRatio("oil"), gasGroup, oilGroup },
     ranking,
     anomalies,
+    anomalyFeed: {
+      range: feedRange,
+      label: `Feed 7 hari terakhir · ${dateShort(feedRange.from)} – ${dateShort(feedRange.to)} · tidak mengikuti filter periode`,
+    },
     lastShift,
     unitsCount: units.length,
     incompleteToday,
@@ -660,8 +689,8 @@ export function buildBoardEval(input: BoardEvalInput): BoardEval {
     ): DeltaCell => {
       const needsReview = glNeedsReview(current.g) || glNeedsReview(previous.g);
       const cell = evalOf({ pt: [current.glPct, previous.glPct] }, miss, reason, needsReview);
-      const sourceNote = current.g.incomplete || previous.g.incomplete ? GL_INCOMPLETE
-        : current.g.suspect || previous.g.suspect ? GL_SUSPECT : null;
+      const sourceNote = current.g.suspect || previous.g.suspect ? GL_SUSPECT
+        : current.g.incomplete || previous.g.incomplete ? GL_INCOMPLETE : null;
       return {
         ...cell,
         provisional: needsReview || undefined,

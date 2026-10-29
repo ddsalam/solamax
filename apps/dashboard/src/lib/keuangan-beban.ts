@@ -1,4 +1,4 @@
-import { isTitipanBright } from "./titipan-bright";
+import { isTitipan } from "./titipan-bright";
 import { jenisAkun } from "./keuangan-reklas";
 /**
  * SATU tempat yang menggabungkan seluruh sumber BEBAN untuk Income Statement.
@@ -154,6 +154,12 @@ export interface BarisManualLaporan {
   section: string;
   /** Kategori operasional milik pengawas — dipakai mengenali titipan (§10.27). */
   operationalCategory: string | null;
+  /**
+   * 0053 — baris kas yang melahirkan entri pintu Finance ini (klasifikasi buku
+   * kas/mutasi bank). `null`/tak ada = entri berdiri sendiri. Dipakai langkah
+   * "dinilai" (§10.34) untuk mencabut pasangan baris susulan bersama-sama.
+   */
+  cashLedgerId?: string | null;
 }
 
 /**
@@ -170,7 +176,7 @@ export interface BarisManualLaporan {
 export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   manualBeban: BarisManualLaporan[];
   pendapatanLain: number;
-  /** §10.27 — titipan outlet Bright hari itu: BUKAN pendapatan, liabilitas. */
+  /** §10.27/U5 — titipan outlet hari itu, SEMUA pemilik: BUKAN pendapatan, liabilitas. */
   titipanBright: number;
   /**
    * §10.29 — arus EKUITAS bersih hari itu (keluar ke pemilik − masuk dari
@@ -185,13 +191,13 @@ export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   // direklasifikasi jatuh ke perilaku lama (pengeluaran = beban).
   const jenis = (r: BarisManualLaporan) => jenisAkun(r.accountingAccount, r.section);
   const lain = manual.filter((r) => r.section === "pendapatan_lain" && !r.void);
-  const lainBukanTitipan = lain.filter((r) => !isTitipanBright(r));
+  const lainBukanTitipan = lain.filter((r) => !isTitipan(r));
   const keluar = manual.filter((r) => r.section === "pengeluaran");
   const jumlah = (xs: readonly BarisManualLaporan[]) => xs.reduce((s, r) => s + r.amountRp, 0);
   return {
     manualBeban: keluar.filter((r) => jenis(r) === "beban"),
     pendapatanLain: jumlah(lainBukanTitipan.filter((r) => jenis(r) === "pendapatan")),
-    titipanBright: jumlah(lain.filter((r) => isTitipanBright(r))),
+    titipanBright: jumlah(lain.filter((r) => isTitipan(r))),
     kontribusi:
       jumlah(keluar.filter((r) => !r.void && jenis(r) === "ekuitas")) -
       jumlah(lainBukanTitipan.filter((r) => jenis(r) === "ekuitas")),

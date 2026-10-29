@@ -11,6 +11,17 @@ import {
   PESAN_TAK_BOLEH_INPUT,
   canOverrideAboveMax,
   canViewLaporanKeuangan,
+  canNonaktifkanPihakLawan,
+  canTambahPihakLawan,
+  canTetapkanPihakLawanBaris,
+  canTetapkanSaldoAwalPihakLawan,
+  canBalikPasanganAntarUnit,
+  canCatatAntarUnit,
+  canImporRekeningKoran,
+  canTarikRekeningKoran,
+  canBatalkanCocokBank,
+  canCocokkanBank,
+  canTutupBulan,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -384,5 +395,132 @@ describe("canNonaktifkanAkunKas — asimetris terhadap canInputKeuangan (§10.18
     const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
     expect(src).toMatch(/berhenti terlihat/);
     expect(src).toMatch(/Yang menghilang tidak menampakkan diri/);
+  });
+});
+
+describe("pihak lawan (U3, R26) — satu predikat per keputusan", () => {
+  const HOF4 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const hofKeuangan = c("keuangan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+  const ketik = [
+    ["canTambahPihakLawan", canTambahPihakLawan],
+    ["canNonaktifkanPihakLawan", canNonaktifkanPihakLawan],
+    ["canTetapkanPihakLawanBaris", canTetapkanPihakLawanBaris],
+  ] as const;
+
+  for (const [nama, p] of ketik) {
+    it(`${nama}: keuangan & super_admin; 🔴 pengawas, direksi, HoF TIDAK`, () => {
+      expect(semua.filter((r) => p(c(r), HOF4))).toEqual(["keuangan", "super_admin"]);
+      // HoF menyetujui, tidak mengetik — juga bila entah bagaimana berperan keuangan (§10.12).
+      expect(p(hof, HOF4)).toBe(false);
+      expect(p(hofKeuangan, HOF4)).toBe(false);
+    });
+  }
+
+  it("🔴 canTetapkanSaldoAwalPihakLawan: HoF & super_admin; staf keuangan & pengawas TIDAK", () => {
+    expect(canTetapkanSaldoAwalPihakLawan(hof, HOF4)).toBe(true);
+    expect(canTetapkanSaldoAwalPihakLawan(c("super_admin"), HOF4)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canTetapkanSaldoAwalPihakLawan(c(r), HOF4), r).toBe(false);
+    }
+  });
+
+  it("saldo pembuka berselisih dengan menambah — dua arah, seperti §10.24", () => {
+    expect(canTambahPihakLawan(hof, HOF4)).toBe(false);
+    expect(canTetapkanSaldoAwalPihakLawan(c("keuangan"), HOF4)).toBe(false);
+    const tambah = semua.filter((r) => canTambahPihakLawan(c(r, "hof@solagroup.co"), HOF4));
+    const pembuka = semua.filter((r) => canTetapkanSaldoAwalPihakLawan(c(r, "hof@solagroup.co"), HOF4));
+    expect(tambah).not.toEqual(pembuka);
+  });
+
+  it("alasan beda dengan nonaktif akun kas TERTULIS — supaya tak 'dirapikan' diam-diam", () => {
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8").replace(/\n\s*\*\s*/g, " ");
+    expect(src).toMatch(/pihak lawan nonaktif TETAP tampil/);
+  });
+});
+
+describe("pasangan antar unit (U4; R26, R30, R31) — satu predikat per keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canCatatAntarUnit: keuangan & super_admin; pengawas, direksi, HoF TIDAK (§10.12)", () => {
+    expect(semua.filter((r) => canCatatAntarUnit(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canCatatAntarUnit(hof, HOF5)).toBe(false);
+    expect(canCatatAntarUnit(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("🔴 canBalikPasanganAntarUnit: HoF & super_admin; staf Keuangan TIDAK (R31)", () => {
+    expect(canBalikPasanganAntarUnit(hof, HOF5)).toBe(true);
+    expect(canBalikPasanganAntarUnit(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canBalikPasanganAntarUnit(c(r), HOF5), r).toBe(false);
+    }
+  });
+
+  it("yang mencatat bukan yang membalik — daftar perannya berselisih dua arah", () => {
+    const catat = semua.filter((r) => canCatatAntarUnit(c(r, "hof@solagroup.co"), HOF5));
+    const balik = semua.filter((r) => canBalikPasanganAntarUnit(c(r, "hof@solagroup.co"), HOF5));
+    expect(catat).not.toEqual(balik);
+    expect(canCatatAntarUnit(hof, HOF5)).toBe(false);
+    expect(canBalikPasanganAntarUnit(c("keuangan"), HOF5)).toBe(false);
+  });
+});
+
+describe("impor rekening koran (U9; R26, R31) — satu predikat per keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canImporRekeningKoran: keuangan & super_admin; HoF TIDAK (§10.12)", () => {
+    expect(semua.filter((r) => canImporRekeningKoran(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canImporRekeningKoran(hof, HOF5)).toBe(false);
+    expect(canImporRekeningKoran(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("🔴 canTarikRekeningKoran: HoF & super_admin; staf Keuangan TIDAK (R31)", () => {
+    expect(canTarikRekeningKoran(hof, HOF5)).toBe(true);
+    expect(canTarikRekeningKoran(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canTarikRekeningKoran(c(r), HOF5), r).toBe(false);
+    }
+  });
+});
+
+describe("kelompok cocok (U10; R26, R31) — satu predikat per keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canCocokkanBank: keuangan & super_admin; HoF TIDAK (§10.12)", () => {
+    expect(semua.filter((r) => canCocokkanBank(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canCocokkanBank(hof, HOF5)).toBe(false);
+    expect(canCocokkanBank(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("🔴 canBatalkanCocokBank: HoF & super_admin; staf Keuangan TIDAK (R31)", () => {
+    expect(canBatalkanCocokBank(hof, HOF5)).toBe(true);
+    expect(canBatalkanCocokBank(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canBatalkanCocokBank(c(r), HOF5), r).toBe(false);
+    }
+  });
+});
+
+describe("tutup bulan (U12; R25) — HoF & super admin", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 canTutupBulan: HoF (peran apa pun) & super_admin; staf Keuangan TIDAK", () => {
+    expect(canTutupBulan(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canTutupBulan(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canTutupBulan(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
+    }
   });
 });

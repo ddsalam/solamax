@@ -10,6 +10,7 @@ import { getAnomalies } from "@/lib/anomalies";
 import {
   buildBoardCore,
   buildBoardEval,
+  TARGET_SOURCE_LABEL,
   type BoardCore,
   type BoardEval,
   type DeltaCell,
@@ -254,7 +255,7 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
         <div className="section-h">
           <div className="text-h5 t-brand">Bauran NPSO / PSO</div>
           <span className="fs16 t-tertiary">
-            rasio volume non-subsidi terhadap subsidi · target rata-rata periode
+            rasio volume non-subsidi terhadap subsidi · target rata-rata periode ({TARGET_SOURCE_LABEL})
           </span>
         </div>
         <div className="ratio-grid mt5">
@@ -327,6 +328,7 @@ async function BoardBody({ params, today }: { params: BoardParams; today: string
           <div className="text-h5 t-brand">Anomali &amp; exception</div>
           <span className="fs16 t-tertiary">diurutkan dari yang paling perlu tindakan</span>
         </div>
+        <div className="fs15 t-tertiary mt2">{core.anomalyFeed.label}</div>
         <div className="mt5">
           <AnomalyFeed items={core.anomalies} withLinks={false} />
         </div>

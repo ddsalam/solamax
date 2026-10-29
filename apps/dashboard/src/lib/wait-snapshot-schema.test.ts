@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { waitForSnapshotV2Schema } from "./wait-snapshot-schema";
+import {
+  MANUAL_ENTRY_KAS_SCHEMA_READY_SQL,
+  TUTUP_BULAN_SCHEMA_READY_SQL,
+  waitForSnapshotV2Schema,
+} from "./wait-snapshot-schema";
 
 describe("dashboard K1 waits for the atomic backend schema upgrade", () => {
   it("waits on v1 and proceeds immediately when v2 becomes visible", async () => {
@@ -24,5 +28,22 @@ describe("dashboard K1 waits for the atomic backend schema upgrade", () => {
     const sleep = vi.fn();
     await expect(waitForSnapshotV2Schema(async () => { throw new Error("permission denied"); }, { sleep })).rejects.toThrow("permission denied");
     expect(sleep).not.toHaveBeenCalled();
+  });
+});
+
+describe("probe kesiapan 0053/0054 menanyakan objek yang dibaca kueri halaman", () => {
+  const rapat = (sql: string) => sql.replace(/\s+/g, " ");
+  it("0053 menunggu kolom manual_entry.cash_ledger_id", () => {
+    const sql = rapat(MANUAL_ENTRY_KAS_SCHEMA_READY_SQL);
+    expect(sql).toContain("table_name = 'manual_entry' AND column_name = 'cash_ledger_id'");
+    expect(sql).toContain("table_schema = 'app'");
+    expect(sql).toMatch(/AS ready$/);
+  });
+  it("0054 menunggu tabel tutup_bulan DAN kolom day_close.koreksi_susulan_rp", () => {
+    const sql = rapat(TUTUP_BULAN_SCHEMA_READY_SQL);
+    expect(sql).toContain("information_schema.tables WHERE table_schema = 'app' AND table_name = 'tutup_bulan'");
+    expect(sql).toContain("table_name = 'day_close' AND column_name = 'koreksi_susulan_rp'");
+    expect(sql).toMatch(/\) AND EXISTS \(/);
+    expect(sql).toMatch(/AS ready$/);
   });
 });

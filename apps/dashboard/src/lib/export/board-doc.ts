@@ -10,10 +10,10 @@ import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interface
 import type { ExportConfig } from "./config";
 import { barCanvas, bauranFill, productFill, sparklineCanvas } from "./pdf-charts";
 import { pdfText } from "./glyphs";
-import { CONTENT_WIDTH_LANDSCAPE as CW, ledgerLayout, th } from "./pdf-layout";
+import { CONTENT_WIDTH_LANDSCAPE as CW, keepHeadingsWithTable, ledgerLayout, th } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 import { pct, signed } from "@/lib/format";
-import type { BoardModel, DeltaCell, RatioRow } from "@/lib/board-model";
+import { TARGET_SOURCE_LABEL, type BoardModel, type DeltaCell, type RatioRow } from "@/lib/board-model";
 
 export interface BoardDocMeta {
   dateLong: string;
@@ -124,7 +124,7 @@ function evalTable(model: BoardModel): Content[] {
     }
   }
   return [
-    { text: "Evaluasi per cabang", style: "sectionTitle", marginTop: 12, marginBottom: 2 },
+    { text: "Evaluasi per cabang", style: "sectionTitle", marginTop: 12, marginBottom: 2, headlineLevel: 1 },
     {
       text: pdfText(`${model.eval.labels.mom} · ${model.eval.labels.yoy} · ${model.eval.labels.ytd}`),
       fontSize: 7.5,
@@ -309,7 +309,9 @@ function anomaliesSection(model: BoardModel): Content[] {
     }
   }
   return [
-    { text: "Anomali & Exception", style: "sectionTitle", marginTop: 12, marginBottom: 4 },
+    { text: "Anomali & Exception", style: "sectionTitle", marginTop: 12, marginBottom: 2, headlineLevel: 1 },
+    // Feed ini bukan jendela "Periode" di kop: sebut rentang sebenarnya.
+    { text: pdfText(model.core.anomalyFeed.label), fontSize: 7.5, color: PDF.textMuted, marginBottom: 4 },
     { table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths: ["*", 120, 90], body }, layout: ledgerLayout },
   ];
 }
@@ -380,7 +382,13 @@ export function buildBoardDocDefinition(args: {
     },
     ...trendSection(model),
     ...evalTable(model),
-    { text: "Bauran NPSO / PSO", style: "sectionTitle", marginTop: 12, marginBottom: 4 },
+    { text: "Bauran NPSO / PSO", style: "sectionTitle", marginTop: 12, marginBottom: 2 },
+    {
+      text: `rasio volume non-subsidi terhadap subsidi · target rata-rata periode (${TARGET_SOURCE_LABEL})`,
+      fontSize: 7.5,
+      color: PDF.textMuted,
+      marginBottom: 4,
+    },
     {
       columns: [
         ratioPanel("Gasoline — (Pertamax + Turbo) / Pertalite", model.core.ratios.gasGroup, model.core.ratios.rg),
@@ -388,7 +396,7 @@ export function buildBoardDocDefinition(args: {
       ],
       columnGap: 16,
     },
-    { text: `Ranking ${meta.unitsCount} unit`, style: "sectionTitle", marginTop: 12, marginBottom: 4 },
+    { text: `Ranking ${meta.unitsCount} unit`, style: "sectionTitle", marginTop: 12, marginBottom: 4, headlineLevel: 1 },
     rankingTable(model),
     ...productMix(model),
     ...anomaliesSection(model),
@@ -403,7 +411,7 @@ export function buildBoardDocDefinition(args: {
   ];
 
   return {
-    content,
+    ...keepHeadingsWithTable(content),
     pageSize: "A4",
     pageOrientation: "landscape",
     pageMargins: [40, 40, 40, 44],
@@ -438,6 +446,8 @@ export function buildBoardDocDefinition(args: {
       docDate: { fontSize: 11, color: PDF.textSecondary },
       scopeLine: { fontSize: 8, color: PDF.textMuted },
       sectionTitle: { fontSize: 11, bold: true, color: PDF.navy },
+      // Header tabel ledger ber-fill navy: tanpa gaya ini teksnya hitam di atas navy.
+      th: { bold: true, color: PDF.onNavy, fontSize: 8 },
       footNote: { fontSize: 8, color: PDF.textMuted },
     },
   };

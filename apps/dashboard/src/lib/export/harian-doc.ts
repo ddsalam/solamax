@@ -28,7 +28,7 @@ import type {
 } from "@/lib/harian-model";
 import { pdfText } from "./glyphs";
 import { divergentGlCanvas, harianSeriesColor, harianTrendCanvas } from "./pdf-charts";
-import { CONTENT_WIDTH_LANDSCAPE as CW } from "./pdf-layout";
+import { CONTENT_WIDTH_LANDSCAPE as CW, keepHeadingsWithTable } from "./pdf-layout";
 import { PDF } from "./pdf-tokens";
 
 export interface HarianDocMeta {
@@ -131,9 +131,9 @@ function matrixTable(
     ]);
   }
   return [
-    { text: title, style: "sectionTitle", marginTop: 10 },
+    { text: title, style: "sectionTitle", marginTop: 10, headlineLevel: 1 },
     { text: pdfText(hint), style: "hint", marginBottom: 3 },
-    { table: { headerRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
+    { table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
   ];
 }
 
@@ -177,8 +177,8 @@ function monthlyTable(
   }
   body.push([{ text: "Total", bold: true, fontSize: 7.5, color: PDF.navy }, ...units.flatMap((u) => cell(u, totalsByUnit[u.unitId], true)), cellNum(grand.kum, true, danger), { text: glValueText(grand.avg), alignment: "right", fontSize: 6.5, bold: true, color: PDF.textMuted }]);
   return [
-    { text: title, style: "sectionTitle", marginTop: 10, marginBottom: 3 },
-    { table: { headerRows: 2, dontBreakRows: true, widths, body }, layout: harianLayout },
+    { text: title, style: "sectionTitle", marginTop: 10, marginBottom: 3, headlineLevel: 1 },
+    { table: { headerRows: 2, keepWithHeaderRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
   ];
 }
 
@@ -203,9 +203,9 @@ function ratioBbkTable(model: HarianModel): Content[] {
   body.push([{ text: "GASOLINE", fontSize: 7.5 }, ...units.map((u) => ({ text: u.notYet || u.stale ? "—" : P(model.bbk.monthly[u.unitId]?.gasoline ?? null), alignment: "right", fontSize: 7.5 }) as TableCell), { text: P(model.bbk.monthlyTotal.gasoline), alignment: "right", bold: true, fontSize: 7.5 }]);
   body.push([{ text: "DIESEL", fontSize: 7.5 }, ...units.map((u) => ({ text: u.notYet || u.stale ? "—" : P(model.bbk.monthly[u.unitId]?.diesel ?? null), alignment: "right", fontSize: 7.5 }) as TableCell), { text: P(model.bbk.monthlyTotal.diesel), alignment: "right", bold: true, fontSize: 7.5 }]);
   return [
-    { text: "Rasio & Persentase BBK", style: "sectionTitle", marginTop: 10 },
+    { text: "Rasio & Persentase BBK", style: "sectionTitle", marginTop: 10, headlineLevel: 1 },
     { text: pdfText("Rasio: pembilang ÷ Solar (Total ≡ bauran gasoil). BBK: NPSO ÷ (NPSO+PSO) jenis sama ≡ b/(1+b). Keduanya bukan angka yang sama."), style: "hint", marginBottom: 3 },
-    { table: { headerRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
+    { table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
   ];
 }
 function emptyRatio(): RatioCell {
@@ -368,7 +368,7 @@ export function buildHarianDocDefinition(args: {
   });
 
   return {
-    content,
+    ...keepHeadingsWithTable(content),
     pageSize: "A4",
     pageOrientation: "landscape",
     pageMargins: [28, 32, 28, 40],
@@ -408,7 +408,7 @@ function shareSection(model: HarianModel): Content[] {
     { text: s.pct === null ? "—" : pct(s.pct, 1), alignment: "right", fontSize: 7.5, bold: true },
   ]);
   return [
-    { text: "Kontribusi per SPBU — bulan berjalan", style: "sectionTitle", marginTop: 10, marginBottom: 3 },
+    { text: "Kontribusi per SPBU — bulan berjalan", style: "sectionTitle", marginTop: 10, marginBottom: 3, headlineLevel: 1 },
     { table: { widths: ["auto", 200, "auto", "auto", "auto"], body: rows }, layout: "noBorders" },
   ];
 }
@@ -446,7 +446,7 @@ function recordSection(model: HarianModel): Content[] {
     [{ text: r.date, bold: true, fontSize: 7.5, color: PDF.navy }, ...units.map((u) => cellNum(r.byUnit[u.unitId] ?? 0)), cellNum(r.total, true)],
   ];
   return [
-    { text: "Rekor — penjualan grup tertinggi dalam 1 hari", style: "sectionTitle", marginTop: 10 },
+    { text: "Rekor — penjualan grup tertinggi dalam 1 hari", style: "sectionTitle", marginTop: 10, headlineLevel: 1 },
     { text: pdfText(`periode pembanding ${r.from} – ${r.to} · sejak seluruh armada terpantau (rekor lama tak sebanding)`), style: "hint", marginBottom: 3 },
     { table: { widths, body }, layout: harianLayout },
   ];
