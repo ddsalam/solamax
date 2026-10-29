@@ -282,8 +282,8 @@ export function ImporBankMatriks({
               </td>
               {bulan.map((b) => {
                 const s = sel[r.id]?.[b] ?? { status: "belum" as const };
-                // U11 MEMASANG TAUTAN DI SINI ke `/keuangan/unit/${code}/impor-bank/${b}`
-                // (layar klasifikasi) — sebelum halaman itu ada, tautan hanya 404.
+                // U11 — sel yang sudah diunggah bertaut ke layar klasifikasi
+                // rekening × bulan itu (`impor-bank/[periode]?akun=`).
                 return (
                   <td key={b}>
                     {s.status === "belum" && <span className="t-tertiary">Belum diunggah</span>}
@@ -291,7 +291,9 @@ export function ImporBankMatriks({
                     {s.status === "diunggah" && (
                       <>
                         <div>
-                          Diunggah ({s.nBaris} baris, {s.nTerbuka} terbuka)
+                          <a href={`/keuangan/unit/${code}/impor-bank/${b}?akun=${r.id}`}>
+                            Diunggah ({s.nBaris} baris, {s.nTerbuka} terbuka)
+                          </a>
                         </div>
                         <SaldoAwal p={s.saldoAwal} />
                         {bolehTarik && <Tarik code={code} id={s.id} kodeAlasan={kodeAlasan} />}

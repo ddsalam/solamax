@@ -59,7 +59,11 @@ const AKUN = "44444444-4444-4444-8444-444444444444";
 const pihakBaris = (over: Record<string, unknown> = {}) => (sql: string) =>
   sql.includes("FROM app.pihak_lawan\n")
     ? { rows: [{ id: PL, nama: "BPR Utari", jenis: "kreditur", aktif: true, lawanUnitId: null, ...over }] }
-    : undefined;
+    : sql.includes("FROM app.category_account_map")
+      ? { rows: [{ account: "Beban Bunga" }] }
+      : sql.includes("INSERT INTO app.manual_entry")
+        ? { rows: [{ id: "beban-1" }] }
+        : undefined;
 const insertKas = () => h.log.filter((l) => l.sql.includes("INSERT INTO app.cash_ledger"));
 
 beforeEach(() => {
@@ -136,9 +140,17 @@ describe("pecahMutasi — AE6 (R9)", () => {
     total: -6_500_000,
     baris: [
       { amount: -6_000_000, categorySide: "kredit" as const, categoryLabel: "Hutang Piutang", pihakLawanId: PL, keterangan: "Pokok" },
-      { amount: -bunga, categorySide: "kredit" as const, categoryLabel: "Biaya Operasional", pihakLawanId: null, keterangan: "Bunga" },
+      {
+        amount: -bunga,
+        categorySide: "kredit" as const,
+        categoryLabel: "Biaya Operasional",
+        pihakLawanId: null,
+        keterangan: "Bunga",
+        operationalCategory: "Lain-Lain" as string | null,
+      },
     ],
   });
+  const insertBeban = () => h.log.filter((l) => l.sql.includes("INSERT INTO app.manual_entry"));
 
   it("🔴 AE6: 6.000.000 (kreditur BPR) + 500.000 (beban) TERSIMPAN — dua baris, satu hari buku", async () => {
     h.state.jawab = pihakBaris();
@@ -154,6 +166,27 @@ describe("pecahMutasi — AE6 (R9)", () => {
     const audit = h.log.filter((l) => l.sql.includes("INSERT INTO app.audit_log"));
     expect(audit).toHaveLength(1);
     expect(audit[0]!.params[2]).toBe("kas.pecah");
+  });
+
+  it("🔴 U11 (temuan U6): bunga ke BEBAN ⇒ juga manual_entry pintu Finance di hari buku yang sama, bertaut ke baris kasnya", async () => {
+    h.state.jawab = pihakBaris();
+    const r = await pecahMutasi(pecahan(500_000));
+    expect(r.ok).toBe(true);
+    const b = insertBeban();
+    // Hanya baris beban — pokok ke kreditur bukan laba.
+    expect(b).toHaveLength(1);
+    expect(b[0]!.sql).toMatch(/'submitted', 'finance'/);
+    expect(b[0]!.sql).toMatch(/cash_ledger_id/);
+    // [unit, hari buku, seksi, keterangan, nominal POSITIF, kategori op, CoA, aktor, baris kas]
+    expect(b[0]!.params).toEqual([6478, "2026-10-02", "pengeluaran", "Bunga", "500000.00", "Lain-Lain", "Beban Bunga", 7, expect.stringMatching(/^baris-\d+$/)]);
+  });
+
+  it("🔴 baris beban tanpa kategori operasional ⇒ ditolak sebelum koneksi (laba tak boleh terlewat)", async () => {
+    const p = pecahan(500_000);
+    p.baris[1]!.operationalCategory = null;
+    const r = await pecahMutasi(p);
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/Baris 2: .*kategori operasional/) });
+    expect(h.connect).not.toHaveBeenCalled();
   });
 
   it("🔴 AE6: 6.000.000 + 499.999 DITOLAK dengan selisih Rp 1 — sebelum koneksi", async () => {

@@ -57,10 +57,10 @@ async function audit(c: PoolClient, aktor: Aktor, action: string, target: string
 const INSERT_KAS = `INSERT INTO app.cash_ledger
          (unit_id, account_id, business_date, keterangan, jenis,
           category_side, category_label, amount, created_by_user_id, pihak_lawan_id,
-          pasangan_uuid, tanggal_asal, alasan_maju, alasan_maju_applies_to)
+          pasangan_uuid, tanggal_asal, alasan_maju, alasan_maju_applies_to, lahir_dari_cocok_id)
        VALUES ($1,$2::uuid,$3::date,$4,$5::app.cash_mutation_jenis,
                $6::app.cash_mutation_side,$7,$8::numeric,$9,$10::uuid,
-               $11::uuid,$12::date,$13,$14)
+               $11::uuid,$12::date,$13,$14,$15::uuid)
        RETURNING id::text AS id`;
 
 export type HasilCatat =
@@ -85,6 +85,12 @@ export async function tulisPasanganAntarUnit(
     jenis: JenisAntarUnit;
     catatan: string;
     aktor: Aktor;
+    /**
+     * U11 — pasangan yang lahir dari klasifikasi baris rekening koran: kaki di
+     * unit ini ditandai `lahir_dari_cocok_id` (FK komposit ke kelompok unit yang
+     * SAMA, 0052). Kaki unit lawan tidak — ia menunggu impor unit itu sendiri.
+     */
+    lahirDariCocok?: { unitId: ScopedUnitId; cocokId: string };
   },
 ): Promise<HasilCatat> {
   const kakiNominal = kakiAntarUnit(m.nominalSen);
@@ -156,6 +162,7 @@ export async function tulisPasanganAntarUnit(
       maju ? m.tanggal : null,
       maju ? KODE_MAJU_ANTAR_UNIT : null,
       maju ? "adjustment" : null,
+      m.lahirDariCocok && m.lahirDariCocok.unitId === s.unit.unitId ? m.lahirDariCocok.cocokId : null,
     ]);
     kaki.push({ unit: s.unit.code, id: r.rows[0]?.id ?? "?", hariBuku: h.hariBuku, maju });
   }
@@ -170,6 +177,11 @@ export async function tulisPasanganAntarUnit(
     kaki,
   });
   return { ok: true, pasanganUuid, kaki };
+}
+
+/** Akses id kaki unit tertentu dari hasil catat (dipakai klasifikasi U11). */
+export function kakiUnit(h: Extract<HasilCatat, { ok: true }>, code: string): { id: string; hariBuku: string; maju: boolean } | null {
+  return h.kaki.find((k) => k.unit === code) ?? null;
 }
 
 export type HasilBalik =
@@ -285,6 +297,7 @@ export async function tulisBalikPasangan(
       k.businessDate,
       KODE_MAJU_PEMBALIK,
       "adjustment",
+      null,
     ]);
     kaki.push({ unit: u.code, id: ins.rows[0]?.id ?? "?", tindakan: "pembalik", hariBuku: h.hariBuku });
   }

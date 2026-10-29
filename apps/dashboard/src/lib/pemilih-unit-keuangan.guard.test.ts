@@ -35,7 +35,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 10 → 11: Pihak lawan per unit (rencana 2026-10-29 U3).
     // 11 → 12: Penebusan per SO per unit (rencana 2026-10-29 U7).
     // 12 → 13: Impor rekening koran per unit (rencana 2026-10-29 U9).
-    expect(RUTE.length).toBe(13);
+    // 13 → 14: Klasifikasi rekening koran per unit × bulan (rencana 2026-10-29 U11).
+    expect(RUTE.length).toBe(14);
   });
 
   for (const f of RUTE) {
@@ -62,7 +63,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     }
     // 9 → 10: Penebusan per SO (U7) memilih unit seperti rute per-unit lain.
     // 10 → 11: Impor rekening koran (U9) — sama.
-    expect(lain).toHaveLength(11);
+    // 11 → 12: Klasifikasi rekening koran per bulan (U11) — sama.
+    expect(lain).toHaveLength(12);
   });
 });
 

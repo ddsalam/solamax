@@ -9,12 +9,17 @@
  * Rp 0. Server memeriksa ulang semuanya; layar hanya mencegah kiriman yang
  * pasti ditolak.
  *
+ * Baris berkategori beban / pendapatan lain-lain wajib menyebut kategori
+ * operasionalnya: server menulis `manual_entry` pintu Finance bersamanya,
+ * supaya laba ikut tercatat (U11 — baris kas saja tak menggeser laba).
+ *
  * Tanggal di sini = tanggal mutasi bank. Bila hari itu sudah ditutup, server
  * membukukan semua baris ke hari terbuka berikutnya dengan tanggal asalnya (R28).
  */
 import { useState, useTransition } from "react";
 import { bacaRupiah } from "@/lib/angka-input";
 import { pecahMutasi } from "@/lib/kas-actions";
+import { KATEGORI_OPERASIONAL, sectionBeban } from "@/lib/klasifikasi-model";
 import type { SisiKategori } from "@/lib/keuangan-kas";
 import {
   kategoriPihakLawan,
@@ -30,9 +35,11 @@ interface Baris {
   katLabel: string;
   pihakId: string;
   ket: string;
+  /** Kategori operasional — wajib untuk baris beban/pendapatan lain-lain (laba). */
+  opKat: string;
 }
 
-const kosong = (): Baris => ({ nominal: "", katLabel: "", pihakId: "", ket: "" });
+const kosong = (): Baris => ({ nominal: "", katLabel: "", pihakId: "", ket: "", opKat: "" });
 
 export function PecahMutasiForm({
   code,
@@ -87,6 +94,7 @@ export function PecahMutasiForm({
       categoryLabel: b.katLabel === "" ? null : b.katLabel,
       pihakLawanId: kategoriPihakLawan(b.katLabel) && b.pihakId !== "" ? b.pihakId : null,
       keterangan: b.ket,
+      operationalCategory: sectionBeban(b.katLabel) !== null && b.opKat !== "" ? b.opKat : null,
     }));
     const salah = periksaPecahan({ jenis, total: totalN, baris: masukan });
     if (salah !== null) {
@@ -168,7 +176,7 @@ export function PecahMutasiForm({
               <select
                 className="manual-input"
                 value={b.katLabel}
-                onChange={(e) => ubah(i, { katLabel: e.target.value, pihakId: "" })}
+                onChange={(e) => ubah(i, { katLabel: e.target.value, pihakId: "", opKat: "" })}
               >
                 <option value="">— pilih kategori —</option>
                 {kategoriSisi.map((k) => (
@@ -186,6 +194,19 @@ export function PecahMutasiForm({
                   {pilihan.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.nama}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {sectionBeban(b.katLabel) !== null && (
+              <label className="keu-fld">
+                <span className="keu-label">Kategori operasional (wajib — masuk laba)</span>
+                <select className="manual-input" value={b.opKat} onChange={(e) => ubah(i, { opKat: e.target.value })}>
+                  <option value="">— pilih kategori operasional —</option>
+                  {KATEGORI_OPERASIONAL.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
                     </option>
                   ))}
                 </select>

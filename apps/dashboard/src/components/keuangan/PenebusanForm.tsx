@@ -26,6 +26,11 @@ export interface IsianAwalPenebusan {
   accountId: string;
   /** Rupiah bulat. */
   gross: number;
+  /**
+   * U11 — baris rekening koran asal. Server membaca ulang SO/tanggal/rekening/
+   * Gross dari baris ini dan mengikat baris kasnya ke baris impor (kelompok cocok).
+   */
+  mutasiBankId?: string;
 }
 
 type Teks = Record<Komponen | "gross", string>;
@@ -37,10 +42,13 @@ export function PenebusanForm({
   code,
   rekening,
   isianAwal,
+  onSelesai,
 }: {
   code: string;
   rekening: { id: string; nama: string }[];
   isianAwal: IsianAwalPenebusan | null;
+  /** Dipanggil dengan pesan sukses (dipakai layar klasifikasi U11). */
+  onSelesai?: (pesan: string) => void;
 }) {
   const [pending, start] = useTransition();
   const [galat, setGalat] = useState<string | null>(null);
@@ -49,6 +57,8 @@ export function PenebusanForm({
   const [pilihKas, setPilihKas] = useState<string>("");
 
   const terkunci = isianAwal !== null;
+  // Debit tanpa nomor SO terbaca di keterangannya: SO tetap diketik.
+  const soTerkunci = terkunci && isianAwal.noSo.trim() !== "";
   const [noSo, setNoSo] = useState(isianAwal?.noSo ?? "");
   const [tanggal, setTanggal] = useState(isianAwal?.tanggalBayar ?? "");
   const [akun, setAkun] = useState(isianAwal?.accountId ?? "");
@@ -83,6 +93,7 @@ export function PenebusanForm({
         nota: nilai("nota"),
         gross: nilai("gross"),
         cashLedgerId,
+        mutasiBankId: isianAwal?.mutasiBankId ?? null,
       });
       if (!r.ok) {
         setGalat(r.error);
@@ -92,6 +103,7 @@ export function PenebusanForm({
       }
       setPesan(r.pesan);
       setKandidat(null);
+      onSelesai?.(r.pesan);
       if (!terkunci) {
         setNoSo("");
         setTeks(KOSONG);
@@ -139,9 +151,9 @@ export function PenebusanForm({
       <div className="keu-2col">
         <label className="keu-fld">
           <span className="keu-label">
-            Nomor SO{terkunci && <span className="keu-pill">dari rekening koran</span>}
+            Nomor SO{soTerkunci && <span className="keu-pill">dari rekening koran</span>}
           </span>
-          <input className="manual-input" value={noSo} readOnly={terkunci} onChange={(e) => setNoSo(e.target.value)} />
+          <input className="manual-input" value={noSo} readOnly={soTerkunci} onChange={(e) => setNoSo(e.target.value)} />
         </label>
         <label className="keu-fld">
           <span className="keu-label">

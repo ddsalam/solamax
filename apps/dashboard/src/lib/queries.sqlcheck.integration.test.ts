@@ -237,6 +237,19 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
     "getKasDicocokkan",
     async () => (await import("./cocok-bank-queries")).getKasDicocokkan(U, ["00000000-0000-4000-8000-000000000000"]),
   ],
+  // U11 — layar klasifikasi (0051/0052): rekening × bulan, baris impor + parkir, buku tanpa pasangan.
+  ["getRekeningBulan", async () => (await import("./klasifikasi-queries")).getRekeningBulan(U, "2026-07")],
+  [
+    "getBarisImporBulan",
+    async () =>
+      (await import("./klasifikasi-queries")).getBarisImporBulan(U, [
+        { accountId: "00000000-0000-4000-8000-000000000000", nama: "uji K1", rekeningKoranId: "00000000-0000-4000-8000-000000000000" },
+      ]),
+  ],
+  [
+    "getBukuTanpaPasangan",
+    async () => (await import("./klasifikasi-queries")).getBukuTanpaPasangan(U, ["00000000-0000-4000-8000-000000000000"], "2026-07"),
+  ],
 ];
 
 /** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */

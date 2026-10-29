@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { pool } from "./db";
+import { pool, qScoped } from "./db";
 import { senKeTeks } from "./antar-unit-model";
 import { periksaKelompokManual } from "./cocok-bank-model";
 import { bacaKasId, bacaMutasiId, SQL_PENEBUSAN_COCOK } from "./cocok-bank-queries";
 import { audit, jalankanCocokOtomatis, tulisKelompok } from "./cocok-bank-tulis";
 import { hariBukuTerkunci } from "./hari-buku-queries";
+import { tulisBalikPasangan } from "./antar-unit-tulis";
 import {
   PESAN_TAK_BOLEH_INPUT,
   alasanTakBolehInput,
@@ -15,7 +16,7 @@ import {
 } from "./keuangan-wewenang";
 import { normalisasiSo } from "./penebusan-model";
 import { teksKeSen } from "./pihak-lawan-model";
-import { getDataScope } from "./scope";
+import { getDataScope, type ScopedUnit } from "./scope";
 
 /**
  * Server action kelompok cocok (rencana 2026-10-29 U10; R19, R20, R31; KTD6,
@@ -214,6 +215,8 @@ type KasLahir = {
   pihakLawanId: string | null;
   pasanganUuid: string | null;
   sisiLawanAda: boolean;
+  /** 0053 — beban pintu Finance AKTIF yang lahir bersama baris kas ini. */
+  bebanId: string | null;
 };
 
 export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokResult> {
@@ -230,10 +233,38 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
     return { ok: false, error: "Pilih kode alasan koreksi dari daftar (kode pembukuan maju diisi sistem)." };
   }
 
+  // ⛔ Gerbang dua unit (Implementation Constraints): kelompok yang MELAHIRKAN
+  //    kaki pasangan antar unit (klasifikasi U11) hanya dibatalkan lewat jalur
+  //    balik pasangan — KEDUA kaki, kedua unit lolos `requireUnit` SEBELUM BEGIN.
+  //    Unit lawan dibaca dulu dari kaki unit ini; dibaca ULANG & dikunci di dalam
+  //    transaksi (`rencanaBalik` menuntut kedua kaki tepat di dua unit itu).
+  const lawanRows = await qScoped<{ lawanUnitId: number | null }>(
+    unit.unit_id,
+    `SELECT DISTINCT p.lawan_unit_id AS "lawanUnitId"
+       FROM app.cash_ledger l
+       JOIN app.pihak_lawan p ON p.id = l.pihak_lawan_id AND p.unit_id = l.unit_id
+      WHERE l.unit_id = $1 AND l.lahir_dari_cocok_id = $2::uuid AND NOT l.void AND l.pasangan_uuid IS NOT NULL`,
+    [unit.unit_id, input.cocokId],
+  );
+  let lawan: ScopedUnit | null = null;
+  if (lawanRows.length > 0) {
+    const kode = lawanRows.length === 1 ? scope.units.find((x) => x.unit_id === lawanRows[0]!.lawanUnitId)?.code ?? null : null;
+    if (kode === null) {
+      return {
+        ok: false,
+        error:
+          "Kelompok ini melahirkan kaki pinjaman antar unit, dan membatalkannya menulis buku KEDUA unit — akun ini " +
+          "tidak memegang unit lawannya. Ditolak utuh, tak ada yang dibatalkan.",
+      };
+    }
+    lawan = scope.requireUnit(kode);
+  }
+  const unitIds = lawan === null ? String(unit.unit_id) : `${unit.unit_id},${lawan.unit_id}`;
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [unitIds]);
 
     const rc = await client.query<{ code: string }>(
       `SELECT code FROM app.reason_code
@@ -286,7 +317,9 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
                    SELECT 1 FROM app.cash_mutation_category k
                     WHERE k.label = l.category_label
                       AND k.side::text = CASE WHEN l.amount < 0 THEN 'debet' ELSE 'kredit' END
-                )) AS "sisiLawanAda"
+                )) AS "sisiLawanAda",
+                (SELECT e.id::text FROM app.manual_entry e
+                  WHERE e.cash_ledger_id = l.id AND e.unit_id = l.unit_id AND NOT e.void) AS "bebanId"
            FROM app.cash_ledger l
           WHERE l.unit_id = $1 AND l.lahir_dari_cocok_id = $2::uuid AND NOT l.void
           ORDER BY l.id
@@ -295,28 +328,57 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
       )
     ).rows;
 
-    // ⛔ Gerbang dua unit (Implementation Constraints): kaki antar unit yang
-    //    DILAHIRKAN kelompok ini hanya dibatalkan lewat jalur balik pasangan
-    //    (kedua kaki, kedua unit lolos `requireUnit`), tak pernah void sepihak.
-    //    U11 MENAMBAHKAN DI SINI jalurnya saat klasifikasi antar unit lahir.
+    // ⛔ Kaki antar unit lahiran ⇒ jalur balik pasangan (KEDUA kaki), tak pernah
+    //    void sepihak. Unit lawan sudah lolos gerbang sebelum BEGIN; yang tak
+    //    cocok dengan pembacaan awal ditolak utuh.
     //    Kaki antar unit yang hanya DIcocokkan (tidak dilahirkan) boleh dibatalkan
     //    di sini: pembatalan itu hanya melepas tautan, tak menulis buku unit mana pun.
-    if (lahir.some((k) => k.pasanganUuid !== null)) {
+    const pasangan = [...new Set(lahir.flatMap((k) => (k.pasanganUuid === null ? [] : [k.pasanganUuid])))];
+    if (pasangan.length > 0 && lawan === null) {
       await batal(client);
       return {
         ok: false,
-        error:
-          "Kelompok ini melahirkan kaki pinjaman antar unit — batalkan lewat “Balik pasangan” agar kedua kaki " +
-          "di kedua unit dibalik bersama. Tak ada yang dibatalkan.",
+        error: "Kelompok ini baru saja berubah (kaki antar unit) — muat ulang halaman. Tak ada yang dibatalkan.",
       };
     }
-    const tanpaSisi = lahir.find((k) => !k.sisiLawanAda);
-    if (tanpaSisi) {
-      await batal(client);
-      return {
-        ok: false,
-        error: `Kategori “${tanpaSisi.categoryLabel}” tak punya sisi lawan untuk baris pembalik — hubungi pengelola SolaMax. Tak ada yang dibatalkan.`,
-      };
+
+    // Rencana per baris lahiran (non-pasangan), SEBELUM apa pun ditulis: hari
+    // buku terbuka ⇒ void (+ void beban tertautnya); tertutup ⇒ pembalik maju.
+    // Dua bentuk yang TIDAK punya pembalik sah ditolak utuh:
+    //   · kategori satu sisi (mis. "Transfer Pembayaran Piutang Pelanggan",
+    //     "Biaya Operasional") — 0029 tak punya kategori sisi lawannya, dan
+    //     pembalik tanpa kategori (jenis adjustment) tak berbaris arus kas (KTD12);
+    //   · beban pintu Finance di hari tertutup — `manual_entry` hari tertutup
+    //     immutable (0026) dan nominalnya wajib positif (0042): tak ada beban
+    //     pembalik, jadi membalik kasnya saja akan memisahkan kas dari laba.
+    const rencana: { k: KasLahir; hariBuku: string; buka: boolean }[] = [];
+    for (const k of lahir) {
+      if (k.pasanganUuid !== null) continue;
+      const h = await hariBukuTerkunci(client, unit.unit_id, k.businessDate, { accountId: k.accountId });
+      if (h.status === "pra-cut-over") {
+        await batal(client);
+        return { ok: false, error: `Baris buku ${k.businessDate} mendahului saldo pembuka (${h.cutOver}) — pembatalan ditolak utuh.` };
+      }
+      const buka = h.hariBuku === k.businessDate;
+      if (!buka && !k.sisiLawanAda) {
+        await batal(client);
+        return {
+          ok: false,
+          error:
+            `Hari buku ${k.businessDate} sudah ditutup dan kategori “${k.categoryLabel}” tak punya sisi lawan untuk baris ` +
+            `pembalik — pencocokan ini tidak bisa dibatalkan. Koreksinya dicatat sebagai mutasi baru yang bertaut. Tak ada yang dibatalkan.`,
+        };
+      }
+      if (!buka && k.bebanId !== null) {
+        await batal(client);
+        return {
+          ok: false,
+          error:
+            `Hari buku ${k.businessDate} sudah ditutup dan bebannya sudah masuk laba hari itu — membalik kasnya saja akan ` +
+            `memisahkan kas dari laba. Koreksinya lewat Adjust/Reverse (§2.3). Tak ada yang dibatalkan.`,
+        };
+      }
+      rencana.push({ k, hariBuku: h.hariBuku, buka });
     }
 
     // Kelompok → nonaktif; anggota ikut lewat FK ON UPDATE CASCADE (0052).
@@ -332,21 +394,43 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
       return { ok: false, error: "Kelompok cocok berubah bersamaan — muat ulang halaman." };
     }
 
-    // Baris kas lahiran: hari buku terbuka ⇒ void; tertutup ⇒ pembalik maju.
-    const kaki: { id: string; tindakan: "void" | "pembalik"; hariBuku: string }[] = [];
-    for (const k of lahir) {
-      const h = await hariBukuTerkunci(client, unit.unit_id, k.businessDate, { accountId: k.accountId });
-      if (h.status === "pra-cut-over") {
+    // Kaki antar unit lahiran: balik pasangan (kedua unit, void/pembalik per kaki).
+    const kaki: { id: string; tindakan: "void" | "pembalik"; hariBuku: string; unit?: string }[] = [];
+    for (const pu of pasangan) {
+      const b = await tulisBalikPasangan(client, {
+        unit: { unitId: unit.unit_id, code: unit.code, name: unit.name },
+        lawan: { unitId: lawan!.unit_id, code: lawan!.code, name: lawan!.name },
+        pasanganUuid: pu,
+        reasonCode,
+        catatan,
+        aktor: { userId: scope.userId, email: scope.email },
+      });
+      if (!b.ok) {
         await batal(client);
-        return { ok: false, error: `Baris buku ${k.businessDate} mendahului saldo pembuka (${h.cutOver}) — pembatalan ditolak utuh.` };
+        return { ok: false, error: b.error };
       }
-      if (h.hariBuku === k.businessDate) {
+      kaki.push(...b.kaki);
+    }
+
+    // Baris kas lahiran lain: hari buku terbuka ⇒ void (+ beban); tertutup ⇒ pembalik maju.
+    const bebanDibatalkan: string[] = [];
+    for (const { k, hariBuku, buka } of rencana) {
+      if (buka) {
         await client.query(
           `UPDATE app.cash_ledger
               SET void = true, voided_by_user_id = $1, voided_at = now()
             WHERE id = $2::uuid AND unit_id = $3 AND NOT void`,
           [scope.userId, k.id, unit.unit_id],
         );
+        if (k.bebanId !== null) {
+          await client.query(
+            `UPDATE app.manual_entry
+                SET void = true, voided_by_user_id = $1, voided_at = now(), updated_at = now()
+              WHERE id = $2::uuid AND unit_id = $3 AND NOT void`,
+            [scope.userId, k.bebanId, unit.unit_id],
+          );
+          bebanDibatalkan.push(k.bebanId);
+        }
         kaki.push({ id: k.id, tindakan: "void", hariBuku: k.businessDate });
         continue;
       }
@@ -364,7 +448,7 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
         [
           unit.unit_id,
           k.accountId,
-          h.hariBuku,
+          hariBuku,
           `Pembalik — ${k.keterangan}`,
           jenis,
           k.categoryLabel === null ? null : jenis,
@@ -379,7 +463,7 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
           grup.id,
         ],
       );
-      kaki.push({ id: ins.rows[0]?.id ?? "?", tindakan: "pembalik", hariBuku: h.hariBuku });
+      kaki.push({ id: ins.rows[0]?.id ?? "?", tindakan: "pembalik", hariBuku });
     }
 
     await audit(client, { userId: scope.userId, email: scope.email }, "cocok_bank.batal", `${unit.code}/${grup.id}`, {
@@ -389,9 +473,12 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
       mutasi: anggota.rows.flatMap((a) => (a.mutasiId ? [a.mutasiId] : [])),
       kas: anggota.rows.flatMap((a) => (a.kasId ? [a.kasId] : [])),
       kasLahir: kaki,
+      pasangan,
+      bebanDibatalkan,
     });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
+    if (lawan !== null) revalidatePath(`/keuangan/unit/${lawan.code}/pihak-lawan`);
     const maju = kaki.filter((k) => k.tindakan === "pembalik").length;
     return {
       ok: true,

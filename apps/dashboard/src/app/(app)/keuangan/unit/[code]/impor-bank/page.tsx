@@ -22,9 +22,8 @@ export const dynamic = "force-dynamic";
  *     rekening salah atau periode aktif);
  *   · Tarik (HoF) per sel aktif, dengan kode alasan + catatan (R31).
  *
- * ⚠️ Sel BELUM bertaut ke `impor-bank/[periode]`: layar klasifikasi itu lahir
- * di U11, dan tautan sebelum halamannya ada hanya berujung 404. U11 memasang
- * tautannya di `ImporBankMatriks`.
+ * Sel yang sudah diunggah bertaut ke `impor-bank/[periode]?akun=` — layar
+ * klasifikasi rekening × bulan (U11).
  *
  * Wewenang dihitung DI SERVER, satu predikat per tindakan:
  *   · baca   → `canViewLaporanKeuangan`
@@ -90,7 +89,8 @@ export default async function ImporBankPage({ params }: { params: Promise<{ code
         Unggah e-statement PDF BCA per rekening per bulan; bulannya dibaca dari berkas. Berkas ditolak utuh bila total
         mutasi, jumlah mutasi, atau saldo akhir hasil baca tidak sama persis dengan kaki rekening koran. Mengunggah
         berkas yang sama dua kali tidak menggandakan apa pun. Mutasi bertanggal sebelum saldo pembuka rekening disimpan
-        tetapi tidak pernah dibukukan. Impor tidak menulis buku kas — pencocokan dengan buku menyusul.
+        tetapi tidak pernah dibukukan. Impor tidak menulis buku kas; buka sel yang sudah diunggah untuk mencocokkan dan
+        mengklasifikasi baris-barisnya.
       </p>
 
       <section className="card card-pad-lg mt6" aria-labelledby="matriks-impor">

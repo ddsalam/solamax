@@ -7,8 +7,10 @@ import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "
 import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canNonaktifkanAkunKas } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 import { hariBukuTerkunci } from "./hari-buku-queries";
-import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi } from "./pihak-lawan-model";
+import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen } from "./pihak-lawan-model";
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
+import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
+import { tulisBebanFinance } from "./klasifikasi-tulis";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -281,12 +283,16 @@ export async function voidMutasiKas(input: {
     // lewat `batalkanPenebusan`, yang menjaga hari buku & tautan penebusannya.
     // `FOR UPDATE` di sini bertabrakan dengan `FOR UPDATE OF l` milik
     // `simpanPenebusan`, jadi pengikatan yang bersamaan terbaca.
-    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean; dari_penebusan: boolean }>(
+    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean; dari_penebusan: boolean; dicocokkan: boolean }>(
       `SELECT l.saldo_awal, (l.edc_settlement_id IS NOT NULL) AS dari_edc,
               EXISTS (
                 SELECT 1 FROM app.penebusan p
                  WHERE p.cash_ledger_id = l.id AND p.unit_id = l.unit_id AND NOT p.void
-              ) AS dari_penebusan
+              ) AS dari_penebusan,
+              EXISTS (
+                SELECT 1 FROM app.cocok_bank_baris b
+                 WHERE b.cash_ledger_id = l.id AND b.unit_id = l.unit_id AND b.aktif
+              ) AS dicocokkan
          FROM app.cash_ledger l
         WHERE l.id=$1::uuid AND l.unit_id=$2 AND NOT l.void
         FOR UPDATE OF l`,
@@ -303,6 +309,19 @@ export async function voidMutasiKas(input: {
       await client.query("ROLLBACK");
       return { ok: false, error: `Baris ini tidak bisa dibatalkan dari buku. ${PENJELASAN_BARIS_SISTEM[sistem]}` };
     }
+    // U11 — baris di kelompok cocok AKTIF (dicocokkan ATAU dilahirkan
+    // klasifikasi) tak di-void dari buku: Σ kelompoknya akan berhenti Rp 0
+    // sementara baris rekening korannya tetap tampak selesai. Jalannya
+    // "Batalkan cocok" (HoF, R31), yang juga membatalkan beban tertautnya.
+    if (cek.rows[0]?.dicocokkan) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "Baris ini sudah dicocokkan dengan rekening koran — minta Head of Finance membatalkan cocoknya dulu " +
+          "(Impor rekening koran), baru baris bisa dibatalkan.",
+      };
+    }
     const res = await client.query(
       `UPDATE app.cash_ledger
           SET void=true, voided_by_user_id=$1, voided_at=now()
@@ -314,6 +333,17 @@ export async function voidMutasiKas(input: {
           )`,
       [scope.userId, input.id, unit.unit_id],
     );
+    // 0053 — beban pintu Finance yang lahir BERSAMA baris kas ini (pecahan /
+    // klasifikasi) ikut dibatalkan: kas dan laba tak boleh berpisah. Hari
+    // tertutup ⇒ trigger 0026 menolak UPDATE ini dan seluruh pembatalan batal.
+    if (res.rowCount === 1) {
+      await client.query(
+        `UPDATE app.manual_entry
+            SET void=true, voided_by_user_id=$1, voided_at=now(), updated_at=now()
+          WHERE cash_ledger_id=$2::uuid AND unit_id=$3 AND NOT void`,
+        [scope.userId, input.id, unit.unit_id],
+      );
+    }
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     if (res.rowCount === 0) return { ok: false, error: "Baris sudah dibatalkan atau tak ditemukan." };
@@ -477,6 +507,13 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
  *
  * Kode alasan maju: `ADJ-FWD-IMPORT` — mutasi yang dipecah adalah mutasi
  * rekening koran yang dicatat susulan; 0049 tak punya kode khusus pecahan.
+ *
+ * 4. **Baris BEBAN = baris kas + `manual_entry` pintu Finance** (U11, 0053).
+ *    Baris kas "Biaya Operasional"/"Management Fee"/"Pendapatan Lain-Lain"
+ *    hanya realisasi tunai — laba membaca `manual_entry`. Tanpa beban
+ *    pendampingnya, bunga angsuran BPR (AE6) mengurangi kas tanpa mengurangi
+ *    laba: langkah neraca melompat sebesar bunganya. Beban ditulis di hari buku
+ *    yang sama, bertaut `cash_ledger_id`; kategori operasionalnya wajib dipilih.
  */
 export interface PecahanInput {
   code: string;
@@ -494,6 +531,8 @@ export interface PecahanInput {
     pihakLawanId?: string | null;
     /** Kosong ⇒ memakai keterangan mutasi. */
     keterangan?: string;
+    /** Wajib untuk baris beban/pendapatan lain-lain (`sectionBeban`), dilarang selainnya. */
+    operationalCategory?: string | null;
   }[];
 }
 
@@ -513,6 +552,17 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
     if (id === null || !kategoriPihakLawan(b.categoryLabel)) {
       const salah = periksaPihakLawanMutasi({ categoryLabel: b.categoryLabel, pihakLawanId: id, pihak: null });
       if (salah !== null) return { ok: false, error: `Baris ${i + 1}: ${salah}` };
+    }
+    const seksi = sectionBeban(b.categoryLabel);
+    const op = b.operationalCategory ?? null;
+    if (seksi === null && op !== null) {
+      return { ok: false, error: `Baris ${i + 1}: kategori operasional hanya untuk beban atau pendapatan lain-lain — kosongkan pilihannya.` };
+    }
+    if (seksi !== null && (op === null || !(KATEGORI_OPERASIONAL as readonly string[]).includes(op))) {
+      return {
+        ok: false,
+        error: `Baris ${i + 1}: “${b.categoryLabel}” adalah ${seksi === "pengeluaran" ? "beban" : "pendapatan lain-lain"} — pilih kategori operasionalnya supaya laba ikut tercatat.`,
+      };
     }
   }
 
@@ -545,6 +595,7 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
     }
 
     const ids: string[] = [];
+    const bebanIds: string[] = [];
     for (const b of input.baris) {
       const r = await client.query<{ id: string }>(
         `INSERT INTO app.cash_ledger
@@ -571,7 +622,26 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
           maju ? "adjustment" : null,
         ],
       );
-      ids.push(r.rows[0]?.id ?? "?");
+      const id = r.rows[0]?.id ?? "?";
+      ids.push(id);
+      const seksi = sectionBeban(b.categoryLabel);
+      if (seksi !== null) {
+        const be = await tulisBebanFinance(client, {
+          unitId: unit.unit_id,
+          businessDate: hari.hariBuku,
+          section: seksi,
+          keterangan: b.keterangan?.trim() || input.keterangan.trim(),
+          amountSen: rupiahKeSen(b.amount) ?? 0,
+          operationalCategory: b.operationalCategory!,
+          cashLedgerId: id,
+          aktorId: scope.userId,
+        });
+        if (!be.ok) {
+          await client.query("ROLLBACK");
+          return { ok: false, error: be.error };
+        }
+        bebanIds.push(be.id);
+      }
     }
 
     await client.query(
@@ -592,7 +662,9 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
             nominal: b.amount,
             kategori: b.categoryLabel,
             pihakLawanId: b.pihakLawanId ?? null,
+            kategoriOperasional: b.operationalCategory ?? null,
           })),
+          beban: bebanIds,
         }),
       ],
     );

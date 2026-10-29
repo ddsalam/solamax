@@ -628,6 +628,11 @@ model ManualEntry {
   /// app.pihak_lawan. Milik pengawas; NULL untuk baris lama (pengenal
   /// `titipan-bright.ts` tetap memetakan baris Bright lama).
   pihakLawanId        String?           @map("pihak_lawan_id") @db.Uuid
+  /// Baris kas bank yang MEREALISASIKAN beban/pendapatan pintu Finance ini
+  /// (0053, rencana 2026-10-29 U11) — FK komposit (cash_ledger_id, unit_id) ke
+  /// app.cash_ledger; hanya `source_door = 'finance'`. Membatalkan baris kas
+  /// membatalkan beban ini juga, supaya kas dan laba tak berpisah.
+  cashLedgerId        String?           @map("cash_ledger_id") @db.Uuid
 
   @@index([unitId, businessDate, status])
   @@index([unitId, businessDate, section])

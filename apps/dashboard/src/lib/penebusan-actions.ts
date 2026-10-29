@@ -19,7 +19,9 @@ import {
   type KandidatKas,
   type MasukanPenebusan,
 } from "./penebusan-model";
-import { teksKeSen } from "./pihak-lawan-model";
+import { rupiahKeSen, teksKeSen } from "./pihak-lawan-model";
+import { bacaMutasiId } from "./cocok-bank-queries";
+import { audit as auditCocok, buatKelompok, tambahAnggota } from "./cocok-bank-tulis";
 import { getDataScope } from "./scope";
 
 /**
@@ -58,6 +60,13 @@ export interface SimpanPenebusanInput extends MasukanPenebusan {
   code: string;
   /** Baris kas yang dipilih Keuangan saat kandidatnya lebih dari satu. */
   cashLedgerId?: string | null;
+  /**
+   * U11 (R11) — penebusan dibuka dari debit rekening koran. SO, tanggal bayar,
+   * rekening, dan Gross DIBACA ULANG dari baris impor di server (yang dikirim
+   * peramban diabaikan); baris kasnya (diikat atau dibuat) dan baris impor
+   * diikat satu kelompok cocok dalam transaksi yang sama (KTD6).
+   */
+  mutasiBankId?: string | null;
 }
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/penebusan`;
@@ -84,18 +93,65 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
     return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
   }
 
+  const mutasiBankId = input.mutasiBankId ?? null;
+  if (mutasiBankId !== null && !UUID_RE.test(mutasiBankId)) return { ok: false, error: "Baris rekening koran tak dikenali — muat ulang halaman." };
+  // U11 (R11): dibuka dari baris impor ⇒ Gross dari peramban DIABAIKAN — di
+  // sini cukup bentuk komponennya (Gross sementara = Σ komponen); Gross yang
+  // berlaku dibaca dari baris impor di dalam transaksi dan diperiksa ulang.
+  if (mutasiBankId !== null) {
+    const s = [input.net, input.ppn, input.pph, input.pbbkb, input.nota].map((x) => rupiahKeSen(x));
+    if (s.every((x): x is number => x !== null)) input = { ...input, gross: s.reduce((a, b) => a + b, 0) / 100 };
+  }
+
   // Angka dibaca ulang & diperiksa di server dalam SEN BULAT (R10).
-  const cek = periksaPenebusan(input);
+  let cek = periksaPenebusan(input);
   if (!cek.ok) return { ok: false, error: cek.error };
   const pilihan = input.cashLedgerId ?? null;
   if (pilihan !== null && !UUID_RE.test(pilihan)) return { ok: false, error: "Pilihan baris kas tak valid." };
-  const { noSo, noSoTampil, sen } = cek;
-  const grossKredit = senKeTeks(-sen.gross);
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    // 0. U11 (R11): dibuka dari baris impor ⇒ SO, tanggal, rekening, Gross
+    //    dari BARIS IMPOR (dibaca ulang sesudah rekening korannya dikunci),
+    //    bukan dari peramban. Komponen pajak diperiksa ulang terhadap Gross itu.
+    if (mutasiBankId !== null) {
+      const awal = await bacaMutasiId(client, unit.unit_id, [mutasiBankId]);
+      if (awal.length === 1) {
+        await client.query(
+          `SELECT id FROM app.rekening_koran WHERE unit_id = $1 AND id = $2::uuid FOR NO KEY UPDATE`,
+          [unit.unit_id, awal[0]!.rekeningKoranId],
+        );
+      }
+      const [m] = await bacaMutasiId(client, unit.unit_id, [mutasiBankId]);
+      const tolakBaris =
+        !m ? "Baris rekening koran tak ditemukan di unit ini — muat ulang halaman."
+        : m.rkStatus !== "aktif" ? "Rekening koran baris ini sudah ditarik."
+        : m.praCutover ? "Baris ini bertanggal sebelum cut-over — tidak dibukukan (R22)."
+        : m.dicocokkan ? "Baris rekening koran ini sudah diselesaikan — muat ulang halaman."
+        : m.amountSen >= 0 ? "Penebusan hanya untuk DEBIT rekening koran."
+        : null;
+      if (tolakBaris !== null) {
+        await batal(client);
+        return { ok: false, error: tolakBaris };
+      }
+      input = {
+        ...input,
+        noSo: m!.so ?? input.noSo,
+        tanggalBayar: m!.tanggalBank,
+        accountId: m!.accountId,
+        gross: -m!.amountSen / 100,
+      };
+      cek = periksaPenebusan(input);
+      if (!cek.ok) {
+        await batal(client);
+        return { ok: false, error: `${cek.error} (Gross dari rekening koran.)` };
+      }
+    }
+    const { noSo, noSoTampil, sen } = cek;
+    const grossKredit = senKeTeks(-sen.gross);
 
     // 1. Rekening: milik unit ini, rekening BANK, aktif — dikunci sampai COMMIT.
     const akun = await client.query<{ id: string; nama: string; kind: string; active: boolean }>(
@@ -185,7 +241,13 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
       };
     }
 
-    // 4. Baris kas: ikat yang ada, atau buat di hari buku U2 (R28).
+    // 4. Baris kas: ikat yang ada, atau buat di hari buku U2 (R28). Dari baris
+    //    impor (U11) baris kas ini TIDAK ditandai `lahir_dari_cocok_id`:
+    //    penebusan MEMILIKI baris kasnya (KTD9). Membatalkan cocoknya hanya
+    //    melepas tautan — baris kas & penebusan tetap, dan pencocok SO
+    //    menemukannya lagi; membatalkan penebusannya lewat `batalkanPenebusan`.
+    const aktor = { userId: scope.userId, email: scope.email };
+    const cocokId = mutasiBankId === null ? null : await buatKelompok(client, { unitId: unit.unit_id, cara: "manual", aktor });
     let cashLedgerId: string;
     let hariBuku: string;
     const kasDibuat = ikat.aksi === "buat";
@@ -259,6 +321,19 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
     );
     const penebusanId = pnb.rows[0]?.id ?? "?";
 
+    // 6. U11: baris impor ↔ baris kas penebusan, satu kelompok (Σ = 0 — Gross
+    //    dibaca dari baris impor itu sendiri).
+    if (cocokId !== null) {
+      await tambahAnggota(client, { unitId: unit.unit_id, cocokId, mutasiIds: [mutasiBankId!], kasIds: [cashLedgerId] });
+      await auditCocok(client, aktor, "klasifikasi.penebusan", `${unit.code}/${cocokId}`, {
+        mutasi: [mutasiBankId],
+        kas: [cashLedgerId],
+        penebusanId,
+        kasDibuat,
+        hariBuku,
+      });
+    }
+
     await client.query(
       `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
        VALUES ($1,$2,$3,$4,$5::jsonb)`,
@@ -275,11 +350,14 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
           cashLedgerId,
           kasDibuat,
           hariBuku,
+          mutasiBankId,
+          cocokId,
         }),
       ],
     );
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
+    if (cocokId !== null) revalidatePath(`/keuangan/unit/${unit.code}/impor-bank`);
     revalidatePath(`/keuangan/unit/${unit.code}/${hariBuku}/input`);
     return {
       ok: true,
@@ -296,7 +374,10 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
     const kode = (e as { code?: string; constraint?: string } | null)?.code;
     const constraint = (e as { constraint?: string } | null)?.constraint;
     if (kode === "23505" && constraint === "penebusan_so_aktif_uq") {
-      return { ok: false, error: `SO ${noSoTampil} baru saja dicatat bersamaan — muat ulang halaman.` };
+      return { ok: false, error: `SO ${input.noSo.trim()} baru saja dicatat bersamaan — muat ulang halaman.` };
+    }
+    if (kode === "23505" && (constraint === "cocok_bank_baris_mutasi_aktif_uq" || constraint === "cocok_bank_baris_kas_aktif_uq")) {
+      return { ok: false, error: "Baris rekening koran atau baris kasnya baru saja dicocokkan bersamaan — muat ulang halaman." };
     }
     if (kode === "23505" && constraint === "penebusan_cash_ledger_aktif_uq") {
       return { ok: false, error: "Baris kas itu baru saja diikat ke penebusan lain — muat ulang halaman." };

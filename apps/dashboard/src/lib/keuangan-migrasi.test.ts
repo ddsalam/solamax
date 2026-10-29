@@ -97,6 +97,7 @@ const sql0049 = MIG("0049_pihak_lawan");
 const sql0050 = MIG("0050_penebusan");
 const sql0051 = MIG("0051_impor_bank");
 const sql0052 = MIG("0052_cocok_bank");
+const sql0053 = MIG("0053_manual_entry_kas");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -1480,5 +1481,35 @@ describe("0052_cocok_bank — kelompok cocok adalah tautan", () => {
   it("RLS: cabang NULL TIDAK ada, dan itu dinyatakan", () => {
     expect(sql).toMatch(/cabang NULL DIPUTUSKAN SADAR: \*\*TIDAK ADA\*\*/);
     expect(st).not.toMatch(/unit_id IS NULL OR/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0053 — beban pintu Finance bertaut ke baris kasnya (rencana 2026-10-29 U11)
+// ---------------------------------------------------------------------------
+
+describe("0053_manual_entry_kas — beban lahir bersama baris kasnya", () => {
+  const st = pernyataan(sql0053);
+
+  it("kolom + FK KOMPOSIT ke cash_ledger unit yang sama", () => {
+    expect(st).toMatch(/ALTER TABLE "app"\."manual_entry"\s+ADD COLUMN IF NOT EXISTS "cash_ledger_id" UUID/);
+    expect(st).toMatch(
+      /FOREIGN KEY \("cash_ledger_id", "unit_id"\) REFERENCES "app"\."cash_ledger"\("id", "unit_id"\)/,
+    );
+  });
+
+  it("🔴 hanya pintu Finance; NOT VALID (tabel produksi tak dipindai)", () => {
+    expect(st).toMatch(/"cash_ledger_id" IS NULL OR "source_door" = 'finance'\s*\) NOT VALID/);
+  });
+
+  it("🔴 paling banyak satu beban AKTIF per baris kas", () => {
+    expect(pernyataanYangDimulai(sql0053, 'CREATE UNIQUE INDEX IF NOT EXISTS "manual_entry_cash_ledger_aktif_uq"')).toMatch(
+      /\("cash_ledger_id"\) WHERE "cash_ledger_id" IS NOT NULL AND NOT "void"/,
+    );
+  });
+
+  it("tanpa tabel baru, tanpa DELETE, tanpa menyunting baris lama", () => {
+    expect(st).not.toMatch(/CREATE TABLE/);
+    expect(st).not.toMatch(/DELETE|UPDATE "app"/);
   });
 });

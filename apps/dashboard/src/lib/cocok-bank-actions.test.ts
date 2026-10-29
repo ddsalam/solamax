@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Aksi kelompok cocok (rencana 2026-10-29 U10; R19, R20, R31; AE4, AE11;
@@ -29,7 +29,7 @@ const h = vi.hoisted(() => {
   const connect = vi.fn(async () => client);
   const hariBukuTerkunci = vi.fn(async (_c: unknown, unitId: number, tanggal: string) => state.hari(unitId, tanggal));
   const BK = { unit_id: 2, code: "6378301", name: "Bakau" };
-  const sesi = { role: "keuangan", email: "staf@solagroup.co" as string | null, units: [BK] };
+  const sesi = { role: "keuangan", email: "staf@solagroup.co" as string | null, units: [BK] as { unit_id: number; code: string; name: string }[] };
   return { log, state, connect, hariBukuTerkunci, BK, sesi };
 });
 
@@ -280,6 +280,7 @@ describe("batalkanCocok — HoF saja, beralasan, beraudit", () => {
     pihakLawanId: null,
     pasanganUuid: null,
     sisiLawanAda: true,
+    bebanId: null,
     ...over,
   });
 
@@ -353,20 +354,101 @@ describe("batalkanCocok — HoF saja, beralasan, beraudit", () => {
     expect(iU).toBeLessThan(iI);
   });
 
-  it("🔴 Gerbang dua unit: kelompok yang MELAHIRKAN kaki antar unit ⇒ ditolak utuh, arahkan ke Balik pasangan", async () => {
-    lahir = [lahiran({ pasanganUuid: uid(500), categoryLabel: "Hutang Piutang" })];
+  describe("U11 — kelompok yang MELAHIRKAN kaki antar unit ⇒ jalur balik pasangan (kedua unit)", () => {
+    const BL = { unit_id: 3, code: "6478302", name: "Batu Layang" };
+    const PASANGAN = uid(500);
+    const kakiPasangan = [
+      { id: uid(21), unitId: h.BK.unit_id, accountId: AKUN, businessDate: "2026-09-03", amount: "-75000.00", jenis: "kredit", categorySide: "kredit", categoryLabel: "Hutang Piutang", pihakLawanId: uid(601), keterangan: "Pinjaman antar unit ke Batu Layang", void: false, alasanMaju: null },
+      { id: uid(22), unitId: BL.unit_id, accountId: uid(700), businessDate: "2026-09-03", amount: "75000.00", jenis: "debet", categorySide: "debet", categoryLabel: "Hutang Piutang", pihakLawanId: uid(602), keterangan: "Pinjaman antar unit dari Bakau", void: false, alasanMaju: null },
+    ];
+    const dbPasangan = (sql: string, p: unknown[]) => {
+      if (sql.includes("FROM app.cash_ledger") && sql.includes("pasangan_uuid = $1")) return { rows: kakiPasangan };
+      // Kaki di kelompok cocok AKTIF lain? (cek `tulisBalikPasangan`) — tidak.
+      if (sql.includes("WHERE b.aktif AND b.cash_ledger_id = ANY")) return { rows: [] };
+      return dbBatal(sql, p);
+    };
+    let qScopedMock: ReturnType<typeof vi.fn>;
+    beforeEach(async () => {
+      qScopedMock = vi.mocked((await import("./db")).qScoped) as unknown as ReturnType<typeof vi.fn>;
+      qScopedMock.mockReset();
+      qScopedMock.mockResolvedValue([{ lawanUnitId: BL.unit_id }]);
+      lahir = [lahiran({ pasanganUuid: PASANGAN, categoryLabel: "Hutang Piutang", pihakLawanId: uid(601) })];
+      h.state.jawab = dbPasangan;
+    });
+    afterEach(() => {
+      qScopedMock.mockReset();
+      qScopedMock.mockResolvedValue([]);
+      h.sesi.units = [h.BK];
+    });
+
+    it("🔴 HoF TANPA unit lawan ⇒ ditolak utuh SEBELUM koneksi, tak ada yang ditulis", async () => {
+      const r = await batalkanCocok(masukan);
+      expect(r).toEqual({ ok: false, error: expect.stringMatching(/KEDUA unit/) });
+      expect(h.connect).not.toHaveBeenCalled();
+    });
+
+    it("🔴 HoF memegang kedua unit ⇒ app.unit_ids kedua unit; kelompok nonaktif LALU kedua kaki di-void lewat balik pasangan", async () => {
+      h.sesi.units = [h.BK, BL];
+      const r = await batalkanCocok(masukan);
+      expect(r.ok).toBe(true);
+      expect(h.log.find((l) => l.sql.includes("set_config('app.unit_ids'"))!.params).toEqual([`${h.BK.unit_id},${BL.unit_id}`]);
+      const v = upd("app.cash_ledger");
+      expect(v.map((x) => x.params[1])).toEqual([uid(21), uid(22)]);
+      const iU = h.log.findIndex((l) => /UPDATE app\.cocok_bank\b/.test(l.sql));
+      const iV = h.log.findIndex((l) => /UPDATE app\.cash_ledger/.test(l.sql));
+      expect(iU).toBeGreaterThanOrEqual(0);
+      expect(iU).toBeLessThan(iV);
+      expect(audit().map((a) => a.params[2])).toEqual(["antar_unit.balik", "cocok_bank.batal"]);
+      expect(committed()).toBe(true);
+    });
+
+    it("hari kaki lawan tertutup ⇒ kaki lawan dibalik MAJU (ADJ-FWD-REVERSAL), kaki unit ini di-void", async () => {
+      h.sesi.units = [h.BK, BL];
+      h.state.hari = (u, t) =>
+        u === BL.unit_id
+          ? { status: "dibukukan", hariBuku: "2026-09-08", terdorongMaju: true, perluKodeAlasan: true }
+          : { status: "dibukukan", hariBuku: t, terdorongMaju: false, perluKodeAlasan: false };
+      expect((await batalkanCocok(masukan)).ok).toBe(true);
+      expect(upd("app.cash_ledger").map((x) => x.params[1])).toEqual([uid(21)]);
+      const [b] = ins("app.cash_ledger");
+      expect(b!.params[0]).toBe(BL.unit_id);
+      expect(b!.params.slice(11, 13)).toEqual(["2026-09-03", "ADJ-FWD-REVERSAL"]);
+    });
+  });
+
+  it("kategori lahiran tanpa sisi lawan, hari TERTUTUP ⇒ ditolak utuh (pembalik mustahil), tak ada yang dibatalkan", async () => {
+    lahir = [lahiran({ sisiLawanAda: false, categoryLabel: "Transfer Pembayaran Piutang Pelanggan", amount: "75000.00" })];
+    h.state.hari = () => ({ status: "dibukukan", hariBuku: "2026-09-07", terdorongMaju: true, perluKodeAlasan: true });
     const r = await batalkanCocok(masukan);
-    expect(r).toEqual({ ok: false, error: expect.stringMatching(/Balik pasangan/) });
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/tak punya sisi lawan/) });
     expect(upd("app.cocok_bank")).toHaveLength(0);
-    expect(h.log.some((l) => /(INSERT INTO|UPDATE) app\.cash_ledger/.test(l.sql))).toBe(false);
     expect(committed()).toBe(false);
   });
 
-  it("kategori lahiran tanpa sisi lawan ⇒ ditolak utuh (pembalik mustahil), tak ada yang dibatalkan", async () => {
-    lahir = [lahiran({ sisiLawanAda: false, categoryLabel: "Biaya Operasional" })];
+  it("U11: kategori satu sisi, hari TERBUKA ⇒ cukup di-void (tak butuh pembalik)", async () => {
+    lahir = [lahiran({ sisiLawanAda: false, categoryLabel: "Transfer Pembayaran Piutang Pelanggan", amount: "75000.00" })];
+    expect((await batalkanCocok(masukan)).ok).toBe(true);
+    expect(upd("app.cash_ledger").map((x) => x.params[1])).toEqual([uid(21)]);
+  });
+
+  it("🔴 U11: beban pintu Finance tertaut, hari terbuka ⇒ baris kas DAN beban di-void bersama", async () => {
+    lahir = [lahiran({ sisiLawanAda: false, categoryLabel: "Biaya Operasional", bebanId: uid(801) })];
+    expect((await batalkanCocok(masukan)).ok).toBe(true);
+    expect(upd("app.cash_ledger").map((x) => x.params[1])).toEqual([uid(21)]);
+    const me = upd("app.manual_entry");
+    expect(me).toHaveLength(1);
+    expect(me[0]!.sql).toMatch(/SET void = true, voided_by_user_id = \$1/);
+    expect(me[0]!.params).toEqual([7, uid(801), h.BK.unit_id]);
+    expect(JSON.parse(String(audit()[0]!.params[4]))).toMatchObject({ bebanDibatalkan: [uid(801)] });
+  });
+
+  it("🔴 U11: beban pintu Finance tertaut, hari TERTUTUP ⇒ ditolak utuh (kas & laba tak boleh berpisah)", async () => {
+    lahir = [lahiran({ sisiLawanAda: true, categoryLabel: "Hutang Piutang", bebanId: uid(801) })];
     h.state.hari = () => ({ status: "dibukukan", hariBuku: "2026-09-07", terdorongMaju: true, perluKodeAlasan: true });
-    expect((await batalkanCocok(masukan)).ok).toBe(false);
+    const r = await batalkanCocok(masukan);
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/masuk laba/) });
     expect(upd("app.cocok_bank")).toHaveLength(0);
+    expect(upd("app.manual_entry")).toHaveLength(0);
   });
 
   it("sudah dibatalkan / tak ditemukan / alasan & catatan rusak ⇒ ditolak", async () => {

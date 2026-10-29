@@ -137,8 +137,8 @@ describe("catat pasangan antar unit (R3, R30)", () => {
     expect(bk![10]).toMatch(/^[0-9a-f-]{36}$/);
     expect(bk![10]).toBe(bl![10]);
     // Kedua hari terbuka ⇒ tak ada tanggal asal / kode alasan.
-    expect(bk!.slice(11)).toEqual([null, null, null]);
-    expect(bl!.slice(11)).toEqual([null, null, null]);
+    expect(bk!.slice(11)).toEqual([null, null, null, null]);
+    expect(bl!.slice(11)).toEqual([null, null, null, null]);
     // piutang BK = −(−X) = X; hutang BL = −(+X) = −X ⇒ sama besar.
     expect(-Number(bk![7]) + -Number(bl![7])).toBe(0);
     expect(String(bk![3])).toMatch(/ke Batu Layang/);
@@ -166,9 +166,9 @@ describe("catat pasangan antar unit (R3, R30)", () => {
     expect(r.ok).toBe(true);
     const [bk, bl] = insertKas().map((i) => i.params);
     expect(bk![2]).toBe("2026-10-04");
-    expect(bk!.slice(11)).toEqual([null, null, null]);
+    expect(bk!.slice(11)).toEqual([null, null, null, null]);
     expect(bl![2]).toBe("2026-10-06");
-    expect(bl!.slice(11)).toEqual(["2026-10-04", "ADJ-FWD-INTERUNIT", "adjustment"]);
+    expect(bl!.slice(11)).toEqual(["2026-10-04", "ADJ-FWD-INTERUNIT", "adjustment", null]);
   });
 
   it("pra-cut-over di salah satu kaki ⇒ ROLLBACK, tak satu kaki pun", async () => {
@@ -288,7 +288,7 @@ describe("balik pasangan antar unit — HoF (R31)", () => {
     expect(ins!.params.slice(4, 8)).toEqual(["kredit", "kredit", "Hutang Piutang", "-500000000.00"]);
     expect(ins!.params[9]).toBe(PL_BL_BK);
     expect(ins!.params[10]).toBe(PASANGAN);
-    expect(ins!.params.slice(11)).toEqual(["2026-10-04", "ADJ-FWD-REVERSAL", "adjustment"]);
+    expect(ins!.params.slice(11)).toEqual(["2026-10-04", "ADJ-FWD-REVERSAL", "adjustment", null]);
   });
 
   it("🔴 U10: kaki di kelompok cocok AKTIF ⇒ 'batalkan cocok dulu', tak ada void/pembalik, tanpa COMMIT", async () => {

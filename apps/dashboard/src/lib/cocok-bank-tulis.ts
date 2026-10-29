@@ -30,10 +30,14 @@ export async function audit(c: PoolClient, aktor: Aktor, action: string, target:
   );
 }
 
-/** Satu kelompok + anggotanya. Partial unique 0052 menolak anggota yang sudah di kelompok aktif. */
-export async function tulisKelompok(
+/**
+ * Kepala kelompok saja — dipakai klasifikasi (U11), yang harus punya id
+ * kelompok SEBELUM menulis baris kas lahirannya (`lahir_dari_cocok_id` FK ke
+ * kelompok, 0052), lalu menambahkan anggotanya lewat {@link tambahAnggota}.
+ */
+export async function buatKelompok(
   c: PoolClient,
-  m: { unitId: ScopedUnitId; cara: "otomatis" | "manual"; aktor: Aktor; mutasiIds: readonly string[]; kasIds: readonly string[] },
+  m: { unitId: ScopedUnitId; cara: "otomatis" | "manual"; aktor: Aktor },
 ): Promise<string> {
   const g = await c.query<{ id: string }>(
     `INSERT INTO app.cocok_bank (unit_id, cara, dibuat_by_user_id)
@@ -43,17 +47,38 @@ export async function tulisKelompok(
   );
   const id = g.rows[0]?.id;
   if (!id) throw new Error("Kelompok cocok tidak tersimpan.");
+  return id;
+}
+
+/**
+ * Anggota ke kelompok AKTIF (FK cermin 0052 menolak kelompok yang sudah
+ * dibatalkan; partial unique menolak anggota yang sudah di kelompok aktif lain).
+ */
+export async function tambahAnggota(
+  c: PoolClient,
+  m: { unitId: ScopedUnitId; cocokId: string; mutasiIds: readonly string[]; kasIds: readonly string[] },
+): Promise<void> {
+  if (m.mutasiIds.length + m.kasIds.length === 0) return;
   await c.query(
     `INSERT INTO app.cocok_bank_baris (unit_id, cocok_id, mutasi_bank_id, cash_ledger_id)
      SELECT $1, $2::uuid, t.mutasi, t.kas
        FROM unnest($3::uuid[], $4::uuid[]) AS t(mutasi, kas)`,
     [
       m.unitId,
-      id,
+      m.cocokId,
       [...m.mutasiIds, ...m.kasIds.map(() => null)],
       [...m.mutasiIds.map(() => null), ...m.kasIds],
     ],
   );
+}
+
+/** Satu kelompok + anggotanya. Partial unique 0052 menolak anggota yang sudah di kelompok aktif. */
+export async function tulisKelompok(
+  c: PoolClient,
+  m: { unitId: ScopedUnitId; cara: "otomatis" | "manual"; aktor: Aktor; mutasiIds: readonly string[]; kasIds: readonly string[] },
+): Promise<string> {
+  const id = await buatKelompok(c, m);
+  await tambahAnggota(c, { unitId: m.unitId, cocokId: id, mutasiIds: m.mutasiIds, kasIds: m.kasIds });
   return id;
 }
 

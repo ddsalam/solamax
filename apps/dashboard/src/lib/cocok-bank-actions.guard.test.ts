@@ -89,6 +89,22 @@ describe("batalkanCocok — HoF, kelompok dulu baru buku", () => {
     expect(urutan(m, "U12 MENAMBAHKAN DI SINI", "UPDATE app.cocok_bank")).toBe("ok");
   });
 
+  it("🔴 U11 gerbang dua unit: unit lawan kaki pasangan lahiran → requireUnit SEBELUM koneksi; transaksi memuat kedua unit; balik lewat tulisBalikPasangan sesudah kelompok nonaktif", () => {
+    expect(urutan(fn, "l.pasangan_uuid IS NOT NULL", "pool.connect()")).toBe("ok");
+    expect(urutan(fn, "lawan = scope.requireUnit(kode)", "pool.connect()")).toBe("ok");
+    expect(fn).toMatch(/if \(kode === null\) \{\s*return \{\s*ok: false/);
+    expect(fn).toMatch(/set_config\('app\.unit_ids', \$1, true\)", \[unitIds\]/);
+    expect(urutan(fn, "UPDATE app.cocok_bank", "tulisBalikPasangan(client")).toBe("ok");
+    // Void sepihak kaki pasangan tidak ada: baris ber-pasangan dilewati rencana biasa.
+    expect(fn).toMatch(/if \(k\.pasanganUuid !== null\) continue;/);
+  });
+
+  it("🔴 U11 beban tertaut: hari terbuka ⇒ ikut di-void; hari tertutup ⇒ ditolak SEBELUM kelompok dinonaktifkan", () => {
+    expect(urutan(fn, "!buka && k.bebanId !== null", "UPDATE app.cocok_bank")).toBe("ok");
+    expect(urutan(fn, "!buka && !k.sisiLawanAda", "UPDATE app.cocok_bank")).toBe("ok");
+    expect(urutan(fn, "UPDATE app.cocok_bank", "UPDATE app.manual_entry")).toBe("ok");
+  });
+
   it("hanya baris LAHIRAN kelompok ini yang di-void / dibalik", () => {
     expect(fn).toMatch(/l\.lahir_dari_cocok_id = \$2::uuid AND NOT l\.void/);
     expect(fn).toMatch(/ADJ-FWD-REVERSAL|KODE_PEMBALIK/);
