@@ -25,6 +25,7 @@ import {
   parseAmount,
   sanitizeAmount,
   validateEntry,
+  validateTitipan,
 } from "./ManualEntryForm";
 
 /**
@@ -254,5 +255,47 @@ describe("no-print — kontrol interaktif tak ikut cetak", () => {
     expect(html).toContain("manual-badge");
     expect(html).toContain("no-print");
     expect(html).toContain("Manual");
+  });
+});
+
+describe("U5 — pemilik titipan (Pendapatan Lain)", () => {
+  const BRIGHT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const KEBAB = "kkkkkkkk-kkkk-4kkk-8kkk-kkkkkkkkkkkk";
+  const titipan = (over: Partial<NonNullable<ManualSectionViewProps["titipan"]>> = {}) => ({
+    checked: true,
+    onChange: noop,
+    pemilik: [
+      { id: KEBAB, nama: "Kebab Baba Rafi" },
+      { id: BRIGHT, nama: "Outlet Bright" },
+    ],
+    pemilikId: BRIGHT,
+    onPemilikChange: noop,
+    ...over,
+  });
+  const form = (t: NonNullable<ManualSectionViewProps["titipan"]>) =>
+    render({ title: "5 · Pendapatan Lain", idBase: "manual-pendapatan_lain", adding: true, titipan: t });
+
+  it("titipan dicentang ⇒ pilihan pemilik WAJIB berisi pemilik aktif, pilihan terkini terpilih", () => {
+    const html = form(titipan());
+    expect(html).toMatch(/<select[^>]*id="manual-pendapatan_lain-pemilik"[^>]*required/);
+    expect(html).toContain("Kebab Baba Rafi");
+    expect(html).toMatch(new RegExp(`<option value="${BRIGHT}" selected="">Outlet Bright</option>`));
+    expect(html).toContain('<option value="">— pilih pemilik —</option>');
+  });
+
+  it("titipan tidak dicentang ⇒ pilihan pemilik tak dirender", () => {
+    expect(form(titipan({ checked: false }))).not.toContain("-pemilik");
+  });
+
+  it("daftar pemilik kosong ⇒ 'Pemilik tidak ada? Hubungi Keuangan'", () => {
+    const html = form(titipan({ pemilik: [], pemilikId: "" }));
+    expect(html).toContain("Pemilik tidak ada? Hubungi Keuangan");
+    expect(html).not.toContain("<select");
+  });
+
+  it("validateTitipan: titipan tanpa pemilik ditolak di layar", () => {
+    expect(validateTitipan(true, "")).toMatch(/pemilik titipan/i);
+    expect(validateTitipan(true, BRIGHT)).toBeNull();
+    expect(validateTitipan(false, "")).toBeNull();
   });
 });

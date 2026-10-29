@@ -5,7 +5,7 @@ import { pool } from "./db";
 import { AKUN_KOSONG, periksaReklas } from "./keuangan-reklas";
 import { canReklasifikasi } from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
-import { isTitipanBright } from "./titipan-bright";
+import { isTitipan } from "./titipan-bright";
 
 /**
  * Server action `Reclassify` (§2.3, §10.29) — memindahkan AKUN AKUNTANSI satu
@@ -91,7 +91,7 @@ export async function reklasifikasiBiaya(input: {
       section: baris.section,
       void: baris.void,
       status: baris.status,
-      titipanBright: isTitipanBright({
+      titipanBright: isTitipan({
         section: baris.section,
         operationalCategory: baris.operationalCategory,
         keterangan: baris.keterangan,

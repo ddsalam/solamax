@@ -1,7 +1,7 @@
 import { qScoped } from "./db";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
-import { sqlTitipanBright } from "./titipan-bright";
+import { sqlTitipan } from "./titipan-bright";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
 import type { AkunKasRow } from "./keuangan-akun-model";
@@ -162,6 +162,8 @@ export interface MutasiKasRow extends MutasiKas {
   sourceManualEntryId: string | null;
   /** Kaki jurnal "Setujui pencairan" EDC — ditulis mesin, tiga kaki sekaligus. */
   dariPencairanEdc: boolean;
+  /** 0049 — pihak lawan baris ini (wajib untuk "Penyerahan titipan"/"Hutang Piutang"). */
+  pihakLawanId?: string | null;
 }
 
 /**
@@ -191,7 +193,8 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             saldo_awal_sementara                  AS "saldoAwalSementara",
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId",
-            (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc"
+            (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc",
+            pihak_lawan_id::text                  AS "pihakLawanId"
        FROM app.cash_ledger
       -- Saldo pembuka SELALU ikut, apa pun tanggalnya (§10.26): cut-over bisa
       -- bertanggal sesudah hari yang dilaporkan, dan tanpa baris itu hari-hari
@@ -382,7 +385,7 @@ export async function getBiayaHarian(
             status::text          AS status,
             source_door           AS "sourceDoor",
             void,
-            ${sqlTitipanBright("m")} AS "titipanBright"
+            ${sqlTitipan("m")} AS "titipanBright"
        FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pendapatan_lain','pengeluaran')

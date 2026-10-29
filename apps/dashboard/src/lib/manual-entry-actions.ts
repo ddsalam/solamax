@@ -1,6 +1,6 @@
 "use server";
 
-import { KATEGORI_TITIPAN_BRIGHT, POLA_KETERANGAN_TITIPAN } from "./titipan-bright";
+import { KATEGORI_TITIPAN, POLA_KETERANGAN_TITIPAN } from "./titipan-bright";
 import { revalidatePath } from "next/cache";
 import { qScoped } from "./db";
 import type { ManualSection } from "./queries";
@@ -15,6 +15,7 @@ import { getDataScope } from "./scope";
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -24,8 +25,13 @@ export async function addManualEntry(input: {
   section: ManualSection;
   keterangan: string;
   amount: number;
-  /** §10.27 — hanya untuk `pendapatan_lain`: titipan outlet Bright, bukan pendapatan SPBU. */
-  titipanBright?: boolean;
+  /** §10.27 — hanya untuk `pendapatan_lain`: titipan outlet, bukan pendapatan SPBU. */
+  titipan?: boolean;
+  /**
+   * U5 (KTD11) — pemilik titipan (pihak lawan berjenis `titipan`, aktif, unit
+   * yang SAMA). WAJIB bila `titipan`; diabaikan selain itu.
+   */
+  pemilikTitipanId?: string | null;
 }): Promise<ActionResult> {
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code); // di luar scope → notFound(), tak menulis
@@ -51,23 +57,49 @@ export async function addManualEntry(input: {
   // "bukan titipan" pada keterangan yang BERBUNYI titipan → 'Lain-Lain', supaya
   // pengenal baris lama (POLA_KETERANGAN_TITIPAN) tak menimpa pilihannya.
   const kategori =
-    input.section !== "pendapatan_lain" || input.titipanBright === undefined
+    input.section !== "pendapatan_lain" || input.titipan === undefined
       ? null
-      : input.titipanBright
-        ? KATEGORI_TITIPAN_BRIGHT
+      : input.titipan
+        ? KATEGORI_TITIPAN
         : POLA_KETERANGAN_TITIPAN.test(ket)
           ? "Lain-Lain"
           : null;
+
+  // U5 — pemilik titipan dipilih pengawas (kolom miliknya, §2.1) dan DIBACA
+  // ULANG di server: aktif, unit yang SAMA, berjenis titipan. FK komposit 0049
+  // hanya menjamin unit yang sama; jenis & aktif tak dijaga DB.
+  let pemilik: string | null = null;
+  if (kategori === KATEGORI_TITIPAN) {
+    const id = input.pemilikTitipanId?.trim() ?? "";
+    if (id === "") {
+      return { ok: false, error: "Pilih pemilik titipan. Pemilik tidak ada? Hubungi Keuangan." };
+    }
+    if (!UUID_RE.test(id)) return { ok: false, error: "Pemilik titipan tak valid — muat ulang halaman lalu pilih lagi." };
+    const [p] = await qScoped<{ nama: string; jenis: string; aktif: boolean }>(
+      unit.unit_id,
+      `SELECT nama, jenis, aktif FROM app.pihak_lawan WHERE id = $1::uuid AND unit_id = $2`,
+      [id, unit.unit_id],
+    );
+    if (!p) return { ok: false, error: "Pemilik titipan tak ditemukan di unit ini — muat ulang halaman lalu pilih lagi." };
+    if (p.jenis !== "titipan") {
+      return { ok: false, error: `“${p.nama}” bukan pemilik titipan — pilih pemilik titipannya.` };
+    }
+    if (!p.aktif) {
+      return { ok: false, error: `Pemilik titipan “${p.nama}” sudah nonaktif — pilih pemilik yang aktif atau hubungi Keuangan.` };
+    }
+    pemilik = id;
+  }
+
   await qScoped(
     unit.unit_id, // RLS (0016): set app.unit_ids → WITH CHECK pada INSERT ke app.manual_entry
     `INSERT INTO app.manual_entry
        (unit_id, business_date, section, urut, keterangan, amount, created_by_user_id,
-        operational_category)
+        operational_category, pihak_lawan_id)
      VALUES ($1, $2::date, $3::app.manual_entry_section,
        (SELECT COALESCE(MAX(urut),-1)+1 FROM app.manual_entry
          WHERE unit_id=$1 AND business_date=$2::date AND section=$3::app.manual_entry_section),
-       $4, $5, $6, $7)`,
-    [unit.unit_id, input.date, input.section, ket, input.amount, scope.userId, kategori],
+       $4, $5, $6, $7, $8::uuid)`,
+    [unit.unit_id, input.date, input.section, ket, input.amount, scope.userId, kategori, pemilik],
   );
   revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
   return { ok: true };

@@ -7,7 +7,7 @@ import {
   getProdukUnit,
 } from "./keuangan-input-queries";
 import { barisHargaBeli, type BarisHargaBeli } from "./keuangan-harga-model";
-import { sqlTitipanBright } from "./titipan-bright";
+import { sqlTitipan } from "./titipan-bright";
 
 /**
  * Bahan mentah Layar "Pemantauan pemakaian keuangan" — SELURUHNYA BACA.
@@ -521,7 +521,7 @@ const KUERI_KEJADIAN = `
        AND m.keterangan ~* '(setor|prive|pindah ?buku|pinjam|kasbon|transfer)'
        -- §10.27 — titipan outlet Bright sudah DIKENALI (liabilitas, bukan laba):
        -- bukan lagi pos janggal. Tanpa ini 105 baris produksi 12–25 Sep tetap menjerit.
-       AND NOT ${sqlTitipanBright("m")}
+       AND NOT ${sqlTitipan("m")}
        -- §10.29 — sudah ditinjau Finance lewat reklasifikasi: bukan lagi pos
        -- yang menunggu, melainkan kejadian 'reklasifikasi_biaya' di bawah.
        AND NOT EXISTS (
