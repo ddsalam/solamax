@@ -138,4 +138,12 @@ describe("inti tulis (antar-unit-tulis.ts)", () => {
   it("🔴 VOID-only: tak ada DELETE", () => {
     for (const k of [AKSI, TULIS]) expect(k).not.toMatch(/DELETE\s+FROM/i);
   });
+
+  it("🔴 U10: balik ditolak bila kaki di kelompok cocok AKTIF — sesudah kunci kaki, SEBELUM void/pembalik", () => {
+    const balik = TULIS.slice(TULIS.indexOf("export async function tulisBalikPasangan"));
+    expect(urutan(balik, "FOR UPDATE", "FROM app.cocok_bank_baris")).toBe("ok");
+    expect(urutan(balik, "FROM app.cocok_bank_baris", "UPDATE app.cash_ledger")).toBe("ok");
+    expect(urutan(balik, "FROM app.cocok_bank_baris", "(INSERT_KAS, [")).toBe("ok");
+    expect(balik).toMatch(/if \(cocok\.rows\.length > 0\) \{[\s\S]{0,400}?return \{\s*ok: false/);
+  });
 });

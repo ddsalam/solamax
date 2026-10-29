@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  COCOK_BANK_SCHEMA_READY_SQL,
   IMPOR_BANK_SCHEMA_READY_SQL,
   PENEBUSAN_SCHEMA_READY_SQL,
   PIHAK_LAWAN_SCHEMA_READY_SQL,
@@ -113,6 +114,14 @@ beforeAll(async () => {
     },
     { notReady: "impor_bank_schema_not_ready: backend migration 0051" },
   );
+  // U10 — kueri cocok (dan hitungan "terbuka" matriks impor) membaca 0052.
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, COCOK_BANK_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "cocok_bank_schema_not_ready: backend migration 0052" },
+  );
 }, 21 * 60 * 1000);
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
@@ -184,6 +193,49 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
     "getSaldoBukuAwal",
     async () =>
       (await import("./impor-bank-queries")).getSaldoBukuAwal(U, "00000000-0000-4000-8000-000000000000", "2026-07-01"),
+  ],
+  // U10 — kelompok cocok (0052): usulan per baris (seluruh SQL mesin cocok) + "Lunas di bank".
+  [
+    "getUsulanRekeningKoran",
+    async () => (await import("./cocok-bank-queries")).getUsulanRekeningKoran(U, "00000000-0000-4000-8000-000000000000"),
+  ],
+  [
+    // Potret buku dengan SATU baris impor rekaan — menjalankan SQL kandidat kas,
+    // penebusan ber-SO, dan kas penebusan (yang dilewati bila baris impor kosong).
+    "bacaKonteksCocok",
+    async () => {
+      const m = await import("./cocok-bank-queries");
+      return m.bacaKonteksCocok(m.kueriScoped(U), U, [
+        {
+          id: "00000000-0000-4000-8000-000000000000",
+          accountId: "00000000-0000-4000-8000-000000000000",
+          tanggalBank: D,
+          keterangan: "uji K1",
+          amountSen: -100,
+          so: "SO-K1",
+          dokRef: null,
+          praCutover: false,
+          rkStatus: "aktif",
+          rekeningKoranId: "00000000-0000-4000-8000-000000000000",
+          dicocokkan: false,
+        },
+      ]);
+    },
+  ],
+  [
+    "bacaKasId (FOR UPDATE)",
+    async () => {
+      const m = await import("./cocok-bank-queries");
+      return m.bacaKasId(m.kueriScoped(U), U, ["00000000-0000-4000-8000-000000000000"], true);
+    },
+  ],
+  [
+    "ANGGOTA_COCOK_AKTIF_SQL",
+    async () => (await import("./db")).qScoped(U, (await import("./keuangan-integritas")).ANGGOTA_COCOK_AKTIF_SQL, []),
+  ],
+  [
+    "getKasDicocokkan",
+    async () => (await import("./cocok-bank-queries")).getKasDicocokkan(U, ["00000000-0000-4000-8000-000000000000"]),
   ],
 ];
 

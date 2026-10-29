@@ -229,9 +229,24 @@ export async function tulisBalikPasangan(
   const rencana = rencanaBalik(rows, [m.unit.unitId, m.lawan.unitId]);
   if (!rencana.ok) return rencana;
 
-  // Penolakan "kaki ada di kelompok cocok aktif ⇒ batalkan cocok dulu" (U4
-  // butir 4) belum bisa ditulis: tabel kelompok cocok lahir di U10, dan U10
-  // yang menambahkan pemeriksaan itu DI SINI, sebelum void/pembalik di bawah.
+  // U10 (U4 butir 4) — kaki di kelompok cocok AKTIF ⇒ "batalkan cocok dulu".
+  // Kedua kaki sudah dikunci FOR UPDATE di atas; pencocok mengunci baris kas
+  // sebelum menautkannya, jadi periksa ini tidak bisa disalip.
+  const cocok = await c.query<{ unit: number }>(
+    `SELECT b.unit_id AS unit
+       FROM app.cocok_bank_baris b
+      WHERE b.aktif AND b.cash_ledger_id = ANY($1::uuid[]) AND b.unit_id = ANY($2::int[])`,
+    [rencana.kaki.map((k) => k.id), [m.unit.unitId, m.lawan.unitId]],
+  );
+  if (cocok.rows.length > 0) {
+    const di = [...new Set(cocok.rows.map((r) => (Number(r.unit) === Number(m.unit.unitId) ? m.unit.name : m.lawan.name)))];
+    return {
+      ok: false,
+      error:
+        `Kaki pasangan ini sudah dicocokkan dengan rekening koran di ${di.join(" & ")} — batalkan cocok dulu, ` +
+        "baru pasangan bisa dibalik. Tak ada kaki yang dibalik.",
+    };
+  }
 
   const kaki: { unit: string; id: string; tindakan: "void" | "pembalik"; hariBuku: string }[] = [];
   for (const k of rencana.kaki) {

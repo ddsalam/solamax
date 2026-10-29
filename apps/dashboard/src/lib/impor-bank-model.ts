@@ -119,6 +119,10 @@ export type SebabTolak =
   /** Galat tak terduga saat menulis — transaksi dibatalkan, tak ada yang tersimpan. */
   | "galat";
 
+export type HasilCocokSesudahUnggah =
+  | { status: "selesai"; nOtomatis: number; nBanyak: number; nTanpa: number }
+  | { status: "gagal"; pesan: string };
+
 export type HasilUnggah =
   | {
       status: "diterima";
@@ -130,6 +134,11 @@ export type HasilUnggah =
       nCr: number;
       nDb: number;
       saldoAwal: PerbandinganSaldoAwal;
+      /**
+       * U10 — cocok otomatis yang dijalankan SESUDAH impor COMMIT. Gagalnya tak
+       * membatalkan impor (baris tetap tersimpan, terbuka); pesannya dilaporkan.
+       */
+      cocok: HasilCocokSesudahUnggah;
     }
   | { status: "sudah-ada"; rekeningKoranId: string; periode: string; nBaris: number; nPraCutover: number }
   | { status: "ditolak-kaki"; pesan: string; ketidakcocokan: Ketidakcocokan[] }
@@ -144,14 +153,16 @@ export interface RingkasRekeningKoran {
   status: "aktif" | "ditarik";
   nBaris: number;
   nPraCutover: number;
+  /** Baris (bukan pra-cut-over) yang berada di kelompok cocok AKTIF (U10). */
+  nCocok: number;
   uploadedAt: string;
 }
 
 export type SelMatriks =
   | { status: "belum" }
   /**
-   * `nTerbuka` = baris yang belum di kelompok cocok. Tabel cocok lahir di U10;
-   * hingga itu = N − pra-cut-over (pra-cut-over tak pernah dicocokkan, R22).
+   * `nTerbuka` = baris yang belum di kelompok cocok AKTIF dan bukan pra-cut-over
+   * (pra-cut-over tak pernah dicocokkan, R22): N − pra-cut-over − tercocok.
    */
   | { status: "diunggah"; id: string; nBaris: number; nTerbuka: number }
   | { status: "ditarik"; id: string };
@@ -159,7 +170,7 @@ export type SelMatriks =
 /** Rekening koran satu (rekening, bulan) — paling banyak satu yang aktif (0051). */
 export function selMatriks(rows: readonly RingkasRekeningKoran[]): SelMatriks {
   const aktif = rows.find((r) => r.status === "aktif");
-  if (aktif) return { status: "diunggah", id: aktif.id, nBaris: aktif.nBaris, nTerbuka: aktif.nBaris - aktif.nPraCutover };
+  if (aktif) return { status: "diunggah", id: aktif.id, nBaris: aktif.nBaris, nTerbuka: aktif.nBaris - aktif.nPraCutover - aktif.nCocok };
   const terakhir = [...rows].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))[0];
   return terakhir ? { status: "ditarik", id: terakhir.id } : { status: "belum" };
 }

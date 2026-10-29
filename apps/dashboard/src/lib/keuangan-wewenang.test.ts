@@ -19,6 +19,8 @@ import {
   canCatatAntarUnit,
   canImporRekeningKoran,
   canTarikRekeningKoran,
+  canBatalkanCocokBank,
+  canCocokkanBank,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -484,6 +486,27 @@ describe("impor rekening koran (U9; R26, R31) — satu predikat per keputusan", 
     expect(canTarikRekeningKoran(c("super_admin"), HOF5)).toBe(true);
     for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
       expect(canTarikRekeningKoran(c(r), HOF5), r).toBe(false);
+    }
+  });
+});
+
+describe("kelompok cocok (U10; R26, R31) — satu predikat per keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canCocokkanBank: keuangan & super_admin; HoF TIDAK (§10.12)", () => {
+    expect(semua.filter((r) => canCocokkanBank(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canCocokkanBank(hof, HOF5)).toBe(false);
+    expect(canCocokkanBank(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("🔴 canBatalkanCocokBank: HoF & super_admin; staf Keuangan TIDAK (R31)", () => {
+    expect(canBatalkanCocokBank(hof, HOF5)).toBe(true);
+    expect(canBatalkanCocokBank(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canBatalkanCocokBank(c(r), HOF5), r).toBe(false);
     }
   });
 });

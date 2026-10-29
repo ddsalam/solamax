@@ -349,9 +349,24 @@ export async function batalkanPenebusan(input: { code: string; id: string }): Pr
       return { ok: false, error: "Penebusan sudah dibatalkan atau tak ditemukan — muat ulang halaman." };
     }
 
-    // ⛔ U10 MENAMBAHKAN DI SINI: tolak bila baris kas `p.cashLedgerId` ada di
-    //    kelompok cocok AKTIF ("batalkan cocok dulu" — milik HoF, R31). Tabel
-    //    kelompok cocok belum ada di U7, jadi pemeriksaannya belum bisa ditulis.
+    // ⛔ U10 — tolak bila baris kas `p.cashLedgerId` ada di kelompok cocok
+    //    AKTIF ("batalkan cocok dulu" — milik HoF, R31). Baris kasnya sudah
+    //    dikunci FOR UPDATE di atas; pencocok mengunci baris kas yang sama
+    //    sebelum menautkannya, jadi periksa ini tidak bisa disalip.
+    const cocok = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM app.cocok_bank_baris
+        WHERE cash_ledger_id = $1::uuid AND unit_id = $2 AND aktif`,
+      [p.cashLedgerId, unit.unit_id],
+    );
+    if ((cocok.rows[0]?.n ?? 0) > 0) {
+      await batal(client);
+      return {
+        ok: false,
+        error:
+          "Baris kas penebusan ini sudah dicocokkan dengan rekening koran — minta Head of Finance membatalkan " +
+          "cocoknya dulu, baru penebusan bisa dibatalkan.",
+      };
+    }
 
     // Hari buku baris kas harus masih terbuka — dikunci bersama sampai COMMIT
     // sehingga penutupan hari menunggu (KTD5). Hari tertutup ⇒ pembalikan maju.

@@ -13,7 +13,8 @@ import { urutan } from "./penjaga-urutan";
  *   · gerbang (`requireUnit` + predikat) SEBELUM berkas disentuh, ukuran
  *     SEBELUM dibaca, pembaca U8 SEBELUM koneksi DB (AE3 tanpa jejak);
  *   · tak pernah menulis `cash_ledger` (KTD6), tanpa DELETE;
- *   · tarik: predikat HoF sebelum koneksi; penanda U10/U12 SEBELUM UPDATE.
+ *   · tarik: predikat HoF sebelum koneksi; kelompok cocok aktif (U10) & penanda
+ *     U12 SEBELUM UPDATE; cocok otomatis sesudah COMMIT unggah.
  *
  * ⚠️ Batas: membuktikan penjagaan ADA di kode. Perilakunya:
  * `impor-bank-actions.test.ts` (DB tiruan) dan uji DB-live ber-gerbang env.
@@ -90,7 +91,7 @@ describe("unggahRekeningKoran — wewenang SEBELUM berkas, pembaca SEBELUM DB", 
   });
 });
 
-describe("tarikRekeningKoran — HoF, penanda U10/U12 sebelum UPDATE", () => {
+describe("tarikRekeningKoran — HoF, kelompok cocok & penanda U12 sebelum UPDATE", () => {
   const fn = badan(KODE, "tarikRekeningKoran");
 
   it("🔴 predikat HoF sebelum koneksi; FOR UPDATE sebelum UPDATE; audit sebelum COMMIT", () => {
@@ -101,10 +102,29 @@ describe("tarikRekeningKoran — HoF, penanda U10/U12 sebelum UPDATE", () => {
     expect(urutan(fn, "INSERT INTO app.audit_log", 'client.query("COMMIT")')).toBe("ok");
   });
 
-  it("penanda U12 (bulan tertutup) & U10 (kelompok cocok aktif) ada SEBELUM UPDATE", () => {
+  it("penanda U12 (bulan tertutup) ada SEBELUM UPDATE", () => {
     const m = MENTAH.slice(MENTAH.indexOf("export async function tarikRekeningKoran"));
     expect(urutan(m, "U12 MENAMBAHKAN DI SINI", "UPDATE app.rekening_koran")).toBe("ok");
-    expect(urutan(m, "U10 MENAMBAHKAN DI SINI", "UPDATE app.rekening_koran")).toBe("ok");
+  });
+
+  it("🔴 U10: kelompok cocok AKTIF diperiksa SESUDAH kunci & SEBELUM UPDATE, dan menolak (return)", () => {
+    expect(urutan(fn, "FOR UPDATE", "FROM app.cocok_bank_baris")).toBe("ok");
+    expect(urutan(fn, "FROM app.cocok_bank_baris", "UPDATE app.rekening_koran")).toBe("ok");
+    expect(fn).toMatch(/AND b\.aktif/);
+    expect(fn).toMatch(/if \(nCocok > 0\) \{\s*await batal\(client\);\s*return \{\s*ok: false/);
+  });
+});
+
+describe("unggahRekeningKoran — cocok otomatis SESUDAH impor COMMIT (U10)", () => {
+  const fn = badan(KODE, "unggahRekeningKoran");
+  it("🔴 dijalankan sesudah COMMIT impor, hasilnya ikut dilaporkan", () => {
+    expect(urutan(fn, 'client.query("COMMIT")', "cocokSesudahUnggah(client")).toBe("ok");
+    expect(fn).toMatch(/cocok,\s*\};/);
+  });
+  it("gagalnya tak membatalkan impor: dibungkus try/catch sendiri, transaksi sendiri", () => {
+    const f = KODE.slice(KODE.indexOf("async function cocokSesudahUnggah"), KODE.indexOf("export async function unggahRekeningKoran"));
+    expect(f).toMatch(/try \{\s*await client\.query\("BEGIN"\)/);
+    expect(f).toMatch(/catch \(e\) \{\s*await batal\(client\);\s*return \{\s*status: "gagal"/);
   });
 });
 
@@ -116,7 +136,7 @@ describe("berkas aksi", () => {
     expect(KODE).not.toMatch(/UPDATE app\.mutasi_bank/);
   });
 
-  it("set_config transaction-local di kedua aksi", () => {
-    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(2);
+  it("set_config transaction-local di kedua aksi + transaksi cocok sesudah unggah", () => {
+    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(3);
   });
 });

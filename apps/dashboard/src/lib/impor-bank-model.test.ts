@@ -76,24 +76,26 @@ describe("bandingkanSaldoAwal (R18) — saldo buku hari sebelum periode vs saldo
 });
 
 describe("selMatriks — satu sel (rekening × bulan)", () => {
-  const rk = (status: "aktif" | "ditarik", over: Partial<{ nBaris: number; nPraCutover: number; uploadedAt: string }> = {}) => ({
+  const rk = (status: "aktif" | "ditarik", over: Partial<{ nBaris: number; nPraCutover: number; nCocok: number; uploadedAt: string }> = {}) => ({
     id: status,
     status,
     nBaris: 10,
     nPraCutover: 0,
+    nCocok: 0,
     uploadedAt: "2026-10-29T01:00:00Z",
     ...over,
   });
   it("tanpa rekening koran ⇒ belum diunggah", () => {
     expect(selMatriks([])).toEqual({ status: "belum" });
   });
-  it("yang AKTIF menang atas yang ditarik; terbuka = N − pra-cut-over (U10 menyempurnakan)", () => {
+  it("yang AKTIF menang atas yang ditarik; terbuka = N − pra-cut-over − tercocok (U10)", () => {
     expect(selMatriks([rk("ditarik"), rk("aktif", { nBaris: 12, nPraCutover: 2 })])).toEqual({
       status: "diunggah",
       id: "aktif",
       nBaris: 12,
       nTerbuka: 10,
     });
+    expect(selMatriks([rk("aktif", { nBaris: 12, nPraCutover: 2, nCocok: 7 })])).toMatchObject({ nTerbuka: 3 });
   });
   it("hanya yang ditarik ⇒ ditarik", () => {
     expect(selMatriks([rk("ditarik")])).toEqual({ status: "ditarik", id: "ditarik" });

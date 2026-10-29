@@ -134,8 +134,8 @@ export const LABEL_STATUS_KAKI: Record<StatusKaki, string> = {
 /**
  * Status satu kaki: "dalam perjalanan" sampai mutasi bank unit itu sendiri
  * dicocokkan (R3). `dicocokkan` = id baris kas yang berada di kelompok cocok
- * aktif — dipasok pembaca U10 (mesin cocok); sampai U10 ada, himpunannya
- * kosong dan setiap kaki hidup berstatus dalam perjalanan.
+ * aktif — dipasok `getKasDicocokkan` (U10, `cocok-bank-queries.ts`). Bawaan
+ * kosong hanya untuk pemanggil yang tak membaca kelompok cocok.
  */
 export function statusKaki(k: { id: string; void: boolean }, dicocokkan: ReadonlySet<string> = new Set()): StatusKaki {
   if (k.void) return "dibatalkan";

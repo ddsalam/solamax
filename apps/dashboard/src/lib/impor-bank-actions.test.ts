@@ -190,6 +190,58 @@ describe("unggahRekeningKoran — diterima (R17, R19)", () => {
   });
 });
 
+describe("unggahRekeningKoran — cocok otomatis SESUDAH impor COMMIT (U10)", () => {
+  const M1 = "55555555-5555-4555-8555-555555555555";
+  const K1 = "66666666-6666-4666-8666-666666666666";
+  const dbCocok = (q: string): { rows: unknown[]; rowCount?: number } | undefined => {
+    if (q.includes("FOR NO KEY UPDATE")) return { rows: [{ status: "aktif" }] };
+    if (q.includes("m.rekening_koran_id = $2::uuid")) {
+      return {
+        rows: [
+          {
+            id: M1, accountId: AKUN, tanggalBank: "2027-03-03", keterangan: "BI-FAST CR | CONTOH", amount: "12345000.00",
+            so: null, dokRef: null, praCutover: false, rkStatus: "aktif", rekeningKoranId: RK_BARU, dicocokkan: false,
+          },
+        ],
+      };
+    }
+    const kas = {
+      id: K1, accountId: AKUN, businessDate: "2027-03-03", tanggalAsal: null, amount: "12345000.00", keterangan: "Ketikan",
+      categoryLabel: "Pendapatan Lain-Lain", void: false, saldoAwal: false, edcSettlementId: null, edcSettlementDate: null,
+      pasanganUuid: null, lahirDariCocokId: null, dicocokkan: false,
+    };
+    if (q.includes("BETWEEN $2::date")) return { rows: [kas] };
+    if (q.includes("l.id = ANY($2::uuid[])")) return { rows: [kas] };
+    if (q.includes("INSERT INTO app.cocok_bank (")) return { rows: [{ id: "g-1" }] };
+    return db(q);
+  };
+
+  it("🔴 impor COMMIT dulu, lalu transaksi cocok sendiri menulis kelompok tunggal — cash_ledger tetap tak disentuh", async () => {
+    h.state.jawab = dbCocok;
+    const r = await unggahRekeningKoran(form(PDF()));
+    expect(r).toMatchObject({ status: "diterima", cocok: { status: "selesai", nOtomatis: 1 } });
+    expect(urutanLog("INSERT INTO app.mutasi_bank", "COMMIT")).toBe(true);
+    const commitImpor = h.log.findIndex((l) => l.sql.trim() === "COMMIT");
+    const kelompok = h.log.findIndex((l) => l.sql.includes("INSERT INTO app.cocok_bank ("));
+    expect(commitImpor).toBeGreaterThan(-1);
+    expect(kelompok).toBeGreaterThan(commitImpor);
+    expect(h.log.filter((l) => l.sql.trim() === "COMMIT")).toHaveLength(2);
+    expect(h.log.some((l) => l.params[2] === "cocok_bank.otomatis")).toBe(true);
+    expect(tulis("app.cash_ledger")).toEqual([]);
+  });
+
+  it("🔴 cocok otomatis GAGAL ⇒ impor tetap diterima, kegagalannya dilaporkan", async () => {
+    h.state.jawab = (q) => {
+      if (q.includes("FOR NO KEY UPDATE")) throw new Error("koneksi putus");
+      return db(q);
+    };
+    const r = await unggahRekeningKoran(form(PDF()));
+    expect(r).toMatchObject({ status: "diterima", nBaris: 6, cocok: { status: "gagal" } });
+    if (r.status === "diterima" && r.cocok.status === "gagal") expect(r.cocok.pesan).toMatch(/Impor tersimpan.*koneksi putus/);
+    expect(sql()).toContain("ROLLBACK");
+  });
+});
+
 describe("unggah ulang (R19)", () => {
   it("🔴 berkas IDENTIK (sha256 sama) ⇒ 'sudah ada', tak ada baris baru, ROLLBACK", async () => {
     const berkas = PDF();
@@ -359,6 +411,15 @@ describe("tarikRekeningKoran — HoF saja, beralasan, beraudit", () => {
     return undefined;
   };
   const masukan = { code: h.BK.code, rekeningKoranId: RK_LAMA, reasonCode: "ADJ-DUP", catatan: "berkas salah bulan" };
+
+  it("🔴 U10: ada baris di kelompok cocok AKTIF ⇒ ditolak 'batalkan cocok dulu'; tak ada UPDATE", async () => {
+    h.state.jawab = (q) => (q.includes("FROM app.cocok_bank_baris") ? { rows: [{ n: 3 }] } : dbTarik(q));
+    const r = await tarikRekeningKoran(masukan);
+    expect(r).toMatchObject({ ok: false });
+    expect(r.ok === false && r.error).toMatch(/3 baris .* sudah dicocokkan — batalkan cocok dulu/);
+    expect(tulis("app.rekening_koran")).toEqual([]);
+    expect(sql()).not.toContain("COMMIT");
+  });
 
   beforeEach(() => {
     h.state.jawab = dbTarik;

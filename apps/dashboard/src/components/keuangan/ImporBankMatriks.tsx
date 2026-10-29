@@ -57,6 +57,14 @@ function PanelHasil({ h }: { h: HasilUnggah }) {
         DB)
         {h.nPraCutover > 0 && `; ${h.nPraCutover} bertanggal sebelum saldo pembuka — disimpan, tidak dibukukan`}.
         <SaldoAwal p={h.saldoAwal} />
+        {h.cocok.status === "selesai" ? (
+          <div className="fs14">
+            {h.cocok.nOtomatis} mutasi dicocokkan otomatis; {h.cocok.nBanyak + h.cocok.nTanpa} menunggu dipilih atau
+            diklasifikasi.
+          </div>
+        ) : (
+          <div className="fs14 t-warning">{h.cocok.pesan}</div>
+        )}
       </div>
     );
   }

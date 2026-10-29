@@ -2,6 +2,8 @@
 
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import type { PoolClient } from "pg";
+import { jalankanCocokOtomatis } from "./cocok-bank-tulis";
 import { pool } from "./db";
 import { senKeTeks } from "./antar-unit-model";
 import { tentukanHariBuku } from "./hari-buku";
@@ -10,6 +12,7 @@ import {
   nomorRekeningSama,
   periksaBerkas,
   periodeAwal,
+  type HasilCocokSesudahUnggah,
   type HasilUnggah,
   type SebabTolak,
 } from "./impor-bank-model";
@@ -69,6 +72,31 @@ const PESAN_PERIODE_AKTIF = (periode: string): string =>
 function tabrakanAktif(e: unknown): boolean {
   const g = e as { code?: string; constraint?: string } | null;
   return g?.code === "23505" && (g.constraint === "rekening_koran_aktif_uq" || g.constraint === "mutasi_bank_aktif_uq");
+}
+
+async function cocokSesudahUnggah(
+  client: PoolClient,
+  m: Parameters<typeof jalankanCocokOtomatis>[1],
+): Promise<HasilCocokSesudahUnggah> {
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(m.unitId)]);
+    const h = await jalankanCocokOtomatis(client, m);
+    if (!h.ok) {
+      await batal(client);
+      return { status: "gagal", pesan: `Impor tersimpan, tetapi cocok otomatis tidak berjalan: ${h.error}` };
+    }
+    await client.query("COMMIT");
+    return { status: "selesai", nOtomatis: h.nOtomatis, nBanyak: h.nBanyak, nTanpa: h.nTanpa };
+  } catch (e) {
+    await batal(client);
+    return {
+      status: "gagal",
+      pesan:
+        "Impor tersimpan, tetapi cocok otomatis gagal — jalankan ulang “Cocokkan otomatis”. " +
+        (e instanceof Error ? e.message : ""),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +275,16 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
     );
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
+    // U10 — cocok otomatis SESUDAH impor COMMIT, transaksi sendiri: gagalnya
+    // dilaporkan, tak membatalkan impor (baris tetap tersimpan & terbuka; aksi
+    // `cocokkanOtomatis` bisa dijalankan ulang). Pengunggah sudah lolos
+    // `canImporRekeningKoran` = semantik `canCocokkanBank` (Keuangan).
+    const cocok = await cocokSesudahUnggah(client, {
+      unitId: unit.unit_id,
+      unitCode: unit.code,
+      rekeningKoranId,
+      aktor: { userId: scope.userId, email: scope.email },
+    });
     return {
       status: "diterima",
       rekeningKoranId,
@@ -256,6 +294,7 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
       nCr: rk.footer.nCr,
       nDb: rk.footer.nDb,
       saldoAwal,
+      cocok,
     };
   } catch (e) {
     await batal(client);
@@ -327,9 +366,27 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
 
     // U12 MENAMBAHKAN DI SINI: tolak bila bulan `rk.periode` unit ini sudah
     // ditutup (tabel tutup bulan lahir di U12, KTD14).
-    // U10 MENAMBAHKAN DI SINI: tolak bila ada baris rekening koran ini di
-    // kelompok cocok AKTIF — "batalkan cocok dulu" (tabel kelompok cocok lahir
-    // di U10, KTD6). Hingga U10 belum ada pencocokan, jadi tak ada yang ditolak.
+    // U10 — tolak bila ada baris rekening koran ini di kelompok cocok AKTIF:
+    // "batalkan cocok dulu" (KTD6, R31). Rekening koran sudah dikunci FOR
+    // UPDATE di atas, dan setiap pencocok mengunci induknya FOR NO KEY UPDATE —
+    // tak ada kelompok baru yang bisa lahir di antara periksa ini dan UPDATE.
+    const cocok = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n
+         FROM app.cocok_bank_baris b
+         JOIN app.mutasi_bank m ON m.id = b.mutasi_bank_id AND m.unit_id = b.unit_id
+        WHERE m.rekening_koran_id = $1::uuid AND m.unit_id = $2 AND b.aktif`,
+      [rk.id, unit.unit_id],
+    );
+    const nCocok = cocok.rows[0]?.n ?? 0;
+    if (nCocok > 0) {
+      await batal(client);
+      return {
+        ok: false,
+        error:
+          `${nCocok} baris rekening koran ${rk.periode} sudah dicocokkan — batalkan cocok dulu ` +
+          "(tindakan Head of Finance), baru tarik impornya.",
+      };
+    }
 
     // Status → 'ditarik'; `mutasi_bank.rk_status` ikut lewat FK ON UPDATE
     // CASCADE (0051) — baris bank tak pernah disunting aplikasi.

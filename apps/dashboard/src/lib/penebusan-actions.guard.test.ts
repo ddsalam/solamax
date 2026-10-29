@@ -13,7 +13,7 @@ import { urutan } from "./penjaga-urutan";
  *   · `hariBukuTerkunci(client` DI DALAM transaksi (BEGIN → set_config →
  *     hariBukuTerkunci) dan SEBELUM INSERT baris kas — dan hasilnya dipakai;
  *   · pembatalan memeriksa hari buku SEBELUM UPDATE; tanpa DELETE;
- *   · penanda U10 (kelompok cocok) ada di tempat pemeriksaannya.
+ *   · kelompok cocok aktif (U10) menolak void sebelum hari & UPDATE diperiksa.
  *
  * ⚠️ Batas: membuktikan penjagaan ADA di kode. Perilakunya:
  * `penebusan-actions.test.ts` (DB tiruan) dan uji DB-live ber-gerbang env.
@@ -120,9 +120,11 @@ describe("batalkanPenebusan — hari terbuka, tanpa DELETE", () => {
     expect(fn).toMatch(/if \(p\.kasDibuat\) \{\s*await client\.query\(\s*`UPDATE app\.cash_ledger/);
   });
 
-  it("penanda U10 (kelompok cocok aktif) ada SEBELUM pemeriksaan hari & UPDATE", () => {
-    const m = MENTAH.slice(MENTAH.indexOf("export async function batalkanPenebusan"));
-    expect(urutan(m, "U10 MENAMBAHKAN DI SINI", "hariBukuTerkunci(client")).toBe("ok");
+  it("🔴 U10: kelompok cocok AKTIF diperiksa sesudah kunci, SEBELUM pemeriksaan hari & UPDATE, dan menolak", () => {
+    expect(urutan(fn, "FOR UPDATE OF p, l", "FROM app.cocok_bank_baris")).toBe("ok");
+    expect(urutan(fn, "FROM app.cocok_bank_baris", "hariBukuTerkunci(client")).toBe("ok");
+    expect(urutan(fn, "FROM app.cocok_bank_baris", "UPDATE app.penebusan")).toBe("ok");
+    expect(fn).toMatch(/if \(\(cocok\.rows\[0\]\?\.n \?\? 0\) > 0\) \{\s*await batal\(client\);\s*return \{/);
   });
 });
 

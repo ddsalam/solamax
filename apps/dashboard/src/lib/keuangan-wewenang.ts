@@ -457,3 +457,28 @@ export function canImporRekeningKoran(ctx: WewenangCtx, daftar?: readonly string
 export function canTarikRekeningKoran(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+// ---------------------------------------------------------------------------
+// Kelompok cocok rekening koran (rencana 2026-10-29 U10; R26, R31) — satu
+// predikat per keputusan, sama alasannya dengan blok impor di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCOCOKKAN baris rekening koran dengan buku (otomatis sesudah unggah,
+ * atau kelompok pilihan sendiri)? Staf `keuangan` + super admin — semantik
+ * {@link canInputKeuangan}, termasuk irisan HoF × `keuangan` yang ditutup
+ * (§10.12): yang membatalkan cocok tidak ikut mencocokkan.
+ */
+export function canCocokkanBank(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBATALKAN kelompok cocok (R31)? **Head of Finance** + super admin.
+ * Key Decision "Tindakan pembatalan hanya milik HoF": uang yang sudah
+ * direkonsiliasi tidak dibongkar oleh orang yang mencocokkannya. Staf
+ * `keuangan` TIDAK — asimetri dua arah dengan {@link canCocokkanBank}.
+ */
+export function canBatalkanCocokBank(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}

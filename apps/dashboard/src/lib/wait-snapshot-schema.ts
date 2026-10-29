@@ -38,6 +38,17 @@ SELECT (
   WHERE table_schema = 'app' AND table_name IN ('rekening_koran', 'mutasi_bank')
 ) = 2 AS ready`;
 
+/** U10 — kelompok cocok (0052): dua tabel + kolom `cash_ledger.lahir_dari_cocok_id`. */
+export const COCOK_BANK_SCHEMA_READY_SQL = `
+SELECT (
+  SELECT count(*) FROM information_schema.tables
+  WHERE table_schema = 'app' AND table_name IN ('cocok_bank', 'cocok_bank_baris')
+) = 2
+AND EXISTS (
+  SELECT 1 FROM information_schema.columns
+  WHERE table_schema = 'app' AND table_name = 'cash_ledger' AND column_name = 'lahir_dari_cocok_id'
+) AS ready`;
+
 /** The backend and dashboard deployment workflows start concurrently. K1 must
  * wait for the backend's atomic upgrade before testing the new reader SQL. */
 export async function waitForSnapshotV2Schema(

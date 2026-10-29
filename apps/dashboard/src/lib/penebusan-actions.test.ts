@@ -338,6 +338,17 @@ describe("batalkanPenebusan — void hanya bila hari buku terbuka", () => {
     expect(updKas()).toHaveLength(0);
   });
 
+  it("🔴 U10: baris kasnya di kelompok cocok AKTIF ⇒ ditolak 'batalkan cocok dulu'; tak ada UPDATE", async () => {
+    h.state.jawab = (sql) => (sql.includes("FROM app.cocok_bank_baris") ? { rows: [{ n: 1 }] } : dbBatal(sql));
+    const r = await batalkanPenebusan({ code: h.BK.code, id: PNB });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/membatalkan cocoknya dulu/);
+    expect(updPnb()).toHaveLength(0);
+    expect(updKas()).toHaveLength(0);
+    const cek = h.log.find((l) => l.sql.includes("FROM app.cocok_bank_baris"))!;
+    expect(cek.params).toEqual(["kas-baru", h.BK.unit_id]);
+  });
+
   it("penebusan tak ditemukan / sudah void ⇒ ditolak", async () => {
     baris = null;
     expect((await batalkanPenebusan({ code: h.BK.code, id: PNB })).ok).toBe(false);

@@ -965,6 +965,10 @@ model CashLedger {
   alasanMajuAppliesTo String?           @map("alasan_maju_applies_to")
   /// Baris penampung yang dipindahkan oleh baris ini (KTD8), unit yang SAMA.
   parkirSumberId      String?           @map("parkir_sumber_id") @db.Uuid
+  /// Kelompok cocok bank yang MELAHIRKAN baris ini lewat klasifikasi (0052,
+  /// U10/U11). FK komposit (id, unit_id) ke app.cocok_bank. NULL untuk baris
+  /// yang hanya dicocokkan — pencocokan tak menulis baris kas (KTD6).
+  lahirDariCocokId    String?           @map("lahir_dari_cocok_id") @db.Uuid
 
   /// Target FK komposit tautan baris parkir (0049).
   @@unique([id, unitId])
@@ -1109,6 +1113,51 @@ model MutasiBank {
   @@unique([rekeningKoranId, tanggalBank, urutan], map: "mutasi_bank_alami_uq")
   @@index([unitId, tanggalBank])
   @@map("mutasi_bank")
+  @@schema("app")
+}
+
+// Kelompok cocok rekening koran ↔ buku kas (0052, rencana 2026-10-29 U10;
+// R19, R20, R31; KTD6, KTD7). TAUTAN, bukan suntingan buku: Σ baris impor =
+// Σ baris kas (per rekening) ditegakkan aksi & pemeriksa integritas. Dibatalkan
+// HoF dengan kode alasan `reason_code` adjustment + catatan; tak pernah dihapus.
+model CocokBank {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId                    Int       @map("unit_id") @db.SmallInt
+  /// 'otomatis' | 'manual' (CHECK).
+  cara                      String
+  dibuatByUserId            Int       @map("dibuat_by_user_id")
+  dibuatAt                  DateTime  @default(now()) @map("dibuat_at") @db.Timestamptz()
+  /// Dicerminkan ke anggota lewat FK ON UPDATE CASCADE.
+  aktif                     Boolean   @default(true)
+  dibatalkanAt              DateTime? @map("dibatalkan_at") @db.Timestamptz()
+  dibatalkanByUserId        Int?      @map("dibatalkan_by_user_id")
+  dibatalkanAlasan          String?   @map("dibatalkan_alasan")
+  dibatalkanAlasanAppliesTo String?   @map("dibatalkan_alasan_applies_to")
+  dibatalkanCatatan         String?   @map("dibatalkan_catatan")
+
+  @@unique([id, unitId], map: "cocok_bank_unit_uq")
+  @@unique([id, unitId, aktif], map: "cocok_bank_cermin_uq")
+  @@index([unitId, dibuatAt])
+  @@map("cocok_bank")
+  @@schema("app")
+}
+
+// Anggota kelompok cocok (0052): TEPAT SATU dari baris impor / baris kas
+// (CHECK). Satu kelompok AKTIF per baris — partial unique (tak terungkap di
+// Prisma). `aktif` dicerminkan dari induk oleh FK ON UPDATE CASCADE, bukan
+// ditulis aplikasi. dashboard_app: SELECT, INSERT saja.
+model CocokBankBaris {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId       Int     @map("unit_id") @db.SmallInt
+  cocokId      String  @map("cocok_id") @db.Uuid
+  aktif        Boolean @default(true)
+  mutasiBankId String? @map("mutasi_bank_id") @db.Uuid
+  cashLedgerId String? @map("cash_ledger_id") @db.Uuid
+
+  @@unique([cocokId, mutasiBankId], map: "cocok_bank_baris_mutasi_uq")
+  @@unique([cocokId, cashLedgerId], map: "cocok_bank_baris_kas_uq")
+  @@index([unitId, cocokId])
+  @@map("cocok_bank_baris")
   @@schema("app")
 }
 

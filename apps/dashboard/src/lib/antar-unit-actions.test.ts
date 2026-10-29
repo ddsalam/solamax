@@ -291,6 +291,19 @@ describe("balik pasangan antar unit — HoF (R31)", () => {
     expect(ins!.params.slice(11)).toEqual(["2026-10-04", "ADJ-FWD-REVERSAL", "adjustment"]);
   });
 
+  it("🔴 U10: kaki di kelompok cocok AKTIF ⇒ 'batalkan cocok dulu', tak ada void/pembalik, tanpa COMMIT", async () => {
+    sebagai("admin_perusahaan", "hof@solagroup.co");
+    h.state.jawab = (sql, p) =>
+      sql.includes("FROM app.cocok_bank_baris") ? { rows: [{ unit: h.BL.unit_id }] } : dbBalik(sql, p);
+    const r = await balikPasanganAntarUnit(input);
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/sudah dicocokkan dengan rekening koran di Batu Layang — batalkan cocok dulu/) });
+    expect(voidKas()).toHaveLength(0);
+    expect(insertKas()).toHaveLength(0);
+    expect(h.log.some((l) => l.sql.trim() === "COMMIT")).toBe(false);
+    const cek = h.log.find((l) => l.sql.includes("FROM app.cocok_bank_baris"))!;
+    expect(cek.params).toEqual([["kaki-bk", "kaki-bl"], [h.BK.unit_id, h.BL.unit_id]]);
+  });
+
   it("🔴 HoF yang tak memegang unit lawan ⇒ ditolak utuh, tanpa koneksi tulis", async () => {
     sebagai("admin_perusahaan", "hof@solagroup.co", [h.IB, h.BK]);
     const r = await balikPasanganAntarUnit(input);

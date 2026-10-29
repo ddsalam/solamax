@@ -1,3 +1,4 @@
+import { PREDIKAT_MUTASI_DICOCOKKAN } from "./cocok-bank-queries";
 import { qScoped } from "./db";
 import type { RingkasRekeningKoran, SaldoBukuAwal } from "./impor-bank-model";
 import { teksKeSen } from "./pihak-lawan-model";
@@ -111,6 +112,7 @@ export async function getRekeningKoranUnit(unit: ScopedUnitId): Promise<Rekening
     saldoAwal: string;
     nBaris: number;
     nPraCutover: number;
+    nCocok: number;
     uploadedAt: string;
   }>(
     unit,
@@ -120,6 +122,9 @@ export async function getRekeningKoranUnit(unit: ScopedUnitId): Promise<Rekening
               WHERE m.rekening_koran_id = r.id AND m.unit_id = r.unit_id) AS "nBaris",
             (SELECT count(*)::int FROM app.mutasi_bank m
               WHERE m.rekening_koran_id = r.id AND m.unit_id = r.unit_id AND m.pra_cutover) AS "nPraCutover",
+            (SELECT count(*)::int FROM app.mutasi_bank m
+              WHERE m.rekening_koran_id = r.id AND m.unit_id = r.unit_id AND NOT m.pra_cutover
+                AND ${PREDIKAT_MUTASI_DICOCOKKAN}) AS "nCocok",
             to_char(r.uploaded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "uploadedAt"
        FROM app.rekening_koran r
       WHERE r.unit_id = $1

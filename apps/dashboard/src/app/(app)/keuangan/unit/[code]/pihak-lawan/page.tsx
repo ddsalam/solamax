@@ -5,6 +5,7 @@ import { PihakLawanPanel, type PihakLawanTampil } from "@/components/keuangan/Pi
 import { ringkasPasangan, satuPt } from "@/lib/antar-unit-model";
 import { getBahanParitas, getKakiAntarUnit, getKodeAlasanBalik, getRekeningAktif } from "@/lib/antar-unit-queries";
 import { bukuPembantu, statusPasangan } from "@/lib/buku-pembantu-model";
+import { getKasDicocokkan } from "@/lib/cocok-bank-queries";
 import { getBahanBukuPembantu } from "@/lib/keuangan-laporan-queries";
 import { paritasAntarUnit } from "@/lib/keuangan-pantau-model";
 import { UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
@@ -91,8 +92,10 @@ export default async function PihakLawanPage({
     dipegang: dipegang.has(c),
     satuPt: satuPt(unit.code, c, scope.tenantPerUnit),
   }));
+  // R3 — "Lunas di bank" = kaki unit ini berada di kelompok cocok AKTIF (U10).
+  const dicocokkan = await getKasDicocokkan(unit.unit_id, kakiAntarUnit.map((k) => k.id));
   const lawanPasangan = new Map(kakiAntarUnit.map((k) => [k.pasanganUuid, k]));
-  const pasangan: PasanganTampil[] = ringkasPasangan(kakiAntarUnit).map((p) => {
+  const pasangan: PasanganTampil[] = ringkasPasangan(kakiAntarUnit, dicocokkan).map((p) => {
     const k = lawanPasangan.get(p.pasanganUuid)!;
     return {
       ...p,
@@ -103,7 +106,7 @@ export default async function PihakLawanPage({
     };
   });
 
-  const ringkas = ringkasPasangan(kakiAntarUnit);
+  const ringkas = ringkasPasangan(kakiAntarUnit, dicocokkan);
   const paritas = paritasAntarUnit(unitParitas.map(Number), bahanParitas, per).filter(
     (p) => p.unitId === Number(unit.unit_id),
   );
