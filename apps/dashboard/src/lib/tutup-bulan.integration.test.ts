@@ -80,10 +80,16 @@ d("0054 tutup bulan — kunci, hari pertama, beku, bahan vonis", () => {
     await tx(async (c) => {
       const ada = await c.query<{ ada: boolean }>(`SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='dashboard_app') AS ada`);
       if (!ada.rows[0]?.ada) return;
-      await tulis(c, "2099-01-01");
-      await c.query("SET LOCAL ROLE dashboard_app");
-      expect(await gagal(c, () => c.query(`UPDATE app.tutup_bulan SET ditutup_by_user_id = 2 WHERE unit_id = $1`, [unitId]))).toBe("42501");
-      expect(await gagal(c, () => c.query(`DELETE FROM app.tutup_bulan WHERE unit_id = $1`, [unitId]))).toBe("42501");
+      // Hak diperiksa langsung: pemilik (`ingest`) di tier testing bukan anggota
+      // dashboard_app, jadi SET ROLE tak selalu boleh. has_table_privilege
+      // membaca grant yang sama yang akan menolak UPDATE/DELETE aplikasi.
+      const hak = await c.query<{ update: boolean; delete: boolean; insert: boolean; select: boolean }>(
+        `SELECT has_table_privilege('dashboard_app', 'app.tutup_bulan', 'UPDATE') AS update,
+                has_table_privilege('dashboard_app', 'app.tutup_bulan', 'DELETE') AS delete,
+                has_table_privilege('dashboard_app', 'app.tutup_bulan', 'INSERT') AS insert,
+                has_table_privilege('dashboard_app', 'app.tutup_bulan', 'SELECT') AS select`,
+      );
+      expect(hak.rows[0]).toEqual({ update: false, delete: false, insert: true, select: true });
     });
   });
 
