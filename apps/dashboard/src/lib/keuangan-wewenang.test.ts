@@ -15,6 +15,8 @@ import {
   canTambahPihakLawan,
   canTetapkanPihakLawanBaris,
   canTetapkanSaldoAwalPihakLawan,
+  canBalikPasanganAntarUnit,
+  canCatatAntarUnit,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -431,5 +433,34 @@ describe("pihak lawan (U3, R26) — satu predikat per keputusan", () => {
   it("alasan beda dengan nonaktif akun kas TERTULIS — supaya tak 'dirapikan' diam-diam", () => {
     const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8").replace(/\n\s*\*\s*/g, " ");
     expect(src).toMatch(/pihak lawan nonaktif TETAP tampil/);
+  });
+});
+
+describe("pasangan antar unit (U4; R26, R30, R31) — satu predikat per keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canCatatAntarUnit: keuangan & super_admin; pengawas, direksi, HoF TIDAK (§10.12)", () => {
+    expect(semua.filter((r) => canCatatAntarUnit(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canCatatAntarUnit(hof, HOF5)).toBe(false);
+    expect(canCatatAntarUnit(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("🔴 canBalikPasanganAntarUnit: HoF & super_admin; staf Keuangan TIDAK (R31)", () => {
+    expect(canBalikPasanganAntarUnit(hof, HOF5)).toBe(true);
+    expect(canBalikPasanganAntarUnit(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canBalikPasanganAntarUnit(c(r), HOF5), r).toBe(false);
+    }
+  });
+
+  it("yang mencatat bukan yang membalik — daftar perannya berselisih dua arah", () => {
+    const catat = semua.filter((r) => canCatatAntarUnit(c(r, "hof@solagroup.co"), HOF5));
+    const balik = semua.filter((r) => canBalikPasanganAntarUnit(c(r, "hof@solagroup.co"), HOF5));
+    expect(catat).not.toEqual(balik);
+    expect(canCatatAntarUnit(hof, HOF5)).toBe(false);
+    expect(canBalikPasanganAntarUnit(c("keuangan"), HOF5)).toBe(false);
   });
 });

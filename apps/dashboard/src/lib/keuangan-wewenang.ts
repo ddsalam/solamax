@@ -376,3 +376,32 @@ export function canTetapkanSaldoAwalPihakLawan(ctx: WewenangCtx, daftar?: readon
 export function canTetapkanPihakLawanBaris(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return canInputKeuangan(ctx, daftar);
 }
+
+// ---------------------------------------------------------------------------
+// Pasangan antar unit (rencana 2026-10-29 U4; R26, R30, R31) — satu predikat
+// per keputusan, sama alasannya dengan blok pihak lawan di atas.
+//
+// ⛔ Predikat ini hanya separuh gerbang. Separuh lainnya — `scope.requireUnit`
+// untuk KEDUA unit sebelum BEGIN (R30, "Gerbang dua unit") — milik server
+// action-nya (`antar-unit-actions.ts`), karena peran bersifat GLOBAL per orang
+// sedangkan jangkauan unit datang dari penugasan.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCATAT pinjaman/pengembalian/titipan antar unit (R3, R26)? Staf
+ * `keuangan` + super admin — semantik {@link canInputKeuangan}, termasuk irisan
+ * HoF × `keuangan` yang ditutup (§10.12). Pengawas & Direksi tidak.
+ */
+export function canCatatAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBALIK pasangan antar unit (R31)? **Head of Finance** + super admin.
+ * Key Decision "Tindakan pembatalan hanya milik HoF": uang yang sudah dicatat
+ * (dan kelak direkonsiliasi) tidak dibongkar oleh orang yang mencatatnya. Staf
+ * `keuangan` TIDAK — asimetri dua arah dengan {@link canCatatAntarUnit}.
+ */
+export function canBalikPasanganAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}

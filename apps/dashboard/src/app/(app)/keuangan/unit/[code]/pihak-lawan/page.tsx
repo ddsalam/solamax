@@ -1,8 +1,13 @@
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
+import { AntarUnitForm, type PasanganTampil, type UnitLawanPilihan } from "@/components/keuangan/AntarUnitForm";
 import { PihakLawanPanel, type PihakLawanTampil } from "@/components/keuangan/PihakLawanPanel";
-import { unitDotted, unitLabel } from "@/lib/config";
+import { ringkasPasangan, satuPt } from "@/lib/antar-unit-model";
+import { getKakiAntarUnit, getKodeAlasanBalik, getRekeningAktif } from "@/lib/antar-unit-queries";
+import { UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
 import {
+  canBalikPasanganAntarUnit,
+  canCatatAntarUnit,
   canNonaktifkanPihakLawan,
   canTambahPihakLawan,
   canTetapkanPihakLawanBaris,
@@ -31,6 +36,8 @@ export const dynamic = "force-dynamic";
  *   · nonaktifkan       → `canNonaktifkanPihakLawan`
  *   · saldo pembuka     → `canTetapkanSaldoAwalPihakLawan` (HoF)
  *   · tetapkan baris lama → `canTetapkanPihakLawanBaris`
+ *   · catat antar unit  → `canCatatAntarUnit` (+ gerbang dua unit di server, U4)
+ *   · balik pasangan    → `canBalikPasanganAntarUnit` (HoF, R31)
  */
 export default async function PihakLawanPage({
   params,
@@ -49,11 +56,41 @@ export default async function PihakLawanPage({
   const hariIni = getSelection(scope.units).date;
   const per = sp.tanggal && DATE_RE.test(sp.tanggal) ? sp.tanggal : hariIni;
 
-  const [pihak, mutasi, lama] = await Promise.all([
+  const bolehCatat = canCatatAntarUnit(ctx);
+  const bolehBalik = canBalikPasanganAntarUnit(ctx);
+  const [pihak, mutasi, lama, kakiAntarUnit, rekeningSaya, kodeAlasan] = await Promise.all([
     getPihakLawan(unit.unit_id),
     getMutasiPihakLawan(unit.unit_id, per),
     getBarisTanpaPihakLawan(unit.unit_id),
+    getKakiAntarUnit(unit.unit_id),
+    bolehCatat ? getRekeningAktif(unit.unit_id) : Promise.resolve([]),
+    bolehBalik ? getKodeAlasanBalik() : Promise.resolve([]),
   ]);
+
+  // Unit lawan untuk formulir (U4): nama dari peta tampilan config.ts + unit
+  // dalam jangkauan — tanpa membaca data tenant lain. Hanya yang dipegang yang
+  // bisa dipilih; sisanya nonaktif dengan sebabnya (R30 tetap ditegakkan server).
+  const dipegang = new Set(scope.units.map((u) => u.code));
+  const kodeLawan = [...new Set([...Object.keys(UNIT_DISPLAY), ...scope.units.map((u) => u.code)])].filter(
+    (c) => c !== unit.code,
+  );
+  const unitLawan: UnitLawanPilihan[] = kodeLawan.map((c) => ({
+    code: c,
+    name: scope.units.find((u) => u.code === c)?.name ?? UNIT_DISPLAY[c]?.name ?? c,
+    dipegang: dipegang.has(c),
+    satuPt: satuPt(unit.code, c),
+  }));
+  const lawanPasangan = new Map(kakiAntarUnit.map((k) => [k.pasanganUuid, k]));
+  const pasangan: PasanganTampil[] = ringkasPasangan(kakiAntarUnit).map((p) => {
+    const k = lawanPasangan.get(p.pasanganUuid)!;
+    return {
+      ...p,
+      lawanCode: k.lawanCode,
+      lawanNama: k.lawanNama,
+      satuPt: satuPt(unit.code, k.lawanCode),
+      lawanDipegang: dipegang.has(k.lawanCode),
+    };
+  });
 
   const tampil: PihakLawanTampil[] = pihak.map((p) => {
     const s = saldoPihakLawan({ pihakLawanId: p.id, saldoAwal: p.saldoAwal, mutasi, per });
@@ -111,6 +148,16 @@ export default async function PihakLawanPage({
           bolehNonaktif={canNonaktifkanPihakLawan(ctx)}
           bolehSaldoAwal={canTetapkanSaldoAwalPihakLawan(ctx)}
           bolehTetapkanBaris={canTetapkanPihakLawanBaris(ctx)}
+        />
+        <AntarUnitForm
+          code={unit.code}
+          namaUnit={unit.name}
+          unitLawan={unitLawan}
+          rekeningSaya={rekeningSaya}
+          pasangan={pasangan}
+          kodeAlasan={kodeAlasan}
+          bolehCatat={bolehCatat}
+          bolehBalik={bolehBalik}
         />
       </div>
     </>
