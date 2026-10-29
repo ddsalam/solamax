@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
+import { kunciHariEksklusif } from "./hari-buku-queries";
+import { hitungLangkahHarian } from "./keuangan-laporan-queries";
 import { periksaTutupHari, tierFor } from "./keuangan-tutup-hari";
 import { getDataScope, type ScopedUnitId } from "./scope";
 
@@ -10,9 +12,12 @@ import { getDataScope, type ScopedUnitId } from "./scope";
  *
  * ⛔ EMPAT HAL YANG MENGIKAT:
  *
- * 1. **SELISIH DIBACA ULANG DI SERVER.** Yang datang dari client hanyalah
- *    kode alasan & tanggal target. Kalau selisihnya boleh dikirim browser,
- *    seluruh tangga §3.2 bisa dilewati dengan mengirim `0`.
+ * 1. **SELISIH DIHITUNG ULANG DI SERVER, DI BAWAH KUNCI.** Yang datang dari
+ *    client hanyalah kode alasan & tanggal target. Kalau selisihnya boleh
+ *    dikirim browser, seluruh tangga §3.2 bisa dilewati dengan mengirim `0`.
+ *    Dan sejak rencana 2026-10-29 (U2/KTD5) ia juga TIDAK dibaca dari
+ *    `difference_rp` tersimpan: angka itu dihitung saat layar dibuka, sedangkan
+ *    jalur tulis R28 bisa membukukan baris ke hari ini sesudahnya.
  * 2. **Tier adalah FUNGSI dari selisih**, bukan pilihan — `tierFor()`, dan DB
  *    menegakkan ulang lewat CHECK `day_close_tier_matches_difference` (0026).
  * 3. **Aturan diputuskan SATU tempat**: `periksaTutupHari`. Berkas ini tidak
@@ -47,11 +52,18 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
 
+    // ⛔ Kunci EKSKLUSIF hari ini LEBIH DULU (U2/KTD5): menunggu jalur tulis
+    //    R28 yang sedang memegang hari ini sampai COMMIT, dan menahan yang baru
+    //    sampai penutupan ini selesai — mereka lalu melihat hari tertutup dan
+    //    membukukan maju (`hariBukuTerkunci`). Urutannya sama dengan jalur tulis
+    //    (advisory → baris), jadi tak ada siklus kunci.
+    await kunciHariEksklusif(client, unit.unit_id, input.date);
+
     // Baris day_close disiapkan lebih dulu oleh perhitungan harian; kalau belum
     // ada, harinya belum bisa dinilai — dan menutup hari yang belum dinilai
     // adalah menutup mata, bukan menutup buku.
-    const cur = await client.query<{ differenceRp: string; status: string }>(
-      `SELECT difference_rp::text AS "differenceRp", status::text AS status
+    const cur = await client.query<{ status: string }>(
+      `SELECT status::text AS status
          FROM app.day_close
         WHERE unit_id = $1 AND business_date = $2::date
         FOR UPDATE`,
@@ -72,8 +84,23 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
       return { ok: false, error: "Hari ini sudah ditutup." };
     }
 
-    // Selisih dari DB, bukan dari payload (butir 1).
-    const differenceRp = Number(row.differenceRp);
+    // Selisih dari DATA TERKINI, bukan dari payload dan bukan dari angka yang
+    // tersimpan saat layar dibuka (butir 1). Jalur hitungnya sama dengan
+    // Layar 4 (`langkahHarianDari`). Kuerinya di koneksi lain — aman karena
+    // kunci di atas sudah dipegang: semua penulis hari ini sudah COMMIT.
+    // 📌 KTD15 (U12): koreksi susulan akan dipisah dari selisih yang dinilai
+    //    di titik ini; belum dibangun.
+    const differenceRp = await hitungLangkahHarian(unit.unit_id, input.date);
+    if (differenceRp === null) {
+      // Tak terhitung ⇒ ditolak, TIDAK dinolkan (§10.15).
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          "Selisih hari ini belum bisa dihitung dari data saat ini — lengkapi datanya " +
+          "lalu buka ulang layar tutup hari.",
+      };
+    }
 
     // `requires_target_date` dibaca dari MASTER, bukan dari nama kodenya —
     // tak ada 'CLS-INVESTIGATING' yang di-hardcode di mana pun.
@@ -105,7 +132,7 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
     const perluPersetujuan = tier !== "within_tolerance";
     await client.query(
       `UPDATE app.day_close
-          SET status='closed', tier=$1::app.day_close_tier,
+          SET status='closed', difference_rp=$10, tier=$1::app.day_close_tier,
               reason_code=$2, reason_requires_target=$3, target_date=$4::date,
               closed_by_user_id=$5, closed_at=now(),
               approved_by_user_id=$6, approved_at=$7,
@@ -121,6 +148,7 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
         perluPersetujuan ? new Date() : null,
         unit.unit_id,
         input.date,
+        differenceRp,
       ],
     );
     await client.query("COMMIT");

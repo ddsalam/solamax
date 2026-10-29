@@ -5,6 +5,7 @@ import {
   PENJELASAN_KOSONG,
   deltaKategori,
   deltaKategoriSampai,
+  langkahHarianDari,
   nadaPemeriksa,
   panelBalance,
   panelCashFlow,
@@ -252,5 +253,57 @@ describe("saldo vs arus — dua angka dari kategori yang SAMA", () => {
 
     const besok = [...mut, { ...mut[1]!, id: "e", businessDate: "2026-01-20", amount: 7_000 }];
     expect(deltaKategoriSampai(besok, "2026-01-15", "Hutang Piutang")).toBe(1_250_000);
+  });
+});
+
+describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U2, KTD5)", () => {
+  // Bahan berbentuk keluaran getBahanLaporan; angkanya karangan yang seimbang.
+  const bahan = {
+    totals: totals(),
+    kasAkhir: 1_000_000_000,
+    sebabKas: null,
+    piutangEasymax: 200_000_000,
+    hutangPiutangNonEasymax: 0,
+    beban: beban(-1_000_000),
+    pendapatanLain: 0,
+    totalAssetKemarin: 2_509_000_000,
+    kontribusi: 0,
+    saldoTitipanBright: 0,
+  };
+
+  it("sama persis dengan panelBalance(panelIncome(...)) yang dulu ditulis inline di halaman", () => {
+    const ni = panelIncome({ totals: bahan.totals, beban: bahan.beban, pendapatanLain: 0, incomeAdjustment: null })
+      .baris.find((x) => x.label === "Net profit")!.nilai;
+    const manual = panelBalance({
+      cashOnHand: bahan.kasAkhir,
+      sebabKas: null,
+      inventoryValue: bahan.totals.inventoryValue,
+      soValue: bahan.totals.soValue,
+      piutangEasymax: bahan.piutangEasymax,
+      hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
+      openedRetainedEarnings: null,
+      netIncome: ni,
+      incomeAdjustment: null,
+      totalAssetKemarin: bahan.totalAssetKemarin,
+      deltaKontribusi: bahan.kontribusi,
+      saldoTitipanBright: bahan.saldoTitipanBright,
+    }).langkahHarian;
+    expect(manual).not.toBeNull();
+    expect(langkahHarianDari(bahan)).toBe(manual);
+  });
+
+  it("🔴 baris kas yang masuk SESUDAH layar dibuka mengubah selisih penutupan", () => {
+    // AE13: transfer pelanggan bertanggal bank 2 Okt dibukukan maju ke 3 Nov —
+    // kas 3 Nov naik Rp 160.000.000 tanpa pasangan di EasyMax hari itu. Selisih
+    // yang tersimpan saat layar dibuka sudah basi; tutupHari wajib menghitung
+    // ulang dari bahan TERKINI, bukan membaca angka lama itu.
+    const saatDibuka = langkahHarianDari(bahan)!;
+    const saatDitutup = langkahHarianDari({ ...bahan, kasAkhir: bahan.kasAkhir + 160_000_000 })!;
+    expect(saatDitutup - saatDibuka).toBe(-160_000_000);
+  });
+
+  it("bahan tak lengkap ⇒ null, tidak pernah 0 (§10.15: nol terbaca 'seimbang')", () => {
+    expect(langkahHarianDari({ ...bahan, kasAkhir: null, sebabKas: "belum_ada_mutasi_kas" })).toBeNull();
+    expect(langkahHarianDari({ ...bahan, totalAssetKemarin: null })).toBeNull();
   });
 });

@@ -317,6 +317,56 @@ export function panelBalance(i: BalanceInput): PanelBalance {
   };
 }
 
+/** Bagian `BahanLaporan` yang menentukan langkah harian — struktural, tanpa I/O. */
+export interface BahanLangkahHarian {
+  totals: DayTotals;
+  kasAkhir: number | null;
+  sebabKas: SebabKasInput;
+  piutangEasymax: number;
+  hutangPiutangNonEasymax: number | null;
+  beban: readonly BarisBeban[];
+  pendapatanLain: number;
+  totalAssetKemarin: number | null;
+  kontribusi: number;
+  saldoTitipanBright: number;
+}
+
+/**
+ * ⛔ SATU JALUR HITUNG `day_close.difference_rp` (§1.2, §4.6) — dipakai Layar 4
+ * saat dibuka (§10.15) DAN oleh `tutupHari` di bawah kuncinya (rencana
+ * 2026-10-29 U2/KTD5). Dua salinan susunan ini akan menjawab berbeda begitu
+ * salah satunya disunting, dan yang kalah adalah angka yang dipakai menutup.
+ *
+ * `null` dirambatkan apa adanya: hari yang belum bisa dinilai tak boleh
+ * mendapat angka (nol terbaca "seimbang", §10.15).
+ *
+ * 📌 KTD15 (U12) akan memisah koreksi susulan dari langkah ini — langkah tanpa
+ * baris bertanggal asal < hari buku. Belum di sini; titik sambungnya di sini.
+ */
+export function langkahHarianDari(b: BahanLangkahHarian): number | null {
+  const netIncome = panelIncome({
+    totals: b.totals,
+    beban: b.beban,
+    pendapatanLain: b.pendapatanLain,
+    incomeAdjustment: null,
+  }).baris.find((x) => x.label === "Net profit")!.nilai;
+  return panelBalance({
+    cashOnHand: b.kasAkhir,
+    sebabKas: b.sebabKas,
+    inventoryValue: b.totals.inventoryValue,
+    soValue: b.totals.soValue,
+    piutangEasymax: b.piutangEasymax,
+    hutangPiutangNonEasymax: b.hutangPiutangNonEasymax,
+    openedRetainedEarnings: null,
+    netIncome,
+    incomeAdjustment: null,
+    totalAssetKemarin: b.totalAssetKemarin,
+    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
+    deltaKontribusi: b.kontribusi,
+    saldoTitipanBright: b.saldoTitipanBright,
+  }).langkahHarian;
+}
+
 /** Nada tampilan angka pemeriksa. Toleransi akuntansi/GL = Rp 0 (§3.1). */
 /**
  * Caveat "Nilai DO" — SATU sumber untuk layar DAN PDF.

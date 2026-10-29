@@ -35,7 +35,32 @@ describe("tutup-hari-actions — penjagaan yang tak boleh hilang", () => {
     );
     expect(masukan).toMatch(/reasonCode/);
     expect(masukan).not.toMatch(/difference|selisih/i);
-    expect(KODE).toMatch(/const differenceRp = Number\(row\.differenceRp\)/);
+  });
+
+  it("🔴 SELISIH DIHITUNG ULANG di bawah kunci — bukan angka tersimpan saat layar dibuka (U2)", () => {
+    // Baris yang dibukukan maju (R28) bisa masuk SESUDAH Layar 4 dibuka.
+    // Membaca `difference_rp` tersimpan berarti menutup hari dengan angka basi:
+    // tier & persetujuan menempel pada selisih yang bukan selisih hari itu.
+    const fn = KODE.slice(KODE.indexOf("export async function tutupHari"), KODE.indexOf("function pesanKurang"));
+    expect(fn).not.toMatch(/row\.differenceRp/);
+    expect(fn).toMatch(/const differenceRp = await hitungLangkahHarian\(unit\.unit_id, input\.date\)/);
+    // Urutan: kunci eksklusif hari → kunci baris → hitung ulang → vonis → tulis.
+    // Hitung ulang SEBELUM kunci = jendela tempat jalur tulis menyelip.
+    expect(urutan(fn, "await kunciHariEksklusif(client, unit.unit_id, input.date)", "FOR UPDATE")).toBe("ok");
+    expect(urutan(fn, "FOR UPDATE", "hitungLangkahHarian(")).toBe("ok");
+    expect(urutan(fn, "hitungLangkahHarian(", "periksaTutupHari(")).toBe("ok");
+    expect(urutan(fn, "hitungLangkahHarian(", "UPDATE app.day_close")).toBe("ok");
+    // Angka terkini ikut DITULIS — tier dari CHECK 0026 harus cocok dengannya.
+    expect(fn.slice(fn.indexOf("UPDATE app.day_close"))).toMatch(/difference_rp=\$\d+/);
+    // Tak terhitung ⇒ ditolak, tidak dinolkan.
+    expect(fn).toMatch(/if \(differenceRp === null\) \{/);
+  });
+
+  it("🔴 halaman & aksi memakai SATU jalur hitung", () => {
+    expect(HAL).toMatch(/langkahHarianDari\(bahanAwal\)/);
+    const q = readFileSync(resolve(__dirname, "keuangan-laporan-queries.ts"), "utf8");
+    const f = q.slice(q.indexOf("export async function hitungLangkahHarian"));
+    expect(f).toMatch(/langkahHarianDari\(await getBahanLaporan\(/);
   });
 
   it("🔴 AMBANG tidak disalin — satu tempat yang memutuskan", () => {

@@ -12,7 +12,7 @@ import {
   getKelengkapanInput,
 } from "@/lib/keuangan-input-queries";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
-import { panelBalance, panelCashFlow, panelIncome } from "@/lib/keuangan-laporan-model";
+import { langkahHarianDari, panelBalance, panelCashFlow, panelIncome } from "@/lib/keuangan-laporan-model";
 import { bolehMenutup, tierFor } from "@/lib/keuangan-tutup-hari";
 import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
@@ -48,30 +48,13 @@ export default async function TutupHariPage({
     .slice(0, 10);
 
   const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
-  const bsAwal = panelBalance({
-    cashOnHand: bahanAwal.kasAkhir,
-    sebabKas: bahanAwal.sebabKas,
-    inventoryValue: bahanAwal.totals.inventoryValue,
-    soValue: bahanAwal.totals.soValue,
-    piutangEasymax: bahanAwal.piutangEasymax,
-    hutangPiutangNonEasymax: bahanAwal.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome:
-      panelIncome({
-        totals: bahanAwal.totals,
-        beban: bahanAwal.beban,
-        pendapatanLain: bahanAwal.pendapatanLain,
-        incomeAdjustment: null,
-      }).baris.find((x) => x.label === "Net profit")!.nilai,
-    incomeAdjustment: null,
-    totalAssetKemarin: bahanAwal.totalAssetKemarin,
-    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
-    deltaKontribusi: bahanAwal.kontribusi,
-    saldoTitipanBright: bahanAwal.saldoTitipanBright,
-  });
+  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianDari`.
+  //    Aksi menghitung ulang di bawah kuncinya; dua susunan berbeda akan
+  //    menutup hari dengan angka yang bukan yang tampil di layar.
+  const langkahAwal = langkahHarianDari(bahanAwal);
   // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
   // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
-  await pastikanBarisDayClose(unit.unit_id, date, bsAwal.langkahHarian);
+  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal);
 
   const [bahan, dayClose, overrides, kelengkapan, reasonCodes] = await Promise.all([
     Promise.resolve(bahanAwal),

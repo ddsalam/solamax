@@ -16,9 +16,11 @@ import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from ".
 import {
   deltaKategori,
   deltaKategoriSampai,
+  langkahHarianDari,
   sebabKasDari,
   type SebabKasInput,
 } from "./keuangan-laporan-model";
+import { addDays } from "./periods";
 import {
   getAkunKas,
   getHargaBeliRows,
@@ -332,6 +334,22 @@ async function bahanLaporan(
     penebusanSo: null,
     totalAssetKemarin: assetKemarin,
   };
+}
+
+/**
+ * Langkah harian TERKINI satu hari — `day_close.difference_rp` yang dipakai
+ * `tutupHari` (rencana 2026-10-29 U2/KTD5). Jalur yang SAMA dengan Layar 4
+ * (`getBahanLaporan` → `langkahHarianDari`), dipanggil ulang di bawah kunci
+ * penutupan supaya baris yang dibukukan sesudah layar dibuka ikut terhitung.
+ *
+ * ⚠️ Kuerinya berjalan di koneksi pool sendiri, BUKAN di transaksi pemanggil —
+ * READ COMMITTED: mereka melihat semua yang sudah di-COMMIT. Benar karena
+ * pemanggil sudah memegang kunci eksklusif hari itu (`kunciHariEksklusif`),
+ * jadi jalur tulis R28 yang ingin menulis ke hari itu sudah COMMIT lebih dulu
+ * atau masih menunggu dan akan melihat hari itu tertutup.
+ */
+export async function hitungLangkahHarian(unit: ScopedUnitId, date: string): Promise<number | null> {
+  return langkahHarianDari(await getBahanLaporan(unit, date, addDays(date, -1)));
 }
 
 export { assetNonKas };
