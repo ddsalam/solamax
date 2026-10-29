@@ -8,6 +8,22 @@ SELECT EXISTS (
     AND is_nullable = 'NO' AND data_type = 'numeric'
 ) AS ready`;
 
+/**
+ * U6 (rencana 2026-10-29) — migrasi 0049 berjalan dalam satu transaksi; kolom
+ * `cash_ledger.tanggal_asal` dan tabel `pihak_lawan_saldo_awal` muncul bersama
+ * seluruh isinya. Penunggu yang sama, pertanyaan yang lain.
+ */
+export const PIHAK_LAWAN_SCHEMA_READY_SQL = `
+SELECT (
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'app' AND table_name = 'cash_ledger' AND column_name = 'tanggal_asal'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'app' AND table_name = 'pihak_lawan_saldo_awal'
+  )
+) AS ready`;
+
 /** The backend and dashboard deployment workflows start concurrently. K1 must
  * wait for the backend's atomic upgrade before testing the new reader SQL. */
 export async function waitForSnapshotV2Schema(
@@ -17,6 +33,8 @@ export async function waitForSnapshotV2Schema(
     intervalMs?: number;
     now?: () => number;
     sleep?: (milliseconds: number) => Promise<void>;
+    /** Awal pesan galat tenggat — bawaannya menyebut 0039 (pemakai pertama). */
+    notReady?: string;
   } = {},
 ): Promise<void> {
   const now = options.now ?? Date.now;
@@ -25,7 +43,11 @@ export async function waitForSnapshotV2Schema(
   for (;;) {
     if (await readReady()) return;
     const remaining = deadline - now();
-    if (remaining <= 0) throw new Error("snapshot_v2_schema_not_ready: backend migration 0039 did not finish before dashboard K1 deadline");
+    if (remaining <= 0) {
+      throw new Error(
+        `${options.notReady ?? "snapshot_v2_schema_not_ready: backend migration 0039"} did not finish before dashboard K1 deadline`,
+      );
+    }
     await sleep(Math.min(options.intervalMs ?? 5000, remaining));
   }
 }

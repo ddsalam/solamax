@@ -116,6 +116,23 @@ export interface TitipanDiterima {
   pihakLawanId: string | null;
   nama: string | null;
   rp: number;
+  /**
+   * U6 — hari buku baris yang dijumlah (`YYYY-MM-DD`). Bila ada, baris yang
+   * mendahului saldo pembuka pemiliknya tidak dijumlah (sudah termuat di
+   * pembuka). `undefined`/`null` = agregat tanpa tanggal (perilaku U5).
+   */
+  businessDate?: string | null;
+}
+
+/**
+ * U6 — saldo pembuka pemilik titipan (`pihak_lawan_saldo_awal`, tanda 0049:
+ * POSITIF = piutang). Bagi pemilik titipan, saldo yang dibawa masuk adalah
+ * UTANG ⇒ liabilitas = −amount. Dikunci id pihak lawan.
+ */
+export interface SaldoAwalTitipan {
+  tanggal: string;
+  amountSen: number;
+  sementara: boolean;
 }
 
 export interface MutasiPenyerahan {
@@ -141,11 +158,19 @@ const sen = (rp: number): number => Math.round(rp * 100);
  * (tersimpan KREDIT, negatif). Penyerahan "Penyerahan titipan Bright" (0045)
  * dan titipan tanpa pemilik terhitung untuk Outlet Bright. Dihitung dalam sen
  * bulat. Hanya pemilik yang punya gerakan yang dikembalikan, urut nama.
+ *
+ * U6 — `saldoAwal` (opsional): saldo pembuka per pemilik. Yang berlaku pada
+ * `sampai` (tanggal ≤ sampai) DITAMBAHKAN sebagai utang (−amount) dan baris
+ * pemilik itu yang bertanggal SEBELUM pembukanya tidak dijumlah — aturan yang
+ * sama dengan `saldoPihakLawan` (§10.24 butir 2: dihitung dua kali bila
+ * dijumlah). Inilah satu-satunya tempat pembuka pemilik titipan masuk neraca;
+ * term pihak lawan neraca SENGAJA melewati jenis titipan supaya tak dihitung dua kali.
  */
 export function saldoTitipanPerPemilik(
   diterima: readonly TitipanDiterima[],
   mutasi: readonly MutasiPenyerahan[],
   sampai: string,
+  saldoAwal: ReadonlyMap<string, SaldoAwalTitipan> = new Map(),
 ): SaldoTitipanPemilik[] {
   const bright = diterima.find((d) => d.pihakLawanId !== null && d.nama === NAMA_PEMILIK_BRIGHT)?.pihakLawanId ?? null;
   const nama = new Map<string | null, string>();
@@ -154,15 +179,38 @@ export function saldoTitipanPerPemilik(
 
   const saldo = new Map<string | null, number>();
   const tambah = (k: string | null, rp: number) => saldo.set(k, (saldo.get(k) ?? 0) + sen(rp));
+  /** Pembuka pemilik `k` yang berlaku pada `sampai`, bila ada. */
+  const pembuka = (k: string | null) => {
+    const a = k === null ? undefined : saldoAwal.get(k);
+    return a !== undefined && a.tanggal <= sampai ? a : undefined;
+  };
+  /** Baris bertanggal `d` milik `k` sudah termuat di pembukanya? */
+  const praPembuka = (k: string | null, d: string | null | undefined) => {
+    const a = pembuka(k);
+    return a !== undefined && d != null && d < a.tanggal;
+  };
 
+  for (const [k, a] of saldoAwal) {
+    if (pembuka(k) === undefined) continue;
+    // Utang yang dibawa masuk: tanda 0049 positif = piutang ⇒ utang = −amount.
+    saldo.set(k, (saldo.get(k) ?? 0) - a.amountSen);
+  }
   for (const d of diterima) {
     if (d.rp === 0) continue;
-    tambah(d.pihakLawanId ?? bright, d.rp);
+    const k = d.pihakLawanId ?? bright;
+    if (praPembuka(k, d.businessDate)) continue;
+    tambah(k, d.rp);
   }
   for (const m of mutasi) {
     if (m.void || m.businessDate > sampai) continue;
-    if (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN_BRIGHT) tambah(bright, m.amount);
-    else if (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN) tambah(m.pihakLawanId ?? bright, m.amount);
+    const k =
+      m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN_BRIGHT
+        ? bright
+        : m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN
+          ? (m.pihakLawanId ?? bright)
+          : undefined;
+    if (k === undefined || praPembuka(k, m.businessDate)) continue;
+    tambah(k, m.amount);
   }
 
   return [...saldo.entries()]

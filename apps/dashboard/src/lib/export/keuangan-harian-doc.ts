@@ -53,7 +53,8 @@ function panel(judul: string, p: PanelLaporan): Content[] {
           [th(judul), th("Rupiah", "right")],
           ...p.baris.map((b) => [
             {
-              text: pdfText(b.label),
+              // Penanda keadaan (mis. "saldo pembuka sementara", §10.26) ikut ke kertas.
+              text: pdfText(b.tanda ? `${b.label} · ${b.tanda}` : b.label),
               fontSize: 8.5,
               bold: b.sum === true,
               margin: [b.ind === true ? 10 : 0, 0, 0, 0] as [number, number, number, number],

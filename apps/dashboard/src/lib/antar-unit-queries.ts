@@ -77,3 +77,65 @@ export async function getKodeAlasanBalik(): Promise<{ code: string; label: strin
       ORDER BY code`,
   );
 }
+
+export interface KakiAntarUnitPantau {
+  unitId: number;
+  lawanUnitId: number;
+  pasanganUuid: string | null;
+  businessDate: string;
+  /** Teks `numeric` — diubah ke sen bulat di model, tak lewat float. */
+  amount: string;
+  void: boolean;
+}
+
+export interface SaldoAwalAntarUnitPantau {
+  unitId: number;
+  lawanUnitId: number;
+  tanggal: string;
+  amount: string;
+  sementara: boolean;
+}
+
+/**
+ * Bahan kesamaan saldo antar unit (R4) untuk SEMUA unit di `units` — kaki
+ * Hutang Piutang berpihak-lawan unit (semua tanggal: jendela setengah-dibukukan
+ * butuh baris sesudah tanggal yang dinilai) dan saldo pembuka pasangan.
+ *
+ * ⛔ `qScoped(units)` — RLS hanya memulangkan buku unit yang dipegang pembaca.
+ *    Pasangan yang satu unitnya di luar jangkauan tetap setengah, dan model
+ *    (`paritasAntarUnit`) tidak menilainya. Dipakai Pemantauan & buku pembantu.
+ */
+export async function getBahanParitas(
+  units: readonly ScopedUnitId[],
+): Promise<{ kakiAntarUnit: KakiAntarUnitPantau[]; saldoAwalAntarUnit: SaldoAwalAntarUnitPantau[] }> {
+  const ids = units.map(Number);
+  const [kakiAntarUnit, saldoAwalAntarUnit] = await Promise.all([
+    qScoped<KakiAntarUnitPantau>(
+      units,
+      `SELECT l.unit_id::int                         AS "unitId",
+              p.lawan_unit_id::int                   AS "lawanUnitId",
+              l.pasangan_uuid::text                  AS "pasanganUuid",
+              to_char(l.business_date, 'YYYY-MM-DD') AS "businessDate",
+              l.amount::text                         AS amount,
+              l.void
+         FROM app.cash_ledger l
+         JOIN app.pihak_lawan p ON p.id = l.pihak_lawan_id AND p.unit_id = l.unit_id
+        WHERE l.unit_id = ANY($1::int[]) AND p.jenis = 'unit'
+          AND l.category_label = 'Hutang Piutang'`,
+      [ids],
+    ),
+    qScoped<SaldoAwalAntarUnitPantau>(
+      units,
+      `SELECT s.unit_id::int                   AS "unitId",
+              p.lawan_unit_id::int             AS "lawanUnitId",
+              to_char(s.tanggal, 'YYYY-MM-DD') AS tanggal,
+              s.amount::text                   AS amount,
+              s.sementara
+         FROM app.pihak_lawan_saldo_awal s
+         JOIN app.pihak_lawan p ON p.id = s.pihak_lawan_id AND p.unit_id = s.unit_id
+        WHERE s.unit_id = ANY($1::int[]) AND NOT s.void AND p.jenis = 'unit'`,
+      [ids],
+    ),
+  ]);
+  return { kakiAntarUnit, saldoAwalAntarUnit };
+}

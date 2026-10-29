@@ -1,4 +1,3 @@
-import { UNIT_DISPLAY } from "./config";
 import { rupiahKeSen, type SaldoAwalPihakLawan } from "./pihak-lawan-model";
 
 /**
@@ -42,19 +41,20 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Penanda "satu PT" (R5, KTD1) — DITURUNKAN dari peta tenant `config.ts` saat
- * baca, tidak disimpan. Perbandingan string EKSAK: "PT Sola Petra Abadi" ≠
- * "PT Sola Petra Energi" (beda satu kata, badan hukum berbeda).
+ * Penanda "satu PT" (R5, KTD1) — DITURUNKAN dari peta tenant (`public.unit.
+ * tenant_id`, satu tenant = satu PT) saat baca, tidak disimpan. Pemanggil
+ * memasok peta dari `DataScope.tenantPerUnit` (kueri kandidat unit yang sudah
+ * ada — tanpa kueri tambahan).
+ *
+ * ⛔ Dulu membandingkan teks kop `config.ts` (`UNIT_DISPLAY[code].pt`), yang
+ *    menyebut dirinya "teks sementara sampai data resmi per unit" — tanda
+ *    badan hukum tak boleh bergantung pada teks kop surat.
  */
-export function satuPt(
-  a: string,
-  b: string,
-  peta: Readonly<Record<string, { pt?: string }>> = UNIT_DISPLAY,
-): boolean {
+export function satuPt(a: string, b: string, tenant: ReadonlyMap<string, string | null>): boolean {
   if (a === b) return false;
-  const pa = peta[a]?.pt;
-  const pb = peta[b]?.pt;
-  return pa !== undefined && pb !== undefined && pa === pb;
+  const ta = tenant.get(a);
+  const tb = tenant.get(b);
+  return ta != null && tb != null && ta === tb;
 }
 
 export interface MasukanAntarUnit {

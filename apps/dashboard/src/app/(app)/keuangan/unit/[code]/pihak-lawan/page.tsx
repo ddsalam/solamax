@@ -3,7 +3,10 @@ import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { AntarUnitForm, type PasanganTampil, type UnitLawanPilihan } from "@/components/keuangan/AntarUnitForm";
 import { PihakLawanPanel, type PihakLawanTampil } from "@/components/keuangan/PihakLawanPanel";
 import { ringkasPasangan, satuPt } from "@/lib/antar-unit-model";
-import { getKakiAntarUnit, getKodeAlasanBalik, getRekeningAktif } from "@/lib/antar-unit-queries";
+import { getBahanParitas, getKakiAntarUnit, getKodeAlasanBalik, getRekeningAktif } from "@/lib/antar-unit-queries";
+import { bukuPembantu, statusPasangan } from "@/lib/buku-pembantu-model";
+import { getBahanBukuPembantu } from "@/lib/keuangan-laporan-queries";
+import { paritasAntarUnit } from "@/lib/keuangan-pantau-model";
 import { UNIT_DISPLAY, unitDotted, unitLabel } from "@/lib/config";
 import {
   canBalikPasanganAntarUnit,
@@ -14,10 +17,9 @@ import {
   canTetapkanSaldoAwalPihakLawan,
   canViewLaporanKeuangan,
 } from "@/lib/keuangan-wewenang";
-import { saldoPihakLawan } from "@/lib/pihak-lawan-model";
-import { getBarisTanpaPihakLawan, getMutasiPihakLawan, getPihakLawan } from "@/lib/pihak-lawan-queries";
+import { getBarisTanpaPihakLawan } from "@/lib/pihak-lawan-queries";
 import { getDataScope } from "@/lib/scope";
-import { getSelection } from "@/lib/selection";
+import { todayWib } from "@/lib/periods";
 import { DATE_RE } from "@/lib/selection-keys";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +27,14 @@ export const dynamic = "force-dynamic";
 /**
  * Pihak lawan per unit (rencana 2026-10-29 U3; R1, R2, R7, KTD3).
  *
- * Hanya yang dibutuhkan untuk MENJALANKAN tindakannya: daftar per jenis berikut
- * saldo per tanggal, tambah/nonaktifkan (Keuangan), saldo pembuka (HoF), dan
- * daftar kerja baris Hutang Piutang lama tanpa pihak lawan. Penyajian buku
- * pembantu lengkap (rincian per mutasi, neraca) milik U6.
+ * U6 — BUKU PEMBANTU: pemilih tanggal (bawaan hari ini) di atas tabel pihak
+ * lawan per jenis — saldo (nilai mutlak + Piutang/Hutang), status pasangan
+ * unit ("Dalam perjalanan"/"Lunas di bank", "Satu PT", "Tidak seimbang" →
+ * Pemantauan), baris bersaldo nol diciutkan, rincian mutasi bersaldo berjalan.
+ * Saldonya lahir dari jalur baca NERACA (`getBahanBukuPembantu`), bukan
+ * hitungan kedua. Tanpa ekspor CSV (Scope Boundaries rencana).
+ * Juga tindakan U3/U4: tambah/nonaktifkan (Keuangan), saldo pembuka (HoF),
+ * daftar kerja baris Hutang Piutang lama tanpa pihak lawan, antar unit.
  *
  * Wewenang dihitung DI SERVER, satu predikat per tindakan:
  *   · baca              → `canViewLaporanKeuangan`
@@ -53,18 +59,23 @@ export default async function PihakLawanPage({
   const ctx = { role: scope.role, email: scope.email };
   if (!canViewLaporanKeuangan(ctx)) notFound();
 
-  const hariIni = getSelection(scope.units).date;
+  // Bawaan HARI INI (rencana U6), bukan tanggal pilihan layar lain: buku
+  // pembantu menjawab "berapa saldonya sekarang" kecuali tanggal diminta.
+  const hariIni = todayWib();
   const per = sp.tanggal && DATE_RE.test(sp.tanggal) ? sp.tanggal : hariIni;
 
   const bolehCatat = canCatatAntarUnit(ctx);
   const bolehBalik = canBalikPasanganAntarUnit(ctx);
-  const [pihak, mutasi, lama, kakiAntarUnit, rekeningSaya, kodeAlasan] = await Promise.all([
-    getPihakLawan(unit.unit_id),
-    getMutasiPihakLawan(unit.unit_id, per),
+  // R4 hanya bisa dinilai untuk pasangan yang KEDUA unitnya dipegang pembaca:
+  // `qScoped([unit ini, unit lawan yang dipegang])` — buku unit lain tak dibaca.
+  const unitParitas = scope.units.map((u) => u.unit_id);
+  const [bahanBuku, lama, kakiAntarUnit, rekeningSaya, kodeAlasan, bahanParitas] = await Promise.all([
+    getBahanBukuPembantu(unit.unit_id, per),
     getBarisTanpaPihakLawan(unit.unit_id),
     getKakiAntarUnit(unit.unit_id),
     bolehCatat ? getRekeningAktif(unit.unit_id) : Promise.resolve([]),
     bolehBalik ? getKodeAlasanBalik() : Promise.resolve([]),
+    getBahanParitas(unitParitas),
   ]);
 
   // Unit lawan untuk formulir (U4): nama dari peta tampilan config.ts + unit
@@ -78,7 +89,7 @@ export default async function PihakLawanPage({
     code: c,
     name: scope.units.find((u) => u.code === c)?.name ?? UNIT_DISPLAY[c]?.name ?? c,
     dipegang: dipegang.has(c),
-    satuPt: satuPt(unit.code, c),
+    satuPt: satuPt(unit.code, c, scope.tenantPerUnit),
   }));
   const lawanPasangan = new Map(kakiAntarUnit.map((k) => [k.pasanganUuid, k]));
   const pasangan: PasanganTampil[] = ringkasPasangan(kakiAntarUnit).map((p) => {
@@ -87,25 +98,48 @@ export default async function PihakLawanPage({
       ...p,
       lawanCode: k.lawanCode,
       lawanNama: k.lawanNama,
-      satuPt: satuPt(unit.code, k.lawanCode),
+      satuPt: satuPt(unit.code, k.lawanCode, scope.tenantPerUnit),
       lawanDipegang: dipegang.has(k.lawanCode),
     };
   });
 
-  const tampil: PihakLawanTampil[] = pihak.map((p) => {
-    const s = saldoPihakLawan({ pihakLawanId: p.id, saldoAwal: p.saldoAwal, mutasi, per });
+  const ringkas = ringkasPasangan(kakiAntarUnit);
+  const paritas = paritasAntarUnit(unitParitas.map(Number), bahanParitas, per).filter(
+    (p) => p.unitId === Number(unit.unit_id),
+  );
+  const kodeUnit = new Map(
+    [...scope.units.map((u) => [Number(u.unit_id), u.code] as const), ...kakiAntarUnit.map((k) => [k.lawanUnitId, k.lawanCode] as const)],
+  );
+  const buku = bukuPembantu({
+    per,
+    pihak: bahanBuku.pihakLawan,
+    mutasi: bahanBuku.mutasi,
+    titipanDiterima: bahanBuku.titipanDiterima,
+  });
+  const tampil: PihakLawanTampil[] = buku.map((b) => {
+    const lawanCode = b.lawanUnitId === null ? undefined : kodeUnit.get(b.lawanUnitId);
     return {
-      id: p.id,
-      jenis: p.jenis,
-      nama: p.nama,
-      aktif: p.aktif,
-      saldoAwal: p.saldoAwal,
-      saldoSen: s.saldoSen,
-      nMutasi: s.nMutasi,
-      nPraSaldoAwal: s.nPraSaldoAwal,
+      id: b.id,
+      jenis: b.jenis,
+      nama: b.nama,
+      aktif: b.aktif,
+      saldoAwal: b.saldoAwal,
+      saldoSen: b.saldoSen,
+      arah: b.arah,
+      sementara: b.sementara,
+      nMutasi: b.rincian.filter((r) => !r.keterangan.startsWith("Saldo pembuka")).length,
+      nPraSaldoAwal: b.nPraSaldoAwal,
+      rincian: b.rincian,
+      status:
+        b.lawanUnitId === null
+          ? null
+          : statusPasangan(ringkas, b.lawanUnitId, {
+              satuPt: lawanCode !== undefined && satuPt(unit.code, lawanCode, scope.tenantPerUnit),
+              tidakSeimbang: paritas.some((p) => p.lawanUnitId === b.lawanUnitId && p.status === "tidak_seimbang"),
+            }),
       // Saldo pembuka pasangan menulis buku unit lawan juga — formulirnya hanya
       // berguna bila pengguna memegang unit itu (gerbangnya tetap di server).
-      lawanDipegang: p.lawanUnitId === null || scope.units.some((u) => u.unit_id === p.lawanUnitId),
+      lawanDipegang: b.lawanUnitId === null || scope.units.some((u) => u.unit_id === b.lawanUnitId),
     };
   });
 
@@ -121,8 +155,9 @@ export default async function PihakLawanPage({
         {unit.name} · {unitLabel(unit.code)}
       </div>
       <p className="fs16 t-tertiary mt2">
-        Setiap mutasi Hutang Piutang dan Penyerahan titipan menyebut satu pihak lawan. Saldo
-        positif = piutang (pihak lawan berhutang ke unit ini), negatif = hutang unit ini.
+        Buku pembantu: setiap mutasi Hutang Piutang dan Penyerahan titipan menyebut satu pihak lawan.
+        Piutang = pihak lawan berhutang ke unit ini; Hutang = unit ini berhutang ke pihak lawan. Angkanya
+        sama dengan neraca harian pada tanggal yang sama.
       </p>
 
       {/* Tanggal saldo di QUERY: daftar pihak lawan bukan keadaan harian, tetapi saldonya ya. */}
@@ -144,6 +179,7 @@ export default async function PihakLawanPage({
           per={per}
           pihak={tampil}
           barisLama={lama}
+          tautanPemantauan={`/keuangan/pemantauan?tanggal=${per}`}
           bolehTambah={canTambahPihakLawan(ctx)}
           bolehNonaktif={canNonaktifkanPihakLawan(ctx)}
           bolehSaldoAwal={canTetapkanSaldoAwalPihakLawan(ctx)}

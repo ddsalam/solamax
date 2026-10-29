@@ -74,6 +74,11 @@ export interface BarisLaporan {
   sum?: boolean;
   /** Baris rincian (menjorok). */
   ind?: boolean;
+  /**
+   * Penanda keadaan yang WAJIB ikut angkanya, mis. "saldo pembuka sementara"
+   * (§10.26). Dirender di layar & PDF di samping label — bukan di tooltip.
+   */
+  tanda?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +97,12 @@ export interface CashFlowInput {
   transaksiPiutangEasymax: number | null;
   /** Δ hutang-piutang non-EasyMax (buku kas kategori `Hutang Piutang`). */
   hutangPiutangNonEasymax: number | null;
+  /** R16 — Σ buku kas kategori `Pembelian BBM` hari itu (keluar = negatif). */
   penebusanSo: number | null;
+  /** §1.3 — Σ buku kas kategori `Temporary Investment` hari itu. */
+  temporaryInvestment: number | null;
+  /** KTD8 — Σ buku kas penampung `Mutasi Belum Teridentifikasi` hari itu. */
+  penampung: number | null;
   pendapatanLain: number;
   biayaOperasional: number;
   /** §10.27 — titipan outlet Bright hari itu (diterima − diserahkan). Kas, bukan laba. */
@@ -132,10 +142,22 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
     {
       label: "Penebusan SO",
       nilai: i.penebusanSo,
-      sebab: i.penebusanSo === null ? "tak_bersumber" : undefined,
+      sebab: i.penebusanSo === null ? sebabKas(i.sebabKas) : undefined,
     },
     { label: "Pendapatan lain-lain", nilai: i.pendapatanLain },
     { label: "Biaya operasional", nilai: i.biayaOperasional },
+    {
+      label: "Temporary investment",
+      nilai: i.temporaryInvestment,
+      sebab: i.temporaryInvestment === null ? sebabKas(i.sebabKas) : undefined,
+    },
+    // KTD8 — uang yang belum dikenali tetap ARUS (ia ada di rekening), di baris
+    // sendiri sampai dipindahkan ke tujuannya.
+    {
+      label: "Mutasi belum teridentifikasi (penampung)",
+      nilai: i.penampung,
+      sebab: i.penampung === null ? sebabKas(i.sebabKas) : undefined,
+    },
     // §10.27 — uang titipan outlet Bright ikut laci & setoran SPBU, jadi ia ARUS
     // KAS — tetapi bukan pendapatan. Baris sendiri, supaya tak tercampur.
     { label: "Titipan outlet Bright (bukan pendapatan)", nilai: i.arusTitipanBright },
@@ -240,7 +262,19 @@ export interface BalanceInput {
   inventoryValue: number | null;
   soValue: number;
   piutangEasymax: number | null;
+  /**
+   * KTD2 — Σ saldo pihak lawan (positif = piutang) + baris lama tanpa pihak
+   * lawan. Menggantikan agregat "Hutang Piutang" yang tandanya terbalik.
+   */
   hutangPiutangNonEasymax: number | null;
+  /** Bagian `hutangPiutangNonEasymax` yang pihak lawannya belum ditetapkan (ditampilkan). */
+  pihakLawanBelumDitetapkan?: number | null;
+  /** §10.26 — ada saldo pembuka pihak lawan berlaku yang sementara. */
+  pihakLawanSementara?: boolean;
+  /** KTD8 — term penampung (−Σ amount). `null` = tanpa akun kas. */
+  penampung: number | null;
+  /** §1.2 — Temporary investment (−Σ amount kategori itu). `null` = tanpa akun kas. */
+  temporaryInvestment: number | null;
   /** `Total Equity(d−1) − ΔKontribusi`. `null` = belum ada saldo pembuka. */
   openedRetainedEarnings: number | null;
   /** `null` = laba tak terhitung (§10.23). JANGAN dinolkan di pemanggil. */
@@ -252,6 +286,10 @@ export interface BalanceInput {
   deltaKontribusi: number | null;
   /** §10.27 — SALDO liabilitas titipan outlet Bright. Mengurangi asset bersih. */
   saldoTitipanBright: number;
+  /** U5/U6 — rincian liabilitas titipan per pemilik; Σ = `saldoTitipanBright`. */
+  titipanPerPemilik?: readonly { nama: string; saldo: number }[];
+  /** §10.26 — ada saldo pembuka pemilik titipan berlaku yang sementara. */
+  titipanSementara?: boolean;
 }
 
 export interface PanelBalance extends PanelLaporan {
@@ -264,15 +302,25 @@ export interface PanelBalance extends PanelLaporan {
 }
 
 export function panelBalance(i: BalanceInput): PanelBalance {
-  const komponen = [i.cashOnHand, i.inventoryValue, i.piutangEasymax, i.hutangPiutangNonEasymax];
+  const komponen = [
+    i.cashOnHand,
+    i.inventoryValue,
+    i.piutangEasymax,
+    i.hutangPiutangNonEasymax,
+    i.penampung,
+    i.temporaryInvestment,
+  ];
   const asset = komponen.some((k) => k === null)
     ? null
     : (i.cashOnHand ?? 0) +
       (i.inventoryValue ?? 0) +
       i.soValue +
       (i.piutangEasymax ?? 0) +
-      (i.hutangPiutangNonEasymax ?? 0) -
+      (i.hutangPiutangNonEasymax ?? 0) +
+      (i.penampung ?? 0) +
+      (i.temporaryInvestment ?? 0) -
       i.saldoTitipanBright;
+  const SEMENTARA = "saldo pembuka sementara";
 
   // ⛔ `netIncome` boleh `null` sejak §10.23. Menggantinya 0 di sini — atau di
   //    pemanggil dengan `?? 0` — memasukkan kembali angka lebih saji yang
@@ -301,8 +349,18 @@ export function panelBalance(i: BalanceInput): PanelBalance {
         sebab: i.inventoryValue === null ? "data_stok_gl_tak_lengkap" : undefined },
       { label: "Nilai DO", nilai: i.soValue, ind: true },
       { label: "Hutang piutang pelanggan EasyMax", nilai: i.piutangEasymax, ind: true, sebab: i.piutangEasymax === null ? "tak_bersumber" : undefined },
-      { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined },
-      { label: "Titipan outlet Bright (liabilitas)", nilai: -i.saldoTitipanBright, ind: true },
+      { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined,
+        tanda: i.pihakLawanSementara ? SEMENTARA : undefined },
+      // KTD3 — baris lama tanpa pihak lawan tetap DIIMBANGI (langkah 0), tetapi
+      // terlihat sampai Finance menetapkannya.
+      ...(i.pihakLawanBelumDitetapkan
+        ? [{ label: "· pihak lawan belum ditetapkan", nilai: i.pihakLawanBelumDitetapkan, ind: true }]
+        : []),
+      { label: "Temporary investment", nilai: i.temporaryInvestment, ind: true, sebab: i.temporaryInvestment === null ? sebabKas(i.sebabKas) : undefined },
+      { label: "Penampung mutasi belum teridentifikasi", nilai: i.penampung, ind: true, sebab: i.penampung === null ? sebabKas(i.sebabKas) : undefined },
+      { label: "Titipan outlet Bright (liabilitas)", nilai: -i.saldoTitipanBright, ind: true,
+        tanda: i.titipanSementara ? SEMENTARA : undefined },
+      ...(i.titipanPerPemilik ?? []).map((t) => ({ label: `· ${t.nama}`, nilai: -t.saldo, ind: true })),
       { label: "Equity", nilai: equity, sum: true, sebab: equity === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Opened retained earnings", nilai: i.openedRetainedEarnings, ind: true, sebab: i.openedRetainedEarnings === null ? "belum_ada_saldo_pembuka" : undefined },
       { label: "Net income", nilai: i.netIncome, ind: true },
@@ -317,18 +375,141 @@ export function panelBalance(i: BalanceInput): PanelBalance {
   };
 }
 
-/** Bagian `BahanLaporan` yang menentukan langkah harian — struktural, tanpa I/O. */
-export interface BahanLangkahHarian {
-  totals: DayTotals;
+/**
+ * Bagian neraca yang bersumber dari BUKU KAS — dihitung dua kali untuk KTD15
+ * (dengan dan tanpa baris susulan hari itu).
+ */
+export interface SisiKasLangkah {
   kasAkhir: number | null;
+  hutangPiutangNonEasymax: number | null;
+  penampung: number | null;
+  temporaryInvestment: number | null;
+  saldoTitipanBright: number;
+  /** §10.29 — arus ekuitas hari itu (reklasifikasi + buku kas). POSITIF = keluar. */
+  kontribusi: number;
+}
+
+/** Bagian `BahanLaporan` yang menentukan langkah harian — struktural, tanpa I/O. */
+export interface BahanLangkahHarian extends SisiKasLangkah {
+  totals: DayTotals;
   sebabKas: SebabKasInput;
   piutangEasymax: number;
-  hutangPiutangNonEasymax: number | null;
   beban: readonly BarisBeban[];
   pendapatanLain: number;
   totalAssetKemarin: number | null;
+  /**
+   * KTD15 — sisi kas yang SAMA tetapi tanpa baris yang dibukukan hari itu
+   * dengan tanggal asal lebih awal. `undefined` = tak ada baris susulan.
+   */
+  tanpaSusulan?: SisiKasLangkah;
+}
+
+/** Bahan lengkap untuk panel neraca (Layar 2, papan, Layar 4). */
+export interface BahanNeraca extends BahanLangkahHarian {
+  pihakLawanBelumDitetapkan?: number | null;
+  pihakLawanSementara?: boolean;
+  titipanPerPemilik?: readonly { nama: string; saldo: number }[];
+  titipanSementara?: boolean;
+}
+
+/** Bahan untuk panel arus kas. */
+export interface BahanArus {
+  totals: DayTotals;
+  sebabKas: SebabKasInput;
+  kasAwalPerAkun: { nama: string; saldo: number }[] | null;
+  kasAkhir: number | null;
+  deltaPiutangEasymax: number;
+  arusHutangPiutangNonEasymax: number | null;
+  penebusanSo: number | null;
+  arusTemporaryInvestment: number | null;
+  arusPenampung: number | null;
+  pendapatanLain: number;
+  beban: readonly BarisBeban[];
+  arusTitipanBright: number;
   kontribusi: number;
-  saldoTitipanBright: number;
+}
+
+/**
+ * ⛔ SATU penyusun `BalanceInput` dari bahan — dipakai Layar 2, papan, Layar 4,
+ * dan `langkahHarianRinci`. Empat salinan susunan inline dulu menjawab sama
+ * hanya selama tak ada yang menambah term; U6 menambah tiga.
+ */
+export function balanceInputDari(b: BahanNeraca, netIncome: number | null, sisi: SisiKasLangkah = b): BalanceInput {
+  return {
+    cashOnHand: sisi.kasAkhir,
+    sebabKas: b.sebabKas,
+    inventoryValue: b.totals.inventoryValue,
+    soValue: b.totals.soValue,
+    piutangEasymax: b.piutangEasymax,
+    hutangPiutangNonEasymax: sisi.hutangPiutangNonEasymax,
+    pihakLawanBelumDitetapkan: b.pihakLawanBelumDitetapkan,
+    pihakLawanSementara: b.pihakLawanSementara,
+    penampung: sisi.penampung,
+    temporaryInvestment: sisi.temporaryInvestment,
+    openedRetainedEarnings: null,
+    netIncome,
+    incomeAdjustment: null,
+    totalAssetKemarin: b.totalAssetKemarin,
+    // §10.29 — prive/kontribusi (reklasifikasi biaya pengawas + buku kas).
+    deltaKontribusi: sisi.kontribusi,
+    saldoTitipanBright: sisi.saldoTitipanBright,
+    titipanPerPemilik: b.titipanPerPemilik,
+    titipanSementara: b.titipanSementara,
+  };
+}
+
+/** ⛔ SATU penyusun `CashFlowInput` dari bahan — Layar 2 dan Layar 4. */
+export function cashFlowInputDari(b: BahanArus): CashFlowInput {
+  return {
+    kasAwalPerAkun: b.kasAwalPerAkun,
+    sebabKas: b.sebabKas,
+    kasAkhir: b.kasAkhir,
+    omzet: b.totals.revenue,
+    teraValue: b.totals.teraValue,
+    transaksiPiutangEasymax: b.deltaPiutangEasymax,
+    hutangPiutangNonEasymax: b.arusHutangPiutangNonEasymax,
+    penebusanSo: b.penebusanSo,
+    temporaryInvestment: b.arusTemporaryInvestment,
+    penampung: b.arusPenampung,
+    pendapatanLain: b.pendapatanLain,
+    biayaOperasional: -b.beban.reduce((s, x) => s + x.amountRp, 0),
+    arusTitipanBright: b.arusTitipanBright,
+    kontribusiPemilik: b.kontribusi,
+  };
+}
+
+/** Laba bersih hari itu — jalur `panelIncome` yang sama dengan layar. `null` = tak terhitung (§10.23). */
+export function labaBersihDari(b: Pick<BahanLangkahHarian, "totals" | "beban" | "pendapatanLain">): number | null {
+  return panelIncome({
+    totals: b.totals,
+    beban: b.beban,
+    pendapatanLain: b.pendapatanLain,
+    incomeAdjustment: null,
+  }).baris.find((x) => x.label === "Net profit")!.nilai;
+}
+
+export interface RincianLangkah {
+  /** Langkah neraca dengan SEMUA baris kas (yang tampil di Layar 2). */
+  penuh: number | null;
+  /** Langkah tanpa baris susulan hari itu — yang DINILAI tangga toleransi (KTD15). */
+  dinilai: number | null;
+  /** `penuh − dinilai`; `null` bila salah satunya tak terhitung. */
+  koreksiSusulan: number | null;
+}
+
+/**
+ * KTD15 / R32 — langkah harian dihitung DUA KALI: dengan semua baris, dan
+ * tanpa baris yang dibukukan hari itu bertanggal asal lebih awal. Baris susulan
+ * berpihak lawan menyumbang nol (sudah seimbang di dalam SolaMax); yang
+ * menyumbang adalah baris yang lawannya sudah tercatat di EasyMax pada tanggal
+ * asalnya (transfer pelanggan, penebusan).
+ */
+export function langkahHarianRinci(b: BahanLangkahHarian): RincianLangkah {
+  const ni = labaBersihDari(b);
+  const penuh = panelBalance(balanceInputDari(b, ni)).langkahHarian;
+  const dinilai = b.tanpaSusulan === undefined ? penuh : panelBalance(balanceInputDari(b, ni, b.tanpaSusulan)).langkahHarian;
+  const koreksi = penuh === null || dinilai === null ? null : Math.round((penuh - dinilai) * 100) / 100 || 0;
+  return { penuh, dinilai, koreksiSusulan: koreksi };
 }
 
 /**
@@ -340,31 +521,12 @@ export interface BahanLangkahHarian {
  * `null` dirambatkan apa adanya: hari yang belum bisa dinilai tak boleh
  * mendapat angka (nol terbaca "seimbang", §10.15).
  *
- * 📌 KTD15 (U12) akan memisah koreksi susulan dari langkah ini — langkah tanpa
- * baris bertanggal asal < hari buku. Belum di sini; titik sambungnya di sini.
+ * KTD15 (U6) — yang dikembalikan adalah langkah **DINILAI** (tanpa koreksi
+ * susulan). Koreksi susulannya: {@link langkahHarianRinci}. Kolom `day_close`
+ * untuk menyimpannya & tampilan layarnya milik U12.
  */
 export function langkahHarianDari(b: BahanLangkahHarian): number | null {
-  const netIncome = panelIncome({
-    totals: b.totals,
-    beban: b.beban,
-    pendapatanLain: b.pendapatanLain,
-    incomeAdjustment: null,
-  }).baris.find((x) => x.label === "Net profit")!.nilai;
-  return panelBalance({
-    cashOnHand: b.kasAkhir,
-    sebabKas: b.sebabKas,
-    inventoryValue: b.totals.inventoryValue,
-    soValue: b.totals.soValue,
-    piutangEasymax: b.piutangEasymax,
-    hutangPiutangNonEasymax: b.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome,
-    incomeAdjustment: null,
-    totalAssetKemarin: b.totalAssetKemarin,
-    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
-    deltaKontribusi: b.kontribusi,
-    saldoTitipanBright: b.saldoTitipanBright,
-  }).langkahHarian;
+  return langkahHarianRinci(b).dinilai;
 }
 
 /** Nada tampilan angka pemeriksa. Toleransi akuntansi/GL = Rp 0 (§3.1). */

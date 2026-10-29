@@ -164,6 +164,8 @@ export interface MutasiKasRow extends MutasiKas {
   dariPencairanEdc: boolean;
   /** 0049 — pihak lawan baris ini (wajib untuk "Penyerahan titipan"/"Hutang Piutang"). */
   pihakLawanId?: string | null;
+  /** 0049 — tanggal asal bila dibukukan maju (R28); `null` = sama dengan hari buku. KTD15. */
+  tanggalAsal?: string | null;
 }
 
 /**
@@ -194,7 +196,8 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId",
             (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc",
-            pihak_lawan_id::text                  AS "pihakLawanId"
+            pihak_lawan_id::text                  AS "pihakLawanId",
+            to_char(tanggal_asal,'YYYY-MM-DD')    AS "tanggalAsal"
        FROM app.cash_ledger
       -- Saldo pembuka SELALU ikut, apa pun tanggalnya (§10.26): cut-over bisa
       -- bertanggal sesudah hari yang dilaporkan, dan tanpa baris itu hari-hari

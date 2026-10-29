@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { BarisHargaBeli } from "./keuangan-harga-model";
 import {
   AMBANG,
+  LABEL_KEJADIAN,
+  NADA_KEJADIAN,
+  paritasAntarUnit,
+  temuanPihakLawan,
   nadaTerburuk,
   rakitPantau,
   ringkasKejadian,
@@ -178,6 +182,7 @@ describe("kejadian & rakitan", () => {
       aktivitas: [],
       harga: new Map(),
       edcPengaturan: [],
+      pihakLawan: { penampung: [], tanpaPihakLawan: [], kakiAntarUnit: [], saldoAwalAntarUnit: [] },
     };
     const r = rakitPantau([7], bahan);
     expect(r).toHaveLength(1);
@@ -237,3 +242,70 @@ describe("ringkasKejadian — pola berulang dibaca sebagai SATU pola", () => {
   });
 });
 
+
+describe("U6 — sinyal buku pihak lawan", () => {
+  const kosong = { penampung: [], tanpaPihakLawan: [], kakiAntarUnit: [], saldoAwalAntarUnit: [] };
+  const nama = (id: number) => (id === 1 ? "Imam Bonjol" : id === 2 ? "Bakau" : `unit ${id}`);
+  const kaki = (unitId: number, lawanUnitId: number, amount: string, businessDate = "2026-10-05", pasanganUuid: string | null = "p1") => ({
+    unitId, lawanUnitId, pasanganUuid, businessDate, amount, void: false,
+  });
+
+  it("🔴 pasangan antar unit TIDAK seimbang di luar jendela ⇒ merah di KEDUA unit", () => {
+    // IB memberi 500 jt (kredit) tetapi kaki Bakau tercatat 450 jt — bukan jendela.
+    const f = { ...kosong, kakiAntarUnit: [kaki(1, 2, "-500000000.00"), kaki(2, 1, "450000000.00")] };
+    const par = paritasAntarUnit([1, 2], f, "2026-10-10");
+    for (const u of [1, 2]) {
+      const t = temuanPihakLawan(u, f, par, nama).find((x) => x.kode === "antar_unit_tidak_seimbang")!;
+      expect(t.nada).toBe("merah");
+      expect(t.rinci).toContain("Rp 50.000.000");
+    }
+  });
+
+  it("selisih yang seluruhnya kaki DALAM PERJALANAN (sisi lawan dibukukan sesudahnya) ⇒ bukan merah", () => {
+    const f = { ...kosong, kakiAntarUnit: [kaki(1, 2, "-500000000.00", "2026-10-05"), kaki(2, 1, "500000000.00", "2026-10-12")] };
+    const par = paritasAntarUnit([1, 2], f, "2026-10-10");
+    expect(par.every((p) => p.status === "menunggu_sisi_lawan")).toBe(true);
+    expect(temuanPihakLawan(1, f, par, nama).find((x) => x.kode === "antar_unit_tidak_seimbang")!.nada).toBe("hijau");
+  });
+
+  it("🔴 pembaca yang hanya memegang SATU unit pasangan ⇒ pasangan itu tak dinilai (bukan tebakan dari satu buku)", () => {
+    const f = { ...kosong, kakiAntarUnit: [kaki(1, 2, "-500000000.00")] };
+    expect(paritasAntarUnit([1], f, "2026-10-10")).toEqual([]);
+    expect(temuanPihakLawan(1, f, [], nama).some((x) => x.kode === "antar_unit_tidak_seimbang")).toBe(false);
+  });
+
+  it("saldo pembuka pasangan yang sama di kedua buku ⇒ seimbang", () => {
+    const f = {
+      ...kosong,
+      saldoAwalAntarUnit: [
+        { unitId: 1, lawanUnitId: 2, tanggal: "2026-10-01", amount: "125000000.00", sementara: false },
+        { unitId: 2, lawanUnitId: 1, tanggal: "2026-10-01", amount: "-125000000.00", sementara: false },
+      ],
+    };
+    expect(paritasAntarUnit([1, 2], f, "2026-10-10").map((p) => p.status)).toEqual(["seimbang", "seimbang"]);
+  });
+
+  it("penampung bersaldo ⇒ kuning, menyebut jumlah baris parkir", () => {
+    const f = { ...kosong, penampung: [{ unitId: 1, saldo: 500_000_000, nParkir: 2, tertua: "2026-10-03" }] };
+    const t = temuanPihakLawan(1, f, [], nama).find((x) => x.kode === "penampung")!;
+    expect(t.nada).toBe("kuning");
+    expect(t.judul).toContain("2 mutasi diparkir");
+  });
+
+  it("penampung yang sudah dipindahkan semuanya (saldo 0, tanpa parkir) ⇒ tak ada temuan", () => {
+    const f = { ...kosong, penampung: [{ unitId: 1, saldo: 0, nParkir: 0, tertua: "2026-10-03" }] };
+    expect(temuanPihakLawan(1, f, [], nama).some((x) => x.kode === "penampung")).toBe(false);
+  });
+
+  it("baris lama Hutang Piutang tanpa pihak lawan ⇒ kuning dengan tautan tindakannya", () => {
+    const f = { ...kosong, tanpaPihakLawan: [{ unitId: 1, n: 3, rp: -4_000_000, tertua: "2026-10-02" }] };
+    const t = temuanPihakLawan(1, f, [], nama).find((x) => x.kode === "hutang_piutang_tanpa_pihak_lawan")!;
+    expect(t.nada).toBe("kuning");
+    expect(t.rinci).toMatch(/Pihak lawan/);
+  });
+
+  it("pembalikan pasangan oleh HoF adalah kejadian bernama, kuning", () => {
+    expect(LABEL_KEJADIAN.balik_antar_unit).toMatch(/dibalik/);
+    expect(NADA_KEJADIAN.balik_antar_unit).toBe("kuning");
+  });
+});

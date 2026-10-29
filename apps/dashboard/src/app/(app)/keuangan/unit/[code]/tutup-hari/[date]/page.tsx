@@ -12,7 +12,7 @@ import {
   getKelengkapanInput,
 } from "@/lib/keuangan-input-queries";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
-import { langkahHarianDari, panelBalance, panelCashFlow, panelIncome } from "@/lib/keuangan-laporan-model";
+import { cashFlowInputDari, langkahHarianDari, panelCashFlow } from "@/lib/keuangan-laporan-model";
 import { bolehMenutup, tierFor } from "@/lib/keuangan-tutup-hari";
 import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
@@ -70,47 +70,18 @@ export default async function TutupHariPage({
     ),
   ]);
 
-  const cf = panelCashFlow({
-    kasAwalPerAkun: bahan.kasAwalPerAkun,
-    sebabKas: bahan.sebabKas,
-    kasAkhir: bahan.kasAkhir,
-    omzet: bahan.totals.revenue,
-    teraValue: bahan.totals.teraValue,
-    transaksiPiutangEasymax: bahan.deltaPiutangEasymax,
-    hutangPiutangNonEasymax: bahan.arusHutangPiutangNonEasymax,
-    penebusanSo: bahan.penebusanSo,
-    pendapatanLain: bahan.pendapatanLain,
-    biayaOperasional: -bahan.beban.reduce((s, x) => s + x.amountRp, 0),
-    arusTitipanBright: bahan.arusTitipanBright,
-    kontribusiPemilik: bahan.kontribusi,
-  });
-  const is = panelIncome({
-    totals: bahan.totals,
-    beban: bahan.beban,
-    pendapatanLain: bahan.pendapatanLain,
-    incomeAdjustment: null,
-  });
-  const bs = panelBalance({
-    cashOnHand: bahan.kasAkhir,
-    sebabKas: bahan.sebabKas,
-    inventoryValue: bahan.totals.inventoryValue,
-    soValue: bahan.totals.soValue,
-    piutangEasymax: bahan.piutangEasymax,
-    hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome: is.baris.find((x) => x.label === "Net profit")!.nilai,
-    incomeAdjustment: null,
-    totalAssetKemarin: bahan.totalAssetKemarin,
-    deltaKontribusi: bahan.kontribusi,
-    saldoTitipanBright: bahan.saldoTitipanBright,
-  });
+  const cf = panelCashFlow(cashFlowInputDari(bahan));
+  // ⛔ KTD15 — yang DINILAI tangga toleransi adalah langkah TANPA koreksi
+  //    susulan (`langkahHarianDari`), sama dengan `tutupHari` dan baris
+  //    `day_close` di atas. Tampilan koreksi susulan terpisah milik U12.
+  const langkahDinilai = langkahAwal;
 
   // Wewenang dihitung DI SERVER. Layar tidak boleh menyimpulkannya sendiri —
   // kesimpulan klien bisa dibuat benar dengan mengubah state di peramban.
   const bolehMenutupTier =
-    bs.langkahHarian === null
+    langkahDinilai === null
       ? false
-      : bolehMenutup(tierFor(bs.langkahHarian), { role: scope.role, email: scope.email });
+      : bolehMenutup(tierFor(langkahDinilai), { role: scope.role, email: scope.email });
 
   return (
     <>
@@ -141,8 +112,8 @@ export default async function TutupHariPage({
             generated: date,
           })}
           dayClose={dayClose}
-          langkahHarian={bs.langkahHarian}
-          tier={bs.langkahHarian === null ? null : tierFor(bs.langkahHarian)}
+          langkahHarian={langkahDinilai}
+          tier={langkahDinilai === null ? null : tierFor(langkahDinilai)}
           overrides={overrides}
           labelReason={Object.fromEntries(reasonCodes.map((r) => [r.code, r.label]))}
         />
@@ -155,7 +126,7 @@ export default async function TutupHariPage({
         <TutupHariPanel
           code={unit.code}
           date={date}
-          langkahHarian={bs.langkahHarian}
+          langkahHarian={langkahDinilai}
           cashFlowCheck={cf.pemeriksa.nilai}
           kelengkapan={kelengkapan}
           reasonCodes={reasonCodes}

@@ -6,7 +6,10 @@ import type {
   EdcPengaturanPantau,
   JenisKejadian,
   KejadianPantau,
+  PihakLawanPantau,
 } from "./keuangan-pantau-queries";
+import { paritasPasangan, type StatusParitas } from "./antar-unit-model";
+import { rpSen, teksKeSen } from "./pihak-lawan-model";
 
 /**
  * Model Layar "Pemantauan pemakaian keuangan" — MURNI (tanpa I/O).
@@ -336,6 +339,123 @@ export function temuanKedisiplinan(f: FaktaKedisiplinan, sampai: string): Temuan
 }
 
 // ---------------------------------------------------------------------------
+// 2b · Buku pihak lawan (U6) — penampung, baris tanpa pihak lawan, R4
+// ---------------------------------------------------------------------------
+
+export interface ParitasUnit {
+  unitId: number;
+  lawanUnitId: number;
+  status: StatusParitas;
+  /** `saldoA + saldoB` di luar jendela setengah-dibukukan, dalam sen. */
+  selisihSen: number;
+}
+
+/**
+ * Kesamaan saldo SETIAP pasangan unit yang KEDUA unitnya ada di `units`
+ * (R4) pada akhir `sampai` — lewat `paritasPasangan`, satu pembuat vonis.
+ * Pasangan yang satu unitnya di luar jangkauan pembaca TIDAK dinilai: sisi
+ * lawannya tak terbaca (RLS), dan menilai dari satu buku adalah menebak.
+ */
+export function paritasAntarUnit(
+  units: readonly number[],
+  f: Pick<PihakLawanPantau, "kakiAntarUnit" | "saldoAwalAntarUnit">,
+  sampai: string,
+): ParitasUnit[] {
+  const ada = new Set(units);
+  const kunci = (a: number, b: number) => `${a}>${b}`;
+  const sisi = new Map<string, { saldoAwal: { tanggal: string; amountSen: number; sementara: boolean } | null; mutasi: { pasanganUuid: string | null; businessDate: string; amountSen: number; void: boolean }[] }>();
+  const ambil = (a: number, b: number) => {
+    const k = kunci(a, b);
+    if (!sisi.has(k)) sisi.set(k, { saldoAwal: null, mutasi: [] });
+    return sisi.get(k)!;
+  };
+  for (const r of f.kakiAntarUnit) {
+    ambil(r.unitId, r.lawanUnitId).mutasi.push({
+      pasanganUuid: r.pasanganUuid,
+      businessDate: r.businessDate,
+      amountSen: teksKeSen(r.amount),
+      void: r.void,
+    });
+  }
+  for (const s of f.saldoAwalAntarUnit) {
+    ambil(s.unitId, s.lawanUnitId).saldoAwal = { tanggal: s.tanggal, amountSen: teksKeSen(s.amount), sementara: s.sementara };
+  }
+  const out: ParitasUnit[] = [];
+  const dinilai = new Set<string>();
+  for (const k of sisi.keys()) {
+    const [a, b] = k.split(">").map(Number) as [number, number];
+    const pasang = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (!ada.has(a) || !ada.has(b) || dinilai.has(pasang)) continue;
+    dinilai.add(pasang);
+    const h = paritasPasangan({ per: sampai, a: ambil(a, b), b: ambil(b, a) });
+    const sisa = h.selisihSen - h.dalamJendelaSen;
+    out.push({ unitId: a, lawanUnitId: b, status: h.status, selisihSen: sisa });
+    out.push({ unitId: b, lawanUnitId: a, status: h.status, selisihSen: sisa });
+  }
+  return out;
+}
+
+/** Temuan buku pihak lawan untuk SATU unit. `namaUnit` hanya untuk kalimat. */
+export function temuanPihakLawan(
+  unitId: number,
+  f: PihakLawanPantau,
+  paritas: readonly ParitasUnit[],
+  namaUnit: (id: number) => string,
+): Temuan[] {
+  const out: Temuan[] = [];
+
+  const timpang = paritas.filter((p) => p.unitId === unitId && p.status === "tidak_seimbang");
+  const pasangan = paritas.filter((p) => p.unitId === unitId);
+  if (timpang.length) {
+    out.push({
+      kelompok: "kedisiplinan",
+      kode: "antar_unit_tidak_seimbang",
+      nada: "merah",
+      judul: `${timpang.length} pasangan antar unit tidak seimbang`,
+      rinci:
+        timpang.map((p) => `↔ ${namaUnit(p.lawanUnitId)} selisih ${rpSen(p.selisihSen)}`).join(", ") +
+        " — piutang di satu buku tidak sama dengan hutang di buku lawannya, dan selisihnya tidak dijelaskan " +
+        "kaki yang masih dalam perjalanan. Periksa di Keuangan › Pihak lawan kedua unit.",
+    });
+  } else if (pasangan.length) {
+    out.push({
+      kelompok: "kedisiplinan",
+      kode: "antar_unit_tidak_seimbang",
+      nada: "hijau",
+      judul: "Pasangan antar unit seimbang",
+      rinci: `${pasangan.length} pasangan unit yang terlihat sama di kedua buku (atau selisihnya masih dalam perjalanan).`,
+    });
+  }
+
+  const pn = f.penampung.find((p) => p.unitId === unitId);
+  if (pn && (Math.round(pn.saldo * 100) !== 0 || pn.nParkir > 0)) {
+    out.push({
+      kelompok: "kedisiplinan",
+      kode: "penampung",
+      nada: "kuning",
+      judul: `${pn.nParkir} mutasi diparkir di penampung (saldo Rp ${rp(pn.saldo)})`,
+      rinci:
+        `Tertua ${pn.tertua ?? "—"}. Tutup hari tetap bisa; pindahkan setiap mutasi ke tujuannya ` +
+        "(pihak lawan, biaya, pendapatan) sebelum bulan ditutup.",
+    });
+  }
+
+  const tp = f.tanpaPihakLawan.find((p) => p.unitId === unitId);
+  if (tp && tp.n > 0) {
+    out.push({
+      kelompok: "kedisiplinan",
+      kode: "hutang_piutang_tanpa_pihak_lawan",
+      nada: "kuning",
+      judul: `${tp.n} mutasi Hutang Piutang tanpa pihak lawan (Rp ${rp(tp.rp)})`,
+      rinci:
+        `Tertua ${tp.tertua ?? "—"}. Di neraca tampil sebagai "pihak lawan belum ditetapkan" — ` +
+        "tetapkan pihak lawannya di Keuangan › Pihak lawan.",
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // 3 · Tanda kesalahan
 // ---------------------------------------------------------------------------
 
@@ -357,6 +477,7 @@ export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   rekening_edc_diubah: "Rekening pencairan EDC diubah",
   rekening_pencairan_beda: "Dana EDC masuk ke rekening lain dari pengaturan",
   reklasifikasi_biaya: "Biaya/pendapatan pengawas direklasifikasi Finance",
+  balik_antar_unit: "Pasangan antar unit dibalik (Head of Finance)",
 };
 
 export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
@@ -377,6 +498,8 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   rekening_pencairan_beda: "kuning",
   // §10.29 — memindahkan pos keluar dari laba mengubah laba; pemilik melihatnya.
   reklasifikasi_biaya: "kuning",
+  // R31 — membalik menyentuh DUA buku sekaligus; sah, tetapi pemilik melihatnya.
+  balik_antar_unit: "kuning",
   batal_mutasi_kas: "kuning",
   batal_harga_beli: "kuning",
   batal_settlement: "kuning",
@@ -505,8 +628,13 @@ export function nadaTerburuk(t: readonly Temuan[]): Nada {
   return "hijau";
 }
 
-export function rakitPantau(unitIds: readonly number[], bahan: BahanPantau): BarisPantauUnit[] {
+export function rakitPantau(
+  unitIds: readonly number[],
+  bahan: BahanPantau,
+  namaUnit: (id: number) => string = (id) => `unit ${id}`,
+): BarisPantauUnit[] {
   const satu = <T extends { unitId: number }>(xs: readonly T[], u: number) => xs.find((x) => x.unitId === u);
+  const paritas = paritasAntarUnit(unitIds, bahan.pihakLawan, bahan.sampai);
   return unitIds
     .map((u) => {
       const bk = satu(bahan.bukuKas, u);
@@ -535,6 +663,7 @@ export function rakitPantau(unitIds: readonly number[], bahan: BahanPantau): Bar
           },
           bahan.sampai,
         ),
+        ...temuanPihakLawan(u, bahan.pihakLawan, paritas, namaUnit),
       ];
       return {
         unitId: u,

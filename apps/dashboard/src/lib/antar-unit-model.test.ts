@@ -24,20 +24,30 @@ const BK = "6378301";
 const BL = "6478201";
 const JT = 500_000_000_00; // Rp 500 jt dalam sen
 
-describe("satuPt (R5) — dari peta tenant config.ts", () => {
-  it("🔴 IB ↔ BK = satu PT (PT Sola Petra Abadi), dua arah", () => {
-    expect(satuPt(IB, BK)).toBe(true);
-    expect(satuPt(BK, IB)).toBe(true);
+describe("satuPt (R5) — dari tenant_id public.unit (satu tenant = satu PT)", () => {
+  // Peta tiruan berbentuk `DataScope.tenantPerUnit`: IB & BK berbagi tenant.
+  const TENANT = new Map<string, string>([
+    [IB, "tenant-spa"],
+    [BK, "tenant-spa"],
+    [BL, "tenant-bl"],
+    ["63781002", "tenant-spe"],
+  ]);
+  it("🔴 IB ↔ BK = satu PT (tenant sama), dua arah", () => {
+    expect(satuPt(IB, BK, TENANT)).toBe(true);
+    expect(satuPt(BK, IB, TENANT)).toBe(true);
   });
-  it("🔴 BK ↔ BL = beda PT", () => {
-    expect(satuPt(BK, BL)).toBe(false);
+  it("🔴 BK ↔ BL = beda tenant", () => {
+    expect(satuPt(BK, BL, TENANT)).toBe(false);
   });
-  it("28 Oktober (PT Sola Petra ENERGI) bukan satu PT dengan IB (Sola Petra ABADI) — string eksak", () => {
-    expect(satuPt("63781002", IB)).toBe(false);
+  it("28 Oktober (tenant lain) bukan satu PT dengan IB — id eksak", () => {
+    expect(satuPt("63781002", IB, TENANT)).toBe(false);
   });
   it("unit tak dikenal / unit yang sama ⇒ false (bukan tebakan)", () => {
-    expect(satuPt("9999999", IB)).toBe(false);
-    expect(satuPt(IB, IB)).toBe(false);
+    expect(satuPt("9999999", IB, TENANT)).toBe(false);
+    expect(satuPt(IB, IB, TENANT)).toBe(false);
+  });
+  it("🔴 tidak lagi membaca teks kop config.ts — peta kosong ⇒ false", () => {
+    expect(satuPt(IB, BK, new Map())).toBe(false);
   });
 });
 

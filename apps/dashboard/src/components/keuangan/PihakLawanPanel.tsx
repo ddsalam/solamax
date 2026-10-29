@@ -30,6 +30,7 @@ import {
   type SaldoAwalPihakLawan,
 } from "@/lib/pihak-lawan-model";
 import type { BarisTanpaPihakLawan } from "@/lib/pihak-lawan-queries";
+import type { BarisRincian, StatusPasanganUnit } from "@/lib/buku-pembantu-model";
 
 export interface PihakLawanTampil {
   id: string;
@@ -37,15 +38,21 @@ export interface PihakLawanTampil {
   nama: string;
   aktif: boolean;
   saldoAwal: SaldoAwalPihakLawan | null;
+  /** Saldo pada akhir `per`, sen; positif = piutang. */
   saldoSen: number;
+  /** U6 — label eksplisit di samping nilai mutlak; `null` = nol. */
+  arah: "Piutang" | "Hutang" | null;
+  /** Saldo pembuka yang berlaku masih sementara (§10.26). */
+  sementara: boolean;
   nMutasi: number;
   nPraSaldoAwal: number;
+  /** U6 — rincian mutasi terurut hari buku, bersaldo berjalan. */
+  rincian: BarisRincian[];
+  /** U6 — status pasangan (hanya jenis `unit`). */
+  status: StatusPasanganUnit | null;
   /** Untuk jenis `unit`: apakah pengguna juga memegang unit lawannya. */
   lawanDipegang: boolean;
 }
-
-const tandaSaldo = (sen: number): string =>
-  sen === 0 ? "Rp 0" : `${sen > 0 ? "piutang" : "hutang"} ${rpSen(sen)}`;
 
 export function PihakLawanPanel({
   code,
@@ -56,11 +63,14 @@ export function PihakLawanPanel({
   bolehNonaktif,
   bolehSaldoAwal,
   bolehTetapkanBaris,
+  tautanPemantauan,
 }: {
   code: string;
   per: string;
   pihak: PihakLawanTampil[];
   barisLama: BarisTanpaPihakLawan[];
+  /** Tujuan tanda merah "Tidak seimbang" (R4). */
+  tautanPemantauan: string;
   bolehTambah: boolean;
   bolehNonaktif: boolean;
   bolehSaldoAwal: boolean;
@@ -100,6 +110,113 @@ export function PihakLawanPanel({
     });
   };
 
+  const baris = (p: PihakLawanTampil) => (
+    <div key={p.id}>
+      <div className="grid-row cols-akun">
+        <span className="w600">
+          {p.nama}
+          {!p.aktif && <span className="keu-pill">nonaktif</span>}
+          <span className="fs16 t-tertiary keu-p">
+            {p.saldoAwal === null
+              ? "saldo pembuka belum ditetapkan"
+              : `pembuka ${rpSen(p.saldoAwal.amountSen)}${p.saldoAwal.amountSen < 0 ? " (hutang)" : ""} sejak ${p.saldoAwal.tanggal}`}
+            {p.sementara && " · sementara"} · {p.nMutasi} mutasi
+          </span>
+          {p.nPraSaldoAwal > 0 && (
+            <span className="fs16 t-danger keu-p">
+              {p.nPraSaldoAwal} mutasi bertanggal sebelum saldo pembuka tidak dijumlah — sudah termuat di
+              saldo pembukanya.
+            </span>
+          )}
+        </span>
+        <span className="fs16">
+          <span className="num">{rpSen(p.saldoSen)}</span>{" "}
+          {p.arah !== null && <span className={p.arah === "Hutang" ? "t-danger w600" : "w600"}>{p.arah}</span>}
+          {p.sementara && <span className="keu-pill">saldo pembuka sementara</span>}
+        </span>
+        <span className="fs16">
+          {p.status?.kaki && <span>{p.status.kaki}</span>}
+          {p.status?.satuPt && <span className="keu-pill">Satu PT</span>}
+          {p.status?.tidakSeimbang && (
+            <a className="t-danger w600 keu-p" href={tautanPemantauan}>
+              Tidak seimbang
+            </a>
+          )}{" "}
+          {bolehSaldoAwal && p.lawanDipegang && (
+            <button
+              type="button"
+              className="btn-tint sm"
+              disabled={pending}
+              onClick={() => {
+                setBukaSa(bukaSa === p.id ? null : p.id);
+                setGalat(null);
+              }}
+            >
+              {p.saldoAwal === null ? "Tetapkan pembuka" : "Ganti pembuka"}
+            </button>
+          )}{" "}
+          {bolehNonaktif && p.aktif && (
+            yakin === p.id ? (
+              <span className="keu-yakin">
+                <button
+                  type="button"
+                  className="btn-outline sm t-danger"
+                  disabled={pending}
+                  onClick={() => {
+                    setYakin(null);
+                    jalankan(() => nonaktifkanPihakLawan({ code, id: p.id }));
+                  }}
+                >
+                  Ya, nonaktifkan
+                </button>
+                <button type="button" className="btn-outline sm" onClick={() => setYakin(null)}>
+                  Tidak
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="btn-outline sm" disabled={pending} onClick={() => setYakin(p.id)}>
+                Nonaktifkan
+              </button>
+            )
+          )}
+        </span>
+      </div>
+      {p.rincian.length > 0 && (
+        <details className="keu-p">
+          <summary className="fs16 t-tertiary">Rincian mutasi ({p.rincian.length})</summary>
+          <table className="fs16 mt2">
+            <thead>
+              <tr>
+                <th className="left">Hari buku</th>
+                <th className="left">Keterangan</th>
+                <th className="right">Mutasi</th>
+                <th className="right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.rincian.map((r, i) => (
+                <tr key={i}>
+                  <td>
+                    {r.hariBuku}
+                    {r.tanggalAsal !== null && <span className="t-tertiary"> (asal {r.tanggalAsal})</span>}
+                  </td>
+                  <td>{r.keterangan}</td>
+                  <td className="right num">
+                    {r.efekSen < 0 ? "−" : "+"}
+                    {rpSen(r.efekSen)}
+                  </td>
+                  <td className="right num">
+                    {rpSen(r.saldoSen)} {r.saldoSen > 0 ? "Piutang" : r.saldoSen < 0 ? "Hutang" : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
+    </div>
+  );
+
   const aktif = pihak.filter((p) => p.aktif);
   const pilihanUntuk = (kategori: string) => pihakLawanUntuk(kategori, aktif);
   const bukaPihak = pihak.find((p) => p.id === bukaSa) ?? null;
@@ -120,79 +237,33 @@ export function PihakLawanPanel({
       <section className="card card-pad-lg" aria-labelledby="daftar-pihak-lawan">
         <div className="section-h">
           <h3 id="daftar-pihak-lawan" className="text-h3">
-            Daftar pihak lawan
+            Buku pembantu pihak lawan
           </h3>
           <span className="fs16 t-tertiary">saldo per akhir {per}</span>
         </div>
 
+        <div className="grid-row cols-akun t-tertiary fs16 mt4" aria-hidden="true">
+          <span>Pihak lawan</span>
+          <span>Saldo</span>
+          <span>Status</span>
+        </div>
         {JENIS_PIHAK_LAWAN.map((j) => {
           const grup = pihak.filter((p) => p.jenis === j);
           if (grup.length === 0) return null;
+          // Bersaldo nol DICIUTKAN — tetap ada (bisa dibuka & diberi pembuka),
+          // tetapi tidak menenggelamkan pihak lawan yang bersaldo.
+          const isi = grup.filter((p) => p.saldoSen !== 0);
+          const nol = grup.filter((p) => p.saldoSen === 0);
           return (
             <div className="mt6" key={j}>
               <h4 className="fs16 w600">{LABEL_JENIS[j]}</h4>
-              {grup.map((p) => (
-                <div className="grid-row cols-akun" key={p.id}>
-                  <span className="w600">
-                    {p.nama}
-                    {!p.aktif && <span className="keu-pill">nonaktif</span>}
-                  </span>
-                  <span className="fs16">
-                    <span className="num">{tandaSaldo(p.saldoSen)}</span>
-                    <span className="fs16 t-tertiary keu-p">
-                      {p.saldoAwal === null
-                        ? "saldo pembuka belum ditetapkan"
-                        : `pembuka ${rpSen(p.saldoAwal.amountSen)}${p.saldoAwal.amountSen < 0 ? " (hutang)" : ""} sejak ${p.saldoAwal.tanggal}`}
-                      {p.saldoAwal?.sementara && " · sementara"} · {p.nMutasi} mutasi
-                    </span>
-                    {p.nPraSaldoAwal > 0 && (
-                      <span className="fs16 t-danger keu-p">
-                        {p.nPraSaldoAwal} mutasi bertanggal sebelum saldo pembuka tidak dijumlah — sudah
-                        termuat di saldo pembukanya.
-                      </span>
-                    )}
-                  </span>
-                  <span className="fs16">
-                    {bolehSaldoAwal && p.lawanDipegang && (
-                      <button
-                        type="button"
-                        className="btn-tint sm"
-                        disabled={pending}
-                        onClick={() => {
-                          setBukaSa(bukaSa === p.id ? null : p.id);
-                          setGalat(null);
-                        }}
-                      >
-                        {p.saldoAwal === null ? "Tetapkan pembuka" : "Ganti pembuka"}
-                      </button>
-                    )}{" "}
-                    {bolehNonaktif && p.aktif && (
-                      yakin === p.id ? (
-                        <span className="keu-yakin">
-                          <button
-                            type="button"
-                            className="btn-outline sm t-danger"
-                            disabled={pending}
-                            onClick={() => {
-                              setYakin(null);
-                              jalankan(() => nonaktifkanPihakLawan({ code, id: p.id }));
-                            }}
-                          >
-                            Ya, nonaktifkan
-                          </button>
-                          <button type="button" className="btn-outline sm" onClick={() => setYakin(null)}>
-                            Tidak
-                          </button>
-                        </span>
-                      ) : (
-                        <button type="button" className="btn-outline sm" disabled={pending} onClick={() => setYakin(p.id)}>
-                          Nonaktifkan
-                        </button>
-                      )
-                    )}
-                  </span>
-                </div>
-              ))}
+              {isi.map((p) => baris(p))}
+              {nol.length > 0 && (
+                <details className="mt2">
+                  <summary className="fs16 t-tertiary">{nol.length} pihak lawan bersaldo Rp 0</summary>
+                  {nol.map((p) => baris(p))}
+                </details>
+              )}
             </div>
           );
         })}

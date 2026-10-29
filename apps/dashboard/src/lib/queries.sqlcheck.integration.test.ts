@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SNAPSHOT_V2_SCHEMA_READY_SQL, waitForSnapshotV2Schema } from "./wait-snapshot-schema";
+import {
+  PIHAK_LAWAN_SCHEMA_READY_SQL,
+  SNAPSHOT_V2_SCHEMA_READY_SQL,
+  waitForSnapshotV2Schema,
+} from "./wait-snapshot-schema";
 import type { ManualSection } from "./queries";
 import type { SaldoSnapshotPointer } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope-rule";
@@ -83,7 +87,15 @@ beforeAll(async () => {
     const result = await qScoped<{ ready: boolean }>(U, SNAPSHOT_V2_SCHEMA_READY_SQL, []);
     return result[0]?.ready === true;
   });
-}, 11 * 60 * 1000);
+  // U6 — kueri keuangan di bawah membaca kolom/tabel 0049.
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, PIHAK_LAWAN_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "pihak_lawan_schema_not_ready: backend migration 0049" },
+  );
+}, 21 * 60 * 1000);
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
 const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
@@ -128,6 +140,23 @@ const makeCases = (Q: QMod): Array<[string, () => Promise<unknown>]> => [
   ["getUsulanSoList", () => Q.getUsulanSoList(U, 10)],
 ];
 
+/**
+ * U6 (rencana 2026-10-29) — kueri keuangan yang lahir/berubah untuk buku pihak
+ * lawan: baris kas bertanggal asal, titipan per pemilik per tanggal, bahan
+ * kesamaan saldo antar unit, sinyal Pemantauan, dan perakitan laporan utuh.
+ * Bukan modul `./queries`, jadi didaftar tangan — daftarnya kecil dan tiap
+ * butir menunjuk satu SQL baru. Asersinya tetap HANYA "tidak melempar".
+ */
+const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
+  ["getMutasiKas", async () => (await import("./keuangan-input-queries")).getMutasiKas(U, D)],
+  ["getPihakLawan", async () => (await import("./pihak-lawan-queries")).getPihakLawan(U)],
+  ["getTitipanDiterima", async () => (await import("./keuangan-laporan-queries")).getTitipanDiterima(U, D, D)],
+  ["getBahanBukuPembantu", async () => (await import("./keuangan-laporan-queries")).getBahanBukuPembantu(U, D)],
+  ["getBahanLaporan", async () => (await import("./keuangan-laporan-queries")).getBahanLaporan(U, D, "2026-06-30")],
+  ["getBahanParitas", async () => (await import("./antar-unit-queries")).getBahanParitas([U])],
+  ["getBahanPantau", async () => (await import("./keuangan-pantau-queries")).getBahanPantau([U], D)],
+];
+
 /** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */
 const NAMES = makeCases({} as QMod).map(([n]) => n);
 
@@ -169,6 +198,13 @@ d("K1 · setiap query bisa dieksekusi Postgres (gerbang deploy)", () => {
     it(`${name} dieksekusi tanpa error Postgres`, async () => {
       const Q = await import("./queries");
       const call = makeCases(Q).find(([n]) => n === name)![1];
+      await expect(call(), `${name}: SQL ditolak Postgres`).resolves.toBeDefined();
+    }, 30_000);
+  }
+
+  // U6 — kueri keuangan buku pihak lawan (lihat KASUS_U6).
+  for (const [name, call] of KASUS_U6) {
+    it(`${name} dieksekusi tanpa error Postgres`, async () => {
       await expect(call(), `${name}: SQL ditolak Postgres`).resolves.toBeDefined();
     }, 30_000);
   }

@@ -74,6 +74,8 @@ describe("laporan — titipan keluar dari laba, masuk liabilitas", () => {
       soValue: 0,
       piutangEasymax: 0,
       hutangPiutangNonEasymax: 0,
+      penampung: 0,
+      temporaryInvestment: 0,
       openedRetainedEarnings: null,
       netIncome: 0,
       incomeAdjustment: null,

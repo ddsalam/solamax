@@ -26,14 +26,22 @@ export class DataScope {
   readonly assignments: Assignment[];
   readonly roleConflict: boolean;
   readonly units: ScopedUnit[];
+  /**
+   * Kode unit → `tenant_id` untuk SEMUA unit aktif (bukan hanya yang dalam
+   * scope) — dibaca dari kueri kandidat yang sudah ada, tanpa kueri tambahan.
+   * Satu tenant = satu PT (IB & Bakau berbagi tenant). Hanya untuk turunan
+   * boolean di server (penanda "satu PT", R5); JANGAN dikirim ke klien.
+   */
+  readonly tenantPerUnit: ReadonlyMap<string, string>;
 
-  constructor(ctx: AuthContext, units: ScopedUnit[]) {
+  constructor(ctx: AuthContext, units: ScopedUnit[], tenantPerUnit: ReadonlyMap<string, string> = new Map()) {
     this.userId = ctx.userId;
     this.role = ctx.role;
     this.email = ctx.email;
     this.assignments = ctx.assignments;
     this.roleConflict = ctx.roleConflict;
     this.units = units;
+    this.tenantPerUnit = tenantPerUnit;
   }
 
   get isSuperAdmin(): boolean {
@@ -87,5 +95,8 @@ export async function getDataScope(): Promise<DataScope> {
     .filter((u) => unitVisible(ctx, u))
     .map((u) => ({ unit_id: u.unit_id as ScopedUnitId, code: u.code, name: u.name }));
 
-  return new DataScope(ctx, units);
+  const tenant = new Map<string, string>();
+  for (const u of all) if (u.tenant_id !== null) tenant.set(u.code, u.tenant_id);
+
+  return new DataScope(ctx, units, tenant);
 }
