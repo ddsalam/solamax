@@ -1,4 +1,5 @@
 import { addDays } from "./periods";
+import { DATE_RE } from "./selection-keys";
 
 /**
  * ATURAN TANGGAL BUKU (rencana 2026-10-29 KTD5; R22, R28) — MURNI, tanpa I/O.
@@ -27,8 +28,6 @@ import { addDays } from "./periods";
  * bawah — sama persis dengan `simpanMutasiKas` hari ini, yang hanya menolak
  * bila saldo pembuka ADA dan tanggalnya lebih muda.
  */
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface MasukanHariBuku {
   /** Tanggal transaksi (mis. tanggal bank), 'YYYY-MM-DD'. */

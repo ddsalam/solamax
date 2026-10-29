@@ -49,19 +49,9 @@ export default async function TutupHariPage({
     .toISOString()
     .slice(0, 10);
 
-  const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
-  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianRinci`.
-  //    Aksi menghitung ulang di bawah kuncinya; dua susunan berbeda akan
-  //    menutup hari dengan angka yang bukan yang tampil di layar.
-  const rinci = langkahHarianRinci(bahanAwal);
-  const langkahAwal = rinci.dinilai;
-  // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
-  // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
-  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
-
-  const [bahan, dayClose, overrides, kelengkapan, reasonCodes, maju, parkir] = await Promise.all([
-    Promise.resolve(bahanAwal),
-    getDayClose(unit.unit_id, date),
+  // Bacaan yang TAK bergantung pada bahan laporan maupun baris `day_close`
+  // dimulai SEKARANG, bersamaan dengan `getBahanLaporan` (hanya baca).
+  const lainP = Promise.all([
     getBackdateOverride(unit.unit_id, date),
     getKelengkapanInput(unit.unit_id, date),
     qScoped<{ code: string; label: string; requiresTarget: boolean }>(
@@ -74,6 +64,26 @@ export default async function TutupHariPage({
     // R24 — baris maju ke hari ini & baris yang masih diparkir.
     getBarisMajuKe(unit.unit_id, date),
     getParkirTerbukaSampai(unit.unit_id, date),
+  ]);
+  // Galatnya tetap dilempar di `await lainP` di bawah; ini hanya mencegah
+  // "unhandled rejection" bila `getBahanLaporan` gagal lebih dulu.
+  lainP.catch(() => {});
+
+  const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
+  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianRinci`.
+  //    Aksi menghitung ulang di bawah kuncinya; dua susunan berbeda akan
+  //    menutup hari dengan angka yang bukan yang tampil di layar.
+  const rinci = langkahHarianRinci(bahanAwal);
+  const langkahAwal = rinci.dinilai;
+  // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
+  // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
+  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
+
+  // `getDayClose` SESUDAH `pastikanBarisDayClose` — ia membaca baris yang baru lahir.
+  const bahan = bahanAwal;
+  const [dayClose, [overrides, kelengkapan, reasonCodes, maju, parkir]] = await Promise.all([
+    getDayClose(unit.unit_id, date),
+    lainP,
   ]);
 
   const cf = panelCashFlow(cashFlowInputDari(bahan));

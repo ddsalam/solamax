@@ -2,6 +2,7 @@
  * Impor rekening koran — bagian MURNI (rencana 2026-10-29 U9; R17–R19, R22;
  * KTD13). Tanpa I/O, tanpa DB: dipakai server action, kueri halaman, dan uji.
  */
+import { bulanSah } from "./bulan";
 import type { Ketidakcocokan } from "./impor-bank-parser";
 
 /**
@@ -39,11 +40,9 @@ export function nomorRekeningSama(a: string | null | undefined, b: string | null
   return x !== "" && x === normalisasiNomorRekening(b);
 }
 
-const BULAN_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
-
 /** `YYYY-MM` ⇒ `YYYY-MM-01`. */
 export function periodeAwal(periode: string): string {
-  if (!BULAN_RE.test(periode)) throw new Error(`Periode harus YYYY-MM, diterima "${periode}".`);
+  if (!bulanSah(periode)) throw new Error(`Periode harus YYYY-MM, diterima "${periode}".`);
   return `${periode}-01`;
 }
 

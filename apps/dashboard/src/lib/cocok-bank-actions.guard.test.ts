@@ -33,6 +33,8 @@ const MENTAH = readFileSync(resolve(__dirname, "cocok-bank-actions.ts"), "utf8")
 const KODE = tanpaKomentar(MENTAH);
 const TULIS_MENTAH = readFileSync(resolve(__dirname, "cocok-bank-tulis.ts"), "utf8");
 const TULIS = tanpaKomentar(TULIS_MENTAH);
+/** Inti audit bersama (satu salinan SQL) — dipanggil lewat `auditKeuangan(`. */
+const KODE_TX = tanpaKomentar(readFileSync(resolve(__dirname, "keuangan-tx.ts"), "utf8"));
 
 const badan = (kode: string, nama: string): string => {
   const i = kode.indexOf(`export async function ${nama}`);
@@ -62,7 +64,9 @@ describe("⛔ KTD6 — mencocokkan tak menulis buku", () => {
     for (const fn of [badan(KODE, "cocokkanOtomatis"), badan(KODE, "cocokkanManual"), TULIS]) {
       expect(fn).not.toMatch(/(INSERT INTO|UPDATE) app\.cash_ledger/);
     }
-    const tulis = [...TULIS.matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
+    expect(KODE_TX).not.toMatch(/(INSERT INTO|UPDATE) app\.cash_ledger/);
+    expect(TULIS).toMatch(/auditKeuangan\(c, m\.aktor, "cocok_bank\.otomatis"/);
+    const tulis = [...(TULIS + KODE_TX).matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
     expect(new Set(tulis)).toEqual(new Set(["app.cocok_bank", "app.cocok_bank_baris", "app.audit_log"]));
   });
 

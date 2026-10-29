@@ -100,34 +100,48 @@ export function bukuPembantu(a: {
   const hidup = a.mutasi.filter((m) => !m.void && m.businessDate <= a.per);
   const bright = a.pihak.find((p) => p.jenis === "titipan" && p.nama === NAMA_PEMILIK_BRIGHT)?.id ?? null;
   const ket = (m: { keterangan?: string; categoryLabel: string | null }) => m.keterangan ?? m.categoryLabel ?? "";
+  const dariKas = (m: (typeof hidup)[number]): Gerak => ({
+    hariBuku: m.businessDate,
+    tanggalAsal: m.tanggalAsal ?? null,
+    keterangan: ket(m),
+    efekSen: -sen(m.amount),
+  });
+
+  // Dikelompokkan SEKALI per pihak lawan (bukan disaring ulang per pihak) —
+  // urutan di dalam tiap kelompok = urutan sumbernya, sama dengan saringan.
+  const tambah = <T,>(peta: Map<string, T[]>, id: string | null | undefined, x: T) => {
+    if (id == null) return;
+    const l = peta.get(id);
+    if (l) l.push(x);
+    else peta.set(id, [x]);
+  };
+  const hutangPiutang = new Map<string, Gerak[]>();
+  /** Penyerahan titipan per PEMILIK (baris tanpa pemilik ⇒ Outlet Bright). */
+  const penyerahan = new Map<string, Gerak[]>();
+  for (const m of hidup) {
+    if (m.categoryLabel === KATEGORI_HUTANG_PIUTANG) tambah(hutangPiutang, m.pihakLawanId, dariKas(m));
+    else if (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN) tambah(penyerahan, m.pihakLawanId ?? bright, dariKas(m));
+    else if (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN_BRIGHT) tambah(penyerahan, bright, dariKas(m));
+  }
+  const diterima = new Map<string, Gerak[]>();
+  for (const d of a.titipanDiterima ?? []) {
+    if (d.rp === 0) continue;
+    tambah(diterima, d.pihakLawanId ?? bright, {
+      hariBuku: d.businessDate ?? a.per,
+      tanggalAsal: null,
+      keterangan: "Titipan diterima (Rincian pengawas)",
+      efekSen: -sen(d.rp),
+    });
+  }
 
   return a.pihak.map((p) => {
     let gerak: Gerak[];
     if (p.jenis !== "titipan") {
-      gerak = hidup
-        .filter((m) => m.categoryLabel === KATEGORI_HUTANG_PIUTANG && m.pihakLawanId === p.id)
-        .map((m) => ({ hariBuku: m.businessDate, tanggalAsal: m.tanggalAsal ?? null, keterangan: ket(m), efekSen: -sen(m.amount) }));
+      gerak = hutangPiutang.get(p.id) ?? [];
     } else if (a.titipanDiterima === null) {
       gerak = [];
     } else {
-      const milik = (pid: string | null | undefined) => (pid ?? bright) === p.id;
-      gerak = [
-        ...a.titipanDiterima
-          .filter((d) => d.rp !== 0 && milik(d.pihakLawanId))
-          .map((d) => ({
-            hariBuku: d.businessDate ?? a.per,
-            tanggalAsal: null,
-            keterangan: "Titipan diterima (Rincian pengawas)",
-            efekSen: -sen(d.rp),
-          })),
-        ...hidup
-          .filter(
-            (m) =>
-              (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN && milik(m.pihakLawanId)) ||
-              (m.categoryLabel === KATEGORI_PENYERAHAN_TITIPAN_BRIGHT && p.id === bright),
-          )
-          .map((m) => ({ hariBuku: m.businessDate, tanggalAsal: m.tanggalAsal ?? null, keterangan: ket(m), efekSen: -sen(m.amount) })),
-      ];
+      gerak = [...(diterima.get(p.id) ?? []), ...(penyerahan.get(p.id) ?? [])];
     }
     const awal = p.jenis === "titipan" && a.titipanDiterima === null ? null : p.saldoAwal;
     const r = berjalan(awal, a.per, gerak);

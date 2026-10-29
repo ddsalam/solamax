@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { qScoped } from "./db";
 import type { ManualSection } from "./queries";
 import { getDataScope } from "./scope";
+import { UUID_RE } from "./validasi";
 
 /**
  * Server action seksi MANUAL (Pendapatan Lain / Pengeluaran) — tulis ke
@@ -15,7 +16,6 @@ import { getDataScope } from "./scope";
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 

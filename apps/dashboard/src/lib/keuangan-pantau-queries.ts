@@ -1,5 +1,6 @@
 import { qScoped } from "./db";
 import { addDays } from "./periods";
+import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 import type { ScopedUnitId } from "./scope";
 import {
   getHargaBeliRows,
@@ -506,7 +507,7 @@ const KUERI_KEJADIAN = `
       FROM app.cash_ledger l
       JOIN app.cash_account a ON a.id = l.account_id
       LEFT JOIN app.users u ON u.id = l.created_by_user_id
-     WHERE l.unit_id = ANY($1::int[]) AND NOT l.void AND l.alasan_maju = 'ADJ-FWD-REVERSAL'
+     WHERE l.unit_id = ANY($1::int[]) AND NOT l.void AND l.alasan_maju = '${KODE_MAJU_REVERSAL}'
        AND l.pasangan_uuid IS NOT NULL
        AND ${SAAT_DALAM_JENDELA("l.created_at")}
 

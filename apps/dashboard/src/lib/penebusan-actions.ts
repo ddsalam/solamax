@@ -5,8 +5,7 @@ import { pool } from "./db";
 import { senKeTeks } from "./antar-unit-model";
 import { hariBukuTerkunci } from "./hari-buku-queries";
 import {
-  PESAN_TAK_BOLEH_INPUT,
-  alasanTakBolehInput,
+  pesanTakBolehInput,
   canBatalkanPenebusan,
   canCatatPenebusan,
 } from "./keuangan-wewenang";
@@ -21,8 +20,10 @@ import {
 } from "./penebusan-model";
 import { rupiahKeSen, teksKeSen } from "./pihak-lawan-model";
 import { bacaMutasiId } from "./cocok-bank-queries";
-import { audit as auditCocok, buatKelompok, tambahAnggota } from "./cocok-bank-tulis";
+import { buatKelompok, tambahAnggota } from "./cocok-bank-tulis";
 import { getDataScope } from "./scope";
+import { auditKeuangan, batal } from "./keuangan-tx";
+import { UUID_RE } from "./validasi";
 
 /**
  * Server action penebusan per SO (rencana 2026-10-29 U7; R10, R26, R28, R29;
@@ -71,16 +72,6 @@ export interface SimpanPenebusanInput extends MasukanPenebusan {
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/penebusan`;
 
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // ---------------------------------------------------------------------------
 // Catat penebusan (R10, R29)
 // ---------------------------------------------------------------------------
@@ -90,7 +81,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
   const unit = scope.requireUnit(input.code); // di luar scope → notFound(), tak menulis
   const ctx = { role: scope.role, email: scope.email };
   if (!canCatatPenebusan(ctx)) {
-    return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+    return { ok: false, error: pesanTakBolehInput(ctx) };
   }
 
   const mutasiBankId = input.mutasiBankId ?? null;
@@ -325,7 +316,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
     //    dibaca dari baris impor itu sendiri).
     if (cocokId !== null) {
       await tambahAnggota(client, { unitId: unit.unit_id, cocokId, mutasiIds: [mutasiBankId!], kasIds: [cashLedgerId] });
-      await auditCocok(client, aktor, "klasifikasi.penebusan", `${unit.code}/${cocokId}`, {
+      await auditKeuangan(client, aktor, "klasifikasi.penebusan", `${unit.code}/${cocokId}`, {
         mutasi: [mutasiBankId],
         kas: [cashLedgerId],
         penebusanId,
@@ -334,27 +325,17 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
       });
     }
 
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "penebusan.catat",
-        `${unit.code}/${penebusanId}`,
-        JSON.stringify({
-          noSo,
-          tanggalBayar: input.tanggalBayar,
-          rekening: input.accountId,
-          komponen: Object.fromEntries(Object.entries(sen).map(([k, v]) => [k, senKeTeks(v)])),
-          cashLedgerId,
-          kasDibuat,
-          hariBuku,
-          mutasiBankId,
-          cocokId,
-        }),
-      ],
-    );
+    await auditKeuangan(client, scope, "penebusan.catat", `${unit.code}/${penebusanId}`, {
+      noSo,
+      tanggalBayar: input.tanggalBayar,
+      rekening: input.accountId,
+      komponen: Object.fromEntries(Object.entries(sen).map(([k, v]) => [k, senKeTeks(v)])),
+      cashLedgerId,
+      kasDibuat,
+      hariBuku,
+      mutasiBankId,
+      cocokId,
+    });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     if (cocokId !== null) revalidatePath(`/keuangan/unit/${unit.code}/impor-bank`);
@@ -397,7 +378,7 @@ export async function batalkanPenebusan(input: { code: string; id: string }): Pr
   const unit = scope.requireUnit(input.code);
   const ctx = { role: scope.role, email: scope.email };
   if (!canBatalkanPenebusan(ctx)) {
-    return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+    return { ok: false, error: pesanTakBolehInput(ctx) };
   }
   if (!UUID_RE.test(input.id)) return { ok: false, error: "Penebusan tak valid." };
 
@@ -482,17 +463,11 @@ export async function batalkanPenebusan(input: { code: string; id: string }): Pr
         [scope.userId, p.cashLedgerId, unit.unit_id],
       );
     }
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "penebusan.batal",
-        `${unit.code}/${p.id}`,
-        JSON.stringify({ noSo: p.noSo, cashLedgerId: p.cashLedgerId, kasIkutDibatalkan: p.kasDibuat }),
-      ],
-    );
+    await auditKeuangan(client, scope, "penebusan.batal", `${unit.code}/${p.id}`, {
+      noSo: p.noSo,
+      cashLedgerId: p.cashLedgerId,
+      kasIkutDibatalkan: p.kasDibuat,
+    });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     revalidatePath(`/keuangan/unit/${unit.code}/${p.businessDate}/input`);

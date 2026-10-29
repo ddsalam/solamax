@@ -30,6 +30,8 @@ const tanpaKomentar = (src: string): string =>
 
 const MENTAH = readFileSync(resolve(__dirname, "penebusan-actions.ts"), "utf8");
 const KODE = tanpaKomentar(MENTAH);
+/** Inti audit bersama (satu salinan SQL) — dipanggil lewat `auditKeuangan(`. */
+const KODE_TX = tanpaKomentar(readFileSync(resolve(__dirname, "keuangan-tx.ts"), "utf8"));
 
 const badan = (kode: string, nama: string): string => {
   const i = kode.indexOf(`export async function ${nama}`);
@@ -131,7 +133,10 @@ describe("batalkanPenebusan — hari terbuka, tanpa DELETE", () => {
 describe("berkas aksi", () => {
   it("tanpa DELETE; hanya cash_ledger, penebusan, audit_log yang ditulis (R14)", () => {
     expect(KODE).not.toMatch(/DELETE FROM/i);
-    const tulis = [...KODE.matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
+    expect(KODE_TX).not.toMatch(/DELETE FROM/i);
+    expect(KODE).toMatch(/auditKeuangan\(client, scope, "penebusan\.catat"/);
+    expect(KODE).toMatch(/auditKeuangan\(client, scope, "penebusan\.batal"/);
+    const tulis = [...(KODE + KODE_TX).matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
     expect(new Set(tulis)).toEqual(new Set(["app.cash_ledger", "app.penebusan", "app.audit_log"]));
   });
 

@@ -151,21 +151,32 @@ export interface BarisParkirTampil extends BarisParkirBulan {
 
 const keParkir = ({ amount, ...r }: BarisParkirSql): BarisParkirTampil => ({ ...r, amountSen: teksKeSen(amount) });
 
-/**
- * Semua masukan `periksaTutupBulan` untuk (unit, bulan) — dibaca lewat `k`:
- * klien transaksi (aksi, sesudah kunci) atau `kueriScoped` (halaman).
- */
-export async function bacaBahanTutupBulan(k: Kueri, unitId: ScopedUnitId, bulan: string): Promise<MasukanTutupBulan & { parkir: BarisParkirTampil[] }> {
-  const awal = `${bulan}-01`;
-  // Berurutan, bukan Promise.all: `k` bisa SATU klien transaksi.
-  const hari = await k.query<{ d: string }>(SQL_HARI_TERTUTUP, [unitId, awal]);
-  // Hari buku ≥ awal bulan: tanggal bank tak pernah sesudah hari bukunya
-  // (pembukuan hanya maju), jadi baris parkir bertanggal bank bulan ini tak
-  // mungkin berhari buku sebelum bulan ini.
-  const parkir = await k.query<BarisParkirSql>(SQL_PARKIR, [unitId, KATEGORI_PENAMPUNG, awal, "9999-12-31"]);
-  const rekening = await k.query<RekeningWajib>(SQL_REKENING_WAJIB, [unitId, awal]);
-  const impor = await k.query<BarisImporBulan>(SQL_IMPOR_BULAN, [unitId, awal]);
-  const buku = await k.query<Omit<BarisBukuBulan, "amountSen"> & { amount: string }>(SQL_BUKU_BULAN, [unitId, awal]);
+type BahanTutupBulan = MasukanTutupBulan & { parkir: BarisParkirTampil[] };
+
+/** Kelima bacaan masukan tutup bulan — SATU salinan SQL+parameter untuk kedua jalur di bawah. */
+function bacaanBahan(k: Kueri, unitId: ScopedUnitId, awal: string) {
+  return {
+    hari: () => k.query<{ d: string }>(SQL_HARI_TERTUTUP, [unitId, awal]),
+    // Hari buku ≥ awal bulan: tanggal bank tak pernah sesudah hari bukunya
+    // (pembukuan hanya maju), jadi baris parkir bertanggal bank bulan ini tak
+    // mungkin berhari buku sebelum bulan ini.
+    parkir: () => k.query<BarisParkirSql>(SQL_PARKIR, [unitId, KATEGORI_PENAMPUNG, awal, "9999-12-31"]),
+    rekening: () => k.query<RekeningWajib>(SQL_REKENING_WAJIB, [unitId, awal]),
+    impor: () => k.query<BarisImporBulan>(SQL_IMPOR_BULAN, [unitId, awal]),
+    buku: () => k.query<Omit<BarisBukuBulan, "amountSen"> & { amount: string }>(SQL_BUKU_BULAN, [unitId, awal]),
+  };
+}
+
+type Hasil<K extends keyof ReturnType<typeof bacaanBahan>> = Awaited<ReturnType<ReturnType<typeof bacaanBahan>[K]>>;
+
+function susunBahan(
+  bulan: string,
+  hari: Hasil<"hari">,
+  parkir: Hasil<"parkir">,
+  rekening: Hasil<"rekening">,
+  impor: Hasil<"impor">,
+  buku: Hasil<"buku">,
+): BahanTutupBulan {
   return {
     bulan,
     hariTertutup: hari.rows.map((r) => r.d),
@@ -176,8 +187,30 @@ export async function bacaBahanTutupBulan(k: Kueri, unitId: ScopedUnitId, bulan:
   };
 }
 
-export async function getBahanTutupBulan(unit: ScopedUnitId, bulan: string) {
-  return bacaBahanTutupBulan(kueriScoped(unit), unit, bulan);
+/**
+ * Semua masukan `periksaTutupBulan` untuk (unit, bulan) — dibaca lewat `k`:
+ * klien transaksi (aksi, sesudah kunci) atau `kueriScoped` (halaman).
+ */
+export async function bacaBahanTutupBulan(k: Kueri, unitId: ScopedUnitId, bulan: string): Promise<BahanTutupBulan> {
+  const q = bacaanBahan(k, unitId, `${bulan}-01`);
+  // Berurutan, bukan Promise.all: `k` bisa SATU klien transaksi.
+  const hari = await q.hari();
+  const parkir = await q.parkir();
+  const rekening = await q.rekening();
+  const impor = await q.impor();
+  const buku = await q.buku();
+  return susunBahan(bulan, hari, parkir, rekening, impor, buku);
+}
+
+/**
+ * Jalur HALAMAN saja: `kueriScoped` membuka satu koneksi per kueri, jadi kelima
+ * bacaan aman berjalan paralel. ⛔ Aksi `tutupBulan` tetap memakai
+ * {@link bacaBahanTutupBulan} dengan klien transaksinya (berurutan).
+ */
+export async function getBahanTutupBulan(unit: ScopedUnitId, bulan: string): Promise<BahanTutupBulan> {
+  const q = bacaanBahan(kueriScoped(unit), unit, `${bulan}-01`);
+  const [hari, parkir, rekening, impor, buku] = await Promise.all([q.hari(), q.parkir(), q.rekening(), q.impor(), q.buku()]);
+  return susunBahan(bulan, hari, parkir, rekening, impor, buku);
 }
 
 export interface TutupBulanRow {

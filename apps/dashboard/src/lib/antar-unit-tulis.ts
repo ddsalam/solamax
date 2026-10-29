@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { auditKeuangan, kodeAlasanKoreksiSah, PESAN_KODE_ALASAN_TAK_DIKENAL, type Aktor } from "./keuangan-tx";
 import {
   KATEGORI_ANTAR_UNIT,
   KODE_MAJU_ANTAR_UNIT,
@@ -39,19 +40,6 @@ export interface UnitTergerbang {
   unitId: ScopedUnitId;
   code: string;
   name: string;
-}
-
-interface Aktor {
-  userId: number;
-  email: string | null;
-}
-
-async function audit(c: PoolClient, aktor: Aktor, action: string, target: string, detail: Record<string, unknown>) {
-  await c.query(
-    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-     VALUES ($1,$2,$3,$4,$5::jsonb)`,
-    [aktor.userId, aktor.email, action, target, JSON.stringify(detail)],
-  );
 }
 
 const INSERT_KAS = `INSERT INTO app.cash_ledger
@@ -167,7 +155,7 @@ export async function tulisPasanganAntarUnit(
     kaki.push({ unit: s.unit.code, id: r.rows[0]?.id ?? "?", hariBuku: h.hariBuku, maju });
   }
 
-  await audit(c, m.aktor, "antar_unit.catat", `${m.pemberi.code}->${m.penerima.code}/${pasanganUuid}`, {
+  await auditKeuangan(c, m.aktor, "antar_unit.catat", `${m.pemberi.code}->${m.penerima.code}/${pasanganUuid}`, {
     jenis: m.jenis,
     tanggal: m.tanggal,
     nominal: senKeTeks(m.nominalSen),
@@ -206,12 +194,7 @@ export async function tulisBalikPasangan(
     aktor: Aktor;
   },
 ): Promise<HasilBalik> {
-  const rc = await c.query<{ code: string }>(
-    `SELECT code FROM app.reason_code
-      WHERE code = $1 AND applies_to = 'adjustment' AND active AND code NOT LIKE 'ADJ-FWD-%'`,
-    [m.reasonCode],
-  );
-  if (rc.rows.length === 0) return { ok: false, error: "Kode alasan tak dikenal — pilih kode alasan koreksi dari daftar." };
+  if (!(await kodeAlasanKoreksiSah(c, m.reasonCode))) return { ok: false, error: PESAN_KODE_ALASAN_TAK_DIKENAL };
 
   const r = await c.query<{
     id: string;
@@ -302,7 +285,7 @@ export async function tulisBalikPasangan(
     kaki.push({ unit: u.code, id: ins.rows[0]?.id ?? "?", tindakan: "pembalik", hariBuku: h.hariBuku });
   }
 
-  await audit(c, m.aktor, "antar_unit.balik", `${m.unit.code}/${m.pasanganUuid}`, {
+  await auditKeuangan(c, m.aktor, "antar_unit.balik", `${m.unit.code}/${m.pasanganUuid}`, {
     reasonCode: m.reasonCode,
     catatan: m.catatan,
     lawan: m.lawan.code,

@@ -1,3 +1,6 @@
+import { hariDalamBulan } from "./bulan";
+import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
+
 /**
  * TUTUP BULAN — pembuat vonis MURNI (rencana 2026-10-29 U12; R25, AE5; KTD14).
  * Tanpa I/O: dipakai halaman tutup bulan (daftar periksa) DAN `tutupBulan`
@@ -31,29 +34,10 @@
  */
 
 /** Kode alasan pembukuan maju baris PEMBALIK (batal cocok & balik pasangan antar unit). */
-export const KODE_PEMBALIK_MAJU = "ADJ-FWD-REVERSAL";
+export const KODE_PEMBALIK_MAJU = KODE_MAJU_REVERSAL;
 
-const BULAN_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
-
-/** Bulan `YYYY-MM` sah? */
-export function bulanTutupSah(bulan: string): boolean {
-  return BULAN_RE.test(bulan);
-}
-
-/** Semua hari kalender `YYYY-MM` (UTC — tanggal bisnis tanpa jam). */
-export function hariDalamBulan(bulan: string): string[] {
-  const m = BULAN_RE.exec(bulan);
-  if (!m) throw new Error(`Bulan harus YYYY-MM, diterima "${bulan}".`);
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const n = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-  return Array.from({ length: n }, (_, i) => `${bulan}-${String(i + 1).padStart(2, "0")}`);
-}
-
-/** Hari terakhir bulan `YYYY-MM`. */
-export function hariTerakhir(bulan: string): string {
-  return hariDalamBulan(bulan).at(-1)!;
-}
+/** Bulan `YYYY-MM` sah? (pembantu bulan bersama: `bulan.ts`) */
+export { bulanSah as bulanTutupSah, hariDalamBulan, hariTerakhir } from "./bulan";
 
 const diBulan = (tanggal: string, bulan: string): boolean => tanggal.slice(0, 7) === bulan;
 

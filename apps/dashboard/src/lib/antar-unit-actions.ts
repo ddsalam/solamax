@@ -5,12 +5,14 @@ import { pool, qScoped } from "./db";
 import { KODE_MAJU_PEMBALIK, periksaAntarUnit, type MasukanAntarUnit } from "./antar-unit-model";
 import { tulisBalikPasangan, tulisPasanganAntarUnit } from "./antar-unit-tulis";
 import {
-  PESAN_TAK_BOLEH_INPUT,
-  alasanTakBolehInput,
+  pesanTakBolehInput,
   canBalikPasanganAntarUnit,
   canCatatAntarUnit,
 } from "./keuangan-wewenang";
 import { getDataScope, type ScopedUnit } from "./scope";
+import { batal } from "./keuangan-tx";
+import { PREFIKS_KODE_MAJU } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
 
 /**
  * Server action pasangan antar unit (rencana 2026-10-29 U4; R3, R30, R31;
@@ -35,14 +37,6 @@ export type AntarUnitResult = { ok: true; pesan?: string } | { ok: false; error:
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/pihak-lawan`;
 
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
-}
-
 const PESAN_DUA_UNIT =
   "Pinjaman antar unit menulis buku KEDUA unit, dan akun ini tidak berperan Keuangan di kedua unit — " +
   "ditolak utuh, tak ada sisi yang tertulis. Minta pengguna yang memegang kedua unit (atau super admin).";
@@ -54,7 +48,7 @@ const PESAN_DUA_UNIT =
 export async function catatAntarUnit(input: MasukanAntarUnit): Promise<AntarUnitResult> {
   const scope = await getDataScope();
   const ctx = { role: scope.role, email: scope.email };
-  if (!canCatatAntarUnit(ctx)) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+  if (!canCatatAntarUnit(ctx)) return { ok: false, error: pesanTakBolehInput(ctx) };
 
   const cek = periksaAntarUnit(input);
   if (!cek.ok) return { ok: false, error: cek.error };
@@ -117,8 +111,6 @@ export interface BalikInput {
   catatan: string;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export async function balikPasanganAntarUnit(input: BalikInput): Promise<AntarUnitResult> {
   const scope = await getDataScope();
   if (!canBalikPasanganAntarUnit({ role: scope.role, email: scope.email })) {
@@ -129,7 +121,7 @@ export async function balikPasanganAntarUnit(input: BalikInput): Promise<AntarUn
   const catatan = input.catatan.trim();
   if (catatan === "") return { ok: false, error: "Catatan wajib diisi — tuliskan apa yang salah dari pasangan ini." };
   const reasonCode = input.reasonCode.trim();
-  if (reasonCode === "" || reasonCode === KODE_MAJU_PEMBALIK || reasonCode.startsWith("ADJ-FWD-")) {
+  if (reasonCode === "" || reasonCode === KODE_MAJU_PEMBALIK || reasonCode.startsWith(PREFIKS_KODE_MAJU)) {
     return { ok: false, error: "Pilih kode alasan koreksi dari daftar (kode pembukuan maju diisi sistem)." };
   }
 
@@ -202,7 +194,7 @@ export type RekeningResult = { ok: true; rekening: { id: string; nama: string }[
 export async function rekeningAntarUnit(input: { code: string }): Promise<RekeningResult> {
   const scope = await getDataScope();
   const ctx = { role: scope.role, email: scope.email };
-  if (!canCatatAntarUnit(ctx)) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+  if (!canCatatAntarUnit(ctx)) return { ok: false, error: pesanTakBolehInput(ctx) };
   if (!scope.units.some((u) => u.code === input.code)) {
     return { ok: false, error: "Anda tidak berperan Keuangan di unit ini." };
   }

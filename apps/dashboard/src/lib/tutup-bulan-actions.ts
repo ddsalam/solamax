@@ -6,6 +6,7 @@ import { canTutupBulan } from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
 import { bacaBahanTutupBulan, kunciBulanEksklusif } from "./tutup-bulan-queries";
 import { bulanTutupSah, periksaTutupBulan } from "./tutup-bulan-model";
+import { auditKeuangan, batal } from "./keuangan-tx";
 
 /**
  * Server action TUTUP BULAN (rencana 2026-10-29 U12; R25; KTD14).
@@ -31,14 +32,6 @@ export interface TutupBulanInput {
   code: string;
   /** `YYYY-MM`. */
   bulan: string;
-}
-
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
 }
 
 export async function tutupBulan(input: TutupBulanInput): Promise<TutupBulanResult> {
@@ -85,21 +78,11 @@ export async function tutupBulan(input: TutupBulanInput): Promise<TutupBulanResu
       await batal(client);
       return { ok: true, sudahDitutup: true, pesan: `Bulan ${input.bulan} sudah ditutup sebelumnya.` };
     }
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "tutup_bulan.tutup",
-        `${unit.code}/${input.bulan}`,
-        JSON.stringify({
-          bulan: input.bulan,
-          hari: bahan.hariTertutup.length,
-          rekening: bahan.rekening.map((r) => r.id),
-        }),
-      ],
-    );
+    await auditKeuangan(client, scope, "tutup_bulan.tutup", `${unit.code}/${input.bulan}`, {
+      bulan: input.bulan,
+      hari: bahan.hariTertutup.length,
+      rekening: bahan.rekening.map((r) => r.id),
+    });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/tutup-bulan/${input.bulan}`);
     return { ok: true, sudahDitutup: false, pesan: `Bulan ${input.bulan} ditutup.` };

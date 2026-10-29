@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool, qScoped } from "./db";
 import {
-  PESAN_TAK_BOLEH_INPUT,
-  alasanTakBolehInput,
+  pesanTakBolehInput,
   canNonaktifkanPihakLawan,
   canTambahPihakLawan,
   canTetapkanPihakLawanBaris,
@@ -19,8 +18,10 @@ import {
   periksaSaldoAwalPihakLawan,
   type JenisPihakLawan,
 } from "./pihak-lawan-model";
-import { UUID_RE, bacaPihakLawanTerkunci, tulisSaldoAwalPihakLawan } from "./pihak-lawan-tulis";
+import { bacaPihakLawanTerkunci, tulisSaldoAwalPihakLawan } from "./pihak-lawan-tulis";
+import { UUID_RE } from "./validasi";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
+import { auditKeuangan, batal } from "./keuangan-tx";
 
 /**
  * Server action pihak lawan (rencana 2026-10-29 U3; R1, R2, R7, R26, R27;
@@ -45,10 +46,6 @@ export type PihakLawanResult = { ok: true; pesan?: string } | { ok: false; error
 const halaman = (code: string): string => `/keuangan/unit/${code}/pihak-lawan`;
 
 /** Pesan tolak untuk aksi berpola "mengetik" — satu sumber dengan Layar 3. */
-function pesanTakBolehKetik(ctx: WewenangCtx): string {
-  return PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"];
-}
-
 type Buka = { boleh: false; error: string } | { boleh: true; scope: DataScope; unit: ScopedUnit };
 
 /** requireUnit + predikat aksi — sebelum koneksi apa pun. */
@@ -56,30 +53,8 @@ async function buka(code: string, boleh: (ctx: WewenangCtx) => boolean): Promise
   const scope = await getDataScope();
   const unit = scope.requireUnit(code); // di luar scope → notFound(), tak menulis
   const ctx = { role: scope.role, email: scope.email };
-  if (!boleh(ctx)) return { boleh: false, error: pesanTakBolehKetik(ctx) };
+  if (!boleh(ctx)) return { boleh: false, error: pesanTakBolehInput(ctx) };
   return { boleh: true, scope, unit };
-}
-
-async function audit(
-  client: { query: (s: string, p: unknown[]) => Promise<unknown> },
-  scope: DataScope,
-  action: string,
-  target: string,
-  detail: Record<string, unknown>,
-): Promise<void> {
-  await client.query(
-    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-     VALUES ($1,$2,$3,$4,$5::jsonb)`,
-    [scope.userId, scope.email, action, target, JSON.stringify(detail)],
-  );
-}
-
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +93,7 @@ export async function tambahPihakLawan(input: {
        RETURNING id::text AS id`,
       [unit.unit_id, jenis, nama, scope.userId],
     );
-    await audit(client, scope, "pihak_lawan.tambah", `${unit.code}/${r.rows[0]?.id ?? "?"}`, {
+    await auditKeuangan(client, scope, "pihak_lawan.tambah", `${unit.code}/${r.rows[0]?.id ?? "?"}`, {
       unit: unit.code,
       jenis,
       nama,
@@ -171,7 +146,7 @@ export async function nonaktifkanPihakLawan(input: { code: string; id: string })
       await batal(client);
       return { ok: false, error: "Pihak lawan sudah nonaktif atau tak ditemukan — muat ulang halaman." };
     }
-    await audit(client, scope, "pihak_lawan.nonaktifkan", `${unit.code}/${input.id}`, { unit: unit.code, nama });
+    await auditKeuangan(client, scope, "pihak_lawan.nonaktifkan", `${unit.code}/${input.id}`, { unit: unit.code, nama });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return { ok: true, pesan: `“${nama}” dinonaktifkan — tak bisa dipilih untuk mutasi baru.` };
@@ -352,7 +327,7 @@ export async function tetapkanPihakLawanBaris(input: {
       await batal(client);
       return { ok: false, error: "Baris berubah bersamaan — muat ulang halaman." };
     }
-    await audit(client, scope, "kas.pihak_lawan.tetapkan", `${unit.code}/${input.cashLedgerId}`, {
+    await auditKeuangan(client, scope, "kas.pihak_lawan.tetapkan", `${unit.code}/${input.cashLedgerId}`, {
       pihakLawanId: input.pihakLawanId,
       pihakLawan: pihak?.nama ?? null,
       kategori: baris.categoryLabel,

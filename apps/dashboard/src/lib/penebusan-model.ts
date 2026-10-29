@@ -1,5 +1,8 @@
 import { bacaRupiah } from "./angka-input";
 import { rpSen, rupiahKeSen } from "./pihak-lawan-model";
+import { KODE_MAJU_PURCHASE } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
+import { DATE_RE } from "./selection-keys";
 
 /**
  * Penebusan BBM per nomor SO — MURNI, tanpa I/O (rencana 2026-10-29 U7;
@@ -23,11 +26,8 @@ import { rpSen, rupiahKeSen } from "./pihak-lawan-model";
 
 export const KATEGORI_PENEBUSAN = "Pembelian BBM";
 /** Kode alasan maju (0049) bila hari bayarnya sudah ditutup (R28). */
-export const KODE_MAJU_PENEBUSAN = "ADJ-FWD-PURCHASE";
+export const KODE_MAJU_PENEBUSAN = KODE_MAJU_PURCHASE;
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const BULAN_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Konvensi `lower(trim(cnoso))` — `so_macet` (0028) dan join EasyMax di `queries.ts`. */
 export function normalisasiSo(s: string): string {
@@ -200,17 +200,7 @@ export function rekapPajak(rows: readonly BarisRekapSen[]): TotalRekap {
   return t;
 }
 
-export function bulanSah(b: string): boolean {
-  return BULAN_RE.test(b);
-}
-
-/** 'YYYY-MM' → [awal, akhir] inklusif. */
-export function rentangBulan(bulan: string): [string, string] {
-  if (!BULAN_RE.test(bulan)) throw new Error(`Bulan harus YYYY-MM, diterima "${bulan}".`);
-  const [y, m] = bulan.split("-").map(Number) as [number, number];
-  const akhir = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return [`${bulan}-01`, `${bulan}-${String(akhir).padStart(2, "0")}`];
-}
+export { bulanSah, rentangBulan } from "./bulan";
 
 /**
  * Unit satu PT (tenant) dengan `code` — HANYA bila pengguna memegang SEMUA unit

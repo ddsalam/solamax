@@ -6,10 +6,10 @@ import { pool } from "./db";
 import { JENIS_ANTAR_UNIT, senKeTeks, type JenisAntarUnit } from "./antar-unit-model";
 import { tulisPasanganAntarUnit } from "./antar-unit-tulis";
 import { bacaMutasiId, type MutasiTerbaca } from "./cocok-bank-queries";
-import { audit, buatKelompok, tambahAnggota } from "./cocok-bank-tulis";
+import { buatKelompok, tambahAnggota } from "./cocok-bank-tulis";
 import { hariBukuTerkunci } from "./hari-buku-queries";
 import { KATEGORI_PENAMPUNG } from "./keuangan-sisi-kas";
-import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canCatatAntarUnit, canCocokkanBank } from "./keuangan-wewenang";
+import { pesanTakBolehInput, canCatatAntarUnit, canCocokkanBank } from "./keuangan-wewenang";
 import {
   keteranganDariBank,
   periksaBarisKlasifikasi,
@@ -20,6 +20,10 @@ import { tulisBarisKlasifikasi } from "./klasifikasi-tulis";
 import { rupiahKeSen, teksKeSen } from "./pihak-lawan-model";
 import { todayWib } from "./periods";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
+import { auditKeuangan, batal } from "./keuangan-tx";
+import { KODE_MAJU_IMPOR, KODE_MAJU_SUSPENSE as KODE_MAJU_PENAMPUNG } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
+import { DATE_RE } from "./selection-keys";
 
 /**
  * Server action KLASIFIKASI baris rekening koran (rencana 2026-10-29 U11; R9,
@@ -47,23 +51,10 @@ import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 
 export type KlasifikasiResult = { ok: true; pesan: string; cocokId: string } | { ok: false; error: string };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const KODE_MAJU_IMPOR = "ADJ-FWD-IMPORT";
-const KODE_MAJU_PENAMPUNG = "ADJ-FWD-SUSPENSE";
-
 const halaman = (code: string, tanggal?: string): string[] => [
   `/keuangan/unit/${code}/impor-bank`,
   ...(tanggal ? [`/keuangan/unit/${code}/impor-bank/${tanggal.slice(0, 7)}`] : []),
 ];
-
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
-}
 
 function tabrakan(e: unknown): boolean {
   const g = e as { code?: string; constraint?: string } | null;
@@ -76,7 +67,7 @@ async function gerbang(code: string): Promise<Gerbang> {
   const scope = await getDataScope();
   const unit = scope.requireUnit(code); // di luar scope → notFound(), tak menulis
   const ctx = { role: scope.role, email: scope.email };
-  if (!canCocokkanBank(ctx)) return { boleh: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+  if (!canCocokkanBank(ctx)) return { boleh: false, error: pesanTakBolehInput(ctx) };
   return { boleh: true, scope, unit };
 }
 
@@ -174,7 +165,7 @@ async function klasifikasiSatuUnit(
       return { ok: false, error: t.error };
     }
     await tambahAnggota(client, { unitId: unit.unit_id, cocokId, mutasiIds: [m.id], kasIds: t.kas.map((k) => k.id) });
-    await audit(client, aktor, `klasifikasi.${jenis}`, `${unit.code}/${cocokId}`, {
+    await auditKeuangan(client, aktor, `klasifikasi.${jenis}`, `${unit.code}/${cocokId}`, {
       mutasi: [m.id],
       tanggalBank: m.tanggalBank,
       hariBuku: hari.hariBuku,
@@ -344,7 +335,7 @@ export async function klasifikasiAntarUnit(input: KlasifikasiAntarUnitInput): Pr
   const unit = scope.requireUnit(input.code);
   const ctx = { role: scope.role, email: scope.email };
   if (!canCocokkanBank(ctx) || !canCatatAntarUnit(ctx)) {
-    return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+    return { ok: false, error: pesanTakBolehInput(ctx) };
   }
   // ⛔ R30 — unit lawan harus dalam jangkauan, ditanya dulu supaya penolakannya
   //    berpesan (bukan 404), lalu `requireUnit` — keduanya SEBELUM koneksi.
@@ -398,7 +389,7 @@ export async function klasifikasiAntarUnit(input: KlasifikasiAntarUnitInput): Pr
       return { ok: false, error: "Kaki unit ini tidak tertulis — tak ada yang disimpan." };
     }
     await tambahAnggota(client, { unitId: unit.unit_id, cocokId, mutasiIds: [m.id], kasIds: [kaki.id] });
-    await audit(client, aktor, "klasifikasi.antar_unit", `${unit.code}/${cocokId}`, {
+    await auditKeuangan(client, aktor, "klasifikasi.antar_unit", `${unit.code}/${cocokId}`, {
       mutasi: [m.id],
       tanggalBank: m.tanggalBank,
       nominal: senKeTeks(m.amountSen),
@@ -553,7 +544,7 @@ export async function pindahkanDariPenampung(input: PindahPenampungInput): Promi
     // (parkir + pembalik = 0, sisa = baris tujuan = nominal bank).
     await tambahAnggota(client, { unitId: unit.unit_id, cocokId: p!.cocokId!, mutasiIds: [], kasIds: t.kas.map((k) => k.id) });
     const aktor = { userId: scope.userId, email: scope.email };
-    await audit(client, aktor, "penampung.pindah", `${unit.code}/${p!.cocokId}`, {
+    await auditKeuangan(client, aktor, "penampung.pindah", `${unit.code}/${p!.cocokId}`, {
       parkir: p!.id,
       tanggal,
       hariBuku: hari.hariBuku,

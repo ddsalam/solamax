@@ -1,4 +1,5 @@
 import { kategoriCocok, tandaCocok, type SisiKategori } from "./keuangan-kas";
+import { DATE_RE } from "./selection-keys";
 
 /**
  * Model MURNI pihak lawan (rencana 2026-10-29 U3; R1, R2, R7, R9; KTD1–KTD3).
@@ -209,8 +210,6 @@ export function periksaPecahan(p: {
 // ---------------------------------------------------------------------------
 // Saldo pembuka per pihak lawan (R7)
 // ---------------------------------------------------------------------------
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function periksaSaldoAwalPihakLawan(s: {
   tanggal: string;

@@ -201,6 +201,15 @@ export const PESAN_TAK_BOLEH_INPUT: Record<AlasanTakBolehInput, string> = {
 };
 
 /**
+ * Pesan penolakan bagi pemanggil yang TIDAK lolos predikat tulisnya — alasan
+ * input bila ada, selain itu "bukan_keuangan". Dipanggil SESUDAH predikat
+ * menolak; ia bukan gerbang.
+ */
+export function pesanTakBolehInput(ctx: WewenangCtx): string {
+  return PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"];
+}
+
+/**
  * Boleh MEMBACA Laporan Keuangan Harian (Layar 2)?
  *
  * Keputusan owner 17 Agustus 2026 — §10.13, ditulis ke repo sebelum dipakai.

@@ -219,16 +219,18 @@ export async function getTitipanDiterima(unit: ScopedUnitId, mulai: string, d: s
 /**
  * Sisi buku kas neraca pada `d` — penuh, dan tanpa baris susulan hari itu
  * (KTD15). Titipan diterima dibaca SEKALI dan dipakai kedua hitungan: baris
- * Rincian bukan baris kas, jadi tak pernah "susulan".
+ * Rincian bukan baris kas, jadi tak pernah "susulan". Kuerinya
+ * ({@link titipanDiterimaPada}) dimulai pemanggil begitu mutasi kas tiba —
+ * di gelombang paralel yang sama, bukan gelombang kedua.
  */
 async function sisiKasPada(
-  unit: ScopedUnitId,
   d: string,
   mutasi: readonly MutasiSisiKas[],
   pihakLawan: readonly PihakLawanNeraca[],
   dasar: { adaAkun: boolean; kasTerhitung: boolean },
+  titipanP: Promise<TitipanDiterima[] | null>,
 ): Promise<{ penuh: SisiKasNeraca; tanpaSusulan: SisiKasNeraca | undefined }> {
-  const titipanDiterima = await titipanDiterimaPada(unit, d, mutasi);
+  const titipanDiterima = await titipanP;
   const hitung = (rows: readonly MutasiSisiKas[]) =>
     sisiKasNeraca({ mutasi: rows, date: d, ...dasar, pihakLawan, titipanDiterima });
   const tanpa = mutasi.filter((m) => !barisSusulan(m, d));
@@ -255,14 +257,20 @@ async function totalAssetPada(
   d: string,
   pihakLawanP: Promise<readonly PihakLawanNeraca[]>,
 ): Promise<number | null> {
+  const akunP = getAkunKas(unit);
+  const mutasiP = getMutasiKas(unit, d);
+  // Titipan diterima menyusul mutasi kas di gelombang yang sama — dan HANYA bila
+  // ada akun (tanpa akun fungsi ini berhenti di bawah; jumlah kuerinya tetap).
+  const titipanP = Promise.all([akunP, mutasiP]).then(([a, m]) => (a.length === 0 ? null : titipanDiterimaPada(unit, d, m)));
   const [gl, sales, buyRows, doRows, akun, mutasi, saldo] = await Promise.all([
     getDailyGlByProduct(unit, d, d),
     getSalesByProduct(unit, d, d),
     getHargaBeliRows(unit),
     getDoHarian(unit, d),
-    getAkunKas(unit),
-    getMutasiKas(unit, d),
+    akunP,
+    mutasiP,
     getSaldoPelanggan(unit, d),
+    titipanP,
   ]);
   if (akun.length === 0) return null;
 
@@ -297,7 +305,7 @@ async function totalAssetPada(
   //    kas, pihak lawan (KTD2), penampung (KTD8), temporary investment, titipan
   //    (liabilitas — mengurangi asset bersih). Kemarin dihitung PENUH — baris
   //    susulan kemarin sudah dinilai kemarin.
-  const { penuh: k } = await sisiKasPada(unit, d, mutasi, await pihakLawanP, { adaAkun: true, kasTerhitung: true });
+  const { penuh: k } = await sisiKasPada(d, mutasi, await pihakLawanP, { adaAkun: true, kasTerhitung: true }, titipanP);
   const nonKas = assetNonKas(totals);
   return nonKas === null
     ? null
@@ -326,17 +334,21 @@ async function bahanLaporan(
   // Pihak lawan unit (+ saldo pembukanya) dibaca SEKALI dan dipakai hari ini
   // maupun kemarin — satu kueri tambahan per laporan, bukan dua.
   const pihakLawanP = getPihakLawan(unit);
+  // Titipan diterima menyusul mutasi kas di gelombang yang sama (dipakai `sisiKasPada`).
+  const mutasiP = getMutasiKas(unit, date);
+  const titipanP = mutasiP.then((m) => titipanDiterimaPada(unit, date, m));
   const [gl, sales, buyRows, doRows, akun, mutasi, saldo, bp, assetKemarin, pihakLawan] = await Promise.all([
     getDailyGlByProduct(unit, date, date),
     getSalesByProduct(unit, date, date),
     getHargaBeliRows(unit),
     getDoHarian(unit, date),
     getAkunKas(unit),
-    getMutasiKas(unit, date),
+    mutasiP,
     getSaldoPelanggan(unit, date),
     getBebanDanPendapatan(unit, date),
     totalAssetPada(unit, kemarin, pihakLawanP),
     pihakLawanP,
+    titipanP,
   ]);
 
   const hargaJual = new Map(sales.flatMap((s) => {
@@ -394,7 +406,7 @@ async function bahanLaporan(
   //    `kasTerhitung`. Nol di sana berarti "tak ada mutasi kategori itu", yang
   //    memang benar. Keputusan §10.21 menyebut `kasAkhir`; memperluasnya
   //    diam-diam ke pos lain adalah menebak keputusan yang tak diambil.
-  const sisi = await sisiKasPada(unit, date, mutasi, pihakLawan, { adaAkun, kasTerhitung });
+  const sisi = await sisiKasPada(date, mutasi, pihakLawan, { adaAkun, kasTerhitung }, titipanP);
   const saldoNonEasymax = sisi.penuh.hutangPiutangNonEasymax;
   const arus = arusBukuKas(mutasi, date);
   const arusDari = (b: Parameters<typeof arus.get>[0]) => (adaAkun ? (arus.get(b) ?? 0) : null);
@@ -476,9 +488,14 @@ export { assetNonKas };
  * berselisih dengan baris "Hutang piutang non-EasyMax"/titipan di neraca.
  */
 export async function getBahanBukuPembantu(unit: ScopedUnitId, per: string) {
-  const [akun, mutasi, pihakLawan] = await Promise.all([getAkunKas(unit), getMutasiKas(unit, per), getPihakLawan(unit)]);
+  const mutasiP = getMutasiKas(unit, per);
+  const [akun, mutasi, pihakLawan, titipanDiterima] = await Promise.all([
+    getAkunKas(unit),
+    mutasiP,
+    getPihakLawan(unit),
+    mutasiP.then((m) => titipanDiterimaPada(unit, per, m)),
+  ]);
   const adaAkun = akun.length > 0;
-  const titipanDiterima = await titipanDiterimaPada(unit, per, mutasi);
   const sisi = sisiKasNeraca({ mutasi, date: per, adaAkun, kasTerhitung: false, pihakLawan, titipanDiterima });
   return { mutasi, pihakLawan, titipanDiterima, sisi };
 }

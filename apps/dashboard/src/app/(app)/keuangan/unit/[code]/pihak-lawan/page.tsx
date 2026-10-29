@@ -95,7 +95,9 @@ export default async function PihakLawanPage({
   // R3 — "Lunas di bank" = kaki unit ini berada di kelompok cocok AKTIF (U10).
   const dicocokkan = await getKasDicocokkan(unit.unit_id, kakiAntarUnit.map((k) => k.id));
   const lawanPasangan = new Map(kakiAntarUnit.map((k) => [k.pasanganUuid, k]));
-  const pasangan: PasanganTampil[] = ringkasPasangan(kakiAntarUnit, dicocokkan).map((p) => {
+  // Diringkas SEKALI — dipakai daftar pasangan dan kolom Status buku pembantu.
+  const ringkas = ringkasPasangan(kakiAntarUnit, dicocokkan);
+  const pasangan: PasanganTampil[] = ringkas.map((p) => {
     const k = lawanPasangan.get(p.pasanganUuid)!;
     return {
       ...p,
@@ -106,7 +108,6 @@ export default async function PihakLawanPage({
     };
   });
 
-  const ringkas = ringkasPasangan(kakiAntarUnit, dicocokkan);
   const paritas = paritasAntarUnit(unitParitas.map(Number), bahanParitas, per).filter(
     (p) => p.unitId === Number(unit.unit_id),
   );

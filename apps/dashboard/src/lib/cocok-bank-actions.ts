@@ -5,12 +5,11 @@ import { pool, qScoped } from "./db";
 import { senKeTeks } from "./antar-unit-model";
 import { periksaKelompokManual } from "./cocok-bank-model";
 import { bacaKasId, bacaMutasiId, SQL_PENEBUSAN_COCOK } from "./cocok-bank-queries";
-import { audit, jalankanCocokOtomatis, tulisKelompok } from "./cocok-bank-tulis";
+import { jalankanCocokOtomatis, tulisKelompok } from "./cocok-bank-tulis";
 import { hariBukuTerkunci } from "./hari-buku-queries";
 import { tulisBalikPasangan } from "./antar-unit-tulis";
 import {
-  PESAN_TAK_BOLEH_INPUT,
-  alasanTakBolehInput,
+  pesanTakBolehInput,
   canBatalkanCocokBank,
   canCocokkanBank,
 } from "./keuangan-wewenang";
@@ -18,6 +17,9 @@ import { normalisasiSo } from "./penebusan-model";
 import { teksKeSen } from "./pihak-lawan-model";
 import { getDataScope, type ScopedUnit } from "./scope";
 import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
+import { auditKeuangan, batal, kodeAlasanKoreksiSah, PESAN_KODE_ALASAN_TAK_DIKENAL } from "./keuangan-tx";
+import { KODE_MAJU_REVERSAL as KODE_PEMBALIK, PREFIKS_KODE_MAJU } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
 
 /**
  * Server action kelompok cocok (rencana 2026-10-29 U10; R19, R20, R31; KTD6,
@@ -40,17 +42,6 @@ import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/impor-bank`;
 
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KODE_PEMBALIK = "ADJ-FWD-REVERSAL";
-
 /** Galat unik Postgres dari partial unique 0052 — anggota sudah di kelompok aktif lain. */
 function tabrakanAnggota(e: unknown): boolean {
   const g = e as { code?: string; constraint?: string } | null;
@@ -69,7 +60,7 @@ export async function cocokkanOtomatis(input: { code: string; rekeningKoranId: s
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code);
   const ctx = { role: scope.role, email: scope.email };
-  if (!canCocokkanBank(ctx)) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+  if (!canCocokkanBank(ctx)) return { ok: false, error: pesanTakBolehInput(ctx) };
   if (!UUID_RE.test(input.rekeningKoranId)) return { ok: false, error: "Rekening koran tak dikenali — muat ulang halaman." };
 
   const client = await pool.connect();
@@ -120,7 +111,7 @@ export async function cocokkanManual(input: CocokManualInput): Promise<CocokManu
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code);
   const ctx = { role: scope.role, email: scope.email };
-  if (!canCocokkanBank(ctx)) return { ok: false, error: PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"] };
+  if (!canCocokkanBank(ctx)) return { ok: false, error: pesanTakBolehInput(ctx) };
   const mutasiIds = input.mutasiIds ?? [];
   const kasIds = input.kasIds ?? [];
   if (mutasiIds.length === 0) return { ok: false, error: "Pilih minimal satu baris rekening koran." };
@@ -175,7 +166,7 @@ export async function cocokkanManual(input: CocokManualInput): Promise<CocokManu
 
     const aktor = { userId: scope.userId, email: scope.email };
     const id = await tulisKelompok(client, { unitId: unit.unit_id, cara: "manual", aktor, mutasiIds, kasIds });
-    await audit(client, aktor, "cocok_bank.manual", `${unit.code}/${id}`, {
+    await auditKeuangan(client, aktor, "cocok_bank.manual", `${unit.code}/${id}`, {
       mutasi: mutasiIds,
       kas: kasIds,
       total: senKeTeks(v.totalSen),
@@ -230,7 +221,7 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
   const catatan = input.catatan.trim();
   if (catatan === "") return { ok: false, error: "Catatan wajib diisi — tuliskan kenapa pencocokan ini dibatalkan." };
   const reasonCode = input.reasonCode.trim();
-  if (reasonCode === "" || reasonCode.startsWith("ADJ-FWD-")) {
+  if (reasonCode === "" || reasonCode.startsWith(PREFIKS_KODE_MAJU)) {
     return { ok: false, error: "Pilih kode alasan koreksi dari daftar (kode pembukuan maju diisi sistem)." };
   }
 
@@ -267,14 +258,9 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [unitIds]);
 
-    const rc = await client.query<{ code: string }>(
-      `SELECT code FROM app.reason_code
-        WHERE code = $1 AND applies_to = 'adjustment' AND active AND code NOT LIKE 'ADJ-FWD-%'`,
-      [reasonCode],
-    );
-    if (rc.rows.length === 0) {
+    if (!(await kodeAlasanKoreksiSah(client, reasonCode))) {
       await batal(client);
-      return { ok: false, error: "Kode alasan tak dikenal — pilih kode alasan koreksi dari daftar." };
+      return { ok: false, error: PESAN_KODE_ALASAN_TAK_DIKENAL };
     }
 
     const g = await client.query<{ id: string; aktif: boolean; cara: string }>(
@@ -479,7 +465,7 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
       kaki.push({ id: ins.rows[0]?.id ?? "?", tindakan: "pembalik", hariBuku });
     }
 
-    await audit(client, { userId: scope.userId, email: scope.email }, "cocok_bank.batal", `${unit.code}/${grup.id}`, {
+    await auditKeuangan(client, { userId: scope.userId, email: scope.email }, "cocok_bank.batal", `${unit.code}/${grup.id}`, {
       cara: grup.cara,
       reasonCode,
       catatan,

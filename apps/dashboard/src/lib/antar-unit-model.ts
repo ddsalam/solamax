@@ -1,4 +1,7 @@
 import { rupiahKeSen, type SaldoAwalPihakLawan } from "./pihak-lawan-model";
+import { KODE_MAJU_INTERUNIT, KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
+import { DATE_RE } from "./selection-keys";
 
 /**
  * Model MURNI pasangan antar unit (rencana 2026-10-29 U4; R3, R4, R5, R31;
@@ -33,12 +36,9 @@ export const LABEL_JENIS_ANTAR_UNIT: Record<JenisAntarUnit, string> = {
 /** Kategori kedua kaki — kategori pihak lawan (CHECK 0049 mewajibkan pihak lawan). */
 export const KATEGORI_ANTAR_UNIT = "Hutang Piutang";
 /** R28: kaki yang terdorong maju. */
-export const KODE_MAJU_ANTAR_UNIT = "ADJ-FWD-INTERUNIT";
+export const KODE_MAJU_ANTAR_UNIT = KODE_MAJU_INTERUNIT;
 /** R28/R31: baris pembalik (selalu terdorong maju). */
-export const KODE_MAJU_PEMBALIK = "ADJ-FWD-REVERSAL";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const KODE_MAJU_PEMBALIK = KODE_MAJU_REVERSAL;
 
 /**
  * Penanda "satu PT" (R5, KTD1) — DITURUNKAN dari peta tenant (`public.unit.

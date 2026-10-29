@@ -152,12 +152,12 @@ describe("setiap aksi pihak lawan — gerbang, set_config, append-only", () => {
       expect(fn, aksi).not.toBe("");
       expect(urutan(fn, `const ctx = await buka(input.code, ${predikat})`, "pool.connect()")).toBe("ok");
       expect(fn).toMatch(/if \(!ctx\.boleh\) return \{ ok: false, error: ctx\.error \}/);
-      expect(urutan(fn, "set_config('app.unit_ids'", "await audit(client")).toBe("ok");
+      expect(urutan(fn, "set_config('app.unit_ids'", "await auditKeuangan(client")).toBe("ok");
     });
   }
 
   it("buka() MENOLAK bila predikat gagal — hasilnya dipakai", () => {
-    expect(AKSI).toMatch(/if \(!boleh\(ctx\)\) return \{ boleh: false, error: pesanTakBolehKetik\(ctx\) \}/);
+    expect(AKSI).toMatch(/if \(!boleh\(ctx\)\) return \{ boleh: false, error: pesanTakBolehInput\(ctx\) \}/);
     expect(urutan(AKSI, "const unit = scope.requireUnit(code)", "if (!boleh(ctx))")).toBe("ok");
   });
 

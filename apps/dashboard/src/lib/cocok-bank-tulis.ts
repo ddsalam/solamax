@@ -1,4 +1,7 @@
 import type { PoolClient } from "pg";
+import { auditKeuangan, type Aktor } from "./keuangan-tx";
+/** Nama lama, dipakai `scripts/uji-ulang-rekening-koran.ts`. */
+export { auditKeuangan as audit, type Aktor } from "./keuangan-tx";
 import { usulkanSemua, type UsulanCocok } from "./cocok-bank-model";
 import { bacaKasId, bacaKonteksCocok, bacaMutasiRekeningKoran } from "./cocok-bank-queries";
 import type { ScopedUnitId } from "./scope";
@@ -16,19 +19,6 @@ import type { ScopedUnitId } from "./scope";
  * ⛔ KTD6: tak ada `cash_ledger` yang ditulis di sini — hanya `cocok_bank`,
  * `cocok_bank_baris`, dan `audit_log`.
  */
-
-export interface Aktor {
-  userId: number;
-  email: string | null;
-}
-
-export async function audit(c: PoolClient, aktor: Aktor, action: string, target: string, detail: Record<string, unknown>) {
-  await c.query(
-    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-     VALUES ($1,$2,$3,$4,$5::jsonb)`,
-    [aktor.userId, aktor.email, action, target, JSON.stringify(detail)],
-  );
-}
 
 /**
  * Kepala kelompok saja — dipakai klasifikasi (U11), yang harus punya id
@@ -136,7 +126,7 @@ export async function jalankanCocokOtomatis(
     const kas = u.kandidat[0]!;
     if (!masihBebas.has(kas.cashLedgerId)) continue;
     const id = await tulisKelompok(c, { unitId: m.unitId, cara: "otomatis", aktor: m.aktor, mutasiIds: [u.mutasiId], kasIds: [kas.cashLedgerId] });
-    await audit(c, m.aktor, "cocok_bank.otomatis", `${m.unitCode}/${id}`, {
+    await auditKeuangan(c, m.aktor, "cocok_bank.otomatis", `${m.unitCode}/${id}`, {
       rekeningKoran: m.rekeningKoranId,
       mutasi: [u.mutasiId],
       kas: [kas.cashLedgerId],

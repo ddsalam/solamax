@@ -18,6 +18,8 @@ const tanpaKomentar = (src: string): string =>
 
 const MENTAH = readFileSync(resolve(__dirname, "tutup-bulan-actions.ts"), "utf8");
 const KODE = tanpaKomentar(MENTAH);
+/** Inti audit bersama (satu salinan SQL) — dipanggil lewat `auditKeuangan(`. */
+const KODE_TX = tanpaKomentar(readFileSync(resolve(__dirname, "keuangan-tx.ts"), "utf8"));
 const Q = tanpaKomentar(readFileSync(resolve(__dirname, "tutup-bulan-queries.ts"), "utf8"));
 const HAL = tanpaKomentar(
   readFileSync(resolve(__dirname, "../app/(app)/keuangan/unit/[code]/tutup-bulan/[bulan]/page.tsx"), "utf8"),
@@ -43,8 +45,10 @@ describe("tutupBulan — penjagaan yang tak boleh hilang", () => {
     expect(urutan(fn, "FOR UPDATE", "bacaBahanTutupBulan(client")).toBe("ok");
     expect(urutan(fn, "bacaBahanTutupBulan(client", "periksaTutupBulan(")).toBe("ok");
     expect(urutan(fn, "periksaTutupBulan(", "INSERT INTO app.tutup_bulan")).toBe("ok");
-    expect(urutan(fn, "INSERT INTO app.tutup_bulan", "INSERT INTO app.audit_log")).toBe("ok");
-    expect(urutan(fn, "INSERT INTO app.audit_log", 'client.query("COMMIT")')).toBe("ok");
+    expect(urutan(fn, "INSERT INTO app.tutup_bulan", "auditKeuangan(client")).toBe("ok");
+    expect(urutan(fn, "auditKeuangan(client", 'client.query("COMMIT")')).toBe("ok");
+    // Jejak audit tinggal di satu salinan bersama (keuangan-tx.ts).
+    expect(KODE_TX).toMatch(/INSERT INTO app\.audit_log \(actor_user_id, actor_email, action, target, detail\)/);
   });
 
   it("🔴 vonis MENOLAK (bukan sekadar dipanggil); masukan dibaca lewat KLIEN TRANSAKSI, bukan qScoped", () => {

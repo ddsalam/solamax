@@ -1,4 +1,6 @@
 import type { PoolClient } from "pg";
+import { auditKeuangan } from "./keuangan-tx";
+import { UUID_RE } from "./validasi";
 import { nominalSisiLawan, type JenisPihakLawan, type PihakLawanTerbaca } from "./pihak-lawan-model";
 import type { ScopedUnitId } from "./scope";
 
@@ -13,8 +15,6 @@ import type { ScopedUnitId } from "./scope";
  * gerbang di bawah ini. Dipisah supaya uji DB-live (`pihak-lawan-saldo-awal
  * .integration.test.ts`) menguji SQL yang sama dengan yang dijalankan aksi.
  */
-
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface PihakLawanBaris extends PihakLawanTerbaca {
   id: string;
@@ -40,20 +40,6 @@ export async function bacaPihakLawanTerkunci(
     [id, unitId],
   );
   return r.rows[0] ?? null;
-}
-
-async function audit(
-  c: PoolClient,
-  aktor: { userId: number; email: string | null },
-  action: string,
-  target: string,
-  detail: Record<string, unknown>,
-): Promise<void> {
-  await c.query(
-    `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-     VALUES ($1,$2,$3,$4,$5::jsonb)`,
-    [aktor.userId, aktor.email, action, target, JSON.stringify(detail)],
-  );
 }
 
 /**
@@ -97,7 +83,7 @@ async function tulisSatuSisi(
      VALUES ($1, $2::uuid, $3::date, $4, $5, $6)`,
     [s.unitId, s.pihakLawanId, s.tanggal, s.amount, s.sementara, s.aktor.userId],
   );
-  await audit(
+  await auditKeuangan(
     c,
     s.aktor,
     sebelumnya === null ? "pihak_lawan.saldo_awal.tetapkan" : "pihak_lawan.saldo_awal.ganti",

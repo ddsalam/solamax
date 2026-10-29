@@ -33,6 +33,8 @@ const MENTAH = readFileSync(resolve(__dirname, "impor-bank-actions.ts"), "utf8")
 const KODE = tanpaKomentar(MENTAH);
 /** Inti tulis impor (satu salinan SQL) — dipanggil langkah 4 unggahRekeningKoran. */
 const KODE_TULIS = tanpaKomentar(readFileSync(resolve(__dirname, "impor-bank-tulis.ts"), "utf8"));
+/** Inti audit bersama (satu salinan SQL) — dipanggil lewat `auditKeuangan(`. */
+const KODE_TX = tanpaKomentar(readFileSync(resolve(__dirname, "keuangan-tx.ts"), "utf8"));
 
 const badan = (kode: string, nama: string): string => {
   const i = kode.indexOf(`export async function ${nama}`);
@@ -101,8 +103,10 @@ describe("tarikRekeningKoran — HoF, kelompok cocok & penanda U12 sebelum UPDAT
     expect(fn).not.toBe("");
     expect(urutan(fn, "canTarikRekeningKoran(", "pool.connect()")).toBe("ok");
     expect(urutan(fn, "FOR UPDATE", "UPDATE app.rekening_koran")).toBe("ok");
-    expect(urutan(fn, "UPDATE app.rekening_koran", "INSERT INTO app.audit_log")).toBe("ok");
-    expect(urutan(fn, "INSERT INTO app.audit_log", 'client.query("COMMIT")')).toBe("ok");
+    expect(urutan(fn, "UPDATE app.rekening_koran", "auditKeuangan(client")).toBe("ok");
+    expect(urutan(fn, "auditKeuangan(client", 'client.query("COMMIT")')).toBe("ok");
+    // Jejak audit tinggal di satu salinan bersama (keuangan-tx.ts).
+    expect(KODE_TX).toMatch(/INSERT INTO app\.audit_log \(actor_user_id, actor_email, action, target, detail\)/);
   });
 
   it("🔴 U12: bulan tertutup diperiksa (kunci bersama → baca) SESUDAH kunci rekening koran & SEBELUM UPDATE, dan menolak", () => {
@@ -136,7 +140,8 @@ describe("berkas aksi", () => {
   it("🔴 KTD6: hanya rekening_koran, mutasi_bank, audit_log yang ditulis — TIDAK cash_ledger; tanpa DELETE", () => {
     expect(KODE).not.toMatch(/DELETE FROM/i);
     expect(KODE_TULIS).not.toMatch(/DELETE FROM|cash_ledger/i);
-    const tulis = [...(KODE + KODE_TULIS).matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
+    expect(KODE_TX).not.toMatch(/DELETE FROM|cash_ledger/i);
+    const tulis = [...(KODE + KODE_TULIS + KODE_TX).matchAll(/(INSERT INTO|UPDATE) (app\.\w+)/g)].map((m) => m[2]);
     expect(new Set(tulis)).toEqual(new Set(["app.rekening_koran", "app.mutasi_bank", "app.audit_log"]));
     expect(KODE).not.toMatch(/UPDATE app\.mutasi_bank/);
   });

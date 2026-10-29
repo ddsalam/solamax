@@ -11,6 +11,8 @@ import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSe
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
 import { tulisBebanFinance } from "./klasifikasi-tulis";
+import { auditKeuangan } from "./keuangan-tx";
+import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -536,8 +538,6 @@ export interface PecahanInput {
   }[];
 }
 
-const KODE_MAJU_PECAHAN = "ADJ-FWD-IMPORT";
-
 export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
   const ctx = await buka(input.code);
   if (!ctx.boleh) return { ok: false, error: ctx.error };
@@ -644,30 +644,20 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
       }
     }
 
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "kas.pecah",
-        `${unit.code}/${input.accountId}`,
-        JSON.stringify({
-          tanggal: input.date,
-          hariBuku: hari.hariBuku,
-          nominal: input.total,
-          keterangan: input.keterangan.trim(),
-          baris: input.baris.map((b, i) => ({
-            id: ids[i],
-            nominal: b.amount,
-            kategori: b.categoryLabel,
-            pihakLawanId: b.pihakLawanId ?? null,
-            kategoriOperasional: b.operationalCategory ?? null,
-          })),
-          beban: bebanIds,
-        }),
-      ],
-    );
+    await auditKeuangan(client, scope, "kas.pecah", `${unit.code}/${input.accountId}`, {
+      tanggal: input.date,
+      hariBuku: hari.hariBuku,
+      nominal: input.total,
+      keterangan: input.keterangan.trim(),
+      baris: input.baris.map((b, i) => ({
+        id: ids[i],
+        nominal: b.amount,
+        kategori: b.categoryLabel,
+        pihakLawanId: b.pihakLawanId ?? null,
+        kategoriOperasional: b.operationalCategory ?? null,
+      })),
+      beban: bebanIds,
+    });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
     if (hari.hariBuku !== input.date) revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);

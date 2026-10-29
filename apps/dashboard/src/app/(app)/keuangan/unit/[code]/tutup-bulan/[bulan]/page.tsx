@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { TutupBulanPeriksa } from "@/components/keuangan/TutupBulanPeriksa";
 import { TutupBulanTombol } from "@/components/keuangan/TutupBulanTombol";
+import { geserBulan } from "@/lib/bulan";
 import { unitDotted, unitLabel } from "@/lib/config";
 import { canTutupBulan, canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { daftarBulan } from "@/lib/impor-bank-model";
@@ -13,13 +14,6 @@ import { getBahanTutupBulan, getTutupBulan } from "@/lib/tutup-bulan-queries";
 export const dynamic = "force-dynamic";
 
 const NAMA_BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-/** Bulan sebelum/sesudah `YYYY-MM`. */
-function geser(bulan: string, n: -1 | 1): string {
-  const [y, m] = bulan.split("-").map(Number) as [number, number];
-  const d = new Date(Date.UTC(y, m - 1 + n, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 /**
  * TUTUP BULAN per unit (rencana 2026-10-29 U12; R25; KTD14).
@@ -47,8 +41,8 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
   const bolehTutup = canTutupBulan(ctx);
   const labelBulan = `${NAMA_BULAN[Number(bulan.slice(5, 7)) - 1]} ${bulan.slice(0, 4)}`;
   const hariIni = todayWib();
-  const sebelum = geser(bulan, -1);
-  const sesudah = geser(bulan, 1);
+  const sebelum = geserBulan(bulan, -1);
+  const sesudah = geserBulan(bulan, 1);
   const adaSesudah = daftarBulan(sesudah, hariIni.slice(0, 7)).length > 0;
 
   return (

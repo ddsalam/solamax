@@ -130,17 +130,35 @@ export async function bacaKasId(c: Kueri, unitId: number, ids: readonly string[]
  * yang disebut + penebusan pemilik kandidat (supaya kas penebusan TIDAK pernah
  * jadi kandidat ketikan), kas penebusan di luar jendela, dan rekening unit.
  */
-export async function bacaKonteksCocok(c: Kueri, unitId: number, mutasi: readonly MutasiTerbaca[]): Promise<KonteksCocok> {
+export async function bacaKonteksCocok(
+  c: Kueri,
+  unitId: number,
+  mutasi: readonly MutasiTerbaca[],
+  opsi: { paralel?: boolean } = {},
+): Promise<KonteksCocok> {
   const mutasiDicocokkan = new Set(mutasi.filter((m) => m.dicocokkan).map((m) => m.id));
-  const rekening = (await c.query<RekeningUnit>(SQL_REKENING_UNIT, [unitId])).rows;
-  if (mutasi.length === 0) return { kas: [], penebusan: [], rekening, kasDicocokkan: new Set(), mutasiDicocokkan };
+  const bacaRekening = async () => (await c.query<RekeningUnit>(SQL_REKENING_UNIT, [unitId])).rows;
+  if (mutasi.length === 0) {
+    return { kas: [], penebusan: [], rekening: await bacaRekening(), kasDicocokkan: new Set(), mutasiDicocokkan };
+  }
 
   const tanggal = mutasi.map((m) => m.tanggalBank).sort();
   const dari = addDays(tanggal[0]!, -JENDELA_HARI);
   const sampai = tanggal[tanggal.length - 1]!;
   const sos = [...new Set(mutasi.flatMap((m) => (m.so === null ? [] : [normalisasiSo(m.so)])))];
 
-  let kas = (await c.query<BarisKas>(SQL_KAS_KANDIDAT, [unitId, dari, sampai, []])).rows.map(keKas);
+  const bacaKas = async () => (await c.query<BarisKas>(SQL_KAS_KANDIDAT, [unitId, dari, sampai, []])).rows.map(keKas);
+  // ⚠️ `paralel` HANYA untuk pembaca ber-scope (`kueriScoped`, satu koneksi per
+  //    kueri). Klien transaksi (`PoolClient`) tak boleh menerima dua kueri
+  //    bersamaan ⇒ jalur transaksi tetap berurutan.
+  let rekening: RekeningUnit[];
+  let kas: KasTerbaca[];
+  if (opsi.paralel) {
+    [rekening, kas] = await Promise.all([bacaRekening(), bacaKas()]);
+  } else {
+    rekening = await bacaRekening();
+    kas = await bacaKas();
+  }
   const penebusan = (
     await c.query<PenebusanCocok>(SQL_PENEBUSAN_COCOK, [unitId, sos, kas.map((k) => k.id)])
   ).rows;
@@ -172,7 +190,7 @@ export interface UsulanRekeningKoran {
 export async function getUsulanRekeningKoran(unit: ScopedUnitId, rekeningKoranId: string): Promise<UsulanRekeningKoran> {
   const c = kueriScoped(unit);
   const mutasi = await bacaMutasiRekeningKoran(c, unit, rekeningKoranId);
-  const ktx = await bacaKonteksCocok(c, unit, mutasi);
+  const ktx = await bacaKonteksCocok(c, unit, mutasi, { paralel: true });
   const usulan = usulkanSemua(mutasi, ktx);
   const disebut = new Set(usulan.flatMap((u) => [...u.kandidat.map((k) => k.cashLedgerId), ...(u.rujukan?.cashLedgerId ? [u.rujukan.cashLedgerId] : [])]));
   const kas = Object.fromEntries((ktx.kas as KasTerbaca[]).filter((k) => disebut.has(k.id)).map((k) => [k.id, k]));

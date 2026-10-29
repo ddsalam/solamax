@@ -19,14 +19,16 @@ import { bacaRekeningKoranBca, GalatRekeningKoran, type RekeningKoran } from "./
 import { simpanRekeningKoran } from "./impor-bank-tulis";
 import { keSaldoBukuAwal, POLA_NAMA_BCA, SQL_CUT_OVER, SQL_SALDO_BUKU_AWAL, type BarisSaldoBuku } from "./impor-bank-queries";
 import {
-  PESAN_TAK_BOLEH_INPUT,
-  alasanTakBolehInput,
+  pesanTakBolehInput,
   canImporRekeningKoran,
   canTarikRekeningKoran,
 } from "./keuangan-wewenang";
 import { GalatPdfTeks, teksDariPdf } from "./pdf-teks";
 import { getDataScope } from "./scope";
 import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
+import { auditKeuangan, batal, kodeAlasanKoreksiSah, PESAN_KODE_ALASAN_TAK_DIKENAL } from "./keuangan-tx";
+import { PREFIKS_KODE_MAJU } from "./keuangan-kode-maju";
+import { UUID_RE } from "./validasi";
 
 /**
  * Server action impor rekening koran (rencana 2026-10-29 U9; R17–R19, R22,
@@ -52,16 +54,6 @@ import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
  */
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/impor-bank`;
-
-async function batal(client: { query: (s: string) => Promise<unknown> }): Promise<void> {
-  try {
-    await client.query("ROLLBACK");
-  } catch {
-    /* abaikan */
-  }
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const tolak = (sebab: SebabTolak, pesan: string): HasilUnggah => ({ status: "ditolak", sebab, pesan });
 
@@ -109,7 +101,7 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
   const unit = scope.requireUnit(String(form.get("code") ?? "")); // di luar scope → notFound()
   const ctx = { role: scope.role, email: scope.email };
   if (!canImporRekeningKoran(ctx)) {
-    return tolak("wewenang", PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"]);
+    return tolak("wewenang", pesanTakBolehInput(ctx));
   }
   const accountId = String(form.get("accountId") ?? "");
   if (!UUID_RE.test(accountId)) return tolak("rekening-salah", "Rekening tak dikenali — muat ulang halaman.");
@@ -217,26 +209,16 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
     const saldoAwal = bandingkanSaldoAwal({ periode: rk.periode, saldoAwalSen: rk.saldoAwalSen, buku: keSaldoBukuAwal(sb.rows[0]) });
     const nPraCutover = pra.filter(Boolean).length;
 
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "rekening_koran.unggah",
-        `${unit.code}/${rekeningKoranId}`,
-        JSON.stringify({
-          rekening: accountId,
-          nomorRekening: rk.nomorRekening,
-          periode: rk.periode,
-          sha256,
-          nBaris: rk.rows.length,
-          nPraCutover,
-          cutOver,
-          saldoAwal,
-        }),
-      ],
-    );
+    await auditKeuangan(client, scope, "rekening_koran.unggah", `${unit.code}/${rekeningKoranId}`, {
+      rekening: accountId,
+      nomorRekening: rk.nomorRekening,
+      periode: rk.periode,
+      sha256,
+      nBaris: rk.rows.length,
+      nPraCutover,
+      cutOver,
+      saldoAwal,
+    });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     // U10 — cocok otomatis SESUDAH impor COMMIT, transaksi sendiri: gagalnya
@@ -292,7 +274,7 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
   const catatan = input.catatan.trim();
   if (catatan === "") return { ok: false, error: "Catatan wajib diisi — tuliskan kenapa impor ini ditarik." };
   const reasonCode = input.reasonCode.trim();
-  if (reasonCode === "" || reasonCode.startsWith("ADJ-FWD-")) {
+  if (reasonCode === "" || reasonCode.startsWith(PREFIKS_KODE_MAJU)) {
     return { ok: false, error: "Pilih kode alasan koreksi dari daftar (kode pembukuan maju diisi sistem)." };
   }
 
@@ -301,14 +283,9 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
 
-    const rc = await client.query<{ code: string }>(
-      `SELECT code FROM app.reason_code
-        WHERE code = $1 AND applies_to = 'adjustment' AND active AND code NOT LIKE 'ADJ-FWD-%'`,
-      [reasonCode],
-    );
-    if (rc.rows.length === 0) {
+    if (!(await kodeAlasanKoreksiSah(client, reasonCode))) {
       await batal(client);
-      return { ok: false, error: "Kode alasan tak dikenal — pilih kode alasan koreksi dari daftar." };
+      return { ok: false, error: PESAN_KODE_ALASAN_TAK_DIKENAL };
     }
 
     const r = await client.query<{ id: string; status: string; periode: string; accountId: string }>(
@@ -378,17 +355,12 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
       return { ok: false, error: "Rekening koran berubah bersamaan — muat ulang halaman." };
     }
 
-    await client.query(
-      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
-       VALUES ($1,$2,$3,$4,$5::jsonb)`,
-      [
-        scope.userId,
-        scope.email,
-        "rekening_koran.tarik",
-        `${unit.code}/${rk.id}`,
-        JSON.stringify({ rekening: rk.accountId, periode: rk.periode, reasonCode, catatan }),
-      ],
-    );
+    await auditKeuangan(client, scope, "rekening_koran.tarik", `${unit.code}/${rk.id}`, {
+      rekening: rk.accountId,
+      periode: rk.periode,
+      reasonCode,
+      catatan,
+    });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return { ok: true, pesan: `Rekening koran ${rk.periode} ditarik. Berkas pengganti kini boleh diunggah.` };

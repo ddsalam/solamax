@@ -100,50 +100,56 @@ async function getParkir(unit: ScopedUnitId, mutasiIds: readonly string[]): Prom
 
 /** Semua baris impor rekening koran AKTIF bulan itu (semua rekening), terurut tanggal bank. */
 export async function getBarisImporBulan(unit: ScopedUnitId, rekening: readonly RekeningBulan[]): Promise<BarisImporTampil[]> {
-  const out: BarisImporTampil[] = [];
-  for (const r of rekening) {
-    if (r.rekeningKoranId === null) continue;
-    const u = await getUsulanRekeningKoran(unit, r.rekeningKoranId);
-    const usulan = new Map(u.usulan.map((x) => [x.mutasiId, x]));
-    const parkir = await getParkir(unit, u.mutasi.filter((m) => m.dicocokkan).map((m) => m.id));
-    for (const m of u.mutasi) {
-      const us = usulan.get(m.id);
-      const p = parkir.get(m.id);
-      const penampungSen = p ? teksKeSen(p.penampung) : 0;
-      const status = statusBarisImpor({ praCutover: m.praCutover, dicocokkan: m.dicocokkan, penampungSen });
-      out.push({
-        id: m.id,
-        accountId: m.accountId,
-        rekeningKoranId: m.rekeningKoranId,
-        tanggalBank: m.tanggalBank,
-        keterangan: m.keterangan,
-        amountSen: m.amountSen,
-        so: m.so,
-        status,
-        kandidat:
-          status !== "terbuka"
-            ? []
-            : (us?.kandidat ?? []).flatMap((k) => {
-                const kas = u.kas[k.cashLedgerId];
-                return kas
-                  ? [
-                      {
-                        cashLedgerId: kas.id,
-                        aturan: k.aturan,
-                        businessDate: kas.businessDate,
-                        tanggalAsal: kas.tanggalAsal,
-                        amountSen: kas.amountSen,
-                        keterangan: kas.keterangan,
-                        categoryLabel: kas.categoryLabel,
-                      },
-                    ]
-                  : [];
-              }),
-        tanda: status === "terbuka" && us?.tanda ? LABEL_TANDA[us.tanda] : null,
-        parkirId: status === "diparkir" ? (p?.parkirId ?? null) : null,
-      });
-    }
-  }
+  // Tiap rekening koran dibaca mandiri (kueri ber-scope, bukan klien transaksi) ⇒
+  // paralel; urutan hasil tetap urutan `rekening` sebelum diurutkan per tanggal.
+  const perRekening = await Promise.all(
+    rekening.map(async (r) => {
+      const out: BarisImporTampil[] = [];
+      if (r.rekeningKoranId === null) return out;
+      const u = await getUsulanRekeningKoran(unit, r.rekeningKoranId);
+      const usulan = new Map(u.usulan.map((x) => [x.mutasiId, x]));
+      const parkir = await getParkir(unit, u.mutasi.filter((m) => m.dicocokkan).map((m) => m.id));
+      for (const m of u.mutasi) {
+        const us = usulan.get(m.id);
+        const p = parkir.get(m.id);
+        const penampungSen = p ? teksKeSen(p.penampung) : 0;
+        const status = statusBarisImpor({ praCutover: m.praCutover, dicocokkan: m.dicocokkan, penampungSen });
+        out.push({
+          id: m.id,
+          accountId: m.accountId,
+          rekeningKoranId: m.rekeningKoranId,
+          tanggalBank: m.tanggalBank,
+          keterangan: m.keterangan,
+          amountSen: m.amountSen,
+          so: m.so,
+          status,
+          kandidat:
+            status !== "terbuka"
+              ? []
+              : (us?.kandidat ?? []).flatMap((k) => {
+                  const kas = u.kas[k.cashLedgerId];
+                  return kas
+                    ? [
+                        {
+                          cashLedgerId: kas.id,
+                          aturan: k.aturan,
+                          businessDate: kas.businessDate,
+                          tanggalAsal: kas.tanggalAsal,
+                          amountSen: kas.amountSen,
+                          keterangan: kas.keterangan,
+                          categoryLabel: kas.categoryLabel,
+                        },
+                      ]
+                    : [];
+                }),
+          tanda: status === "terbuka" && us?.tanda ? LABEL_TANDA[us.tanda] : null,
+          parkirId: status === "diparkir" ? (p?.parkirId ?? null) : null,
+        });
+      }
+      return out;
+    }),
+  );
+  const out = perRekening.flat();
   return out.sort((a, b) => a.tanggalBank.localeCompare(b.tanggalBank));
 }
 

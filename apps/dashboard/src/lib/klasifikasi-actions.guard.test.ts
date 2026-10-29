@@ -36,6 +36,9 @@ const MENTAH = readFileSync(resolve(__dirname, "klasifikasi-actions.ts"), "utf8"
 const KODE = tanpaKomentar(MENTAH);
 const TULIS_MENTAH = readFileSync(resolve(__dirname, "klasifikasi-tulis.ts"), "utf8");
 const TULIS = tanpaKomentar(TULIS_MENTAH);
+/** Kode pembukuan maju — satu salinan bersama (keuangan-kode-maju.ts). */
+const KODE_MAJU = tanpaKomentar(readFileSync(resolve(__dirname, "keuangan-kode-maju.ts"), "utf8"));
+const IMPOR_KODE_MAJU = /import \{ KODE_MAJU_IMPOR, KODE_MAJU_SUSPENSE as KODE_MAJU_PENAMPUNG \} from "\.\/keuangan-kode-maju";/;
 
 const badan = (kode: string, nama: string): string => {
   const i = kode.search(new RegExp(`(export )?async function ${nama}\\b`));
@@ -101,7 +104,8 @@ describe("⛔ KTD5/R28 — hari buku DI DALAM transaksi, sebelum baris kas", () 
     expect(urutan(fn, "bacaBarisTerbuka(client", "hariBukuTerkunci(client")).toBe("ok");
     expect(urutan(fn, "buatKelompok(client", "tulisBarisKlasifikasi(client")).toBe("ok");
     expect(fn).toMatch(/lahirDariCocokId: cocokId/);
-    expect(MENTAH).toMatch(/const KODE_MAJU_IMPOR = "ADJ-FWD-IMPORT"/);
+    expect(MENTAH).toMatch(IMPOR_KODE_MAJU);
+    expect(KODE_MAJU).toMatch(/export const KODE_MAJU_IMPOR = "ADJ-FWD-IMPORT"/);
   });
 
   it("pindah: baris parkir dikunci & kelompoknya FOR SHARE sebelum hari buku; ADJ-FWD-SUSPENSE; masuk kelompok parkir", () => {
@@ -111,7 +115,8 @@ describe("⛔ KTD5/R28 — hari buku DI DALAM transaksi, sebelum baris kas", () 
     expect(fn).toMatch(/kodeMaju: KODE_MAJU_PENAMPUNG/);
     expect(fn).toMatch(/parkirSumberId: p!\.id/);
     expect(fn).toMatch(/lahirDariCocokId: p!\.cocokId/);
-    expect(MENTAH).toMatch(/const KODE_MAJU_PENAMPUNG = "ADJ-FWD-SUSPENSE"/);
+    expect(MENTAH).toMatch(IMPOR_KODE_MAJU);
+    expect(KODE_MAJU).toMatch(/export const KODE_MAJU_SUSPENSE = "ADJ-FWD-SUSPENSE"/);
   });
 });
 
