@@ -114,6 +114,13 @@ describe("simpanMutasiKas — kategori pihak lawan wajib menyebut pihak lawan (R
     expect(insertKas()).toHaveLength(0);
   });
 
+  it("🔴 R30/§10.31: pihak lawan berjenis UNIT ditolak — pinjaman antar unit ditulis DUA sisi, tak ada INSERT", async () => {
+    h.state.jawab = pihakBaris({ nama: "SPBU Bakau", jenis: "unit", lawanUnitId: 6479 });
+    const r = await simpanMutasiKas({ ...mutasi, pihakLawanId: PL });
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/Pinjaman antar unit/) });
+    expect(insertKas()).toHaveLength(0);
+  });
+
   it("pihak lawan aktif sejenis: INSERT membawa pihak_lawan_id", async () => {
     h.state.jawab = pihakBaris();
     const r = await simpanMutasiKas({ ...mutasi, pihakLawanId: PL });
@@ -187,6 +194,13 @@ describe("pecahMutasi — AE6 (R9)", () => {
     const r = await pecahMutasi(p);
     expect(r).toEqual({ ok: false, error: expect.stringMatching(/Baris 2: .*kategori operasional/) });
     expect(h.connect).not.toHaveBeenCalled();
+  });
+
+  it("🔴 R30/§10.31: pecahan ke pihak lawan berjenis UNIT ditolak — tak ada INSERT", async () => {
+    h.state.jawab = pihakBaris({ nama: "SPBU Bakau", jenis: "unit", lawanUnitId: 6479 });
+    const r = await pecahMutasi(pecahan(500_000));
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/Baris 1: .*Pinjaman antar unit/) });
+    expect(insertKas()).toHaveLength(0);
   });
 
   it("🔴 AE6: 6.000.000 + 499.999 DITOLAK dengan selisih Rp 1 — sebelum koneksi", async () => {

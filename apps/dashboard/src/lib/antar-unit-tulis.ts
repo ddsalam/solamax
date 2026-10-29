@@ -109,7 +109,13 @@ export async function tulisPasanganAntarUnit(
       [s.unit.unitId, s.lawan.unitId],
     );
     const pihak = pl.rows[0] ?? null;
-    const salah = periksaPihakLawanMutasi({ categoryLabel: KATEGORI_ANTAR_UNIT, pihakLawanId: pihak?.id ?? "?", pihak });
+    // Penulis PASANGAN dua sisi — satu-satunya jalan baris baru ke pihak berjenis unit.
+    const salah = periksaPihakLawanMutasi({
+      categoryLabel: KATEGORI_ANTAR_UNIT,
+      pihakLawanId: pihak?.id ?? "?",
+      pihak,
+      bolehUnit: true,
+    });
     if (salah !== null) return { ok: false, error: `${s.unit.name}: ${salah}` };
     siap.push({ pihakLawanId: pihak!.id });
   }

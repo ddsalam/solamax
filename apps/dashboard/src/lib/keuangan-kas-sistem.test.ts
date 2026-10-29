@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { barisBuku, barisSistemDari } from "./keuangan-kas-model";
+import { barisBuku, barisSistemDari, PENJELASAN_BARIS_SISTEM } from "./keuangan-kas-model";
 
 describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
   it("satu pembuat vonis", () => {
@@ -10,6 +10,10 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     expect(barisSistemDari({ saldoAwal: false, dariPencairanEdc: false })).toBeNull();
     // U7 — baris kas milik penebusan aktif (KTD9).
     expect(barisSistemDari({ saldoAwal: false, dariPenebusan: true })).toBe("penebusan");
+    // U6/R31 — kaki pasangan antar unit (termasuk pembalik maju ADJ-FWD-REVERSAL
+    // yang membawa pasangan_uuid) hanya dibalik lewat "Balik pasangan" (HoF).
+    expect(barisSistemDari({ saldoAwal: false, antarUnit: true })).toBe("antar_unit");
+    expect(barisSistemDari({ saldoAwal: false, antarUnit: false })).toBeNull();
   });
 
   it("barisBuku menandai baris sistem, baris biasa tetap null", () => {
@@ -27,7 +31,12 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
       ...o,
     });
     const b = barisBuku(
-      [m("pembuka", { saldoAwal: true, jenis: "adjustment" }), m("edc", { dariPencairanEdc: true }), m("biasa", {})],
+      [
+        m("pembuka", { saldoAwal: true, jenis: "adjustment" }),
+        m("edc", { dariPencairanEdc: true }),
+        m("pasangan", { antarUnit: true }),
+        m("biasa", {}),
+      ],
       "A",
       "2026-09-24",
       "2026-09-23",
@@ -35,6 +44,7 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     expect(b.map((x) => [x.id, x.barisSistem])).toEqual([
       ["pembuka", "saldo_awal"],
       ["edc", "pencairan_edc"],
+      ["pasangan", "antar_unit"],
       ["biasa", null],
     ]);
   });
@@ -59,5 +69,26 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     // Sabuk kedua di UPDATE-nya sendiri.
     const upd = badan.slice(badan.indexOf("UPDATE app.cash_ledger"));
     expect(upd).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM app\.penebusan p/);
+  });
+
+  it("🔴 U6/R31: kaki pasangan antar unit tak bisa dibatalkan dari buku — divonis DAN dijaga UPDATE-nya", () => {
+    const s = readFileSync(resolve(__dirname, "kas-actions.ts"), "utf8");
+    const fn = s.slice(s.indexOf("export async function voidMutasiKas"));
+    const badan = fn.slice(0, fn.indexOf("\nexport "));
+    expect(badan).toMatch(/\(l\.pasangan_uuid IS NOT NULL\) AS antar_unit/);
+    expect(badan).toMatch(/antarUnit: cek\.rows\[0\]\.antar_unit/);
+    const upd = badan.slice(badan.indexOf("UPDATE app.cash_ledger"));
+    expect(upd).toMatch(/AND pasangan_uuid IS NULL/);
+  });
+
+  it("layar membaca tanda yang sama: getMutasiKas membawa antarUnit", () => {
+    const s = readFileSync(resolve(__dirname, "keuangan-input-queries.ts"), "utf8");
+    const fn = s.slice(s.indexOf("export async function getMutasiKas"));
+    expect(fn.slice(0, fn.indexOf("\n}\n"))).toMatch(/\(pasangan_uuid IS NOT NULL\)\s+AS "antarUnit"/);
+  });
+
+  it("pesan penolakan menunjuk ke Balik pasangan (HoF)", () => {
+    expect(PENJELASAN_BARIS_SISTEM.antar_unit).toMatch(/Balik pasangan/);
+    expect(PENJELASAN_BARIS_SISTEM.antar_unit).toMatch(/Head of Finance/);
   });
 });

@@ -104,11 +104,18 @@ export interface PihakLawanTerbaca {
  * Vonis pilihan pihak lawan untuk SATU baris kas. `pihak` = baris yang dibaca
  * ulang di server dari unit yang SAMA (`null` = tak ditemukan di unit itu).
  * Mengembalikan pesan yang menyebut perbaikannya, atau `null` bila sah.
+ *
+ * ⛔ `bolehUnit` (bawaan `false`): pihak lawan berjenis `unit` hanya sah pada
+ * penulis PASANGAN dua sisi (`tulisPasanganAntarUnit`, R3/R30, §10.31) dan pada
+ * penetapan pihak lawan baris LAMA (`tetapkanPihakLawanBaris`). Baris satu unit
+ * yang baru (buku kas, pecahan, klasifikasi) ke unit lain melahirkan saldo
+ * antar unit SEPIHAK — kaki di unit lawannya tak pernah ada.
  */
 export function periksaPihakLawanMutasi(m: {
   categoryLabel: string | null;
   pihakLawanId: string | null | undefined;
   pihak: PihakLawanTerbaca | null;
+  bolehUnit?: boolean;
 }): string | null {
   const id = m.pihakLawanId ?? null;
   if (!kategoriPihakLawan(m.categoryLabel)) {
@@ -131,6 +138,12 @@ export function periksaPihakLawanMutasi(m: {
   if (m.categoryLabel !== "Penyerahan titipan" && m.pihak.jenis === "titipan") {
     return `“${m.pihak.nama}” adalah pemilik titipan — catat penyerahannya dengan kategori Penyerahan titipan.`;
   }
+  if (m.pihak.jenis === "unit" && !m.bolehUnit) {
+    return (
+      `“${m.pihak.nama}” adalah unit SolaGroup — catat pinjamannya lewat “Pinjaman antar unit” (halaman Pihak lawan) ` +
+      `supaya kedua buku tercatat sekaligus, bukan satu baris di buku ini.`
+    );
+  }
   return null;
 }
 
@@ -144,14 +157,20 @@ export interface PilihanPihakLawan {
 /**
  * Pilihan yang sah untuk satu kategori — aturan jenis yang SAMA dengan
  * {@link periksaPihakLawanMutasi}, supaya layar tak menawarkan pilihan yang
- * pasti ditolak server. Server tetap memeriksa ulang.
+ * pasti ditolak server. Server tetap memeriksa ulang. `bolehUnit` sama artinya
+ * dengan di sana — hanya penetapan baris lama yang menawarkan jenis `unit`.
  */
 export function pihakLawanUntuk(
   kategori: string | null | undefined,
   semua: readonly PilihanPihakLawan[],
+  opsi: { bolehUnit?: boolean } = {},
 ): PilihanPihakLawan[] {
   if (!kategoriPihakLawan(kategori)) return [];
-  return semua.filter((p) => (kategori === "Penyerahan titipan" ? p.jenis === "titipan" : p.jenis !== "titipan"));
+  return semua.filter((p) =>
+    kategori === "Penyerahan titipan"
+      ? p.jenis === "titipan"
+      : p.jenis !== "titipan" && (opsi.bolehUnit === true || p.jenis !== "unit"),
+  );
 }
 
 // ---------------------------------------------------------------------------

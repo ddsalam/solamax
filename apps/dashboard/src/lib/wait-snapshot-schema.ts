@@ -49,6 +49,33 @@ AND EXISTS (
   WHERE table_schema = 'app' AND table_name = 'cash_ledger' AND column_name = 'lahir_dari_cocok_id'
 ) AS ready`;
 
+/**
+ * U11 — 0053: `manual_entry.cash_ledger_id` (beban/pendapatan pintu Finance yang
+ * lahir bersama baris kasnya). Satu kolom; ADD COLUMN-nya pernyataan pertama
+ * migrasi, jadi kolom terlihat = migrasi sudah commit.
+ */
+export const MANUAL_ENTRY_KAS_SCHEMA_READY_SQL = `
+SELECT EXISTS (
+  SELECT 1 FROM information_schema.columns
+  WHERE table_schema = 'app' AND table_name = 'manual_entry' AND column_name = 'cash_ledger_id'
+) AS ready`;
+
+/**
+ * U12 — 0054: tabel `tutup_bulan` + kolom `day_close.koreksi_susulan_rp`.
+ * Keduanya dituntut — layar tutup bulan membaca yang pertama, `getDayClose`
+ * (tutup hari & ringkasan keuangan) membaca yang kedua.
+ */
+export const TUTUP_BULAN_SCHEMA_READY_SQL = `
+SELECT (
+  EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'app' AND table_name = 'tutup_bulan'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'app' AND table_name = 'day_close' AND column_name = 'koreksi_susulan_rp'
+  )
+) AS ready`;
+
 /** The backend and dashboard deployment workflows start concurrently. K1 must
  * wait for the backend's atomic upgrade before testing the new reader SQL. */
 export async function waitForSnapshotV2Schema(

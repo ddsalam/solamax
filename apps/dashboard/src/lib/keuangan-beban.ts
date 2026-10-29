@@ -154,6 +154,12 @@ export interface BarisManualLaporan {
   section: string;
   /** Kategori operasional milik pengawas — dipakai mengenali titipan (§10.27). */
   operationalCategory: string | null;
+  /**
+   * 0053 — baris kas yang melahirkan entri pintu Finance ini (klasifikasi buku
+   * kas/mutasi bank). `null`/tak ada = entri berdiri sendiri. Dipakai langkah
+   * "dinilai" (§10.34) untuk mencabut pasangan baris susulan bersama-sama.
+   */
+  cashLedgerId?: string | null;
 }
 
 /**

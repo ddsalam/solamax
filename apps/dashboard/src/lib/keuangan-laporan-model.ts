@@ -389,6 +389,20 @@ export interface SisiKasLangkah {
   kontribusi: number;
 }
 
+/**
+ * KTD15 / §10.34 — bahan langkah "dinilai": sisi kas tanpa baris susulan hari
+ * itu, DAN laba tanpa `manual_entry` pintu Finance yang bertaut
+ * (`cash_ledger_id`, 0053) ke baris susulan itu. Pasangan klasifikasi (kas +
+ * beban/pendapatan lain-lain) sudah seimbang di dalam SolaMax: mencabut hanya
+ * kakinya yang kas melahirkan selisih palsu sebesar bebannya, dan koreksi
+ * susulan lawannya. Wajib (bukan opsional) supaya penyusun bahan baru tak bisa
+ * lupa memotong labanya.
+ */
+export interface SisiLangkahDinilai extends SisiKasLangkah {
+  beban: readonly BarisBeban[];
+  pendapatanLain: number;
+}
+
 /** Bagian `BahanLaporan` yang menentukan langkah harian — struktural, tanpa I/O. */
 export interface BahanLangkahHarian extends SisiKasLangkah {
   totals: DayTotals;
@@ -399,9 +413,10 @@ export interface BahanLangkahHarian extends SisiKasLangkah {
   totalAssetKemarin: number | null;
   /**
    * KTD15 — sisi kas yang SAMA tetapi tanpa baris yang dibukukan hari itu
-   * dengan tanggal asal lebih awal. `undefined` = tak ada baris susulan.
+   * dengan tanggal asal lebih awal — beserta laba tanpa beban/pendapatan yang
+   * bertaut baris itu (§10.34). `undefined` = tak ada baris susulan.
    */
-  tanpaSusulan?: SisiKasLangkah;
+  tanpaSusulan?: SisiLangkahDinilai;
 }
 
 /** Bahan lengkap untuk panel neraca (Layar 2, papan, Layar 4). */
@@ -505,9 +520,16 @@ export interface RincianLangkah {
  * asalnya (transfer pelanggan, penebusan).
  */
 export function langkahHarianRinci(b: BahanLangkahHarian): RincianLangkah {
-  const ni = labaBersihDari(b);
-  const penuh = panelBalance(balanceInputDari(b, ni)).langkahHarian;
-  const dinilai = b.tanpaSusulan === undefined ? penuh : panelBalance(balanceInputDari(b, ni, b.tanpaSusulan)).langkahHarian;
+  const penuh = panelBalance(balanceInputDari(b, labaBersihDari(b))).langkahHarian;
+  const t = b.tanpaSusulan;
+  // §10.34 — laba `dinilai` juga tanpa beban/pendapatan yang bertaut baris
+  // susulan; memakai laba penuh di sini membuat pasangan seimbang menyumbang.
+  const dinilai =
+    t === undefined
+      ? penuh
+      : panelBalance(
+          balanceInputDari(b, labaBersihDari({ totals: b.totals, beban: t.beban, pendapatanLain: t.pendapatanLain }), t),
+        ).langkahHarian;
   const koreksi = penuh === null || dinilai === null ? null : Math.round((penuh - dinilai) * 100) / 100 || 0;
   return { penuh, dinilai, koreksiSusulan: koreksi };
 }

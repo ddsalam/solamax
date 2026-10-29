@@ -2,9 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   COCOK_BANK_SCHEMA_READY_SQL,
   IMPOR_BANK_SCHEMA_READY_SQL,
+  MANUAL_ENTRY_KAS_SCHEMA_READY_SQL,
   PENEBUSAN_SCHEMA_READY_SQL,
   PIHAK_LAWAN_SCHEMA_READY_SQL,
   SNAPSHOT_V2_SCHEMA_READY_SQL,
+  TUTUP_BULAN_SCHEMA_READY_SQL,
   waitForSnapshotV2Schema,
 } from "./wait-snapshot-schema";
 import type { ManualSection } from "./queries";
@@ -121,6 +123,22 @@ beforeAll(async () => {
       return result[0]?.ready === true;
     },
     { notReady: "cocok_bank_schema_not_ready: backend migration 0052" },
+  );
+  // U11 — beban pintu Finance bertaut baris kas (0053).
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, MANUAL_ENTRY_KAS_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "manual_entry_kas_schema_not_ready: backend migration 0053" },
+  );
+  // U12 — layar tutup bulan (`tutup_bulan`) & tutup hari (`day_close.koreksi_susulan_rp`) membaca 0054.
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, TUTUP_BULAN_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "tutup_bulan_schema_not_ready: backend migration 0054" },
   );
 }, 21 * 60 * 1000);
 
@@ -250,6 +268,30 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
     "getBukuTanpaPasangan",
     async () => (await import("./klasifikasi-queries")).getBukuTanpaPasangan(U, ["00000000-0000-4000-8000-000000000000"], "2026-07"),
   ],
+  // U12 — layar tutup bulan & tutup hari (0054). `getBahanTutupBulan` menjalankan
+  // kelima SQL bahan (hari tertutup, parkir, rekening wajib, impor, buku bulan) —
+  // SQL yang sama dengan `bacaBahanTutupBulan` milik aksi `tutupBulan`.
+  ["getBahanTutupBulan", async () => (await import("./tutup-bulan-queries")).getBahanTutupBulan(U, "2026-07")],
+  ["getTutupBulan", async () => (await import("./tutup-bulan-queries")).getTutupBulan(U, "2026-07")],
+  ["getParkirTerbukaSampai", async () => (await import("./tutup-bulan-queries")).getParkirTerbukaSampai(U, D)],
+  ["getBarisMajuKe", async () => (await import("./tutup-bulan-queries")).getBarisMajuKe(U, D)],
+  [
+    // Jalur tulis (tarik rekening koran / batalkan cocok): kunci bersama + baca `tutup_bulan`.
+    "bulanTertutupTerkunci",
+    async () => {
+      const [m, c] = await Promise.all([import("./tutup-bulan-queries"), import("./cocok-bank-queries")]);
+      return m.bulanTertutupTerkunci(c.kueriScoped(U), U, ["2026-07"]);
+    },
+  ],
+  // Kueri halaman yang SQL-nya berubah/lahir di cabang ini tapi belum di gerbang.
+  ["getDayClose (0054 koreksi_susulan_rp)", async () => (await import("./keuangan-input-queries")).getDayClose(U, D)],
+  ["getBiayaHarian (sqlTitipan)", async () => (await import("./keuangan-input-queries")).getBiayaHarian(U, D)],
+  ["getMutasiPihakLawan", async () => (await import("./pihak-lawan-queries")).getMutasiPihakLawan(U, D)],
+  ["getBarisTanpaPihakLawan", async () => (await import("./pihak-lawan-queries")).getBarisTanpaPihakLawan(U)],
+  ["getKakiAntarUnit", async () => (await import("./antar-unit-queries")).getKakiAntarUnit(U)],
+  ["getRekeningAktif", async () => (await import("./antar-unit-queries")).getRekeningAktif(U)],
+  ["getKodeAlasanBalik", async () => (await import("./antar-unit-queries")).getKodeAlasanBalik()],
+  ["getPemilikTitipanAktif", async () => (await import("./titipan-queries")).getPemilikTitipanAktif(U)],
 ];
 
 /** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */

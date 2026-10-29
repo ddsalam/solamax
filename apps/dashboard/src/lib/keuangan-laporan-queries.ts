@@ -19,6 +19,7 @@ import {
   type RincianLangkah,
   type SebabKasInput,
   type SisiKasLangkah,
+  type SisiLangkahDinilai,
 } from "./keuangan-laporan-model";
 import {
   arusBukuKas,
@@ -84,7 +85,7 @@ export interface BahanLaporan {
    * KTD15 — sisi kas yang sama TANPA baris yang dibukukan hari itu bertanggal
    * asal lebih awal. `undefined` = hari itu tak punya baris susulan.
    */
-  tanpaSusulan?: SisiKasLangkah;
+  tanpaSusulan?: SisiLangkahDinilai;
   /**
    * §10.27/U5 — SALDO liabilitas titipan, GABUNGAN semua pemilik (neraca).
    * Namanya tetap demi baris neraca yang sudah ada; rinciannya di
@@ -110,24 +111,34 @@ export interface BahanLaporan {
   totalAssetKemarin: number | null;
 }
 
-/** Beban & pendapatan lain-lain milik hari itu, dari kedua pintu (§2.4). */
-async function getBebanDanPendapatan(
-  unit: ScopedUnitId,
-  date: string,
-): Promise<{
+interface BebanDanPendapatan {
   beban: BarisBeban[];
   pendapatanLain: number;
   titipanBright: number;
   kontribusi: number;
-}> {
-  const manual = await qScoped<BarisManualLaporan>(
+}
+
+/**
+ * Beban & pendapatan lain-lain milik hari itu, dari kedua pintu (§2.4) —
+ * `penuh`, dan `tanpaKas(ids)`: hitungan yang SAMA tanpa entri pintu Finance
+ * yang bertaut (`cash_ledger_id`, 0053) ke baris kas `ids`. Yang kedua dipakai
+ * langkah "dinilai" (§10.34): baris kas susulan dan beban pasangannya keluar
+ * BERSAMA, jadi pasangan yang seimbang di SolaMax menyumbang nol. Diturunkan
+ * dari baris yang sudah dibaca — tanpa kueri tambahan.
+ */
+async function getBebanDanPendapatan(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<BebanDanPendapatan & { tanpaKas: (ids: ReadonlySet<string>) => BebanDanPendapatan }> {
+  const semua = await qScoped<BarisManualLaporan>(
     unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate",
             -- §10.29 — akun EFEKTIF: reklasifikasi terakhir, kalau tidak akun beku.
             ${SQL_AKUN_EFEKTIF("m")}            AS "accountingAccount",
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
             keterangan, void, section::text     AS section,
-            operational_category                AS "operationalCategory"
+            operational_category                AS "operationalCategory",
+            cash_ledger_id::text                AS "cashLedgerId"
        FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pengeluaran','pendapatan_lain')`,
@@ -150,14 +161,20 @@ async function getBebanDanPendapatan(
     [unit, date],
   );
 
-  const { manualBeban, pendapatanLain, titipanBright, kontribusi } = pilahManualEntry(manual);
-  const beban = kumpulkanBeban(
-    { manual_entry: manualBeban, noncash_expense: nonKas },
-    date,
-    date,
-  );
+  const hitung = (manual: readonly BarisManualLaporan[]): BebanDanPendapatan => {
+    const { manualBeban, pendapatanLain, titipanBright, kontribusi } = pilahManualEntry(manual);
+    const beban = kumpulkanBeban(
+      { manual_entry: manualBeban, noncash_expense: nonKas },
+      date,
+      date,
+    );
+    return { beban, pendapatanLain, titipanBright, kontribusi };
+  };
 
-  return { beban, pendapatanLain, titipanBright, kontribusi };
+  return {
+    ...hitung(semua),
+    tanpaKas: (ids) => hitung(semua.filter((r) => r.cashLedgerId == null || !ids.has(r.cashLedgerId))),
+  };
 }
 
 /**
@@ -416,14 +433,23 @@ async function bahanLaporan(
   const saldoTitipanBright = sisi.penuh.saldoTitipanBright;
   const arusTitipanBright = bp.titipanBright + (arus.get("Titipan outlet Bright (bukan pendapatan)") ?? 0);
   /** Sisi kas → bentuk langkah harian; kontribusi = reklasifikasi + buku kas. */
-  const langkahDari = (k: SisiKasNeraca): SisiKasLangkah => ({
+  const langkahDari = (k: SisiKasNeraca, m: Pick<BebanDanPendapatan, "kontribusi"> = bp): SisiKasLangkah => ({
     kasAkhir: k.kasAkhir,
     hutangPiutangNonEasymax: k.hutangPiutangNonEasymax,
     penampung: k.penampung,
     temporaryInvestment: k.temporaryInvestment,
     saldoTitipanBright: k.saldoTitipanBright,
-    kontribusi: bp.kontribusi + k.kontribusiKas,
+    kontribusi: m.kontribusi + k.kontribusiKas,
   });
+  /**
+   * §10.34 — "dinilai": baris kas susulan DAN entri pintu Finance pasangannya
+   * (beban Biaya Operasional/Management Fee, Pendapatan Lain-Lain) keluar
+   * bersama. Predikatnya `barisSusulan` yang sama dengan sisi kas.
+   */
+  const dinilaiDari = (k: SisiKasNeraca): SisiLangkahDinilai => {
+    const m = bp.tanpaKas(new Set(mutasi.filter((x) => barisSusulan(x, date)).map((x) => x.id)));
+    return { ...langkahDari(k, m), beban: m.beban, pendapatanLain: m.pendapatanLain };
+  };
 
   // Piutang pelanggan EasyMax pada DUA batas (§ getSaldoPelanggan) — yang dipakai
   // neraca adalah akhir hari; arusnya = selisih terhadap awal hari.
@@ -449,7 +475,7 @@ async function bahanLaporan(
     saldoTitipanBright,
     titipanPerPemilik,
     titipanSementara: sisi.penuh.titipanSementara,
-    tanpaSusulan: sisi.tanpaSusulan === undefined ? undefined : langkahDari(sisi.tanpaSusulan),
+    tanpaSusulan: sisi.tanpaSusulan === undefined ? undefined : dinilaiDari(sisi.tanpaSusulan),
     arusTitipanBright,
     piutangEasymax,
     deltaPiutangEasymax,

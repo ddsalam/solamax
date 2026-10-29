@@ -222,6 +222,58 @@ describe("koreksi susulan (KTD15, R32)", () => {
     expect(rinci.dinilai).toBe(0);
   });
 
+  /** `manual_entry` hari D yang dipulangkan kueri beban/pendapatan laporan. */
+  const manualHariIni = (rows: Record<string, unknown>[]) =>
+    qScoped.mockImplementation(async (_u: unknown, sql: string, p: unknown[]) =>
+      sql.includes("FROM app.manual_entry m") && sql.includes("section IN ('pengeluaran','pendapatan_lain')") &&
+      (p as string[])[1] === D
+        ? rows.map((r) => ({ businessDate: D, keterangan: "x", void: false, operationalCategory: "Lain-Lain", ...r }))
+        : [],
+    );
+
+  it("🔴 Biaya Operasional susulan + beban pintu Finance yang bertaut ⇒ dinilai = penuh, koreksi 0 (§10.34: sudah seimbang di SolaMax)", async () => {
+    // Klasifikasi debit bank 2 Okt ke Biaya Operasional, dibukukan maju 3 Nov:
+    // DUA baris — kas −7,5 jt (tanggal asal 2 Okt) + manual_entry Finance 7,5 jt
+    // bertaut `cash_ledger_id` (0053). Pasangan ini nol di `penuh`; mencabut
+    // hanya kakinya yang kas dari `dinilai` melahirkan selisih +7,5 jt palsu.
+    const kas = baris({ amount: -7_500_000, businessDate: D, tanggalAsal: "2026-10-02", categoryLabel: "Biaya Operasional" });
+    manualHariIni([{ accountingAccount: "6-9100", amountRp: 7_500_000, section: "pengeluaran", cashLedgerId: kas.id }]);
+    const { b, rinci } = await langkah([pembuka(), kas]);
+    expect(b.beban.reduce((s, x) => s + x.amountRp, 0)).toBe(7_500_000); // laba layar tetap memuatnya
+    expect(rinci.penuh).toBe(0);
+    expect(rinci.dinilai).toBe(rinci.penuh);
+    expect(rinci.koreksiSusulan).toBe(0);
+  });
+
+  it("🔴 Pendapatan Lain-Lain susulan (kredit bank) + pendapatan pintu Finance bertaut ⇒ dinilai = penuh, koreksi 0", async () => {
+    const kas = baris({ amount: 2_250_000, businessDate: D, tanggalAsal: "2026-10-20", categoryLabel: "Pendapatan Lain-Lain" });
+    manualHariIni([{ accountingAccount: null, amountRp: 2_250_000, section: "pendapatan_lain", cashLedgerId: kas.id }]);
+    const { b, rinci } = await langkah([pembuka(), kas]);
+    expect(b.pendapatanLain).toBe(2_250_000);
+    expect(rinci.penuh).toBe(0);
+    expect(rinci.dinilai).toBe(rinci.penuh);
+    expect(rinci.koreksiSusulan).toBe(0);
+  });
+
+  it("beban yang TIDAK bertaut baris susulan tetap di kedua hitungan — koreksi = transfer pelanggan saja (AE13)", async () => {
+    // Beban pengawas 1 jt (tanpa baris kas) + beban Finance bertaut baris kas
+    // BIASA hari ini (bukan susulan) + transfer pelanggan susulan 160 jt.
+    const biasa = baris({ amount: -3_000_000, businessDate: D, categoryLabel: "Biaya Operasional" });
+    manualHariIni([
+      { accountingAccount: "6-9100", amountRp: 1_000_000, section: "pengeluaran", cashLedgerId: null },
+      { accountingAccount: "6-9100", amountRp: 3_000_000, section: "pengeluaran", cashLedgerId: biasa.id },
+    ]);
+    const { rinci } = await langkah([
+      pembuka(),
+      biasa,
+      baris({ amount: 160_000_000, businessDate: D, tanggalAsal: "2026-10-02", categoryLabel: "Transfer Pembayaran Piutang Pelanggan" }),
+    ]);
+    // Beban pengawas 1 jt tanpa kas ⇒ langkah −1 jt di KEDUA hitungan.
+    expect(rinci.dinilai).toBe(-1_000_000);
+    expect(rinci.penuh).toBe(-1_000_000 - 160_000_000);
+    expect(rinci.koreksiSusulan).toBe(-160_000_000);
+  });
+
   it("baris susulan yang dibukukan KEMARIN tidak menjadi koreksi hari ini", async () => {
     const { rinci } = await langkah([
       pembuka(),

@@ -247,6 +247,23 @@ describe("saldoPihakLawan — saldo pembuka + (−Σ amount) per business_date (
   });
 });
 
+describe("periksaPihakLawanMutasi — jenis UNIT hanya lewat pasangan dua sisi (R3/R30, §10.31)", () => {
+  const bakau = { nama: "SPBU Bakau", jenis: "unit" as const, aktif: true };
+  it("🔴 baris SATU unit (bawaan) ke pihak berjenis unit DITOLAK, menunjuk Pinjaman antar unit", () => {
+    expect(periksaPihakLawanMutasi({ categoryLabel: "Hutang Piutang", pihakLawanId: "x", pihak: bakau })).toMatch(
+      /Pinjaman antar unit/,
+    );
+    expect(
+      periksaPihakLawanMutasi({ categoryLabel: "Hutang Piutang", pihakLawanId: "x", pihak: bakau, bolehUnit: false }),
+    ).toMatch(/Pinjaman antar unit/);
+  });
+  it("bolehUnit: penulis pasangan & penetapan baris lama tetap boleh", () => {
+    expect(
+      periksaPihakLawanMutasi({ categoryLabel: "Hutang Piutang", pihakLawanId: "x", pihak: bakau, bolehUnit: true }),
+    ).toBeNull();
+  });
+});
+
 describe("pihakLawanUntuk — layar tak menawarkan pilihan yang pasti ditolak", () => {
   const semua = [
     { id: "a", nama: "BPR", jenis: "kreditur" as const },
@@ -255,11 +272,18 @@ describe("pihakLawanUntuk — layar tak menawarkan pilihan yang pasti ditolak", 
   ];
   it("sejalan periksaPihakLawanMutasi", () => {
     expect(pihakLawanUntuk("Penyerahan titipan", semua).map((p) => p.id)).toEqual(["b"]);
-    expect(pihakLawanUntuk("Hutang Piutang", semua).map((p) => p.id)).toEqual(["a", "c"]);
+    // Formulir baris satu unit (buku kas, pecahan, klasifikasi) tak menawarkan unit.
+    expect(pihakLawanUntuk("Hutang Piutang", semua).map((p) => p.id)).toEqual(["a"]);
+    // Penetapan pihak lawan baris lama (legacy) tetap boleh memilih unit.
+    expect(pihakLawanUntuk("Hutang Piutang", semua, { bolehUnit: true }).map((p) => p.id)).toEqual(["a", "c"]);
     expect(pihakLawanUntuk("Biaya Operasional", semua)).toEqual([]);
-    for (const k of ["Penyerahan titipan", "Hutang Piutang"]) {
-      for (const p of pihakLawanUntuk(k, semua)) {
-        expect(periksaPihakLawanMutasi({ categoryLabel: k, pihakLawanId: p.id, pihak: { ...p, aktif: true } })).toBeNull();
+    for (const bolehUnit of [false, true]) {
+      for (const k of ["Penyerahan titipan", "Hutang Piutang"]) {
+        for (const p of pihakLawanUntuk(k, semua, { bolehUnit })) {
+          expect(
+            periksaPihakLawanMutasi({ categoryLabel: k, pihakLawanId: p.id, pihak: { ...p, aktif: true }, bolehUnit }),
+          ).toBeNull();
+        }
       }
     }
   });

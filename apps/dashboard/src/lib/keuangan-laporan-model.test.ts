@@ -349,6 +349,15 @@ describe("langkahHarianRinci — KTD15: koreksi susulan terpisah dari yang dinil
     expect(langkahHarianDari(b)).not.toBe(r.penuh);
   });
 
+  it("🔴 dinilai memakai laba TANPA beban yang bertaut baris susulan (§10.34) — pasangan seimbang menyumbang 0", () => {
+    // Penuh: kas −7,5 jt & beban 7,5 jt (pasangan klasifikasi). Dinilai: kakinya
+    // yang kas DAN bebannya keluar bersama ⇒ koreksi 0.
+    const penuh = { ...bahan, kasAkhir: bahan.kasAkhir - 7_500_000, beban: [...bahan.beban, ...beban(7_500_000)] };
+    const r = langkahHarianRinci({ ...penuh, tanpaSusulan: { ...bahan } });
+    expect(r.dinilai).toBe(r.penuh);
+    expect(r.koreksiSusulan).toBe(0);
+  });
+
   it("null merambat: dinilai tak terhitung ⇒ koreksi null (bukan 0)", () => {
     const r = langkahHarianRinci({ ...bahan, tanpaSusulan: { ...bahan, kasAkhir: null } });
     expect(r.dinilai).toBeNull();

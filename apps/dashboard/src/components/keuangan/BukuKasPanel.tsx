@@ -1,6 +1,6 @@
 "use client";
 
-import { PENJELASAN_BARIS_SISTEM } from "@/lib/keuangan-kas-model";
+import { PENJELASAN_BARIS_SISTEM, type BarisSistem } from "@/lib/keuangan-kas-model";
 import { bacaRupiah } from "@/lib/angka-input";
 import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
@@ -23,6 +23,14 @@ import { PecahMutasiForm } from "./PecahMutasiForm";
  * terisi dari Rincian Penjualan, tetapi barisnya baru lahir setelah ada yang
  * MENYETUJUI — dan jejak siapa menyetujui tersimpan di baris itu.
  */
+
+/** Label chip pengganti tombol "Batalkan" pada baris sistem. */
+const LABEL_BARIS_SISTEM: Record<BarisSistem, string> = {
+  saldo_awal: "saldo pembuka",
+  pencairan_edc: "pencairan EDC",
+  penebusan: "penebusan",
+  antar_unit: "antar unit",
+};
 
 const rp = (n: number): string =>
   n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -275,7 +283,7 @@ export function BukuKasPanel({
                 <span className="right">
                   {b.barisSistem !== null ? (
                     <span className="keu-chip" title={PENJELASAN_BARIS_SISTEM[b.barisSistem]}>
-                      {b.barisSistem === "saldo_awal" ? "saldo pembuka" : "pencairan EDC"}
+                      {LABEL_BARIS_SISTEM[b.barisSistem]}
                     </span>
                   ) : yakin === b.id ? (
                     <span className="keu-yakin">

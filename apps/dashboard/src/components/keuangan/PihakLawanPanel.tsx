@@ -218,7 +218,8 @@ export function PihakLawanPanel({
   );
 
   const aktif = pihak.filter((p) => p.aktif);
-  const pilihanUntuk = (kategori: string) => pihakLawanUntuk(kategori, aktif);
+  // Penetapan baris lama — jenis `unit` sah di sini (bolehUnit, sama dengan server).
+  const pilihanUntuk = (kategori: string) => pihakLawanUntuk(kategori, aktif, { bolehUnit: true });
   const bukaPihak = pihak.find((p) => p.id === bukaSa) ?? null;
 
   return (

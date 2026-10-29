@@ -285,8 +285,19 @@ export async function voidMutasiKas(input: {
     // lewat `batalkanPenebusan`, yang menjaga hari buku & tautan penebusannya.
     // `FOR UPDATE` di sini bertabrakan dengan `FOR UPDATE OF l` milik
     // `simpanPenebusan`, jadi pengikatan yang bersamaan terbaca.
-    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean; dari_penebusan: boolean; dicocokkan: boolean }>(
+    // U6/R31: kaki pasangan antar unit (asli MAUPUN pembalik maju ADJ-FWD-REVERSAL
+    // yang membawa `pasangan_uuid`) juga baris sistem — void satu kaki membuat
+    // saldo kedua unit berselisih DAN menutup jalan `balikPasanganAntarUnit`
+    // (rencanaBalik menolak pasangan berkaki void). Jalannya "Balik pasangan" (HoF).
+    const cek = await client.query<{
+      saldo_awal: boolean;
+      dari_edc: boolean;
+      dari_penebusan: boolean;
+      antar_unit: boolean;
+      dicocokkan: boolean;
+    }>(
       `SELECT l.saldo_awal, (l.edc_settlement_id IS NOT NULL) AS dari_edc,
+              (l.pasangan_uuid IS NOT NULL) AS antar_unit,
               EXISTS (
                 SELECT 1 FROM app.penebusan p
                  WHERE p.cash_ledger_id = l.id AND p.unit_id = l.unit_id AND NOT p.void
@@ -305,6 +316,7 @@ export async function voidMutasiKas(input: {
           saldoAwal: cek.rows[0].saldo_awal,
           dariPencairanEdc: cek.rows[0].dari_edc,
           dariPenebusan: cek.rows[0].dari_penebusan,
+          antarUnit: cek.rows[0].antar_unit,
         })
       : null;
     if (sistem !== null) {
@@ -329,6 +341,7 @@ export async function voidMutasiKas(input: {
           SET void=true, voided_by_user_id=$1, voided_at=now()
         WHERE id=$2::uuid AND unit_id=$3 AND NOT void
           AND NOT saldo_awal AND edc_settlement_id IS NULL
+          AND pasangan_uuid IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM app.penebusan p
              WHERE p.cash_ledger_id = app.cash_ledger.id AND p.unit_id = app.cash_ledger.unit_id AND NOT p.void

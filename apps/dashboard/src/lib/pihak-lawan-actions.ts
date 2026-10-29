@@ -308,10 +308,13 @@ export async function tetapkanPihakLawanBaris(input: {
       return { ok: false, error: "Baris ini sudah punya pihak lawan — penetapan hanya sekali." };
     }
     const pihak = await bacaPihakLawanTerkunci(client, unit.unit_id, input.pihakLawanId);
+    // Baris LAMA (sebelum fitur pasangan) boleh ditandai ke unit — saldo
+    // historisnya memang sudah tercatat satu sisi di tiap buku.
     const salah = periksaPihakLawanMutasi({
       categoryLabel: baris.categoryLabel,
       pihakLawanId: input.pihakLawanId,
       pihak,
+      bolehUnit: true,
     });
     if (salah !== null) {
       await batal(client);
