@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
 import { jalankanCocokOtomatis } from "./cocok-bank-tulis";
 import { pool } from "./db";
-import { senKeTeks } from "./antar-unit-model";
 import { tentukanHariBuku } from "./hari-buku";
 import {
   bandingkanSaldoAwal,
@@ -17,6 +16,7 @@ import {
   type SebabTolak,
 } from "./impor-bank-model";
 import { bacaRekeningKoranBca, GalatRekeningKoran, type RekeningKoran } from "./impor-bank-parser";
+import { simpanRekeningKoran } from "./impor-bank-tulis";
 import { keSaldoBukuAwal, POLA_NAMA_BCA, SQL_CUT_OVER, SQL_SALDO_BUKU_AWAL, type BarisSaldoBuku } from "./impor-bank-queries";
 import {
   PESAN_TAK_BOLEH_INPUT,
@@ -201,53 +201,16 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
     const cutOver = cut.rows[0]?.akun ?? cut.rows[0]?.unit ?? null;
     const pra = rk.rows.map((r) => tentukanHariBuku({ tanggal: r.tanggal, cutOver, tertutup: [] }).status === "pra-cut-over");
 
-    // 4. Rekening koran + barisnya, satu transaksi.
-    const ins = await client.query<{ id: string }>(
-      `INSERT INTO app.rekening_koran
-         (unit_id, account_id, periode, saldo_awal, saldo_akhir, total_cr, n_cr, total_db, n_db,
-          file_sha256, uploaded_by_user_id)
-       VALUES ($1, $2::uuid, $3::date, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric, $9, $10, $11)
-       RETURNING id::text AS id`,
-      [
-        unit.unit_id,
-        accountId,
-        hariPertama,
-        senKeTeks(rk.saldoAwalSen),
-        senKeTeks(rk.footer.saldoAkhirSen),
-        senKeTeks(rk.footer.mutasiCrSen),
-        rk.footer.nCr,
-        senKeTeks(rk.footer.mutasiDbSen),
-        rk.footer.nDb,
-        sha256,
-        scope.userId,
-      ],
-    );
-    const rekeningKoranId = ins.rows[0]?.id;
-    if (!rekeningKoranId) throw new Error("Rekening koran tidak tersimpan.");
-
-    if (rk.rows.length > 0) {
-      await client.query(
-        `INSERT INTO app.mutasi_bank
-           (unit_id, rekening_koran_id, account_id, tanggal_bank, urutan, keterangan, amount,
-            saldo_setelah, so, dok_ref, pra_cutover)
-         SELECT $1, $2::uuid, $3::uuid, t.tanggal, t.urutan, t.keterangan, t.amount, t.saldo, t.so, t.dok, t.pra
-           FROM unnest($4::date[], $5::int[], $6::text[], $7::numeric[], $8::numeric[], $9::text[], $10::text[], $11::bool[])
-                AS t(tanggal, urutan, keterangan, amount, saldo, so, dok, pra)`,
-        [
-          unit.unit_id,
-          rekeningKoranId,
-          accountId,
-          rk.rows.map((r) => r.tanggal),
-          rk.rows.map((r) => r.urutan),
-          rk.rows.map((r) => r.keterangan),
-          rk.rows.map((r) => senKeTeks(r.amountSen)),
-          rk.rows.map((r) => (r.saldoSen === null ? null : senKeTeks(r.saldoSen))),
-          rk.rows.map((r) => r.so),
-          rk.rows.map((r) => r.dokRef),
-          pra,
-        ],
-      );
-    }
+    // 4. Rekening koran + barisnya, satu transaksi (satu salinan SQL: impor-bank-tulis.ts).
+    const rekeningKoranId = await simpanRekeningKoran(client, {
+      unitId: unit.unit_id,
+      accountId,
+      hariPertama,
+      rk,
+      sha256,
+      pra,
+      userId: scope.userId,
+    });
 
     // 5. R18 — saldo awal vs saldo buku hari sebelum periode (menurut tanggal asal).
     const sb = await client.query<BarisSaldoBuku>(SQL_SALDO_BUKU_AWAL, [unit.unit_id, accountId, hariPertama]);
