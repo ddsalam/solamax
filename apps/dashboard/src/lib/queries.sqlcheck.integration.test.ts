@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  IMPOR_BANK_SCHEMA_READY_SQL,
   PENEBUSAN_SCHEMA_READY_SQL,
   PIHAK_LAWAN_SCHEMA_READY_SQL,
   SNAPSHOT_V2_SCHEMA_READY_SQL,
@@ -104,6 +105,14 @@ beforeAll(async () => {
     },
     { notReady: "penebusan_schema_not_ready: backend migration 0050" },
   );
+  // U9 — kueri impor rekening koran membaca tabel 0051.
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, IMPOR_BANK_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "impor_bank_schema_not_ready: backend migration 0051" },
+  );
 }, 21 * 60 * 1000);
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
@@ -168,6 +177,14 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
   ["getPenebusanBulan", async () => (await import("./penebusan-queries")).getPenebusanBulan([U], "2026-07")],
   ["getSoBelumTertaut", async () => (await import("./penebusan-queries")).getSoBelumTertaut(U)],
   ["getRekeningBank", async () => (await import("./penebusan-queries")).getRekeningBank(U)],
+  // U9 — impor rekening koran (0051) + saldo buku menurut tanggal asal (R18).
+  ["getRekeningBca", async () => (await import("./impor-bank-queries")).getRekeningBca(U)],
+  ["getRekeningKoranUnit", async () => (await import("./impor-bank-queries")).getRekeningKoranUnit(U)],
+  [
+    "getSaldoBukuAwal",
+    async () =>
+      (await import("./impor-bank-queries")).getSaldoBukuAwal(U, "00000000-0000-4000-8000-000000000000", "2026-07-01"),
+  ],
 ];
 
 /** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */

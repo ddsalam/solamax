@@ -308,4 +308,9 @@ describe("U6 — sinyal buku pihak lawan", () => {
     expect(LABEL_KEJADIAN.balik_antar_unit).toMatch(/dibalik/);
     expect(NADA_KEJADIAN.balik_antar_unit).toBe("kuning");
   });
+
+  it("penarikan rekening koran oleh HoF adalah kejadian bernama, kuning (U9, R31)", () => {
+    expect(LABEL_KEJADIAN.tarik_rekening_koran).toMatch(/ditarik/);
+    expect(NADA_KEJADIAN.tarik_rekening_koran).toBe("kuning");
+  });
 });

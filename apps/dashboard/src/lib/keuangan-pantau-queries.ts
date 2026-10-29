@@ -108,7 +108,8 @@ export type JenisKejadian =
   | "rekening_edc_diubah"
   | "rekening_pencairan_beda"
   | "reklasifikasi_biaya"
-  | "balik_antar_unit";
+  | "balik_antar_unit"
+  | "tarik_rekening_koran";
 
 export interface KejadianPantau {
   unitId: number;
@@ -526,6 +527,18 @@ const KUERI_KEJADIAN = `
       FROM app.edc_settlement s
       LEFT JOIN app.users u ON u.id = s.voided_by_user_id
      WHERE s.unit_id = ANY($1::int[]) AND s.void AND ${SAAT_DALAM_JENDELA("s.voided_at")}
+
+    -- U9 — rekening koran yang DITARIK HoF (R31). Dari tabel ber-RLS 0051,
+    -- bukan audit_log: pemantau hanya melihat unit yang ia pegang.
+    UNION ALL
+    SELECT r.unit_id::int, 'tarik_rekening_koran', ${WIB_TEKS("r.ditarik_at")},
+           to_char(r.periode, 'YYYY-MM-DD'), u.email,
+           (a.nama || ' — ' || to_char(r.periode, 'YYYY-MM') || ' · ' || r.ditarik_alasan || ' · ' || r.ditarik_catatan),
+           NULL::float8, NULL
+      FROM app.rekening_koran r
+      JOIN app.cash_account a ON a.id = r.account_id
+      LEFT JOIN app.users u ON u.id = r.ditarik_by_user_id
+     WHERE r.unit_id = ANY($1::int[]) AND r.status = 'ditarik' AND ${SAAT_DALAM_JENDELA("r.ditarik_at")}
 
     UNION ALL
     SELECT n.unit_id::int, 'batal_beban_nonkas', ${WIB_TEKS("n.voided_at")},

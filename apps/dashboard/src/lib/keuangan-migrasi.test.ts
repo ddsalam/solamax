@@ -95,6 +95,7 @@ const sql0030 = MIG("0030_edc_settlement");
 const sql0031 = MIG("0031_noncash_expense");
 const sql0049 = MIG("0049_pihak_lawan");
 const sql0050 = MIG("0050_penebusan");
+const sql0051 = MIG("0051_impor_bank");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -122,6 +123,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0049", sql0049, ["pihak_lawan", "pihak_lawan_saldo_awal"]],
     // Rencana 2026-10-29 U7 — penebusan per SO (KTD9).
     ["0050", sql0050, ["penebusan"]],
+    // Rencana 2026-10-29 U9 — rekening koran & baris mutasinya (KTD6).
+    ["0051", sql0051, ["rekening_koran", "mutasi_bank"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -795,6 +798,7 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
     ["0031_noncash_expense", sql0031],
     ["0049_pihak_lawan", sql0049],
     ["0050_penebusan", sql0050],
+    ["0051_impor_bank", sql0051],
   ];
 
   /** Tabel yang DIBUAT di migrasi ini dan punya kolom `unit_id` NOT NULL. */
@@ -1322,6 +1326,88 @@ describe("0050_penebusan — penebusan memiliki baris kasnya", () => {
 
   it("⛔ R14: tidak menyentuh harga beli / HPP", () => {
     expect(st).not.toMatch(/purchase_price|hpp/i);
+  });
+
+  it("RLS: cabang NULL TIDAK ada, dan itu dinyatakan", () => {
+    expect(sql).toMatch(/cabang NULL DIPUTUSKAN SADAR: \*\*TIDAK ADA\*\*/);
+    expect(st).not.toMatch(/unit_id IS NULL OR/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0051 — impor rekening koran (rencana 2026-10-29 U9; R17–R19, R22, R31; KTD6)
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0051_impor_bank — rekening koran & baris mutasinya", () => {
+  const sql = sql0051;
+  const st = pernyataan(sql);
+  const rk = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."rekening_koran" (');
+  const mb = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."mutasi_bank" (');
+
+  it("kedua tabel ada utuh; nominal DECIMAL(17,2) — tanpa float", () => {
+    expect(rk, "rekening_koran tidak ditemukan utuh").not.toBe("");
+    expect(mb, "mutasi_bank tidak ditemukan utuh").not.toBe("");
+    for (const k of ["saldo_awal", "saldo_akhir", "total_cr", "total_db"]) {
+      expect(rk).toMatch(new RegExp(`"${k}"\\s+DECIMAL\\(17,2\\) NOT NULL`));
+    }
+    expect(mb).toMatch(/"amount"\s+DECIMAL\(17,2\) NOT NULL/);
+    expect(mb).toMatch(/"saldo_setelah"\s+DECIMAL\(17,2\),/);
+    expect(rk + mb).not.toMatch(/DOUBLE|REAL|FLOAT/i);
+  });
+
+  it("🔴 R17: kaki menutup ditegakkan CHECK — saldo awal + CR − DB = saldo akhir, tanpa toleransi", () => {
+    expect(rk).toMatch(
+      /CONSTRAINT "rekening_koran_kaki_menutup" CHECK \(\s*"saldo_awal" \+ "total_cr" - "total_db" = "saldo_akhir"\s*\)/,
+    );
+    expect(rk).toMatch(/"periode" = date_trunc\('month', "periode"\)::date/);
+  });
+
+  it("🔴 satu rekening koran AKTIF per (rekening, bulan)", () => {
+    expect(pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "rekening_koran_aktif_uq"')).toMatch(
+      /\("account_id", "periode"\) WHERE "status" = 'aktif'/,
+    );
+  });
+
+  it("FK KOMPOSIT: rekening koran → rekening unit yang sama; baris → rekening koran (unit, rekening, status)", () => {
+    expect(rk).toMatch(
+      /FOREIGN KEY \("account_id", "unit_id"\)\s*REFERENCES "app"\."cash_account"\("id", "unit_id"\)/,
+    );
+    expect(rk).toMatch(/UNIQUE \("id", "unit_id", "account_id", "status"\)/);
+    expect(mb).toMatch(
+      /FOREIGN KEY \("rekening_koran_id", "unit_id", "account_id", "rk_status"\)\s*REFERENCES "app"\."rekening_koran"\("id", "unit_id", "account_id", "status"\)\s*ON UPDATE CASCADE/,
+    );
+  });
+
+  it("🔴 R19: kunci alami di dalam berkas + di antara rekening koran AKTIF (tarik lalu unggah ulang tak bertabrakan)", () => {
+    expect(mb).toMatch(/UNIQUE \("rekening_koran_id", "tanggal_bank", "urutan"\)/);
+    expect(pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "mutasi_bank_aktif_uq"')).toMatch(
+      /\("account_id", "tanggal_bank", "urutan"\) WHERE "rk_status" = 'aktif'/,
+    );
+  });
+
+  it("R22: pra_cutover wajib diisi; ⛔ KTD6: tak ada tautan ke cash_ledger, cash_ledger tak disentuh", () => {
+    expect(mb).toMatch(/"pra_cutover"\s+BOOLEAN NOT NULL/);
+    expect(st).not.toMatch(/cash_ledger/);
+  });
+
+  it("R31: ditarik ⇔ kapan/siapa/alasan/catatan; alasan dari reason_code adjustment", () => {
+    expect(rk).toMatch(/"status" IN \('aktif', 'ditarik'\)/);
+    expect(rk).toMatch(/\("status" = 'ditarik'\) = \("ditarik_at" IS NOT NULL\)/);
+    expect(rk).toMatch(/\("status" = 'ditarik'\) = \("ditarik_by_user_id" IS NOT NULL\)/);
+    expect(rk).toMatch(/\("status" = 'ditarik'\) = \("ditarik_alasan" IS NOT NULL\)/);
+    expect(rk).toMatch(/\("status" = 'ditarik'\) = \(NULLIF\(btrim\("ditarik_catatan"\), ''\) IS NOT NULL\)/);
+    expect(rk).toMatch(
+      /FOREIGN KEY \("ditarik_alasan", "ditarik_alasan_applies_to"\)\s*REFERENCES "app"\."reason_code"\("code", "applies_to"\)/,
+    );
+    expect(rk).toMatch(/"ditarik_alasan_applies_to" IS NULL OR "ditarik_alasan_applies_to" = 'adjustment'/);
+  });
+
+  it("hak akses: tanpa DELETE di keduanya; baris bank TANPA UPDATE", () => {
+    expect(st).toMatch(/GRANT SELECT, INSERT, UPDATE ON "app"\."rekening_koran" TO dashboard_app/);
+    expect(st).toMatch(/REVOKE DELETE ON "app"\."rekening_koran" FROM dashboard_app/);
+    expect(st).toMatch(/GRANT SELECT, INSERT ON "app"\."mutasi_bank" TO dashboard_app/);
+    expect(st).toMatch(/REVOKE UPDATE, DELETE ON "app"\."mutasi_bank" FROM dashboard_app/);
+    expect(st).not.toMatch(/GRANT[^;]*DELETE/);
+    expect(st).not.toMatch(/GRANT[^;]*UPDATE[^;]*"mutasi_bank"/);
   });
 
   it("RLS: cabang NULL TIDAK ada, dan itu dinyatakan", () => {

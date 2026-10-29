@@ -31,6 +31,13 @@ SELECT EXISTS (
   WHERE table_schema = 'app' AND table_name = 'penebusan'
 ) AS ready`;
 
+/** Rencana 2026-10-29 U9 — tabel impor rekening koran (backend migration 0051). */
+export const IMPOR_BANK_SCHEMA_READY_SQL = `
+SELECT (
+  SELECT count(*) FROM information_schema.tables
+  WHERE table_schema = 'app' AND table_name IN ('rekening_koran', 'mutasi_bank')
+) = 2 AS ready`;
+
 /** The backend and dashboard deployment workflows start concurrently. K1 must
  * wait for the backend's atomic upgrade before testing the new reader SQL. */
 export async function waitForSnapshotV2Schema(

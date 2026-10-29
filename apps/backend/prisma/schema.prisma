@@ -1049,6 +1049,69 @@ model Penebusan {
   @@schema("app")
 }
 
+// Rekening koran BCA yang diimpor (0051, rencana 2026-10-29 U9; R17–R19, R31).
+// Satu AKTIF per (rekening, bulan) — partial unique `rekening_koran_aktif_uq`
+// (tak terungkap di Prisma). Kaki menutup ditegakkan CHECK. Ditarik oleh HoF
+// dengan kode alasan `reason_code` adjustment + catatan; tak pernah dihapus.
+model RekeningKoran {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId                 Int       @map("unit_id") @db.SmallInt
+  accountId              String    @map("account_id") @db.Uuid
+  /// Hari pertama bulan e-statement.
+  periode                DateTime  @db.Date
+  saldoAwal              Decimal   @map("saldo_awal") @db.Decimal(17, 2)
+  saldoAkhir             Decimal   @map("saldo_akhir") @db.Decimal(17, 2)
+  totalCr                Decimal   @map("total_cr") @db.Decimal(17, 2)
+  nCr                    Int       @map("n_cr")
+  totalDb                Decimal   @map("total_db") @db.Decimal(17, 2)
+  nDb                    Int       @map("n_db")
+  fileSha256             String    @map("file_sha256")
+  uploadedByUserId       Int       @map("uploaded_by_user_id")
+  uploadedAt             DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz()
+  /// 'aktif' | 'ditarik' (CHECK).
+  status                 String    @default("aktif")
+  ditarikAt              DateTime? @map("ditarik_at") @db.Timestamptz()
+  ditarikByUserId        Int?      @map("ditarik_by_user_id")
+  ditarikAlasan          String?   @map("ditarik_alasan")
+  ditarikAlasanAppliesTo String?   @map("ditarik_alasan_applies_to")
+  ditarikCatatan         String?   @map("ditarik_catatan")
+
+  /// Target FK komposit mutasi_bank — juga cermin status (ON UPDATE CASCADE).
+  @@unique([id, unitId, accountId, status], map: "rekening_koran_cermin_uq")
+  @@index([unitId, periode])
+  @@map("rekening_koran")
+  @@schema("app")
+}
+
+// Baris mutasi rekening koran (0051). ⛔ Tak pernah menyentuh cash_ledger —
+// pencocokan (U10) adalah tautan. `rkStatus` dicerminkan dari rekening koran
+// oleh FK ON UPDATE CASCADE, bukan ditulis aplikasi. dashboard_app: SELECT,
+// INSERT saja.
+model MutasiBank {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  rekeningKoranId String   @map("rekening_koran_id") @db.Uuid
+  accountId       String   @map("account_id") @db.Uuid
+  rkStatus        String   @default("aktif") @map("rk_status")
+  tanggalBank     DateTime @map("tanggal_bank") @db.Date
+  urutan          Int
+  keterangan      String
+  /// BERTANDA: CR +, DB −.
+  amount          Decimal  @db.Decimal(17, 2)
+  saldoSetelah    Decimal? @map("saldo_setelah") @db.Decimal(17, 2)
+  so              String?
+  dokRef          String?  @map("dok_ref")
+  /// R22: tanggal bank sebelum cut-over — disimpan, tak pernah dibukukan.
+  praCutover      Boolean  @map("pra_cutover")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([id, unitId], map: "mutasi_bank_unit_uq")
+  @@unique([rekeningKoranId, tanggalBank, urutan], map: "mutasi_bank_alami_uq")
+  @@index([unitId, tanggalBank])
+  @@map("mutasi_bank")
+  @@schema("app")
+}
+
 // Batch settlement EDC (§10.5). EDC Penampungan = akun kliring RIIL yang cair
 // H+1, MDR dipotong DI MUKA. `mdrRp` dan `selisihRp` adalah kolom GENERATED —
 // tidak pernah diketik. Jurnal pencairannya DITAWARKAN, bukan diposting:

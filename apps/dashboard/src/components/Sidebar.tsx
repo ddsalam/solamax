@@ -189,6 +189,14 @@ function buildGroups(
           icon: "fuel",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/penebusan/.test(p),
         },
+        {
+          // Rencana 2026-10-29 U9 — unggah e-statement BCA per rekening per
+          // bulan; tarik impor (HoF). Tetangga Penebusan SO.
+          href: unitCode ? `/keuangan/unit/${unitCode}/impor-bank` : null,
+          label: "Impor rekening koran",
+          icon: "receipt",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/impor-bank/.test(p),
+        },
       ],
     },
     {

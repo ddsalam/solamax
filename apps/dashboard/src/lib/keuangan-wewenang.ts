@@ -434,3 +434,26 @@ export function canCatatPenebusan(ctx: WewenangCtx, daftar?: readonly string[]):
 export function canBatalkanPenebusan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return canInputKeuangan(ctx, daftar);
 }
+
+// ---------------------------------------------------------------------------
+// Impor rekening koran (rencana 2026-10-29 U9; R26, R31) — satu predikat per
+// keputusan, sama alasannya dengan blok pihak lawan di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGUNGGAH e-statement (R17, R26: "Hanya peran Keuangan yang menulis …
+ * impor")? Staf `keuangan` + super admin — semantik {@link canInputKeuangan},
+ * termasuk irisan HoF × `keuangan` yang ditutup (§10.12).
+ */
+export function canImporRekeningKoran(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENARIK rekening koran yang sudah diimpor (R31)? **Head of Finance** +
+ * super admin. Key Decision "Tindakan pembatalan hanya milik HoF": yang
+ * mengunggah tidak membongkar impornya sendiri. Staf `keuangan` TIDAK.
+ */
+export function canTarikRekeningKoran(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}

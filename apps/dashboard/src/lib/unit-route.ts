@@ -30,6 +30,7 @@ export type UnitRouteSegment =
   | "keuangan-edc"
   | "keuangan-pihak-lawan"
   | "keuangan-penebusan"
+  | "keuangan-impor-bank"
   | "keuangan-piutang"
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
@@ -72,6 +73,8 @@ export function unitRouteHref(args: {
   if (segment === "keuangan-pihak-lawan") return `/keuangan/unit/${code}/pihak-lawan${suffix}`;
   // Tanpa dimensi tanggal di path — penebusan per SO; BULAN rekap di QUERY.
   if (segment === "keuangan-penebusan") return `/keuangan/unit/${code}/penebusan${suffix}`;
+  // Tanpa dimensi tanggal — matriks rekening × bulan impor rekening koran (U9).
+  if (segment === "keuangan-impor-bank") return `/keuangan/unit/${code}/impor-bank${suffix}`;
   // Unit di QUERY: halaman ini membaca `?unit=`, bukan segmen path.
   if (segment === "keuangan-sumber-data") {
     return `/keuangan/sumber-data?${qs({ unit: code, tanggal: date, lain: query })}`;
