@@ -49,7 +49,7 @@ const pernyataan = (prefix: string): string => {
 
 describe("kas-actions — penjagaan yang tak boleh hilang", () => {
   it("penjaga ini punya SUBJEK", () => {
-    for (const f of ["simpanMutasiKas", "setujuiSetoran", "voidMutasiKas"]) {
+    for (const f of ["simpanMutasiKas", "setujuiSetoran", "voidMutasiKas", "pecahMutasi"]) {
       expect(KODE).toMatch(new RegExp(`export async function ${f}`));
     }
   });
@@ -106,8 +106,9 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
     );
 
     expect(KODE).toMatch(/scope\.requireUnit\(code\)/);
-    expect([...KODE.matchAll(/const ctx = await buka\(/g)]).toHaveLength(3);
-    expect([...KODE.matchAll(/if \(!ctx\.boleh\) return/g)]).toHaveLength(3);
+    // 3 → 4 (rencana 2026-10-29 U3): `pecahMutasi` lewat gerbang yang SAMA.
+    expect([...KODE.matchAll(/const ctx = await buka\(/g)]).toHaveLength(4);
+    expect([...KODE.matchAll(/if \(!ctx\.boleh\) return/g)]).toHaveLength(4);
   });
 
   it("🔴 nominal tawaran dibaca DI SERVER, tidak diterima dari client", () => {
@@ -140,7 +141,8 @@ describe("kas-actions — penjagaan yang tak boleh hilang", () => {
     // Empat sejak §10.24 menambah `tetapkanSaldoAwal`. Angkanya SENGAJA dipatok:
     // jalur tulis baru yang lupa men-set konteks akan menaikkannya tanpa
     // menaikkan angka di sini, dan penjaga ini memerah.
-    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(4);
+    // 4 → 5 (rencana 2026-10-29 U3): `pecahMutasi`.
+    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(5);
     expect(urutan(KODE, "set_config('app.unit_ids'", "INSERT INTO app.cash_ledger")).toBe("ok");
   });
 

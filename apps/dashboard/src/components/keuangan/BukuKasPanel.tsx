@@ -7,6 +7,8 @@ import { useState, useTransition } from "react";
 import { setujuiSetoran, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
 import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
 import type { AkunKas, BarisBuku, KakiBuku, TawaranSetoran } from "@/lib/keuangan-kas-model";
+import { kategoriPihakLawan, pihakLawanUntuk, type PilihanPihakLawan } from "@/lib/pihak-lawan-model";
+import { PecahMutasiForm } from "./PecahMutasiForm";
 
 /**
  * Blok 2 Layar 3 — Buku kas besar & lima buku bank (mockup layar 3).
@@ -36,6 +38,7 @@ export function BukuKasPanel({
   tawaran,
   nilaiTertunda,
   bolehTulis,
+  pihakLawan,
 }: {
   code: string;
   date: string;
@@ -47,6 +50,7 @@ export function BukuKasPanel({
   tawaran: TawaranSetoran[];
   nilaiTertunda: number;
   bolehTulis: boolean;
+  pihakLawan: PilihanPihakLawan[];
 }) {
   const kasBesar = akun.find((a) => a.kind === "kas") ?? akun[0] ?? null;
   const [akunAktif, setAkunAktif] = useState<string>(kasBesar?.id ?? "");
@@ -55,6 +59,8 @@ export function BukuKasPanel({
   const [ket, setKet] = useState("");
   const [jenis, setJenis] = useState<JenisMutasi>("debet");
   const [katKey, setKatKey] = useState("");
+  const [pihakId, setPihakId] = useState("");
+  const [bukaPecah, setBukaPecah] = useState(false);
   const [nominal, setNominal] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -65,6 +71,9 @@ export function BukuKasPanel({
   const kaki = kakiPerAkun[akunAktif] ?? { nMutasi: 0, totalMutasi: 0, saldoAkhir: 0 };
   const saldoAwal = saldoAwalPerAkun[akunAktif] ?? 0;
   const kategoriSisi = kategori.filter((k) => k.side === (jenis === "kredit" ? "kredit" : "debet"));
+  const katTerpilih = kategoriSisi.find((k) => `${k.side}|${k.label}` === katKey) ?? null;
+  const pilihanPihak = jenis === "adjustment" ? [] : pihakLawanUntuk(katTerpilih?.label ?? null, pihakLawan);
+  const butuhPihak = jenis !== "adjustment" && kategoriPihakLawan(katTerpilih?.label);
 
   // Penyesuaian satu-satunya jenis yang arahnya tak tersirat dari namanya —
   // hanya di sana minus boleh diketik (dulu mustahil: semua non-digit dibuang).
@@ -99,12 +108,14 @@ export function BukuKasPanel({
         categorySide: jenis === "adjustment" ? null : (kat?.side ?? null),
         categoryLabel: jenis === "adjustment" ? null : (kat?.label ?? null),
         amount,
+        pihakLawanId: butuhPihak && pihakId !== "" ? pihakId : null,
       });
       if (!res.ok) setErr(res.error);
       else {
         setMsg("Mutasi tersimpan. Saldo di atas dihitung ulang dari mutasi.");
         setKet("");
         setNominal("");
+        setPihakId("");
         setBukaForm(false);
       }
     });
@@ -312,12 +323,30 @@ export function BukuKasPanel({
         </div>
       </div>
 
-      {bolehTulis && !bukaForm && (
+      {bolehTulis && !bukaForm && !bukaPecah && (
         <div className="manual-form-actions">
           <button type="button" className="btn-tint sm" onClick={() => setBukaForm(true)}>
             Tambah mutasi yang tidak lewat Rincian…
           </button>
+          <button type="button" className="btn-tint sm" onClick={() => setBukaPecah(true)}>
+            Pecah satu mutasi jadi beberapa baris…
+          </button>
         </div>
+      )}
+
+      {bolehTulis && bukaPecah && akunAktif !== "" && (
+        <PecahMutasiForm
+          code={code}
+          date={date}
+          accountId={akunAktif}
+          namaAkun={akun.find((a) => a.id === akunAktif)?.nama ?? ""}
+          kategori={kategori}
+          pihakLawan={pihakLawan}
+          onSelesai={(m) => {
+            setBukaPecah(false);
+            if (m !== null) setMsg(m);
+          }}
+        />
       )}
 
       {bolehTulis && bukaForm && (
@@ -340,6 +369,7 @@ export function BukuKasPanel({
                 onChange={(e) => {
                   setJenis(e.target.value as JenisMutasi);
                   setKatKey("");
+                  setPihakId("");
                 }}
               >
                 <option value="debet">Debet (kas masuk)</option>
@@ -366,7 +396,10 @@ export function BukuKasPanel({
               <select
                 className="manual-input"
                 value={katKey}
-                onChange={(e) => setKatKey(e.target.value)}
+                onChange={(e) => {
+                  setKatKey(e.target.value);
+                  setPihakId("");
+                }}
               >
                 <option value="">— pilih kategori —</option>
                 {kategoriSisi.map((k) => (
@@ -375,6 +408,25 @@ export function BukuKasPanel({
                   </option>
                 ))}
               </select>
+            </label>
+          )}
+          {butuhPihak && (
+            <label className="keu-fld">
+              <span className="keu-label">Pihak lawan (wajib untuk kategori ini)</span>
+              <select className="manual-input" value={pihakId} onChange={(e) => setPihakId(e.target.value)}>
+                <option value="">— pilih pihak lawan —</option>
+                {pilihanPihak.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nama}
+                  </option>
+                ))}
+              </select>
+              {pilihanPihak.length === 0 && (
+                <span className="fs16 t-warning keu-p">
+                  Belum ada pihak lawan aktif yang cocok —{" "}
+                  <a href={`/keuangan/unit/${code}/pihak-lawan`}>tambahkan di halaman Pihak lawan</a>.
+                </span>
+              )}
             </label>
           )}
           <div className="manual-form-actions">

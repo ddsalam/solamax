@@ -173,6 +173,14 @@ function buildGroups(
           icon: "card",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/edc$/.test(p),
         },
+        {
+          // Rencana 2026-10-29 U3 — master pihak lawan, saldo pembuka (HoF), dan
+          // baris Hutang Piutang lama yang belum menyebut pihak lawan.
+          href: unitCode ? `/keuangan/unit/${unitCode}/pihak-lawan` : null,
+          label: "Pihak lawan",
+          icon: "users",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/pihak-lawan/.test(p),
+        },
       ],
     },
     {

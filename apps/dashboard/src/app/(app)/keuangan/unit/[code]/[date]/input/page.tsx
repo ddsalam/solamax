@@ -45,6 +45,7 @@ import {
   PESAN_TAK_BOLEH_INPUT,
 } from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
+import { getPihakLawan } from "@/lib/pihak-lawan-queries";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export default async function InputKeuanganPage({
   const bolehTulis = canInputKeuangan({ role: scope.role, email: scope.email });
   const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
 
-  const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran] = await Promise.all([
+  const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran, pihakLawan] = await Promise.all([
     getProdukUnit(unit.unit_id),
     getHargaBeliRows(unit.unit_id),
     getHargaJualHistory(unit.unit_id, date),
@@ -98,6 +99,7 @@ export default async function InputKeuanganPage({
     getMutasiKas(unit.unit_id, date),
     getKategoriMutasi(unit.unit_id),
     getSetoranPengawas(unit.unit_id, date),
+    getPihakLawan(unit.unit_id),
   ]);
 
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
@@ -215,6 +217,10 @@ export default async function InputKeuanganPage({
           tawaran={tawaran}
           nilaiTertunda={nilaiTertunda(tawaran)}
           bolehTulis={bolehTulis}
+          // U3: hanya yang AKTIF yang ditawarkan — server memeriksa ulang.
+          pihakLawan={pihakLawan
+            .filter((p) => p.aktif)
+            .map((p) => ({ id: p.id, nama: p.nama, jenis: p.jenis }))}
         />
       </div>
       )}

@@ -6,6 +6,9 @@ import { pool } from "./db";
 import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "./keuangan-kas";
 import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canNonaktifkanAkunKas } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
+import { hariBukuTerkunci } from "./hari-buku-queries";
+import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi } from "./pihak-lawan-model";
+import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -59,6 +62,12 @@ export interface MutasiInput {
   categoryLabel: string | null;
   /** BERTANDA: debet > 0, kredit < 0. */
   amount: number;
+  /**
+   * Wajib untuk kategori pihak lawan ("Hutang Piutang", "Penyerahan titipan"),
+   * dilarang untuk kategori lain (rencana 2026-10-29 U3, R2, KTD3). Dibaca
+   * ulang di server: harus milik unit ini, aktif, dan sejenis dengan kategorinya.
+   */
+  pihakLawanId?: string | null;
 }
 
 export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
@@ -78,11 +87,28 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
   if (!kategoriCocok(input.jenis, input.categorySide)) {
     return { ok: false, error: "Kategori harus sesisi dengan jenis mutasinya." };
   }
+  // Pihak lawan: ada-tidaknya diputus SEBELUM koneksi (CHECK 0049 menolak
+  // juga, tetapi dengan galat DB yang tak menyebut perbaikannya).
+  const pihakLawanId = input.pihakLawanId ?? null;
+  if (pihakLawanId === null || !kategoriPihakLawan(input.categoryLabel)) {
+    const salah = periksaPihakLawanMutasi({ categoryLabel: input.categoryLabel, pihakLawanId, pihak: null });
+    if (salah !== null) return { ok: false, error: salah };
+  }
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    if (pihakLawanId !== null) {
+      // Dibaca ulang & dikunci DI DALAM transaksi: unit sama, aktif, sejenis.
+      const pihak = await bacaPihakLawanTerkunci(client, unit.unit_id, pihakLawanId);
+      const salah = periksaPihakLawanMutasi({ categoryLabel: input.categoryLabel, pihakLawanId, pihak });
+      if (salah !== null) {
+        await client.query("ROLLBACK");
+        return { ok: false, error: salah };
+      }
+    }
 
     // ⛔ §10.24 butir 2 — MUSTAHIL KE DEPAN. Mutasi baru tak boleh mendahului
     //    titik awal rekeningnya: saldo pembuka berarti "saldo pada AWAL hari
@@ -109,9 +135,9 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
     await client.query(
       `INSERT INTO app.cash_ledger
          (unit_id, account_id, business_date, keterangan, jenis,
-          category_side, category_label, amount, created_by_user_id)
+          category_side, category_label, amount, created_by_user_id, pihak_lawan_id)
        VALUES ($1,$2::uuid,$3::date,$4,$5::app.cash_mutation_jenis,
-               $6::app.cash_mutation_side,$7,$8,$9)`,
+               $6::app.cash_mutation_side,$7,$8,$9,$10::uuid)`,
       [
         unit.unit_id,
         input.accountId,
@@ -122,6 +148,7 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
         input.categoryLabel,
         input.amount,
         scope.userId,
+        pihakLawanId,
       ],
     );
     await client.query("COMMIT");
@@ -409,6 +436,161 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
       /* abaikan */
     }
     return { ok: false, error: e instanceof Error ? e.message : "Gagal menetapkan saldo pembuka." };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * PECAH satu mutasi bank menjadi N baris klasifikasi (rencana 2026-10-29 U3;
+ * R9, R27, AE6) — mis. angsuran BPR = pokok ke pihak lawan kreditur + bunga ke
+ * beban. SATU tindakan, SATU transaksi: semua baris tertulis atau tak satu pun.
+ *
+ * ⛔ TIGA HAL YANG MENGIKAT:
+ *
+ * 1. **Σ baris = nominal mutasi, tepat Rp 0, dalam SEN BULAT** (`periksaPecahan`),
+ *    diperiksa di server sebelum koneksi. Selisih Rp 1 ditolak dengan angkanya.
+ * 2. **Jalur tulis BARU ⇒ penjaga hari tertutup (U2, KTD5).** Hari buku dipilih
+ *    `hariBukuTerkunci` DI DALAM transaksi, sebelum INSERT, untuk SEMUA baris
+ *    sekaligus (satu tanggal bersama). Hari tertutup ⇒ dibukukan maju dengan
+ *    `tanggal_asal` + kode alasan; pra-cut-over ⇒ tidak dibukukan (R22).
+ *    (`simpanMutasiKas` sengaja TIDAK diubah ke penjaga ini — celah lama, PR
+ *    terpisah menurut rencana.)
+ * 3. **Pihak lawan per baris** mengikuti aturan yang sama dengan
+ *    `simpanMutasiKas` — dibaca ulang & dikunci di dalam transaksi.
+ *
+ * Kode alasan maju: `ADJ-FWD-IMPORT` — mutasi yang dipecah adalah mutasi
+ * rekening koran yang dicatat susulan; 0049 tak punya kode khusus pecahan.
+ */
+export interface PecahanInput {
+  code: string;
+  /** Tanggal transaksi (tanggal bank). Hari bukunya ditentukan penjaga U2. */
+  date: string;
+  accountId: string;
+  keterangan: string;
+  jenis: "debet" | "kredit";
+  /** Nominal mutasi sumber, BERTANDA. */
+  total: number;
+  baris: {
+    amount: number;
+    categorySide: SisiKategori | null;
+    categoryLabel: string | null;
+    pihakLawanId?: string | null;
+    /** Kosong ⇒ memakai keterangan mutasi. */
+    keterangan?: string;
+  }[];
+}
+
+const KODE_MAJU_PECAHAN = "ADJ-FWD-IMPORT";
+
+export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
+  const ctx = await buka(input.code);
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
+  const { scope, unit } = ctx;
+
+  if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
+  if (input.keterangan.trim() === "") return { ok: false, error: "Keterangan wajib diisi." };
+  const salahPecahan = periksaPecahan({ jenis: input.jenis, total: input.total, baris: input.baris });
+  if (salahPecahan !== null) return { ok: false, error: salahPecahan };
+  for (const [i, b] of input.baris.entries()) {
+    const id = b.pihakLawanId ?? null;
+    if (id === null || !kategoriPihakLawan(b.categoryLabel)) {
+      const salah = periksaPihakLawanMutasi({ categoryLabel: b.categoryLabel, pihakLawanId: id, pihak: null });
+      if (salah !== null) return { ok: false, error: `Baris ${i + 1}: ${salah}` };
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    const hari = await hariBukuTerkunci(client, unit.unit_id, input.date, { accountId: input.accountId });
+    if (hari.status === "pra-cut-over") {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          `Tanggal mutasi mendahului saldo pembuka (${hari.cutOver}) — sudah termuat di saldo pembuka, ` +
+          `jadi tidak dibukukan. Mencatatnya akan menghitungnya dua kali.`,
+      };
+    }
+    const maju = hari.perluKodeAlasan;
+
+    for (const [i, b] of input.baris.entries()) {
+      const id = b.pihakLawanId ?? null;
+      if (id === null) continue;
+      const pihak = await bacaPihakLawanTerkunci(client, unit.unit_id, id);
+      const salah = periksaPihakLawanMutasi({ categoryLabel: b.categoryLabel, pihakLawanId: id, pihak });
+      if (salah !== null) {
+        await client.query("ROLLBACK");
+        return { ok: false, error: `Baris ${i + 1}: ${salah}` };
+      }
+    }
+
+    const ids: string[] = [];
+    for (const b of input.baris) {
+      const r = await client.query<{ id: string }>(
+        `INSERT INTO app.cash_ledger
+         (unit_id, account_id, business_date, keterangan, jenis,
+          category_side, category_label, amount, created_by_user_id, pihak_lawan_id,
+          tanggal_asal, alasan_maju, alasan_maju_applies_to)
+       VALUES ($1,$2::uuid,$3::date,$4,$5::app.cash_mutation_jenis,
+               $6::app.cash_mutation_side,$7,$8,$9,$10::uuid,
+               $11::date,$12,$13)
+       RETURNING id::text AS id`,
+        [
+          unit.unit_id,
+          input.accountId,
+          hari.hariBuku,
+          b.keterangan?.trim() || input.keterangan.trim(),
+          input.jenis,
+          b.categorySide,
+          b.categoryLabel,
+          b.amount,
+          scope.userId,
+          b.pihakLawanId ?? null,
+          maju ? input.date : null,
+          maju ? KODE_MAJU_PECAHAN : null,
+          maju ? "adjustment" : null,
+        ],
+      );
+      ids.push(r.rows[0]?.id ?? "?");
+    }
+
+    await client.query(
+      `INSERT INTO app.audit_log (actor_user_id, actor_email, action, target, detail)
+       VALUES ($1,$2,$3,$4,$5::jsonb)`,
+      [
+        scope.userId,
+        scope.email,
+        "kas.pecah",
+        `${unit.code}/${input.accountId}`,
+        JSON.stringify({
+          tanggal: input.date,
+          hariBuku: hari.hariBuku,
+          nominal: input.total,
+          keterangan: input.keterangan.trim(),
+          baris: input.baris.map((b, i) => ({
+            id: ids[i],
+            nominal: b.amount,
+            kategori: b.categoryLabel,
+            pihakLawanId: b.pihakLawanId ?? null,
+          })),
+        }),
+      ],
+    );
+    await client.query("COMMIT");
+    revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
+    if (hari.hariBuku !== input.date) revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
+    return { ok: true, n: ids.length };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan pecahan." };
   } finally {
     client.release();
   }

@@ -324,3 +324,55 @@ export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): 
     canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
   );
 }
+
+// ---------------------------------------------------------------------------
+// Pihak lawan (rencana 2026-10-29 U3; R26) — SATU predikat per keputusan.
+//
+// ⛔ Ditulis terpisah meski hari ini beberapa bunyinya sama dengan predikat
+// lama: yang dipatok di sini adalah KEPUTUSANNYA. Kalau kelak satu wewenang
+// bergeser (mis. menonaktifkan pihak lawan dipindah ke HoF), yang berubah satu
+// predikat beserta ujinya — bukan seluruh layar yang kebetulan berbagi gerbang.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENAMBAH pihak lawan (afiliasi, pemilik titipan, kreditur, karyawan,
+ * lain-lain)? Staf `keuangan` + super admin — semantik {@link canInputKeuangan},
+ * termasuk irisan HoF × `keuangan` yang ditutup (§10.12). Pengawas tidak (§2).
+ */
+export function canTambahPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENONAKTIFKAN pihak lawan? Staf `keuangan` + super admin (rencana U3,
+ * "nonaktifkan pihak lawan (Keuangan)").
+ *
+ * ⚠️ BEDA SENGAJA dengan {@link canNonaktifkanAkunKas} (HoF). Alasan §10.18 —
+ * "yang menghilang tidak menampakkan diri" — tidak berlaku di sini: pihak lawan
+ * nonaktif TETAP tampil di daftarnya berikut saldonya; yang hilang hanya
+ * kemungkinan memilihnya untuk mutasi baru. Bila kelak layar menyembunyikan
+ * pihak lawan nonaktif, alasan §10.18 hidup kembali dan predikat ini harus
+ * pindah ke HoF.
+ */
+export function canNonaktifkanPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENETAPKAN/MENGGANTI saldo pembuka pihak lawan (R7, R26)? **Head of
+ * Finance** + super admin — semantik {@link canNonaktifkanAkunKas} dan
+ * `tetapkanSaldoAwal` rekening (§10.24): menetapkan titik awal lebih dekat ke
+ * menyetujui daripada ke mengetik. Staf `keuangan` TIDAK.
+ */
+export function canTetapkanSaldoAwalPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/**
+ * Boleh "Tetapkan pihak lawan" pada baris Hutang Piutang LAMA (KTD3)? Staf
+ * `keuangan` + super admin: ini klasifikasi mutasi (R26), milik peran yang
+ * mengetik buku — bukan penyetuju (§10.12).
+ */
+export function canTetapkanPihakLawanBaris(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
