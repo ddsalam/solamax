@@ -1,0 +1,44 @@
+                                                           REKENING GIRO
+    KCP CONTOH RAYA
+
+
+    C ON TOH J A YA PT                                                             NO. RE KE NING             :    1 234 5678 90
+    JL KA RAN GAN NO 1                                                             HALAMAN                    :    1 / 1
+    RT 001 /R W 0 0 1
+                                                                                   PE RIOD E                  :    ME I 2027
+    JL C ON TOH
+    KO TA FIK SI 1 2 3 4 5                                                         MATA U ANG                 :    ID R
+    I ND ONES IA
+
+
+
+CATATAN:
+
+•    Teks catatan sintetis untuk uji pembaca rekening koran.
+     Baris kedua catatan sintetis.
+
+
+    T ANG G A L                          KET ER A N GA N                       C BG               MU TASI                           SALD O
+
+       01/05         SALDO AWAL                                                                                                          7,654,321.00
+
+       02/05         KR OTOMATIS                 MID : 000000000001            0998                   998,500.00                         8,652,821.00
+                                                 SPBU CONTOH SATU
+                                                 TGH: 1000000.00
+                                                 DDR:      1500.00
+
+       15/05         BIAYA ADM                                                 0998                    30,000.00 DB                      8,622,821.00
+
+       31/05         KR OTOMATIS                 MID : 000000000001            0998                 2,495,250.75                        11,118,071.75
+                                                 SPBU CONTOH SATU
+                                                 TGH: 2499000.00
+                                                 DDR:      3749.25
+
+
+
+
+                                                    SALDO AWAL      :               7,654,321.00
+                                                    MUTASI CR       :               3,493,750.75            2
+                                                    MUTASI DB       :                  30,000.00            1
+                                                    SALDO AKHIR     :              11,118,071.75
+
