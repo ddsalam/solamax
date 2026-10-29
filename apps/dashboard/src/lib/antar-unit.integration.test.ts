@@ -18,7 +18,7 @@ import type { ScopedUnitId } from "./scope";
  *   · balik: kedua kaki di-void (hari terbuka) atau dibalik maju (tertutup),
  *     dan saldo pasangannya kembali nol di kedua buku.
  *
- * Unit NYATA (dua unit pertama yang sama-sama punya rekening aktif): pihak
+ * Unit NYATA (dua unit pertama; rekening bank disiapkan di dalam transaksi uji): pihak
  * lawan berjenis `unit` ber-FK ke `public.unit`. Aman karena di-ROLLBACK.
  *
  * Gated: PIHAK_LAWAN_LIVE_DB=1 dan PIHAK_LAWAN_DB_URL (pola
@@ -45,12 +45,36 @@ d("pasangan antar unit — dua kaki, satu transaksi, RLS dua unit", () => {
     try {
       await c.query("BEGIN");
       await c.query("SET LOCAL lock_timeout = '5s'");
+      await siapkanAkun(c);
       await c.query("SELECT set_config('app.unit_ids', $1, true)", [scope]);
       await fn(c);
     } finally {
       await c.query("ROLLBACK").catch(() => {});
       c.release();
     }
+  };
+
+  /**
+   * Rekening bank aktif untuk A dan B DI DALAM transaksi uji (selalu
+   * di-ROLLBACK): tier testing tak menjamin dua unit punya rekening. Dibuat
+   * dengan scope kedua unit, sebelum scope uji dipersempit.
+   */
+  const siapkanAkun = async (c: PoolClient): Promise<void> => {
+    await c.query("SELECT set_config('app.unit_ids', $1, true)", [`${A.unitId},${B.unitId}`]);
+    const ambil = async (unit: number): Promise<string> => {
+      const ada = await c.query<{ id: string }>(
+        `SELECT id::text AS id FROM app.cash_account WHERE unit_id = $1 AND kind = 'bank' AND active ORDER BY nama LIMIT 1`,
+        [unit],
+      );
+      if (ada.rows[0]) return ada.rows[0].id;
+      const baru = await c.query<{ id: string }>(
+        `INSERT INTO app.cash_account (unit_id, nama, kind) VALUES ($1, 'Bank UJI - 9900000001', 'bank') RETURNING id::text AS id`,
+        [unit],
+      );
+      return baru.rows[0]!.id;
+    };
+    akunA = await ambil(A.unitId);
+    akunB = await ambil(B.unitId);
   };
 
   const saldoKeLawan = async (c: PoolClient, unit: number, lawan: number): Promise<string> =>
@@ -90,18 +114,13 @@ d("pasangan antar unit — dua kaki, satu transaksi, RLS dua unit", () => {
       await c.query(
         "SELECT set_config('app.unit_ids', (SELECT string_agg(unit_id::text, ',') FROM public.unit), true)",
       );
-      const u = await c.query<{ unit_id: number; code: string; name: string; akun: string }>(
-        `SELECT DISTINCT ON (u.unit_id) u.unit_id, u.code, u.name, a.id::text AS akun
-           FROM public.unit u
-           JOIN app.cash_account a ON a.unit_id = u.unit_id AND a.active
-          ORDER BY u.unit_id, a.nama
-          LIMIT 2`,
+      // Dua unit nyata pertama; rekeningnya disiapkan per transaksi uji (siapkanAkun).
+      const u = await c.query<{ unit_id: number; code: string; name: string }>(
+        `SELECT unit_id, code, name FROM public.unit ORDER BY unit_id LIMIT 2`,
       );
       if (u.rows.length === 2) {
         A = { unitId: u.rows[0]!.unit_id as ScopedUnitId, code: u.rows[0]!.code, name: u.rows[0]!.name };
         B = { unitId: u.rows[1]!.unit_id as ScopedUnitId, code: u.rows[1]!.code, name: u.rows[1]!.name };
-        akunA = u.rows[0]!.akun;
-        akunB = u.rows[1]!.akun;
       } else {
         applied = false;
       }
