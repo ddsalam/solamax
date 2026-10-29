@@ -405,3 +405,32 @@ export function canCatatAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]):
 export function canBalikPasanganAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+// ---------------------------------------------------------------------------
+// Penebusan per SO (rencana 2026-10-29 U7; R10, R26) — satu predikat per
+// keputusan, sama alasannya dengan blok pihak lawan di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCATAT penebusan per SO (komponen pajak + baris kas Pembelian BBM)?
+ * R26: "Hanya peran Keuangan yang menulis … penebusan". Staf `keuangan` + super
+ * admin — semantik {@link canInputKeuangan}, termasuk irisan HoF × `keuangan`
+ * yang ditutup (§10.12). Pengawas & Direksi tidak.
+ */
+export function canCatatPenebusan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBATALKAN (void) penebusan yang harinya masih terbuka? Staf
+ * `keuangan` + super admin — koreksi ketik oleh pengetiknya, SEBELUM hari
+ * ditutup dan sebelum baris kasnya dicocokkan (keduanya dijaga server action).
+ *
+ * ⚠️ Bukan R31: R31 menamai pembatalan COCOK, tarik rekening koran, dan balik
+ * pasangan sebagai milik HoF. Penebusan yang hari bukunya sudah ditutup atau
+ * baris kasnya sudah dicocokkan TIDAK bisa di-void lewat predikat ini — ia
+ * menuntut pembalikan maju (belum dibangun).
+ */
+export function canBatalkanPenebusan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}

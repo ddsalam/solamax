@@ -8,6 +8,8 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     expect(barisSistemDari({ saldoAwal: true })).toBe("saldo_awal");
     expect(barisSistemDari({ saldoAwal: false, dariPencairanEdc: true })).toBe("pencairan_edc");
     expect(barisSistemDari({ saldoAwal: false, dariPencairanEdc: false })).toBeNull();
+    // U7 — baris kas milik penebusan aktif (KTD9).
+    expect(barisSistemDari({ saldoAwal: false, dariPenebusan: true })).toBe("penebusan");
   });
 
   it("barisBuku menandai baris sistem, baris biasa tetap null", () => {
@@ -45,5 +47,17 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     expect(badan).toMatch(/FOR UPDATE/);
     // Sabuk kedua: UPDATE-nya sendiri tak bisa menyentuh baris sistem.
     expect(badan).toMatch(/AND NOT saldo_awal AND edc_settlement_id IS NULL/);
+  });
+
+  it("🔴 U7: baris kas milik penebusan AKTIF tak bisa dibatalkan dari buku — divonis DAN dijaga UPDATE-nya", () => {
+    const s = readFileSync(resolve(__dirname, "kas-actions.ts"), "utf8");
+    const fn = s.slice(s.indexOf("export async function voidMutasiKas"));
+    const badan = fn.slice(0, fn.indexOf("\nexport "));
+    // Vonis: dibaca di SELECT yang sama (FOR UPDATE), diteruskan ke barisSistemDari.
+    expect(badan).toMatch(/EXISTS \(\s*SELECT 1 FROM app\.penebusan p\s+WHERE p\.cash_ledger_id = l\.id AND p\.unit_id = l\.unit_id AND NOT p\.void\s*\) AS dari_penebusan/);
+    expect(badan).toMatch(/dariPenebusan: cek\.rows\[0\]\.dari_penebusan/);
+    // Sabuk kedua di UPDATE-nya sendiri.
+    const upd = badan.slice(badan.indexOf("UPDATE app.cash_ledger"));
+    expect(upd).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM app\.penebusan p/);
   });
 });

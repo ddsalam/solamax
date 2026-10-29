@@ -24,6 +24,13 @@ SELECT (
   )
 ) AS ready`;
 
+/** U7 (rencana 2026-10-29) — kueri penebusan membaca tabel 0050. */
+export const PENEBUSAN_SCHEMA_READY_SQL = `
+SELECT EXISTS (
+  SELECT 1 FROM information_schema.tables
+  WHERE table_schema = 'app' AND table_name = 'penebusan'
+) AS ready`;
+
 /** The backend and dashboard deployment workflows start concurrently. K1 must
  * wait for the backend's atomic upgrade before testing the new reader SQL. */
 export async function waitForSnapshotV2Schema(

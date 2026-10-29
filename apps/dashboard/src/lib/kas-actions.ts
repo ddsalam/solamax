@@ -277,15 +277,27 @@ export async function voidMutasiKas(input: {
     // satu dari tiga kaki jurnal pencairan EDC sehingga buku tak seimbang dan
     // batch-nya tak bisa disetujui ulang. `FOR UPDATE` mengunci barisnya sampai
     // UPDATE di bawah, supaya vonis dan tulisan membaca keadaan yang sama.
-    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean }>(
-      `SELECT saldo_awal, (edc_settlement_id IS NOT NULL) AS dari_edc
-         FROM app.cash_ledger
-        WHERE id=$1::uuid AND unit_id=$2 AND NOT void
-        FOR UPDATE`,
+    // U7 (0050): baris kas milik penebusan AKTIF juga baris sistem — void-nya
+    // lewat `batalkanPenebusan`, yang menjaga hari buku & tautan penebusannya.
+    // `FOR UPDATE` di sini bertabrakan dengan `FOR UPDATE OF l` milik
+    // `simpanPenebusan`, jadi pengikatan yang bersamaan terbaca.
+    const cek = await client.query<{ saldo_awal: boolean; dari_edc: boolean; dari_penebusan: boolean }>(
+      `SELECT l.saldo_awal, (l.edc_settlement_id IS NOT NULL) AS dari_edc,
+              EXISTS (
+                SELECT 1 FROM app.penebusan p
+                 WHERE p.cash_ledger_id = l.id AND p.unit_id = l.unit_id AND NOT p.void
+              ) AS dari_penebusan
+         FROM app.cash_ledger l
+        WHERE l.id=$1::uuid AND l.unit_id=$2 AND NOT l.void
+        FOR UPDATE OF l`,
       [input.id, unit.unit_id],
     );
     const sistem = cek.rows[0]
-      ? barisSistemDari({ saldoAwal: cek.rows[0].saldo_awal, dariPencairanEdc: cek.rows[0].dari_edc })
+      ? barisSistemDari({
+          saldoAwal: cek.rows[0].saldo_awal,
+          dariPencairanEdc: cek.rows[0].dari_edc,
+          dariPenebusan: cek.rows[0].dari_penebusan,
+        })
       : null;
     if (sistem !== null) {
       await client.query("ROLLBACK");
@@ -295,7 +307,11 @@ export async function voidMutasiKas(input: {
       `UPDATE app.cash_ledger
           SET void=true, voided_by_user_id=$1, voided_at=now()
         WHERE id=$2::uuid AND unit_id=$3 AND NOT void
-          AND NOT saldo_awal AND edc_settlement_id IS NULL`,
+          AND NOT saldo_awal AND edc_settlement_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM app.penebusan p
+             WHERE p.cash_ledger_id = app.cash_ledger.id AND p.unit_id = app.cash_ledger.unit_id AND NOT p.void
+          )`,
       [scope.userId, input.id, unit.unit_id],
     );
     await client.query("COMMIT");

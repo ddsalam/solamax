@@ -1017,6 +1017,38 @@ model PihakLawanSaldoAwal {
   @@schema("app")
 }
 
+// Penebusan BBM per nomor SO (0050, U7; R10–R16, R29; KTD9). CHECK DB:
+// net + ppn + pph + pbbkb + nota = gross (Rp 0). MEMILIKI satu baris kas
+// "Pembelian BBM" −gross lewat FK komposit (cash_ledger_id, unit_id) — arus kas
+// tetap Σ baris kas, penebusan tak menambah baris kedua. `noSo` ternormalisasi
+// lower(btrim()). HPP/harga beli TIDAK disentuh (R14). VOID-only.
+model Penebusan {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  noSo            String    @map("no_so")
+  tanggalBayar    DateTime  @map("tanggal_bayar") @db.Date
+  accountId       String    @map("account_id") @db.Uuid
+  net             Decimal   @db.Decimal(17, 2)
+  ppn             Decimal   @db.Decimal(17, 2)
+  pph             Decimal   @db.Decimal(17, 2)
+  pbbkb           Decimal   @db.Decimal(17, 2)
+  /// BERTANDA: nota debet +, nota kredit −.
+  nota            Decimal   @default(0) @db.Decimal(17, 2)
+  gross           Decimal   @db.Decimal(17, 2)
+  cashLedgerId    String    @map("cash_ledger_id") @db.Uuid
+  /// true = baris kas dibuat penebusan ini; false = baris manual yang diikat.
+  kasDibuat       Boolean   @map("kas_dibuat")
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@index([unitId, tanggalBayar])
+  @@map("penebusan")
+  @@schema("app")
+}
+
 // Batch settlement EDC (§10.5). EDC Penampungan = akun kliring RIIL yang cair
 // H+1, MDR dipotong DI MUKA. `mdrRp` dan `selisihRp` adalah kolom GENERATED —
 // tidak pernah diketik. Jurnal pencairannya DITAWARKAN, bukan diposting:

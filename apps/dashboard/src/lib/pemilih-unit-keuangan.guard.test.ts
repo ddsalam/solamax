@@ -33,7 +33,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 8 → 9: Pemantauan pemakaian keuangan (lintas unit, seperti papan).
     // 9 → 10: Pengaturan EDC per unit (§10.28).
     // 10 → 11: Pihak lawan per unit (rencana 2026-10-29 U3).
-    expect(RUTE.length).toBe(11);
+    // 11 → 12: Penebusan per SO per unit (rencana 2026-10-29 U7).
+    expect(RUTE.length).toBe(12);
   });
 
   for (const f of RUTE) {
@@ -58,7 +59,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     for (const f of lain) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/dimensiUnit="tak_berlaku"/);
     }
-    expect(lain).toHaveLength(9);
+    // 9 → 10: Penebusan per SO (U7) memilih unit seperti rute per-unit lain.
+    expect(lain).toHaveLength(10);
   });
 });
 
@@ -70,6 +72,7 @@ describe("🔴 URL keuangan dibangun SATU tempat, dan menavigasi ke tempat yang 
     ["keuangan-akun-kas", "/keuangan/unit/6378301/akun-kas"],
     ["keuangan-edc", "/keuangan/unit/6378301/edc"],
     ["keuangan-pihak-lawan", "/keuangan/unit/6378301/pihak-lawan"],
+    ["keuangan-penebusan", "/keuangan/unit/6378301/penebusan"],
     ["keuangan-piutang", "/keuangan/unit/6378301/piutang/2026-08-22"],
   ];
 

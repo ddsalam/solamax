@@ -36,19 +36,27 @@ export interface BarisBuku extends MutasiKas {
   barisSistem: BarisSistem | null;
 }
 
-export type BarisSistem = "saldo_awal" | "pencairan_edc";
+export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan";
 
 export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
   saldo_awal: "Saldo pembuka — hanya Head of Finance yang menggantinya, di Kelola akun kas.",
   pencairan_edc:
     "Bagian dari jurnal pencairan EDC (tiga baris sekaligus). Membatalkan satu baris membuat buku " +
     "tidak seimbang — hubungi Head of Finance.",
+  penebusan:
+    "Baris kas milik penebusan SO (rencana U7). Batalkan dari halaman Penebusan — membatalkannya di sini " +
+    "membuat penebusan menunjuk baris kas yang tak ada.",
 };
 
 /** Satu pembuat vonis untuk "baris ini baris sistem?" — dipakai layar DAN server. */
-export function barisSistemDari(m: { saldoAwal: boolean; dariPencairanEdc?: boolean }): BarisSistem | null {
+export function barisSistemDari(m: {
+  saldoAwal: boolean;
+  dariPencairanEdc?: boolean;
+  dariPenebusan?: boolean;
+}): BarisSistem | null {
   if (m.saldoAwal) return "saldo_awal";
   if (m.dariPencairanEdc) return "pencairan_edc";
+  if (m.dariPenebusan) return "penebusan";
   return null;
 }
 

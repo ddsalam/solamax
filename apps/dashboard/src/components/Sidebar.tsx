@@ -181,6 +181,14 @@ function buildGroups(
           icon: "users",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/pihak-lawan/.test(p),
         },
+        {
+          // Rencana 2026-10-29 U7 — penebusan per SO (komponen pajak) + rekap
+          // pajak bulanan; tetangga Pihak lawan.
+          href: unitCode ? `/keuangan/unit/${unitCode}/penebusan` : null,
+          label: "Penebusan SO",
+          icon: "fuel",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/penebusan/.test(p),
+        },
       ],
     },
     {

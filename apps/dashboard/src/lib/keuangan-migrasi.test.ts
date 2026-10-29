@@ -94,6 +94,7 @@ const sql0029 = MIG("0029_cash_ledger");
 const sql0030 = MIG("0030_edc_settlement");
 const sql0031 = MIG("0031_noncash_expense");
 const sql0049 = MIG("0049_pihak_lawan");
+const sql0050 = MIG("0050_penebusan");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -119,6 +120,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0046", MIG("0046_edc_rekening_pencairan"), ["edc_rekening_pencairan"]],
     // Rencana 2026-10-29 U1 — pihak lawan & saldo pembukanya (KTD1, KTD2).
     ["0049", sql0049, ["pihak_lawan", "pihak_lawan_saldo_awal"]],
+    // Rencana 2026-10-29 U7 — penebusan per SO (KTD9).
+    ["0050", sql0050, ["penebusan"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -791,6 +794,7 @@ describe("KELAS: seed ter-scope unit mendahului RLS", () => {
     ["0030_edc_settlement", sql0030],
     ["0031_noncash_expense", sql0031],
     ["0049_pihak_lawan", sql0049],
+    ["0050_penebusan", sql0050],
   ];
 
   /** Tabel yang DIBUAT di migrasi ini dan punya kolom `unit_id` NOT NULL. */
@@ -1250,5 +1254,78 @@ describe("0049_pihak_lawan — struktur fase A", () => {
   it("⛔ tidak menambahkan kolom saldo pada pihak_lawan — saldo adalah turunan (KTD2)", () => {
     const t = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."pihak_lawan" (');
     expect(t).not.toMatch(/saldo|balance/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0050 — penebusan per SO (rencana 2026-10-29 U7; R10, R14, R29; KTD9)
+// ═══════════════════════════════════════════════════════════════════════════
+describe("0050_penebusan — penebusan memiliki baris kasnya", () => {
+  const sql = sql0050;
+  const st = pernyataan(sql);
+  const tabel = pernyataanYangDimulai(sql, 'CREATE TABLE IF NOT EXISTS "app"."penebusan" (');
+
+  it("tabelnya ada utuh, komponen & Gross DECIMAL(17,2) NOT NULL — tanpa float", () => {
+    expect(tabel, "tabel penebusan tidak ditemukan utuh").not.toBe("");
+    for (const k of ["net", "ppn", "pph", "pbbkb", "nota", "gross"]) {
+      expect(tabel).toMatch(new RegExp(`"${k}"\\s+DECIMAL\\(17,2\\) NOT NULL`));
+    }
+    expect(tabel).not.toMatch(/DOUBLE|REAL|FLOAT/i);
+  });
+
+  it("🔴 R10/KTD9: CHECK Net + PPN + PPh + PBBKB + Nota = Gross — tanpa toleransi", () => {
+    expect(tabel).toMatch(
+      /CONSTRAINT "penebusan_jumlah_komponen" CHECK \(\s*"net" \+ "ppn" \+ "pph" \+ "pbbkb" \+ "nota" = "gross"\s*\)/,
+    );
+    // Toleransi Rp 0: tak ada abs()/BETWEEN/<= di CHECK jumlah.
+    const cek = tabel.slice(tabel.indexOf('"penebusan_jumlah_komponen"'));
+    expect(cek.slice(0, cek.indexOf("),") + 1)).not.toMatch(/abs\(|BETWEEN|<=|>=/i);
+  });
+
+  it("FK KOMPOSIT ke rekening dan ke baris kas (unit yang sama)", () => {
+    expect(tabel).toMatch(
+      /FOREIGN KEY \("account_id", "unit_id"\)\s*REFERENCES "app"\."cash_account"\("id", "unit_id"\)/,
+    );
+    expect(tabel).toMatch(
+      /FOREIGN KEY \("cash_ledger_id", "unit_id"\)\s*REFERENCES "app"\."cash_ledger"\("id", "unit_id"\)/,
+    );
+    // Target komposit cash_ledger lahir di 0049 — penebusan bergantung padanya.
+    expect(pernyataan(sql0049)).toMatch(/ADD CONSTRAINT "cash_ledger_unit_uq" UNIQUE \("id", "unit_id"\)/);
+  });
+
+  it("SO ternormalisasi lower(btrim()) ditegakkan DB — konvensi so_macet 0028", () => {
+    expect(tabel).toMatch(/"no_so" = lower\(btrim\("no_so"\)\) AND "no_so" <> ''/);
+  });
+
+  it("satu penebusan aktif per (unit, SO) dan satu pemilik aktif per baris kas", () => {
+    expect(pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "penebusan_so_aktif_uq"')).toMatch(
+      /\("unit_id", "no_so"\) WHERE NOT "void"/,
+    );
+    expect(
+      pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "penebusan_cash_ledger_aktif_uq"'),
+    ).toMatch(/\("cash_ledger_id"\) WHERE NOT "void"/);
+  });
+
+  it("void + audit berpasangan; kas_dibuat mencatat asal baris kas", () => {
+    expect(tabel).toMatch(
+      /"void" = \("voided_at" IS NOT NULL\) AND "void" = \("voided_by_user_id" IS NOT NULL\)/,
+    );
+    expect(tabel).toMatch(/"kas_dibuat"\s+BOOLEAN NOT NULL/);
+    expect(tabel).toMatch(/"created_by_user_id"\s+INTEGER NOT NULL/);
+  });
+
+  it("DELETE dicabut dari dashboard_app; hanya SELECT/INSERT/UPDATE", () => {
+    expect(st).toMatch(/GRANT SELECT, INSERT, UPDATE ON "app"\."penebusan" TO dashboard_app/);
+    expect(st).toMatch(/REVOKE DELETE ON "app"\."penebusan" FROM dashboard_app/);
+    expect(st).not.toMatch(/GRANT[^;]*DELETE[^;]*"penebusan"/);
+  });
+
+  it("⛔ R14: tidak menyentuh harga beli / HPP", () => {
+    expect(st).not.toMatch(/purchase_price|hpp/i);
+  });
+
+  it("RLS: cabang NULL TIDAK ada, dan itu dinyatakan", () => {
+    expect(sql).toMatch(/cabang NULL DIPUTUSKAN SADAR: \*\*TIDAK ADA\*\*/);
+    expect(st).not.toMatch(/unit_id IS NULL OR/);
   });
 });

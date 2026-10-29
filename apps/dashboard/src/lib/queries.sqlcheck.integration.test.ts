@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  PENEBUSAN_SCHEMA_READY_SQL,
   PIHAK_LAWAN_SCHEMA_READY_SQL,
   SNAPSHOT_V2_SCHEMA_READY_SQL,
   waitForSnapshotV2Schema,
@@ -95,6 +96,14 @@ beforeAll(async () => {
     },
     { notReady: "pihak_lawan_schema_not_ready: backend migration 0049" },
   );
+  // U7 — kueri penebusan membaca tabel 0050.
+  await waitForSnapshotV2Schema(
+    async () => {
+      const result = await qScoped<{ ready: boolean }>(U, PENEBUSAN_SCHEMA_READY_SQL, []);
+      return result[0]?.ready === true;
+    },
+    { notReady: "penebusan_schema_not_ready: backend migration 0050" },
+  );
 }, 21 * 60 * 1000);
 
 /** [nama, pemanggilan]. Argumen dipilih tak berbahaya; semuanya SELECT. */
@@ -155,6 +164,10 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
   ["getBahanLaporan", async () => (await import("./keuangan-laporan-queries")).getBahanLaporan(U, D, "2026-06-30")],
   ["getBahanParitas", async () => (await import("./antar-unit-queries")).getBahanParitas([U])],
   ["getBahanPantau", async () => (await import("./keuangan-pantau-queries")).getBahanPantau([U], D)],
+  // U7 — penebusan per SO (0050) + tautan cermin EasyMax.
+  ["getPenebusanBulan", async () => (await import("./penebusan-queries")).getPenebusanBulan([U], "2026-07")],
+  ["getSoBelumTertaut", async () => (await import("./penebusan-queries")).getSoBelumTertaut(U)],
+  ["getRekeningBank", async () => (await import("./penebusan-queries")).getRekeningBank(U)],
 ];
 
 /** Nama saja — dipakai membangun daftar `it` tanpa menyentuh `./db`. */
