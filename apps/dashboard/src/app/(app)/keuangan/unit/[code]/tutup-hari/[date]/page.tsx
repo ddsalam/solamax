@@ -12,7 +12,9 @@ import {
   getKelengkapanInput,
 } from "@/lib/keuangan-input-queries";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
-import { cashFlowInputDari, langkahHarianDari, panelCashFlow } from "@/lib/keuangan-laporan-model";
+import { cashFlowInputDari, langkahHarianRinci, panelCashFlow } from "@/lib/keuangan-laporan-model";
+import { getBarisMajuKe, getParkirTerbukaSampai } from "@/lib/tutup-bulan-queries";
+import { TutupHariSusulan } from "@/components/keuangan/TutupHariSusulan";
 import { bolehMenutup, tierFor } from "@/lib/keuangan-tutup-hari";
 import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
@@ -48,15 +50,16 @@ export default async function TutupHariPage({
     .slice(0, 10);
 
   const bahanAwal = await getBahanLaporan(unit.unit_id, date, kemarin);
-  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianDari`.
+  // ⛔ Jalur hitung yang SAMA dengan `tutupHari` (U2/KTD5): `langkahHarianRinci`.
   //    Aksi menghitung ulang di bawah kuncinya; dua susunan berbeda akan
   //    menutup hari dengan angka yang bukan yang tampil di layar.
-  const langkahAwal = langkahHarianDari(bahanAwal);
+  const rinci = langkahHarianRinci(bahanAwal);
+  const langkahAwal = rinci.dinilai;
   // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
   // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
-  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal);
+  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
 
-  const [bahan, dayClose, overrides, kelengkapan, reasonCodes] = await Promise.all([
+  const [bahan, dayClose, overrides, kelengkapan, reasonCodes, maju, parkir] = await Promise.all([
     Promise.resolve(bahanAwal),
     getDayClose(unit.unit_id, date),
     getBackdateOverride(unit.unit_id, date),
@@ -68,13 +71,19 @@ export default async function TutupHariPage({
         WHERE applies_to = 'closing' AND active
         ORDER BY code`,
     ),
+    // R24 — baris maju ke hari ini & baris yang masih diparkir.
+    getBarisMajuKe(unit.unit_id, date),
+    getParkirTerbukaSampai(unit.unit_id, date),
   ]);
 
   const cf = panelCashFlow(cashFlowInputDari(bahan));
   // ⛔ KTD15 — yang DINILAI tangga toleransi adalah langkah TANPA koreksi
-  //    susulan (`langkahHarianDari`), sama dengan `tutupHari` dan baris
-  //    `day_close` di atas. Tampilan koreksi susulan terpisah milik U12.
+  //    susulan (`rinci.dinilai`), sama dengan `tutupHari` dan baris
+  //    `day_close` di atas. Koreksi susulannya tampil TERPISAH (R32): hari
+  //    tertutup menampilkan angka yang DISIMPAN saat ditutup (bila tercatat).
   const langkahDinilai = langkahAwal;
+  const koreksiSusulan =
+    dayClose?.status === "closed" && dayClose.koreksiSusulanRp != null ? dayClose.koreksiSusulanRp : rinci.koreksiSusulan;
 
   // Wewenang dihitung DI SERVER. Layar tidak boleh menyimpulkannya sendiri —
   // kesimpulan klien bisa dibuat benar dengan mengubah state di peramban.
@@ -133,7 +142,9 @@ export default async function TutupHariPage({
           overrides={overrides}
           sudahDitutup={dayClose?.status === "closed"}
           bolehMenutupTier={bolehMenutupTier}
+          koreksiSusulan={koreksiSusulan}
         />
+        <TutupHariSusulan code={unit.code} date={date} maju={maju} parkir={parkir} koreksiSusulan={koreksiSusulan} />
       </div>
     </>
   );

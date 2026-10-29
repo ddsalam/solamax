@@ -791,6 +791,9 @@ model DayClose {
   status       DayCloseStatus @default(open)
   differenceRp Decimal        @map("difference_rp") @db.Decimal(17, 2)
   tier         DayCloseTier
+  /// KTD15 (0054) — pengaruh baris susulan hari itu, DI SAMPING `differenceRp`
+  /// (yang dinilai tangga §3.2). NULL = hari ditutup sebelum 0054 (tak tercatat).
+  koreksiSusulanRp Decimal? @map("koreksi_susulan_rp") @db.Decimal(17, 2)
 
   reasonCode           String?   @map("reason_code")
   reasonRequiresTarget Boolean?  @map("reason_requires_target")
@@ -807,6 +810,21 @@ model DayClose {
   @@id([unitId, businessDate])
   @@index([unitId, status, businessDate])
   @@map("day_close")
+  @@schema("app")
+}
+
+// Penutupan BULAN per unit (0054, rencana 2026-10-29 U12; R25, KTD14). Ada
+// baris = bulan tertutup; syaratnya diputuskan `tutup-bulan-model.ts`.
+// `bulan` = hari pertama bulan (CHECK). dashboard_app: SELECT, INSERT saja —
+// bulan tertutup beku, tak ada jalur buka ulang.
+model TutupBulan {
+  unitId          Int      @map("unit_id") @db.SmallInt
+  bulan           DateTime @db.Date
+  ditutupByUserId Int      @map("ditutup_by_user_id")
+  ditutupAt       DateTime @default(now()) @map("ditutup_at") @db.Timestamptz()
+
+  @@id([unitId, bulan])
+  @@map("tutup_bulan")
   @@schema("app")
 }
 

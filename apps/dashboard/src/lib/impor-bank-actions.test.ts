@@ -460,6 +460,27 @@ describe("tarikRekeningKoran — HoF saja, beralasan, beraudit", () => {
     expect(await tarikRekeningKoran(masukan)).toMatchObject({ ok: true });
   });
 
+  it("🔴 U12: bulan rekening koran SUDAH DITUTUP ⇒ ditolak tanpa UPDATE; kunci bersama bulan diambil SEBELUM tutup_bulan dibaca", async () => {
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2027-03-01") ? [{ bulan: "2027-03" }] : [] } : dbTarik(q);
+    const r = await tarikRekeningKoran(masukan);
+    expect(r).toMatchObject({ ok: false });
+    expect(r.ok === false && r.error).toMatch(/Bulan 2027-03 sudah ditutup/);
+    expect(tulis("app.rekening_koran")).toEqual([]);
+    expect(sql()).not.toContain("COMMIT");
+    const kunci = h.log.findIndex((l) => l.sql.includes("pg_advisory_xact_lock_shared") && l.sql.includes("tutup-bulan:"));
+    const baca = h.log.findIndex((l) => l.sql.includes("FROM app.tutup_bulan"));
+    expect(kunci).toBeGreaterThanOrEqual(0);
+    expect(kunci).toBeLessThan(baca);
+    expect(h.log[kunci]!.params).toEqual([2, "2027-03"]);
+  });
+
+  it("bulan lain yang tertutup tidak menahan tarikan bulan terbuka", async () => {
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2027-02-01") ? [{ bulan: "2027-02" }] : [] } : dbTarik(q);
+    expect(await tarikRekeningKoran(masukan)).toMatchObject({ ok: true });
+  });
+
   it("sudah ditarik / tak ditemukan / kode alasan asing / catatan kosong ⇒ ditolak tanpa UPDATE", async () => {
     rk = { ...rk!, status: "ditarik" };
     expect(await tarikRekeningKoran(masukan)).toMatchObject({ ok: false });

@@ -85,8 +85,10 @@ describe("batalkanCocok — HoF, kelompok dulu baru buku", () => {
     expect(urutan(fn, "UPDATE app.cocok_bank", "UPDATE app.cash_ledger")).toBe("ok");
     expect(urutan(fn, "UPDATE app.cocok_bank", "INSERT INTO app.cash_ledger")).toBe("ok");
     expect(urutan(fn, "hariBukuTerkunci(client", "INSERT INTO app.cash_ledger")).toBe("ok");
-    const m = MENTAH.slice(MENTAH.indexOf("export async function batalkanCocok"));
-    expect(urutan(m, "U12 MENAMBAHKAN DI SINI", "UPDATE app.cocok_bank")).toBe("ok");
+    // U12 — bulan tertutup (kunci bersama → baca) sesudah kunci kelompok, sebelum UPDATE, dan menolak.
+    expect(urutan(fn, "FOR UPDATE", "bulanTertutupTerkunci(client, unit.unit_id, bulanBank)")).toBe("ok");
+    expect(urutan(fn, "bulanTertutupTerkunci(", "UPDATE app.cocok_bank")).toBe("ok");
+    expect(fn).toMatch(/if \(tertutup\.length > 0\) \{\s*await batal\(client\);\s*return \{\s*ok: false/);
   });
 
   it("🔴 U11 gerbang dua unit: unit lawan kaki pasangan lahiran → requireUnit SEBELUM koneksi; transaksi memuat kedua unit; balik lewat tulisBalikPasangan sesudah kelompok nonaktif", () => {

@@ -44,6 +44,7 @@ export function TutupHariPanel({
   overrides,
   sudahDitutup,
   bolehMenutupTier,
+  koreksiSusulan,
 }: {
   code: string;
   date: string;
@@ -56,6 +57,11 @@ export function TutupHariPanel({
   sudahDitutup: boolean;
   /** Hasil `bolehMenutup(tier, ctx)` dari server — layar tidak menghitungnya. */
   bolehMenutupTier: boolean;
+  /**
+   * KTD15 / R32 — pengaruh baris yang dibukukan MAJU ke hari ini. Ditampilkan
+   * TERPISAH dan tidak ikut menentukan tier. `null` = belum terhitung.
+   */
+  koreksiSusulan: number | null;
 }) {
   const [kode, setKode] = useState("");
   const [target, setTarget] = useState("");
@@ -146,6 +152,19 @@ export function TutupHariPanel({
           }
           teks={syaratKurang.length === 0 ? "Lengkap" : `${syaratKurang.length} belum`}
         />
+      </div>
+
+      {/* KTD15 / R32 — koreksi susulan TERPISAH dari selisih yang dinilai. */}
+      <div className="banner info keu-banner" role="status" data-koreksi-susulan>
+        <b>
+          Koreksi susulan:{" "}
+          <span className="num">{koreksiSusulan === null ? "belum bisa dihitung" : rp(koreksiSusulan)}</span>
+        </b>
+        <p className="keu-p">
+          Pengaruh baris yang dibukukan ke hari ini dengan tanggal asal lebih awal (impor rekening koran, pembalik,
+          kaki antar unit). Ditampilkan terpisah dan <strong>tidak</strong> ikut dinilai tangga toleransi — yang
+          dinilai adalah <em>Balance sheet check</em> di atas. Rinciannya di daftar “Dibukukan maju ke hari ini”.
+        </p>
       </div>
 
       {/* ⚠️ Kejujuran yang diminta: kumulatif belum tersedia, dan itu disebut. */}

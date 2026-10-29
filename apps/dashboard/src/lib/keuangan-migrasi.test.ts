@@ -98,6 +98,7 @@ const sql0050 = MIG("0050_penebusan");
 const sql0051 = MIG("0051_impor_bank");
 const sql0052 = MIG("0052_cocok_bank");
 const sql0053 = MIG("0053_manual_entry_kas");
+const sql0054 = MIG("0054_tutup_bulan");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -129,6 +130,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0051", sql0051, ["rekening_koran", "mutasi_bank"]],
     // Rencana 2026-10-29 U10 — kelompok cocok & anggotanya (KTD6).
     ["0052", sql0052, ["cocok_bank", "cocok_bank_baris"]],
+    // Rencana 2026-10-29 U12 — penutupan bulan per unit (KTD14).
+    ["0054", sql0054, ["tutup_bulan"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -1511,5 +1514,44 @@ describe("0053_manual_entry_kas — beban lahir bersama baris kasnya", () => {
   it("tanpa tabel baru, tanpa DELETE, tanpa menyunting baris lama", () => {
     expect(st).not.toMatch(/CREATE TABLE/);
     expect(st).not.toMatch(/DELETE|UPDATE "app"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0054 — tutup bulan + koreksi susulan tutup hari (rencana 2026-10-29 U12)
+// ---------------------------------------------------------------------------
+
+describe("0054_tutup_bulan — bulan tertutup beku; koreksi susulan di samping selisih", () => {
+  const st = pernyataan(sql0054);
+  const tb = pernyataanYangDimulai(sql0054, 'CREATE TABLE IF NOT EXISTS "app"."tutup_bulan" (');
+
+  it("tabel utuh: kunci (unit, bulan), siapa & kapan wajib", () => {
+    expect(tb, "tutup_bulan tidak ditemukan utuh").not.toBe("");
+    expect(tb).toMatch(/PRIMARY KEY \("unit_id", "bulan"\)/);
+    expect(tb).toMatch(/"ditutup_by_user_id"\s+INTEGER NOT NULL/);
+    expect(tb).toMatch(/"ditutup_at"\s+TIMESTAMPTZ NOT NULL/);
+  });
+
+  it("🔴 bulan = hari pertama bulan (dua tanggal dalam satu bulan tak lolos PRIMARY KEY)", () => {
+    expect(tb).toMatch(/"bulan" = date_trunc\('month', "bulan"\)::date/);
+  });
+
+  it("🔴 hak akses: SELECT + INSERT saja — tak ada UPDATE/DELETE (tak ada jalur buka ulang)", () => {
+    expect(st).toMatch(/GRANT SELECT, INSERT ON "app"\."tutup_bulan" TO dashboard_app/);
+    expect(st).toMatch(/REVOKE UPDATE, DELETE ON "app"\."tutup_bulan" FROM dashboard_app/);
+    expect(st).not.toMatch(/GRANT[^;]*(UPDATE|DELETE)[^;]*"tutup_bulan"/);
+  });
+
+  it("🔴 day_close + koreksi_susulan_rp NULLABLE; baris lama TIDAK disentuh; CHECK tier 0026 tak diubah", () => {
+    expect(st).toMatch(/ALTER TABLE "app"\."day_close"\s+ADD COLUMN IF NOT EXISTS "koreksi_susulan_rp" DECIMAL\(17,2\);/);
+    expect(st).not.toMatch(/"koreksi_susulan_rp" DECIMAL\(17,2\) NOT NULL|DEFAULT 0/);
+    expect(st).not.toMatch(/UPDATE "app"\."day_close"|DELETE FROM/);
+    expect(st).not.toMatch(/day_close_tier_matches_difference/);
+  });
+
+  it("RLS: cabang NULL TIDAK ada, dan itu dinyatakan; tanpa seed", () => {
+    expect(sql0054).toMatch(/cabang NULL DIPUTUSKAN SADAR: \*\*TIDAK ADA\*\*/);
+    expect(st).not.toMatch(/unit_id IS NULL OR/);
+    expect(st).not.toMatch(/INSERT INTO/);
   });
 });

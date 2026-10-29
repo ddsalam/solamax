@@ -197,6 +197,14 @@ function buildGroups(
           icon: "receipt",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/impor-bank/.test(p),
         },
+        {
+          // Rencana 2026-10-29 U12 — daftar periksa & penutupan bulan (HoF),
+          // bulan dari tanggal yang sedang dipilih. Tetangga Impor rekening koran.
+          href: unitCode ? `/keuangan/unit/${unitCode}/tutup-bulan/${date.slice(0, 7)}` : null,
+          label: "Tutup bulan",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/tutup-bulan\//.test(p),
+        },
       ],
     },
     {

@@ -14,8 +14,9 @@ import { sqlTitipan, type SaldoTitipanPemilik, type TitipanDiterima } from "./ti
 import { cutOverTerawal, saldoAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
 import {
-  langkahHarianDari,
+  langkahHarianRinci,
   sebabKasDari,
+  type RincianLangkah,
   type SebabKasInput,
   type SisiKasLangkah,
 } from "./keuangan-laporan-model";
@@ -450,9 +451,10 @@ async function bahanLaporan(
 }
 
 /**
- * Langkah harian TERKINI satu hari — `day_close.difference_rp` yang dipakai
+ * Langkah harian TERKINI satu hari — `day_close.difference_rp` (= `dinilai`)
+ * dan `koreksi_susulan_rp` (= `koreksiSusulan`, U12/KTD15) yang dipakai
  * `tutupHari` (rencana 2026-10-29 U2/KTD5). Jalur yang SAMA dengan Layar 4
- * (`getBahanLaporan` → `langkahHarianDari`), dipanggil ulang di bawah kunci
+ * (`getBahanLaporan` → `langkahHarianRinci`), dipanggil ulang di bawah kunci
  * penutupan supaya baris yang dibukukan sesudah layar dibuka ikut terhitung.
  *
  * ⚠️ Kuerinya berjalan di koneksi pool sendiri, BUKAN di transaksi pemanggil —
@@ -461,8 +463,8 @@ async function bahanLaporan(
  * jadi jalur tulis R28 yang ingin menulis ke hari itu sudah COMMIT lebih dulu
  * atau masih menunggu dan akan melihat hari itu tertutup.
  */
-export async function hitungLangkahHarian(unit: ScopedUnitId, date: string): Promise<number | null> {
-  return langkahHarianDari(await getBahanLaporan(unit, date, addDays(date, -1)));
+export async function hitungLangkahHarianRinci(unit: ScopedUnitId, date: string): Promise<RincianLangkah> {
+  return langkahHarianRinci(await getBahanLaporan(unit, date, addDays(date, -1)));
 }
 
 export { assetNonKas };

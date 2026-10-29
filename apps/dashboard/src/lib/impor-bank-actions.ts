@@ -26,6 +26,7 @@ import {
 } from "./keuangan-wewenang";
 import { GalatPdfTeks, teksDariPdf } from "./pdf-teks";
 import { getDataScope } from "./scope";
+import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 
 /**
  * Server action impor rekening koran (rencana 2026-10-29 U9; R17–R19, R22,
@@ -364,8 +365,20 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
       return { ok: false, error: `Rekening koran ${rk.periode} sudah ditarik sebelumnya.` };
     }
 
-    // U12 MENAMBAHKAN DI SINI: tolak bila bulan `rk.periode` unit ini sudah
-    // ditutup (tabel tutup bulan lahir di U12, KTD14).
+    // U12 (KTD14) — tolak bila bulan `rk.periode` unit ini sudah ditutup.
+    // Kunci BERSAMA bulan itu diambil DULU, baru `tutup_bulan` dibaca: penutup
+    // yang sedang berjalan ditunggu sampai COMMIT, dan penutup yang datang
+    // sesudahnya menunggu tarikan ini lalu melihat rekening korannya hilang.
+    const tertutup = await bulanTertutupTerkunci(client, unit.unit_id, [rk.periode]);
+    if (tertutup.length > 0) {
+      await batal(client);
+      return {
+        ok: false,
+        error:
+          `Bulan ${rk.periode} sudah ditutup — rekening koran bulan tertutup tidak bisa ditarik. ` +
+          "Koreksinya dibukukan maju ke bulan terbuka.",
+      };
+    }
     // U10 — tolak bila ada baris rekening koran ini di kelompok cocok AKTIF:
     // "batalkan cocok dulu" (KTD6, R31). Rekening koran sudah dikunci FOR
     // UPDATE di atas, dan setiap pencocok mengunci induknya FOR NO KEY UPDATE —

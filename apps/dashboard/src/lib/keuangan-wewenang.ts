@@ -482,3 +482,16 @@ export function canCocokkanBank(ctx: WewenangCtx, daftar?: readonly string[]): b
 export function canBatalkanCocokBank(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+// ---------------------------------------------------------------------------
+// Tutup bulan (rencana 2026-10-29 U12; R25, KTD14)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENUTUP BULAN satu unit (R25: "HoF menutup bulan per unit")? **Head of
+ * Finance** + super admin. Staf `keuangan` TIDAK — bulan tertutup beku dan
+ * tak ada jalur buka ulang, jadi penutupnya pemegang tanggung jawab akhir.
+ */
+export function canTutupBulan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}

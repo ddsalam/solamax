@@ -17,6 +17,7 @@ import {
 import { normalisasiSo } from "./penebusan-model";
 import { teksKeSen } from "./pihak-lawan-model";
 import { getDataScope, type ScopedUnit } from "./scope";
+import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 
 /**
  * Server action kelompok cocok (rencana 2026-10-29 U10; R19, R20, R31; KTD6,
@@ -302,9 +303,21 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
     );
     const bulanBank = [...new Set(anggota.rows.flatMap((a) => (a.tanggalBank ? [a.tanggalBank.slice(0, 7)] : [])))];
 
-    // U12 MENAMBAHKAN DI SINI: tolak bila salah satu `bulanBank` unit ini sudah
-    // ditutup (tabel tutup bulan lahir di U12, KTD14) — "baris impor bertanggal
-    // bank di bulan yang sudah ditutup ⇒ ditolak".
+    // U12 (KTD14) — tolak bila salah satu `bulanBank` unit ini sudah ditutup:
+    // "baris impor bertanggal bank di bulan yang sudah ditutup ⇒ ditolak".
+    // Kunci BERSAMA tiap bulan DULU, baru `tutup_bulan` dibaca (lihat
+    // `bulanTertutupTerkunci`): membatalkan cocok membuka kembali baris impor,
+    // dan itu syarat yang sudah dinilai lolos oleh penutup bulan.
+    const tertutup = await bulanTertutupTerkunci(client, unit.unit_id, bulanBank);
+    if (tertutup.length > 0) {
+      await batal(client);
+      return {
+        ok: false,
+        error:
+          `Bulan ${tertutup.join(", ")} sudah ditutup — pencocokan baris rekening koran bulan tertutup tidak bisa ` +
+          "dibatalkan. Tak ada yang dibatalkan.",
+      };
+    }
 
     // Baris kas yang DILAHIRKAN kelompok ini (klasifikasi U11) — dikunci.
     const lahir = (

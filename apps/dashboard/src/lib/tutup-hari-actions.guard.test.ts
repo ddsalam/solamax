@@ -43,24 +43,31 @@ describe("tutup-hari-actions — penjagaan yang tak boleh hilang", () => {
     // tier & persetujuan menempel pada selisih yang bukan selisih hari itu.
     const fn = KODE.slice(KODE.indexOf("export async function tutupHari"), KODE.indexOf("function pesanKurang"));
     expect(fn).not.toMatch(/row\.differenceRp/);
-    expect(fn).toMatch(/const differenceRp = await hitungLangkahHarian\(unit\.unit_id, input\.date\)/);
+    // U12/KTD15 — yang dinilai adalah `dinilai` (tanpa baris susulan).
+    expect(fn).toMatch(/const rinci = await hitungLangkahHarianRinci\(unit\.unit_id, input\.date\)/);
+    expect(fn).toMatch(/const differenceRp = rinci\.dinilai;/);
     // Urutan: kunci eksklusif hari → kunci baris → hitung ulang → vonis → tulis.
     // Hitung ulang SEBELUM kunci = jendela tempat jalur tulis menyelip.
     expect(urutan(fn, "await kunciHariEksklusif(client, unit.unit_id, input.date)", "FOR UPDATE")).toBe("ok");
-    expect(urutan(fn, "FOR UPDATE", "hitungLangkahHarian(")).toBe("ok");
-    expect(urutan(fn, "hitungLangkahHarian(", "periksaTutupHari(")).toBe("ok");
-    expect(urutan(fn, "hitungLangkahHarian(", "UPDATE app.day_close")).toBe("ok");
+    expect(urutan(fn, "FOR UPDATE", "hitungLangkahHarianRinci(")).toBe("ok");
+    expect(urutan(fn, "hitungLangkahHarianRinci(", "periksaTutupHari(")).toBe("ok");
+    expect(urutan(fn, "hitungLangkahHarianRinci(", "UPDATE app.day_close")).toBe("ok");
     // Angka terkini ikut DITULIS — tier dari CHECK 0026 harus cocok dengannya.
     expect(fn.slice(fn.indexOf("UPDATE app.day_close"))).toMatch(/difference_rp=\$\d+/);
+    // KTD15 — koreksi susulan DISIMPAN di samping selisih, dari rincian yang sama.
+    expect(fn.slice(fn.indexOf("UPDATE app.day_close"))).toMatch(/koreksi_susulan_rp=\$\d+/);
+    expect(fn).toMatch(/rinci\.koreksiSusulan,/);
+    // Tier tetap fungsi selisih yang DINILAI, bukan langkah penuh.
+    expect(fn).not.toMatch(/tierFor\(rinci\.penuh/);
     // Tak terhitung ⇒ ditolak, tidak dinolkan.
     expect(fn).toMatch(/if \(differenceRp === null\) \{/);
   });
 
   it("🔴 halaman & aksi memakai SATU jalur hitung", () => {
-    expect(HAL).toMatch(/langkahHarianDari\(bahanAwal\)/);
+    expect(HAL).toMatch(/langkahHarianRinci\(bahanAwal\)/);
     const q = readFileSync(resolve(__dirname, "keuangan-laporan-queries.ts"), "utf8");
-    const f = q.slice(q.indexOf("export async function hitungLangkahHarian"));
-    expect(f).toMatch(/langkahHarianDari\(await getBahanLaporan\(/);
+    const f = q.slice(q.indexOf("export async function hitungLangkahHarianRinci"));
+    expect(f).toMatch(/langkahHarianRinci\(await getBahanLaporan\(/);
   });
 
   it("🔴 AMBANG tidak disalin — satu tempat yang memutuskan", () => {

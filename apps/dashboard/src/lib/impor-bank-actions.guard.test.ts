@@ -14,7 +14,7 @@ import { urutan } from "./penjaga-urutan";
  *     SEBELUM dibaca, pembaca U8 SEBELUM koneksi DB (AE3 tanpa jejak);
  *   · tak pernah menulis `cash_ledger` (KTD6), tanpa DELETE;
  *   · tarik: predikat HoF sebelum koneksi; kelompok cocok aktif (U10) & penanda
- *     U12 SEBELUM UPDATE; cocok otomatis sesudah COMMIT unggah.
+ *     U12 (bulan tertutup) SEBELUM UPDATE; cocok otomatis sesudah COMMIT unggah.
  *
  * ⚠️ Batas: membuktikan penjagaan ADA di kode. Perilakunya:
  * `impor-bank-actions.test.ts` (DB tiruan) dan uji DB-live ber-gerbang env.
@@ -102,9 +102,10 @@ describe("tarikRekeningKoran — HoF, kelompok cocok & penanda U12 sebelum UPDAT
     expect(urutan(fn, "INSERT INTO app.audit_log", 'client.query("COMMIT")')).toBe("ok");
   });
 
-  it("penanda U12 (bulan tertutup) ada SEBELUM UPDATE", () => {
-    const m = MENTAH.slice(MENTAH.indexOf("export async function tarikRekeningKoran"));
-    expect(urutan(m, "U12 MENAMBAHKAN DI SINI", "UPDATE app.rekening_koran")).toBe("ok");
+  it("🔴 U12: bulan tertutup diperiksa (kunci bersama → baca) SESUDAH kunci rekening koran & SEBELUM UPDATE, dan menolak", () => {
+    expect(urutan(fn, "FOR UPDATE", "bulanTertutupTerkunci(client, unit.unit_id, [rk.periode])")).toBe("ok");
+    expect(urutan(fn, "bulanTertutupTerkunci(", "UPDATE app.rekening_koran")).toBe("ok");
+    expect(fn).toMatch(/if \(tertutup\.length > 0\) \{\s*await batal\(client\);\s*return \{\s*ok: false/);
   });
 
   it("🔴 U10: kelompok cocok AKTIF diperiksa SESUDAH kunci & SEBELUM UPDATE, dan menolak (return)", () => {

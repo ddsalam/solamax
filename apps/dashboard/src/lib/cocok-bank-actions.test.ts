@@ -318,6 +318,21 @@ describe("batalkanCocok — HoF saja, beralasan, beraudit", () => {
     expect(committed()).toBe(true);
   });
 
+  it("🔴 U12: baris impor kelompok bertanggal bank di bulan TERTUTUP ⇒ ditolak, tak ada yang dibatalkan", async () => {
+    lahir = [lahiran()];
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2026-09-01") ? [{ bulan: "2026-09" }] : [] } : dbBatal(q, p);
+    const r = await batalkanCocok(masukan);
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/Bulan 2026-09 sudah ditutup/) });
+    expect(upd("app.cocok_bank")).toHaveLength(0);
+    expect(h.log.some((l) => /(INSERT INTO|UPDATE) app\.cash_ledger/.test(l.sql))).toBe(false);
+    expect(committed()).toBe(false);
+    const kunci = h.log.findIndex((l) => l.sql.includes("pg_advisory_xact_lock_shared") && l.sql.includes("tutup-bulan:"));
+    expect(kunci).toBeGreaterThanOrEqual(0);
+    expect(kunci).toBeLessThan(h.log.findIndex((l) => l.sql.includes("FROM app.tutup_bulan")));
+    expect(h.log[kunci]!.params).toEqual([h.BK.unit_id, "2026-09"]);
+  });
+
   it("🔴 baris kas LAHIRAN kelompok, hari terbuka ⇒ di-void", async () => {
     lahir = [lahiran()];
     expect((await batalkanCocok(masukan)).ok).toBe(true);

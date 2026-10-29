@@ -21,6 +21,7 @@ import {
   canTarikRekeningKoran,
   canBatalkanCocokBank,
   canCocokkanBank,
+  canTutupBulan,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -507,6 +508,19 @@ describe("kelompok cocok (U10; R26, R31) — satu predikat per keputusan", () =>
     expect(canBatalkanCocokBank(c("super_admin"), HOF5)).toBe(true);
     for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
       expect(canBatalkanCocokBank(c(r), HOF5), r).toBe(false);
+    }
+  });
+});
+
+describe("tutup bulan (U12; R25) — HoF & super admin", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 canTutupBulan: HoF (peran apa pun) & super_admin; staf Keuangan TIDAK", () => {
+    expect(canTutupBulan(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canTutupBulan(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canTutupBulan(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
     }
   });
 });

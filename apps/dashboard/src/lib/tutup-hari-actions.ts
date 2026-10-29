@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { kunciHariEksklusif } from "./hari-buku-queries";
-import { hitungLangkahHarian } from "./keuangan-laporan-queries";
+import { hitungLangkahHarianRinci } from "./keuangan-laporan-queries";
 import { periksaTutupHari, tierFor } from "./keuangan-tutup-hari";
 import { getDataScope, type ScopedUnitId } from "./scope";
 
@@ -88,9 +88,11 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
     // tersimpan saat layar dibuka (butir 1). Jalur hitungnya sama dengan
     // Layar 4 (`langkahHarianDari`). Kuerinya di koneksi lain — aman karena
     // kunci di atas sudah dipegang: semua penulis hari ini sudah COMMIT.
-    // 📌 KTD15 (U12): koreksi susulan akan dipisah dari selisih yang dinilai
-    //    di titik ini; belum dibangun.
-    const differenceRp = await hitungLangkahHarian(unit.unit_id, input.date);
+    // KTD15 (U12) — yang DINILAI tangga §3.2 adalah langkah TANPA baris susulan
+    //    (`dinilai`); koreksi susulan disimpan DI SAMPINGNYA, tak ikut dinilai
+    //    (R32). Satu panggilan, satu bahan: keduanya dari data yang sama.
+    const rinci = await hitungLangkahHarianRinci(unit.unit_id, input.date);
+    const differenceRp = rinci.dinilai;
     if (differenceRp === null) {
       // Tak terhitung ⇒ ditolak, TIDAK dinolkan (§10.15).
       await client.query("ROLLBACK");
@@ -132,7 +134,7 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
     const perluPersetujuan = tier !== "within_tolerance";
     await client.query(
       `UPDATE app.day_close
-          SET status='closed', difference_rp=$10, tier=$1::app.day_close_tier,
+          SET status='closed', difference_rp=$10, koreksi_susulan_rp=$11, tier=$1::app.day_close_tier,
               reason_code=$2, reason_requires_target=$3, target_date=$4::date,
               closed_by_user_id=$5, closed_at=now(),
               approved_by_user_id=$6, approved_at=$7,
@@ -149,6 +151,7 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
         unit.unit_id,
         input.date,
         differenceRp,
+        rinci.koreksiSusulan,
       ],
     );
     await client.query("COMMIT");
@@ -202,6 +205,8 @@ export async function pastikanBarisDayClose(
   unitId: ScopedUnitId,
   date: string,
   langkahHarian: number | null,
+  /** KTD15 (U12) — disimpan di samping selisih; tak menentukan tier. */
+  koreksiSusulan: number | null = null,
 ): Promise<void> {
   if (langkahHarian === null) return;
   const tier = tierFor(langkahHarian);
@@ -210,14 +215,15 @@ export async function pastikanBarisDayClose(
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unitId)]);
     await client.query(
-      `INSERT INTO app.day_close (unit_id, business_date, status, difference_rp, tier)
-       VALUES ($1, $2::date, 'open', $3, $4::app.day_close_tier)
+      `INSERT INTO app.day_close (unit_id, business_date, status, difference_rp, koreksi_susulan_rp, tier)
+       VALUES ($1, $2::date, 'open', $3, $5, $4::app.day_close_tier)
        ON CONFLICT (unit_id, business_date) DO UPDATE
-          SET difference_rp = EXCLUDED.difference_rp,
-              tier          = EXCLUDED.tier,
-              updated_at    = now()
+          SET difference_rp      = EXCLUDED.difference_rp,
+              koreksi_susulan_rp = EXCLUDED.koreksi_susulan_rp,
+              tier               = EXCLUDED.tier,
+              updated_at         = now()
         WHERE app.day_close.status = 'open'`,
-      [unitId, date, langkahHarian, tier],
+      [unitId, date, langkahHarian, tier, koreksiSusulan],
     );
     await client.query("COMMIT");
   } catch {

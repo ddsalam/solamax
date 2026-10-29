@@ -439,6 +439,12 @@ export interface DayCloseRow {
   /** Diresolusi dari `app.users` — kertas menyebut orang, bukan id. */
   closedByEmail: string | null;
   approvedByEmail: string | null;
+  /**
+   * KTD15 (0054) — koreksi susulan yang disimpan di samping selisih. `null` =
+   * hari ditutup sebelum 0054 (tak tercatat) atau belum terhitung. Opsional di
+   * tipe supaya fixture kertas lama tetap sah; kueri selalu mengisinya.
+   */
+  koreksiSusulanRp?: number | null;
 }
 
 export async function getDayClose(
@@ -449,6 +455,7 @@ export async function getDayClose(
     unit,
     `SELECT dc.status::text                   AS status,
             dc.difference_rp::float8          AS "differenceRp",
+            dc.koreksi_susulan_rp::float8     AS "koreksiSusulanRp",
             dc.tier::text                     AS tier,
             dc.reason_code                    AS "reasonCode",
             dc.reason_requires_target         AS "reasonRequiresTarget",
