@@ -99,6 +99,7 @@ const sql0051 = MIG("0051_impor_bank");
 const sql0052 = MIG("0052_cocok_bank");
 const sql0053 = MIG("0053_manual_entry_kas");
 const sql0054 = MIG("0054_tutup_bulan");
+const sql0055 = MIG("0055_pihak_lawan_unit_baru");
 
 /**
  * Predikat RLS 0016, disalin persis. Kalau migrasi baru menyimpang darinya, dua
@@ -1553,5 +1554,99 @@ describe("0054_tutup_bulan — bulan tertutup beku; koreksi susulan di samping s
     expect(sql0054).toMatch(/cabang NULL DIPUTUSKAN SADAR: \*\*TIDAK ADA\*\*/);
     expect(st).not.toMatch(/unit_id IS NULL OR/);
     expect(st).not.toMatch(/INSERT INTO/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0055 — unit baru otomatis mendapat pihak lawannya (temuan tinjauan #3)
+// ---------------------------------------------------------------------------
+
+describe("0055_pihak_lawan_unit_baru — unit sesudah 0049 tak lagi tanpa pasangan", () => {
+  const st = pernyataan(sql0055);
+  const pastikan = blokFungsi(sql0055);
+  /** Blok fungsi bernama `nama`, berangkat dari baris CREATE-nya (komentar dibuang). */
+  const fungsi = (nama: string): string => {
+    const i = st.indexOf(`CREATE OR REPLACE FUNCTION "app"."${nama}"()`);
+    if (i < 0) return "";
+    return blokFungsi(st.slice(i));
+  };
+  const lepas = fungsi("unit_pihak_lawan_lepas");
+  const rapat = (x: string) => x.replace(/\s+/g, " ").trim();
+  const seed = (sql: string): string[] =>
+    pernyataan(sql)
+      .split('INSERT INTO "app"."pihak_lawan" (')
+      .slice(1)
+      .map((x) => rapat(x.slice(0, x.indexOf(";"))));
+
+  it("ensure: SECURITY INVOKER — FORCE RLS berlaku juga untuk pemilik, DEFINER tak menolong", () => {
+    expect(pastikan, "fungsi pihak_lawan_pastikan_unit tidak ditemukan utuh").toContain(
+      'FUNCTION "app"."pihak_lawan_pastikan_unit"()',
+    );
+    expect(st).not.toMatch(/SECURITY DEFINER/);
+    for (const f of [pastikan, lepas, fungsi("unit_pihak_lawan_otomatis")]) {
+      expect(f).toMatch(/SECURITY INVOKER/);
+    }
+  });
+
+  it("🔴 isi semaian IDENTIK dengan seed 0049 — kolom & nilai sama, ON CONFLICT DO NOTHING", () => {
+    const s49 = seed(sql0049);
+    const s55 = seed(pastikan);
+    expect(s49.length).toBe(2);
+    expect(s55).toEqual(s49);
+    for (const i of s55) expect(i).not.toMatch(/VALUES/);
+  });
+
+  it("🔴 INSERT berjalan DI BAWAH scope seluruh public.unit, lalu scope pemanggil DIPULIHKAN", () => {
+    const ins = pastikan.indexOf('INSERT INTO "app"."pihak_lawan"');
+    const sc = pastikan.indexOf("set_config('app.unit_ids'");
+    expect(sc, "set_config tidak mendahului INSERT").toBeGreaterThan(-1);
+    expect(sc).toBeLessThan(ins);
+    expect(pastikan.slice(sc, ins)).toMatch(/FROM "public"\."unit"/);
+    expect(pastikan).toMatch(/scope_lama text := current_setting\('app\.unit_ids', true\)/);
+    const pulih = pastikan.lastIndexOf("set_config('app.unit_ids', COALESCE(scope_lama, ''), true)");
+    expect(pulih, "scope pemanggil tidak dipulihkan").toBeGreaterThan(pastikan.lastIndexOf("RAISE EXCEPTION"));
+    // Scope yang gagal terpasang dibuktikan, bukan diandaikan.
+    expect(pastikan).toMatch(/RAISE EXCEPTION 'pihak_lawan_pastikan_unit: app\.unit_ids kosong/);
+  });
+
+  it("⛔ tanpa klausa SET app.unit_ids pada fungsi — ditolak untuk non-superuser (migrate deploy gagal)", () => {
+    expect(st).not.toMatch(/^\s*SET "app\.unit_ids"/m);
+  });
+
+  it("bukti sesudah ensure: pasangan bolong / Outlet Bright hilang ⇒ RAISE (bentrok nama tak ditelan)", () => {
+    expect(pastikan).toMatch(/RAISE EXCEPTION 'pihak_lawan_pastikan_unit: % pasangan unit/);
+    expect(pastikan).toMatch(/RAISE EXCEPTION 'pihak_lawan_pastikan_unit: % unit tanpa pihak lawan titipan/);
+  });
+
+  it("trigger AFTER INSERT ON public.unit terpasang sebagai SATU pernyataan utuh", () => {
+    const t = pernyataanYangDimulai(sql0055, 'CREATE TRIGGER "unit_pihak_lawan_otomatis"');
+    expect(t, "trigger unit_pihak_lawan_otomatis tidak ditemukan utuh").not.toBe("");
+    expect(t).toMatch(
+      /AFTER INSERT ON "public"\."unit"\s+FOR EACH STATEMENT\s+EXECUTE FUNCTION "app"\."unit_pihak_lawan_otomatis"\(\)/,
+    );
+    expect(fungsi("unit_pihak_lawan_otomatis")).toMatch(/PERFORM "app"\."pihak_lawan_pastikan_unit"\(\)/);
+  });
+
+  it("BEFORE DELETE melepas HANYA baris semaian, di bawah scope, lalu memulihkannya", () => {
+    const t = pernyataanYangDimulai(sql0055, 'CREATE TRIGGER "unit_pihak_lawan_lepas"');
+    expect(t, "trigger unit_pihak_lawan_lepas tidak ditemukan utuh").not.toBe("");
+    expect(t).toMatch(/BEFORE DELETE ON "public"\."unit"\s+FOR EACH ROW\s+EXECUTE FUNCTION "app"\."unit_pihak_lawan_lepas"\(\)/);
+    const del = lepas.indexOf('DELETE FROM "app"."pihak_lawan"');
+    expect(del).toBeGreaterThan(lepas.indexOf("set_config('app.unit_ids'"));
+    expect(lepas.slice(del)).toMatch(/WHERE "created_by_user_id" IS NULL/);
+    expect(lepas.slice(del)).toMatch(/set_config\('app\.unit_ids', COALESCE\(scope_lama, ''\), true\)/);
+    // Tak ada jalur hapus lain di migrasi ini.
+    expect(st.split('DELETE FROM "app"."pihak_lawan"').length).toBe(2);
+  });
+
+  it("backfill sekali untuk pasangan yang sudah bolong, SESUDAH trigger terpasang", () => {
+    const tanpaBody = st.replace(/\$([a-z]*)\$[\s\S]*?\$\1\$/g, "$$BODY$$");
+    const panggil = tanpaBody.lastIndexOf('SELECT "app"."pihak_lawan_pastikan_unit"();');
+    expect(panggil, "backfill tidak dipanggil di tingkat atas").toBeGreaterThan(-1);
+    expect(panggil).toBeGreaterThan(tanpaBody.indexOf('CREATE TRIGGER "unit_pihak_lawan_otomatis"'));
+  });
+
+  it("tanpa tabel baru, tanpa menyentuh RLS/policy (tak ada tabel unit-scoped baru)", () => {
+    expect(st).not.toMatch(/CREATE TABLE|ROW LEVEL SECURITY|CREATE POLICY|DROP POLICY|GRANT|REVOKE/);
   });
 });

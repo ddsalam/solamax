@@ -260,8 +260,12 @@ function FormPenyelesaian({ b, ctx }: { b: BarisImporTampil; ctx: Bersama }) {
           <p className="fs16 t-tertiary">
             {debit
               ? "Debit ini keluar ke unit lawan: unit ini memberi (piutang ke unit lawan)."
-              : "Kredit ini masuk dari/untuk unit lawan (mis. pelanggan unit lain membayar ke rekening ini): unit ini berhutang ke unit lawan."}{" "}
+              : "Kredit ini masuk dari unit lawan: unit ini berhutang ke unit lawan."}{" "}
             Kaki unit lawan dibukukan di bukunya dan menunggu rekening korannya sendiri. Wajib berperan Keuangan di kedua unit.
+          </p>
+          <p className="fs14 t-warning">
+            Bukan untuk pembayaran pelanggan unit lain ke rekening ini — kaki unit lain jadi baris kas yang tak ada di
+            rekening korannya dan menahan tutup bulannya. Parkir saja; HoF yang menyelesaikan.
           </p>
           <label className="keu-fld">
             <span className="keu-label">Unit lawan</span>

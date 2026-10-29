@@ -2135,7 +2135,7 @@ mendorong koreksi ke bulan berikutnya. Membuka kembali bulan/hari = di luar caku
 | # | Batas | Yang dibutuhkan |
 |---|---|---|
 | a | `simpanMutasiKas` / `voidMutasiKas` masih bisa menulis ke **hari tertutup** (§10.33) | keputusan Dion: terapkan §10.33 ke jalur manual (PR terpisah) |
-| b | Pembayaran yang **diterima untuk unit lain** (mis. pelanggan BK membayar ke rekening IB) diklasifikasi sebagai pasangan antar unit ⇒ kaki unit lain menjadi **baris kas** yang tak pernah ada di rekening korannya ⇒ syarat 4 §10.41 **menahan tutup bulan** unit itu | keputusan perlakuan — mis. kaki **non-kas** untuk sisi yang tak menyentuh banknya |
+| b | Pembayaran pelanggan unit A yang **masuk ke rekening unit B** (mis. pelanggan BK membayar ke rekening IB). ⚖️ **Keputusan owner 29 Okt 2026: tunda.** Sementara ini Finance **memarkir** mutasinya di penampung "Mutasi Belum Teridentifikasi" (§10.40) dan **HoF** yang menyelesaikannya — sebelum tutup bulan unit B, karena penampung wajib nol (§10.40). ⛔ **Jangan** diklasifikasi "Antar unit": itu menulis **baris kas** di rekening unit A yang tak pernah muncul di rekening koran A ⇒ syarat 4 §10.41 **menahan tutup bulan** unit A | desain **kaki non-kas** (sisi yang tak menyentuh bank unit A) — brainstorm terpisah |
 | c | Tanda **Nota Debet/Kredit** pada CHECK penebusan (§10.37) belum dicek ke bukti nyata | satu bukti Nota Kredit + satu Nota Debet nyata |
 | d | Void penebusan diberikan ke **Keuangan**; R26 menyebut pembatalan milik HoF (R31 tak menyebut penebusan) | konfirmasi Dion |
 | e | Satu SO dibayar **dua debit** harus dikelompokkan manual (2:1) | diterima, atau minta usulan otomatis |

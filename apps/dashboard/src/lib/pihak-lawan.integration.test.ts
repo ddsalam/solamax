@@ -19,6 +19,10 @@ import { Pool, type PoolClient } from "pg";
  * di-rollback) — ⛔ jangan arahkan ke DB pilot live: DDL itu memegang kunci
  * ACCESS EXCLUSIVE atas `cash_ledger` sampai rollback.
  * Bila 0049 belum ter-apply, tiap uji SKIP EKSPLISIT (`ctx.skip()`).
+ *
+ * 0055 (trigger unit baru) ikut diuji di sini: satu-satunya kasus yang menulis
+ * `public.unit` — unit fiktif 8803, tetap di dalam transaksi yang di-ROLLBACK;
+ * SKIP bila trigger 0055 belum terpasang.
  */
 const LIVE = process.env.PIHAK_LAWAN_LIVE_DB === "1" && !!process.env.PIHAK_LAWAN_DB_URL;
 const d = LIVE ? describe : describe.skip;
@@ -126,6 +130,74 @@ d("0049 — pihak lawan ditegakkan DB", () => {
                                AND p.nama = 'Outlet Bright')`,
       );
       expect(tanpaBright.rows).toEqual([]);
+    } finally {
+      await c.query("ROLLBACK").catch(() => {});
+      c.release();
+    }
+  });
+
+  it("0055: unit BARU otomatis berpasangan dua arah + Outlet Bright; scope pemanggil utuh; DELETE melepasnya", async (ctx) => {
+    if (!applied) return ctx.skip();
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query("SET LOCAL lock_timeout = '5s'");
+      const ada = await c.query(
+        `SELECT 1 FROM pg_trigger WHERE tgname = 'unit_pihak_lawan_otomatis' AND NOT tgisinternal`,
+      );
+      const tenant = await c.query<{ tenant_id: string }>(
+        `SELECT tenant_id::text AS tenant_id FROM public.unit ORDER BY unit_id LIMIT 1`,
+      );
+      if (ada.rowCount !== 1 || tenant.rowCount !== 1) return ctx.skip();
+
+      // Unit FIKTIF 8803, di dalam transaksi yang di-ROLLBACK. Scope pemanggil
+      // sengaja SEMPIT (hanya 8801) untuk membuktikan trigger memasang scopenya
+      // sendiri dan memulihkannya.
+      const UN = 8803;
+      await c.query("SELECT set_config('app.unit_ids', $1, true)", [String(UA)]);
+      await c.query(
+        `INSERT INTO public.unit (unit_id, code, name, api_key_hash, timezone, active, tenant_id)
+         VALUES ($1, 'UJI-0055-8803', 'Unit Uji 0055', 'uji-0055-8803-bukan-kunci', 'Asia/Pontianak', true, $2::uuid)`,
+        [UN, tenant.rows[0]!.tenant_id],
+      );
+      const scope = await c.query<{ s: string }>(`SELECT current_setting('app.unit_ids', true) AS s`);
+      expect(scope.rows[0]!.s).toBe(String(UA));
+
+      await c.query(
+        `SELECT set_config('app.unit_ids',
+           (SELECT string_agg(unit_id::text, ',') FROM public.unit), true)`,
+      );
+      const keUnitBaru = await c.query(
+        `SELECT u.unit_id FROM public.unit u
+          WHERE u.unit_id <> $1
+            AND NOT EXISTS (SELECT 1 FROM app.pihak_lawan p
+                             WHERE p.unit_id = u.unit_id AND p.jenis = 'unit'
+                               AND p.lawan_unit_id = $1 AND p.nama = 'Unit Uji 0055')`,
+        [UN],
+      );
+      expect(keUnitBaru.rows).toEqual([]);
+      const dariUnitBaru = await c.query(
+        `SELECT v.unit_id FROM public.unit v
+          WHERE v.unit_id <> $1
+            AND NOT EXISTS (SELECT 1 FROM app.pihak_lawan p
+                             WHERE p.unit_id = $1 AND p.jenis = 'unit'
+                               AND p.lawan_unit_id = v.unit_id AND p.nama = v.name)`,
+        [UN],
+      );
+      expect(dariUnitBaru.rows).toEqual([]);
+      const bright = await c.query(
+        `SELECT 1 FROM app.pihak_lawan
+          WHERE unit_id = $1 AND jenis = 'titipan' AND nama = 'Outlet Bright' AND created_by_user_id IS NULL`,
+        [UN],
+      );
+      expect(bright.rowCount).toBe(1);
+
+      await c.query(`DELETE FROM public.unit WHERE unit_id = $1`, [UN]);
+      const sisa = await c.query(
+        `SELECT 1 FROM app.pihak_lawan WHERE unit_id = $1 OR lawan_unit_id = $1`,
+        [UN],
+      );
+      expect(sisa.rowCount).toBe(0);
     } finally {
       await c.query("ROLLBACK").catch(() => {});
       c.release();
