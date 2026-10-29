@@ -201,6 +201,15 @@ export const PESAN_TAK_BOLEH_INPUT: Record<AlasanTakBolehInput, string> = {
 };
 
 /**
+ * Pesan penolakan bagi pemanggil yang TIDAK lolos predikat tulisnya — alasan
+ * input bila ada, selain itu "bukan_keuangan". Dipanggil SESUDAH predikat
+ * menolak; ia bukan gerbang.
+ */
+export function pesanTakBolehInput(ctx: WewenangCtx): string {
+  return PESAN_TAK_BOLEH_INPUT[alasanTakBolehInput(ctx) ?? "bukan_keuangan"];
+}
+
+/**
  * Boleh MEMBACA Laporan Keuangan Harian (Layar 2)?
  *
  * Keputusan owner 17 Agustus 2026 — §10.13, ditulis ke repo sebelum dipakai.
@@ -323,4 +332,175 @@ export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): 
   return (
     canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pihak lawan (rencana 2026-10-29 U3; R26) — SATU predikat per keputusan.
+//
+// ⛔ Ditulis terpisah meski hari ini beberapa bunyinya sama dengan predikat
+// lama: yang dipatok di sini adalah KEPUTUSANNYA. Kalau kelak satu wewenang
+// bergeser (mis. menonaktifkan pihak lawan dipindah ke HoF), yang berubah satu
+// predikat beserta ujinya — bukan seluruh layar yang kebetulan berbagi gerbang.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENAMBAH pihak lawan (afiliasi, pemilik titipan, kreditur, karyawan,
+ * lain-lain)? Staf `keuangan` + super admin — semantik {@link canInputKeuangan},
+ * termasuk irisan HoF × `keuangan` yang ditutup (§10.12). Pengawas tidak (§2).
+ */
+export function canTambahPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENONAKTIFKAN pihak lawan? Staf `keuangan` + super admin (rencana U3,
+ * "nonaktifkan pihak lawan (Keuangan)").
+ *
+ * ⚠️ BEDA SENGAJA dengan {@link canNonaktifkanAkunKas} (HoF). Alasan §10.18 —
+ * "yang menghilang tidak menampakkan diri" — tidak berlaku di sini: pihak lawan
+ * nonaktif TETAP tampil di daftarnya berikut saldonya; yang hilang hanya
+ * kemungkinan memilihnya untuk mutasi baru. Bila kelak layar menyembunyikan
+ * pihak lawan nonaktif, alasan §10.18 hidup kembali dan predikat ini harus
+ * pindah ke HoF.
+ */
+export function canNonaktifkanPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENETAPKAN/MENGGANTI saldo pembuka pihak lawan (R7, R26)? **Head of
+ * Finance** + super admin — semantik {@link canNonaktifkanAkunKas} dan
+ * `tetapkanSaldoAwal` rekening (§10.24): menetapkan titik awal lebih dekat ke
+ * menyetujui daripada ke mengetik. Staf `keuangan` TIDAK.
+ */
+export function canTetapkanSaldoAwalPihakLawan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/**
+ * Boleh "Tetapkan pihak lawan" pada baris Hutang Piutang LAMA (KTD3)? Staf
+ * `keuangan` + super admin: ini klasifikasi mutasi (R26), milik peran yang
+ * mengetik buku — bukan penyetuju (§10.12).
+ */
+export function canTetapkanPihakLawanBaris(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+// ---------------------------------------------------------------------------
+// Pasangan antar unit (rencana 2026-10-29 U4; R26, R30, R31) — satu predikat
+// per keputusan, sama alasannya dengan blok pihak lawan di atas.
+//
+// ⛔ Predikat ini hanya separuh gerbang. Separuh lainnya — `scope.requireUnit`
+// untuk KEDUA unit sebelum BEGIN (R30, "Gerbang dua unit") — milik server
+// action-nya (`antar-unit-actions.ts`), karena peran bersifat GLOBAL per orang
+// sedangkan jangkauan unit datang dari penugasan.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCATAT pinjaman/pengembalian/titipan antar unit (R3, R26)? Staf
+ * `keuangan` + super admin — semantik {@link canInputKeuangan}, termasuk irisan
+ * HoF × `keuangan` yang ditutup (§10.12). Pengawas & Direksi tidak.
+ */
+export function canCatatAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBALIK pasangan antar unit (R31)? **Head of Finance** + super admin.
+ * Key Decision "Tindakan pembatalan hanya milik HoF": uang yang sudah dicatat
+ * (dan kelak direkonsiliasi) tidak dibongkar oleh orang yang mencatatnya. Staf
+ * `keuangan` TIDAK — asimetri dua arah dengan {@link canCatatAntarUnit}.
+ */
+export function canBalikPasanganAntarUnit(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+// ---------------------------------------------------------------------------
+// Penebusan per SO (rencana 2026-10-29 U7; R10, R26) — satu predikat per
+// keputusan, sama alasannya dengan blok pihak lawan di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCATAT penebusan per SO (komponen pajak + baris kas Pembelian BBM)?
+ * R26: "Hanya peran Keuangan yang menulis … penebusan". Staf `keuangan` + super
+ * admin — semantik {@link canInputKeuangan}, termasuk irisan HoF × `keuangan`
+ * yang ditutup (§10.12). Pengawas & Direksi tidak.
+ */
+export function canCatatPenebusan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBATALKAN (void) penebusan yang harinya masih terbuka? Staf
+ * `keuangan` + super admin — koreksi ketik oleh pengetiknya, SEBELUM hari
+ * ditutup dan sebelum baris kasnya dicocokkan (keduanya dijaga server action).
+ *
+ * ⚠️ Bukan R31: R31 menamai pembatalan COCOK, tarik rekening koran, dan balik
+ * pasangan sebagai milik HoF. Penebusan yang hari bukunya sudah ditutup atau
+ * baris kasnya sudah dicocokkan TIDAK bisa di-void lewat predikat ini — ia
+ * menuntut pembalikan maju (belum dibangun).
+ */
+export function canBatalkanPenebusan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+// ---------------------------------------------------------------------------
+// Impor rekening koran (rencana 2026-10-29 U9; R26, R31) — satu predikat per
+// keputusan, sama alasannya dengan blok pihak lawan di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGUNGGAH e-statement (R17, R26: "Hanya peran Keuangan yang menulis …
+ * impor")? Staf `keuangan` + super admin — semantik {@link canInputKeuangan},
+ * termasuk irisan HoF × `keuangan` yang ditutup (§10.12).
+ */
+export function canImporRekeningKoran(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MENARIK rekening koran yang sudah diimpor (R31)? **Head of Finance** +
+ * super admin. Key Decision "Tindakan pembatalan hanya milik HoF": yang
+ * mengunggah tidak membongkar impornya sendiri. Staf `keuangan` TIDAK.
+ */
+export function canTarikRekeningKoran(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+// ---------------------------------------------------------------------------
+// Kelompok cocok rekening koran (rencana 2026-10-29 U10; R26, R31) — satu
+// predikat per keputusan, sama alasannya dengan blok impor di atas.
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENCOCOKKAN baris rekening koran dengan buku (otomatis sesudah unggah,
+ * atau kelompok pilihan sendiri)? Staf `keuangan` + super admin — semantik
+ * {@link canInputKeuangan}, termasuk irisan HoF × `keuangan` yang ditutup
+ * (§10.12): yang membatalkan cocok tidak ikut mencocokkan.
+ */
+export function canCocokkanBank(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return canInputKeuangan(ctx, daftar);
+}
+
+/**
+ * Boleh MEMBATALKAN kelompok cocok (R31)? **Head of Finance** + super admin.
+ * Key Decision "Tindakan pembatalan hanya milik HoF": uang yang sudah
+ * direkonsiliasi tidak dibongkar oleh orang yang mencocokkannya. Staf
+ * `keuangan` TIDAK — asimetri dua arah dengan {@link canCocokkanBank}.
+ */
+export function canBatalkanCocokBank(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+// ---------------------------------------------------------------------------
+// Tutup bulan (rencana 2026-10-29 U12; R25, KTD14)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENUTUP BULAN satu unit (R25: "HoF menutup bulan per unit")? **Head of
+ * Finance** + super admin. Staf `keuangan` TIDAK — bulan tertutup beku dan
+ * tak ada jalur buka ulang, jadi penutupnya pemegang tanggung jawab akhir.
+ */
+export function canTutupBulan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }

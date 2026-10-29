@@ -1,7 +1,7 @@
 import { qScoped } from "./db";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
-import { sqlTitipanBright } from "./titipan-bright";
+import { sqlTitipan } from "./titipan-bright";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
 import type { AkunKasRow } from "./keuangan-akun-model";
@@ -162,6 +162,12 @@ export interface MutasiKasRow extends MutasiKas {
   sourceManualEntryId: string | null;
   /** Kaki jurnal "Setujui pencairan" EDC — ditulis mesin, tiga kaki sekaligus. */
   dariPencairanEdc: boolean;
+  /** 0049 — kaki (atau pembalik) pasangan antar unit: hanya dibalik lewat "Balik pasangan" (R31). */
+  antarUnit?: boolean;
+  /** 0049 — pihak lawan baris ini (wajib untuk "Penyerahan titipan"/"Hutang Piutang"). */
+  pihakLawanId?: string | null;
+  /** 0049 — tanggal asal bila dibukukan maju (R28); `null` = sama dengan hari buku. KTD15. */
+  tanggalAsal?: string | null;
 }
 
 /**
@@ -191,7 +197,10 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             saldo_awal_sementara                  AS "saldoAwalSementara",
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId",
-            (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc"
+            (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc",
+            (pasangan_uuid IS NOT NULL)           AS "antarUnit",
+            pihak_lawan_id::text                  AS "pihakLawanId",
+            to_char(tanggal_asal,'YYYY-MM-DD')    AS "tanggalAsal"
        FROM app.cash_ledger
       -- Saldo pembuka SELALU ikut, apa pun tanggalnya (§10.26): cut-over bisa
       -- bertanggal sesudah hari yang dilaporkan, dan tanpa baris itu hari-hari
@@ -382,7 +391,7 @@ export async function getBiayaHarian(
             status::text          AS status,
             source_door           AS "sourceDoor",
             void,
-            ${sqlTitipanBright("m")} AS "titipanBright"
+            ${sqlTitipan("m")} AS "titipanBright"
        FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pendapatan_lain','pengeluaran')
@@ -433,6 +442,12 @@ export interface DayCloseRow {
   /** Diresolusi dari `app.users` — kertas menyebut orang, bukan id. */
   closedByEmail: string | null;
   approvedByEmail: string | null;
+  /**
+   * KTD15 (0054) — koreksi susulan yang disimpan di samping selisih. `null` =
+   * hari ditutup sebelum 0054 (tak tercatat) atau belum terhitung. Opsional di
+   * tipe supaya fixture kertas lama tetap sah; kueri selalu mengisinya.
+   */
+  koreksiSusulanRp?: number | null;
 }
 
 export async function getDayClose(
@@ -443,6 +458,7 @@ export async function getDayClose(
     unit,
     `SELECT dc.status::text                   AS status,
             dc.difference_rp::float8          AS "differenceRp",
+            dc.koreksi_susulan_rp::float8     AS "koreksiSusulanRp",
             dc.tier::text                     AS tier,
             dc.reason_code                    AS "reasonCode",
             dc.reason_requires_target         AS "reasonRequiresTarget",

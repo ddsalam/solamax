@@ -19,6 +19,11 @@ RUN pnpm --filter @solamax/dashboard build
 
 FROM node:22-slim
 ENV NODE_ENV=production PORT=8080 HOSTNAME=0.0.0.0
+# pdftotext (poppler-utils) untuk impor e-statement PDF BCA: lib/pdf-teks.ts
+# memanggilnya lewat execFile (KTD10). Hanya di runtime — build tidak butuh.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends poppler-utils \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # Output standalone Next (monorepo → server.js bersarang di apps/dashboard/).
 COPY --from=build /app/apps/dashboard/.next/standalone ./

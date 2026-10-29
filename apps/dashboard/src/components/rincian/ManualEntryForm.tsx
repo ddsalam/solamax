@@ -5,7 +5,13 @@ import { LoadingButton } from "@/components/loading/LoadingButton";
 import { StateView } from "@/components/loading/StateView";
 import { rp } from "@/lib/format";
 import { addManualEntry, voidManualEntry } from "@/lib/manual-entry-actions";
-import { isTitipanBright, KATEGORI_TITIPAN_BRIGHT, POLA_KETERANGAN_TITIPAN } from "@/lib/titipan-bright";
+import {
+  isTitipan,
+  KATEGORI_TITIPAN,
+  pemilikAwal,
+  POLA_KETERANGAN_TITIPAN,
+  type PilihanPemilikTitipan,
+} from "@/lib/titipan-bright";
 import type { ManualEntryRow, ManualSection } from "@/lib/queries";
 import type { PanelIsyarat } from "@/lib/rincian-model";
 
@@ -45,6 +51,12 @@ export function validateEntry(ket: string, digits: string): string | null {
   const n = parseAmount(digits);
   if (!digits || !Number.isFinite(n) || n <= 0) return "Jumlah harus angka lebih dari 0.";
   if (n > AMOUNT_MAX) return "Jumlah terlalu besar.";
+  return null;
+}
+
+/** U5 — titipan wajib menyebut pemiliknya (server memeriksa ulang). */
+export function validateTitipan(titipan: boolean, pemilikId: string): string | null {
+  if (titipan && !pemilikId) return "Pilih pemilik titipan. Pemilik tidak ada? Hubungi Keuangan.";
   return null;
 }
 
@@ -134,10 +146,17 @@ export interface ManualSectionViewProps {
   onCancelVoid: () => void;
   ketInputRef?: React.Ref<HTMLInputElement>;
   /**
-   * §10.27 — hanya Pendapatan Lain: pilihan "titipan outlet Bright". Tanpa prop
-   * ini (Pengeluaran, Setoran) kontrolnya tak dirender sama sekali.
+   * §10.27 — hanya Pendapatan Lain: pilihan "titipan outlet" + pemiliknya (U5).
+   * Tanpa prop ini (Pengeluaran, Setoran) kontrolnya tak dirender sama sekali.
    */
-  titipan?: { checked: boolean; onChange: (v: boolean) => void };
+  titipan?: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    pemilik: readonly PilihanPemilikTitipan[];
+    /** "" = belum dipilih. */
+    pemilikId: string;
+    onPemilikChange: (id: string) => void;
+  };
   addToggleRef?: React.Ref<HTMLButtonElement>;
   confirmYesRef?: React.Ref<HTMLButtonElement>;
   registerVoidBtn?: (id: string, el: HTMLButtonElement | null) => void;
@@ -198,8 +217,8 @@ export function ManualSectionView(p: ManualSectionViewProps) {
                 <span className="fs15 t-tertiary num">{i + 1}</span>
                 <span className="fs16 t-primary manual-ket">
                   {r.keterangan}
-                  {p.titipan && isTitipanBright({ section: "pendapatan_lain", operationalCategory: r.operationalCategory ?? null, keterangan: r.keterangan }) && (
-                    <span className="manual-titipan" title="Titipan outlet Bright — masuk rekonsiliasi kas, bukan pendapatan SPBU">
+                  {p.titipan && isTitipan({ section: "pendapatan_lain", operationalCategory: r.operationalCategory ?? null, keterangan: r.keterangan }) && (
+                    <span className="manual-titipan" title="Titipan outlet — masuk rekonsiliasi kas, bukan pendapatan SPBU">
                       titipan
                     </span>
                   )}
@@ -294,9 +313,33 @@ export function ManualSectionView(p: ManualSectionViewProps) {
                   checked={p.titipan.checked}
                   onChange={(e) => p.titipan?.onChange(e.target.checked)}
                 />{" "}
-                Titipan outlet Bright — tetap dihitung di kas SPBU, <strong>bukan</strong> pendapatan SPBU
+                Titipan outlet — tetap dihitung di kas SPBU, <strong>bukan</strong> pendapatan SPBU
               </label>
             )}
+            {p.titipan?.checked &&
+              (p.titipan.pemilik.length === 0 ? (
+                <div className="manual-field">
+                  <span className="fs15 t-danger">Pemilik tidak ada? Hubungi Keuangan</span>
+                </div>
+              ) : (
+                <div className="manual-field">
+                  <label htmlFor={`${p.idBase}-pemilik`}>Pemilik titipan</label>
+                  <select
+                    id={`${p.idBase}-pemilik`}
+                    className="manual-input"
+                    required
+                    value={p.titipan.pemilikId}
+                    onChange={(e) => p.titipan?.onPemilikChange(e.target.value)}
+                  >
+                    <option value="">— pilih pemilik —</option>
+                    {p.titipan.pemilik.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.nama}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
             <div className="manual-field">
               <label htmlFor={`${p.idBase}-amt`}>Jumlah (Rp)</label>
               <input
@@ -351,6 +394,7 @@ export function ManualEntryForm({
   title,
   entries,
   recon,
+  pemilikTitipan = [],
 }: {
   code: string;
   date: string;
@@ -358,6 +402,8 @@ export function ManualEntryForm({
   title: string;
   entries: ManualEntryRow[];
   recon?: ManualRecon | null;
+  /** U5 — pemilik titipan AKTIF unit ini; hanya dipakai Pendapatan Lain. */
+  pemilikTitipan?: readonly PilihanPemilikTitipan[];
 }) {
   const [ket, setKet] = useState("");
   const [amount, setAmount] = useState("");
@@ -365,6 +411,10 @@ export function ManualEntryForm({
   // Bright/titipan); boolean = pengawas sudah memilih sendiri.
   const [titipanPilih, setTitipanPilih] = useState<boolean | null>(null);
   const titipanChecked = titipanPilih ?? POLA_KETERANGAN_TITIPAN.test(ket);
+  // U5 — `null` = ikuti keterangan (Outlet Bright hanya untuk keterangan yang
+  // dikenali §10.27); string = pengawas sudah memilih.
+  const [pemilikPilih, setPemilikPilih] = useState<string | null>(null);
+  const pemilikId = pemilikPilih ?? pemilikAwal(ket, pemilikTitipan);
   const [adding, setAdding] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -423,7 +473,8 @@ export function ManualEntryForm({
   const submit = (): void => {
     if (pending) return; // anti double-submit (lapis kedua; tombol sudah disabled)
     setSuccess(null);
-    const msg = validateEntry(ket, amount);
+    const titipan = section === "pendapatan_lain" && titipanChecked;
+    const msg = validateEntry(ket, amount) ?? validateTitipan(titipan, pemilikId);
     if (msg) {
       setErr(msg);
       return;
@@ -439,7 +490,7 @@ export function ManualEntryForm({
           keterangan: ketTrim,
           amount: amt,
           urut: 9_999,
-          operationalCategory: section === "pendapatan_lain" && titipanChecked ? KATEGORI_TITIPAN_BRIGHT : null,
+          operationalCategory: titipan ? KATEGORI_TITIPAN : null,
           _pending: true,
         },
       });
@@ -449,13 +500,16 @@ export function ManualEntryForm({
         section,
         keterangan: ketTrim,
         amount: amt,
-        ...(section === "pendapatan_lain" ? { titipanBright: titipanChecked } : {}),
+        ...(section === "pendapatan_lain"
+          ? { titipan: titipanChecked, pemilikTitipanId: titipan ? pemilikId : null }
+          : {}),
       });
       if (!res.ok) setErr(res.error); // isian DIPERTAHANKAN utk koreksi
       else {
         setKet("");
         setAmount("");
         setTitipanPilih(null);
+        setPemilikPilih(null);
         setSuccess("Entri ditambahkan.");
         ketInputRef.current?.focus(); // siap entri berikutnya
       }
@@ -519,7 +573,16 @@ export function ManualEntryForm({
       registerVoidBtn={registerVoidBtn}
       titipan={
         section === "pendapatan_lain"
-          ? { checked: titipanChecked, onChange: (v) => setTitipanPilih(v) }
+          ? {
+              checked: titipanChecked,
+              onChange: (v) => setTitipanPilih(v),
+              pemilik: pemilikTitipan,
+              pemilikId,
+              onPemilikChange: (id) => {
+                setPemilikPilih(id);
+                setErr(null);
+              },
+            }
           : undefined
       }
     />

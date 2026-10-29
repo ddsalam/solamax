@@ -173,6 +173,38 @@ function buildGroups(
           icon: "card",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/edc$/.test(p),
         },
+        {
+          // Rencana 2026-10-29 U3 — master pihak lawan, saldo pembuka (HoF), dan
+          // baris Hutang Piutang lama yang belum menyebut pihak lawan.
+          href: unitCode ? `/keuangan/unit/${unitCode}/pihak-lawan` : null,
+          label: "Pihak lawan",
+          icon: "users",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/pihak-lawan/.test(p),
+        },
+        {
+          // Rencana 2026-10-29 U7 — penebusan per SO (komponen pajak) + rekap
+          // pajak bulanan; tetangga Pihak lawan.
+          href: unitCode ? `/keuangan/unit/${unitCode}/penebusan` : null,
+          label: "Penebusan SO",
+          icon: "fuel",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/penebusan/.test(p),
+        },
+        {
+          // Rencana 2026-10-29 U9 — unggah e-statement BCA per rekening per
+          // bulan; tarik impor (HoF). Tetangga Penebusan SO.
+          href: unitCode ? `/keuangan/unit/${unitCode}/impor-bank` : null,
+          label: "Impor rekening koran",
+          icon: "receipt",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/impor-bank/.test(p),
+        },
+        {
+          // Rencana 2026-10-29 U12 — daftar periksa & penutupan bulan (HoF),
+          // bulan dari tanggal yang sedang dipilih. Tetangga Impor rekening koran.
+          href: unitCode ? `/keuangan/unit/${unitCode}/tutup-bulan/${date.slice(0, 7)}` : null,
+          label: "Tutup bulan",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/tutup-bulan\//.test(p),
+        },
       ],
     },
     {

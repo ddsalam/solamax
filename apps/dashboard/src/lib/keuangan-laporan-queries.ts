@@ -10,15 +10,27 @@ import {
 } from "./keuangan-beban";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
-import { KATEGORI_PENYERAHAN_TITIPAN, sqlTitipanBright } from "./titipan-bright";
-import { cutOverTerawal, saldoAkun, saldoSemuaAkun, type MutasiKas } from "./keuangan-kas";
+import { sqlTitipan, type SaldoTitipanPemilik, type TitipanDiterima } from "./titipan-bright";
+import { cutOverTerawal, saldoAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
 import {
-  deltaKategori,
-  deltaKategoriSampai,
+  langkahHarianRinci,
   sebabKasDari,
+  type RincianLangkah,
   type SebabKasInput,
+  type SisiKasLangkah,
+  type SisiLangkahDinilai,
 } from "./keuangan-laporan-model";
+import {
+  arusBukuKas,
+  barisSusulan,
+  sisiKasNeraca,
+  type MutasiSisiKas,
+  type PihakLawanNeraca,
+  type SisiKasNeraca,
+} from "./keuangan-sisi-kas";
+import { getPihakLawan } from "./pihak-lawan-queries";
+import { addDays } from "./periods";
 import {
   getAkunKas,
   getHargaBeliRows,
@@ -48,42 +60,85 @@ export interface BahanLaporan {
   kasAkhir: number | null;
   /** Sebab `kasAkhir`/`kasAwalPerAkun` kosong — diteruskan ke panel apa adanya. */
   sebabKas: SebabKasInput;
-  /** SALDO kumulatif — untuk neraca. */
+  /**
+   * SALDO — untuk neraca. KTD2/U6: Σ saldo pihak lawan non-titipan (positif =
+   * piutang) + −Σ amount baris Hutang Piutang tanpa pihak lawan.
+   */
   hutangPiutangNonEasymax: number | null;
+  /** Bagian di atas yang pihak lawannya belum ditetapkan (KTD3) — ditampilkan terpisah. */
+  pihakLawanBelumDitetapkan: number | null;
+  /** §10.26 — ada saldo pembuka pihak lawan berlaku yang sementara. */
+  pihakLawanSementara: boolean;
   /** ARUS hari itu — untuk cash flow. Bukan angka yang sama. */
   arusHutangPiutangNonEasymax: number | null;
-  /** §10.27 — SALDO liabilitas titipan outlet Bright (neraca). */
+  /** KTD8 — SALDO penampung (−Σ amount) untuk neraca; `null` = tanpa akun kas. */
+  penampung: number | null;
+  /** KTD8 — ARUS penampung hari itu (cash flow). */
+  arusPenampung: number | null;
+  /** §1.2 — SALDO temporary investment (−Σ amount) untuk neraca. */
+  temporaryInvestment: number | null;
+  /** §1.3 — ARUS temporary investment hari itu. */
+  arusTemporaryInvestment: number | null;
+  /** §10.26 — ada saldo pembuka pemilik titipan berlaku yang sementara. */
+  titipanSementara: boolean;
+  /**
+   * KTD15 — sisi kas yang sama TANPA baris yang dibukukan hari itu bertanggal
+   * asal lebih awal. `undefined` = hari itu tak punya baris susulan.
+   */
+  tanpaSusulan?: SisiLangkahDinilai;
+  /**
+   * §10.27/U5 — SALDO liabilitas titipan, GABUNGAN semua pemilik (neraca).
+   * Namanya tetap demi baris neraca yang sudah ada; rinciannya di
+   * {@link BahanLaporan.titipanPerPemilik}.
+   */
   saldoTitipanBright: number;
-  /** §10.27 — ARUS titipan hari itu: diterima − diserahkan (cash flow). */
+  /** U5 — saldo titipan per pemilik (Outlet Bright, Kebab, …); Σ = `saldoTitipanBright`. */
+  titipanPerPemilik: SaldoTitipanPemilik[];
+  /** §10.27/U5 — ARUS titipan hari itu, semua pemilik: diterima − diserahkan (cash flow). */
   arusTitipanBright: number;
   piutangEasymax: number;
   deltaPiutangEasymax: number;
   beban: BarisBeban[];
   pendapatanLain: number;
-  /** §10.29 — arus ekuitas bersih hari itu (prive/kontribusi): `deltaKontribusi` neraca & baris arus kas. */
+  /**
+   * §10.29 — arus ekuitas bersih hari itu (prive/kontribusi): `deltaKontribusi`
+   * neraca & baris arus kas. U6: reklasifikasi biaya pengawas + buku kas
+   * (Tambahan Modal / Kontribusi ke Pusat). POSITIF = keluar.
+   */
   kontribusi: number;
+  /** R16 — Σ buku kas `Pembelian BBM` hari itu (arus, keluar = negatif). `null` = tanpa akun kas. */
   penebusanSo: number | null;
   totalAssetKemarin: number | null;
 }
 
-/** Beban & pendapatan lain-lain milik hari itu, dari kedua pintu (§2.4). */
-async function getBebanDanPendapatan(
-  unit: ScopedUnitId,
-  date: string,
-): Promise<{
+interface BebanDanPendapatan {
   beban: BarisBeban[];
   pendapatanLain: number;
   titipanBright: number;
   kontribusi: number;
-}> {
-  const manual = await qScoped<BarisManualLaporan>(
+}
+
+/**
+ * Beban & pendapatan lain-lain milik hari itu, dari kedua pintu (§2.4) —
+ * `penuh`, dan `tanpaKas(ids)`: hitungan yang SAMA tanpa entri pintu Finance
+ * yang bertaut (`cash_ledger_id`, 0053) ke baris kas `ids`. Yang kedua dipakai
+ * langkah "dinilai" (§10.34): baris kas susulan dan beban pasangannya keluar
+ * BERSAMA, jadi pasangan yang seimbang di SolaMax menyumbang nol. Diturunkan
+ * dari baris yang sudah dibaca — tanpa kueri tambahan.
+ */
+async function getBebanDanPendapatan(
+  unit: ScopedUnitId,
+  date: string,
+): Promise<BebanDanPendapatan & { tanpaKas: (ids: ReadonlySet<string>) => BebanDanPendapatan }> {
+  const semua = await qScoped<BarisManualLaporan>(
     unit,
     `SELECT to_char(business_date,'YYYY-MM-DD') AS "businessDate",
             -- §10.29 — akun EFEKTIF: reklasifikasi terakhir, kalau tidak akun beku.
             ${SQL_AKUN_EFEKTIF("m")}            AS "accountingAccount",
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
             keterangan, void, section::text     AS section,
-            operational_category                AS "operationalCategory"
+            operational_category                AS "operationalCategory",
+            cash_ledger_id::text                AS "cashLedgerId"
        FROM app.manual_entry m
       WHERE unit_id = $1 AND business_date = $2::date
         AND section IN ('pengeluaran','pendapatan_lain')`,
@@ -106,48 +161,97 @@ async function getBebanDanPendapatan(
     [unit, date],
   );
 
-  const { manualBeban, pendapatanLain, titipanBright, kontribusi } = pilahManualEntry(manual);
-  const beban = kumpulkanBeban(
-    { manual_entry: manualBeban, noncash_expense: nonKas },
-    date,
-    date,
-  );
+  const hitung = (manual: readonly BarisManualLaporan[]): BebanDanPendapatan => {
+    const { manualBeban, pendapatanLain, titipanBright, kontribusi } = pilahManualEntry(manual);
+    const beban = kumpulkanBeban(
+      { manual_entry: manualBeban, noncash_expense: nonKas },
+      date,
+      date,
+    );
+    return { beban, pendapatanLain, titipanBright, kontribusi };
+  };
 
-  return { beban, pendapatanLain, titipanBright, kontribusi };
+  return {
+    ...hitung(semua),
+    tanpaKas: (ids) => hitung(semua.filter((r) => r.cashLedgerId == null || !ids.has(r.cashLedgerId))),
+  };
 }
 
 /**
- * §10.27 — SALDO titipan outlet Bright pada `d`: Σ titipan diterima (Rincian)
- * − Σ yang sudah diserahkan (buku kas, kategori penyerahan), SEJAK buku kas
- * unit ini dimulai (mutasi tertua). Sebelum buku dimulai kas tak terhitung,
- * jadi liabilitasnya pun tak dihitung — nol, supaya keduanya mulai bersamaan
- * dan langkah harian di hari pertama tetap seimbang.
+ * §10.27/U5 — titipan DITERIMA (Rincian) per pemilik & hari buku, SEJAK buku
+ * kas unit ini dimulai. Sebelum buku dimulai kas tak terhitung, jadi
+ * liabilitasnya pun tak dihitung — `null`, supaya keduanya mulai bersamaan dan
+ * langkah harian di hari pertama tetap seimbang.
+ *
+ * SATU kueri (jumlah kueri `getBahanLaporan` terukur, papan-keuangan guard):
+ * setiap pemilik titipan unit + Σ diterimanya per tanggal, ditambah baris
+ * tanpa pemilik (baris lama ⇒ Outlet Bright, `saldoTitipanPerPemilik`).
+ * Per TANGGAL (U6) supaya baris yang mendahului saldo pembuka pemiliknya bisa
+ * dikecualikan secara murni — satu pemilik × hari sejak cut-over, kecil.
  */
-async function saldoTitipanPada(
+async function titipanDiterimaPada(
   unit: ScopedUnitId,
   d: string,
-  mutasi: readonly MutasiKas[],
-): Promise<number> {
+  mutasi: readonly MutasiSisiKas[],
+): Promise<TitipanDiterima[] | null> {
   const aktif = mutasi.filter((m) => !m.void && m.businessDate <= d);
-  if (aktif.length === 0) return 0;
+  if (aktif.length === 0) return null;
   // Mulai = cut-over terawal bila ada (§10.26) — titipan dan kas mulai
   // dibukukan pada tanggal yang SAMA. Tanpa ini, mutasi lama sebelum cut-over
   // (IB, 1 Sep) menarik awal titipan mundur sebulan (produksi: −345,8 jt).
   const cut = cutOverTerawal(mutasi);
-  if (cut !== null && d < cut) return 0;
+  if (cut !== null && d < cut) return null;
   const mulai =
     cut ?? aktif.reduce((a, m) => (m.businessDate < a ? m.businessDate : a), aktif[0]!.businessDate);
-  const r = await qScoped<{ rp: number }>(
+  return getTitipanDiterima(unit, mulai, d);
+}
+
+/**
+ * Kueri titipan diterima per pemilik & hari buku dalam `[mulai, d]` — dipisah
+ * hanya supaya gerbang K1 (`queries.sqlcheck`) bisa mengeksekusinya langsung;
+ * jalur laporan memanggilnya lewat {@link titipanDiterimaPada}.
+ */
+export async function getTitipanDiterima(unit: ScopedUnitId, mulai: string, d: string): Promise<TitipanDiterima[]> {
+  return qScoped<TitipanDiterima>(
     unit,
-    `SELECT COALESCE(sum(m.amount), 0)::float8 AS rp
-       FROM app.manual_entry m
-      WHERE m.unit_id = $1 AND NOT m.void
-        AND m.business_date BETWEEN $2::date AND $3::date
-        AND ${sqlTitipanBright("m")}`,
+    `WITH t AS (
+       SELECT m.pihak_lawan_id AS pid, m.business_date AS d, sum(m.amount) AS rp
+         FROM app.manual_entry m
+        WHERE m.unit_id = $1 AND NOT m.void
+          AND m.business_date BETWEEN $2::date AND $3::date
+          AND ${sqlTitipan("m")}
+        GROUP BY m.pihak_lawan_id, m.business_date
+     ), p AS (
+       SELECT id, nama FROM app.pihak_lawan WHERE unit_id = $1 AND jenis = 'titipan'
+     )
+     SELECT COALESCE(p.id, t.pid)::text      AS "pihakLawanId",
+            p.nama,
+            COALESCE(t.rp, 0)::float8        AS rp,
+            to_char(t.d, 'YYYY-MM-DD')       AS "businessDate"
+       FROM p FULL JOIN t ON t.pid = p.id`,
     [unit, mulai, d],
   );
-  // Penyerahan tersimpan KREDIT (negatif) — menjumlahkannya mengurangi utang.
-  return (r[0]?.rp ?? 0) + deltaKategoriSampai(mutasi, d, KATEGORI_PENYERAHAN_TITIPAN);
+}
+
+/**
+ * Sisi buku kas neraca pada `d` — penuh, dan tanpa baris susulan hari itu
+ * (KTD15). Titipan diterima dibaca SEKALI dan dipakai kedua hitungan: baris
+ * Rincian bukan baris kas, jadi tak pernah "susulan". Kuerinya
+ * ({@link titipanDiterimaPada}) dimulai pemanggil begitu mutasi kas tiba —
+ * di gelombang paralel yang sama, bukan gelombang kedua.
+ */
+async function sisiKasPada(
+  d: string,
+  mutasi: readonly MutasiSisiKas[],
+  pihakLawan: readonly PihakLawanNeraca[],
+  dasar: { adaAkun: boolean; kasTerhitung: boolean },
+  titipanP: Promise<TitipanDiterima[] | null>,
+): Promise<{ penuh: SisiKasNeraca; tanpaSusulan: SisiKasNeraca | undefined }> {
+  const titipanDiterima = await titipanP;
+  const hitung = (rows: readonly MutasiSisiKas[]) =>
+    sisiKasNeraca({ mutasi: rows, date: d, ...dasar, pihakLawan, titipanDiterima });
+  const tanpa = mutasi.filter((m) => !barisSusulan(m, d));
+  return { penuh: hitung(mutasi), tanpaSusulan: tanpa.length === mutasi.length ? undefined : hitung(tanpa) };
 }
 
 /** Total asset komponen-non-kas pada satu tanggal — untuk LANGKAH harian. */
@@ -165,15 +269,25 @@ function assetNonKas(t: DayTotals): number | null {
  *
  * `null` bila salah satu komponennya tak diketahui — bukan nol.
  */
-async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | null> {
+async function totalAssetPada(
+  unit: ScopedUnitId,
+  d: string,
+  pihakLawanP: Promise<readonly PihakLawanNeraca[]>,
+): Promise<number | null> {
+  const akunP = getAkunKas(unit);
+  const mutasiP = getMutasiKas(unit, d);
+  // Titipan diterima menyusul mutasi kas di gelombang yang sama — dan HANYA bila
+  // ada akun (tanpa akun fungsi ini berhenti di bawah; jumlah kuerinya tetap).
+  const titipanP = Promise.all([akunP, mutasiP]).then(([a, m]) => (a.length === 0 ? null : titipanDiterimaPada(unit, d, m)));
   const [gl, sales, buyRows, doRows, akun, mutasi, saldo] = await Promise.all([
     getDailyGlByProduct(unit, d, d),
     getSalesByProduct(unit, d, d),
     getHargaBeliRows(unit),
     getDoHarian(unit, d),
-    getAkunKas(unit),
-    getMutasiKas(unit, d),
+    akunP,
+    mutasiP,
     getSaldoPelanggan(unit, d),
+    titipanP,
   ]);
   if (akun.length === 0) return null;
 
@@ -203,13 +317,17 @@ async function totalAssetPada(unit: ScopedUnitId, d: string): Promise<number | n
       };
     }),
   );
-  const kas = [...saldoSemuaAkun(mutasi, d).values()].reduce((s, v) => s + v, 0);
   const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
-  const nonEasymax = deltaKategoriSampai(mutasi, d, "Hutang Piutang");
-  // §10.27 — titipan outlet Bright adalah LIABILITAS: mengurangi asset bersih.
-  const titipan = await saldoTitipanPada(unit, d, mutasi);
+  // ⛔ Term sisi kas lewat fungsi yang SAMA dengan hari ini (`sisiKasNeraca`):
+  //    kas, pihak lawan (KTD2), penampung (KTD8), temporary investment, titipan
+  //    (liabilitas — mengurangi asset bersih). Kemarin dihitung PENUH — baris
+  //    susulan kemarin sudah dinilai kemarin.
+  const { penuh: k } = await sisiKasPada(d, mutasi, await pihakLawanP, { adaAkun: true, kasTerhitung: true }, titipanP);
   const nonKas = assetNonKas(totals);
-  return nonKas === null ? null : kas + nonKas + piutang + nonEasymax - titipan;
+  return nonKas === null
+    ? null
+    : k.kasAkhir! + nonKas + piutang + k.hutangPiutangNonEasymax! + k.penampung! + k.temporaryInvestment! -
+        k.saldoTitipanBright;
 }
 
 export async function getBahanLaporan(
@@ -230,16 +348,24 @@ async function bahanLaporan(
   date: string,
   kemarin: string,
 ): Promise<BahanLaporan> {
-  const [gl, sales, buyRows, doRows, akun, mutasi, saldo, bp, assetKemarin] = await Promise.all([
+  // Pihak lawan unit (+ saldo pembukanya) dibaca SEKALI dan dipakai hari ini
+  // maupun kemarin — satu kueri tambahan per laporan, bukan dua.
+  const pihakLawanP = getPihakLawan(unit);
+  // Titipan diterima menyusul mutasi kas di gelombang yang sama (dipakai `sisiKasPada`).
+  const mutasiP = getMutasiKas(unit, date);
+  const titipanP = mutasiP.then((m) => titipanDiterimaPada(unit, date, m));
+  const [gl, sales, buyRows, doRows, akun, mutasi, saldo, bp, assetKemarin, pihakLawan] = await Promise.all([
     getDailyGlByProduct(unit, date, date),
     getSalesByProduct(unit, date, date),
     getHargaBeliRows(unit),
     getDoHarian(unit, date),
     getAkunKas(unit),
-    getMutasiKas(unit, date),
+    mutasiP,
     getSaldoPelanggan(unit, date),
     getBebanDanPendapatan(unit, date),
-    totalAssetPada(unit, kemarin),
+    totalAssetPada(unit, kemarin, pihakLawanP),
+    pihakLawanP,
+    titipanP,
   ]);
 
   const hargaJual = new Map(sales.flatMap((s) => {
@@ -288,22 +414,42 @@ async function bahanLaporan(
     ? akun.map((a) => ({ nama: a.nama, saldo: saldoAkun(mutasi, a.id, kemarin) }))
     : null;
   const kasAwalTotal = kasAwalPerAkun === null ? null : kasAwalPerAkun.reduce((s, a) => s + a.saldo, 0);
-  const kasAkhir = kasTerhitung
-    ? [...saldoSemuaAkun(mutasi, date).values()].reduce((s, v) => s + v, 0)
-    : null;
-
   // ⚠️ DUA angka berbeda dari kategori yang sama, dan mencampurnya adalah
   // kesalahan yang tak akan terlihat: NERACA butuh SALDO (kumulatif sampai
-  // hari ini), CASH FLOW butuh ARUS (mutasi hari itu saja).
-  // ⚠️ BATAS YANG DISEBUT: kedua suku "Hutang Piutang" di bawah tetap memakai
-  //    `adaAkun`, bukan `kasTerhitung`. Keduanya ARUS/DELTA kategori, bukan
-  //    SALDO — nol di sana berarti "tak ada mutasi kategori itu", yang memang
-  //    benar. Keputusan §10.21 menyebut `kasAkhir`; memperluasnya diam-diam ke
-  //    pos lain adalah menebak keputusan yang tak diambil.
-  const saldoNonEasymax = adaAkun ? deltaKategoriSampai(mutasi, date, "Hutang Piutang") : null;
-  const arusNonEasymax = adaAkun ? deltaKategori(mutasi, date, "Hutang Piutang") : null;
-  const saldoTitipanBright = await saldoTitipanPada(unit, date, mutasi);
-  const arusTitipanBright = bp.titipanBright + deltaKategori(mutasi, date, KATEGORI_PENYERAHAN_TITIPAN);
+  // hari ini), CASH FLOW butuh ARUS (mutasi hari itu saja). Keduanya kini
+  // lahir dari SATU modul (`keuangan-sisi-kas.ts`): saldo dari `sisiKasNeraca`,
+  // arus dari `arusBukuKas` lewat peta kategori → baris arus kas (KTD12).
+  // ⚠️ BATAS YANG DISEBUT: suku kategori memakai `adaAkun`, bukan
+  //    `kasTerhitung`. Nol di sana berarti "tak ada mutasi kategori itu", yang
+  //    memang benar. Keputusan §10.21 menyebut `kasAkhir`; memperluasnya
+  //    diam-diam ke pos lain adalah menebak keputusan yang tak diambil.
+  const sisi = await sisiKasPada(date, mutasi, pihakLawan, { adaAkun, kasTerhitung }, titipanP);
+  const saldoNonEasymax = sisi.penuh.hutangPiutangNonEasymax;
+  const arus = arusBukuKas(mutasi, date);
+  const arusDari = (b: Parameters<typeof arus.get>[0]) => (adaAkun ? (arus.get(b) ?? 0) : null);
+  const arusNonEasymax = arusDari("Transaksi hutang piutang non-EasyMax");
+  const kasAkhir = sisi.penuh.kasAkhir;
+  const titipanPerPemilik = sisi.penuh.titipanPerPemilik;
+  const saldoTitipanBright = sisi.penuh.saldoTitipanBright;
+  const arusTitipanBright = bp.titipanBright + (arus.get("Titipan outlet Bright (bukan pendapatan)") ?? 0);
+  /** Sisi kas → bentuk langkah harian; kontribusi = reklasifikasi + buku kas. */
+  const langkahDari = (k: SisiKasNeraca, m: Pick<BebanDanPendapatan, "kontribusi"> = bp): SisiKasLangkah => ({
+    kasAkhir: k.kasAkhir,
+    hutangPiutangNonEasymax: k.hutangPiutangNonEasymax,
+    penampung: k.penampung,
+    temporaryInvestment: k.temporaryInvestment,
+    saldoTitipanBright: k.saldoTitipanBright,
+    kontribusi: m.kontribusi + k.kontribusiKas,
+  });
+  /**
+   * §10.34 — "dinilai": baris kas susulan DAN entri pintu Finance pasangannya
+   * (beban Biaya Operasional/Management Fee, Pendapatan Lain-Lain) keluar
+   * bersama. Predikatnya `barisSusulan` yang sama dengan sisi kas.
+   */
+  const dinilaiDari = (k: SisiKasNeraca): SisiLangkahDinilai => {
+    const m = bp.tanpaKas(new Set(mutasi.filter((x) => barisSusulan(x, date)).map((x) => x.id)));
+    return { ...langkahDari(k, m), beban: m.beban, pendapatanLain: m.pendapatanLain };
+  };
 
   // Piutang pelanggan EasyMax pada DUA batas (§ getSaldoPelanggan) — yang dipakai
   // neraca adalah akhir hari; arusnya = selisih terhadap awal hari.
@@ -319,19 +465,63 @@ async function bahanLaporan(
     kasAkhir,
     sebabKas,
     hutangPiutangNonEasymax: saldoNonEasymax,
+    pihakLawanBelumDitetapkan: sisi.penuh.pihakLawanBelumDitetapkan,
+    pihakLawanSementara: sisi.penuh.pihakLawanSementara,
     arusHutangPiutangNonEasymax: arusNonEasymax,
+    penampung: sisi.penuh.penampung,
+    arusPenampung: arusDari("Mutasi belum teridentifikasi (penampung)"),
+    temporaryInvestment: sisi.penuh.temporaryInvestment,
+    arusTemporaryInvestment: arusDari("Temporary investment"),
     saldoTitipanBright,
+    titipanPerPemilik,
+    titipanSementara: sisi.penuh.titipanSementara,
+    tanpaSusulan: sisi.tanpaSusulan === undefined ? undefined : dinilaiDari(sisi.tanpaSusulan),
     arusTitipanBright,
     piutangEasymax,
     deltaPiutangEasymax,
     beban: bp.beban,
     pendapatanLain: bp.pendapatanLain,
-    kontribusi: bp.kontribusi,
-    // ⚠️ Penebusan SO belum punya jalur arus-kas tersendiri di SolaMax; ia
-    // dibiarkan `null` (tak bersumber) alih-alih ditebak nol.
-    penebusanSo: null,
+    kontribusi: langkahDari(sisi.penuh).kontribusi,
+    // R16 — penebusan SO = baris kas `Pembelian BBM` hari itu (peta KTD12).
+    penebusanSo: arusDari("Penebusan SO"),
     totalAssetKemarin: assetKemarin,
   };
 }
 
+/**
+ * Langkah harian TERKINI satu hari — `day_close.difference_rp` (= `dinilai`)
+ * dan `koreksi_susulan_rp` (= `koreksiSusulan`, U12/KTD15) yang dipakai
+ * `tutupHari` (rencana 2026-10-29 U2/KTD5). Jalur yang SAMA dengan Layar 4
+ * (`getBahanLaporan` → `langkahHarianRinci`), dipanggil ulang di bawah kunci
+ * penutupan supaya baris yang dibukukan sesudah layar dibuka ikut terhitung.
+ *
+ * ⚠️ Kuerinya berjalan di koneksi pool sendiri, BUKAN di transaksi pemanggil —
+ * READ COMMITTED: mereka melihat semua yang sudah di-COMMIT. Benar karena
+ * pemanggil sudah memegang kunci eksklusif hari itu (`kunciHariEksklusif`),
+ * jadi jalur tulis R28 yang ingin menulis ke hari itu sudah COMMIT lebih dulu
+ * atau masih menunggu dan akan melihat hari itu tertutup.
+ */
+export async function hitungLangkahHarianRinci(unit: ScopedUnitId, date: string): Promise<RincianLangkah> {
+  return langkahHarianRinci(await getBahanLaporan(unit, date, addDays(date, -1)));
+}
+
 export { assetNonKas };
+
+/**
+ * U6 — bahan buku pembantu pihak lawan per tanggal (R2). Jalur BACA yang sama
+ * dengan neraca (`getMutasiKas` + `getPihakLawan` + titipan diterima +
+ * `sisiKasNeraca`), supaya saldo per pihak lawan di halaman itu tak pernah
+ * berselisih dengan baris "Hutang piutang non-EasyMax"/titipan di neraca.
+ */
+export async function getBahanBukuPembantu(unit: ScopedUnitId, per: string) {
+  const mutasiP = getMutasiKas(unit, per);
+  const [akun, mutasi, pihakLawan, titipanDiterima] = await Promise.all([
+    getAkunKas(unit),
+    mutasiP,
+    getPihakLawan(unit),
+    mutasiP.then((m) => titipanDiterimaPada(unit, per, m)),
+  ]);
+  const adaAkun = akun.length > 0;
+  const sisi = sisiKasNeraca({ mutasi, date: per, adaAkun, kasTerhitung: false, pihakLawan, titipanDiterima });
+  return { mutasi, pihakLawan, titipanDiterima, sisi };
+}

@@ -55,6 +55,7 @@ export default async function PemantauanKeuanganPage({
   const baris = rakitPantau(
     scope.units.map((u) => u.unit_id),
     bahan,
+    (id) => scope.units.find((u) => Number(u.unit_id) === id)?.name ?? `unit ${id}`,
   );
   const pelaku = ringkasPelaku(bahan.aktivitas);
   const namaUnit = new Map(scope.units.map((u) => [Number(u.unit_id), u] as const));

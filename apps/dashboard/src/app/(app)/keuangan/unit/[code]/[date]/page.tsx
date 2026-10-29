@@ -9,6 +9,8 @@ import { buildReportFilename } from "@/lib/export/filename";
 import { dateShort, timeWib } from "@/lib/format";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
 import {
+  balanceInputDari,
+  cashFlowInputDari,
   CATATAN_NILAI_DO,
   panelBalance,
   panelCashFlow,
@@ -49,20 +51,7 @@ export default async function LaporanKeuanganPage({
   const kemarin = hariSebelum(date);
   const b = await getBahanLaporan(unit.unit_id, date, kemarin);
 
-  const cf = panelCashFlow({
-    kasAwalPerAkun: b.kasAwalPerAkun,
-    sebabKas: b.sebabKas,
-    kasAkhir: b.kasAkhir,
-    omzet: b.totals.revenue,
-    teraValue: b.totals.teraValue,
-    transaksiPiutangEasymax: b.deltaPiutangEasymax,
-    hutangPiutangNonEasymax: b.arusHutangPiutangNonEasymax,
-    penebusanSo: b.penebusanSo,
-    pendapatanLain: b.pendapatanLain,
-    biayaOperasional: -b.beban.reduce((s, x) => s + x.amountRp, 0),
-    arusTitipanBright: b.arusTitipanBright,
-    kontribusiPemilik: b.kontribusi,
-  });
+  const cf = panelCashFlow(cashFlowInputDari(b));
 
   const is = panelIncome({
     totals: b.totals,
@@ -76,21 +65,7 @@ export default async function LaporanKeuanganPage({
   // sehingga ia bisa menampilkan langkah harian berangka saat keduanya berbunyi
   // "belum bisa dihitung".
   const netProfit = is.baris.find((x) => x.label === "Net profit")!.nilai;
-  const bs = panelBalance({
-    cashOnHand: b.kasAkhir,
-    sebabKas: b.sebabKas,
-    inventoryValue: b.totals.inventoryValue,
-    soValue: b.totals.soValue,
-    piutangEasymax: b.piutangEasymax,
-    hutangPiutangNonEasymax: b.hutangPiutangNonEasymax,
-    openedRetainedEarnings: null,
-    netIncome: netProfit,
-    incomeAdjustment: null,
-    totalAssetKemarin: b.totalAssetKemarin,
-    // §10.29 — prive/kontribusi dari reklasifikasi biaya pengawas.
-    deltaKontribusi: b.kontribusi,
-    saldoTitipanBright: b.saldoTitipanBright,
-  });
+  const bs = panelBalance(balanceInputDari(b, netProfit));
 
   return (
     <>

@@ -31,24 +31,40 @@ export interface BarisBuku extends MutasiKas {
   /**
    * Baris SISTEM yang tidak boleh dibatalkan dari buku: saldo pembuka (§10.24,
    * milik Head of Finance) dan kaki pencairan EDC (tiga kaki satu jurnal —
-   * membatalkan satu membuat buku tak seimbang). `null` = baris biasa.
+   * membatalkan satu membuat buku tak seimbang), baris kas milik penebusan, dan
+   * kaki pasangan antar unit (R31 — dibalik KEDUA kakinya, tak pernah satu).
+   * `null` = baris biasa.
    */
   barisSistem: BarisSistem | null;
 }
 
-export type BarisSistem = "saldo_awal" | "pencairan_edc";
+export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan" | "antar_unit";
 
 export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
   saldo_awal: "Saldo pembuka — hanya Head of Finance yang menggantinya, di Kelola akun kas.",
   pencairan_edc:
     "Bagian dari jurnal pencairan EDC (tiga baris sekaligus). Membatalkan satu baris membuat buku " +
     "tidak seimbang — hubungi Head of Finance.",
+  penebusan:
+    "Baris kas milik penebusan SO (rencana U7). Batalkan dari halaman Penebusan — membatalkannya di sini " +
+    "membuat penebusan menunjuk baris kas yang tak ada.",
+  antar_unit:
+    "Kaki pinjaman antar unit (satu pasangan, dua buku). Membatalkan satu kaki membuat saldo kedua unit " +
+    "berselisih — minta Head of Finance memakai \"Balik pasangan\" di halaman Pihak lawan › Pinjaman antar unit.",
 };
 
 /** Satu pembuat vonis untuk "baris ini baris sistem?" — dipakai layar DAN server. */
-export function barisSistemDari(m: { saldoAwal: boolean; dariPencairanEdc?: boolean }): BarisSistem | null {
+export function barisSistemDari(m: {
+  saldoAwal: boolean;
+  dariPencairanEdc?: boolean;
+  dariPenebusan?: boolean;
+  /** `pasangan_uuid IS NOT NULL` — kaki asli ATAU pembalik (maju) sebuah pasangan antar unit. */
+  antarUnit?: boolean;
+}): BarisSistem | null {
   if (m.saldoAwal) return "saldo_awal";
   if (m.dariPencairanEdc) return "pencairan_edc";
+  if (m.dariPenebusan) return "penebusan";
+  if (m.antarUnit) return "antar_unit";
   return null;
 }
 
@@ -64,6 +80,7 @@ export function barisBuku(
     keterangan: string;
     sourceManualEntryId?: string | null;
     dariPencairanEdc?: boolean;
+    antarUnit?: boolean;
   })[],
   accountId: string,
   date: string,

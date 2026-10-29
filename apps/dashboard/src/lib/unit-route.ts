@@ -28,6 +28,10 @@ export type UnitRouteSegment =
   | "keuangan-tutup-hari"
   | "keuangan-akun-kas"
   | "keuangan-edc"
+  | "keuangan-pihak-lawan"
+  | "keuangan-penebusan"
+  | "keuangan-impor-bank"
+  | "keuangan-tutup-bulan"
   | "keuangan-piutang"
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
@@ -66,6 +70,17 @@ export function unitRouteHref(args: {
   if (segment === "keuangan-akun-kas") return `/keuangan/unit/${code}/akun-kas${suffix}`;
   // Tanpa dimensi tanggal — pengaturan EDC bukan keadaan harian (§10.28).
   if (segment === "keuangan-edc") return `/keuangan/unit/${code}/edc${suffix}`;
+  // Tanpa dimensi tanggal di path — master pihak lawan; tanggal saldo di QUERY.
+  if (segment === "keuangan-pihak-lawan") return `/keuangan/unit/${code}/pihak-lawan${suffix}`;
+  // Tanpa dimensi tanggal di path — penebusan per SO; BULAN rekap di QUERY.
+  if (segment === "keuangan-penebusan") return `/keuangan/unit/${code}/penebusan${suffix}`;
+  // Tanpa dimensi tanggal — matriks rekening × bulan impor rekening koran (U9).
+  if (segment === "keuangan-impor-bank") return `/keuangan/unit/${code}/impor-bank${suffix}`;
+  // BULAN di path (U12): bulan dari tanggal yang dipilih — tanggal apa pun di
+  // bulan itu membuka daftar periksa bulan yang sama.
+  if (segment === "keuangan-tutup-bulan") {
+    return `/keuangan/unit/${code}/tutup-bulan/${(date ?? "").slice(0, 7)}${suffix}`;
+  }
   // Unit di QUERY: halaman ini membaca `?unit=`, bukan segmen path.
   if (segment === "keuangan-sumber-data") {
     return `/keuangan/sumber-data?${qs({ unit: code, tanggal: date, lain: query })}`;

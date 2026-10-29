@@ -100,3 +100,102 @@ export function ringkasTemuan(temuan: readonly TemuanIntegritas[]): string {
   const tak = temuan.length - yatim;
   return `integritas taut: ${temuan.length} temuan (${yatim} yatim, ${tak} jenis tak dikenal)`;
 }
+
+// ---------------------------------------------------------------------------
+// Kelompok cocok rekening koran (rencana 2026-10-29 U10; KTD6)
+//
+// Partial unique 0052 MENCEGAH keanggotaan ganda dan aksi MENEGAKKAN Σ = 0;
+// pemeriksaan ini MENEMUKAN pelanggaran sesudah terjadi — indeks yang hilang,
+// jalur tulis yang melewati aksi, atau baris kas anggota yang kemudian di-void
+// lewat jalur ketik lama (`simpanMutasiKas` tak tahu kelompok cocok).
+// ---------------------------------------------------------------------------
+
+export interface AnggotaCocok {
+  cocokId: string;
+  unitId: number;
+  jenis: "mutasi" | "kas";
+  anggotaId: string;
+  accountId: string;
+  /** BERTANDA, sen bulat. */
+  amountSen: number;
+  /** Baris kas anggota sudah di-void. */
+  void: boolean;
+  /** Baris impor anggota pra-cut-over atau milik rekening koran ditarik. */
+  mutasiTakSah: boolean;
+}
+
+export type MasalahCocok = "sigma-tidak-nol" | "keanggotaan-ganda" | "anggota-void" | "tanpa-baris-bank" | "baris-bank-tak-sah";
+
+export interface TemuanCocok {
+  masalah: MasalahCocok;
+  cocokId: string;
+  unitId: number;
+  /** Id anggota bermasalah (keanggotaan ganda / void / tak sah). */
+  anggotaId?: string;
+  /** Kelompok AKTIF lain yang juga memuat anggota itu. */
+  cocokLain?: string[];
+  /** Σ bank − Σ buku pada rekening itu, sen. */
+  selisihSen?: number;
+  accountId?: string;
+}
+
+/** Anggota kelompok cocok AKTIF beserta nominalnya — dibaca apa adanya, vonis di `periksaKelompokCocok`. */
+export const ANGGOTA_COCOK_AKTIF_SQL = `
+  SELECT b.cocok_id::text AS "cocokId", b.unit_id AS "unitId",
+         CASE WHEN b.mutasi_bank_id IS NOT NULL THEN 'mutasi' ELSE 'kas' END AS jenis,
+         COALESCE(b.mutasi_bank_id, b.cash_ledger_id)::text AS "anggotaId",
+         COALESCE(m.account_id, l.account_id)::text AS "accountId",
+         COALESCE(m.amount, l.amount)::text AS amount,
+         COALESCE(l.void, false) AS void,
+         COALESCE(m.pra_cutover OR m.rk_status <> 'aktif', false) AS "mutasiTakSah"
+    FROM app.cocok_bank_baris b
+    LEFT JOIN app.mutasi_bank m ON m.id = b.mutasi_bank_id AND m.unit_id = b.unit_id
+    LEFT JOIN app.cash_ledger l ON l.id = b.cash_ledger_id AND l.unit_id = b.unit_id
+   WHERE b.aktif
+`;
+
+/**
+ * Vonis integritas kelompok cocok AKTIF: Σ bank = Σ buku per rekening (tepat
+ * Rp 0), tiap baris di paling banyak satu kelompok aktif, minimal satu baris
+ * bank per kelompok, anggota kas tidak void, anggota bank masih sah.
+ * Baris kas void TETAP dihitung dalam Σ — kelompoknya memang sudah tak seimbang
+ * terhadap buku; temuan `anggota-void` menyebut sebabnya.
+ */
+export function periksaKelompokCocok(anggota: readonly AnggotaCocok[]): TemuanCocok[] {
+  const out: TemuanCocok[] = [];
+  const perAnggota = new Map<string, Set<string>>();
+  const perKelompok = new Map<string, AnggotaCocok[]>();
+  for (const a of anggota) {
+    const k = `${a.jenis}:${a.anggotaId}`;
+    perAnggota.set(k, (perAnggota.get(k) ?? new Set()).add(a.cocokId));
+    perKelompok.set(a.cocokId, [...(perKelompok.get(a.cocokId) ?? []), a]);
+  }
+  for (const [cocokId, rows] of perKelompok) {
+    const unitId = rows[0]!.unitId;
+    if (!rows.some((r) => r.jenis === "mutasi")) out.push({ masalah: "tanpa-baris-bank", cocokId, unitId });
+    for (const r of rows) {
+      const lain = [...(perAnggota.get(`${r.jenis}:${r.anggotaId}`) ?? [])].filter((x) => x !== cocokId);
+      if (lain.length > 0) out.push({ masalah: "keanggotaan-ganda", cocokId, unitId, anggotaId: r.anggotaId, cocokLain: lain });
+      if (r.jenis === "kas" && r.void) out.push({ masalah: "anggota-void", cocokId, unitId, anggotaId: r.anggotaId });
+      if (r.jenis === "mutasi" && r.mutasiTakSah) out.push({ masalah: "baris-bank-tak-sah", cocokId, unitId, anggotaId: r.anggotaId });
+    }
+    for (const akun of new Set(rows.map((r) => r.accountId))) {
+      const di = rows.filter((r) => r.accountId === akun);
+      const selisihSen =
+        di.filter((r) => r.jenis === "mutasi").reduce((t, r) => t + r.amountSen, 0) -
+        di.filter((r) => r.jenis === "kas").reduce((t, r) => t + r.amountSen, 0);
+      if (selisihSen !== 0) out.push({ masalah: "sigma-tidak-nol", cocokId, unitId, accountId: akun, selisihSen });
+    }
+  }
+  return out;
+}
+
+export function ringkasTemuanCocok(temuan: readonly TemuanCocok[]): string {
+  if (temuan.length === 0) return "integritas kelompok cocok: bersih";
+  const n = (m: MasalahCocok) => temuan.filter((t) => t.masalah === m).length;
+  return (
+    `integritas kelompok cocok: ${temuan.length} temuan (${n("sigma-tidak-nol")} Σ≠0, ` +
+    `${n("keanggotaan-ganda")} keanggotaan ganda, ${n("anggota-void")} anggota void, ` +
+    `${n("tanpa-baris-bank")} tanpa baris bank, ${n("baris-bank-tak-sah")} baris bank tak sah)`
+  );
+}

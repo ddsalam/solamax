@@ -57,7 +57,10 @@ export function PanelLaporanKeuangan({
       <div className="lap-body">
         {panel.baris.map((b, i) => (
           <div className={`lap-ln${b.sum ? " sum" : ""}${b.ind ? " ind" : ""}`} key={`${b.label}-${i}`}>
-            <span className="lap-k">{b.label}</span>
+            <span className="lap-k">
+              {b.label}
+              {b.tanda && <span className="keu-pill">{b.tanda}</span>}
+            </span>
             <Nilai b={b} />
           </div>
         ))}
