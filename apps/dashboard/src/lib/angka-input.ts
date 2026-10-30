@@ -29,13 +29,18 @@ const bersihkan = (teks: string): string =>
 /**
  * Nominal RUPIAH bulat — kas, bank, EDC, biaya, saldo pembuka.
  *
- * Sah: `1500000` · `1.500.000` · `Rp 1.500.000` · (bila `bolehNegatif`) `-250.000`.
+ * Sah: `1500000` · `1.500.000` · `Rp 1.500.000` · (bila `bolehNegatif`) `-250.000`,
+ * `−250.000`, `250.000-` (minus di belakang, gaya bukti BCA).
  * Ditolak: apa pun yang berakhir dengan sen (`1.500.000,50`, `1500000.5`),
  * pengelompokan ribuan yang tak rapi (`1.50.000`), dan huruf.
  */
 export function bacaRupiah(teks: string, opsi: { bolehNegatif?: boolean } = {}): HasilAngka {
-  let s = bersihkan(teks);
+  let s = bersihkan(teks.replace(/^\s*[−–]/, "-"));
   if (s === "") return { keadaan: "kosong" };
+  // Minus DI BELAKANG — cara bukti B2B Pertamina BCA mencetak nota kredit:
+  // `1,234,567.00-` (diketik `1.234.567-` / `1.234.567,00-`). `,-` tetap berarti
+  // sen nol, bukan minus.
+  if (/[^,-]-$/.test(s) && !s.startsWith("-")) s = `-${s.slice(0, -1)}`;
   let negatif = false;
   if (s.startsWith("-")) {
     if (!opsi.bolehNegatif) {

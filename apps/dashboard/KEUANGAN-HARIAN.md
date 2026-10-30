@@ -2051,7 +2051,7 @@ membukukan pembayaran bank-nya (R29) agar neraca tak melompat (kasus lompatan ha
 
 ⚠️ **Batas:** satu SO dibayar dua debit = satu penebusan, satu baris kas Gross — kelompok
 2:1 harus disusun **manual** (§10.39). Pembatalan sesudah hari tertutup/tercocokkan menuntut
-pembalikan maju yang belum dibangun. Tanda Nota Debet/Kredit belum diuji pada bukti nyata.
+pembalikan maju yang belum dibangun. Tanda Nota Debet/Kredit **terverifikasi** pada bukti nyata (§10.44).
 
 ### 10.38 K5 · Impor rekening koran BCA (29 Oktober 2026)
 
@@ -2136,7 +2136,7 @@ mendorong koreksi ke bulan berikutnya. Membuka kembali bulan/hari = di luar caku
 |---|---|---|
 | a | `simpanMutasiKas` / `voidMutasiKas` masih bisa menulis ke **hari tertutup** (§10.33) | ⚖️ **diputus 30 Okt 2026: dibiarkan** — lihat §10.43 butir 1 |
 | b | Pembayaran pelanggan unit A yang **masuk ke rekening unit B** (mis. pelanggan BK membayar ke rekening IB). ⚖️ **Keputusan owner 29 Okt 2026: tunda.** Sementara ini Finance **memarkir** mutasinya di penampung "Mutasi Belum Teridentifikasi" (§10.40) dan **HoF** yang menyelesaikannya — sebelum tutup bulan unit B, karena penampung wajib nol (§10.40). ⛔ **Jangan** diklasifikasi "Antar unit": itu menulis **baris kas** di rekening unit A yang tak pernah muncul di rekening koran A ⇒ syarat 4 §10.41 **menahan tutup bulan** unit A | desain **kaki non-kas** (sisi yang tak menyentuh bank unit A) — brainstorm terpisah |
-| c | Tanda **Nota Debet/Kredit** pada CHECK penebusan (§10.37) belum dicek ke bukti nyata | satu bukti Nota Kredit + satu Nota Debet nyata |
+| c | Tanda **Nota Debet/Kredit** pada CHECK penebusan (§10.37) | ✅ **terverifikasi 30 Okt 2026** pada bukti nota kredit nyata — lihat §10.44 butir 2. Nota **debet** nyata belum pernah ditemukan di arsip |
 | d | Void penebusan diberikan ke **Keuangan**; R26 menyebut pembatalan milik HoF (R31 tak menyebut penebusan) | ⚖️ **diputus 30 Okt 2026: tetap Keuangan** — lihat §10.43 butir 2 |
 | e | Satu SO dibayar **dua debit** harus dikelompokkan manual (2:1) | diterima, atau minta usulan otomatis |
 | f | Uji integrasi ber-gerbang env (`PIHAK_LAWAN_LIVE_DB`, `HARI_BUKU_LIVE_DB`, dua-unit, `SQLCHECK_DB`) **belum pernah dijalankan** | **wajib** dijalankan di tier testing `solamax-pg-rlsstg` sebelum promosi |
@@ -2167,6 +2167,29 @@ rekomendasi** yang diajukan; ditulis di sini supaya tidak dibuka ulang sebagai t
    kembali" (§10.41) dan dengan tarik (§10.38). Urutannya sama dengan tarik: kunci **bersama**
    bulan dulu, baru `tutup_bulan` dibaca. Berkas **identik** untuk bulan itu tetap "sudah ada"
    (idempoten, R19) — pemeriksaan identik berjalan lebih dulu.
+
+### 10.44 K5 · Uji ulang tuntas & tanda Nota terverifikasi (30 Oktober 2026)
+
+1. **Kriteria sukses 1 terpenuhi** (tier testing, unit fiktif 8810). Seluruh e-statement
+   Bakau Januari–September diunggah, lalu setiap baris diselesaikan lewat **server action
+   asli** (`scripts/uji-ulang-tuntaskan.live.test.ts`): debit Pertamina yang buktinya ada ⇒
+   `simpanPenebusan` dengan komponen dari bukti BCA asli; kode transaksi BCA yang tak butuh
+   pertimbangan (EDC, kartu kredit, setoran jemputan, bunga, pajak bunga, biaya admin) ⇒
+   kategori; sisanya (transfer, BI-FAST, koreksi, SO tanpa bukti di arsip) ⇒ **parkir**.
+   Hasil: **nol baris terbuka**, Σ baris impor = Σ baris kas lahiran (Rp 0), dan Σ
+   Net/PPN/PPh/PBBKB/Gross penebusan = Σ bukti. Gross setiap bukti = debit bank-nya. Data uji
+   sudah dibersihkan (`--bersihkan`).
+2. **Tanda Nota** (§10.42c). Bukti B2B Pertamina BCA mencetak nota kredit dengan **minus di
+   belakang** (`1,234,567.00-`), dan pada setiap bukti nota kredit yang ditemukan **Gross =
+   Net + PPN + PPh + PBBKB + Nota bertanda**. CHECK §10.37 benar apa adanya. Isian Nota kini
+   menerima bentuk yang tercetak di bukti (`1.234.567-`, `1.234.567,00-`) dan minus
+   tipografis (`−1.234.567`) sebagai negatif; `,-` tetap sen nol. Nota debet nyata belum
+   pernah muncul di arsip — tandanya (+) mengikuti CHECK yang sama.
+3. ⚠️ **Trigger `manual_entry_immutable_after_close` = `BEFORE DELETE … RETURN NEW`.** Pada
+   DELETE, `NEW` adalah NULL ⇒ Postgres **diam-diam melewati** penghapusan. Aplikasi tak
+   terdampak (DELETE dicabut dari aplikasi), tetapi DELETE oleh pemilik tabel tak berefek
+   tanpa galat. Skrip pembersihan mematikannya hanya di dalam transaksinya. Perbaikan di
+   migrasi (kembalikan `OLD` saat DELETE) = tindak lanjut terpisah.
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 

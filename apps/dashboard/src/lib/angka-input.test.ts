@@ -36,6 +36,19 @@ describe("bacaRupiah — yang ambigu DITOLAK, tidak ditebak seratus kali lipat",
     expect(nilai(bacaRupiah("-Rp 250.000", { bolehNegatif: true }))).toBe(-250_000);
   });
 
+  it("nota kredit seperti di bukti BCA (minus di belakang) & minus tipografis (−) — sama dengan -X", () => {
+    for (const t of ["1.234.567-", "1.234.567,00-", "−1.234.567", "– 1.234.567", "1234567-"]) {
+      expect(nilai(bacaRupiah(t, { bolehNegatif: true })), t).toBe(-1_234_567);
+    }
+    // `,-` tetap sen nol, bukan minus; minus di belakang pun hanya bila diizinkan.
+    expect(nilai(bacaRupiah("1.500.000,-", { bolehNegatif: true }))).toBe(1_500_000);
+    expect(bacaRupiah("1.234.567-").keadaan).toBe("tolak");
+    expect(bacaRupiah("−1.234.567").keadaan).toBe("tolak");
+    // Minus ganda & format Inggris tetap ditolak, tidak ditebak.
+    expect(bacaRupiah("-1.234.567-", { bolehNegatif: true }).keadaan).toBe("tolak");
+    expect(bacaRupiah("1,234,567.00-", { bolehNegatif: true }).keadaan).toBe("tolak");
+  });
+
   it("kosong bukan nol", () => expect(bacaRupiah("  ").keadaan).toBe("kosong"));
 });
 
