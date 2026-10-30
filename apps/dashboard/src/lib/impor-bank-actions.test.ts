@@ -326,6 +326,38 @@ describe("R18 — rekening salah", () => {
   });
 });
 
+describe("bulan tertutup — unggah ditolak (keputusan Dion 30 Okt 2026, §10.43)", () => {
+  it("🔴 bulan berkas SUDAH DITUTUP ⇒ ditolak bulan-tertutup, tak ada INSERT; kunci bersama bulan diambil SEBELUM tutup_bulan dibaca", async () => {
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2027-03-01") ? [{ bulan: "2027-03" }] : [] } : db(q);
+    const r = await unggahRekeningKoran(form(PDF()));
+    expect(r).toMatchObject({ status: "ditolak", sebab: "bulan-tertutup" });
+    expect(r.status === "ditolak" && r.pesan).toMatch(/Bulan 2027-03 sudah ditutup/);
+    expect(tulis("app.rekening_koran")).toEqual([]);
+    expect(tulis("app.mutasi_bank")).toEqual([]);
+    expect(sql()).not.toContain("COMMIT");
+    const kunci = h.log.findIndex((l) => l.sql.includes("pg_advisory_xact_lock_shared") && l.sql.includes("tutup-bulan:"));
+    const baca = h.log.findIndex((l) => l.sql.includes("FROM app.tutup_bulan"));
+    expect(kunci).toBeGreaterThanOrEqual(0);
+    expect(kunci).toBeLessThan(baca);
+    expect(h.log[kunci]!.params).toEqual([2, "2027-03"]);
+  });
+
+  it("berkas IDENTIK untuk bulan tertutup tetap 'sudah ada' (idempoten), bukan penolakan", async () => {
+    const berkas = PDF();
+    aktif = { id: RK_LAMA, fileSha256: sha(berkas), nBaris: 6, nPraCutover: 0 };
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2027-03-01") ? [{ bulan: "2027-03" }] : [] } : db(q);
+    expect(await unggahRekeningKoran(form(berkas))).toMatchObject({ status: "sudah-ada", rekeningKoranId: RK_LAMA });
+  });
+
+  it("bulan lain yang tertutup tidak menahan unggahan bulan terbuka", async () => {
+    h.state.jawab = (q, p) =>
+      q.includes("FROM app.tutup_bulan") ? { rows: (p[1] as string[]).includes("2027-02-01") ? [{ bulan: "2027-02" }] : [] } : db(q);
+    expect(await unggahRekeningKoran(form(PDF()))).toMatchObject({ status: "diterima" });
+  });
+});
+
 describe("AE3 / R17 — kaki tidak cocok", () => {
   it("🔴 total DB beda Rp 0,01 ⇒ ditolak utuh dengan rincian; TAK ADA koneksi DB dibuka", async () => {
     h.state.teks = GIRO.replace("98,849,753.19", "98,849,753.20");

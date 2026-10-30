@@ -34,7 +34,14 @@ const LABEL_CEK: Record<Ketidakcocokan["pemeriksaan"], string> = {
 
 function SaldoAwal({ p }: { p: PerbandinganSaldoAwal | null }) {
   if (p === null) return null;
-  if (p.status === "tanpa-saldo-pembuka") return <div className="fs14 t-tertiary">Rekening belum punya saldo pembuka</div>;
+  if (p.status === "tanpa-saldo-pembuka") {
+    return (
+      <div className="fs14 t-tertiary">
+        Saldo awal tidak dibandingkan — rekening ini belum punya saldo pembuka sendiri (Head of Finance mengisinya di Kelola
+        akun kas)
+      </div>
+    );
+  }
   if (p.status === "sebelum-cut-over") {
     return <div className="fs14 t-tertiary">Sebelum saldo pembuka ({p.cutOver}) — tidak dibukukan</div>;
   }
@@ -250,7 +257,7 @@ export function ImporBankMatriks({
   kodeAlasan,
 }: {
   code: string;
-  rekening: { id: string; nama: string; cutOver: string | null }[];
+  rekening: { id: string; nama: string; cutOver: string | null; cutOverSendiri: boolean }[];
   bulan: string[];
   sel: Record<string, Record<string, SelTampil>>;
   bolehUnggah: boolean;
@@ -276,7 +283,11 @@ export function ImporBankMatriks({
               <td>
                 <div className="w600">{r.nama}</div>
                 <div className="fs14 t-tertiary">
-                  {r.cutOver ? `Saldo pembuka ${r.cutOver}` : "Belum ada saldo pembuka"}
+                  {r.cutOver === null
+                    ? "Belum ada saldo pembuka"
+                    : r.cutOverSendiri
+                      ? `Saldo pembuka ${r.cutOver}`
+                      : `Belum ada saldo pembuka sendiri — ikut cut-over unit ${r.cutOver}`}
                 </div>
                 {bolehUnggah && <BarisUnggah code={code} accountId={r.id} />}
               </td>

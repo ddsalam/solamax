@@ -24,7 +24,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  */
 
 /** Himpunan label yang boleh keluar ke log. Sengaja tertutup — lihat butir 2. */
-export const LABEL_UKUR = ["papan", "bahan-laporan", "lain"] as const;
+export const LABEL_UKUR = ["papan", "bahan-laporan", "tutup-bulan", "lain"] as const;
 export type LabelUkur = (typeof LABEL_UKUR)[number];
 
 export interface Ukuran {
@@ -74,7 +74,7 @@ export const PENULIS: { tulis: (baris: string) => void } = {
  * Bentuk baris log. Ketat dengan sengaja: penjaganya mencocokkan REGEX ini, jadi
  * menambahkan medan bernilai data akan membuat ujinya merah — itu tujuannya.
  */
-export const BARIS_UKUR_RE = /^\[ukur\] (?:papan|bahan-laporan|lain) kueri=\d+ pernyataan=\d+ ms=\d+$/;
+export const BARIS_UKUR_RE = /^\[ukur\] (?:papan|bahan-laporan|tutup-bulan|lain) kueri=\d+ pernyataan=\d+ ms=\d+$/;
 
 export function barisUkur(u: Ukuran): string {
   return `[ukur] ${u.label} kueri=${u.kueri} pernyataan=${u.pernyataan} ms=${u.ms}`;
