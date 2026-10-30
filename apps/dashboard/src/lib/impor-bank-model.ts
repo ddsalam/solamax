@@ -93,8 +93,17 @@ export function bandingkanSaldoAwal(m: {
   periode: string;
   saldoAwalSen: number;
   buku: SaldoBukuAwal | null;
+  /**
+   * Cut-over terawal UNIT (§10.26) — dipakai hanya bila rekening belum punya
+   * saldo pembuka sendiri, supaya hasil ini sejalan dengan kepala baris matriks
+   * dan penanda `pra_cutover` (keduanya jatuh ke cut-over unit, `SQL_CUT_OVER`).
+   */
+  cutOverUnit?: string | null;
 }): PerbandinganSaldoAwal {
-  if (m.buku === null) return { status: "tanpa-saldo-pembuka" };
+  if (m.buku === null) {
+    if (m.cutOverUnit && m.cutOverUnit > periodeAwal(m.periode)) return { status: "sebelum-cut-over", cutOver: m.cutOverUnit };
+    return { status: "tanpa-saldo-pembuka" };
+  }
   if (m.buku.cutOver > periodeAwal(m.periode)) return { status: "sebelum-cut-over", cutOver: m.buku.cutOver };
   const selisihSen = m.saldoAwalSen - m.buku.saldoSen;
   return { status: selisihSen === 0 ? "cocok" : "selisih", bukuSen: m.buku.saldoSen, selisihSen, sementara: m.buku.sementara };
@@ -115,6 +124,8 @@ export type SebabTolak =
   | "rekening-salah"
   /** Berkas BERBEDA untuk (rekening, bulan) yang sudah aktif — HoF menarik dulu. */
   | "periode-aktif"
+  /** Bulan berkas sudah ditutup (`tutup_bulan`) — tak dibuka kembali (§10.43). */
+  | "bulan-tertutup"
   /** Galat tak terduga saat menulis — transaksi dibatalkan, tak ada yang tersimpan. */
   | "galat";
 

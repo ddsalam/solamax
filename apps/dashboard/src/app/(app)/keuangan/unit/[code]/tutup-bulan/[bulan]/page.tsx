@@ -10,6 +10,7 @@ import { todayWib } from "@/lib/periods";
 import { getDataScope } from "@/lib/scope";
 import { bulanTutupSah, periksaTutupBulan } from "@/lib/tutup-bulan-model";
 import { getBahanTutupBulan, getTutupBulan } from "@/lib/tutup-bulan-queries";
+import { ukur } from "@/lib/ukur-kueri";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,12 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
   const ctx = { role: scope.role, email: scope.email };
   if (!canViewLaporanKeuangan(ctx)) notFound();
 
-  const [bahan, tertutup] = await Promise.all([getBahanTutupBulan(unit.unit_id, bulan), getTutupBulan(unit.unit_id, bulan)]);
+  // Diukur (`[ukur] tutup-bulan …` di log): render ±60 dtk di pilot 30 Okt 2026
+  // belum punya sebab terbukti — kueri halaman ini ringan, jadi angka nyata
+  // dulu sebelum mengoptimalkan apa pun.
+  const [bahan, tertutup] = await ukur("tutup-bulan", () =>
+    Promise.all([getBahanTutupBulan(unit.unit_id, bulan), getTutupBulan(unit.unit_id, bulan)]),
+  );
   const vonis = periksaTutupBulan(bahan);
   const bolehTutup = canTutupBulan(ctx);
   const labelBulan = `${NAMA_BULAN[Number(bulan.slice(5, 7)) - 1]} ${bulan.slice(0, 4)}`;

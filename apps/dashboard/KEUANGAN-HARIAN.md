@@ -2134,18 +2134,39 @@ mendorong koreksi ke bulan berikutnya. Membuka kembali bulan/hari = di luar caku
 
 | # | Batas | Yang dibutuhkan |
 |---|---|---|
-| a | `simpanMutasiKas` / `voidMutasiKas` masih bisa menulis ke **hari tertutup** (§10.33) | keputusan Dion: terapkan §10.33 ke jalur manual (PR terpisah) |
+| a | `simpanMutasiKas` / `voidMutasiKas` masih bisa menulis ke **hari tertutup** (§10.33) | ⚖️ **diputus 30 Okt 2026: dibiarkan** — lihat §10.43 butir 1 |
 | b | Pembayaran pelanggan unit A yang **masuk ke rekening unit B** (mis. pelanggan BK membayar ke rekening IB). ⚖️ **Keputusan owner 29 Okt 2026: tunda.** Sementara ini Finance **memarkir** mutasinya di penampung "Mutasi Belum Teridentifikasi" (§10.40) dan **HoF** yang menyelesaikannya — sebelum tutup bulan unit B, karena penampung wajib nol (§10.40). ⛔ **Jangan** diklasifikasi "Antar unit": itu menulis **baris kas** di rekening unit A yang tak pernah muncul di rekening koran A ⇒ syarat 4 §10.41 **menahan tutup bulan** unit A | desain **kaki non-kas** (sisi yang tak menyentuh bank unit A) — brainstorm terpisah |
 | c | Tanda **Nota Debet/Kredit** pada CHECK penebusan (§10.37) belum dicek ke bukti nyata | satu bukti Nota Kredit + satu Nota Debet nyata |
-| d | Void penebusan diberikan ke **Keuangan**; R26 menyebut pembatalan milik HoF (R31 tak menyebut penebusan) | konfirmasi Dion |
+| d | Void penebusan diberikan ke **Keuangan**; R26 menyebut pembatalan milik HoF (R31 tak menyebut penebusan) | ⚖️ **diputus 30 Okt 2026: tetap Keuangan** — lihat §10.43 butir 2 |
 | e | Satu SO dibayar **dua debit** harus dikelompokkan manual (2:1) | diterima, atau minta usulan otomatis |
 | f | Uji integrasi ber-gerbang env (`PIHAK_LAWAN_LIVE_DB`, `HARI_BUKU_LIVE_DB`, dua-unit, `SQLCHECK_DB`) **belum pernah dijalankan** | **wajib** dijalankan di tier testing `solamax-pg-rlsstg` sebelum promosi |
+| g | Halaman **Tutup bulan** butuh ±60 dtk di pilot (30 Okt 2026); kuerinya ringan, sebabnya **belum terbukti** (dugaan: antre koneksi bersama papan Keuangan di instans yang sama) | baca baris log `[ukur] tutup-bulan kueri=… ms=…` dari kunjungan berikutnya sebelum mengoptimalkan |
 
 Uji ulang Jan–Sep Bakau (Success Criteria butir 1): `apps/dashboard/scripts/uji-ulang-rekening-koran.ts`
 — unit fiktif 8810 di tier testing, hanya hitungan dicetak; **`--bersihkan` (role `ingest`)
 wajib** sesudah laporan disimpan. Skrip tidak mengetik penebusan, jadi debit Pertamina
 berakhir "penebusan belum diketik" — hitungan debit Pertamina itu dibuktikan sebagai *debit ber-SO*, bukan
 sebagai cocok.
+
+### 10.43 K5 · Keputusan owner atas sisa tinjauan (30 Oktober 2026)
+
+Diputus Dion 30 Okt 2026, sesudah K5 tayang di pilot. Dua butir pertama **mengesampingkan
+rekomendasi** yang diajukan; ditulis di sini supaya tidak dibuka ulang sebagai temuan baru.
+
+1. ⚖️ **Jalur lama `simpanMutasiKas` / `voidMutasiKas` / `tetapkanPihakLawanBaris` dibiarkan**
+   (§10.42a). Rekomendasinya: terapkan §10.33 (buku maju) ke jalur itu. **Ditolak — untuk
+   sekarang.** Risiko yang **diterima**: baris di hari/bulan yang sudah ditutup masih bisa
+   diubah lewat jalur lama, dan arsip tutup hari (`day_close`) bisa berbeda dari buku tanpa
+   jejak di gerbang mana pun. Membuka ulang butir ini butuh keputusan owner baru.
+2. ⚖️ **Pembatalan penebusan tetap peran Keuangan** (`canBatalkanPenebusan`, §10.37, §10.42d).
+   Rekomendasinya: HoF saja, sejalan dengan R26 dan pembalik antar unit (§10.31). **Ditolak:**
+   Finance memperbaiki salah ketik penebusannya sendiri. Batas yang tetap berlaku: hanya bila
+   hari masih terbuka dan baris kasnya belum dicocokkan (§10.37).
+3. **Rekening koran untuk bulan yang sudah ditutup DITOLAK saat unggah** (`sebab:
+   "bulan-tertutup"`). Sesuai rekomendasi; sejalan dengan "bulan tertutup tidak dibuka
+   kembali" (§10.41) dan dengan tarik (§10.38). Urutannya sama dengan tarik: kunci **bersama**
+   bulan dulu, baru `tutup_bulan` dibaca. Berkas **identik** untuk bulan itu tetap "sudah ada"
+   (idempoten, R19) — pemeriksaan identik berjalan lebih dulu.
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
