@@ -109,7 +109,13 @@ async function bersihkan(): Promise<void> {
       for (const t of URUTAN_HAPUS) {
         const ada = (await c.query<{ ada: boolean }>("SELECT to_regclass($1) IS NOT NULL AS ada", [`app.${t}`])).rows[0]?.ada;
         if (!ada) continue;
+        // `manual_entry_immutable_after_close` adalah BEFORE DELETE yang mengembalikan NEW
+        // (= NULL pada DELETE) ⇒ Postgres diam-diam MELEWATI setiap DELETE. Matikan hanya
+        // di dalam transaksi ini (pemilik tabel; ikut COMMIT/ROLLBACK).
+        const lewatiTrigger = t === "manual_entry";
+        if (lewatiTrigger) await c.query("ALTER TABLE app.manual_entry DISABLE TRIGGER manual_entry_immutable_after_close");
         const r = await c.query(`DELETE FROM app.${t} WHERE unit_id = $1`, [UNIT_ID]);
+        if (lewatiTrigger) await c.query("ALTER TABLE app.manual_entry ENABLE TRIGGER manual_entry_immutable_after_close");
         console.log(`  ${t.padEnd(24)} ${r.rowCount ?? 0}`);
       }
       const a = await c.query("DELETE FROM app.audit_log WHERE target LIKE $1", [`${UNIT_CODE}/%`]);
