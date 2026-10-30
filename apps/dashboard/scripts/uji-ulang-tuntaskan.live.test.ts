@@ -59,8 +59,9 @@ interface Bukti {
 }
 
 const angka = (t: string, label: string): number | null => {
-  const m = t.match(new RegExp(`${label}\\s*:\\s*(-?[\\d,]+\\.\\d\\d)`));
-  return m ? Number(m[1]!.replace(/,/g, "")) : null;
+  // Nota kredit tercetak dengan minus DI BELAKANG: `1,234,567.00-` (KEUANGAN-HARIAN §10.44).
+  const m = t.match(new RegExp(`${label}\\s*:\\s*(-?)([\\d,]+\\.\\d\\d)(-?)`));
+  return m ? (m[1] || m[3] ? -1 : 1) * Number(m[2]!.replace(/,/g, "")) : null;
 };
 
 export function bacaBukti(t: string): { so: string; bukti: Bukti } | null {
