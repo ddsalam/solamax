@@ -60,7 +60,10 @@ export default async function ImporBankPage({ params }: { params: Promise<{ code
     await Promise.all(
       aktif.map(async (s) => {
         const buku = await getSaldoBukuAwal(unit.unit_id, s.accountId, periodeAwal(s.periode));
-        return [s.id, bandingkanSaldoAwal({ periode: s.periode, saldoAwalSen: s.saldoAwalSen, buku })] as const;
+        // `cutOver` rekening sudah jatuh ke cut-over unit bila rekening belum punya
+        // saldo pembuka sendiri — sama dengan kepala baris di bawah.
+        const cutOverUnit = rekening.find((r) => r.id === s.accountId)?.cutOver ?? null;
+        return [s.id, bandingkanSaldoAwal({ periode: s.periode, saldoAwalSen: s.saldoAwalSen, buku, cutOverUnit })] as const;
       }),
     ),
   );
@@ -105,7 +108,7 @@ export default async function ImporBankPage({ params }: { params: Promise<{ code
         ) : (
           <ImporBankMatriks
             code={unit.code}
-            rekening={rekening.map((r) => ({ id: r.id, nama: r.nama, cutOver: r.cutOver }))}
+            rekening={rekening.map((r) => ({ id: r.id, nama: r.nama, cutOver: r.cutOver, cutOverSendiri: r.cutOverSendiri }))}
             bulan={bulan}
             sel={sel}
             bolehUnggah={bolehUnggah}

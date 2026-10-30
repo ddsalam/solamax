@@ -188,6 +188,19 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
       return tolak("periode-aktif", PESAN_PERIODE_AKTIF(rk.periode));
     }
 
+    // 2b. Bulan tertutup ⇒ tolak (keputusan Dion 30 Okt 2026, §10.43). Sama
+    // dengan tarik: kunci BERSAMA bulan dulu, baru `tutup_bulan` dibaca, jadi
+    // penutup yang berjalan ditunggu dan penutup sesudahnya melihat impor ini.
+    // Sesudah cek identik di atas: unggah ulang berkas yang sama tetap no-op.
+    if ((await bulanTertutupTerkunci(client, unit.unit_id, [rk.periode])).length > 0) {
+      await batal(client);
+      return tolak(
+        "bulan-tertutup",
+        `Bulan ${rk.periode} sudah ditutup — rekening koran bulan tertutup tidak bisa diunggah. ` +
+          "Bulan tertutup tidak dibuka kembali; hubungi Head of Finance.",
+      );
+    }
+
     // 3. Cut-over rekening (⇒ unit) — satu aturan tanggal buku (KTD5, R22).
     const cut = await client.query<{ unit: string | null; akun: string | null }>(SQL_CUT_OVER, [unit.unit_id, accountId]);
     const cutOver = cut.rows[0]?.akun ?? cut.rows[0]?.unit ?? null;
@@ -206,7 +219,12 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
 
     // 5. R18 — saldo awal vs saldo buku hari sebelum periode (menurut tanggal asal).
     const sb = await client.query<BarisSaldoBuku>(SQL_SALDO_BUKU_AWAL, [unit.unit_id, accountId, hariPertama]);
-    const saldoAwal = bandingkanSaldoAwal({ periode: rk.periode, saldoAwalSen: rk.saldoAwalSen, buku: keSaldoBukuAwal(sb.rows[0]) });
+    const saldoAwal = bandingkanSaldoAwal({
+      periode: rk.periode,
+      saldoAwalSen: rk.saldoAwalSen,
+      buku: keSaldoBukuAwal(sb.rows[0]),
+      cutOverUnit: cut.rows[0]?.unit ?? null,
+    });
     const nPraCutover = pra.filter(Boolean).length;
 
     await auditKeuangan(client, scope, "rekening_koran.unggah", `${unit.code}/${rekeningKoranId}`, {

@@ -75,6 +75,8 @@ export interface RekeningBca {
   nomorRekening: string;
   /** Cut-over rekening (atau unit) — `null` bila belum ada saldo pembuka. */
   cutOver: string | null;
+  /** `cutOver` milik rekening ini sendiri (bukan cut-over unit yang dipinjam). */
+  cutOverSendiri: boolean;
 }
 
 export async function getRekeningBca(unit: ScopedUnitId): Promise<RekeningBca[]> {
@@ -87,7 +89,10 @@ export async function getRekeningBca(unit: ScopedUnitId): Promise<RekeningBca[]>
                   AND l.saldo_awal AND NOT l.void),
               (SELECT min(l.business_date) FROM app.cash_ledger l
                 WHERE l.unit_id = cash_account.unit_id AND l.saldo_awal AND NOT l.void)
-            ), 'YYYY-MM-DD') AS "cutOver"
+            ), 'YYYY-MM-DD') AS "cutOver",
+            EXISTS (SELECT 1 FROM app.cash_ledger l
+                     WHERE l.unit_id = cash_account.unit_id AND l.account_id = cash_account.id
+                       AND l.saldo_awal AND NOT l.void) AS "cutOverSendiri"
        FROM app.cash_account
       WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BCA}
       ORDER BY nama`,

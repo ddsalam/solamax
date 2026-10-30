@@ -63,6 +63,15 @@ describe("bandingkanSaldoAwal (R18) — saldo buku hari sebelum periode vs saldo
       status: "tanpa-saldo-pembuka",
     });
   });
+  it("🔴 rekening tanpa saldo pembuka sendiri, bulan SEBELUM cut-over unit ⇒ 'sebelum-cut-over' (sama dengan kepala baris & pra_cutover)", () => {
+    expect(bandingkanSaldoAwal({ periode: "2026-09", saldoAwalSen: 1, buku: null, cutOverUnit: "2026-10-01" })).toEqual({
+      status: "sebelum-cut-over",
+      cutOver: "2026-10-01",
+    });
+    expect(bandingkanSaldoAwal({ periode: "2026-10", saldoAwalSen: 1, buku: null, cutOverUnit: "2026-10-01" })).toEqual({
+      status: "tanpa-saldo-pembuka",
+    });
+  });
   it("AE8: periode mulai SEBELUM cut-over (termasuk cut-over di tengah bulan) ⇒ tidak dibandingkan", () => {
     const buku = { cutOver: "2026-10-01", saldoSen: 5, sementara: false };
     expect(bandingkanSaldoAwal({ periode: "2026-09", saldoAwalSen: 1, buku })).toEqual({
