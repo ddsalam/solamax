@@ -92,6 +92,35 @@ export function validasiSettlement(i: IsianSettlement): HasilValidasiSettlement 
   return { ok: true, adaSelisih };
 }
 
+/** Satu kalimat untuk dua tempat tombol "Batalkan pencairan" (blok 3 dan buku kas/bank). */
+export const PESAN_PENCAIRAN_DIBATALKAN =
+  "Pencairan dibatalkan — tiga barisnya tercatat batal, tidak dihapus. Batch kembali menunggu persetujuan di blok 3.";
+
+const ejaanEdc = (n: string): string => n.trim().replace(/\s+/g, " ").toUpperCase();
+
+/**
+ * Batch AKTIF lain dengan EDC, tanggal cair, dan bruto yang sama — kemungkinan
+ * batch ganda (rencana 2026-11-02 R12). Hanya PERINGATAN: dua batch sah dengan
+ * bruto kebetulan sama memang mungkin, jadi server tidak menolak. Ejaan EDC
+ * dibandingkan seperti `normalisasiEdc` (§10.28).
+ */
+export function calonGanda<T extends { id: string; acquirer: string; settlementDate: string; grossRp: number; void: boolean }>(
+  batch: readonly T[],
+  isian: { acquirer: string; settlementDate: string; grossRp: number },
+  abaikanId: string | null,
+): T[] {
+  if (!(isian.grossRp > 0) || isian.acquirer.trim() === "") return [];
+  const a = ejaanEdc(isian.acquirer);
+  return batch.filter(
+    (b) =>
+      !b.void &&
+      b.id !== abaikanId &&
+      ejaanEdc(b.acquirer) === a &&
+      b.settlementDate === isian.settlementDate &&
+      b.grossRp === isian.grossRp,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Jurnal pencairan H+1 — DITAWARKAN, bukan diposting
 // ---------------------------------------------------------------------------

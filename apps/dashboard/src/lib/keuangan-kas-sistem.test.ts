@@ -91,4 +91,34 @@ describe("baris SISTEM di buku kas tidak bisa dibatalkan", () => {
     expect(PENJELASAN_BARIS_SISTEM.antar_unit).toMatch(/Balik pasangan/);
     expect(PENJELASAN_BARIS_SISTEM.antar_unit).toMatch(/Head of Finance/);
   });
+
+  it("rencana 2026-11-02: kaki pencairan membawa id batch-nya ke layar, dan penjelasannya menunjuk 'Batalkan pencairan'", () => {
+    const b = barisBuku(
+      [
+        {
+          id: "edc",
+          keterangan: "Pencairan EDC BCA",
+          accountId: "A",
+          businessDate: "2026-10-02",
+          jenis: "debet" as const,
+          categorySide: null,
+          categoryLabel: null,
+          amount: 100,
+          saldoAwal: false,
+          void: false,
+          dariPencairanEdc: true,
+          edcSettlementId: "11111111-1111-1111-1111-111111111111",
+        },
+      ],
+      "A",
+      "2026-10-02",
+      "2026-10-01",
+    );
+    expect(b[0]?.edcSettlementId).toBe("11111111-1111-1111-1111-111111111111");
+    expect(PENJELASAN_BARIS_SISTEM.pencairan_edc).toMatch(/Batalkan pencairan/);
+    expect(PENJELASAN_BARIS_SISTEM.pencairan_edc).not.toMatch(/Head of Finance/);
+    const s = readFileSync(resolve(__dirname, "keuangan-input-queries.ts"), "utf8");
+    const fn = s.slice(s.indexOf("export async function getMutasiKas"));
+    expect(fn.slice(0, fn.indexOf("\n}\n"))).toMatch(/edc_settlement_id::text\s+AS "edcSettlementId"/);
+  });
 });

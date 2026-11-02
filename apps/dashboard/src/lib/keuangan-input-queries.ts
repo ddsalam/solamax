@@ -162,6 +162,8 @@ export interface MutasiKasRow extends MutasiKas {
   sourceManualEntryId: string | null;
   /** Kaki jurnal "Setujui pencairan" EDC — ditulis mesin, tiga kaki sekaligus. */
   dariPencairanEdc: boolean;
+  /** Batch settlement kaki pencairan ini — `null` untuk mutasi biasa. */
+  edcSettlementId?: string | null;
   /** 0049 — kaki (atau pembalik) pasangan antar unit: hanya dibalik lewat "Balik pasangan" (R31). */
   antarUnit?: boolean;
   /** 0049 — pihak lawan baris ini (wajib untuk "Penyerahan titipan"/"Hutang Piutang"). */
@@ -198,6 +200,7 @@ export async function getMutasiKas(unit: ScopedUnitId, to: string): Promise<Muta
             void,
             source_manual_entry_id::text          AS "sourceManualEntryId",
             (edc_settlement_id IS NOT NULL)       AS "dariPencairanEdc",
+            edc_settlement_id::text               AS "edcSettlementId",
             (pasangan_uuid IS NOT NULL)           AS "antarUnit",
             pihak_lawan_id::text                  AS "pihakLawanId",
             to_char(tanggal_asal,'YYYY-MM-DD')    AS "tanggalAsal"
