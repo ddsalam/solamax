@@ -22,6 +22,7 @@ import {
   canBatalkanCocokBank,
   canCocokkanBank,
   canTutupBulan,
+  canKelolaSettlementEdc,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -522,5 +523,32 @@ describe("tutup bulan (U12; R25) — HoF & super admin", () => {
     for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
       expect(canTutupBulan(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
     }
+  });
+});
+
+describe("settlement EDC (keputusan owner 2 Nov 2026) — seluruh tim Finance", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canKelolaSettlementEdc: keuangan & super_admin; peran lain TIDAK bila bukan HoF", () => {
+    expect(semua.filter((r) => canKelolaSettlementEdc(c(r, "staf@solagroup.co"), HOF5))).toEqual([
+      "keuangan",
+      "super_admin",
+    ]);
+  });
+
+  it("🔴 HoF lolos, apa pun perannya — termasuk irisan HoF × keuangan", () => {
+    expect(canKelolaSettlementEdc(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canKelolaSettlementEdc(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+  });
+
+  it("🔴 pengecualian SEMPIT: canInputKeuangan untuk HoF tetap false (§10.12)", () => {
+    expect(canInputKeuangan(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(false);
+    expect(canInputKeuangan(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("daftar HoF kosong ⇒ direksi tetap ditolak (fail-closed)", () => {
+    expect(canKelolaSettlementEdc(c("direksi", "hof@solagroup.co"), [])).toBe(false);
   });
 });
