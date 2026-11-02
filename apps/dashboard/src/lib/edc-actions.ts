@@ -43,6 +43,7 @@ function nomorDipakai(e: unknown): boolean {
   const g = e as { code?: string; constraint?: string } | null;
   return g?.code === "23505" && g.constraint === "edc_settlement_no_uq";
 }
+const PESAN_BATCH_HILANG = "Batch sudah dibatalkan atau tak ditemukan — muat ulang halaman.";
 const PESAN_NOMOR_DIPAKAI = "Nomor settlement itu sudah dipakai batch lain untuk EDC yang sama.";
 
 /** Hari buku tanggal settlement masih terbuka untuk kedua rekening kaki pencairan? */
@@ -219,7 +220,7 @@ export async function setujuiPencairan(input: {
     // menulis jurnal ke buku yang sudah ditutup. Hari dikunci bersama sampai
     // COMMIT, jadi penutupan yang bersamaan menunggu.
     if (!(await hariTerbuka(client, unit, row.settlementDate, [row.toAccountId, penampungan]))) {
-      await client.query("ROLLBACK");
+      await batal(client);
       return { ok: false, error: pesanHariTertutup(row.settlementDate) };
     }
 
@@ -337,7 +338,7 @@ export async function ubahSettlement(input: SettlementInput & { id: string }): P
     const sebelum = lama.rows[0];
     if (!sebelum) {
       await batal(client);
-      return { ok: false, error: "Batch sudah dibatalkan atau tak ditemukan — muat ulang halaman." };
+      return { ok: false, error: PESAN_BATCH_HILANG };
     }
     if (sebelum.posted) {
       await batal(client);
@@ -419,7 +420,7 @@ export async function batalkanSettlement(input: { code: string; date: string; id
     const b = r.rows[0];
     if (!b) {
       await batal(client);
-      return { ok: false, error: "Batch sudah dibatalkan atau tak ditemukan — muat ulang halaman." };
+      return { ok: false, error: PESAN_BATCH_HILANG };
     }
     if (b.posted) {
       await batal(client);
