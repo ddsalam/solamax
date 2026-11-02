@@ -312,11 +312,12 @@ export function EdcPanel({
                     <span className="keu-yakin mt2">
                       {yakin === `pencairan:${s.id}` ? (
                         <>
-                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id, true)} disabled={pending}>
-                            Batalkan pencairan &amp; batch (ganda)
-                          </button>
+                          {/* Yang tak menghapus batch di posisi klik lama; yang ikut membatalkan batch merah & kedua. */}
                           <button type="button" className="btn-outline sm" onClick={() => batalPencairan(s.id, false)} disabled={pending}>
                             Batalkan pencairan saja (untuk dikoreksi)
+                          </button>
+                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id, true)} disabled={pending}>
+                            Batalkan pencairan &amp; batch (ganda)
                           </button>
                           <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
                             Tidak

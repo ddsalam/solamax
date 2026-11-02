@@ -2222,7 +2222,9 @@ Diputus Dion 2 Nov 2026. Rencana: `docs/plans/2026-11-02-1354-feat-edc-batal-uba
    pembatalan pencairan saja meninggalkan batch "menunggu persetujuan", yang masih menahan
    kelengkapan tutup hari penjualannya dan menawarkan "Setujui pencairan" lagi. Batch yang
    pencairannya pernah dibatalkan diberi status "pencairan dibatalkan — setujui ulang atau
-   batalkan batch".
+   batalkan batch". "Saja" sengaja di posisi tombol pertama (posisi klik rilis sebelumnya);
+   "& batch" merah dan kedua. Pilihan "& batch" tampil di Pemantauan sebagai **dua** kejadian
+   kuning yang sama-sama benar: "Pencairan EDC dibatalkan" dan pembatalan batch-nya.
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 

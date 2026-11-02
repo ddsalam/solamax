@@ -311,19 +311,19 @@ export function BukuKasPanel({
                       <span className="keu-yakin">
                         <button
                           type="button"
-                          className="btn-outline sm t-danger"
-                          onClick={() => batalPencairan(b.edcSettlementId as string, true)}
-                          disabled={pending}
-                        >
-                          Batalkan pencairan &amp; batch (ganda)
-                        </button>
-                        <button
-                          type="button"
                           className="btn-outline sm"
                           onClick={() => batalPencairan(b.edcSettlementId as string, false)}
                           disabled={pending}
                         >
                           Batalkan pencairan saja (untuk dikoreksi)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-outline sm t-danger"
+                          onClick={() => batalPencairan(b.edcSettlementId as string, true)}
+                          disabled={pending}
+                        >
+                          Batalkan pencairan &amp; batch (ganda)
                         </button>
                         <button
                           type="button"
