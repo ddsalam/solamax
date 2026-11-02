@@ -10,6 +10,8 @@
  * Akun yang cair tiap hari semestinya berisi ± SATU hari omzet non-tunai.
  */
 
+import { normalisasiEdc } from "./edc-rekening-model";
+
 export interface Settlement {
   id: string;
   acquirer: string;
@@ -41,6 +43,82 @@ export function mdrRp(s: Pick<Settlement, "grossRp" | "netRp">): number {
  */
 export function selisihSettlement(s: Pick<Settlement, "grossRp" | "txnTotalRp">): number | null {
   return s.txnTotalRp === null ? null : s.txnTotalRp - s.grossRp;
+}
+
+const TANGGAL_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Isian batch yang diperiksa — sama untuk batch baru dan batch yang diubah. */
+export interface IsianSettlement {
+  acquirer: string;
+  settlementNo: string;
+  settlementDate: string;
+  businessDate: string;
+  grossRp: number;
+  netRp: number;
+  txnTotalRp: number | null;
+  reasonCode: string | null;
+}
+
+export type HasilValidasiSettlement = { ok: true; adaSelisih: boolean } | { ok: false; error: string };
+
+/**
+ * Aturan isian batch settlement — SATU salinan untuk `simpanSettlement` DAN
+ * `ubahSettlement` (rencana 2026-11-02 KTD4). Dua salinan akan berselisih, dan
+ * yang berselisih di sini adalah batas antara batch sah dan batch rusak.
+ */
+export function validasiSettlement(i: IsianSettlement): HasilValidasiSettlement {
+  if (!TANGGAL_RE.test(i.settlementDate) || !TANGGAL_RE.test(i.businessDate)) {
+    return { ok: false, error: "Tanggal tak valid." };
+  }
+  if (i.settlementDate < i.businessDate) {
+    return { ok: false, error: "Uang tak mungkin masuk sebelum hari penjualannya." };
+  }
+  if (i.acquirer.trim() === "" || i.settlementNo.trim() === "") {
+    return { ok: false, error: "Acquirer dan nomor settlement wajib diisi." };
+  }
+  if (!(i.grossRp > 0)) return { ok: false, error: "Bruto harus lebih besar dari nol." };
+  if (!(i.netRp > 0 && i.netRp <= i.grossRp)) {
+    return { ok: false, error: "Neto harus lebih besar dari nol dan tidak melebihi bruto." };
+  }
+  // Selisih transaksi vs settlement BERDIRI sebagai selisih ber-reason_code —
+  // tidak dibulatkan hilang, dan tidak boleh lewat tanpa nama (§10.5).
+  const adaSelisih = i.txnTotalRp !== null && i.txnTotalRp !== i.grossRp;
+  if (adaSelisih && (i.reasonCode ?? "") === "") {
+    return {
+      ok: false,
+      error:
+        "Total transaksi berbeda dari bruto settlement. Selisih itu harus punya nama — " +
+        "pilih kode alasannya, jangan dibiarkan hilang.",
+    };
+  }
+  return { ok: true, adaSelisih };
+}
+
+/** Satu kalimat untuk dua tempat tombol "Batalkan pencairan" (blok 3 dan buku kas/bank). */
+export const PESAN_PENCAIRAN_DIBATALKAN =
+  "Pencairan dibatalkan — seluruh barisnya tercatat batal, tidak dihapus. Batch kembali menunggu persetujuan di blok 3.";
+
+/**
+ * Batch AKTIF lain dengan EDC, tanggal cair, dan bruto yang sama — kemungkinan
+ * batch ganda (rencana 2026-11-02 R12). Hanya PERINGATAN: dua batch sah dengan
+ * bruto kebetulan sama memang mungkin, jadi server tidak menolak. Ejaan EDC
+ * dibandingkan dengan `normalisasiEdc` yang sama dengan server (§10.28).
+ */
+export function calonGanda<T extends { id: string; acquirer: string; settlementDate: string; grossRp: number; void: boolean }>(
+  batch: readonly T[],
+  isian: { acquirer: string; settlementDate: string; grossRp: number },
+  abaikanId: string | null,
+): T[] {
+  if (!(isian.grossRp > 0) || isian.acquirer.trim() === "") return [];
+  const a = normalisasiEdc(isian.acquirer);
+  return batch.filter(
+    (b) =>
+      !b.void &&
+      b.id !== abaikanId &&
+      normalisasiEdc(b.acquirer) === a &&
+      b.settlementDate === isian.settlementDate &&
+      b.grossRp === isian.grossRp,
+  );
 }
 
 // ---------------------------------------------------------------------------

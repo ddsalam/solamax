@@ -40,6 +40,7 @@ import {
 import {
   alasanTakBolehInput,
   canInputKeuangan,
+  canKelolaSettlementEdc,
   canReklasifikasi,
   canViewLaporanKeuangan,
   PESAN_TAK_BOLEH_INPUT,
@@ -90,6 +91,8 @@ export default async function InputKeuanganPage({
 
   const bolehTulis = canInputKeuangan({ role: scope.role, email: scope.email });
   const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
+  // Rencana 2026-11-02 — siklus settlement EDC milik seluruh tim Finance (HoF ikut).
+  const bolehSettlement = canKelolaSettlementEdc({ role: scope.role, email: scope.email });
 
   const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran, pihakLawan] = await Promise.all([
     getProdukUnit(unit.unit_id),
@@ -217,6 +220,7 @@ export default async function InputKeuanganPage({
           tawaran={tawaran}
           nilaiTertunda={nilaiTertunda(tawaran)}
           bolehTulis={bolehTulis}
+          bolehSettlement={bolehSettlement}
           // U3: hanya yang AKTIF yang ditawarkan — server memeriksa ulang.
           pihakLawan={pihakLawan
             .filter((p) => p.aktif)
@@ -243,7 +247,7 @@ export default async function InputKeuanganPage({
           rekeningEdc={rekeningEdc}
           namaEdc={namaEdc}
           reasonCodes={reasonCodes}
-          bolehTulis={bolehTulis}
+          bolehSettlement={bolehSettlement}
         />
       </div>
 

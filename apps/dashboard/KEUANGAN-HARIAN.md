@@ -2191,6 +2191,32 @@ rekomendasi** yang diajukan; ditulis di sini supaya tidak dibuka ulang sebagai t
    tanpa galat. Skrip pembersihan mematikannya hanya di dalam transaksinya. Perbaikan di
    migrasi (kembalikan `OLD` saat DELETE) = tindak lanjut terpisah.
 
+### 10.45 K5 · Siklus settlement EDC milik tim Finance (keputusan owner 2 November 2026)
+
+Diputus Dion 2 Nov 2026. Rencana: `docs/plans/2026-11-02-1354-feat-edc-batal-ubah-settlement-plan.md`.
+
+1. ⚖️ **Seluruh siklus settlement EDC dipegang tim Finance — pengecualian SEMPIT atas §10.12,
+   sepola §10.29.** Staf `keuangan`, **Head of Finance**, dan super admin boleh menyimpan batch,
+   menyetujui pencairan, membatalkan pencairan, mengubah batch, dan membatalkan batch. Satu
+   predikat: `canKelolaSettlementEdc` (= `canInputKeuangan` ∪ HoF). Peran lain ditolak.
+   `canInputKeuangan` **tidak berubah**: seluruh input harian lain tetap tertutup bagi HoF.
+2. **"Batalkan pencairan"** mem-void ketiga kaki jurnal batch dalam **satu transaksi**: kaki
+   bank, kaki EDC Penampungan, dan baris MDR (`noncash_expense`) bila ada — satu `voided_at`,
+   satu pelaku. `posted_by/posted_at` batch dikosongkan; batch kembali **menunggu persetujuan**
+   dan bisa disetujui ulang (kaki BARU). Tak ada baris yang dihapus. `audit_log` merekam
+   persetujuan lama (siapa, kapan) yang tertimpa.
+3. **Ditolak** bila (a) salah satu kakinya ada di kelompok cocok rekening koran yang aktif —
+   HoF membatalkan cocoknya dulu (R31 rencana 2026-10-29, tidak berubah); atau (b) hari buku
+   tanggal settlement sudah ditutup — koreksi maju untuk hari tertutup **belum ada**. Persetujuan
+   (ulang) ke hari yang sudah ditutup juga ditolak.
+4. **Ubah / batalkan batch hanya selama belum dicairkan.** Batch yang sudah dicairkan dibatalkan
+   pencairannya dulu; server menolak, bukan hanya tombolnya yang disembunyikan.
+5. **Pemantauan** (`KUERI_KEJADIAN`): pembatalan utuh = **satu** kejadian kuning
+   `batal_pencairan_edc` "Pencairan EDC dibatalkan" — dikenali dari kaki-kaki ber-settlement
+   sama yang di-void pada `voided_at` yang sama, bukan dari keadaan batch sekarang, jadi tetap
+   terbaca sesudah disetujui ulang. MDR-nya tidak tampil lagi sebagai `batal_beban_nonkas`.
+   Kaki yang void **sendirian** tetap `batal_kaki_edc` (merah).
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,

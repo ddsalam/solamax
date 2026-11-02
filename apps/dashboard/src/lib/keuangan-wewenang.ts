@@ -504,3 +504,35 @@ export function canBatalkanCocokBank(ctx: WewenangCtx, daftar?: readonly string[
 export function canTutupBulan(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
 }
+
+// ---------------------------------------------------------------------------
+// Settlement EDC (rencana 2026-11-02, keputusan owner 2 Nov 2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGELOLA siklus settlement EDC — menyimpan batch, menyetujui
+ * pencairan, membatalkan pencairan, mengubah, dan membatalkan batch? Seluruh
+ * tim Finance: staf `keuangan` **dan** Head of Finance, plus super admin.
+ *
+ * ⚖️ Keputusan owner 2 Nov 2026: settlement selesai di dalam tim Finance tanpa
+ * menunggu orang lain. Sebelumnya pembatalan "milik HoF" tetapi tak ada alat
+ * apa pun untuk itu, dan HoF sendiri ditolak menyetujui pencairan (§10.12).
+ *
+ * ⛔ Pengecualian SEMPIT dari §10.12, setara {@link canReklasifikasi}
+ * (§10.29): hanya siklus settlement. `canInputKeuangan` TIDAK disentuh —
+ * HoF tetap tidak mengetik mutasi kas, harga beli, penebusan, dsb. Ditulis
+ * berdiri sendiri supaya pelonggaran di sini tak merembes ke input lain.
+ *
+ * Kontrolnya keterlihatan, bukan pemisahan tugas: setiap pembatalan dan
+ * perubahan tercatat di `app.audit_log`; pembatalan (pencairan maupun batch)
+ * juga tampil sebagai kejadian di Pemantauan pemakaian.
+ */
+export function canKelolaSettlementEdc(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/** Pesan penolakan aksi settlement — satu sumber untuk layar dan server. */
+export const PESAN_TAK_BOLEH_SETTLEMENT =
+  "Hanya tim Finance (staf Keuangan atau Head of Finance) yang boleh mengelola settlement EDC.";

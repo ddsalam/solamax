@@ -4,7 +4,9 @@ import { PENJELASAN_BARIS_SISTEM, type BarisSistem } from "@/lib/keuangan-kas-mo
 import { bacaRupiah } from "@/lib/angka-input";
 import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
+import { batalkanPencairan } from "@/lib/edc-actions";
 import { setujuiSetoran, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
+import { PESAN_PENCAIRAN_DIBATALKAN } from "@/lib/keuangan-edc";
 import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
 import type { AkunKas, BarisBuku, KakiBuku, TawaranSetoran } from "@/lib/keuangan-kas-model";
 import { kategoriPihakLawan, pihakLawanUntuk, type PilihanPihakLawan } from "@/lib/pihak-lawan-model";
@@ -46,6 +48,7 @@ export function BukuKasPanel({
   tawaran,
   nilaiTertunda,
   bolehTulis,
+  bolehSettlement,
   pihakLawan,
 }: {
   code: string;
@@ -58,6 +61,12 @@ export function BukuKasPanel({
   tawaran: TawaranSetoran[];
   nilaiTertunda: number;
   bolehTulis: boolean;
+  /**
+   * Rencana 2026-11-02 — `canKelolaSettlementEdc` (staf Keuangan DAN HoF):
+   * tombol "Batalkan pencairan" pada kaki pencairan EDC. Tidak membuka
+   * "Batalkan" mutasi biasa bagi HoF — itu tetap `bolehTulis` (§10.12).
+   */
+  bolehSettlement: boolean;
   pihakLawan: PilihanPihakLawan[];
 }) {
   const kasBesar = akun.find((a) => a.kind === "kas") ?? akun[0] ?? null;
@@ -162,6 +171,22 @@ export function BukuKasPanel({
     });
   };
 
+  // Kaki pencairan EDC: dibatalkan KETIGANYA lewat batch-nya, tak pernah satu.
+  const batalPencairan = (settlementId: string): void => {
+    setErr(null);
+    setMsg(null);
+    setYakin(null);
+    start(async () => {
+      const res = await batalkanPencairan({ code, date, settlementId });
+      if (!res.ok) setErr(res.error);
+      else setMsg(PESAN_PENCAIRAN_DIBATALKAN);
+    });
+  };
+
+  // Kolom Tindakan tampil bagi pengetik buku DAN bagi pengelola settlement
+  // (HoF) — isi tiap sel tetap memakai gerbangnya sendiri.
+  const kolomTindakan = bolehTulis || bolehSettlement;
+
   return (
     <section aria-labelledby="blok-buku-kas">
       <div className="section-h">
@@ -246,28 +271,28 @@ export function BukuKasPanel({
       </div>
 
       <div className="card tbl-card tbl-scroll">
-        <div className={`grid-head cols-buku${bolehTulis ? "" : " ro"}`}>
+        <div className={`grid-head cols-buku${kolomTindakan ? "" : " ro"}`}>
           <span>Keterangan</span>
           <span>Kategori</span>
           <span className="right">Nominal</span>
           <span className="right">Saldo</span>
-          {bolehTulis && <span className="right">Tindakan</span>}
+          {kolomTindakan && <span className="right">Tindakan</span>}
         </div>
 
         {/* Saldo awal: HASIL HITUNG dari mutasi sebelum hari ini, bukan isian. */}
-        <div className={`grid-row cols-buku${bolehTulis ? "" : " ro"}`}>
+        <div className={`grid-row cols-buku${kolomTindakan ? "" : " ro"}`}>
           <span className="t-secondary">Saldo awal hari ini</span>
           <span className="fs16 t-tertiary">dihitung dari mutasi sebelumnya</span>
           <span className="right num t-tertiary">—</span>
           <span className="right num w600">{rp(saldoAwal)}</span>
-          {bolehTulis && <span />}
+          {kolomTindakan && <span />}
         </div>
 
         {baris.length === 0 ? (
           <div className="empty-inline">Belum ada mutasi pada tanggal ini.</div>
         ) : (
           baris.map((b) => (
-            <div className={`grid-row cols-buku${bolehTulis ? "" : " ro"}`} key={b.id}>
+            <div className={`grid-row cols-buku${kolomTindakan ? "" : " ro"}`} key={b.id}>
               <span className="w600">
                 {b.keterangan}
                 {b.dariSetoranPengawas && (
@@ -279,9 +304,40 @@ export function BukuKasPanel({
               <span className="fs16 t-secondary">{b.categoryLabel ?? "—"}</span>
               <span className={`right num ${b.amount < 0 ? "t-danger" : ""}`}>{rp(b.amount)}</span>
               <span className="right num t-secondary">{rp(b.saldoBerjalan)}</span>
-              {bolehTulis && (
+              {kolomTindakan && (
                 <span className="right">
-                  {b.barisSistem !== null ? (
+                  {b.barisSistem === "pencairan_edc" && bolehSettlement && b.edcSettlementId ? (
+                    yakin === b.id ? (
+                      <span className="keu-yakin">
+                        <button
+                          type="button"
+                          className="btn-outline sm t-danger"
+                          onClick={() => batalPencairan(b.edcSettlementId as string)}
+                          disabled={pending}
+                        >
+                          Ya, batalkan pencairan
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-outline sm"
+                          onClick={() => setYakin(null)}
+                          disabled={pending}
+                        >
+                          Tidak
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-outline sm"
+                        title={PENJELASAN_BARIS_SISTEM.pencairan_edc}
+                        onClick={() => setYakin(b.id)}
+                        disabled={pending}
+                      >
+                        Batalkan pencairan
+                      </button>
+                    )
+                  ) : b.barisSistem !== null ? (
                     <span className="keu-chip" title={PENJELASAN_BARIS_SISTEM[b.barisSistem]}>
                       {LABEL_BARIS_SISTEM[b.barisSistem]}
                     </span>
@@ -304,7 +360,7 @@ export function BukuKasPanel({
                         Tidak
                       </button>
                     </span>
-                  ) : (
+                  ) : bolehTulis ? (
                     <button
                       type="button"
                       className="btn-outline sm"
@@ -313,21 +369,21 @@ export function BukuKasPanel({
                     >
                       Batalkan
                     </button>
-                  )}
+                  ) : null}
                 </span>
               )}
             </div>
           ))
         )}
 
-        <div className={`grid-total cols-buku${bolehTulis ? "" : " ro"}`}>
+        <div className={`grid-total cols-buku${kolomTindakan ? "" : " ro"}`}>
           <span>
             {kaki.nMutasi} mutasi hari ini
           </span>
           <span />
           <span className="right num">{rp(kaki.totalMutasi)}</span>
           <span className="right num">{rp(kaki.saldoAkhir)}</span>
-          {bolehTulis && <span />}
+          {kolomTindakan && <span />}
         </div>
       </div>
 

@@ -462,6 +462,7 @@ export function temuanPihakLawan(
 export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   batal_mutasi_kas: "Mutasi kas dibatalkan",
   batal_kaki_edc: "Satu kaki pencairan EDC dibatalkan",
+  batal_pencairan_edc: "Pencairan EDC dibatalkan",
   nominal_besar: "Nominal ketikan sangat besar",
   batal_saldo_awal: "Saldo pembuka dibatalkan",
   batal_harga_beli: "Harga beli dibatalkan",
@@ -487,6 +488,9 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   // Pencairan EDC menulis tiga kaki sekaligus; membatalkan satu meninggalkan
   // dua lainnya dan buku tak lagi seimbang — dan batch-nya tak bisa disetujui ulang.
   batal_kaki_edc: "merah",
+  // KTD7 — "Batalkan pencairan" mem-void semua kakinya sekaligus; buku tetap
+  // seimbang dan batch kembali menunggu. Sah, tetapi pemilik melihatnya.
+  batal_pencairan_edc: "kuning",
   nominal_besar: "kuning",
   tutup_di_luar_toleransi: "merah",
   harga_beli_di_atas_jual: "kuning",

@@ -36,6 +36,8 @@ export interface BarisBuku extends MutasiKas {
    * `null` = baris biasa.
    */
   barisSistem: BarisSistem | null;
+  /** Batch settlement yang melahirkan kaki pencairan ini — sasaran "Batalkan pencairan". */
+  edcSettlementId?: string | null;
 }
 
 export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan" | "antar_unit";
@@ -43,8 +45,8 @@ export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan" | "antar_
 export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
   saldo_awal: "Saldo pembuka — hanya Head of Finance yang menggantinya, di Kelola akun kas.",
   pencairan_edc:
-    "Bagian dari jurnal pencairan EDC (tiga baris sekaligus). Membatalkan satu baris membuat buku " +
-    "tidak seimbang — hubungi Head of Finance.",
+    "Bagian dari jurnal pencairan EDC (tiga baris sekaligus). Batalkan ketiganya bersamaan dengan " +
+    "\"Batalkan pencairan\" — membatalkan satu baris saja membuat buku tidak seimbang.",
   penebusan:
     "Baris kas milik penebusan SO (rencana U7). Batalkan dari halaman Penebusan — membatalkannya di sini " +
     "membuat penebusan menunjuk baris kas yang tak ada.",
@@ -80,6 +82,7 @@ export function barisBuku(
     keterangan: string;
     sourceManualEntryId?: string | null;
     dariPencairanEdc?: boolean;
+    edcSettlementId?: string | null;
     antarUnit?: boolean;
   })[],
   accountId: string,
