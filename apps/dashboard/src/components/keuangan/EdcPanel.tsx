@@ -13,6 +13,7 @@ import {
 import {
   calonGanda,
   jurnalSeimbang,
+  PESAN_PENCAIRAN_DAN_BATCH_DIBATALKAN,
   PESAN_PENCAIRAN_DIBATALKAN,
   mdrRp,
   pergeseranMdr,
@@ -191,14 +192,16 @@ export function EdcPanel({
     });
   };
 
-  const batalPencairan = (id: string): void => {
+  // `jugaBatch` — batch ganda/salah selesai satu langkah; tanpa itu batch kembali
+  // menunggu untuk dikoreksi lalu disetujui ulang.
+  const batalPencairan = (id: string, jugaBatch: boolean): void => {
     setErr(null);
     setMsg(null);
     setYakin(null);
     start(async () => {
-      const res = await batalkanPencairan({ code, date, settlementId: id });
+      const res = await batalkanPencairan({ code, date, settlementId: id, jugaBatch });
       if (!res.ok) setErr(res.error);
-      else setMsg(PESAN_PENCAIRAN_DIBATALKAN);
+      else setMsg(jugaBatch ? PESAN_PENCAIRAN_DAN_BATCH_DIBATALKAN : PESAN_PENCAIRAN_DIBATALKAN);
     });
   };
 
@@ -301,14 +304,19 @@ export function EdcPanel({
                   ) : s.posted ? (
                     <span className="t-secondary">sudah dicairkan</span>
                   ) : (
-                    <span className="keu-pill">menunggu persetujuan</span>
+                    <span className="keu-pill">
+                      {s.pernahDibatalkan ? "pencairan dibatalkan — setujui ulang atau batalkan batch" : "menunggu persetujuan"}
+                    </span>
                   )}
                   {bolehSettlement && !s.void && (
                     <span className="keu-yakin mt2">
                       {yakin === `pencairan:${s.id}` ? (
                         <>
-                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id)} disabled={pending}>
-                            Ya, batalkan pencairan
+                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id, true)} disabled={pending}>
+                            Batalkan pencairan &amp; batch (ganda)
+                          </button>
+                          <button type="button" className="btn-outline sm" onClick={() => batalPencairan(s.id, false)} disabled={pending}>
+                            Batalkan pencairan saja (untuk dikoreksi)
                           </button>
                           <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
                             Tidak
@@ -358,6 +366,16 @@ export function EdcPanel({
               Belum masuk buku. Angka di bawah dihitung dari batch-nya; yang Anda lakukan
               adalah menyetujui.
             </p>
+            {s.pernahDibatalkan && (
+              <div className="banner warning keu-banner mt2" role="status">
+                <b>Pencairan batch ini pernah dibatalkan.</b>
+                <p className="keu-p">
+                  Setujui lagi hanya bila batch-nya sudah dikoreksi. Bila batch ini ganda atau salah, pilih
+                  &ldquo;Batalkan batch&rdquo; di tabel di atas — batch yang menunggu tetap menahan kelengkapan tutup
+                  hari penjualannya.
+                </p>
+              </div>
+            )}
             <div className="card tbl-card tbl-scroll mt4">
               <div className="grid-head cols-jurnal">
                 <span>Akun</span>
