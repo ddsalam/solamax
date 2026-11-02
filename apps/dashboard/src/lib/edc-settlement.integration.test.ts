@@ -19,8 +19,8 @@ import { Pool } from "pg";
  *   EDC_SETTLEMENT_LIVE_DB=1 DATABASE_URL="postgresql://dashboard_app:…@127.0.0.1:PORT/solamax?options=…" \
  *     npx vitest run src/lib/edc-settlement.integration.test.ts
  *
- * Tak tercakup di sini: penolakan karena kaki sudah dicocokkan rekening koran
- * (R5) — dijaga urutannya oleh `edc-actions.guard.test.ts`.
+ * Hari tertutup buatan uji dibuka kembali di `afterAll` (DELETE dicabut dari
+ * `dashboard_app`, jadi statusnya yang dikembalikan).
  */
 const LIVE = process.env.EDC_SETTLEMENT_LIVE_DB === "1" && !!process.env.DATABASE_URL;
 const d = LIVE ? describe : describe.skip;
@@ -120,7 +120,10 @@ d("settlement EDC — batalkan pencairan, ubah, batalkan batch (DB testing)", ()
     }
   });
   afterAll(async () => {
-    await pool?.end();
+    if (pool) {
+      await q(`UPDATE app.day_close SET status='open' WHERE unit_id=$1 AND business_date=$2::date`, [UNIT.unit_id, D2]);
+      await pool.end();
+    }
   });
 
   it("Covers AE1/R3/R11 — setujui → batalkan → setujui ulang; satu kejadian kuning tiap pembatalan", async () => {
@@ -191,5 +194,27 @@ d("settlement EDC — batalkan pencairan, ubah, batalkan batch (DB testing)", ()
     const id2 = await idBatch(`E-${jalan}`);
     expect((await setujuiPencairan({ code: UNIT.code, date: D2, settlementId: id2 })).ok).toBe(false);
     expect(await kaki(id2)).toHaveLength(0);
+  });
+
+  it("nomor settlement ganda untuk EDC yang sama ditolak dengan pesan, saat simpan maupun ubah", async () => {
+    expect(await simpanSettlement(isian(`F-${jalan}`, D1, 200_000, 198_000))).toEqual({ ok: true });
+    const r = await simpanSettlement(isian(`F-${jalan}`, D1, 210_000, 208_000));
+    expect(r.ok ? "" : r.error).toMatch(/sudah dipakai/);
+    expect(await simpanSettlement(isian(`G-${jalan}`, D1, 220_000, 218_000))).toEqual({ ok: true });
+    const idG = await idBatch(`G-${jalan}`);
+    const u = await ubahSettlement({ ...isian(`F-${jalan}`, D1, 220_000, 218_000), id: idG });
+    expect(u.ok ? "" : u.error).toMatch(/sudah dipakai/);
+  });
+
+  it("Covers AE3/R5 — kaki yang sudah dicocokkan rekening koran menolak pembatalan, tak ada baris berubah", async () => {
+    expect(await simpanSettlement(isian(`H-${jalan}`, D1, 400_000, 396_000))).toEqual({ ok: true });
+    const id = await idBatch(`H-${jalan}`);
+    expect(await setujuiPencairan({ code: UNIT.code, date: D1, settlementId: id })).toEqual({ ok: true });
+    const leg = (await q<{ id: string }>(`SELECT id::text AS id FROM app.cash_ledger WHERE edc_settlement_id=$1::uuid AND NOT void LIMIT 1`, [id]))[0]!.id;
+    const cocok = (await q<{ id: string }>(`INSERT INTO app.cocok_bank (unit_id, cara, dibuat_by_user_id) VALUES ($1,'manual',0) RETURNING id::text AS id`, [UNIT.unit_id]))[0]!.id;
+    await q(`INSERT INTO app.cocok_bank_baris (unit_id, cocok_id, cash_ledger_id) VALUES ($1,$2::uuid,$3::uuid)`, [UNIT.unit_id, cocok, leg]);
+    const r = await batalkanPencairan({ code: UNIT.code, date: D1, settlementId: id });
+    expect(r.ok ? "" : r.error).toMatch(/rekening koran/);
+    expect((await kaki(id)).filter((k) => !k.void)).toHaveLength(2);
   });
 });

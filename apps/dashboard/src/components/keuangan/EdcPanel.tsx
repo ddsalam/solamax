@@ -36,7 +36,7 @@ import type { SettlementRow } from "@/lib/keuangan-input-queries";
  * sebagai tiga kaki yang bisa dibaca, dengan tombol yang menyetujui — bukan
  * sebagai baris yang sudah ada di buku.
  *
- * Rencana 2026-11-02 — tim Finance (staf Keuangan DAN HoF; `bolehTulis` di sini
+ * Rencana 2026-11-02 — tim Finance (staf Keuangan DAN HoF; `bolehSettlement`
  * = `canKelolaSettlementEdc`) bisa MEMBATALKAN pencairan (ketiga kakinya
  * sekaligus), lalu MENGUBAH atau MEMBATALKAN batch yang belum dicairkan.
  * Konfirmasinya dua klik di tempat, seperti "Batalkan" di buku kas.
@@ -58,7 +58,7 @@ export function EdcPanel({
   rekeningEdc,
   namaEdc,
   reasonCodes,
-  bolehTulis,
+  bolehSettlement,
 }: {
   code: string;
   date: string;
@@ -69,7 +69,7 @@ export function EdcPanel({
   /** Nama EDC yang dikenal unit ini — saran isian acquirer, supaya ejaannya seragam. */
   namaEdc: string[];
   reasonCodes: { code: string; label: string }[];
-  bolehTulis: boolean;
+  bolehSettlement: boolean;
 }) {
   const [buka, setBuka] = useState(false);
   const [acquirer, setAcquirer] = useState("");
@@ -303,12 +303,12 @@ export function EdcPanel({
                   ) : (
                     <span className="keu-pill">menunggu persetujuan</span>
                   )}
-                  {bolehTulis && !s.void && (
+                  {bolehSettlement && !s.void && (
                     <span className="keu-yakin mt2">
                       {yakin === `pencairan:${s.id}` ? (
                         <>
                           <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id)} disabled={pending}>
-                            Ya, batalkan 3 baris
+                            Ya, batalkan pencairan
                           </button>
                           <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
                             Tidak
@@ -388,7 +388,7 @@ export function EdcPanel({
                 </span>
               </div>
             </div>
-            {bolehTulis && (
+            {bolehSettlement && (
               <div className="manual-form-actions">
                 <button
                   type="button"
@@ -432,7 +432,7 @@ export function EdcPanel({
         </>
       )}
 
-      {bolehTulis && !buka && (
+      {bolehSettlement && !buka && (
         <div className="manual-form-actions">
           <button type="button" className="btn-tint sm" onClick={() => setBuka(true)}>
             Tambah batch settlement…
@@ -440,7 +440,7 @@ export function EdcPanel({
         </div>
       )}
 
-      {bolehTulis && buka && (
+      {bolehSettlement && buka && (
         <div className="card card-pad-lg keu-form">
           <h4 className="text-h3">
             {ubahId === null ? "Batch settlement baru" : `Ubah batch ${acquirer} · ${noSettle}`}

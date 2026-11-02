@@ -96,7 +96,7 @@ export function validasiSettlement(i: IsianSettlement): HasilValidasiSettlement 
 
 /** Satu kalimat untuk dua tempat tombol "Batalkan pencairan" (blok 3 dan buku kas/bank). */
 export const PESAN_PENCAIRAN_DIBATALKAN =
-  "Pencairan dibatalkan — tiga barisnya tercatat batal, tidak dihapus. Batch kembali menunggu persetujuan di blok 3.";
+  "Pencairan dibatalkan — seluruh barisnya tercatat batal, tidak dihapus. Batch kembali menunggu persetujuan di blok 3.";
 
 /**
  * Batch AKTIF lain dengan EDC, tanggal cair, dan bruto yang sama — kemungkinan

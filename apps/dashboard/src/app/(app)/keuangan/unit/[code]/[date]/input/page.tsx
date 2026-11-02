@@ -247,7 +247,7 @@ export default async function InputKeuanganPage({
           rekeningEdc={rekeningEdc}
           namaEdc={namaEdc}
           reasonCodes={reasonCodes}
-          bolehTulis={bolehSettlement}
+          bolehSettlement={bolehSettlement}
         />
       </div>
 

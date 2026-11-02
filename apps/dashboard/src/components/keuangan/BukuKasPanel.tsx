@@ -315,7 +315,7 @@ export function BukuKasPanel({
                           onClick={() => batalPencairan(b.edcSettlementId as string)}
                           disabled={pending}
                         >
-                          Ya, batalkan 3 baris
+                          Ya, batalkan pencairan
                         </button>
                         <button
                           type="button"

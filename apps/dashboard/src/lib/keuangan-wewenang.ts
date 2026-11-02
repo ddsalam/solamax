@@ -524,7 +524,8 @@ export function canTutupBulan(ctx: WewenangCtx, daftar?: readonly string[]): boo
  * berdiri sendiri supaya pelonggaran di sini tak merembes ke input lain.
  *
  * Kontrolnya keterlihatan, bukan pemisahan tugas: setiap pembatalan dan
- * perubahan tercatat di `app.audit_log` dan tampil di Pemantauan pemakaian.
+ * perubahan tercatat di `app.audit_log`; pembatalan (pencairan maupun batch)
+ * juga tampil sebagai kejadian di Pemantauan pemakaian.
  */
 export function canKelolaSettlementEdc(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
   return (
