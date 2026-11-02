@@ -314,3 +314,14 @@ describe("U6 — sinyal buku pihak lawan", () => {
     expect(NADA_KEJADIAN.tarik_rekening_koran).toBe("kuning");
   });
 });
+
+describe("pembatalan pencairan EDC (R11, KTD7)", () => {
+  it("pembatalan pencairan utuh adalah SATU kejadian bernama, kuning", () => {
+    expect(LABEL_KEJADIAN.batal_pencairan_edc).toBe("Pencairan EDC dibatalkan");
+    expect(NADA_KEJADIAN.batal_pencairan_edc).toBe("kuning");
+  });
+
+  it("kaki pencairan yang void sendirian tetap merah", () => {
+    expect(NADA_KEJADIAN.batal_kaki_edc).toBe("merah");
+  });
+});

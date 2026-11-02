@@ -40,6 +40,7 @@ describe("edc-actions — penjagaan yang tak boleh hilang", () => {
   it("penjaga ini punya SUBJEK", () => {
     expect(KODE).toMatch(/export async function simpanSettlement/);
     expect(KODE).toMatch(/export async function setujuiPencairan/);
+    expect(KODE).toMatch(/export async function batalkanPencairan/);
   });
 
   it("🔴 MDR TIDAK PERNAH DIKETIK — tak ada parameter MDR, tak ada kolom mdr_rp di INSERT", () => {
@@ -57,28 +58,75 @@ describe("edc-actions — penjagaan yang tak boleh hilang", () => {
     expect(masukan).not.toMatch(/mdr/i);
   });
 
-  it("gerbang §2.6/§10.12 lewat SATU pintu, dan mendahului koneksi", () => {
-    expect(KODE).toMatch(/alasanTakBolehInput\(/);
-    expect(KODE).toMatch(/PESAN_TAK_BOLEH_INPUT\[alasan\]/);
-    expect(urutan(KODE, "alasanTakBolehInput(", "pool.connect()")).toBe("ok");
-    // 🔴 Bukan hanya "gerbangnya dipanggil" — PENOLAKANNYA harus terjadi.
-    // Uji mutasi: menghapus baris `return` ini meninggalkan `const alasan = …`
-    // yang tetap cocok dengan asersi lama, jadi penjaga tetap hijau sementara
-    // siapa pun boleh menulis. Memanggil pemeriksa tanpa memakai hasilnya
-    // adalah bentuk lain dari "hijau tanpa subjek".
-    expect(KODE).toMatch(
-      /if \(alasan !== null\) return \{ (ok: false, error|boleh: false, error): PESAN_TAK_BOLEH_INPUT\[alasan\] \}/,
-    );
-
+  it("gerbang settlement (keputusan 2 Nov 2026) lewat SATU pintu, dan mendahului koneksi", () => {
+    // Seluruh tim Finance — staf Keuangan DAN HoF — memakai canKelolaSettlementEdc,
+    // BUKAN alasanTakBolehInput (yang menolak HoF, §10.12).
+    expect(KODE).toMatch(/canKelolaSettlementEdc\(/);
+    expect(KODE).not.toMatch(/alasanTakBolehInput\(/);
+    expect(urutan(KODE, "canKelolaSettlementEdc(", "pool.connect()")).toBe("ok");
+    // 🔴 PENOLAKANNYA harus terjadi, bukan sekadar dipanggil.
+    expect(KODE).toMatch(/if \(!canKelolaSettlementEdc\([^)]*\)\) return \{ boleh: false, error: PESAN_TAK_BOLEH_SETTLEMENT \}/);
     expect(KODE).toMatch(/scope\.requireUnit\(code\)/);
   });
 
+  it("🔴 setiap aksi tulis melewati buka() — tak ada pintu samping", () => {
+    for (const nama of ["simpanSettlement", "setujuiPencairan", "ubahSettlement", "batalkanSettlement", "batalkanPencairan"]) {
+      const fn = badanFungsi(nama);
+      expect(fn, `fungsi ${nama} tidak ditemukan`).not.toBe("");
+      expect(urutan(fn, "await buka(", "pool.connect()"), nama).toBe("ok");
+    }
+  });
+
+  it("🔴 simpan DAN ubah memakai SATU validasi", () => {
+    expect(badanFungsi("simpanSettlement")).toMatch(/validasiSettlement\(/);
+    expect(badanFungsi("ubahSettlement")).toMatch(/validasiSettlement\(/);
+    expect(urutan(badanFungsi("ubahSettlement"), "validasiSettlement(", "pool.connect()")).toBe("ok");
+  });
+
+  it("🔴 ubah & batalkan batch hanya untuk batch BELUM dicairkan, dikunci FOR UPDATE", () => {
+    for (const nama of ["ubahSettlement", "batalkanSettlement"]) {
+      const fn = badanFungsi(nama);
+      expect(fn, nama).toMatch(/FOR UPDATE/);
+      expect(fn, nama).toMatch(/posted/);
+      expect(fn, nama).toMatch(/auditKeuangan\(/);
+      expect(fn, nama).not.toMatch(/mdr_rp\s*=/);
+    }
+    // UPDATE batch-nya sendiri menuntut belum dicairkan di WHERE — bukan hanya di cek awal.
+    expect(badanFungsi("ubahSettlement")).toMatch(/AND posted_at IS NULL/);
+    expect(badanFungsi("batalkanSettlement")).toMatch(/AND posted_at IS NULL/);
+  });
+
+  it("🔴 batalkan pencairan: cek cocok → hari buku → void kaki → kosongkan persetujuan → jejak", () => {
+    const fn = badanFungsi("batalkanPencairan");
+    expect(fn, "fungsi batalkanPencairan tidak ditemukan").not.toBe("");
+    expect(fn).toMatch(/settlementId: string/);
+    expect(fn).not.toMatch(/input\.(grossRp|netRp|amount)/);
+    expect(urutan(fn, "cocok_bank_baris", "hariTerbuka(")).toBe("ok");
+    expect(urutan(fn, "hariTerbuka(", "UPDATE app.cash_ledger")).toBe("ok");
+    expect(urutan(fn, "UPDATE app.cash_ledger", "UPDATE app.noncash_expense")).toBe("ok");
+    expect(urutan(fn, "UPDATE app.noncash_expense", "SET posted_by_user_id=NULL, posted_at=NULL")).toBe("ok");
+    expect(urutan(fn, "SET posted_by_user_id=NULL, posted_at=NULL", "auditKeuangan(")).toBe("ok");
+    expect(urutan(fn, "auditKeuangan(", 'client.query("COMMIT")')).toBe("ok");
+    expect(fn).toMatch(/FOR UPDATE/);
+  });
+
+  it("🔴 persetujuan (ulang) tak menulis ke hari yang sudah ditutup", () => {
+    const fn = badanFungsi("setujuiPencairan");
+    expect(urutan(fn, "hariTerbuka(", "INSERT INTO app.cash_ledger")).toBe("ok");
+    // Penjaganya sendiri benar-benar mengunci & menilai hari buku.
+    const i = KODE.indexOf("async function hariTerbuka");
+    const penjaga = KODE.slice(i, KODE.indexOf("\n}\n", i));
+    expect(penjaga, "hariTerbuka tidak ditemukan").toMatch(/hariBukuTerkunci\(/);
+    expect(penjaga).toMatch(/h\.hariBuku !== tanggal\) return false/);
+  });
+
   it("🔴 selisih transaksi vs settlement TIDAK boleh lewat tanpa nama", () => {
+    // Aturannya tinggal di validasiSettlement (keuangan-edc.ts, diuji di sana);
+    // di sini dijaga bahwa simpan memakainya dan menolak SEBELUM koneksi dibuka.
     const fn = badanFungsi("simpanSettlement");
-    expect(fn).toMatch(/adaSelisih/);
-    expect(fn).toMatch(/reasonCode/);
-    // Penolakannya terjadi SEBELUM koneksi dibuka.
-    expect(urutan(fn, "adaSelisih &&", "pool.connect()")).toBe("ok");
+    expect(fn).toMatch(/if \(!v\.ok\) return \{ ok: false, error: v\.error \}/);
+    expect(urutan(fn, "validasiSettlement(", "pool.connect()")).toBe("ok");
+    expect(fn).toMatch(/adaSelisih \? input\.reasonCode : null/);
   });
 
   it("🔴 nominal pencairan dibaca ULANG di server; client hanya mengirim id", () => {
@@ -138,7 +186,7 @@ describe("edc-actions — penjagaan yang tak boleh hilang", () => {
   });
 
   it("RLS 0016 di-set transaction-local sebelum DML", () => {
-    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(2);
+    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(5);
   });
 
   it("tak ada DELETE di jalur mana pun", () => {

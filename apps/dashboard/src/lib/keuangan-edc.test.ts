@@ -7,6 +7,8 @@ import {
   selisihSettlement,
   usulanJurnalPencairan,
   type Settlement,
+  validasiSettlement,
+  calonGanda,
 } from "./keuangan-edc";
 
 const s = (o: Partial<Settlement> = {}): Settlement => ({
@@ -149,5 +151,88 @@ describe("kontrol MDR% per acquirer per bulan", () => {
       s({ id: "d", acquirer: "BCA", settlementDate: "2026-02-05", grossRp: 10_000_000, netRp: 9_700_000 }),
     ];
     expect(pergeseranMdr(ringkasMdr(dgnGeser), 0.5)).toHaveLength(0);
+  });
+});
+
+describe("validasiSettlement — SATU aturan untuk simpan DAN ubah", () => {
+  const sah = {
+    acquirer: "BCA",
+    settlementNo: "S-01",
+    settlementDate: "2026-10-02",
+    businessDate: "2026-10-01",
+    grossRp: 1_504_440,
+    netRp: 1_489_396,
+    txnTotalRp: null as number | null,
+    reasonCode: null as string | null,
+  };
+
+  it("isian sah lolos; tanpa selisih bila total transaksi belum diisi", () => {
+    expect(validasiSettlement(sah)).toEqual({ ok: true, adaSelisih: false });
+  });
+
+  it("neto melebihi bruto ditolak", () => {
+    expect(validasiSettlement({ ...sah, netRp: sah.grossRp + 1 }).ok).toBe(false);
+  });
+
+  it("bruto nol ditolak", () => {
+    expect(validasiSettlement({ ...sah, grossRp: 0 }).ok).toBe(false);
+  });
+
+  it("uang masuk sebelum hari penjualannya ditolak", () => {
+    expect(validasiSettlement({ ...sah, settlementDate: "2026-09-30" }).ok).toBe(false);
+  });
+
+  it("tanggal berbentuk lain ditolak", () => {
+    expect(validasiSettlement({ ...sah, settlementDate: "2026-10-2" }).ok).toBe(false);
+  });
+
+  it("acquirer atau nomor kosong ditolak", () => {
+    expect(validasiSettlement({ ...sah, acquirer: "  " }).ok).toBe(false);
+    expect(validasiSettlement({ ...sah, settlementNo: "" }).ok).toBe(false);
+  });
+
+  it("selisih transaksi vs bruto tanpa kode alasan ditolak; dengan kode lolos", () => {
+    expect(validasiSettlement({ ...sah, txnTotalRp: sah.grossRp + 500 }).ok).toBe(false);
+    expect(validasiSettlement({ ...sah, txnTotalRp: sah.grossRp + 500, reasonCode: "CLS-EDC-TIMING" })).toEqual({
+      ok: true,
+      adaSelisih: true,
+    });
+  });
+});
+
+describe("calonGanda — peringatan batch ganda (R12), bukan penolakan", () => {
+  const b = (o: Partial<{ id: string; acquirer: string; settlementDate: string; grossRp: number; void: boolean; settlementNo: string }> = {}) => ({
+    id: "a",
+    acquirer: "BCA",
+    settlementDate: "2026-10-02",
+    grossRp: 1_504_440,
+    void: false,
+    settlementNo: "S-01",
+    ...o,
+  });
+  const isian = { acquirer: "BCA", settlementDate: "2026-10-02", grossRp: 1_504_440 };
+
+  it("EDC, tanggal cair, dan bruto sama ⇒ ditemukan", () => {
+    expect(calonGanda([b()], isian, null).map((x) => x.settlementNo)).toEqual(["S-01"]);
+  });
+
+  it("ejaan EDC berbeda huruf/spasi tetap EDC yang sama", () => {
+    expect(calonGanda([b()], { ...isian, acquirer: " bca " }, null)).toHaveLength(1);
+  });
+
+  it("bruto beda satu rupiah ⇒ bukan ganda", () => {
+    expect(calonGanda([b()], { ...isian, grossRp: 1_504_441 }, null)).toEqual([]);
+  });
+
+  it("batch yang sudah dibatalkan diabaikan", () => {
+    expect(calonGanda([b({ void: true })], isian, null)).toEqual([]);
+  });
+
+  it("batch yang sedang diubah tak dibandingkan dengan dirinya sendiri", () => {
+    expect(calonGanda([b({ id: "x" })], isian, "x")).toEqual([]);
+  });
+
+  it("bruto belum terisi (0) ⇒ tak ada peringatan", () => {
+    expect(calonGanda([b()], { ...isian, grossRp: 0 }, null)).toEqual([]);
   });
 });

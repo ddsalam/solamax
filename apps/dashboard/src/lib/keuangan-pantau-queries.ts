@@ -94,6 +94,7 @@ export interface ProdukTanpaHarga {
 export type JenisKejadian =
   | "batal_mutasi_kas"
   | "batal_kaki_edc"
+  | "batal_pencairan_edc"
   | "nominal_besar"
   | "batal_saldo_awal"
   | "batal_harga_beli"
@@ -465,6 +466,16 @@ async function hargaPerUnit(
 }
 
 /**
+ * KTD7 — kaki kas pencairan EDC `alias` punya kaki lain dari settlement yang
+ * sama yang di-void pada saat yang SAMA (satu transaksi `batalkanPencairan`).
+ * Kaki yang void sendirian tidak lolos — ia tetap `batal_kaki_edc` (merah).
+ */
+const ADA_KAKI_PASANGAN_VOID = (alias: string) => `EXISTS (
+         SELECT 1 FROM app.cash_ledger p
+          WHERE p.edc_settlement_id = ${alias}.edc_settlement_id AND p.unit_id = ${alias}.unit_id
+            AND p.void AND p.voided_at = ${alias}.voided_at AND p.id <> ${alias}.id)`;
+
+/**
  * Daftar kejadian yang layak dilihat pemilik, dalam jendela.
  *
  * Setiap cabang UNION menjawab satu pertanyaan, dan tak satu pun menilai —
@@ -495,6 +506,22 @@ const KUERI_KEJADIAN = `
       JOIN app.cash_account a ON a.id = l.account_id
       LEFT JOIN app.users u ON u.id = l.voided_by_user_id
      WHERE l.unit_id = ANY($1::int[]) AND l.void AND ${SAAT_DALAM_JENDELA("l.voided_at")}
+       AND NOT (l.edc_settlement_id IS NOT NULL AND ${ADA_KAKI_PASANGAN_VOID("l")})
+
+    -- KTD7 — "Batalkan pencairan" mem-void kedua kaki dalam SATU transaksi,
+    -- jadi keduanya ber-voided_at sama. Pasangan itu SATU kejadian, diambil dari
+    -- kaki EDC Penampungan saja. Diputuskan dari fakta saat pembatalan, bukan
+    -- dari posted_at batch sekarang — sesudah disetujui ulang tetap terbaca sama.
+    UNION ALL
+    SELECT l.unit_id::int, 'batal_pencairan_edc', ${WIB_TEKS("l.voided_at")},
+           to_char(l.business_date, 'YYYY-MM-DD'), u.email,
+           (a.nama || ' — ' || l.keterangan), l.amount::float8, NULL
+      FROM app.cash_ledger l
+      JOIN app.cash_account a ON a.id = l.account_id AND a.kind = 'edc_penampungan'
+      LEFT JOIN app.users u ON u.id = l.voided_by_user_id
+     WHERE l.unit_id = ANY($1::int[]) AND l.void AND l.edc_settlement_id IS NOT NULL
+       AND ${ADA_KAKI_PASANGAN_VOID("l")}
+       AND ${SAAT_DALAM_JENDELA("l.voided_at")}
 
     -- U6 — pembalik MAJU pasangan antar unit (R31, kaki yang harinya sudah
     -- tertutup). Dibaca dari buku kas ber-RLS, BUKAN dari audit_log yang tak
@@ -548,6 +575,12 @@ const KUERI_KEJADIAN = `
       FROM app.noncash_expense n
       LEFT JOIN app.users u ON u.id = n.voided_by_user_id
      WHERE n.unit_id = ANY($1::int[]) AND n.void AND ${SAAT_DALAM_JENDELA("n.voided_at")}
+       -- KTD7 — MDR yang ikut batal bersama pencairannya sudah terbaca sebagai
+       -- batal_pencairan_edc; jangan tampil dua kali.
+       AND NOT EXISTS (
+         SELECT 1 FROM app.cash_ledger p
+          WHERE p.edc_settlement_id = n.edc_settlement_id AND p.unit_id = n.unit_id
+            AND p.void AND p.voided_at = n.voided_at)
 
     UNION ALL
     SELECT l.unit_id::int, 'mutasi_terlambat', ${WIB_TEKS("l.created_at")},

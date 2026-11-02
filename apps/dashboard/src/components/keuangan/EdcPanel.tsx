@@ -3,9 +3,17 @@
 import { bacaRupiah, type HasilAngka } from "@/lib/angka-input";
 import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
-import { setujuiPencairan, simpanSettlement } from "@/lib/edc-actions";
 import {
+  batalkanPencairan,
+  batalkanSettlement,
+  setujuiPencairan,
+  simpanSettlement,
+  ubahSettlement,
+} from "@/lib/edc-actions";
+import {
+  calonGanda,
   jurnalSeimbang,
+  PESAN_PENCAIRAN_DIBATALKAN,
   mdrRp,
   pergeseranMdr,
   ringkasMdr,
@@ -28,6 +36,11 @@ import type { SettlementRow } from "@/lib/keuangan-input-queries";
  * sebagai tiga kaki yang bisa dibaca, dengan tombol yang menyetujui — bukan
  * sebagai baris yang sudah ada di buku.
  *
+ * Rencana 2026-11-02 — tim Finance (staf Keuangan DAN HoF; `bolehSettlement`
+ * = `canKelolaSettlementEdc`) bisa MEMBATALKAN pencairan (ketiga kakinya
+ * sekaligus), lalu MENGUBAH atau MEMBATALKAN batch yang belum dicairkan.
+ * Konfirmasinya dua klik di tempat, seperti "Batalkan" di buku kas.
+ *
  * Kontrol MDR% per acquirer per bulan ikut ditampilkan: MDR adalah persentase
  * yang disepakati di perjanjian, jadi persentase yang BERGESER tanpa perubahan
  * perjanjian adalah temuan, bukan derau.
@@ -45,7 +58,7 @@ export function EdcPanel({
   rekeningEdc,
   namaEdc,
   reasonCodes,
-  bolehTulis,
+  bolehSettlement,
 }: {
   code: string;
   date: string;
@@ -56,7 +69,7 @@ export function EdcPanel({
   /** Nama EDC yang dikenal unit ini — saran isian acquirer, supaya ejaannya seragam. */
   namaEdc: string[];
   reasonCodes: { code: string; label: string }[];
-  bolehTulis: boolean;
+  bolehSettlement: boolean;
 }) {
   const [buka, setBuka] = useState(false);
   const [acquirer, setAcquirer] = useState("");
@@ -76,6 +89,10 @@ export function EdcPanel({
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Batch yang sedang diubah; `null` = formulir dalam mode tambah.
+  const [ubahId, setUbahId] = useState<string | null>(null);
+  // Konfirmasi di tempat: `pencairan:<id>` atau `batch:<id>`.
+  const [yakin, setYakin] = useState<string | null>(null);
 
   const namaAkun = (id: string): string => akun.find((a) => a.id === id)?.nama ?? id;
   // Satu pembaca angka untuk semua formulir keuangan (`angka-input.ts`): yang
@@ -104,6 +121,41 @@ export function EdcPanel({
   const ringkas: RingkasMdr[] = ringkasMdr(settlements);
   const geser = pergeseranMdr(ringkas);
   const belumCair = settlements.filter((s) => !s.void && !s.posted);
+  const ganda = buka ? calonGanda(settlements, { acquirer, settlementDate: tglSettle, grossRp: brutoN }, ubahId) : [];
+
+  const kosongkanFormulir = (): void => {
+    setAcquirer("");
+    setAkunDipilihTangan(false);
+    setNoSettle("");
+    setTglSettle(date);
+    setTglBisnis(date);
+    setBruto("");
+    setNeto("");
+    setTxn("");
+    setAlasanKode("");
+    setUbahId(null);
+    setBuka(false);
+  };
+
+  // Mode ubah: isian dari batch-nya, dan rekening tujuan tersimpan dianggap
+  // pilihan tangan — saran Pengaturan EDC tak boleh menimpanya diam-diam (§10.28).
+  const mulaiUbah = (s: SettlementRow): void => {
+    setErr(null);
+    setMsg(null);
+    setYakin(null);
+    setUbahId(s.id);
+    setAcquirer(s.acquirer);
+    setNoSettle(s.settlementNo);
+    setTglSettle(s.settlementDate);
+    setTglBisnis(s.businessDate);
+    setAkunTujuan(s.toAccountId);
+    setAkunDipilihTangan(true);
+    setBruto(rp(s.grossRp));
+    setNeto(rp(s.netRp));
+    setTxn(s.txnTotalRp === null ? "" : rp(s.txnTotalRp));
+    setAlasanKode(s.reasonCode ?? "");
+    setBuka(true);
+  };
 
   const simpan = (): void => {
     setErr(null);
@@ -113,7 +165,7 @@ export function EdcPanel({
       return;
     }
     start(async () => {
-      const res = await simpanSettlement({
+      const isian = {
         code,
         date,
         acquirer,
@@ -125,18 +177,41 @@ export function EdcPanel({
         netRp: netoN,
         txnTotalRp: txnN,
         reasonCode: alasanKode === "" ? null : alasanKode,
-      });
+      };
+      const res = ubahId === null ? await simpanSettlement(isian) : await ubahSettlement({ ...isian, id: ubahId });
       if (!res.ok) setErr(res.error);
       else {
-        setMsg("Batch settlement tersimpan. Jurnal pencairannya menunggu persetujuan.");
-        setAcquirer("");
-        setAkunDipilihTangan(false);
-        setNoSettle("");
-        setBruto("");
-        setNeto("");
-        setTxn("");
-        setAlasanKode("");
-        setBuka(false);
+        setMsg(
+          ubahId === null
+            ? "Batch settlement tersimpan. Jurnal pencairannya menunggu persetujuan."
+            : "Perubahan batch tersimpan — tercatat atas nama Anda. Jurnal pencairannya menunggu persetujuan.",
+        );
+        kosongkanFormulir();
+      }
+    });
+  };
+
+  const batalPencairan = (id: string): void => {
+    setErr(null);
+    setMsg(null);
+    setYakin(null);
+    start(async () => {
+      const res = await batalkanPencairan({ code, date, settlementId: id });
+      if (!res.ok) setErr(res.error);
+      else setMsg(PESAN_PENCAIRAN_DIBATALKAN);
+    });
+  };
+
+  const batalBatch = (id: string): void => {
+    setErr(null);
+    setMsg(null);
+    setYakin(null);
+    start(async () => {
+      const res = await batalkanSettlement({ code, date, id });
+      if (!res.ok) setErr(res.error);
+      else {
+        setMsg("Batch dibatalkan — tercatat, tidak dihapus.");
+        if (ubahId === id) kosongkanFormulir();
       }
     });
   };
@@ -228,6 +303,42 @@ export function EdcPanel({
                   ) : (
                     <span className="keu-pill">menunggu persetujuan</span>
                   )}
+                  {bolehSettlement && !s.void && (
+                    <span className="keu-yakin mt2">
+                      {yakin === `pencairan:${s.id}` ? (
+                        <>
+                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalPencairan(s.id)} disabled={pending}>
+                            Ya, batalkan pencairan
+                          </button>
+                          <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
+                            Tidak
+                          </button>
+                        </>
+                      ) : yakin === `batch:${s.id}` ? (
+                        <>
+                          <button type="button" className="btn-outline sm t-danger" onClick={() => batalBatch(s.id)} disabled={pending}>
+                            Ya, batalkan batch
+                          </button>
+                          <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
+                            Tidak
+                          </button>
+                        </>
+                      ) : s.posted ? (
+                        <button type="button" className="btn-outline sm" onClick={() => setYakin(`pencairan:${s.id}`)} disabled={pending}>
+                          Batalkan pencairan
+                        </button>
+                      ) : (
+                        <>
+                          <button type="button" className="btn-outline sm" onClick={() => mulaiUbah(s)} disabled={pending}>
+                            Ubah
+                          </button>
+                          <button type="button" className="btn-outline sm" onClick={() => setYakin(`batch:${s.id}`)} disabled={pending}>
+                            Batalkan batch
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  )}
                 </span>
               </div>
             );
@@ -277,7 +388,7 @@ export function EdcPanel({
                 </span>
               </div>
             </div>
-            {bolehTulis && (
+            {bolehSettlement && (
               <div className="manual-form-actions">
                 <button
                   type="button"
@@ -321,7 +432,7 @@ export function EdcPanel({
         </>
       )}
 
-      {bolehTulis && !buka && (
+      {bolehSettlement && !buka && (
         <div className="manual-form-actions">
           <button type="button" className="btn-tint sm" onClick={() => setBuka(true)}>
             Tambah batch settlement…
@@ -329,9 +440,11 @@ export function EdcPanel({
         </div>
       )}
 
-      {bolehTulis && buka && (
+      {bolehSettlement && buka && (
         <div className="card card-pad-lg keu-form">
-          <h4 className="text-h3">Batch settlement baru</h4>
+          <h4 className="text-h3">
+            {ubahId === null ? "Batch settlement baru" : `Ubah batch ${acquirer} · ${noSettle}`}
+          </h4>
           <div className="keu-2col">
             <label className="keu-fld">
               <span className="keu-label">Acquirer</span>
@@ -486,14 +599,24 @@ export function EdcPanel({
             </div>
           )}
 
+          {ganda.length > 0 && (
+            <div className="banner warning keu-banner" role="status">
+              <b>Kemungkinan batch ganda</b>
+              <p className="keu-p">
+                Sudah ada batch {ganda.map((g) => g.settlementNo).join(", ")} dengan EDC, tanggal cair, dan
+                bruto yang sama. Pastikan ini bukan batch yang sama dengan nomor berbeda sebelum menyimpan.
+              </p>
+            </div>
+          )}
+
           <div className="manual-form-actions">
             <button type="button" className="btn-navy" onClick={simpan} disabled={pending || angkaDitolak}>
-              {pending ? "Menyimpan…" : "Simpan batch"}
+              {pending ? "Menyimpan…" : ubahId === null ? "Simpan batch" : "Simpan perubahan"}
             </button>
             <button
               type="button"
               className="btn-outline"
-              onClick={() => setBuka(false)}
+              onClick={kosongkanFormulir}
               disabled={pending}
             >
               Batal
