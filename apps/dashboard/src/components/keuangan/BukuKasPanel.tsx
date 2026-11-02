@@ -6,7 +6,7 @@ import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { batalkanPencairan } from "@/lib/edc-actions";
 import { setujuiSetoran, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
-import { PESAN_PENCAIRAN_DIBATALKAN } from "@/lib/keuangan-edc";
+import { PESAN_PENCAIRAN_DAN_BATCH_DIBATALKAN, PESAN_PENCAIRAN_DIBATALKAN } from "@/lib/keuangan-edc";
 import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
 import type { AkunKas, BarisBuku, KakiBuku, TawaranSetoran } from "@/lib/keuangan-kas-model";
 import { kategoriPihakLawan, pihakLawanUntuk, type PilihanPihakLawan } from "@/lib/pihak-lawan-model";
@@ -172,14 +172,14 @@ export function BukuKasPanel({
   };
 
   // Kaki pencairan EDC: dibatalkan KETIGANYA lewat batch-nya, tak pernah satu.
-  const batalPencairan = (settlementId: string): void => {
+  const batalPencairan = (settlementId: string, jugaBatch: boolean): void => {
     setErr(null);
     setMsg(null);
     setYakin(null);
     start(async () => {
-      const res = await batalkanPencairan({ code, date, settlementId });
+      const res = await batalkanPencairan({ code, date, settlementId, jugaBatch });
       if (!res.ok) setErr(res.error);
-      else setMsg(PESAN_PENCAIRAN_DIBATALKAN);
+      else setMsg(jugaBatch ? PESAN_PENCAIRAN_DAN_BATCH_DIBATALKAN : PESAN_PENCAIRAN_DIBATALKAN);
     });
   };
 
@@ -311,11 +311,19 @@ export function BukuKasPanel({
                       <span className="keu-yakin">
                         <button
                           type="button"
-                          className="btn-outline sm t-danger"
-                          onClick={() => batalPencairan(b.edcSettlementId as string)}
+                          className="btn-outline sm"
+                          onClick={() => batalPencairan(b.edcSettlementId as string, false)}
                           disabled={pending}
                         >
-                          Ya, batalkan pencairan
+                          Batalkan pencairan saja (untuk dikoreksi)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-outline sm t-danger"
+                          onClick={() => batalPencairan(b.edcSettlementId as string, true)}
+                          disabled={pending}
+                        >
+                          Batalkan pencairan &amp; batch (ganda)
                         </button>
                         <button
                           type="button"

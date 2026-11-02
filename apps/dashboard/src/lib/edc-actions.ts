@@ -458,16 +458,24 @@ export async function batalkanSettlement(input: { code: string; date: string; id
  * (pembatalan cocok tetap milik HoF, R31) atau bila hari bukunya sudah ditutup
  * (koreksi maju belum dibangun). Persetujuan lama yang tertimpa saat batch
  * disetujui ulang disimpan di `audit_log.detail`.
+ *
+ * `jugaBatch` (umpan balik 2 Nov 2026, Bakau 2 Okt): untuk batch GANDA,
+ * pembatalan pencairan saja meninggalkan batch "menunggu persetujuan" — masih
+ * menahan kelengkapan tutup hari dan masih menawarkan "Setujui pencairan".
+ * Dengan `jugaBatch` batch-nya ikut di-void dalam transaksi yang SAMA.
  */
 export async function batalkanPencairan(input: {
   code: string;
   date: string;
   settlementId: string;
+  /** Batch-nya ikut dibatalkan (batch ganda/salah), bukan kembali menunggu. */
+  jugaBatch?: boolean;
 }): Promise<EdcResult> {
   const ctx = await buka(input.code);
   if (!ctx.boleh) return { ok: false, error: ctx.error };
   const { scope, unit } = ctx;
   if (!UUID_RE.test(input.settlementId)) return { ok: false, error: "Batch tak valid — muat ulang halaman." };
+  const jugaBatch = input.jugaBatch === true;
 
   const client = await pool.connect();
   try {
@@ -549,7 +557,16 @@ export async function batalkanPencairan(input: {
         WHERE id=$1::uuid AND unit_id=$2 AND posted_at IS NOT NULL`,
       [input.settlementId, unit.unit_id],
     );
+    if (jugaBatch) {
+      await client.query(
+        `UPDATE app.edc_settlement
+            SET void=true, voided_by_user_id=$1, voided_at=now()
+        WHERE id=$2::uuid AND unit_id=$3 AND NOT void AND posted_at IS NULL`,
+        [scope.userId, input.settlementId, unit.unit_id],
+      );
+    }
     await auditKeuangan(client, scope, "edc_settlement.batal_pencairan", `${unit.code}/${input.settlementId}`, {
+      jugaBatch,
       postedByLama: row.postedBy,
       postedAtLama: row.postedAt,
       kaki: kaki.rows.map((k) => k.id),

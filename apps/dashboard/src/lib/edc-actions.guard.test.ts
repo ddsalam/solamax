@@ -110,6 +110,13 @@ describe("edc-actions — penjagaan yang tak boleh hilang", () => {
     expect(fn).toMatch(/FOR UPDATE/);
   });
 
+  it("🔴 'batalkan pencairan & batch' mem-void batch-nya di transaksi yang SAMA, sesudah dicabut persetujuannya", () => {
+    const fn = badanFungsi("batalkanPencairan");
+    expect(fn).toMatch(/jugaBatch/);
+    expect(urutan(fn, "SET posted_by_user_id=NULL, posted_at=NULL", "SET void=true, voided_by_user_id=$1, voided_at=now()\n        WHERE id=$2::uuid")).toBe("ok");
+    expect(urutan(fn, "SET void=true, voided_by_user_id=$1, voided_at=now()\n        WHERE id=$2::uuid", 'client.query("COMMIT")')).toBe("ok");
+  });
+
   it("🔴 persetujuan (ulang) tak menulis ke hari yang sudah ditutup", () => {
     const fn = badanFungsi("setujuiPencairan");
     expect(urutan(fn, "hariTerbuka(", "INSERT INTO app.cash_ledger")).toBe("ok");

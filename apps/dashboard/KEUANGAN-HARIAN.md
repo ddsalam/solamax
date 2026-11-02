@@ -2216,6 +2216,15 @@ Diputus Dion 2 Nov 2026. Rencana: `docs/plans/2026-11-02-1354-feat-edc-batal-uba
    sama yang di-void pada `voided_at` yang sama, bukan dari keadaan batch sekarang, jadi tetap
    terbaca sesudah disetujui ulang. MDR-nya tidak tampil lagi sebagai `batal_beban_nonkas`.
    Kaki yang void **sendirian** tetap `batal_kaki_edc` (merah).
+6. **Dua bentuk pembatalan** (umpan balik owner 2 Nov 2026, batch ganda Bakau 2 Okt): konfirmasi
+   "Batalkan pencairan" menawarkan **"Batalkan pencairan & batch (ganda)"** — batch ikut di-void
+   dalam transaksi yang sama — dan **"Batalkan pencairan saja (untuk dikoreksi)"**. Sebabnya:
+   pembatalan pencairan saja meninggalkan batch "menunggu persetujuan", yang masih menahan
+   kelengkapan tutup hari penjualannya dan menawarkan "Setujui pencairan" lagi. Batch yang
+   pencairannya pernah dibatalkan diberi status "pencairan dibatalkan — setujui ulang atau
+   batalkan batch". "Saja" sengaja di posisi tombol pertama (posisi klik rilis sebelumnya);
+   "& batch" merah dan kedua. Pilihan "& batch" tampil di Pemantauan sebagai **dua** kejadian
+   kuning yang sama-sama benar: "Pencairan EDC dibatalkan" dan pembatalan batch-nya.
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
