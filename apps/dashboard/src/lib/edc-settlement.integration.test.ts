@@ -217,4 +217,23 @@ d("settlement EDC — batalkan pencairan, ubah, batalkan batch (DB testing)", ()
     expect(r.ok ? "" : r.error).toMatch(/rekening koran/);
     expect((await kaki(id)).filter((k) => !k.void)).toHaveLength(2);
   });
+
+  it("batalkan pencairan & batch sekaligus: kaki void, batch void; 'saja' meninggalkan batch bertanda pernah dibatalkan", async () => {
+    const { getSettlements } = (await import("./keuangan-input-queries")) as typeof import("./keuangan-input-queries");
+    expect(await simpanSettlement(isian(`J-${jalan}`, D1, 700_000, 693_000))).toEqual({ ok: true });
+    const idJ = await idBatch(`J-${jalan}`);
+    expect(await setujuiPencairan({ code: UNIT.code, date: D1, settlementId: idJ })).toEqual({ ok: true });
+    expect(await batalkanPencairan({ code: UNIT.code, date: D1, settlementId: idJ, jugaBatch: true })).toEqual({ ok: true });
+    expect((await kaki(idJ)).every((k) => k.void)).toBe(true);
+    const v = await q<{ void: boolean; posted: boolean }>(`SELECT void, (posted_at IS NOT NULL) AS posted FROM app.edc_settlement WHERE id=$1::uuid`, [idJ]);
+    expect(v).toEqual([{ void: true, posted: false }]);
+
+    expect(await simpanSettlement(isian(`K-${jalan}`, D1, 710_000, 703_000))).toEqual({ ok: true });
+    const idK = await idBatch(`K-${jalan}`);
+    expect(await setujuiPencairan({ code: UNIT.code, date: D1, settlementId: idK })).toEqual({ ok: true });
+    expect(await batalkanPencairan({ code: UNIT.code, date: D1, settlementId: idK })).toEqual({ ok: true });
+    const rows = await getSettlements(UNIT.unit_id as never, D1, D1);
+    expect(rows.find((r) => r.id === idK)).toMatchObject({ posted: false, void: false, pernahDibatalkan: true });
+    expect(rows.find((r) => r.id === idJ)).toMatchObject({ void: true });
+  });
 });

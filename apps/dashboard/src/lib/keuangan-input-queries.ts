@@ -259,6 +259,8 @@ export interface SettlementRow extends Settlement {
   reasonCode: string | null;
   /** Sudah ada yang MENYETUJUI jurnal pencairannya? */
   posted: boolean;
+  /** Jurnal pencairannya pernah dibatalkan (ada kaki kas yang void) — rencana 2026-11-02. */
+  pernahDibatalkan: boolean;
 }
 
 export async function getSettlements(
@@ -279,7 +281,12 @@ export async function getSettlements(
             txn_total_rp::float8                    AS "txnTotalRp",
             reason_code                             AS "reasonCode",
             (posted_at IS NOT NULL)                 AS posted,
-            void
+            void,
+            EXISTS (
+              SELECT 1 FROM app.cash_ledger l
+               WHERE l.edc_settlement_id = app.edc_settlement.id
+                 AND l.unit_id = app.edc_settlement.unit_id AND l.void
+            )                                       AS "pernahDibatalkan"
        FROM app.edc_settlement
       WHERE unit_id = $1 AND settlement_date BETWEEN $2::date AND $3::date
       ORDER BY settlement_date DESC, acquirer`,
