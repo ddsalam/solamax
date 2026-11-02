@@ -531,3 +531,7 @@ export function canKelolaSettlementEdc(ctx: WewenangCtx, daftar?: readonly strin
     canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
   );
 }
+
+/** Pesan penolakan aksi settlement — satu sumber untuk layar dan server. */
+export const PESAN_TAK_BOLEH_SETTLEMENT =
+  "Hanya tim Finance (staf Keuangan atau Head of Finance) yang boleh mengelola settlement EDC.";

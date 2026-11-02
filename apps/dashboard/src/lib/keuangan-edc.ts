@@ -43,6 +43,55 @@ export function selisihSettlement(s: Pick<Settlement, "grossRp" | "txnTotalRp">)
   return s.txnTotalRp === null ? null : s.txnTotalRp - s.grossRp;
 }
 
+const TANGGAL_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Isian batch yang diperiksa — sama untuk batch baru dan batch yang diubah. */
+export interface IsianSettlement {
+  acquirer: string;
+  settlementNo: string;
+  settlementDate: string;
+  businessDate: string;
+  grossRp: number;
+  netRp: number;
+  txnTotalRp: number | null;
+  reasonCode: string | null;
+}
+
+export type HasilValidasiSettlement = { ok: true; adaSelisih: boolean } | { ok: false; error: string };
+
+/**
+ * Aturan isian batch settlement — SATU salinan untuk `simpanSettlement` DAN
+ * `ubahSettlement` (rencana 2026-11-02 KTD4). Dua salinan akan berselisih, dan
+ * yang berselisih di sini adalah batas antara batch sah dan batch rusak.
+ */
+export function validasiSettlement(i: IsianSettlement): HasilValidasiSettlement {
+  if (!TANGGAL_RE.test(i.settlementDate) || !TANGGAL_RE.test(i.businessDate)) {
+    return { ok: false, error: "Tanggal tak valid." };
+  }
+  if (i.settlementDate < i.businessDate) {
+    return { ok: false, error: "Uang tak mungkin masuk sebelum hari penjualannya." };
+  }
+  if (i.acquirer.trim() === "" || i.settlementNo.trim() === "") {
+    return { ok: false, error: "Acquirer dan nomor settlement wajib diisi." };
+  }
+  if (!(i.grossRp > 0)) return { ok: false, error: "Bruto harus lebih besar dari nol." };
+  if (!(i.netRp > 0 && i.netRp <= i.grossRp)) {
+    return { ok: false, error: "Neto harus lebih besar dari nol dan tidak melebihi bruto." };
+  }
+  // Selisih transaksi vs settlement BERDIRI sebagai selisih ber-reason_code —
+  // tidak dibulatkan hilang, dan tidak boleh lewat tanpa nama (§10.5).
+  const adaSelisih = i.txnTotalRp !== null && i.txnTotalRp !== i.grossRp;
+  if (adaSelisih && (i.reasonCode ?? "") === "") {
+    return {
+      ok: false,
+      error:
+        "Total transaksi berbeda dari bruto settlement. Selisih itu harus punya nama — " +
+        "pilih kode alasannya, jangan dibiarkan hilang.",
+    };
+  }
+  return { ok: true, adaSelisih };
+}
+
 // ---------------------------------------------------------------------------
 // Jurnal pencairan H+1 — DITAWARKAN, bukan diposting
 // ---------------------------------------------------------------------------
