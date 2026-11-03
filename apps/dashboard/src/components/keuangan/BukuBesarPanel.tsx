@@ -1,7 +1,7 @@
 import type { BarisPos, BarisTemuan, LaporanBukuBesar } from "@/lib/buku-besar-laporan-model";
 import { rpSen } from "@/lib/buku-besar-memorial-model";
 import type { JurnalTampil, KeadaanBukuBesar } from "@/lib/buku-besar-queries";
-import { BentukUlangTombol, MemorialForm, MemorialTombol, SaldoAwalForm, type PosIsian } from "./BukuBesarAksi";
+import { BentukUlangTombol, KoreksiMajuTombol, MemorialForm, MemorialTombol, SaldoAwalForm, type PosIsian } from "./BukuBesarAksi";
 
 /**
  * Halaman Buku Besar per unit × bulan (rencana 2026-11-02 K6 U9; R8–R10, R12,
@@ -320,6 +320,7 @@ export function BukuBesarPanel(p: BukuBesarPanelProps) {
       {wewenang.bolehBentukUlang && p.rentangBentuk && !keadaan.ditutupBukuBesar && (
         <BentukUlangTombol code={code} dari={p.rentangBentuk.dari} sampai={p.rentangBentuk.sampai} />
       )}
+      {wewenang.bolehBentukUlang && keadaan.ditutupBukuBesar && <KoreksiMajuTombol code={code} bulan={p.bulan} />}
 
       <nav className="keu-tabs" role="tablist" aria-label="Bagian buku besar">
         {TAB_BUKU_BESAR.map((t) => (

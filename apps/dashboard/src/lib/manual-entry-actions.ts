@@ -3,6 +3,7 @@
 import type { PoolClient } from "pg";
 import { KATEGORI_TITIPAN, POLA_KETERANGAN_TITIPAN } from "./titipan-bright";
 import { revalidatePath } from "next/cache";
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { pool, qScoped } from "./db";
 import type { ManualSection } from "./queries";
 import { getDataScope, type ScopedUnit } from "./scope";
@@ -100,7 +101,7 @@ export async function addManualEntry(input: {
   if (input.section === "setoran_tunai") {
     // Nominal baris kas = nominal setoran yang TERSIMPAN (RETURNING di
     // setoran-tulis), bukan angka kedua dari client.
-    const r = await dalamTransaksi(unit, (c) =>
+    const r = await dalamTransaksi(unit, scope, (c) =>
       simpanSetoranTunai(c, {
         unitId: unit.unit_id,
         date: input.date,
@@ -114,17 +115,21 @@ export async function addManualEntry(input: {
     return { ok: true };
   }
 
-  await qScoped(
-    unit.unit_id, // RLS (0016): set app.unit_ids → WITH CHECK pada INSERT ke app.manual_entry
-    `INSERT INTO app.manual_entry
-       (unit_id, business_date, section, urut, keterangan, amount, created_by_user_id,
-        operational_category, pihak_lawan_id)
-     VALUES ($1, $2::date, $3::app.manual_entry_section,
-       (SELECT COALESCE(MAX(urut),-1)+1 FROM app.manual_entry
-         WHERE unit_id=$1 AND business_date=$2::date AND section=$3::app.manual_entry_section),
-       $4, $5, $6, $7, $8::uuid)`,
-    [unit.unit_id, input.date, input.section, ket, input.amount, scope.userId, kategori, pemilik],
-  );
+  const r = await dalamTransaksi(unit, scope, async (c) => {
+    // RLS (0016): app.unit_ids → WITH CHECK pada INSERT ke app.manual_entry
+    await c.query(
+      `INSERT INTO app.manual_entry
+         (unit_id, business_date, section, urut, keterangan, amount, created_by_user_id,
+          operational_category, pihak_lawan_id)
+       VALUES ($1, $2::date, $3::app.manual_entry_section,
+         (SELECT COALESCE(MAX(urut),-1)+1 FROM app.manual_entry
+           WHERE unit_id=$1 AND business_date=$2::date AND section=$3::app.manual_entry_section),
+         $4, $5, $6, $7, $8::uuid)`,
+      [unit.unit_id, input.date, input.section, ket, input.amount, scope.userId, kategori, pemilik],
+    );
+    return { ok: true } as const;
+  });
+  if (!r.ok) return r;
   revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
   return { ok: true };
 }
@@ -141,7 +146,7 @@ export async function voidManualEntry(input: {
   // walau `id` ditebak. Void (bukan DELETE) → jejak audit utuh. Hari tertutup ⇒
   // trigger 0026 menolak UPDATE manual_entry dan SELURUH transaksi batal (baris
   // kas setoran ikut utuh).
-  const r = await dalamTransaksi(unit, async (c) => {
+  const r = await dalamTransaksi(unit, scope, async (c) => {
     // RLS (0016): app.unit_ids → USING pada SELECT/UPDATE app.manual_entry.
     // Baris pintu Finance bukan milik pengawas (§2): tak bisa dibatalkan dari Rincian.
     const e = await c.query<{ section: string }>(
@@ -170,12 +175,14 @@ export async function voidManualEntry(input: {
 }
 
 /**
- * BEGIN → `set_config('app.unit_ids')` transaction-local → kerja → COMMIT.
+ * BEGIN → `set_config('app.unit_ids')` transaction-local → kerja → jurnal buku
+ * besar (KTD3 pemicu 1, tak pernah menggagalkan tulisan) → COMMIT.
  * Hasil `ok: false` dan galat (mis. trigger 0026/0027) ⇒ ROLLBACK: tak ada
  * yang tertulis sebagian.
  */
 async function dalamTransaksi(
   unit: ScopedUnit,
+  aktor: { userId: number; email: string | null },
   kerja: (c: PoolClient) => Promise<{ ok: true } | { ok: true; posting: string } | { ok: false; error: string }>,
 ): Promise<ActionResult> {
   const client = await pool.connect();
@@ -187,6 +194,7 @@ async function dalamTransaksi(
       await client.query("ROLLBACK");
       return r;
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: aktor.userId, email: aktor.email });
     await client.query("COMMIT");
     return { ok: true };
   } catch (e) {

@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { barisSistemDari, kategoriBeban, PENJELASAN_BARIS_SISTEM, rencanaBeban, type RencanaBeban } from "./keuangan-kas-model";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
@@ -190,6 +191,7 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
         pihakLawanId,
       ],
     );
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     return { ok: true };
@@ -277,6 +279,7 @@ export async function setujuiSetoran(input: {
         ],
       );
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     return { ok: true, n: src.rowCount ?? 0 };
@@ -394,6 +397,7 @@ export async function voidMutasiKas(input: {
         [scope.userId, input.id, unit.unit_id],
       );
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     if (res.rowCount === 0) return { ok: false, error: "Baris sudah dibatalkan atau tak ditemukan." };
@@ -522,6 +526,7 @@ export async function tetapkanSaldoAwal(input: SaldoAwalInput): Promise<KasResul
       ],
     );
 
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/akun-kas`);
     return { ok: true };
@@ -706,6 +711,7 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
       })),
       beban: bebanIds,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
     if (hari.hariBuku !== input.date) revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
@@ -884,6 +890,7 @@ export async function simpanMutasiBeban(input: MutasiBebanInput): Promise<KasRes
       beban: be.id,
       akun: be.akun,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
     if (hari.hariBuku !== input.date) revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
@@ -984,6 +991,7 @@ export async function lengkapiBebanMutasi(input: {
       beban: be.id,
       akun: be.akun,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
     if (hari.hariBuku !== l.businessDate) revalidatePath(`/keuangan/unit/${unit.code}/${l.businessDate}/input`);

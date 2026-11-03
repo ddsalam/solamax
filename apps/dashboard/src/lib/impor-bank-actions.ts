@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
@@ -93,6 +94,7 @@ async function cocokSesudahUnggah(
       await batal(client);
       return { status: "gagal", pesan: `Impor tersimpan, tetapi cocok otomatis tidak berjalan: ${h.error}` };
     }
+    await bentukJurnalSesudahTulis(client, m.unitId, m.aktor);
     await client.query("COMMIT");
     return { status: "selesai", nOtomatis: h.nOtomatis, nBanyak: h.nBanyak, nTanpa: h.nTanpa };
   } catch (e) {
@@ -251,6 +253,7 @@ export async function unggahRekeningKoran(form: FormData): Promise<HasilUnggah> 
       cutOver,
       saldoAwal,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     // U10 — cocok otomatis SESUDAH impor COMMIT, transaksi sendiri: gagalnya
@@ -397,6 +400,7 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
       catatan,
       ...(statusLama === "menunggu" ? { menunggu: true } : {}),
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return {

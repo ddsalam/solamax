@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
 import { pool } from "./db";
@@ -132,6 +133,7 @@ export async function simpanSettlement(input: SettlementInput): Promise<EdcResul
         scope.userId,
       ],
     );
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     return { ok: true };
@@ -275,6 +277,7 @@ export async function setujuiPencairan(input: {
         WHERE id=$2::uuid AND unit_id=$3`,
       [scope.userId, row.id, unit.unit_id],
     );
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     return { ok: true };
@@ -381,6 +384,7 @@ export async function ubahSettlement(input: SettlementInput & { id: string }): P
       ],
     );
     await auditKeuangan(client, scope, "edc_settlement.ubah", `${unit.code}/${input.id}`, { sebelum, sesudah });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidasi(unit.code, input.date, sebelum.settlementDate, sesudah.settlementDate);
     return { ok: true };
@@ -433,6 +437,7 @@ export async function batalkanSettlement(input: { code: string; date: string; id
       [scope.userId, input.id, unit.unit_id],
     );
     await auditKeuangan(client, scope, "edc_settlement.batal", `${unit.code}/${input.id}`, b);
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidasi(unit.code, input.date, b.settlementDate);
     return { ok: true };
@@ -576,6 +581,7 @@ export async function batalkanPencairan(input: {
       netRp: row.netRp,
       mdrRp: row.mdrRp,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidasi(unit.code, input.date, row.settlementDate);
     return { ok: true };

@@ -2322,6 +2322,8 @@ Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-p
    Reklasifikasi baris di bulan beku ditolak; perubahan sumber lain sesudah tutup bulan (mis.
    sinkron ulang EasyMax) tampil sebagai beda di tab "Temuan beda" dan dikoreksi lewat jurnal
    memorial. Jurnal hari terbuka dibentuk saat tutup hari, tutup bulan, atau "Bentuk ulang".
+   ⚖️ **Batas ini ditutup §10.53 (3 Nov 2026):** jurnal kini juga dibentuk setiap kali catatan
+   ditulis, dan bulan beku punya aksi "Periksa ulang & koreksi maju".
 2. **HPP = liter terjual × harga beli terakhir.** Penebusan menambah SO dibayar (1132), bukan HPP.
    Harga beli kosong ⇒ tidak ada HPP produk itu + temuan; tidak pernah HPP nol.
 3. **Tidak ada angka penyeimbang.** Beda dengan laporan rumus tampil sebagai temuan.
@@ -2340,6 +2342,43 @@ Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-p
    temuan "harga beli belum diisi". Sebelum tutup, jurnal bulan itu dibentuk ulang.
 3. Tutup bulan dengan pemeriksaan aktif menandai `tutup_bulan.buku_besar` — jurnal bulan itu beku.
 4. **Penjelasan AI** atas butir terbuka bisa diminta staf Keuangan dan HoF; tidak mengubah vonis.
+
+### 10.53 K6 · Jurnal dibentuk saat catatan ditulis; koreksi maju bulan beku (3 November 2026)
+
+1. **Pemicu 1 (KTD3).** Setiap server action yang menulis atau membatalkan catatan sumber
+   memanggil `bentukJurnalSesudahTulis` tepat sebelum COMMIT — untuk SETIAP unit yang ditulis
+   (aksi antar unit: kedua unit). Baris yang ditulis transaksi itu dikenali dari `xmin`
+   (= xid transaksi berjalan) di `cash_ledger`, `manual_entry`, `edc_settlement`, dan di tabel
+   yang DIBACA aturan posting: `penebusan` (→ baris kasnya), `noncash_expense` (→ settlement),
+   `reclassification` (→ baris Biaya). Kunci lalu diperluas ke pasangan tautannya (baris kas ↔
+   baris Biaya Finance; settlement ↔ kaki pencairannya) dan jurnalnya dibentuk per hari buku.
+   Sah karena jalur tulis keuangan tidak memakai SAVEPOINT sebelum menulis; tabel sumber tidak
+   pernah DELETE (pembatalan = `void`).
+2. **Tidak pernah menggagalkan tulisan Finance.** Seluruh kerja pemicu di dalam SAVEPOINT (satu
+   lagi per hari); gagal ⇒ kembali ke savepoint, `audit_log` `buku_besar.bentuk_sumber_gagal`,
+   catatan tetap COMMIT. Tutup bulan (pemicu 3) membentuk ulang setiap hari sebelum menutup, jadi
+   jurnal yang tertinggal tidak lolos ke bulan yang ditutup. Bulan tertutup dan tanggal sebelum
+   1 Okt 2026 dilewati; **hari tertutup di bulan terbuka TIDAK dilewati** (reklasifikasi boleh
+   di sana, dan tutup hari tidak berjalan dua kali).
+3. **Serialisasi & kunci.** Pemicu memegang kunci advisory eksklusif per unit sampai COMMIT dan
+   membaca perluasan kunci SESUDAHNYA, jadi dua penulis tidak membentuk kunci yang sama dari
+   snapshot masing-masing (mis. tautkan M→K bersamaan dengan reklas M). Urutan kunci: unit →
+   bulan (bersama) → hari (bersama), searah tutup bulan. Baris jurnal kunci yang ditulis ulang
+   selalu dihapus dulu. **Batas diketahui:** penulis yang menunggu kunci unit sambil memegang
+   kunci hari, bersamaan dengan tutup hari hari itu, bisa membentuk deadlock yang dideteksi
+   Postgres; korban di sisi pemicu ditangkap SAVEPOINT (tulisan tetap COMMIT), korban di sisi
+   tutup hari mendapat galat dan HoF mengulang. Pencarian `xmin` tak berindeks — memindai baris
+   unit sejak 1 Okt di setiap tulisan; pantau bila volume tumbuh.
+4. **Penjaga:** `buku-besar-pemicu.guard.test.ts` menurunkan daftar fungsi penulis dari kode
+   (titik tetap) dan menolak COMMIT penulis tanpa pemicu sesudah tulisan terakhirnya, termasuk
+   pemicu untuk kedua unit pada transaksi dua unit. Entri Rincian pengawas kini juga ditulis di
+   dalam transaksi (`dalamTransaksi`), bukan INSERT auto-commit.
+5. **Koreksi maju bulan beku.** "Periksa ulang & koreksi maju" (HoF + super admin) membentuk
+   ulang setiap hari bulan yang ditutup **dengan buku besar** dalam mode koreksi maju: jurnal
+   bulan beku tidak disentuh; selisih sumber yang berubah sesudah tutup (mis. sinkron ulang
+   EasyMax) diposting sebagai jurnal koreksi `ADJ-FWD-LEDGER` di hari buka pertama bulan
+   terbuka berikutnya. Diulang ⇒ tidak menggandakan. Bulan yang ditutup tanpa buku besar
+   ditolak (jurnalnya belum pernah dibentuk; jalannya backfill).
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool, qScoped } from "./db";
 import { KODE_MAJU_PEMBALIK, periksaAntarUnit, type MasukanAntarUnit } from "./antar-unit-model";
@@ -81,6 +82,7 @@ export async function catatAntarUnit(input: MasukanAntarUnit): Promise<AntarUnit
       await batal(client);
       return { ok: false, error: hasil.error };
     }
+    for (const u of [pemberi, penerima]) await bentukJurnalSesudahTulis(client, u.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     for (const u of [pemberi, penerima]) revalidatePath(halaman(u.code));
     const maju = hasil.kaki.filter((k) => k.maju);
@@ -166,6 +168,7 @@ export async function balikPasanganAntarUnit(input: BalikInput): Promise<AntarUn
       await batal(client);
       return { ok: false, error: hasil.error };
     }
+    for (const u of [unit, lawan]) await bentukJurnalSesudahTulis(client, u.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     for (const u of [unit, lawan]) revalidatePath(halaman(u.code));
     const maju = hasil.kaki.filter((k) => k.tindakan === "pembalik");

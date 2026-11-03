@@ -12,7 +12,16 @@ const { q, qScoped } = vi.hoisted(() => {
   const qScoped = vi.fn((_unit: unknown, t: string, p?: unknown[]) => q(t, p));
   return { q, qScoped };
 });
-vi.mock("./db", () => ({ q, qScoped, pool: {} }));
+// Transaksi (`dalamTransaksi`) juga DELEGATE ke q; kontrol transaksi disaring
+// supaya `q.mock.calls` tetap berisi pernyataan data saja.
+const KONTROL = /^(BEGIN|COMMIT|ROLLBACK|SELECT set_config)/;
+const client = {
+  query: vi.fn(async (t: string, p?: unknown[]) => (KONTROL.test(t) ? { rows: [] } : { rows: await q(t, p) })),
+  release: vi.fn(),
+};
+vi.mock("./db", () => ({ q, qScoped, pool: { connect: async () => client } }));
+// Pemicu jurnal (KTD3 pemicu 1) diuji di buku-besar-pemicu.integration.test.ts.
+vi.mock("./buku-besar-tulis", () => ({ bentukJurnalSesudahTulis: vi.fn(async () => ({ dibentuk: [], dilewati: [], gagal: [] })) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 // Fake scope: requireUnit MENIRU gerbang asli (notFound throw utk kode di luar scope).

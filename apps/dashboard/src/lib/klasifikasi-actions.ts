@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import type { PoolClient } from "pg";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
@@ -174,6 +175,7 @@ async function klasifikasiSatuUnit(
       kas: t.kas.map((k) => ({ id: k.id, nominal: senKeTeks(k.amountSen), kategori: k.categoryLabel, beban: k.bebanId })),
       ...rincian,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     for (const p of halaman(unit.code, m.tanggalBank)) revalidatePath(p);
     const maju = hari.perluKodeAlasan ? ` Hari ${m.tanggalBank} sudah ditutup — dibukukan ${hari.hariBuku} (tanggal asal ${m.tanggalBank}).` : "";
@@ -397,6 +399,7 @@ export async function klasifikasiAntarUnit(input: KlasifikasiAntarUnitInput): Pr
       pasanganUuid: h.pasanganUuid,
       kaki: h.kaki,
     });
+    for (const u of [unit, lawan]) await bentukJurnalSesudahTulis(client, u.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     for (const p of halaman(unit.code, m.tanggalBank)) revalidatePath(p);
     for (const u of [unit, lawan]) revalidatePath(`/keuangan/unit/${u.code}/pihak-lawan`);
@@ -552,6 +555,7 @@ export async function pindahkanDariPenampung(input: PindahPenampungInput): Promi
       nominal: senKeTeks(parkirSen),
       kas: t.kas.map((k) => ({ id: k.id, nominal: senKeTeks(k.amountSen), kategori: k.categoryLabel, beban: k.bebanId })),
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     for (const x of halaman(unit.code, p!.businessDate)) revalidatePath(x);
     return {

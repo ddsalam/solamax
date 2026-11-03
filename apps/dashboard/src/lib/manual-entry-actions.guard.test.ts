@@ -92,7 +92,7 @@ describe("server action (manual-entry-actions.ts)", () => {
   it("🔴 setoran_tunai lewat transaksi + inti tulis; gerbang requireUnit mendahuluinya", () => {
     const b = badan(AKSI, "addManualEntry");
     expect(urutan(b, "scope.requireUnit(", 'input.section === "setoran_tunai"')).toBe("ok");
-    expect(b).toMatch(/dalamTransaksi\(unit, \(c\) =>\s*simpanSetoranTunai\(c, \{/);
+    expect(b).toMatch(/dalamTransaksi\(unit, scope, \(c\) =>\s*simpanSetoranTunai\(c, \{/);
     expect(b).toMatch(/unitId: unit\.unit_id,/);
     expect(b).toMatch(/aktorId: scope\.userId,/);
   });

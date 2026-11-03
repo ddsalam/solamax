@@ -107,7 +107,7 @@ function klien(): PoolClient {
     if (sql.includes("j.tanggal_buku = $2::date")) {
       return ok(db.jurnal.filter((j) => j.jenis === "sumber" && j.tanggal_buku === p[1]).map(tampil));
     }
-    if (sql.includes("= ANY($2::text[])")) {
+    if (sql.includes("FROM unnest($2::text[]) AS k")) {
       const k = new Set(p[1] as string[]);
       return ok(db.jurnal.filter((j) => j.jenis === "sumber" && k.has(`${j.sumber_tabel}|${j.sumber_id}`)).map(tampil));
     }

@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
 import { pool } from "./db";
@@ -221,6 +222,7 @@ export async function cekSlipEdc(input: {
         alasanTahan = p.error;
       }
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
@@ -290,6 +292,7 @@ export async function setujuiPenjualanEdc(input: {
       }
       if (hasil.posting === "baru") n += 1; // idempoten: yang sudah terposting tidak dihitung
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
