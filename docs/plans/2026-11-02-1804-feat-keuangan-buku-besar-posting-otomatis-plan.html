@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keuangan K6 — Buku Besar &amp; Posting Otomatis - Plan</title>
+<style>
+:root{
+  --bg:#ffffff; --surface:#f5f7fa; --surface-2:#eef2f7; --line:#d6dde6;
+  --text:#18212d; --muted:#4f5b6b; --navy:#1b2a41; --sky:#2f7fc1;
+  --sky-soft:#e6f1fb; --sky-text:#1d5c94;
+  --ok-soft:#e7f5ec; --ok-text:#1f6b3a;
+  --warn-soft:#fdf3e1; --warn-text:#8a5a00;
+  --bad-soft:#fbe9e9; --bad-text:#9b2c2c;
+  --wire:#c9d1db; --wire-fill:#f1f3f6;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11161d; --surface:#18202a; --surface-2:#1f2935; --line:#2f3b4a;
+    --text:#e6ebf1; --muted:#a6b2c1; --navy:#cfe0f5; --sky:#7db8ea;
+    --sky-soft:#1b2c3f; --sky-text:#a9d1f5;
+    --ok-soft:#173022; --ok-text:#9bd8b1;
+    --warn-soft:#33270f; --warn-text:#f0c879;
+    --bad-soft:#3a1c1c; --bad-text:#f2a7a7;
+    --wire:#3a4757; --wire-fill:#1c242e;
+  }
+}
+*{box-sizing:border-box}
+html{font-size:15.5px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.55}
+main{max-width:960px;margin-inline:auto;padding:28px 16px 64px}
+p,li{max-width:76ch}
+h1{font-size:1.75rem;line-height:1.25;margin:.2em 0 .4em;color:var(--navy)}
+h2{font-size:1.38rem;margin:2.4em 0 .6em;padding-top:.4em;border-top:2px solid var(--line);color:var(--navy)}
+h3{font-size:1.12rem;margin:1.8em 0 .5em;color:var(--navy)}
+h4{font-size:1rem;margin:1.3em 0 .4em}
+strong{color:inherit}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;background:var(--surface-2);padding:.08em .32em;border-radius:4px}
+a{color:var(--sky-text)}
+.eyebrow{font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--sky-text);font-weight:600;margin:0}
+.meta{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:.92rem}
+.meta dt{color:var(--muted);font-weight:600}
+.meta dd{margin:0}
+nav.toc{margin:18px 0;padding:12px 16px;border:1px solid var(--line);border-radius:10px}
+nav.toc ol{margin:.3em 0 0;padding-left:1.3em;columns:2;column-gap:28px;font-size:.93rem}
+.ste{background:var(--sky-soft);color:var(--sky-text);border-radius:10px;padding:12px 16px;font-size:.92rem}
+.ste p,.ste li{color:var(--sky-text)}
+table{width:100%;border-collapse:collapse;margin:10px 0 18px;font-size:.92rem}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--surface-2);font-weight:600}
+td.id{white-space:nowrap;font-weight:600;color:var(--sky-text);width:3.6em}
+td.code{white-space:nowrap;font-family:ui-monospace,Menlo,monospace}
+tr.head td{background:var(--surface);font-weight:600}
+tr.new td{background:var(--ok-soft)}
+.chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.76rem;font-weight:600;border:1px solid transparent}
+.chip.new{background:var(--ok-soft);color:var(--ok-text)}
+.chip.chg{background:var(--warn-soft);color:var(--warn-text)}
+.chip.sys{background:var(--sky-soft);color:var(--sky-text)}
+.cards{display:grid;gap:10px}
+article.kd{border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--surface)}
+article.kd p{margin:.3em 0}
+.settled{font-size:.86rem;color:var(--muted)}
+.callout{border-radius:10px;padding:12px 16px;margin:12px 0}
+.callout.warn{background:var(--warn-soft)} .callout.warn *{color:var(--warn-text)}
+.callout.bad{background:var(--bad-soft)} .callout.bad *{color:var(--bad-text)}
+.callout.ok{background:var(--ok-soft)} .callout.ok *{color:var(--ok-text)}
+.callout.info{background:var(--sky-soft)} .callout.info *{color:var(--sky-text)}
+.callout .eyebrow{margin-bottom:4px}
+figure{margin:18px 0}
+figcaption{font-size:.85rem;color:var(--muted);margin-top:6px}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.svgwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:8px}
+/* wireframes */
+.wire{border:2px dashed var(--wire);border-radius:12px;padding:14px;background:var(--wire-fill);font-size:.88rem}
+.wire .w-title{font-weight:700;font-size:1rem;margin-bottom:2px}
+.wire .w-sub{color:var(--muted);font-size:.8rem;margin-bottom:10px}
+.wire .w-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.wire .w-full{grid-column:1/-1}
+.wire .w-label{font-size:.76rem;font-weight:600;color:var(--muted);margin-bottom:2px}
+.wire .w-field{border:1.5px solid var(--wire);border-radius:6px;padding:5px 8px;background:var(--bg);min-height:28px;color:var(--muted)}
+.wire .w-field.lock{background:var(--surface-2)}
+.wire .w-box{border:1.5px solid var(--wire);border-radius:8px;padding:10px;background:var(--bg);margin-top:8px}
+.wire .w-btn{display:inline-block;border:1.5px solid var(--wire);border-radius:999px;padding:4px 14px;margin:8px 6px 0 0;background:var(--surface-2);font-weight:600}
+.wire .w-btn.primary{background:var(--navy);color:var(--bg);border-color:var(--navy)}
+.wire .w-btn.off{opacity:.45}
+.wire .w-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--wire);padding:5px 0}
+.wire .w-row:last-child{border-bottom:0}
+.wire .w-hl{background:var(--sky-soft);border-radius:8px;padding:8px 10px;margin-top:8px;color:var(--sky-text)}
+.wire .w-bad{background:var(--bad-soft);border-radius:8px;padding:8px 10px;margin-top:8px;color:var(--bad-text)}
+.wire .w-ok{color:var(--ok-text);font-weight:600}
+.wire .w-no{color:var(--bad-text);font-weight:600}
+.wire-caption{font-size:.82rem;color:var(--muted);font-style:italic;margin:6px 0 20px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:720px){.cols,.wire .w-grid{grid-template-columns:1fr} nav.toc ol{columns:1}}
+footer.composition-signal{margin-top:48px;padding-top:12px;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+<p class="eyebrow">SolaMax · Keuangan · Rencana kebutuhan &amp; implementasi</p>
+<h1>Keuangan K6 — Buku Besar &amp; Posting Otomatis - Plan</h1>
+<dl class="meta">
+  <dt>title</dt><dd>Keuangan K6 — Buku Besar &amp; Posting Otomatis - Plan</dd>
+  <dt>type</dt><dd>feat</dd>
+  <dt>date</dt><dd><time datetime="2026-11-02">2026-11-02</time></dd>
+  <dt>topic</dt><dd>keuangan-buku-besar-posting-otomatis</dd>
+  <dt>artifact_contract</dt><dd>ce-unified-plan/v1</dd>
+  <dt>product_contract_source</dt><dd>ce-brainstorm</dd>
+  <dt>execution</dt><dd>code</dd>
+</dl>
+</header>
+
+<nav class="toc" aria-label="Isi">
+<strong>Isi</strong>
+<ol>
+  <li><a href="#goal-capsule">Goal Capsule</a></li>
+  <li><a href="#product-contract">Product Contract</a></li>
+  <li><a href="#summary">Summary</a></li>
+  <li><a href="#problem-frame">Problem Frame</a></li>
+  <li><a href="#glosarium">Glosarium</a></li>
+  <li><a href="#actors">Actors</a></li>
+  <li><a href="#key-decisions">Key Decisions</a></li>
+  <li><a href="#urutan-tahap">How This Work Fits Together</a></li>
+  <li><a href="#product-requirements">Requirements</a></li>
+  <li><a href="#key-flows">Key Flows</a></li>
+  <li><a href="#acceptance-examples">Acceptance Examples</a></li>
+  <li><a href="#success-criteria">Success Criteria</a></li>
+  <li><a href="#scope-boundaries">Scope Boundaries</a></li>
+  <li><a href="#dependencies">Dependencies / Assumptions</a></li>
+  <li><a href="#outstanding-questions">Outstanding Questions</a></li>
+  <li><a href="#sources">Sources / Research</a></li>
+  <li><a href="#planning-contract">Planning Contract</a></li>
+  <li><a href="#implementation-units">Implementation Units</a></li>
+  <li><a href="#verification-contract">Verification Contract</a></li>
+  <li><a href="#definition-of-done">Definition of Done</a></li>
+</ol>
+</nav>
+
+<div class="ste">
+<p class="eyebrow">Bahasa dokumen — prinsip ASD-STE100</p>
+<ul>
+  <li>Satu kalimat berisi satu gagasan. Kalimat perintah maksimal 20 kata. Kalimat penjelasan maksimal 25 kata.</li>
+  <li>Kalimat aktif. Subjek kalimat adalah aktor yang jelas: pengawas, staf Keuangan, HoF, atau sistem.</li>
+  <li>Satu istilah untuk satu arti. Arti tiap istilah tercatat di <a href="#glosarium">Glosarium</a>. Dokumen tidak memakai sinonim.</li>
+  <li>Angka di contoh adalah angka ilustrasi. Repo SolaMax publik, jadi dokumen ini tidak memuat angka operasional, nama pelanggan, atau nomor SO yang nyata.</li>
+</ul>
+</div>
+
+<section id="goal-capsule">
+<h2>Goal Capsule</h2>
+<dl class="meta">
+  <dt>Objective</dt>
+  <dd>Tim Keuangan mengetik setiap transaksi satu kali di sumbernya. SolaMax lalu menghasilkan neraca dan laba-rugi formal per SPBU, mulai 1 Oktober 2026. Tutup bulan hanya bisa dilakukan bila semua rekening bank cocok dengan rekening koran.</dd>
+  <dt>Means</dt>
+  <dd>Daftar pos resmi, buku besar yang terisi otomatis dari catatan yang sudah ada, posting otomatis untuk setoran, EDC, biaya, pendapatan lain-lain, dan penebusan, serta pembaca AI untuk rekening koran bank selain BCA.</dd>
+  <dt>Product authority</dt>
+  <dd>Dion (Direktur) memutuskan isi rencana ini. HoF memegang daftar pos dan pemetaannya setelah rilis. Lima tahap di rencana ini adalah satu pekerjaan. Setiap tahap bisa tayang sendiri.</dd>
+  <dt>Open blockers</dt>
+  <dd>Saldo awal per 30 September 2026 untuk tanah, bangunan &amp; pompa, kendaraan, akumulasi penyusutan, hutang bank, modal, dan laba ditahan belum tersedia. Data ini tidak menghalangi perencanaan. Data ini menghalangi tutup bulan formal Oktober 2026 (lihat <a href="#r10">R10</a>).</dd>
+</dl>
+</section>
+
+<section id="product-contract">
+<h2>Product Contract</h2>
+
+<section id="summary">
+<h3>Summary</h3>
+<p>SolaMax mendapat daftar pos resmi bernomor empat digit dan buku besar debet-kredit. Buku besar terisi otomatis dari catatan yang sudah ada sejak 1 Oktober 2026. Ada empat jalur input yang disederhanakan. Setoran dan EDC per shift langsung terposting. Memilih kategori "Pembelian BBM" di Tambah mutasi bank membuka form penebusan. Biaya dan pendapatan lain-lain cukup diinput di buku kas atau buku bank. Tutup bulan memeriksa rekening koran semua bank. AI membaca rekening koran dan menjelaskan setiap selisih, tetapi keputusan tolak tetap memakai aturan pasti Rp 0.</p>
+</section>
+
+<section id="problem-frame">
+<h3>Problem Frame</h3>
+<p>Modul Keuangan tayang untuk tujuh SPBU sejak cut-over 1 Oktober 2026. Laporannya dihitung dengan rumus dari data EasyMax dan buku kas. Belum ada daftar akun dan belum ada jurnal debet-kredit. Neraca belum memuat aset tetap, hutang bank, hutang pajak, hutang gaji, dan modal. Akibatnya laporan itu tidak bisa diserahkan sebagai laporan keuangan formal.</p>
+<p>Staf Keuangan juga mengetik transaksi yang sama lebih dari satu kali. Biaya yang dibayar dari kas diketik di buku kas, lalu diketik lagi di halaman Biaya. Pembayaran SO diketik di buku bank, lalu diketik lagi di halaman Penebusan SO. Staf Keuangan juga mengklik setuju untuk setiap setoran pengawas dan setiap shift EDC, padahal angkanya hampir selalu sama dengan sumbernya.</p>
+<p>Ada satu cacat di jalur pendapatan. Pendapatan lain-lain yang diinput Finance mendapat kode akun biaya <code>6-xxxx</code>. Laporan laba hanya menghitung pendapatan dari akun berjenis pendapatan, jadi baris itu tidak masuk laba. Cacat ini terbaca dari kode, tetapi belum dibuktikan dengan tes.</p>
+<p>Tutup bulan saat ini sudah menolak bila rekening koran BCA belum diimpor atau ada baris yang belum cocok. Aturan itu hanya berlaku untuk BCA. Mutasi BRI, BNI, dan Mandiri diketik tangan tanpa pembanding.</p>
+</section>
+
+<section id="glosarium">
+<h3>Glosarium</h3>
+<table>
+<thead><tr><th>Istilah</th><th>Arti di dokumen ini</th></tr></thead>
+<tbody>
+<tr><td>Pos</td><td>Satu akun di daftar pos (COA), misalnya 1101 Kas Besar. Setiap pos punya kode empat digit dan satu jenis: aset, kewajiban, modal, pendapatan, atau beban.</td></tr>
+<tr><td>Pos induk</td><td>Pos yang hanya menjumlahkan sub-pos di bawahnya. Jurnal tidak boleh memakai pos induk.</td></tr>
+<tr><td>Kategori operasional</td><td>Label yang dipilih pengawas atau staf Keuangan, misalnya "Gaji Karyawan". Satu kategori operasional dipetakan ke satu pos.</td></tr>
+<tr><td>Jurnal</td><td>Satu catatan buku besar dengan dua sisi atau lebih. Jumlah debet sama dengan jumlah kredit.</td></tr>
+<tr><td>Jurnal sumber</td><td>Jurnal yang sistem buat otomatis dari satu catatan sumber, misalnya satu mutasi kas.</td></tr>
+<tr><td>Jurnal memorial</td><td>Jurnal yang HoF ketik untuk transaksi bukan kas, misalnya penyusutan.</td></tr>
+<tr><td>Posting</td><td>Sistem menulis jurnal ke buku besar. Posting otomatis berarti tidak ada klik setuju.</td></tr>
+<tr><td>Pembalikan</td><td>Jurnal baru yang membatalkan jurnal lama dengan sisi terbalik. Jurnal lama tetap tersimpan.</td></tr>
+<tr><td>Ditahan</td><td>Catatan belum terposting dan menunggu keputusan staf Keuangan.</td></tr>
+<tr><td>Laporan rumus</td><td>Neraca dan laba-rugi SolaMax yang sekarang, yang dihitung dengan rumus (KEUANGAN-HARIAN §1.1–§1.2).</td></tr>
+<tr><td>Pembaca AI</td><td>Layanan AI yang mengubah rekening koran (PDF atau foto) menjadi baris mutasi dan menulis penjelasan selisih. Pembaca AI tidak memutuskan apa pun.</td></tr>
+<tr><td>Harga beli terakhir</td><td>Harga beli per liter per produk yang terakhir berlaku pada tanggal penjualan, dari isian harga beli di SolaMax.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="actors">
+<h3>Actors</h3>
+<table>
+<thead><tr><th>ID</th><th>Aktor</th><th>Peran di rencana ini</th></tr></thead>
+<tbody>
+<tr id="a1"><td class="id">A1.</td><td>Pengawas SPBU</td><td>Mengirim laporan akhir shift: setoran tunai, cek slip EDC, dan pengeluaran shift.</td></tr>
+<tr id="a2"><td class="id">A2.</td><td>Staf Keuangan</td><td>Mengisi buku kas dan buku bank. Memutuskan EDC yang ditahan. Mengunggah rekening koran.</td></tr>
+<tr id="a3"><td class="id">A3.</td><td>HoF (Head of Finance)</td><td>Memegang daftar pos dan pemetaan. Mengisi saldo awal dan jurnal memorial. Mengonfirmasi bacaan AI. Menutup bulan.</td></tr>
+<tr id="a4"><td class="id">A4.</td><td>Direksi</td><td>Membaca neraca dan laba-rugi formal. Wewenang tutup hari tetap seperti sekarang.</td></tr>
+<tr id="a5"><td class="id">A5.</td><td>Sistem SolaMax</td><td>Membuat jurnal sumber, menjalankan pencocokan, dan menjalankan pemeriksaan tutup bulan.</td></tr>
+<tr id="a6"><td class="id">A6.</td><td>Pembaca AI</td><td>Membaca rekening koran bank selain BCA dan menulis penjelasan selisih.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="key-decisions">
+<h3>Key Decisions</h3>
+<div class="cards">
+<article class="kd" id="kd1">
+<p><strong>Tujuan daftar pos adalah neraca dan laba-rugi formal per SPBU.</strong> Laporan harus bisa diserahkan ke bank, pajak, atau auditor. Governs <a href="#r1">R1</a>, <a href="#r9">R9</a>, <a href="#r10">R10</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over "pengelompokan saja" and "konsolidasi SolaGroup": laporan formal per SPBU dibutuhkan sekarang; konsolidasi ditunda)</p>
+</article>
+<article class="kd" id="kd2">
+<p><strong>Buku besar dibentuk dari catatan yang sudah ada.</strong> Form yang sekarang tetap menjadi tempat input. Sistem mengubah setiap catatan menjadi jurnal sumber. Cara ini mempertahankan semua penjaga yang sudah tayang. Governs <a href="#r6">R6</a>, <a href="#r7">R7</a>, <a href="#r12">R12</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over "jurnal sebagai sumber utama" (tulis ulang modul) and "neraca rumus + baris saldo" (tanpa debet-kredit): hanya cara ini yang bisa membangun Oktober–November dari data yang ada)</p>
+</article>
+<article class="kd" id="kd3">
+<p><strong>Buku besar berlaku mulai 1 Oktober 2026.</strong> Tanggalnya sama dengan cut-over Keuangan. Saldo awal per 30 September 2026. Governs <a href="#r7">R7</a>, <a href="#r9">R9</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over 1 Januari 2027 (rekomendasi awal) and "awal bulan sesudah rilis": satu tanggal mulai untuk semua data Keuangan)</p>
+</article>
+<article class="kd" id="kd4">
+<p><strong>Daftar pos memakai usulan Dion dengan revisi.</strong> Revisinya: kelas 4 Pendapatan, pemecahan kas, bank, piutang, hutang, dan persediaan, serta pos pajak dibayar di muka, investasi sementara, dan pos kliring. Kode lama <code>6-</code>, <code>7-</code>, <code>8-</code>, <code>3-9100</code>, dan <code>1-1800</code> diganti. Governs <a href="#r1">R1</a>–<a href="#r5">R5</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over daftar asli tanpa revisi: tanpa kelas 4 laba-rugi tidak punya baris pendapatan; tanpa pemecahan pos, rekening dan antar cabang tidak bisa dicocokkan)</p>
+</article>
+<article class="kd" id="kd5">
+<p><strong>HPP = liter terjual × harga beli terakhir. Penebusan bukan HPP.</strong> Penebusan menambah persediaan (SO yang sudah dibayar). HPP mengurangi persediaan saat BBM terjual. Governs <a href="#r11">R11</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over "5100 HPP = penebusan BBM": bulan dengan penebusan besar akan tampak rugi)</p>
+</article>
+<article class="kd" id="kd6">
+<p><strong>Setoran dan EDC per shift terposting otomatis; hanya yang berbeda dari pembanding yang ditahan.</strong> Tombol "Setujui setoran terpilih" dan "Pilih shift yang akan dibukukan" hilang. Pemeriksaan setoran pindah ke pencocokan rekening koran. Governs <a href="#r14">R14</a>–<a href="#r18">R18</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over "selalu otomatis tanpa pengecualian" and "otomatis + centang harian Finance": paling sedikit klik tanpa memasukkan selisih EDC ke buku)</p>
+</article>
+<article class="kd" id="kd12">
+<p><strong>Setoran pengawas selalu masuk Kas Besar.</strong> Jemputan di rekening koran membuat mutasi "Setoran ke Bank" otomatis. Governs <a href="#r14">R14</a>, <a href="#r31">R31</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over "pengawas memilih tujuan setor" and "satu tujuan tetap per unit": Kas Besar tetap satu titik kumpul setoran)</p>
+</article>
+<article class="kd" id="kd13">
+<p><strong>Jurnal memorial besar atau yang menyentuh pos kliring disetujui Direksi.</strong> Yang mengetik tidak menyetujui, sesuai tangga toleransi. Governs <a href="#r8">R8</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over "HoF langsung posting" and "semua memorial disetujui": menjaga pemisahan tugas tanpa memperlambat memorial rutin kecil)</p>
+</article>
+<article class="kd" id="kd7">
+<p><strong>Penebusan diinput dari Tambah mutasi bank.</strong> Kategori "Pembelian BBM" membuka field penebusan di form yang sama. Halaman Penebusan SO menjadi daftar dan rekap. Governs <a href="#r19">R19</a>–<a href="#r22">R22</a>.</p>
+<p class="settled">(session-settled: user-directed — chosen over a separate bank-style payment form: Dion menjelaskan bahwa yang dimaksud adalah form penebusan yang sekarang, muncul di Tambah mutasi)</p>
+</article>
+<article class="kd" id="kd8">
+<p><strong>AI membaca dan menjelaskan; aturan pasti yang memutuskan.</strong> Pembaca AI mengubah rekening koran non-BCA menjadi baris dan menjelaskan selisih. Penolakan tutup bulan tetap aturan pasti dengan toleransi Rp 0. Governs <a href="#r29">R29</a>–<a href="#r32">R32</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over "AI yang memutuskan" (hasil bisa berbeda tiap kali dan sulit diaudit) and "hanya penjelasan untuk BCA")</p>
+</article>
+<article class="kd" id="kd9">
+<p><strong>Penyusutan, gaji terutang, dan hutang pajak lewat jurnal memorial HoF.</strong> Daftar aset dengan penyusutan otomatis ditunda. Governs <a href="#r8">R8</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over daftar aset dengan penyusutan otomatis: jumlah aset per SPBU kecil; tambahan fitur belum sepadan)</p>
+</article>
+<article class="kd" id="kd10">
+<p><strong>Form biaya Finance yang terpisah di halaman Biaya dihapus.</strong> Halaman Biaya menjadi tempat meninjau dan melihat laporan. Governs <a href="#r23">R23</a>, <a href="#r25">R25</a>.</p>
+<p class="settled">(session-settled: user-approved — chosen over mempertahankan dua pintu input: dua pintu adalah sebab input ganda)</p>
+</article>
+<article class="kd" id="kd11">
+<p><strong>Sistem tidak pernah membuat angka penyeimbang.</strong> Bila neraca tidak seimbang atau ada sisa di pos kliring, sistem menampilkan temuan. HoF memperbaikinya dengan jurnal memorial beralasan. Governs <a href="#r9">R9</a>, <a href="#r12">R12</a>, <a href="#r33">R33</a>.</p>
+</article>
+</div>
+</section>
+
+<section id="urutan-tahap" data-ce-section="work-relationships">
+<h3>How This Work Fits Together — urutan tahap</h3>
+<p>Rencana ini mencakup satu pekerjaan dalam lima tahap. Urutan di bawah adalah pemahaman saat ini. Perencanaan boleh menggeser urutan bila ketergantungannya tetap benar.</p>
+<ul>
+  <li><strong>Tahap 1 — Daftar pos dan perbaikan pendapatan lain-lain</strong> (<a href="#r1">R1</a>–<a href="#r5">R5</a>, <a href="#r26">R26</a>). Enables Tahap 2, 4, dan 5.</li>
+  <li><strong>Tahap 2 — Input satu kali: biaya, pendapatan, dan penebusan dari buku kas/bank</strong> (<a href="#r19">R19</a>–<a href="#r27">R27</a>). Depends on Tahap 1 untuk pemetaan pos. Can proceed independently of Tahap 3.</li>
+  <li><strong>Tahap 3 — Setoran dan EDC otomatis</strong> (<a href="#r14">R14</a>–<a href="#r18">R18</a>). Can proceed independently of Tahap 1 dan 2. Ini tahap tercepat untuk mengurangi klik.</li>
+  <li><strong>Tahap 4 — Buku besar, saldo awal, neraca dan laba-rugi formal</strong> (<a href="#r6">R6</a>–<a href="#r13">R13</a>). Depends on Tahap 1. Shares aturan posting dengan Tahap 2 dan 3.</li>
+  <li><strong>Tahap 5 — Tutup bulan dengan rekening koran semua bank dan pembaca AI</strong> (<a href="#r28">R28</a>–<a href="#r33">R33</a>). Pembacaan AI depends on nothing. Pemeriksaan buku besar di <a href="#r33">R33</a> depends on Tahap 4.</li>
+</ul>
+</section>
+
+<section id="product-requirements">
+<h3>Requirements</h3>
+
+<h4 id="req-pos">A. Daftar pos (COA)</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r1"><td class="id">R1.</td><td>SolaMax menyimpan satu daftar pos resmi sesuai <a href="#tabel-pos">Tabel Pos</a>. Setiap pos punya kode, nama, jenis, dan pos induk.</td></tr>
+<tr id="r2"><td class="id">R2.</td><td>Setiap kode lama (<code>6-xxxx</code>, <code>7-1100</code>, <code>7-1200</code>, <code>8-1000</code>, <code>3-9100</code>, <code>1-1800</code>) dipetakan ke satu pos baru. Laporan dan reklasifikasi hanya memakai kode baru.</td></tr>
+<tr id="r3"><td class="id">R3.</td><td>Empat belas kategori operasional pengawas tetap dipakai. Setiap kategori operasional dipetakan ke satu pos beban sesuai <a href="#tabel-peta">Tabel Peta Kategori</a>.</td></tr>
+<tr id="r4"><td class="id">R4.</td><td>HoF bisa menambah sub-pos dan mengubah pemetaan kategori ke pos di aplikasi, tanpa rilis kode. Pos yang sudah punya jurnal tidak bisa dihapus.</td></tr>
+<tr id="r5"><td class="id">R5.</td><td>Setiap rekening bank unit menjadi satu sub-pos di bawah 1110. Rekening baru otomatis mendapat sub-pos baru.</td></tr>
+</tbody>
+</table>
+
+<figure id="tabel-pos">
+<figcaption><strong>Tabel Pos</strong> — daftar pos resmi. <span class="chip new">baru</span> = tambahan atas usulan Dion. <span class="chip chg">ubah</span> = usulan Dion dengan perubahan. <span class="chip sys">sistem</span> = pos yang hanya diisi sistem.</figcaption>
+<table>
+<thead><tr><th>Kode</th><th>Pos</th><th>Jenis</th><th>Keterangan</th></tr></thead>
+<tbody>
+<tr class="head"><td class="code">1</td><td colspan="3">ASET (Harta)</td></tr>
+<tr><td class="code">1100</td><td>Kas <span class="chip chg">ubah</span></td><td>induk</td><td>Dipecah agar Kas Besar dan EDC Penampungan bisa dicocokkan terpisah.</td></tr>
+<tr><td class="code">1101</td><td>Kas Besar</td><td>aset</td><td>Dari akun kas "Kas Besar".</td></tr>
+<tr class="new"><td class="code">1102</td><td>EDC Penampungan <span class="chip new">baru</span></td><td>aset</td><td>Dari akun kas "EDC Penampungan".</td></tr>
+<tr class="new"><td class="code">1103</td><td>Penjualan Belum Disetor <span class="chip new">baru</span> <span class="chip sys">sistem</span></td><td>aset (kliring)</td><td>Menampung penjualan tunai dan EDC per shift sampai pengawas menyetor. Sisanya adalah selisih kas.</td></tr>
+<tr><td class="code">1110</td><td>Bank <span class="chip chg">ubah</span></td><td>induk</td><td>Satu sub-pos per rekening (R5): BCA (dua rekening), BRI, BNI, Mandiri. Usulan awal belum memuat Mandiri.</td></tr>
+<tr><td class="code">1120</td><td>Piutang Usaha <span class="chip chg">ubah</span></td><td>induk</td><td>Dipecah agar piutang antar cabang bisa dieliminasi kelak.</td></tr>
+<tr><td class="code">1121</td><td>Piutang Pelanggan EasyMax</td><td>aset</td><td>Dari buku piutang EasyMax.</td></tr>
+<tr><td class="code">1122</td><td>Piutang Antar Cabang</td><td>aset</td><td>Dari pinjaman antar unit.</td></tr>
+<tr><td class="code">1129</td><td>Piutang Lain-lain</td><td>aset</td><td>Dari pihak lawan non-EasyMax bersaldo piutang.</td></tr>
+<tr><td class="code">1130</td><td>Persediaan BBM <span class="chip chg">ubah</span></td><td>induk</td><td>Dipecah menjadi BBM di tangki dan SO yang sudah dibayar.</td></tr>
+<tr><td class="code">1131</td><td>Persediaan BBM di Tangki</td><td>aset</td><td>Stok akhir × harga beli terakhir.</td></tr>
+<tr><td class="code">1132</td><td>SO Sudah Dibayar (Sisa SO)</td><td>aset</td><td>Penebusan yang BBM-nya belum diterima.</td></tr>
+<tr class="new"><td class="code">1140</td><td>Pajak Dibayar di Muka <span class="chip new">baru</span></td><td>aset</td><td>Komponen pajak penebusan yang bisa dikreditkan. Perlakuannya dikonfirmasi ke konsultan pajak (lihat <a href="#outstanding-questions">Outstanding Questions</a>).</td></tr>
+<tr class="new"><td class="code">1150</td><td>Investasi Sementara <span class="chip new">baru</span></td><td>aset</td><td>Sudah ada di laporan rumus ("Temporary Investment").</td></tr>
+<tr class="new"><td class="code">1190</td><td>Dana dalam Perjalanan <span class="chip new">baru</span></td><td>aset (kliring)</td><td>Pindah buku antar rekening sendiri. Pengganti <code>1-1800</code>. Harus Rp 0 saat tutup bulan, kecuali butir dalam perjalanan (R33).</td></tr>
+<tr class="new"><td class="code">1198</td><td>Transaksi Belum Dipetakan <span class="chip new">baru</span> <span class="chip sys">sistem</span></td><td>aset (kliring)</td><td>Baris Okt–Nov yang belum tertaut (R27). Harus Rp 0 saat tutup bulan.</td></tr>
+<tr class="new"><td class="code">1199</td><td>Mutasi Belum Teridentifikasi <span class="chip new">baru</span></td><td>aset (kliring)</td><td>Baris yang diparkir. Harus Rp 0 saat tutup bulan.</td></tr>
+<tr><td class="code">1500</td><td>Aset Tetap – Tanah</td><td>aset</td><td>Saldo awal dari akuntan.</td></tr>
+<tr><td class="code">1510</td><td>Aset Tetap – Bangunan &amp; Pompa</td><td>aset</td><td>Saldo awal dari akuntan.</td></tr>
+<tr><td class="code">1520</td><td>Aset Tetap – Kendaraan</td><td>aset</td><td>Saldo awal dari akuntan.</td></tr>
+<tr><td class="code">1590</td><td>Akumulasi Penyusutan</td><td>aset (pengurang)</td><td>Bertambah lewat jurnal memorial penyusutan.</td></tr>
+<tr class="head"><td class="code">2</td><td colspan="3">KEWAJIBAN (Hutang)</td></tr>
+<tr><td class="code">2100</td><td>Hutang Usaha <span class="chip chg">ubah</span></td><td>induk</td><td>Dipecah per jenis pihak.</td></tr>
+<tr><td class="code">2101</td><td>Deposit Pelanggan EasyMax</td><td>kewajiban</td><td>"Hutang pelanggan EasyMax" pada usulan awal.</td></tr>
+<tr><td class="code">2102</td><td>Hutang Antar Cabang</td><td>kewajiban</td><td>Kaki lawan dari 1122 di unit lain.</td></tr>
+<tr class="new"><td class="code">2103</td><td>Titipan Bright <span class="chip new">baru</span></td><td>kewajiban</td><td>Setoran outlet Bright adalah titipan (keputusan 26 Sep 2026).</td></tr>
+<tr><td class="code">2109</td><td>Hutang Lain-lain</td><td>kewajiban</td><td>Dari pihak lawan non-EasyMax bersaldo hutang.</td></tr>
+<tr><td class="code">2110</td><td>Hutang Bank</td><td>kewajiban</td><td>Saldo awal dari akuntan.</td></tr>
+<tr><td class="code">2200</td><td>Hutang Pajak</td><td>kewajiban</td><td>Lewat jurnal memorial.</td></tr>
+<tr><td class="code">2300</td><td>Hutang Gaji</td><td>kewajiban</td><td>Lewat jurnal memorial.</td></tr>
+<tr class="head"><td class="code">3</td><td colspan="3">MODAL (Ekuitas)</td></tr>
+<tr><td class="code">3100</td><td>Modal Pemilik</td><td>modal</td><td>Termasuk mutasi "Tambahan Modal".</td></tr>
+<tr><td class="code">3200</td><td>Laba Ditahan</td><td>modal</td><td>Saldo awal dari akuntan. Bertambah dengan laba bulan yang sudah ditutup.</td></tr>
+<tr><td class="code">3300</td><td>Prive</td><td>modal</td><td>Pengganti <code>3-9100</code>. Termasuk "Kontribusi ke Pusat".</td></tr>
+<tr class="new"><td class="code">3900</td><td>Laba Tahun Berjalan <span class="chip new">baru</span> <span class="chip sys">sistem</span></td><td>modal</td><td>Dihitung dari kelas 4 dan 5. Tidak bisa dijurnal.</td></tr>
+<tr class="head new"><td class="code">4</td><td colspan="3">PENDAPATAN <span class="chip new">baru</span></td></tr>
+<tr class="new"><td class="code">4100</td><td>Penjualan BBM</td><td>pendapatan</td><td>Volume × harga jual dari EasyMax.</td></tr>
+<tr class="new"><td class="code">4110</td><td>Tera</td><td>pendapatan (pengurang)</td><td>Tera × harga jual. Tetap terpisah, tidak dinetokan ke volume.</td></tr>
+<tr class="new"><td class="code">4200</td><td>Pendapatan Lain-lain</td><td>pendapatan</td><td>Pengganti <code>8-1000</code>.</td></tr>
+<tr class="head"><td class="code">5</td><td colspan="3">BEBAN / BIAYA</td></tr>
+<tr><td class="code">5100</td><td>HPP – Harga Pokok BBM <span class="chip chg">ubah</span></td><td>beban</td><td>Liter terjual × harga beli terakhir (Key Decisions: HPP). Bukan penebusan.</td></tr>
+<tr class="new"><td class="code">5110</td><td>Susut / Losses-Gain BBM <span class="chip new">baru</span></td><td>beban</td><td>Losses-gain liter × harga beli terakhir.</td></tr>
+<tr class="new"><td class="code">5120</td><td>Selisih Harga Pembelian &amp; Persediaan <span class="chip new">baru</span> <span class="chip sys">sistem</span></td><td>beban</td><td>Penyesuaian harian 1131 dan 1132 ke liter × harga beli terakhir (P23). Ditinjau akuntan.</td></tr>
+<tr class="new"><td class="code">5130</td><td>Selisih Kas <span class="chip new">baru</span> <span class="chip sys">sistem</span></td><td>beban (bisa negatif)</td><td>Selisih kas yang disetujui di tutup hari, dipindahkan dari 1103 (P24).</td></tr>
+<tr><td class="code">5200</td><td>Beban Gaji &amp; THR</td><td>beban</td><td></td></tr>
+<tr><td class="code">5300</td><td>Beban Listrik, Air, Internet</td><td>beban</td><td></td></tr>
+<tr><td class="code">5400</td><td>Beban Sewa</td><td>beban</td><td></td></tr>
+<tr><td class="code">5500</td><td>Beban Bank &amp; Biaya MDR QRIS</td><td>beban</td><td>Pengganti <code>7-1100</code> dan <code>7-1200</code>.</td></tr>
+<tr><td class="code">5600</td><td>Beban Penyusutan</td><td>beban</td><td>Lewat jurnal memorial.</td></tr>
+<tr><td class="code">5700</td><td>Beban Operasional Lain (ATK, kebersihan)</td><td>beban</td><td>Penampung kategori operasional lain (Tabel Peta Kategori).</td></tr>
+<tr><td class="code">5800</td><td>Beban Pajak</td><td>beban</td><td></td></tr>
+<tr><td class="code">5900</td><td>Beban Bunga Bank</td><td>beban</td><td></td></tr>
+</tbody>
+</table>
+</figure>
+
+<figure id="tabel-peta">
+<figcaption><strong>Tabel Peta Kategori</strong> — pemetaan awal 14 kategori operasional ke pos. HoF bisa mengubahnya (R4). Laporan tetap bisa dirinci per kategori operasional, jadi 5700 tidak menyembunyikan rincian.</figcaption>
+<table>
+<thead><tr><th>Kategori operasional</th><th>Kode lama</th><th>Pos baru</th></tr></thead>
+<tbody>
+<tr><td>Gaji Karyawan</td><td class="code">6-1100</td><td class="code">5200</td></tr>
+<tr><td>Sarana &amp; Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)</td><td class="code">6-2400</td><td class="code">5300</td></tr>
+<tr><td>Komputer dan Internet</td><td class="code">6-3300</td><td class="code">5300</td></tr>
+<tr><td>MDR</td><td class="code">7-1200</td><td class="code">5500</td></tr>
+<tr><td>Biaya Admin</td><td class="code">7-1100</td><td class="code">5500</td></tr>
+<tr><td>Peralatan Kantor (ATK)</td><td class="code">6-3100</td><td class="code">5700</td></tr>
+<tr><td>Maintance Operasional SPBU (Tera, Cleaning Tank, Sabun)</td><td class="code">6-2300</td><td class="code">5700</td></tr>
+<tr><td>Transportasi / Kendaraan Milik Perusahaan</td><td class="code">6-2200</td><td class="code">5700</td></tr>
+<tr><td>Supir Tangki</td><td class="code">6-2100</td><td class="code">5700</td></tr>
+<tr><td>Iklan, Promosi, Spanduk</td><td class="code">6-4100</td><td class="code">5700</td></tr>
+<tr><td>Sumbangan / Donasi</td><td class="code">6-3500</td><td class="code">5700</td></tr>
+<tr><td>Konsumsi Makanan, Lembur, &amp; Hiburan</td><td class="code">6-1300</td><td class="code">5700</td></tr>
+<tr><td>Biaya Taktis</td><td class="code">6-9100</td><td class="code">5700</td></tr>
+<tr><td>Lain-Lain</td><td class="code">6-9900</td><td class="code">5700</td></tr>
+</tbody>
+</table>
+</figure>
+
+<div class="wire" aria-label="Wireframe Daftar Pos">
+  <div class="w-title">Daftar Pos</div>
+  <div class="w-sub">[Unit] · hanya HoF yang bisa mengubah</div>
+  <div class="w-box">
+    <div class="w-row"><span><strong>1101</strong> Kas Besar · aset</span><span>[saldo] · [jumlah jurnal]</span></div>
+    <div class="w-row"><span><strong>1110</strong> Bank (induk)</span><span>▸ 5 sub-pos</span></div>
+    <div class="w-row"><span><strong>5700</strong> Beban Operasional Lain</span><span>9 kategori dipetakan · <u>Ubah peta</u></span></div>
+    <div class="w-row"><span><strong>[kode]</strong> [nama pos]</span><span><u>Hapus</u> (tidak aktif bila sudah ada jurnal)</span></div>
+  </div>
+  <span class="w-btn">Tambah sub-pos</span><span class="w-btn">Peta kategori → pos</span>
+</div>
+<p class="wire-caption">Directional only — illustrates the intended user-facing shape. Exact colors, spacing, copy, and component choices are placeholders for review, not requirements.</p>
+
+<h4 id="req-gl">B. Buku besar, saldo awal, dan laporan formal</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r6"><td class="id">R6.</td><td>Sistem membuat satu jurnal sumber yang seimbang untuk setiap catatan sumber, sesuai <a href="#tabel-posting">Tabel Aturan Posting</a>. Jumlah debet sama dengan jumlah kredit sampai Rp 0.</td></tr>
+<tr id="r7"><td class="id">R7.</td><td>Sistem membentuk jurnal untuk semua catatan sejak 1 Oktober 2026. Staf Keuangan tidak mengetik ulang data Oktober–November.</td></tr>
+<tr id="r8"><td class="id">R8.</td><td>HoF bisa mengetik jurnal memorial dengan tanggal, alasan, dan bukti. Memorial yang menyentuh 1103, 1190, 1198, 1199, atau 5130, atau bernilai lebih dari Rp 100.000, baru terposting sesudah disetujui Direksi atau super admin; pengusulnya tidak boleh menyetujui sendiri. Jurnal memorial yang salah dibatalkan dengan pembalikan.</td></tr>
+<tr id="r9"><td class="id">R9.</td><td>HoF mengisi saldo awal per 30 September 2026 untuk setiap pos dari data akuntan. Sistem menolak saldo awal yang tidak seimbang dan tidak menambah angka penyeimbang.</td></tr>
+<tr id="r10"><td class="id">R10.</td><td>Sistem menampilkan neraca dan laba-rugi formal per unit per bulan, dirinci per pos. Neraca formal satu bulan bertanda "sementara" sampai saldo awal lengkap dan bulan itu ditutup.</td></tr>
+<tr id="r11"><td class="id">R11.</td><td>HPP harian per produk = liter terjual × harga beli terakhir. Penebusan menambah 1132, dan BBM yang diterima memindahkan nilai dari 1132 ke 1131. Bila harga beli suatu produk belum diisi untuk tanggal itu, sistem tidak memposting HPP atau persediaan produk itu, menampilkan temuan "harga beli belum diisi", dan tutup bulan menolak sampai temuan itu selesai. HPP tidak pernah dihitung dengan harga nol.</td></tr>
+<tr id="r12"><td class="id">R12.</td><td>Laporan rumus tetap tersedia sebagai pembanding. Setiap beda antara laporan rumus dan buku besar tampil sebagai temuan per pos.</td></tr>
+<tr id="r13"><td class="id">R13.</td><td>Garis beku buku besar adalah tutup bulan. Selama bulan belum ditutup, jurnal memorial dan pembentukan ulang boleh bertanggal hari mana pun di bulan itu, termasuk hari yang sudah tutup hari. Sesudah tutup bulan, jurnal bulan itu tidak bisa diubah, dan koreksi memakai jurnal bertanggal maju (KEUANGAN-HARIAN §10.33).</td></tr>
+</tbody>
+</table>
+
+<figure id="tabel-posting">
+<figcaption><strong>Tabel Aturan Posting</strong> — sumber, sisi debet, dan sisi kredit. "Kas/bank" berarti sub-pos 1101, 1102, atau 111x sesuai akun mutasinya. "Pos kategori" berarti pos hasil Tabel Peta Kategori. HoF dan akuntan meninjau tabel ini sebelum Tahap 4 tayang (lihat <a href="#outstanding-questions">Outstanding Questions</a>).</figcaption>
+<table>
+<thead><tr><th>#</th><th>Catatan sumber</th><th>Debet</th><th>Kredit</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td>Penjualan per shift (EasyMax)</td><td>1103 (tunai + EDC) · 1121 (penjualan tempo) · 4110 (tera)</td><td>4100</td></tr>
+<tr><td>P2</td><td>Setoran tunai pengawas (R14)</td><td>1101</td><td>1103</td></tr>
+<tr><td>P3</td><td>EDC per shift (R15)</td><td>1102</td><td>1103</td></tr>
+<tr><td>P4</td><td>Pengeluaran shift di Rincian Penjualan</td><td>pos kategori</td><td>1103</td></tr>
+<tr><td>P5</td><td>Pencairan EDC (3 kaki, sudah ada)</td><td>111x (neto) · 5500 (MDR)</td><td>1102 (bruto)</td></tr>
+<tr><td>P6</td><td>Setoran ke bank / pindah buku antar rekening sendiri</td><td>111x tujuan</td><td>1101 atau 111x asal (lewat 1190 bila tanggalnya berbeda)</td></tr>
+<tr><td>P7</td><td>Penebusan SO (R20)</td><td>1132 (Net + PBBKB + Nota) · 1140 (PPN, PPh)</td><td>111x (Gross)</td></tr>
+<tr><td>P8</td><td>BBM diterima dari SO (liter × harga beli terakhir)</td><td>1131</td><td>1132</td></tr>
+<tr><td>P9</td><td>HPP harian (R11)</td><td>5100</td><td>1131</td></tr>
+<tr><td>P10</td><td>Losses-gain harian</td><td>5110 (losses)</td><td>1131 (sisi terbalik bila gain)</td></tr>
+<tr><td>P11</td><td>Biaya dari buku kas/bank (R23)</td><td>pos kategori</td><td>kas/bank</td></tr>
+<tr><td>P12</td><td>Pendapatan lain-lain dari buku kas/bank (R23)</td><td>kas/bank</td><td>4200</td></tr>
+<tr><td>P13</td><td>Pembayaran pelanggan EasyMax lewat transfer</td><td>111x</td><td>1121</td></tr>
+<tr><td>P14</td><td>Pinjaman antar unit (dua kaki, sudah ada)</td><td>1122 di unit pemberi · kas/bank di unit penerima</td><td>kas/bank di unit pemberi · 2102 di unit penerima</td></tr>
+<tr><td>P15</td><td>Hutang piutang pihak lawan non-EasyMax</td><td colspan="2">1129 atau 2109 berlawanan dengan kas/bank, sesuai arah</td></tr>
+<tr><td>P16</td><td>Titipan Bright diterima / diserahkan</td><td>kas/bank · 2103</td><td>2103 · kas/bank</td></tr>
+<tr><td>P17</td><td>Tambahan modal / prive dan kontribusi ke pusat</td><td>kas/bank · 3300</td><td>3100 · kas/bank</td></tr>
+<tr><td>P18</td><td>Investasi sementara</td><td colspan="2">1150 berlawanan dengan kas/bank, sesuai arah</td></tr>
+<tr><td>P19</td><td>Mutasi belum teridentifikasi (diparkir)</td><td colspan="2">1199 berlawanan dengan kas/bank, sesuai arah</td></tr>
+<tr><td>P20</td><td>Management fee</td><td>pos yang HoF tetapkan (awal: 5700)</td><td>kas/bank</td></tr>
+<tr><td>P21</td><td>Jurnal memorial (R8): penyusutan, gaji terutang, pajak terutang, bunga</td><td>5600 · 5200 · 5800 · 5900</td><td>1590 · 2300 · 2200 · 2110 atau bank</td></tr>
+<tr><td>P22</td><td>Saldo awal 30 Sep 2026 (R9)</td><td colspan="2">per pos, dari data akuntan; kas dan bank dibaca dari saldo awal akun yang sudah ada; harus seimbang</td></tr>
+<tr><td>P23</td><td>Penyesuaian nilai harian (setiap tutup hari)</td><td colspan="2">1131 disesuaikan ke stok × harga beli terakhir dan 1132 ke sisa SO liter × harga beli terakhir, berlawanan dengan 5120</td></tr>
+<tr><td>P24</td><td>Tutup hari dengan selisih kas yang disetujui</td><td colspan="2">sisa 1103 hari itu dipindahkan ke 5130 hanya bila tingkat toleransinya sudah disetujui pejabat yang berwenang; bila belum, sisa tetap di 1103 sebagai temuan</td></tr>
+<tr><td>P27</td><td>Pendapatan lain-lain pengawas di Rincian Penjualan</td><td>1103</td><td>4200</td></tr>
+<tr><td>P28</td><td>Penyesuaian harian piutang/deposit pelanggan EasyMax</td><td colspan="2">1121 dan 2101 disesuaikan ke saldo piutang dan hutang EasyMax akhir hari</td></tr>
+<tr><td>P25</td><td>Baris "SETORAN JEMPUTAN" cocok dengan setoran Kas Besar (R31)</td><td>111x</td><td>1101</td></tr>
+<tr><td>P26</td><td>Baris belum tertaut (R27)</td><td colspan="2">1198 berlawanan dengan kas/bank, sesuai arah</td></tr>
+</tbody>
+</table>
+</figure>
+
+<figure>
+<div class="svgwrap">
+<svg viewBox="0 0 900 430" width="100%" role="img" aria-labelledby="d1t">
+<title id="d1t">Diagram: catatan sumber menjadi jurnal di buku besar, lalu menjadi laporan formal</title>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7a8899"/></marker></defs>
+<g font-size="13">
+  <text x="20" y="24" font-weight="700" fill="#2f7fc1">CATATAN SUMBER (input tetap di sini)</text>
+  <rect x="20" y="40" width="250" height="40" rx="8" fill="none" stroke="#7a8899"/><text x="34" y="65" fill="currentColor">EasyMax: penjualan, tera, stok, SO</text>
+  <rect x="20" y="92" width="250" height="40" rx="8" fill="none" stroke="#7a8899"/><text x="34" y="117" fill="currentColor">Laporan shift pengawas</text>
+  <rect x="20" y="144" width="250" height="40" rx="8" fill="none" stroke="#7a8899"/><text x="34" y="169" fill="currentColor">Buku kas &amp; buku bank (+ penebusan)</text>
+  <rect x="20" y="196" width="250" height="40" rx="8" fill="none" stroke="#7a8899"/><text x="34" y="221" fill="currentColor">Pencairan EDC, antar unit, pihak lawan</text>
+  <rect x="20" y="248" width="250" height="40" rx="8" fill="none" stroke="#7a8899"/><text x="34" y="273" fill="currentColor">Impor &amp; klasifikasi rekening koran</text>
+  <rect x="20" y="300" width="250" height="40" rx="8" fill="none" stroke="#7a8899" stroke-dasharray="5 4"/><text x="34" y="325" fill="currentColor">Jurnal memorial &amp; saldo awal (HoF)</text>
+
+  <rect x="350" y="120" width="190" height="120" rx="10" fill="none" stroke="#2f7fc1" stroke-width="2"/>
+  <text x="372" y="150" font-weight="700" fill="#2f7fc1">ATURAN POSTING</text>
+  <text x="372" y="172" fill="currentColor">Tabel Aturan Posting</text>
+  <text x="372" y="192" fill="currentColor">+ Tabel Peta Kategori</text>
+  <text x="372" y="214" fill="currentColor">debet = kredit (Rp 0)</text>
+
+  <rect x="620" y="120" width="140" height="120" rx="10" fill="none" stroke="#2f7fc1" stroke-width="2"/>
+  <text x="640" y="160" font-weight="700" fill="#2f7fc1">BUKU BESAR</text>
+  <text x="640" y="184" fill="currentColor">jurnal per pos</text>
+  <text x="640" y="204" fill="currentColor">per unit, per hari</text>
+
+  <rect x="790" y="70" width="95" height="44" rx="8" fill="none" stroke="#7a8899"/><text x="800" y="97" fill="currentColor">Neraca</text>
+  <rect x="790" y="158" width="95" height="44" rx="8" fill="none" stroke="#7a8899"/><text x="800" y="178" fill="currentColor">Laba-</text><text x="800" y="194" fill="currentColor">rugi</text>
+  <rect x="790" y="246" width="95" height="44" rx="8" fill="none" stroke="#7a8899"/><text x="800" y="266" fill="currentColor">Tutup</text><text x="800" y="282" fill="currentColor">bulan</text>
+
+  <path d="M270 60 L350 140" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M270 112 L350 158" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M270 164 L350 176" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M270 216 L350 196" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M270 268 L350 214" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M270 320 L350 232" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M540 180 L620 180" stroke="#2f7fc1" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+  <path d="M760 160 L790 98" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M760 180 L790 180" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+  <path d="M760 200 L790 262" stroke="#7a8899" fill="none" marker-end="url(#ar)"/>
+
+  <rect x="350" y="300" width="410" height="100" rx="10" fill="none" stroke="#b07a00" stroke-dasharray="5 4"/>
+  <text x="370" y="326" font-weight="700" fill="#b07a00">PEMBANDING (R12)</text>
+  <text x="370" y="348" fill="currentColor">Laporan rumus yang sekarang tetap dihitung.</text>
+  <text x="370" y="368" fill="currentColor">Beda per pos tampil sebagai temuan.</text>
+  <text x="370" y="388" fill="currentColor">Sistem tidak membuat angka penyeimbang.</text>
+</g>
+</svg>
+</div>
+<figcaption>Diagram 1 — Input tetap di form yang sekarang. Aturan posting mengubah setiap catatan menjadi jurnal. Laporan formal dibaca dari buku besar. Prosa di R6–R12 adalah acuannya.</figcaption>
+</figure>
+
+<h4 id="req-shift">C. Setoran dan EDC per shift otomatis</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r14"><td class="id">R14.</td><td>Saat pengawas menyimpan baris setoran tunai di Rincian Penjualan, sistem langsung memposting baris itu ke Kas Besar unit (P2). Tombol "Setujui setoran terpilih" tidak ada lagi.</td></tr>
+<tr id="r15"><td class="id">R15.</td><td>Saat pengawas mencocokkan slip EDC dan slip sama dengan nominal EasyMax, sistem langsung memposting EDC shift itu ke EDC Penampungan (P3). Langkah "Pilih shift yang akan dibukukan" tidak ada lagi. Pengawas langsung melihat hasilnya: "Terposting".</td></tr>
+<tr id="r16"><td class="id">R16.</td><td>Bila slip EDC berbeda dari nominal EasyMax, sistem menahan shift itu. Pengawas melihat "Ditahan, menunggu Finance". Staf Keuangan memutuskan dengan kode alasan, seperti sekarang.</td></tr>
+<tr id="r17"><td class="id">R17.</td><td>Bila setoran atau EDC yang sudah terposting dikoreksi, baris lama ditandai batal (tetap tersimpan) dan baris baru dibuat. Pada bulan yang sudah ditutup, koreksinya berupa pembalikan bertanggal maju.</td></tr>
+<tr id="r18"><td class="id">R18.</td><td>Pencairan EDC (simpan batch, setujui pencairan, batalkan pencairan) tetap langkah staf Keuangan, seperti KEUANGAN-HARIAN §10.45.</td></tr>
+</tbody>
+</table>
+
+<div class="cols">
+<div class="callout warn">
+<p class="eyebrow">Sekarang</p>
+<ol>
+  <li>Pengawas mengirim setoran dan mencocokkan slip EDC.</li>
+  <li>Staf Keuangan mencentang setoran, lalu mengklik "Setujui setoran terpilih".</li>
+  <li>Staf Keuangan mencentang shift EDC, lalu mengklik "Pilih shift yang akan dibukukan".</li>
+  <li>Baru setelah itu saldo Kas Besar dan EDC Penampungan berubah.</li>
+</ol>
+</div>
+<div class="callout ok">
+<p class="eyebrow">Sesudah (R14–R16)</p>
+<ol>
+  <li>Pengawas mengirim setoran dan mencocokkan slip EDC.</li>
+  <li>Sistem langsung memposting setoran dan EDC yang slipnya sama.</li>
+  <li>Staf Keuangan hanya membuka daftar "EDC ditahan" bila ada.</li>
+  <li>Setoran dicek saat rekening koran diimpor (setoran jemputan, 0–3 hari).</li>
+</ol>
+</div>
+</div>
+
+<div class="wire" aria-label="Wireframe Buku Kas Besar sesudah posting otomatis">
+  <div class="w-title">Buku Kas — Kas Besar · [tanggal]</div>
+  <div class="w-sub">Setoran pengawas langsung terposting. Tidak ada daftar "setoran menunggu".</div>
+  <div class="w-box">
+    <div class="w-row"><span>Setoran Hasil Penjualan · Shift 1 · [nama pengawas]</span><span>+[nominal] · <span class="w-ok">otomatis</span></span></div>
+    <div class="w-row"><span>Setoran Hasil Penjualan · Shift 2 · [nama pengawas]</span><span>+[nominal] · <span class="w-ok">otomatis</span></span></div>
+    <div class="w-row"><span>Setoran ke Bank · [rekening]</span><span>−[nominal] · staf Keuangan</span></div>
+  </div>
+  <div class="w-hl"><strong>EDC ditahan (2)</strong><br>Shift 2 · [acquirer] · slip [nominal] ≠ EasyMax [nominal] · <u>Putuskan</u><br>Shift 1 · [acquirer] · berubah sesudah diposting · <u>Balik posting</u></div>
+</div>
+<p class="wire-caption">Directional only — illustrates the intended user-facing shape. Exact colors, spacing, copy, and component choices are placeholders for review, not requirements.</p>
+
+<h4 id="req-tebus">D. Penebusan dari Tambah mutasi bank</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r19"><td class="id">R19.</td><td>Di Tambah mutasi buku bank, kategori "Pembelian BBM" langsung menampilkan field penebusan: Nomor SO, Harga Net, PPN, PPh, PBBKB, dan Nota Debet/Kredit.</td></tr>
+<tr id="r20"><td class="id">R20.</td><td>Nominal mutasi adalah Harga Gross. Tanggal bayar dan rekening diambil dari buku bank yang terbuka. Tombol simpan aktif hanya bila jumlah komponen sama dengan Gross.</td></tr>
+<tr id="r21"><td class="id">R21.</td><td>Satu klik simpan menulis mutasi bank dan penebusan sekaligus. Penebusan itu tampil di halaman Penebusan SO tanpa input kedua.</td></tr>
+<tr id="r22"><td class="id">R22.</td><td>Halaman Penebusan SO menjadi daftar, rekap pajak, dan tempat membatalkan. Form "Catat penebusan" di halaman itu hanya dipakai untuk mengikat baris impor rekening koran yang belum punya SO.</td></tr>
+</tbody>
+</table>
+
+<div class="wire" aria-label="Wireframe Tambah mutasi dengan field penebusan">
+  <div class="w-title">Tambah mutasi — [Bank BCA · rekening]</div>
+  <div class="w-sub">Tanda nominal mengikuti jenis. Kategori Pembelian BBM membuka field penebusan.</div>
+  <div class="w-grid">
+    <div class="w-full"><div class="w-label">Keterangan</div><div class="w-field">Penebusan SO …</div></div>
+    <div><div class="w-label">Jenis</div><div class="w-field lock">Kredit (kas keluar)</div></div>
+    <div><div class="w-label">Kategori</div><div class="w-field">Pembelian BBM ▾</div></div>
+  </div>
+  <div class="w-box">
+    <div class="w-label">PENEBUSAN SO — muncul karena kategori Pembelian BBM</div>
+    <div class="w-grid">
+      <div><div class="w-label">Nomor SO</div><div class="w-field">[nomor SO]</div></div>
+      <div><div class="w-label">Harga Gross = Nominal mutasi</div><div class="w-field">110.000.000</div></div>
+      <div><div class="w-label">Harga Net</div><div class="w-field">96.000.000</div></div>
+      <div><div class="w-label">PPN</div><div class="w-field">10.560.000</div></div>
+      <div><div class="w-label">PPh</div><div class="w-field">320.000</div></div>
+      <div><div class="w-label">PBBKB</div><div class="w-field">3.120.000</div></div>
+      <div><div class="w-label">Nota Debet/Kredit</div><div class="w-field">0</div></div>
+      <div><div class="w-label">Tanggal bayar · Rekening</div><div class="w-field lock">[tanggal buku] · [rekening buku ini]</div></div>
+    </div>
+    <div class="w-hl">Σ komponen Rp 110.000.000 · Gross Rp 110.000.000 · Selisih Rp 0</div>
+  </div>
+  <span class="w-btn primary">Simpan mutasi &amp; penebusan</span><span class="w-btn">Batal</span>
+</div>
+<p class="wire-caption">Directional only — illustrates the intended user-facing shape. Exact colors, spacing, copy, and component choices are placeholders for review, not requirements. Angka adalah ilustrasi.</p>
+
+<h4 id="req-biaya">E. Biaya dan pendapatan lain-lain dari buku kas/bank</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r23"><td class="id">R23.</td><td>Di Tambah mutasi buku kas atau buku bank, kategori "Biaya Operasional" mewajibkan kategori operasional; "Pendapatan Lain-Lain" langsung ke 4200 dan "Management Fee" ke pos P20, tanpa field kedua. Satu simpan menulis mutasi dan baris Biaya atau Pendapatan Lain-lain yang terhubung (P11, P12, P20).</td></tr>
+<tr id="r24"><td class="id">R24.</td><td>Membatalkan mutasi juga membatalkan baris Biaya atau Pendapatan yang terhubung, seperti jalur klasifikasi impor bank yang sudah ada.</td></tr>
+<tr id="r25"><td class="id">R25.</td><td>Halaman Biaya tidak punya form input Finance lagi. Halaman itu menampilkan baris dari pengawas dan dari buku kas/bank, dengan tindakan Tinjau, Kembalikan, dan Reklasifikasi.</td></tr>
+<tr id="r26"><td class="id">R26.</td><td>Pendapatan lain-lain selalu terposting ke 4200 dan masuk laba. Cacat pendapatan lain-lain yang hilang dari laba diperbaiki dan dibuktikan dengan tes.</td></tr>
+<tr id="r27"><td class="id">R27.</td><td>Baris Oktober–November yang belum terhubung tampil di daftar "perlu ditautkan" dan terposting ke 1198 sampai ditautkan: mutasi biaya tanpa baris Biaya, baris Biaya Finance tanpa mutasi, dan mutasi "Pembelian BBM" tanpa penebusan. Staf Keuangan menautkan atau melengkapinya. Sistem tidak menebak tautannya.</td></tr>
+</tbody>
+</table>
+
+<div class="wire" aria-label="Wireframe Tambah mutasi biaya">
+  <div class="w-title">Tambah mutasi — Kas Besar</div>
+  <div class="w-grid">
+    <div class="w-full"><div class="w-label">Keterangan</div><div class="w-field">Bayar listrik [bulan]</div></div>
+    <div><div class="w-label">Jenis</div><div class="w-field lock">Kredit (kas keluar)</div></div>
+    <div><div class="w-label">Nominal</div><div class="w-field">1.500.000</div></div>
+    <div><div class="w-label">Kategori</div><div class="w-field">Biaya Operasional ▾</div></div>
+    <div><div class="w-label">Jenis biaya (wajib untuk Biaya Operasional)</div><div class="w-field">Sarana &amp; Prasarana ▾</div></div>
+  </div>
+  <div class="w-hl">Akan tercatat juga di Biaya Operasional → pos 5300 Beban Listrik, Air, Internet.</div>
+  <span class="w-btn primary">Simpan mutasi</span><span class="w-btn">Batal</span>
+</div>
+<p class="wire-caption">Directional only — illustrates the intended user-facing shape. Exact colors, spacing, copy, and component choices are placeholders for review, not requirements.</p>
+
+<h4 id="req-tutup">F. Tutup bulan dengan rekening koran semua bank</h4>
+<table>
+<thead><tr><th>ID</th><th>Kebutuhan</th></tr></thead>
+<tbody>
+<tr id="r28"><td class="id">R28.</td><td>Tutup bulan mewajibkan rekening koran aktif untuk setiap rekening bank unit yang punya mutasi atau saldo pada bulan itu: BCA, BRI, BNI, dan Mandiri.</td></tr>
+<tr id="r29"><td class="id">R29.</td><td>Rekening koran BCA tetap dibaca parser yang sudah ada. Rekening koran bank lain (PDF atau foto) dibaca pembaca AI menjadi baris mutasi.</td></tr>
+<tr id="r30"><td class="id">R30.</td><td>Staf Keuangan mengetik empat angka kontrol dari cetakan rekening koran: saldo awal, total debet, total kredit, dan saldo akhir. Bacaan AI dipakai hanya bila keempatnya cocok tepat dengan bacaan, saldo awal sama dengan saldo akhir bulan lalu yang sudah dikonfirmasi (untuk rekening yang belum pernah punya rekening koran terkonfirmasi: sama dengan saldo buku bank), saldo berjalan tercetak cocok per baris bila ada, lalu HoF mengonfirmasi. Bila tidak cocok, sistem menolak bacaan itu, dan staf Keuangan boleh mengetik baris secara manual dengan pemeriksaan yang sama.</td></tr>
+<tr id="r31"><td class="id">R31.</td><td>Pencocokan baris dan empat syarat tutup bulan yang sudah ada (KEUANGAN-HARIAN §10.39, §10.41) berlaku untuk semua bank, dengan toleransi Rp 0. Baris kredit "SETORAN JEMPUTAN" dari parser BCA yang cocok dengan tepat satu kandidat (satu setoran Kas Besar, atau total setoran satu tanggal bisnis, 0–3 hari sebelumnya) membuat mutasi "Setoran ke Bank" dan grup cocok otomatis. Bila nol atau banyak kandidat, atau baris berasal dari pembaca AI, baris tetap terbuka dan kandidatnya tampil sebagai usulan untuk staf Keuangan.</td></tr>
+<tr id="r32"><td class="id">R32.</td><td>Bila tutup bulan ditolak, pembaca AI menulis penjelasan untuk setiap butir yang terbuka: apa yang beda, kemungkinan sebabnya, dan langkah yang disarankan. AI tidak memposting, tidak mencocokkan, dan tidak menutup bulan.</td></tr>
+<tr id="r33"><td class="id">R33.</td><td>Sesudah Tahap 4, tutup bulan juga menolak bila neraca buku besar tidak seimbang, bila 1103, 1190, 1198, atau 1199 tidak Rp 0, atau bila saldo setiap sub-pos bank berbeda dari saldo akhir rekening koran. Saldo dihitung menurut tanggal efektif (tanggal asal untuk jurnal yang terdorong maju), seperti pemeriksaan tutup bulan yang sekarang. Sisa 1103 dan 1190 hanya boleh berupa butir dalam perjalanan yang pasangannya jatuh 0–3 hari di bulan berikutnya, dan setiap butir tampil dengan namanya. Pemeriksaan ini berlaku sejak bulan pertama yang saldo awalnya lengkap.</td></tr>
+</tbody>
+</table>
+
+<figure>
+<div class="svgwrap">
+<svg viewBox="0 0 900 360" width="100%" role="img" aria-labelledby="d2t">
+<title id="d2t">Diagram: alur tutup bulan dengan rekening koran dan pembaca AI</title>
+<defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7a8899"/></marker></defs>
+<g font-size="13">
+  <rect x="6" y="40" width="182" height="56" rx="28" fill="none" stroke="#7a8899"/><text x="22" y="64" fill="currentColor">Staf Keuangan</text><text x="22" y="82" fill="currentColor">unggah rekening koran</text>
+  <polygon points="270,30 350,68 270,106 190,68" fill="none" stroke="#7a8899"/><text x="246" y="72" fill="currentColor">BCA?</text>
+  <rect x="380" y="10" width="170" height="44" rx="6" fill="none" stroke="#7a8899"/><text x="394" y="37" fill="currentColor">Parser BCA (sudah ada)</text>
+  <rect x="380" y="84" width="170" height="44" rx="6" fill="none" stroke="#2f7fc1" stroke-width="2"/><text x="394" y="111" fill="#2f7fc1">Pembaca AI (R29)</text>
+  <polygon points="660,60 750,106 660,152 570,106" fill="none" stroke="#7a8899"/><text x="618" y="102" fill="currentColor">Total &amp; saldo</text><text x="626" y="118" fill="currentColor">cocok tepat?</text>
+  <rect x="770" y="40" width="120" height="44" rx="6" fill="none" stroke="#9b2c2c"/><text x="782" y="67" fill="#9b2c2c">Berkas ditolak</text>
+  <rect x="590" y="190" width="160" height="44" rx="6" fill="none" stroke="#7a8899"/><text x="604" y="217" fill="currentColor">HoF konfirmasi (R30)</text>
+  <rect x="360" y="190" width="200" height="44" rx="6" fill="none" stroke="#7a8899"/><text x="374" y="217" fill="currentColor">Pencocokan Rp 0 (R31)</text>
+  <polygon points="250,180 340,212 250,244 160,212" fill="none" stroke="#7a8899"/><text x="206" y="208" fill="currentColor">Semua syarat</text><text x="214" y="224" fill="currentColor">terpenuhi?</text>
+  <rect x="16" y="290" width="200" height="44" rx="22" fill="none" stroke="#1f6b3a"/><text x="36" y="317" fill="#1f6b3a">HoF menutup bulan</text>
+  <rect x="300" y="290" width="330" height="44" rx="6" fill="none" stroke="#9b2c2c"/><text x="314" y="317" fill="#9b2c2c">Ditolak + penjelasan AI per butir (R32)</text>
+
+  <path d="M188 68 L192 68" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/>
+  <path d="M310 49 L380 32" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="320" y="30" fill="currentColor">ya</text>
+  <path d="M310 87 L380 106" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="324" y="112" fill="currentColor">tidak</text>
+  <path d="M550 32 C590 32 610 50 630 75" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/>
+  <path d="M550 106 L570 106" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/>
+  <path d="M710 86 L770 64" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="740" y="98" fill="currentColor">tidak</text>
+  <path d="M670 152 L670 190" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="678" y="176" fill="currentColor">ya</text>
+  <path d="M590 212 L560 212" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/>
+  <path d="M360 212 L340 212" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/>
+  <path d="M200 236 L130 290" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="132" y="262" fill="currentColor">ya</text>
+  <path d="M300 236 L400 290" stroke="#7a8899" fill="none" marker-end="url(#ar2)"/><text x="358" y="262" fill="currentColor">tidak</text>
+</g>
+</svg>
+</div>
+<figcaption>Diagram 2 — AI hanya membaca dan menjelaskan. Keputusan "berkas ditolak" dan "bulan ditolak" adalah aturan pasti. Prosa di R28–R33 adalah acuannya.</figcaption>
+</figure>
+
+<div class="wire" aria-label="Wireframe tutup bulan ditolak dengan penjelasan AI">
+  <div class="w-title">Tutup bulan — [Unit] · [bulan]</div>
+  <div class="w-sub">Hanya HoF. Tombol tutup aktif bila semua syarat terpenuhi.</div>
+  <div class="w-box">
+    <div class="w-row"><span>Semua hari sudah ditutup</span><span class="w-ok">✔ terpenuhi</span></div>
+    <div class="w-row"><span>Rekening koran: BCA (2) · BRI · BNI · Mandiri</span><span class="w-no">✘ Mandiri belum diunggah</span></div>
+    <div class="w-row"><span>Semua baris rekening koran cocok / diklasifikasi</span><span class="w-no">✘ 2 baris terbuka</span></div>
+    <div class="w-row"><span>Neraca seimbang · 1103, 1190, 1199 = Rp 0</span><span class="w-no">✘ 1190 sisa Rp 5.000.000</span></div>
+  </div>
+  <div class="w-bad">
+    <strong>Penjelasan AI (tidak memutuskan)</strong>
+    <ol>
+      <li>BRI [tanggal]: kredit Rp 2.500.000 "TRF [nama]" belum punya pasangan. Nominalnya sama dengan piutang [pelanggan] tanggal [tanggal]. Langkah: catat sebagai pembayaran piutang, lalu cocokkan.</li>
+      <li>1190 sisa Rp 5.000.000: pindah buku dari BCA [tanggal] belum ada kaki terima di BNI. Langkah: periksa mutasi BNI [tanggal] dan catat kaki terimanya.</li>
+    </ol>
+  </div>
+  <span class="w-btn primary off">Tutup bulan</span><span class="w-btn">Jelaskan butir terbuka</span><span class="w-btn">Unggah rekening koran</span>
+</div>
+<p class="wire-caption">Directional only — illustrates the intended user-facing shape. Exact colors, spacing, copy, and component choices are placeholders for review, not requirements. Angka adalah ilustrasi.</p>
+</section>
+
+<section id="key-flows">
+<h3>Key Flows</h3>
+<table>
+<thead><tr><th>ID</th><th>Alur</th></tr></thead>
+<tbody>
+<tr id="f1"><td class="id">F1.</td><td><strong>Trigger:</strong> pengawas mengirim laporan akhir shift. <strong>Langkah:</strong> sistem memposting penjualan shift (P1), setoran (P2), dan pengeluaran shift (P4). Sisa 1103 adalah selisih kas; sisa itu pindah ke 5130 hanya sesudah tingkat toleransinya disetujui (P24). Saat rekening koran diimpor, setoran jemputan dicocokkan dengan setoran. <strong>Covers</strong> R14, R17, R31.</td></tr>
+<tr id="f2"><td class="id">F2.</td><td><strong>Trigger:</strong> pengawas mencocokkan slip EDC per shift. <strong>Langkah:</strong> slip sama → sistem memposting P3. Slip beda → shift ditahan, lalu staf Keuangan memutuskan dengan kode alasan. Pencairan tetap langkah staf Keuangan. <strong>Covers</strong> R15, R16, R18.</td></tr>
+<tr id="f3"><td class="id">F3.</td><td><strong>Trigger:</strong> staf Keuangan membuka Tambah mutasi di buku bank dan memilih "Pembelian BBM". <strong>Langkah:</strong> field penebusan muncul, staf Keuangan mengisi SO dan komponen, lalu satu simpan menulis mutasi, penebusan, dan jurnal P7. <strong>Covers</strong> R19–R21.</td></tr>
+<tr id="f4"><td class="id">F4.</td><td><strong>Trigger:</strong> staf Keuangan membuka Tambah mutasi dengan kategori biaya atau pendapatan lain-lain. <strong>Langkah:</strong> staf Keuangan memilih kategori operasional, lalu satu simpan menulis mutasi, baris Biaya/Pendapatan, dan jurnal P11/P12. <strong>Covers</strong> R23, R24, R26.</td></tr>
+<tr id="f5"><td class="id">F5.</td><td><strong>Trigger:</strong> HoF membuka Tutup bulan. <strong>Langkah:</strong> sistem memeriksa syarat. Bila ada yang gagal, tombol tutup tidak aktif, dan staf Keuangan atau HoF bisa meminta penjelasan AI per butir. Staf Keuangan memperbaiki, lalu HoF memeriksa ulang. Bila semua terpenuhi, HoF menutup bulan dan jurnal bulan itu beku. <strong>Covers</strong> R28–R33, R13.</td></tr>
+<tr id="f6"><td class="id">F6.</td><td><strong>Trigger:</strong> rilis Tahap 4. <strong>Langkah:</strong> HoF mengisi saldo awal 30 Sep 2026. Sistem membentuk jurnal sejak 1 Okt 2026 dan menampilkan beda dengan laporan rumus. HoF memperbaiki beda dengan jurnal memorial beralasan, lalu menutup Oktober. <strong>Covers</strong> R7, R9, R10, R12.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="acceptance-examples">
+<h3>Acceptance Examples</h3>
+<table>
+<thead><tr><th>ID</th><th>Contoh (angka ilustrasi)</th></tr></thead>
+<tbody>
+<tr id="ae1"><td class="id">AE1.</td><td><strong>Covers R14, R31.</strong> Pengawas menyimpan setoran Rp 20.000.000. Saldo Kas Besar langsung naik Rp 20.000.000 tanpa klik staf Keuangan. Dua hari kemudian, rekening koran memuat setoran jemputan Rp 20.000.000. Sistem membuat mutasi "Setoran ke Bank" Kas Besar → bank dan mencocokkannya otomatis.</td></tr>
+<tr id="ae2"><td class="id">AE2.</td><td><strong>Covers R14, R31.</strong> Pengawas menyetor Rp 20.000.000, tetapi setoran jemputan di rekening koran Rp 19.900.000. Setoran tidak cocok otomatis. Tutup bulan menolak, dan AI menjelaskan beda Rp 100.000 pada baris itu.</td></tr>
+<tr id="ae3"><td class="id">AE3.</td><td><strong>Covers R15, R16.</strong> EasyMax mencatat EDC BRI shift 2 Rp 8.000.000. Slip pengawas Rp 8.000.000, jadi sistem langsung memposting ke EDC Penampungan. Pada shift 3 slip Rp 7.950.000 dan EasyMax Rp 8.000.000, jadi shift 3 ditahan sampai staf Keuangan memilih kode alasan.</td></tr>
+<tr id="ae4"><td class="id">AE4.</td><td><strong>Covers R17.</strong> Setoran shift 1 sudah terposting Rp 20.000.000, lalu dikoreksi menjadi Rp 19.500.000. Baris lama Rp 20.000.000 berstatus batal dan tetap tersimpan, dan baris baru +Rp 19.500.000 aktif. Saldo Kas Besar hanya menghitung baris aktif.</td></tr>
+<tr id="ae5"><td class="id">AE5.</td><td><strong>Covers R19–R21.</strong> Di buku bank, staf Keuangan memilih "Pembelian BBM", mengisi Gross Rp 110.000.000 dan komponen yang berjumlah Rp 110.000.000, lalu menyimpan. Buku bank mendapat kredit −Rp 110.000.000, dan halaman Penebusan SO langsung memuat SO itu. Bila komponen berjumlah Rp 109.990.000, tombol simpan tidak aktif dan selisih Rp 10.000 tampil.</td></tr>
+<tr id="ae6"><td class="id">AE6.</td><td><strong>Covers R23, R24.</strong> Staf Keuangan mencatat kredit Kas Besar Rp 1.500.000, kategori Biaya Operasional, kategori operasional "Sarana &amp; Prasarana". Halaman Biaya langsung memuat baris Rp 1.500.000 di pos 5300. Bila mutasi itu dibatalkan, baris Biaya ikut batal.</td></tr>
+<tr id="ae7"><td class="id">AE7.</td><td><strong>Covers R26.</strong> Staf Keuangan mencatat debet bank Rp 750.000, kategori Pendapatan Lain-Lain. Laba-rugi bulan itu memuat Rp 750.000 di pos 4200.</td></tr>
+<tr id="ae8"><td class="id">AE8.</td><td><strong>Covers R29, R30.</strong> Pembaca AI melewatkan satu dari 42 baris rekening koran BNI. Total debet bacaan tidak sama dengan angka kontrol yang diketik staf Keuangan. Sistem menolak bacaan itu dan menyebut total yang berbeda. Tidak ada baris yang tersimpan.</td></tr>
+<tr id="ae9"><td class="id">AE9.</td><td><strong>Covers R33, R12.</strong> Sesudah semua baris cocok, saldo sub-pos BRI di buku besar Rp 50.000.000, tetapi saldo akhir rekening koran Rp 50.250.000. Tutup bulan menolak. Sistem tidak menambah angka penyeimbang.</td></tr>
+<tr id="ae10"><td class="id">AE10.</td><td><strong>Covers R9.</strong> HoF mengisi saldo awal dengan jumlah aset Rp 1.000 juta, tetapi jumlah kewajiban dan modal Rp 990 juta. Sistem menolak simpan dan menampilkan beda Rp 10 juta.</td></tr>
+<tr id="ae11"><td class="id">AE11.</td><td><strong>Covers R11.</strong> Pertalite terjual 4.000 liter dan harga beli terakhir Rp 9.000 per liter. HPP hari itu Rp 36.000.000. Penebusan pada hari yang sama tidak mengubah HPP.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="success-criteria">
+<h3>Success Criteria</h3>
+<ul>
+  <li>Staf Keuangan tidak mengklik setuju untuk setoran dan EDC yang slipnya sama. Klik hanya untuk EDC yang ditahan.</li>
+  <li>Setiap biaya, pendapatan lain-lain, dan penebusan diketik satu kali.</li>
+  <li>Neraca buku besar Oktober dan November 2026 seimbang sampai Rp 0 di ketujuh SPBU.</li>
+  <li>Beda antara laporan rumus dan buku besar per pos tercatat dan masing-masing punya penjelasan.</li>
+  <li>Tutup bulan November 2026 memakai rekening koran semua bank di ketujuh SPBU.</li>
+</ul>
+</section>
+
+<section id="scope-boundaries">
+<h3>Scope Boundaries</h3>
+<div class="callout warn">
+<p class="eyebrow">Ditunda</p>
+<ul>
+  <li>Laporan konsolidasi SolaGroup dan eliminasi antar cabang. Pos 1122/2102 sudah disiapkan untuk itu.</li>
+  <li>Daftar aset tetap dengan penyusutan otomatis.</li>
+  <li>Laporan SPT dan e-Faktur.</li>
+  <li>Pencairan EDC yang dibuat otomatis dari baris rekening koran "MID :".</li>
+  <li>Membuka kembali bulan yang sudah ditutup.</li>
+  <li>Satu mutasi bank yang membayar beberapa SO. Kasus ini memakai fitur pecah mutasi yang sudah ada.</li>
+  <li>Kas opname untuk Kas Besar sebagai pembanding luar.</li>
+</ul>
+</div>
+<div class="callout info">
+<p class="eyebrow">Tidak berubah</p>
+<ul>
+  <li>Tangga toleransi tutup hari (≤ Rp 10.000, HoF, Direksi) dan wewenangnya.</li>
+  <li>Harga beli tetap diketik di SolaMax, dengan penjaga harga beli yang sudah ada (KEUANGAN-HARIAN §4.1).</li>
+  <li>Pemisahan kategori operasional (pengawas) dan pos (Finance). Staf Keuangan tidak punya tombol Edit generik.</li>
+</ul>
+</div>
+</section>
+
+<section id="dependencies">
+<h3>Dependencies / Assumptions</h3>
+<ul>
+  <li><strong>Saldo awal per 30 September 2026</strong> dari akuntan atau konsultan pajak, per SPBU. Tanpa data ini neraca formal tetap "sementara" (R10).</li>
+  <li><strong>Akses layanan AI</strong> dengan kunci khusus SolaMax dan batas biaya. Rekening koran dikirim ke layanan itu untuk dibaca.</li>
+  <li><strong>Contoh rekening koran BRI, BNI, dan Mandiri</strong> untuk menguji pembaca AI. Contoh di repo harus sintetis. Berkas asli hanya diuji di luar repo.</li>
+  <li><strong>Asumsi:</strong> satu mutasi "Pembelian BBM" membayar tepat satu SO.</li>
+  <li><strong>Asumsi:</strong> pengawas jarang mengoreksi setoran sesudah dikirim, jadi pembalikan otomatis (R17) cukup tanpa langkah persetujuan.</li>
+</ul>
+</section>
+
+<section id="outstanding-questions">
+<h3>Outstanding Questions</h3>
+<h4>Resolve Before Planning</h4>
+<p>Tidak ada.</p>
+<h4>Deferred to Planning</h4>
+<table>
+<thead><tr><th></th><th>Pertanyaan</th></tr></thead>
+<tbody>
+<tr id="oq-tinjau"><td class="id">•</td><td>HoF dan akuntan meninjau Tabel Aturan Posting, terutama 5120 dan 5130, sebelum Tahap 4 tayang. Siapa akuntannya, dan kapan tinjauan itu bisa terjadi?</td></tr>
+<tr id="oq-pajak"><td class="id">•</td><td>Perlakuan PPN, PPh, dan PBBKB penebusan: apakah dikreditkan (1140) atau masuk harga persediaan? Konsultan pajak yang memutuskan. Sampai ada keputusan, sistem memakai P7.</td></tr>
+<tr id="oq-rumus"><td class="id">•</td><td>Kapan laporan rumus berhenti tampil sebagai laporan utama? Usulan: sesudah dua bulan berturut-turut tanpa beda yang belum dijelaskan.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="sources">
+<h3>Sources / Research</h3>
+<ul>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/KEUANGAN-HARIAN.md"><code>apps/dashboard/KEUANGAN-HARIAN.md</code></a> — §1.1–§1.4 laporan rumus dan setoran "ditawarkan"; §10.33 tanggal buku maju; §10.37 penebusan; §10.38–§10.41 impor, pencocokan, tutup bulan; §10.45 pencairan EDC.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/backend/prisma/migrations/0023_category_account_map/migration.sql"><code>apps/backend/prisma/migrations/0023_category_account_map/migration.sql</code></a> — 14 kategori operasional dan kode lama.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/keuangan-reklas.ts"><code>apps/dashboard/src/lib/keuangan-reklas.ts</code></a> — daftar akun reklasifikasi dan <code>jenisAkun</code>.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/biaya-actions.ts"><code>apps/dashboard/src/lib/biaya-actions.ts</code></a> dan <a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/keuangan-beban.ts"><code>apps/dashboard/src/lib/keuangan-beban.ts</code></a> — jalur cacat pendapatan lain-lain (R26).</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/kas-actions.ts"><code>apps/dashboard/src/lib/kas-actions.ts</code></a> — <code>simpanMutasiKas</code>, <code>setujuiSetoran</code>, <code>pecahMutasi</code>.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/edc-shift-actions.ts"><code>apps/dashboard/src/lib/edc-shift-actions.ts</code></a> — <code>cekSlipEdc</code>, <code>setujuiPenjualanEdc</code>.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/klasifikasi-tulis.ts"><code>apps/dashboard/src/lib/klasifikasi-tulis.ts</code></a> — <code>tulisBebanFinance</code>, jalur dua sisi yang dipakai ulang (R23, R24).</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/penebusan-actions.ts"><code>apps/dashboard/src/lib/penebusan-actions.ts</code></a> dan <a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/components/keuangan/PenebusanForm.tsx"><code>apps/dashboard/src/components/keuangan/PenebusanForm.tsx</code></a> — form dan simpan penebusan.</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/tutup-bulan-model.ts"><code>apps/dashboard/src/lib/tutup-bulan-model.ts</code></a> dan <a href="https://github.com/ddsalam/solamax/blob/main/apps/dashboard/src/lib/cocok-bank-model.ts"><code>apps/dashboard/src/lib/cocok-bank-model.ts</code></a> — empat syarat tutup bulan dan aturan pencocokan (saat ini hanya BCA).</li>
+  <li><a href="https://github.com/ddsalam/solamax/blob/main/docs/plans/2026-10-29-1719-feat-keuangan-pihak-lawan-penebusan-impor-bank-plan.md"><code>docs/plans/2026-10-29-1719-feat-keuangan-pihak-lawan-penebusan-impor-bank-plan.md</code></a> — rencana K5 yang menjadi dasar.</li>
+</ul>
+</section>
+
+</section>
+
+
+<section id="planning-contract">
+<h2>Planning Contract</h2>
+<p><strong>Product Contract preservation:</strong> changed: R14, R27, R30, R33, AE1, Tabel Pos (1198, 5120, 5130), Tabel Aturan Posting (P8, P22–P26), Key Decision setoran ke Kas Besar — dikonfirmasi Dion di sintesis ce-plan 2 Nov 2026. Diperjelas oleh tinjauan dokumen (tanpa perubahan cakupan): R11 (harga beli kosong), R13 (garis beku = tutup bulan), R15–R17, R23, R30, R31, R33, AE4, AE8, P23, P24, P27, P28. Outstanding Questions tentang selisih kas, sisa SO, dan layanan AI diselesaikan oleh KTD4, KTD5, dan KTD9.</p>
+<p><strong>Target repo:</strong> <code>ddsalam/solamax</code>. Semua path relatif terhadap root repo. Pustaka dashboard = <code>apps/dashboard/src/lib/</code>; migrasi = <code>apps/backend/prisma/migrations/</code>.</p>
+
+<h3 id="ktd">Key Technical Decisions</h3>
+<div class="cards">
+<article class="kd" id="ktd1"><p><strong>KTD1. Nama modul dan tabel memakai <code>pos</code>, <code>jurnal</code>, dan <code>buku_besar</code>, bukan <code>gl</code>.</strong> "GL" sudah berarti gain/loss di repo ini (migrasi 0048, langkah CI "Gain/loss source-integrity").</p></article>
+<article class="kd" id="ktd2"><p><strong>KTD2. Kode lama tidak ditulis ulang di baris tersimpan.</strong> Trigger hari tertutup (0026) melarang UPDATE <code>manual_entry</code>. Tabel peta <code>pos_kode_lama</code> menerjemahkan kode lama ke pos baru saat jurnal dibentuk. Baris baru langsung menyimpan kode empat digit. Governs R2.</p></article>
+<article class="kd" id="ktd3"><p><strong>KTD3. Jurnal disimpan (materialized), dengan kunci sumber yang stabil.</strong> Kuncinya: tabel sumber, id sumber, aturan, dan kaki. Pembentukan ulang menyentuh semua hari di bulan yang belum tutup bulan (R13). Bila sumber di bulan yang sudah ditutup berubah, sistem menghitung selisih dan memposting jurnal koreksi bertanggal maju di hari buka pertama, memakai <code>tentukanHariBuku</code> dan kode <code>ADJ-FWD-*</code>. Backfill sejak 1 Okt 2026 boleh menulis ke bulan yang sudah ditutup lewat K5 sebelum Tahap 4 tayang, satu kali, bertanda <code>backfill</code>; sesudah bulan pertama ditutup dengan buku besar, backfill untuk rentang itu ditolak. Pemicu pembentukan: (1) setiap jalur <code>*-tulis</code> membentuk jurnalnya sendiri dalam transaksi yang sama; (2) <code>tutupHari</code> membentuk ulang jurnal unit-hari itu di bawah kunci eksklusif sebelum P23/P24; (3) pemeriksaan tutup bulan menjalankan pembentukan ulang bulan itu sebelum vonis. Setiap pembentukan tercatat di <code>audit_log</code>. Governs R6, R7, R13.</p></article>
+<article class="kd" id="ktd4"><p><strong>KTD4. Persediaan dinilai dengan harga beli terakhir, dan selisih harga masuk 5120.</strong> P8 memakai liter × harga beli terakhir. P23 menilai ulang 1131 dan 1132 saat harga berubah. Ini aturan, bukan angka penyeimbang. Governs R11.</p></article>
+<article class="kd" id="ktd5"><p><strong>KTD5. Tutup hari memindahkan sisa 1103 ke 5130 hanya bila tingkat toleransi sisa itu sudah disetujui.</strong> Sisa 1103 dinilai dengan tangga toleransi yang sama (≤ Rp 10.000, HoF, Direksi); bila persetujuannya belum ada, sisa tetap di 1103 sebagai temuan dan menahan tutup bulan. Jurnalnya tertaut ke baris <code>day_close</code>. Selama transisi, pemeriksaan rumus (BSCheck) tetap gerbang tutup hari; sisa 1103 buku besar tampil di sebelahnya sebagai pembanding. Governs R12, R33.</p></article>
+<article class="kd" id="ktd6"><p><strong>KTD6. Setoran dan EDC otomatis ditulis di modul <code>*-tulis.ts</code> tanpa "use server", dan selalu lewat <code>hariBukuTerkunci</code>.</strong> Polanya sama dengan <code>tulisBebanFinance</code> dan <code>pecahMutasi</code>. Jalur lama <code>simpanMutasiKas</code> untuk kategori biasa tidak diubah (keputusan Dion §10.43#1 tetap). Governs R14, R15, R21, R23. (session-settled: user-approved — chosen over posting langsung tanpa penjaga hari tertutup: dikonfirmasi di sintesis ce-plan)</p></article>
+<article class="kd" id="ktd7"><p><strong>KTD7. EDC yang pernah tercatat beda tetap ditahan.</strong> Bila ada cek slip dengan slip ≠ EasyMax untuk unit, tanggal, shift, dan acquirer yang sama, cek ulang berikutnya tidak memposting otomatis. Bila nominal EasyMax berubah sesudah diposting, shift itu berstatus "berubah sesudah diposting" dan ditahan untuk pembalikan Finance. Governs R15, R16. (session-settled: user-approved — chosen over "cek ulang pengawas boleh melepas tahanan": dikonfirmasi di sintesis ce-plan)</p></article>
+<article class="kd" id="ktd8"><p><strong>KTD8. Pencocokan jemputan memakai jumlah setoran satu hari, bukan subset-sum.</strong> Kredit "SETORAN JEMPUTAN" dicocokkan dengan satu setoran atau dengan total setoran satu tanggal bisnis, 0–3 hari sebelum tanggal bank. Sebelum membuat pasangan, aturan ini mencari kaki "Setoran ke Bank" yang sudah diketik Finance di rekening yang sama, nominal sama, 0–3 hari sebelumnya, dan belum dicocokkan; bila ada tepat satu, baris dicocokkan ke kaki itu tanpa membuat baris baru. Bila tidak ada dan tepat satu kandidat setoran, sistem membuat pasangan (Kas Besar keluar, bank masuk) dan grup cocok sekaligus. Hanya baris dari parser BCA yang boleh memicu pembuatan otomatis; baris dari pembaca AI menampilkan kandidatnya sebagai usulan. Governs R31, AE1.</p></article>
+<article class="kd" id="ktd9"><p><strong>KTD9. Pembaca AI memakai Claude API lewat <code>@anthropic-ai/sdk</code>, model <code>claude-opus-5-5</code>, keluaran terstruktur.</strong> PDF dikirim sebagai blok <code>document</code>, foto sebagai blok <code>image</code>. Skema keluaran sama dengan bentuk <code>RekeningKoran</code> yang dipakai parser BCA, lalu melewati gerbang total yang sama (<code>periksaKaki</code>). Berkas tidak disimpan; hanya sha256 dan baris hasil, seperti sekarang. Isi rekening koran tidak ditulis ke log. Kunci dibaca dari secret <code>ANTHROPIC_API_KEY</code>; tanpa kunci, fitur menolak dan menawarkan input manual. Respons <code>refusal</code> diperlakukan sebagai "tidak terbaca". Kuncinya adalah kunci workspace khusus SolaMax dengan batas belanja bulanan di konsol Anthropic; staging (<code>-rlsstg</code>) memakai kunci terpisah dari produksi. Percobaan baca dibatasi 10 kali per rekening per bulan. Prompt penjelasan (R32) hanya menerima tanggal, nominal, keterangan bank sebagai data kutipan, dan id kandidat; keterangan bank ditandai sebagai teks tak tepercaya, bukan instruksi. Governs R29, R30, R32.</p></article>
+<article class="kd" id="ktd10"><p><strong>KTD10. Neraca dan laba-rugi formal dibaca dari jurnal tersimpan, tidak dibekukan dalam tabel snapshot.</strong> Bulan tertutup tidak berubah karena KTD3 hanya menambah jurnal koreksi di hari buka. Snapshot terpisah tidak diperlukan. Governs R10, R13.</p></article>
+<article class="kd" id="ktd11"><p><strong>KTD11. Pelanggan yang membayar ke rekening unit lain diselesaikan dengan dua jurnal memorial HoF.</strong> Unit penerima: debet 1199, kredit 2102. Unit pemilik piutang: debet 1122, kredit 1121. Tidak ada fitur baru. Governs R8, R33.</p></article>
+</div>
+
+<h3 id="htd">High-Level Technical Design</h3>
+<figure>
+<div class="svgwrap">
+<svg viewBox="0 0 900 300" width="100%" role="img" aria-labelledby="d3t">
+<title id="d3t">Diagram: siklus hidup jurnal sumber — dibentuk, diperbarui di hari buka, dikoreksi maju di hari tertutup</title>
+<defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7a8899"/></marker></defs>
+<g font-size="13">
+<rect x="20" y="110" width="150" height="60" rx="30" fill="none" stroke="#7a8899"/><text x="40" y="136" fill="currentColor">Catatan sumber</text><text x="40" y="154" fill="currentColor">disimpan/diubah</text>
+<polygon points="300,90 380,140 300,190 220,140" fill="none" stroke="#7a8899"/><text x="262" y="136" fill="currentColor">Hari buku</text><text x="268" y="152" fill="currentColor">terbuka?</text>
+<rect x="440" y="40" width="200" height="56" rx="6" fill="none" stroke="#2f7fc1" stroke-width="2"/><text x="454" y="64" fill="#2f7fc1">Tulis ulang jurnal</text><text x="454" y="82" fill="currentColor">kunci sumber sama (idempoten)</text>
+<rect x="440" y="184" width="200" height="56" rx="6" fill="none" stroke="#b07a00"/><text x="454" y="208" fill="#b07a00">Jurnal koreksi maju</text><text x="454" y="226" fill="currentColor">selisih baru − tersimpan</text>
+<rect x="700" y="110" width="180" height="60" rx="6" fill="none" stroke="#7a8899"/><text x="714" y="136" fill="currentColor">Buku besar</text><text x="714" y="154" fill="currentColor">neraca · L/R · tutup bulan</text>
+<path d="M170 140 L220 140" stroke="#7a8899" fill="none" marker-end="url(#ar3)"/>
+<path d="M340 115 L440 70" stroke="#7a8899" fill="none" marker-end="url(#ar3)"/><text x="372" y="84" fill="currentColor">ya</text>
+<path d="M340 165 L440 210" stroke="#7a8899" fill="none" marker-end="url(#ar3)"/><text x="368" y="206" fill="currentColor">tidak</text>
+<path d="M640 70 L700 125" stroke="#7a8899" fill="none" marker-end="url(#ar3)"/>
+<path d="M640 212 L700 158" stroke="#7a8899" fill="none" marker-end="url(#ar3)"/>
+</g>
+</svg>
+</div>
+<figcaption>Diagram 3 — Siklus jurnal sumber (KTD3). Hari buka: tulis ulang dengan kunci yang sama. Hari tertutup: selisihnya diposting maju.</figcaption>
+</figure>
+<figure>
+<div class="svgwrap">
+<svg viewBox="0 0 900 220" width="100%" role="img" aria-labelledby="d4t">
+<title id="d4t">Diagram: status EDC per shift sesudah posting otomatis</title>
+<defs><marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7a8899"/></marker></defs>
+<g font-size="13">
+<rect x="20" y="80" width="130" height="48" rx="24" fill="none" stroke="#7a8899"/><text x="40" y="109" fill="currentColor">Belum dicek</text>
+<rect x="230" y="20" width="170" height="48" rx="6" fill="none" stroke="#1f6b3a"/><text x="244" y="49" fill="#1f6b3a">Terposting otomatis</text>
+<rect x="230" y="140" width="170" height="48" rx="6" fill="none" stroke="#b07a00"/><text x="244" y="169" fill="#b07a00">Ditahan (beda)</text>
+<rect x="500" y="20" width="200" height="48" rx="6" fill="none" stroke="#b07a00"/><text x="514" y="49" fill="#b07a00">Berubah sesudah diposting</text>
+<rect x="500" y="140" width="200" height="48" rx="6" fill="none" stroke="#1f6b3a"/><text x="514" y="169" fill="#1f6b3a">Dibukukan Finance</text>
+<rect x="760" y="80" width="120" height="48" rx="6" fill="none" stroke="#7a8899"/><text x="772" y="109" fill="currentColor">Dibalik Finance</text>
+<path d="M150 95 L230 50" stroke="#7a8899" fill="none" marker-end="url(#ar4)"/><text x="160" y="62" fill="currentColor">slip = EasyMax</text>
+<path d="M150 115 L230 160" stroke="#7a8899" fill="none" marker-end="url(#ar4)"/><text x="160" y="160" fill="currentColor">slip ≠</text>
+<path d="M400 44 L500 44" stroke="#7a8899" fill="none" marker-end="url(#ar4)"/><text x="408" y="36" fill="currentColor">EasyMax berubah</text>
+<path d="M400 164 L500 164" stroke="#7a8899" fill="none" marker-end="url(#ar4)"/><text x="414" y="156" fill="currentColor">kode alasan</text>
+<path d="M700 50 L760 95" stroke="#7a8899" fill="none" marker-end="url(#ar4)"/>
+</g>
+</svg>
+</div>
+<figcaption>Diagram 4 — Status EDC per shift (R15, R16, KTD7). Cek ulang sesudah "Ditahan" tetap ditahan.</figcaption>
+</figure>
+
+<h3>Assumptions</h3>
+<ul>
+<li>Setiap unit punya tepat satu akun aktif berjenis <code>kas</code> bernama "Kas Besar". Bila tidak ada, setoran otomatis menolak dengan pesan yang jelas.</li>
+<li>Penerimaan BBM dari SO bisa dibaca dari data tebus EasyMax yang sudah dipakai untuk "sisa SO". P8 memakai pergerakan sisa SO per hari, bukan tautan per nomor SO.</li>
+<li>Tahap 4 boleh tayang dengan saldo awal "sementara". Laporan formal tetap tampil bertanda "sementara" (R10).</li>
+</ul>
+
+<h3>Sequencing</h3>
+<p>Tahap 1 (U1, U2) → Tahap 2 (U3, U4) dan Tahap 3 (U5, U6, U7) → Tahap 4 (U8, U9) → Tahap 5 (U10, U11). U12 ikut di setiap PR yang mengubah aturan. Setiap tahap adalah satu PR ke <code>staging</code>.</p>
+
+<h3>System-Wide Impact</h3>
+<ul>
+<li><strong>Pengawas:</strong> setoran langsung mengubah saldo Kas Besar. Membatalkan setoran yang sudah cocok dengan bank ditolak dan diarahkan ke HoF.</li>
+<li><strong>Staf Keuangan:</strong> tombol setujui setoran dan pilih shift EDC hilang. Form biaya di halaman Biaya hilang. Daftar "perlu ditautkan" muncul.</li>
+<li><strong>HoF:</strong> halaman Daftar Pos, Saldo Awal Pos, Jurnal Memorial, dan konfirmasi bacaan AI.</li>
+<li><strong>Operasional:</strong> Dion memasang secret <code>ANTHROPIC_API_KEY</code> di Cloud Run secara manual; CD tidak menyentuh env.</li>
+</ul>
+
+<h3>Risks</h3>
+<div class="callout warn"><p class="eyebrow">Risiko · dimitigasi</p><p>Backfill jurnal Okt–Nov memuat ribuan baris. Pembentukan jurnal berjalan per unit per hari dalam transaksi pendek, idempoten, dan bisa diulang.</p></div>
+<div class="callout warn"><p class="eyebrow">Risiko · terbuka</p><p>Aturan posting belum ditinjau akuntan. Tahap 4 tayang dengan laporan formal bertanda "sementara" sampai tinjauan selesai (Outstanding Questions).</p></div>
+
+<h3>Scope Boundaries (rencana)</h3>
+<ul>
+<li><strong>Dipertimbangkan, tidak dibangun:</strong> gerbang tutup hari baru untuk EDC yang ditahan. EDC yang ditahan sudah membuat langkah harian ≠ 0, dan tangga toleransi menahannya. Bukti yang mengubah keputusan: tutup hari lolos dengan EDC ditahan.</li>
+<li><strong>Dipertimbangkan, tidak dibangun:</strong> temuan otomatis untuk saldo Kas Besar yang lama tidak disetor. Buku Kas menampilkan saldo harian, dan pencocokan jemputan menandai setoran tanpa pasangan.</li>
+<li><strong>Dipertimbangkan, tidak dibangun:</strong> penyimpanan berkas PDF rekening koran. Hash dan baris hasil cukup untuk audit, seperti K5.</li>
+</ul>
+<h4>Deferred to Follow-Up Work</h4>
+<ul><li>Koreksi "ganti nomor SO" tanpa membatalkan mutasinya.</li><li>Unggah beberapa berkas rekening koran untuk satu rekening per bulan.</li></ul>
+</section>
+
+<section id="implementation-units">
+<h2>Implementation Units</h2>
+<table>
+<thead><tr><th>U-ID</th><th>Judul</th><th>Berkas utama</th><th>Depends on</th></tr></thead>
+<tbody>
+<tr><td><a href="#u1">U1</a></td><td>Daftar pos dan peta kategori</td><td>migrasi 0056, <code>pos-model.ts</code>, halaman Daftar Pos</td><td>—</td></tr>
+<tr><td><a href="#u2">U2</a></td><td>Perbaikan pendapatan lain-lain</td><td><code>keuangan-reklas.ts</code>, <code>biaya-actions.ts</code></td><td>U1</td></tr>
+<tr><td><a href="#u3">U3</a></td><td>Biaya/pendapatan dari Tambah mutasi</td><td><code>kas-actions.ts</code>, <code>BukuKasPanel.tsx</code>, <code>BiayaPanel.tsx</code></td><td>U1</td></tr>
+<tr><td><a href="#u4">U4</a></td><td>Penebusan dari Tambah mutasi bank</td><td><code>penebusan-tulis.ts</code>, <code>BukuKasPanel.tsx</code></td><td>—</td></tr>
+<tr><td><a href="#u5">U5</a></td><td>Setoran otomatis ke Kas Besar</td><td><code>setoran-tulis.ts</code>, <code>manual-entry-actions.ts</code></td><td>—</td></tr>
+<tr><td><a href="#u6">U6</a></td><td>EDC per shift otomatis</td><td><code>edc-shift-actions.ts</code>, <code>edc-shift-model.ts</code></td><td>—</td></tr>
+<tr><td><a href="#u7">U7</a></td><td>Jemputan → Setoran ke Bank otomatis</td><td><code>cocok-bank-model.ts</code>, <code>cocok-bank-tulis.ts</code></td><td>U5</td></tr>
+<tr><td><a href="#u8">U8</a></td><td>Buku besar: jurnal sumber dan backfill</td><td>migrasi 0057, <code>buku-besar-model.ts</code>, <code>buku-besar-tulis.ts</code></td><td>U1</td></tr>
+<tr><td><a href="#u9">U9</a></td><td>Saldo awal, jurnal memorial, laporan formal</td><td><code>buku-besar-queries.ts</code>, halaman Buku Besar</td><td>U8</td></tr>
+<tr><td><a href="#u10">U10</a></td><td>Pembaca AI rekening koran</td><td><code>rekening-koran-ai.ts</code>, <code>impor-bank-parser.ts</code></td><td>—</td></tr>
+<tr><td><a href="#u11">U11</a></td><td>Tutup bulan semua bank + cek buku besar</td><td><code>tutup-bulan-model.ts</code>, <code>TutupBulanPeriksa.tsx</code></td><td>U8, U10</td></tr>
+<tr><td><a href="#u12">U12</a></td><td>KEUANGAN-HARIAN dan stempel keputusan</td><td><code>apps/dashboard/KEUANGAN-HARIAN.md</code></td><td>tiap tahap</td></tr>
+</tbody>
+</table>
+
+<article id="u1"><h3>U1. Daftar pos dan peta kategori</h3>
+<dl class="meta"><dt>Goal</dt><dd>SolaMax menyimpan daftar pos resmi dan peta kategori → pos yang HoF bisa ubah.</dd><dt>Requirements</dt><dd>R1–R5, KTD1, KTD2</dd><dt>Dependencies</dt><dd>—</dd><dt>Files</dt><dd><code>apps/backend/prisma/migrations/0056_pos/migration.sql</code>, <code>apps/backend/prisma/schema.prisma</code>, <code>apps/dashboard/src/lib/pos-model.ts</code>, <code>apps/dashboard/src/lib/pos-model.test.ts</code>, <code>apps/dashboard/src/lib/pos-actions.ts</code>, <code>apps/dashboard/src/lib/keuangan-wewenang.ts</code>, <code>apps/dashboard/src/app/(app)/keuangan/unit/[code]/pos/page.tsx</code>, <code>apps/dashboard/src/components/keuangan/DaftarPosPanel.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Tabel <code>app.pos</code> (kode, nama, jenis, induk, sistem, unit_id): baris Tabel Pos global (<code>unit_id</code> NULL); sub-pos bank dan sub-pos tambahan HoF per unit (<code>unit_id</code> NOT NULL, unik per unit dan kode, RLS predikat 0016). Sub-pos bank per rekening ditambah otomatis dari <code>cash_account</code> berjenis bank (R5), sehingga 1111–1119 berulang di setiap unit.</li><li>Tabel <code>app.pos_kode_lama</code> memetakan setiap kode lama ke pos baru (KTD2).</li><li><code>category_account_map</code> mendapat baris baru berkode empat digit dengan <code>effective_from</code> = tanggal rilis; baris lama tetap untuk riwayat.</li><li>Predikat <code>canKelolaPos</code> = HoF atau super admin.</li><li>Pos yang dirujuk jurnal, peta, atau saldo awal tidak bisa dihapus.</li></ol></details>
+<details><summary>Patterns to follow</summary><p>0053/0054 untuk idiom migrasi; <code>keuangan-sisi-kas.test.ts</code> untuk tes kelengkapan dari seed.</p></details>
+<details><summary>Test scenarios</summary><ul><li>Setiap kategori operasional di seed terpetakan ke tepat satu pos beban.</li><li>Setiap kode lama di <code>AKUN_REKLAS</code> dan seed 0023 punya tepat satu pos baru.</li><li>Pos induk tidak bisa dipakai sebagai pos jurnal.</li><li>Menghapus pos yang dirujuk peta ditolak; pos tanpa rujukan bisa dihapus.</li><li>Staf Keuangan non-HoF ditolak saat mengubah peta.</li><li>Dua unit masing-masing punya sub-pos 1111 tanpa bentrok, dan unit A tidak melihat sub-pos unit B.</li><li>🔴 Mutan: hapus satu baris seed peta → tes kelengkapan merah.</li></ul></details>
+<details><summary>Verification</summary><p>Halaman Daftar Pos tampil untuk HoF dengan seluruh Tabel Pos dan sub-pos bank unit.</p></details>
+</article>
+
+<article id="u2"><h3>U2. Perbaikan pendapatan lain-lain</h3>
+<dl class="meta"><dt>Goal</dt><dd>Pendapatan lain-lain dari pintu Finance selalu masuk laba di pos 4200.</dd><dt>Requirements</dt><dd>R26, AE7</dd><dt>Dependencies</dt><dd>U1</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/keuangan-reklas.ts</code>, <code>apps/dashboard/src/lib/keuangan-beban.ts</code>, <code>apps/dashboard/src/lib/biaya-actions.ts</code>, <code>apps/dashboard/src/lib/keuangan-beban.test.ts</code>, <code>apps/dashboard/src/lib/keuangan-reklas.test.ts</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Baris berseksi <code>pendapatan_lain</code> selalu berjenis pendapatan, apa pun kode yang tersimpan.</li><li>Baris baru pendapatan lain-lain menyimpan 4200.</li></ol></details>
+<details><summary>Execution note</summary><p>Mulai dengan tes merah yang mereproduksi baris pendapatan berkode <code>6-9900</code> yang hilang dari laba.</p></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE7. Baris pendapatan_lain Rp 750.000 berkode lama <code>6-9900</code> terhitung di pendapatan lain-lain.</li><li>Baris pengeluaran berkode 6-xxxx tetap terhitung beban.</li><li>Reklasifikasi ke 8-1000 lama tetap terhitung pendapatan.</li></ul></details>
+<details><summary>Verification</summary><p>Laba-rugi rumus memuat pendapatan lain-lain dari pintu Finance.</p></details>
+</article>
+
+<article id="u3"><h3>U3. Biaya dan pendapatan dari Tambah mutasi</h3>
+<dl class="meta"><dt>Goal</dt><dd>Satu simpan di buku kas/bank menulis mutasi dan baris Biaya/Pendapatan yang terhubung.</dd><dt>Requirements</dt><dd>R23–R25, R27, AE6, F4, KTD6</dd><dt>Dependencies</dt><dd>U1</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/kas-actions.ts</code>, <code>apps/dashboard/src/lib/kas-actions.guard.test.ts</code>, <code>apps/dashboard/src/lib/keuangan-kas-model.ts</code>, <code>apps/dashboard/src/lib/keuangan-kas-model.test.ts</code>, <code>apps/dashboard/src/components/keuangan/BukuKasPanel.tsx</code>, <code>apps/dashboard/src/components/keuangan/BiayaPanel.tsx</code>, <code>apps/dashboard/src/lib/tautan-queries.ts</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Predikat murni <code>kategoriBeban(label)</code> dipakai di form dan di server.</li><li>Untuk kategori itu, aksi baru <code>simpanMutasiBeban</code> berjalan di bawah <code>hariBukuTerkunci</code>, menulis mutasi, lalu <code>tulisBebanFinance</code>.</li><li>Pembatalan mutasi sudah mengikutkan baris terhubung (R24).</li><li>Form biaya Finance di BiayaPanel dihapus; reklasifikasi tetap.</li><li>Daftar "perlu ditautkan" (R27) tampil sebagai seksi di halaman Biaya. Satu tindakan per jenis baris: mutasi biaya → pilih jenis biaya; baris Biaya tanpa mutasi → pilih mutasi kandidat (nominal dan tanggal sama ±3 hari); Pembelian BBM tanpa SO → buka field penebusan. Keadaan kosong: "Tidak ada yang perlu ditautkan".</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE6. Kredit Kas Besar Rp 1.500.000 kategori Biaya Operasional + "Sarana &amp; Prasarana" menulis satu mutasi dan satu baris Biaya pos 5300.</li><li>Debet bank kategori Pendapatan Lain-Lain tanpa jenis biaya menulis baris pendapatan pos 4200.</li><li>Kategori biaya tanpa kategori operasional ditolak server.</li><li>Pembatalan mutasi ikut membatalkan baris Biaya.</li><li>Simpan pada hari tertutup terdorong maju bersama baris Biaya-nya (satu <code>business_date</code>).</li><li>Penjaga: aksi tidak menerima nominal Biaya dari klien terpisah dari nominal mutasi.</li><li>Daftar "perlu ditautkan" memuat mutasi biaya tanpa Biaya dan Biaya tanpa mutasi.</li></ul></details>
+<details><summary>Verification</summary><p>Mutasi biaya yang diinput di buku kas langsung tampil di halaman Biaya.</p></details>
+</article>
+
+<article id="u4"><h3>U4. Penebusan dari Tambah mutasi bank</h3>
+<dl class="meta"><dt>Goal</dt><dd>Kategori "Pembelian BBM" di buku bank membuka field penebusan dan satu simpan menulis keduanya.</dd><dt>Requirements</dt><dd>R19–R22, AE5, F3</dd><dt>Dependencies</dt><dd>—</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/penebusan-actions.ts</code>, <code>apps/dashboard/src/lib/penebusan-model.ts</code>, <code>apps/dashboard/src/lib/penebusan-model.test.ts</code>, <code>apps/dashboard/src/lib/penebusan-actions.guard.test.ts</code>, <code>apps/dashboard/src/components/keuangan/BukuKasPanel.tsx</code>, <code>apps/dashboard/src/components/keuangan/PenebusanForm.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Predikat <code>kategoriPenebusan(label)</code> di model.</li><li>BukuKasPanel menampilkan field komponen bila akun bank dan kategori Pembelian BBM; nominal = Gross.</li><li>Server memakai jalur <code>simpanPenebusan</code> yang sudah ada dengan rekening dan tanggal dari buku, sehingga mutasi dibuat oleh penebusan (<code>kas_dibuat</code> = true) dalam satu transaksi.</li><li>Kategori Pembelian BBM di akun bank tidak bisa disimpan lewat jalur mutasi biasa.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE5. Gross Rp 110.000.000 dengan komponen berjumlah sama menulis satu mutasi −Rp 110.000.000 dan satu penebusan.</li><li>Covers AE5. Komponen berjumlah Rp 109.990.000 ditolak dengan selisih Rp 10.000.</li><li>Nomor SO yang sudah ada ditolak.</li><li>Jalur mutasi biasa menolak Pembelian BBM di akun bank.</li><li>Mutasi dan penebusan punya <code>business_date</code> yang sama saat terdorong maju.</li></ul></details>
+<details><summary>Verification</summary><p>Penebusan yang dicatat dari buku bank langsung tampil di halaman Penebusan SO.</p></details>
+</article>
+
+<article id="u5"><h3>U5. Setoran otomatis ke Kas Besar</h3>
+<dl class="meta"><dt>Goal</dt><dd>Setiap baris setoran tunai pengawas langsung menjadi debet Kas Besar.</dd><dt>Requirements</dt><dd>R14, R17, AE1, AE4, F1, KTD6</dd><dt>Dependencies</dt><dd>—</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/setoran-tulis.ts</code>, <code>apps/dashboard/src/lib/setoran-tulis.test.ts</code>, <code>apps/dashboard/src/lib/manual-entry-actions.ts</code>, <code>apps/dashboard/src/lib/manual-entry-actions.guard.test.ts</code>, <code>apps/dashboard/src/components/keuangan/BukuKasPanel.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li><code>addManualEntry</code> untuk seksi <code>setoran_tunai</code> menjadi transaksi: set_config → <code>hariBukuTerkunci</code> → insert manual_entry → insert cash_ledger "Setoran Hasil Penjualan" ke akun Kas Besar dengan <code>source_manual_entry_id</code>.</li><li><code>voidManualEntry</code> ikut membatalkan baris kas terhubung; bila baris kas sudah dicocokkan, pembatalan ditolak.</li><li>Pengawas yang mengoreksi = batal + buat ulang (pola yang sudah ada).</li><li>Daftar "setoran menunggu" dan tombol setujui dihapus dari BukuKasPanel; <code>setujuiSetoran</code> tetap ada untuk setoran lama yang belum disetujui.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE1. Simpan setoran Rp 20.000.000 menulis debet Kas Besar Rp 20.000.000 tanpa aksi Finance.</li><li>Covers AE4. Batal + buat ulang Rp 19.500.000: baris lama batal, baris baru aktif.</li><li>Batal setoran yang baris kasnya sudah dicocokkan ditolak.</li><li>Unit tanpa akun Kas Besar ditolak dengan pesan jelas.</li><li>Simpan dua kali dengan id sama tidak membuat dua baris kas.</li></ul></details>
+<details><summary>Verification</summary><p>Setoran pengawas langsung tampil di Buku Kas Besar bertanda otomatis.</p></details>
+</article>
+
+<article id="u6"><h3>U6. EDC per shift otomatis</h3>
+<dl class="meta"><dt>Goal</dt><dd>Cek slip yang sama dengan EasyMax langsung memposting EDC; yang beda ditahan.</dd><dt>Requirements</dt><dd>R15, R16, R18, AE3, F2, KTD7</dd><dt>Dependencies</dt><dd>—</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/edc-shift-tulis.ts</code>, <code>apps/dashboard/src/lib/edc-shift-actions.ts</code>, <code>apps/dashboard/src/lib/edc-shift-model.ts</code>, <code>apps/dashboard/src/lib/edc-shift-model.test.ts</code>, <code>apps/dashboard/src/lib/edc-shift-actions.guard.test.ts</code>, <code>apps/dashboard/src/components/keuangan/EdcPanel.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Inti pembukuan dari <code>setujuiPenjualanEdc</code> dipindah ke <code>edc-shift-tulis.ts</code> (tanpa "use server", lewat <code>hariBukuTerkunci</code>), dipanggil oleh <code>cekSlipEdc</code> dan jalur Finance.</li><li><code>cekSlipEdc</code> memanggilnya bila slip = EasyMax dan tidak pernah ada cek beda untuk kunci yang sama.</li><li>Jalur Finance untuk yang ditahan tetap memakai kode alasan; aturan pengecek ≠ penyetuju berlaku di jalur itu saja.</li><li>Detektor "berubah sesudah diposting" membandingkan nominal terposting dengan EasyMax saat halaman dibuka.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE3. Slip Rp 8.000.000 = EasyMax Rp 8.000.000 → terposting otomatis.</li><li>Covers AE3. Slip Rp 7.950.000 vs EasyMax Rp 8.000.000 → ditahan.</li><li>Cek ulang dengan slip = EasyMax sesudah pernah beda → tetap ditahan.</li><li>EasyMax berubah sesudah diposting → status berubah sesudah diposting.</li><li>Shift yang sudah terposting tidak terposting dua kali.</li></ul></details>
+<details><summary>Verification</summary><p>Halaman EDC hanya menampilkan daftar "EDC ditahan"; shift yang cocok sudah ada di EDC Penampungan.</p></details>
+</article>
+
+<article id="u7"><h3>U7. Jemputan → Setoran ke Bank otomatis</h3>
+<dl class="meta"><dt>Goal</dt><dd>Baris "SETORAN JEMPUTAN" yang cocok dengan setoran Kas Besar membuat mutasi pindah buku dan grup cocok sendiri.</dd><dt>Requirements</dt><dd>R31, AE1, AE2, KTD8</dd><dt>Dependencies</dt><dd>U5</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/cocok-bank-model.ts</code>, <code>apps/dashboard/src/lib/cocok-bank-model.test.ts</code>, <code>apps/dashboard/src/lib/cocok-bank-tulis.ts</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Aturan baru murni: kandidat = satu setoran Kas Besar atau total setoran satu tanggal bisnis, 0–3 hari sebelum tanggal bank, belum punya pasangan Setoran ke Bank.</li><li>Tepat satu kandidat → tulis pasangan pindah buku (Kas Besar keluar, bank masuk) lalu grup cocok.</li><li>Nol atau banyak kandidat → baris tetap terbuka untuk Finance.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE1. Jemputan Rp 20.000.000 dua hari sesudah satu setoran Rp 20.000.000 → pasangan dibuat dan cocok.</li><li>Jemputan = total tiga setoran satu hari → cocok sebagai satu grup.</li><li>Covers AE2. Jemputan Rp 19.900.000 → tidak cocok, tetap terbuka.</li><li>Dua tanggal dengan total sama → tidak otomatis.</li><li>Kaki "Setoran ke Bank" yang sudah diketik Finance dengan nominal sama → dicocokkan ke kaki itu, tidak ada pasangan kedua.</li><li>Baris jemputan dari pembaca AI → usulan saja, tidak ada baris kas baru.</li></ul></details>
+<details><summary>Verification</summary><p>Impor rekening koran dengan jemputan membuat mutasi Setoran ke Bank yang cocok tanpa input Finance.</p></details>
+</article>
+
+<article id="u8"><h3>U8. Buku besar: jurnal sumber dan backfill</h3>
+<dl class="meta"><dt>Goal</dt><dd>Setiap catatan sumber sejak 1 Okt 2026 punya jurnal seimbang yang tersimpan.</dd><dt>Requirements</dt><dd>R6, R7, R11, R13, P1–P26, KTD3, KTD4, KTD5</dd><dt>Dependencies</dt><dd>U1</dd><dt>Files</dt><dd><code>apps/backend/prisma/migrations/0057_buku_besar/migration.sql</code>, <code>apps/dashboard/src/lib/buku-besar-model.ts</code>, <code>apps/dashboard/src/lib/buku-besar-model.test.ts</code>, <code>apps/dashboard/src/lib/buku-besar-tulis.ts</code>, <code>apps/dashboard/src/lib/buku-besar.integration.test.ts</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Tabel <code>jurnal</code> dan <code>jurnal_baris</code> (sen, debet/kredit, pos, unit, tanggal buku, kunci sumber, tanda koreksi/backfill), RLS per unit, CHECK seimbang per jurnal lewat trigger tunda.</li><li>Model murni: catatan sumber → baris jurnal, satu fungsi per aturan P.</li><li>Penulis: bentuk ulang per unit per hari buka; hari tertutup → jurnal koreksi maju.</li><li>Aksi HoF "Bentuk ulang buku besar" untuk backfill dan pemulihan.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Setiap aturan P1–P26 menghasilkan jurnal seimbang sampai Rp 0.</li><li>Covers AE11. 4.000 liter × Rp 9.000 → HPP Rp 36.000.000; penebusan hari itu tidak mengubah HPP.</li><li>Pembentukan ulang dua kali menghasilkan jurnal identik.</li><li>Sumber di hari tertutup berubah → satu jurnal koreksi maju bernilai selisihnya.</li><li>Harga beli berubah → jurnal 5120 sebesar stok × beda harga.</li><li>Tutup hari dengan selisih → sisa 1103 pindah ke 5130.</li><li>Guard: setiap kategori mutasi kas, setiap seksi <code>manual_entry</code>, dan setiap komponen Rincian punya tepat satu aturan posting.</li><li>Harga beli kosong → tidak ada jurnal HPP, temuan "harga beli belum diisi" muncul.</li><li>Memorial penyusutan bertanggal 31 Okt yang diisi 3 Nov saat Oktober belum tutup bulan → masuk laba-rugi Oktober.</li><li>Backfill untuk bulan yang sudah ditutup dengan buku besar → ditolak.</li><li>Sisa 1103 dengan tingkat toleransi belum disetujui → tetap di 1103 sebagai temuan.</li><li>Volume EasyMax berubah di hari buka → tercermin sesudah <code>tutupHari</code>.</li></ul></details>
+<details><summary>Verification</summary><p>Neraca buku besar setiap hari seimbang; backfill Okt–Nov selesai tanpa galat di DB test.</p></details>
+</article>
+
+<article id="u9"><h3>U9. Saldo awal, jurnal memorial, dan laporan formal</h3>
+<dl class="meta"><dt>Goal</dt><dd>HoF mengisi saldo awal dan jurnal memorial; semua peran Keuangan melihat neraca dan laba-rugi formal per pos dengan pembanding.</dd><dt>Requirements</dt><dd>R8, R9, R10, R12, AE10, F6, KTD10, KTD11</dd><dt>Dependencies</dt><dd>U8</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/buku-besar-queries.ts</code>, <code>apps/dashboard/src/lib/buku-besar-actions.ts</code>, <code>apps/dashboard/src/lib/buku-besar-laporan-model.ts</code>, <code>apps/dashboard/src/lib/buku-besar-laporan-model.test.ts</code>, <code>apps/dashboard/src/app/(app)/keuangan/unit/[code]/buku-besar/[bulan]/page.tsx</code>, <code>apps/dashboard/src/components/keuangan/BukuBesarPanel.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Saldo awal pos: kas dan bank dibaca dari saldo awal akun; HoF mengetik pos lain; simpan ditolak bila tidak seimbang.</li><li>Jurnal memorial: tanggal, baris pos, alasan, bukti; pembatalan = pembalikan.</li><li>Laporan formal per bulan dirinci per pos dengan kolom pembanding laporan rumus dan temuan beda.</li><li>Tata letak halaman Buku Besar: spanduk "sementara" di atas bila berlaku; tab Neraca, Laba-rugi, Temuan beda, Saldo awal, Jurnal memorial; klik pos → daftar jurnal → catatan sumber. Semua peran yang boleh membaca laporan Keuangan (keuangan, direksi, admin perusahaan, super admin) melihat laporan; tindakan saldo awal dan memorial hanya untuk HoF.</li><li>Setiap jurnal memorial tercatat di <code>audit_log</code> dengan pelaku, alasan, dan bukti.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE10. Saldo awal aset Rp 1.000 juta vs kewajiban+modal Rp 990 juta → ditolak dengan beda Rp 10 juta.</li><li>Jurnal memorial tidak seimbang ditolak.</li><li>Memorial Rp 150.000 dari HoF berstatus "menunggu persetujuan" dan tidak masuk laporan sampai Direksi menyetujui.</li><li>Memorial yang menyentuh 1199 senilai Rp 50.000 juga menunggu persetujuan.</li><li>Pengusul yang mencoba menyetujui memorialnya sendiri ditolak.</li><li>Staf non-HoF tidak bisa mengisi saldo awal atau memorial.</li><li>Laporan bertanda "sementara" bila saldo awal belum lengkap.</li><li>Beda kas antara buku besar dan laporan rumus tampil sebagai temuan.</li></ul></details>
+<details><summary>Verification</summary><p>Halaman Buku Besar menampilkan neraca dan laba-rugi Oktober per pos.</p></details>
+</article>
+
+<article id="u10"><h3>U10. Pembaca AI rekening koran</h3>
+<dl class="meta"><dt>Goal</dt><dd>Rekening koran BRI, BNI, dan Mandiri bisa diunggah dan menjadi baris mutasi tervalidasi.</dd><dt>Requirements</dt><dd>R29, R30, AE8, KTD9</dd><dt>Dependencies</dt><dd>—</dd><dt>Files</dt><dd><code>apps/dashboard/package.json</code>, <code>apps/dashboard/src/lib/impor-bank-parser.ts</code>, <code>apps/dashboard/src/lib/rekening-koran-ai.ts</code>, <code>apps/dashboard/src/lib/rekening-koran-ai.test.ts</code>, <code>apps/dashboard/src/lib/impor-bank-actions.ts</code>, <code>apps/dashboard/src/components/keuangan/ImporBankAi.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Pisahkan pemeriksaan total menjadi <code>periksaKaki</code> yang tidak terikat bank.</li><li>Pembaca AI mengembalikan bentuk <code>RekeningKoran</code> lewat keluaran terstruktur; klien Anthropic disuntikkan agar bisa diuji tanpa jaringan.</li><li>Form meminta empat angka kontrol; bacaan dicek terhadap angka kontrol dan saldo akhir bulan lalu.</li><li>Bacaan lolos → tersimpan berstatus "menunggu konfirmasi HoF"; baris belum ikut pencocokan sampai dikonfirmasi.</li><li>Input manual memakai pemeriksaan yang sama.</li><li>Rekening yang belum pernah punya rekening koran terkonfirmasi memakai <code>bandingkanSaldoAwal</code> (saldo buku bank) sebagai jangkar pertama.</li><li>Foto diperkecil dan dikodekan ulang ke JPEG di peramban sampai di bawah <code>MAKS_BERKAS_BYTE</code>; batas body server action tidak diubah.</li><li>Layar konfirmasi HoF: jumlah baris, empat angka kontrol berdampingan dengan bacaan, tabel per baris, tombol Konfirmasi/Tolak.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Covers AE8. Bacaan yang melewatkan satu baris → total debet ≠ angka kontrol → ditolak, tidak ada baris tersimpan.</li><li>Saldo berjalan tercetak tidak cocok dengan saldo sebelumnya ± nominal pada satu baris → ditolak.</li><li>Bacaan cocok dengan empat angka kontrol → status menunggu konfirmasi.</li><li>Saldo awal ≠ saldo akhir bulan lalu → ditolak.</li><li>Tanpa kunci API → menolak dan menawarkan input manual.</li><li>Respons refusal → "tidak terbaca".</li><li>Jangkar pertama: saldo awal BNI = saldo buku bank → lolos.</li><li>Foto 4 MB diperkecil di bawah batas atau ditolak dengan pesan jelas.</li><li>Percobaan ke-11 dalam satu bulan untuk rekening yang sama → ditolak.</li><li>Parser BCA tetap lulus seluruh tes lamanya.</li></ul></details>
+<details><summary>Verification</summary><p>Rekening koran BNI sintetis bisa diunggah, dikonfirmasi HoF, dan barisnya ikut pencocokan.</p></details>
+</article>
+
+<article id="u11"><h3>U11. Tutup bulan semua bank dan cek buku besar</h3>
+<dl class="meta"><dt>Goal</dt><dd>Tutup bulan menuntut rekening koran semua bank, menjalankan cek buku besar, dan menjelaskan butir terbuka.</dd><dt>Requirements</dt><dd>R28, R31, R32, R33, AE2, AE9, F5</dd><dt>Dependencies</dt><dd>U8, U10</dd><dt>Files</dt><dd><code>apps/dashboard/src/lib/tutup-bulan-model.ts</code>, <code>apps/dashboard/src/lib/tutup-bulan-model.test.ts</code>, <code>apps/dashboard/src/lib/tutup-bulan-queries.ts</code>, <code>apps/dashboard/src/lib/tutup-bulan-penjelasan.ts</code>, <code>apps/dashboard/src/components/keuangan/TutupBulanPeriksa.tsx</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Filter rekening wajib melebar dari BCA ke semua akun bank yang punya mutasi atau saldo.</li><li>Cek buku besar (seimbang, kliring nol kecuali butir dalam perjalanan, saldo bank = rekening koran) aktif sejak bulan pertama bersaldo awal lengkap.</li><li>Saldo bank buku besar dihitung menurut tanggal efektif (tanggal asal untuk jurnal terdorong maju).</li><li>Tombol "Jelaskan butir terbuka" di halaman Tutup bulan, untuk staf Keuangan dan HoF; penjelasan tersimpan bersama waktu pembuatannya dan ditandai usang bila vonis berubah. Keadaan: memuat, gagal ("penjelasan tidak tersedia, vonis tetap tampil"), usang. Penjelasan tidak mengubah vonis.</li></ol></details>
+<details><summary>Test scenarios</summary><ul><li>Rekening Mandiri bersaldo tanpa rekening koran → vonis menolak.</li><li>Covers AE9. Saldo BRI buku besar Rp 50.000.000 vs rekening koran Rp 50.250.000 → menolak.</li><li>1190 berisi butir dalam perjalanan 2 hari → lolos dengan butir tersebut tercantum.</li><li>1198 ≠ 0 → menolak.</li><li>Bulan dengan saldo awal sementara → cek buku besar tidak aktif.</li><li>Penjelasan AI gagal → vonis tetap tampil tanpa penjelasan.</li><li>Jemputan bertanggal Oktober yang diimpor 3 Nov sesudah semua hari Oktober tutup hari → lolos pemeriksaan Oktober.</li></ul></details>
+<details><summary>Verification</summary><p>Halaman Tutup bulan menampilkan semua bank dan alasan penolakan yang terbaca.</p></details>
+</article>
+
+<article id="u12"><h3>U12. KEUANGAN-HARIAN dan stempel keputusan</h3>
+<dl class="meta"><dt>Goal</dt><dd>Dokumen mengikat sama dengan perilaku baru.</dd><dt>Requirements</dt><dd>KTD6, KTD7, Key Decisions</dd><dt>Dependencies</dt><dd>setiap tahap</dd><dt>Files</dt><dd><code>apps/dashboard/KEUANGAN-HARIAN.md</code></dd></dl>
+<details><summary>Approach</summary><ol><li>Seksi baru §10.46 dst. per tahap.</li><li>Stempel ⚖️ pada §1.4 dan §10.25#3 dengan tanggal dan alasan.</li></ol></details>
+<details><summary>Test scenarios</summary><p>Test expectation: none -- dokumentasi.</p></details>
+</article>
+</section>
+
+<section id="verification-contract">
+<h2>Verification Contract</h2>
+<ul>
+<li><code>pnpm --filter dashboard check</code> (SQL syntax, mutasi selftest, typecheck, Vitest) hijau di setiap PR.</li>
+<li>CI: <code>check-migrations.sh</code> dan job <code>migrate-deploy-postgres-16</code> hijau untuk 0056 dan 0057.</li>
+<li>Tes integrasi bertanda env dijalankan lokal pada Postgres sekali pakai sebelum PR Tahap 3 dan 4.</li>
+<li>Bukti mutasi dengan <code>scripts/mutasi.sh</code> untuk tes kelengkapan peta dan aturan posting.</li>
+<li>Staging (<code>solamax-dashboard-rlsstg</code>): verifikasi peramban dengan tangkapan layar untuk AE1, AE3, AE5, AE6, AE7, Daftar Pos, Buku Besar, dan Tutup bulan.</li>
+<li>Produksi (<code>solamax-dashboard-staging</code>, gerbang <code>pilot</code>): revisi aktif = digest build, lalu pemeriksaan baca-saja halaman utama.</li>
+</ul>
+</section>
+
+<section id="definition-of-done">
+<h2>Definition of Done</h2>
+<ul>
+<li>Setiap unit memenuhi Verification-nya dan semua tes skenarionya ada.</li>
+<li>Setiap AE yang disebut di unit punya tes yang menandainya dengan "Covers AE".</li>
+<li>KEUANGAN-HARIAN memuat aturan baru dan stempel keputusan.</li>
+<li>Tidak ada kode percobaan yang tertinggal di diff.</li>
+<li>Repo publik: tidak ada angka operasional nyata, nama pelanggan, atau nomor SO nyata di tes, fixture, commit, atau PR.</li>
+</ul>
+</section>
+
+<footer class="composition-signal">Enriched 2026-11-02 by ce-plan (research: repo patterns, spec-flow). Composed 2026-11-02T18:04+07:00 by ce-brainstorm from the user prompt and session dialogue (Dion, 2 Nov 2026), grounded on <code>origin/main</code> 2efb211.</footer>
+</main>
+</body>
+</html>
