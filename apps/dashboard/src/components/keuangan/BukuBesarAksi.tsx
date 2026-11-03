@@ -73,7 +73,9 @@ export function BentukUlangTombol({ code, dari, sampai }: { code: string; dari: 
         onClick={() =>
           jalankan(async () => {
             const r = await bentukUlangBukuBesar({ code, dari, sampai });
-            return r.ok ? { ok: true, pesan: `${r.pesan} ${r.temuan} temuan.` } : { ok: false, error: `${r.error} (${r.hariSelesai} hari selesai)` };
+            return r.ok
+              ? { ok: true, pesan: `${r.pesan} ${r.temuan} temuan${r.temuan > 0 ? " — rinciannya di tab Temuan jurnal" : ""}.` }
+              : { ok: false, error: `${r.error} (${r.hariSelesai} hari selesai)` };
           })
         }
       >
