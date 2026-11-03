@@ -9,6 +9,7 @@ import {
   type UsulanCocok,
   JENDELA_HARI,
 } from "./cocok-bank-model";
+import { NAMA_BAKU } from "./keuangan-akun-model";
 import { normalisasiSo } from "./penebusan-model";
 import { addDays } from "./periods";
 import { teksKeSen } from "./pihak-lawan-model";
@@ -47,6 +48,8 @@ const KOLOM_MUTASI = `m.id::text AS id, m.account_id::text AS "accountId",
             to_char(m.tanggal_bank, 'YYYY-MM-DD') AS "tanggalBank", m.keterangan,
             m.amount::text AS amount, m.so, m.dok_ref AS "dokRef", m.pra_cutover AS "praCutover",
             m.rk_status AS "rkStatus", m.rekening_koran_id::text AS "rekeningKoranId",
+            (SELECT r.sumber FROM app.rekening_koran r
+              WHERE r.id = m.rekening_koran_id AND r.unit_id = m.unit_id) AS sumber,
             ${PREDIKAT_MUTASI_DICOCOKKAN} AS dicocokkan`;
 
 /** Baris impor satu rekening koran. $1 unit, $2 rekening koran. */
@@ -102,6 +105,18 @@ export const SQL_REKENING_UNIT = `SELECT id::text AS id, nomor_rekening AS "nomo
        FROM app.cash_account
       WHERE unit_id = $1 AND kind = 'bank'`;
 
+/**
+ * Akun Kas Besar aktif unit ini — predikat SAMA dengan tujuan setoran pengawas
+ * (`setoran-tulis.ts`, K6 U5): kandidat pasangan jemputan (U7). $1 unit, $2 nama baku.
+ */
+export const SQL_AKUN_KAS_BESAR = `SELECT id::text AS id
+       FROM app.cash_account
+      WHERE unit_id = $1 AND kind = 'kas' AND active AND nama = $2`;
+
+export async function bacaAkunKasBesar(c: Kueri, unitId: number): Promise<string | null> {
+  return (await c.query<{ id: string }>(SQL_AKUN_KAS_BESAR, [unitId, NAMA_BAKU.kas])).rows[0]?.id ?? null;
+}
+
 type BarisMutasi = Omit<MutasiCocok, "amountSen"> & { amount: string; rekeningKoranId: string; dicocokkan: boolean };
 type BarisKas = Omit<KasCocok, "amountSen"> & { amount: string; dicocokkan: boolean };
 
@@ -139,8 +154,12 @@ export async function bacaKonteksCocok(
   const mutasiDicocokkan = new Set(mutasi.filter((m) => m.dicocokkan).map((m) => m.id));
   const bacaRekening = async () => (await c.query<RekeningUnit>(SQL_REKENING_UNIT, [unitId])).rows;
   if (mutasi.length === 0) {
-    return { kas: [], penebusan: [], rekening: await bacaRekening(), kasDicocokkan: new Set(), mutasiDicocokkan };
+    return { kas: [], penebusan: [], rekening: await bacaRekening(), kasDicocokkan: new Set(), mutasiDicocokkan, akunKasBesar: null };
   }
+  // Hanya bila ada kredit jemputan — satu kueri lebih sedikit untuk rekening koran lain.
+  const akunKasBesar = mutasi.some((m) => m.amountSen > 0 && m.keterangan.toUpperCase().includes("SETORAN JEMPUTAN"))
+    ? await bacaAkunKasBesar(c, unitId)
+    : null;
 
   const tanggal = mutasi.map((m) => m.tanggalBank).sort();
   const dari = addDays(tanggal[0]!, -JENDELA_HARI);
@@ -172,6 +191,7 @@ export async function bacaKonteksCocok(
     rekening,
     kasDicocokkan: new Set(kas.filter((k) => k.dicocokkan).map((k) => k.id)),
     mutasiDicocokkan,
+    akunKasBesar,
   };
 }
 
@@ -182,7 +202,7 @@ export async function bacaKonteksCocok(
 export interface UsulanRekeningKoran {
   mutasi: MutasiTerbaca[];
   usulan: UsulanCocok[];
-  /** Kas yang disebut usulan (kandidat & rujukan cacat), per id. */
+  /** Kas yang disebut usulan (kandidat, rujukan cacat, setoran usulan pasangan), per id. */
   kas: Record<string, KasTerbaca>;
 }
 
@@ -192,7 +212,14 @@ export async function getUsulanRekeningKoran(unit: ScopedUnitId, rekeningKoranId
   const mutasi = await bacaMutasiRekeningKoran(c, unit, rekeningKoranId);
   const ktx = await bacaKonteksCocok(c, unit, mutasi, { paralel: true });
   const usulan = usulkanSemua(mutasi, ktx);
-  const disebut = new Set(usulan.flatMap((u) => [...u.kandidat.map((k) => k.cashLedgerId), ...(u.rujukan?.cashLedgerId ? [u.rujukan.cashLedgerId] : [])]));
+  const disebut = new Set(
+    usulan.flatMap((u) => [
+      ...u.kandidat.map((k) => k.cashLedgerId),
+      ...(u.rujukan?.cashLedgerId ? [u.rujukan.cashLedgerId] : []),
+      // K6 U7 — setoran Kas Besar yang diusulkan untuk pasangan Setoran ke Bank.
+      ...(u.setoran?.kandidat.flatMap((k) => k.kasIds) ?? []),
+    ]),
+  );
   const kas = Object.fromEntries((ktx.kas as KasTerbaca[]).filter((k) => disebut.has(k.id)).map((k) => [k.id, k]));
   return { mutasi, usulan, kas };
 }

@@ -760,6 +760,59 @@ model CategoryAccountMap {
   @@schema("app")
 }
 
+// Daftar pos resmi (COA empat digit) — Tabel Pos rencana K6 U1 (0056, R1).
+// GLOBAL: berlaku tujuh unit (bagan seragam B1), tanpa unit_id ⇒ tanpa RLS.
+// dashboard_app hanya SELECT; daftar berubah lewat migrasi. Nama `pos`, bukan
+// `gl` — "GL" sudah berarti gain/loss (KTD1).
+model Pos {
+  kode       String  @id
+  nama       String
+  /// aset | kewajiban | modal | pendapatan | beban (CHECK, cocok dgn digit pertama).
+  jenis      String
+  /// Pos induk hanya menjumlahkan sub-posnya — jurnal tak boleh memakainya.
+  induk      Boolean @default(false)
+  kodeInduk  String? @map("kode_induk")
+  /// Pos pengurang (kontra): 1590, 4110.
+  pengurang  Boolean @default(false)
+  /// Wajib Rp 0 saat tutup bulan (R33): 1103, 1190, 1198, 1199.
+  kliring    Boolean @default(false)
+  /// Hanya diisi sistem: 1103, 1198, 3900, 5120, 5130.
+  sistem     Boolean @default(false)
+  keterangan String?
+
+  @@map("pos")
+  @@schema("app")
+}
+
+// Kode lama (6-, 7-, 8-, 3-9100, 1-1800) → pos baru (0056, R2/KTD2). Baris
+// tersimpan TIDAK ditulis ulang; tabel ini menerjemahkan saat dibaca.
+model PosKodeLama {
+  kodeLama String @id @map("kode_lama")
+  posKode  String @map("pos_kode")
+
+  @@map("pos_kode_lama")
+  @@schema("app")
+}
+
+// Sub-pos MILIK SATU UNIT (0056, R4/R5): sub-pos bank 1111–1119 per rekening
+// (lahir dari cash_account lewat trigger) dan sub-pos tambahan HoF. RLS
+// unit_scope predikat 0016. Tanpa UPDATE untuk dashboard_app.
+model PosUnit {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  kode            String
+  nama            String
+  kodeInduk       String   @map("kode_induk")
+  /// Hanya sub-pos bank (di bawah 1110 ⇔ terisi, CHECK).
+  cashAccountId   String?  @map("cash_account_id") @db.Uuid
+  createdByUserId Int?     @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, kode])
+  @@map("pos_unit")
+  @@schema("app")
+}
+
 /// Status penutupan hari (§4.6). `closed` mengunci manual_entry hari itu.
 enum DayCloseStatus {
   open
@@ -822,6 +875,8 @@ model TutupBulan {
   bulan           DateTime @db.Date
   ditutupByUserId Int      @map("ditutup_by_user_id")
   ditutupAt       DateTime @default(now()) @map("ditutup_at") @db.Timestamptz()
+  /// Ditutup DENGAN buku besar (K6, 0058): jurnal bulan ini beku.
+  bukuBesar       Boolean  @default(false) @map("buku_besar")
 
   @@id([unitId, bulan])
   @@map("tutup_bulan")
@@ -1095,8 +1150,12 @@ model RekeningKoran {
   fileSha256             String    @map("file_sha256")
   uploadedByUserId       Int       @map("uploaded_by_user_id")
   uploadedAt             DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz()
-  /// 'aktif' | 'ditarik' (CHECK).
+  /// 'aktif' | 'menunggu' | 'ditarik' (CHECK).
   status                 String    @default("aktif")
+  /// 'bca' | 'ai' | 'manual' (CHECK, 0057).
+  sumber                 String    @default("bca")
+  dikonfirmasiAt         DateTime? @map("dikonfirmasi_at") @db.Timestamptz()
+  dikonfirmasiByUserId   Int?      @map("dikonfirmasi_by_user_id")
   ditarikAt              DateTime? @map("ditarik_at") @db.Timestamptz()
   ditarikByUserId        Int?      @map("ditarik_by_user_id")
   ditarikAlasan          String?   @map("ditarik_alasan")
@@ -1684,5 +1743,67 @@ model SaldoPelangganShiftAck {
 
   @@index([unitId, asOfDate, generationId], map: "sps_shift_ack_shift_idx")
   @@map("saldo_pelanggan_shift_ack")
+  @@schema("app")
+}
+
+// BUKU BESAR (K6 U8, 0058) — jurnal tersimpan dengan kunci sumber; garis beku =
+// tutup bulan (buku_besar). Seimbang per jurnal & larangan pos induk/3900 dijaga
+// trigger; Prisma tak memodelkan indeks unik parsial / CHECK-nya.
+model Jurnal {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId              Int       @map("unit_id") @db.SmallInt
+  tanggalBuku         DateTime  @map("tanggal_buku") @db.Date
+  tanggalEfektif      DateTime  @map("tanggal_efektif") @db.Date
+  jenis               String
+  aturan              String
+  sumberTabel         String?   @map("sumber_tabel")
+  sumberId            String?   @map("sumber_id")
+  backfill            Boolean   @default(false)
+  alasanMaju          String?   @map("alasan_maju")
+  keterangan          String
+  status              String    @default("aktif")
+  diusulkanOlehUserId Int?      @map("diusulkan_oleh_user_id")
+  disetujuiOlehUserId Int?      @map("disetujui_oleh_user_id")
+  disetujuiAt         DateTime? @map("disetujui_at") @db.Timestamptz()
+  createdByUserId     Int?      @map("created_by_user_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@unique([id, unitId], map: "jurnal_unit_uq")
+  @@index([unitId, tanggalBuku], map: "jurnal_unit_tanggal_buku_idx")
+  @@index([unitId, tanggalEfektif], map: "jurnal_unit_tanggal_efektif_idx")
+  @@map("jurnal")
+  @@schema("app")
+}
+
+model JurnalBaris {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jurnalId   String  @map("jurnal_id") @db.Uuid
+  unitId     Int     @map("unit_id") @db.SmallInt
+  posKode    String  @map("pos_kode")
+  debetSen   BigInt  @default(0) @map("debet_sen")
+  kreditSen  BigInt  @default(0) @map("kredit_sen")
+  keterangan String?
+
+  @@index([jurnalId], map: "jurnal_baris_jurnal_idx")
+  @@index([unitId, posKode], map: "jurnal_baris_unit_pos_idx")
+  @@map("jurnal_baris")
+  @@schema("app")
+}
+
+model SaldoAwalPos {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  posKode         String    @map("pos_kode")
+  perTanggal      DateTime  @default(dbgenerated("'2026-09-30'::date")) @map("per_tanggal") @db.Date
+  saldoSen        BigInt    @map("saldo_sen")
+  sumber          String
+  enteredByUserId Int       @map("entered_by_user_id")
+  enteredAt       DateTime  @default(now()) @map("entered_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("saldo_awal_pos")
   @@schema("app")
 }

@@ -23,6 +23,10 @@ import {
   canCocokkanBank,
   canTutupBulan,
   canKelolaSettlementEdc,
+  canKelolaPos,
+  canSetujuiMemorial,
+  canIsiSaldoAwalPos,
+  canUsulkanMemorial,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -550,5 +554,59 @@ describe("settlement EDC (keputusan owner 2 Nov 2026) — seluruh tim Finance", 
 
   it("daftar HoF kosong ⇒ direksi tetap ditolak (fail-closed)", () => {
     expect(canKelolaSettlementEdc(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+  });
+});
+
+describe("daftar pos (rencana K6 U1; R4) — HoF & super admin", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 canKelolaPos: HoF (peran apa pun) & super_admin; staf Keuangan TIDAK", () => {
+    expect(canKelolaPos(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canKelolaPos(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canKelolaPos(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canKelolaPos(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
+    }
+  });
+
+  it("daftar HoF kosong ⇒ tak seorang pun selain super_admin (fail-closed)", () => {
+    expect(canKelolaPos(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+    expect(canKelolaPos(c("keuangan", "hof@solagroup.co"), [])).toBe(false);
+  });
+});
+
+describe("buku besar (rencana K6 U9; R8, R9, KD13) — pengusul ≠ penyetuju", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 canUsulkanMemorial & canIsiSaldoAwalPos: HoF (peran apa pun) & super_admin; staf Keuangan TIDAK", () => {
+    for (const f of [canUsulkanMemorial, canIsiSaldoAwalPos]) {
+      expect(f(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+      expect(f(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+      expect(f(c("super_admin"), HOF5)).toBe(true);
+      for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+        expect(f(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
+      }
+      expect(f(c("keuangan", "hof@solagroup.co"), []), "daftar HoF kosong").toBe(false);
+    }
+  });
+
+  it("🔴 canSetujuiMemorial: Direksi & super_admin — HoF TIDAK (yang mengetik tidak menyetujui)", () => {
+    expect(canSetujuiMemorial(c("direksi"))).toBe(true);
+    expect(canSetujuiMemorial(c("super_admin"))).toBe(true);
+    // HoF, peran apa pun selain direksi, tidak bisa menyetujui memorial.
+    expect(canSetujuiMemorial(c("admin_perusahaan", "ddsalam@solagroup.co"))).toBe(false);
+    for (const r of ["pengawas", "keuangan", "admin_perusahaan"] as Role[]) {
+      expect(canSetujuiMemorial(c(r)), r).toBe(false);
+    }
+  });
+
+  it("canSetujuiMemorial berdiri sendiri — tidak menyebut isHeadOfFinance", () => {
+    const src = readFileSync(resolve(__dirname, "keuangan-wewenang.ts"), "utf8");
+    const i = src.indexOf("export function canSetujuiMemorial");
+    const badan = src.slice(i, src.indexOf("\n}", i));
+    expect(i).toBeGreaterThan(-1);
+    expect(badan).not.toMatch(/isHeadOfFinance|canCloseException/);
   });
 });

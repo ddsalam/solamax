@@ -6,6 +6,7 @@ import { bacaRupiah } from "@/lib/angka-input";
 import { cekSlipEdc, simpanPetaKartu } from "@/lib/edc-shift-actions";
 import {
   LABEL_STATUS_EDC,
+  PESAN_HASIL_CEK,
   type BarisShiftEdc,
   type KartuTanpaPeta,
   type StatusShiftEdc,
@@ -67,7 +68,12 @@ export function EdcShiftCekPanel({
       const r = await cekSlipEdc({ code, date, cshift: b.cshift, acquirer: b.acquirer, slipRp: h.nilai });
       if (!r.ok) setErr(r.error);
       else {
-        setMsg(`Shift ${b.cshift} ${b.acquirer} tercatat — tercatat atas nama Anda.`);
+        // R15/R16 — hasilnya langsung terbaca: terposting, atau ditahan untuk Finance.
+        const hasil = PESAN_HASIL_CEK[r.posting ?? "ditahan"];
+        setMsg(
+          `Shift ${b.cshift} ${b.acquirer} tercatat atas nama Anda. ${hasil}` +
+            (r.alasanTahan ? ` — ${r.alasanTahan}` : "."),
+        );
         setSlip((s) => ({ ...s, [b.kunci]: "" }));
       }
     });
@@ -90,7 +96,8 @@ export function EdcShiftCekPanel({
       </h3>
       <p className="fs16 t-tertiary mt2">
         Angka EasyMax sudah terisi otomatis. Ketik <strong>total di slip settlement</strong> tiap mesin/bank per
-        shift. Keuangan kemudian membukukannya ke EDC Penampungan. Foto slip: menyusul (opsional untuk sekarang).
+        shift. Slip yang sama dengan EasyMax langsung terposting ke EDC Penampungan; slip yang berbeda ditahan dan
+        diputuskan Keuangan. Foto slip: menyusul (opsional untuk sekarang).
       </p>
 
       {kartuTanpaPeta.length > 0 && (

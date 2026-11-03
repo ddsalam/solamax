@@ -81,7 +81,7 @@ export default async function KlasifikasiImporPage({
         <label className="keu-fld">
           <span className="keu-label">Rekening</span>
           <select className="manual-input" name="akun" defaultValue={sp.akun ?? ""}>
-            <option value="">Semua rekening BCA</option>
+            <option value="">Semua rekening bank</option>
             {semuaRekening.map((r) => (
               <option key={r.accountId} value={r.accountId}>
                 {r.nama}

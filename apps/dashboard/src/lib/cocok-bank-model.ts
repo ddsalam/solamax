@@ -22,8 +22,13 @@ import { rpSen } from "./pihak-lawan-model";
  *   · Debit ber-nomor dokumen (KURANG BAYAR): HANYA baris kas yang keterangannya
  *     memuat nomor itu, nominal sama. (dok, nominal) kembar = dua baris; tak
  *     pernah diciutkan.
- *   · Kredit SETORAN JEMPUTAN: rekening sama, nominal sama, kategori "Setoran
- *     Hasil Penjualan", hari buku ∈ [tanggal bank − 3, tanggal bank].
+ *   · Kredit SETORAN JEMPUTAN: rekening sama, nominal sama, hari buku ∈
+ *     [tanggal bank − 3, tanggal bank], kategori "Setoran Hasil Penjualan"
+ *     (setoran lama yang disetujui ke rekening bank) ATAU kaki "Pindah Buku"
+ *     masuk yang kaki "Setoran ke Bank"-nya (−nominal, tanggal sama) tercatat
+ *     di Kas Besar — kaki Setoran ke Bank ketikan Finance (K6 KTD8). Tanpa
+ *     kandidat itu, setoran di KAS BESAR menjadi kandidat PASANGAN
+ *     ({@link usulkanSetoranJemputan}) — bukan tautan.
  *   · Kredit EDC ("MID :"): kaki bank pencairan EDC (`edc_settlement_id`),
  *     net = kredit, tanggal settlement ∈ [tanggal bank − 3, tanggal bank].
  *   · Pindah buku sendiri: keterangan memuat nomor rekening yang TERDAFTAR di
@@ -44,6 +49,8 @@ import { rpSen } from "./pihak-lawan-model";
 
 export const KATEGORI_SETORAN = "Setoran Hasil Penjualan";
 export const KATEGORI_PINDAH_BUKU = "Pindah Buku";
+/** Kaki Kas Besar (kredit) setoran ke bank — sisi bank-nya "Pindah Buku" masuk (pola kaki pencairan EDC). */
+export const KATEGORI_SETORAN_KE_BANK = "Setoran ke Bank";
 /** Jendela setoran & EDC: tanggal bank − tanggal buku ∈ [0, +3] hari (KTD7). */
 export const JENDELA_HARI = 3;
 
@@ -58,6 +65,12 @@ export interface MutasiCocok {
   dokRef: string | null;
   praCutover: boolean;
   rkStatus: "aktif" | "ditarik";
+  /**
+   * Asal rekening koran (0057). HANYA `bca` (parser e-statement) yang boleh
+   * melahirkan pasangan Setoran ke Bank otomatis (KTD8); tak diketahui
+   * diperlakukan seperti bukan BCA — usulan saja.
+   */
+  sumber?: "bca" | "ai" | "manual";
 }
 
 export interface KasCocok {
@@ -99,6 +112,8 @@ export interface KonteksCocok {
   kasDicocokkan: ReadonlySet<string>;
   /** Baris impor yang sudah di kelompok cocok AKTIF. */
   mutasiDicocokkan: ReadonlySet<string>;
+  /** Akun Kas Besar aktif unit ini (K6 U7). Tanpa akun itu tak ada usulan pasangan. */
+  akunKasBesar?: string | null;
 }
 
 export type AturanCocok =
@@ -149,7 +164,47 @@ export interface UsulanCocok {
   tanda: TandaCocok | null;
   /** Baris yang DITUNJUK cacat (bukan kandidat) — mis. penebusan bernominal beda. */
   rujukan?: { cashLedgerId?: string; penebusanId?: string };
+  /**
+   * K6 U7 — kredit SETORAN JEMPUTAN tanpa kandidat tautan: setoran Kas Besar
+   * yang bisa disetorkan lewat pasangan Setoran ke Bank. Hanya ada bila unit
+   * punya Kas Besar.
+   */
+  setoran?: UsulanSetoran;
 }
+
+/** Satu kandidat pasangan: satu setoran, atau semua setoran satu tanggal bisnis. */
+export interface KandidatSetoran {
+  /** `business_date` setoran di Kas Besar. */
+  tanggal: string;
+  /** Baris "Setoran Hasil Penjualan" Kas Besar yang disetorkan — urut id. */
+  kasIds: string[];
+  totalSen: number;
+}
+
+export type AlasanSetoranManual =
+  | "tanpa-kandidat"
+  | "banyak-kandidat"
+  /** Rekening koran dari pembaca AI / ketikan manual — usulan saja (KTD8). */
+  | "sumber-bukan-bca"
+  /** Kaki Setoran ke Bank Kas Besar sudah diketik tanpa kaki bank — pasangan kedua akan mengkredit Kas Besar dua kali. */
+  | "setoran-ke-bank-diketik"
+  /** Kandidat tunggal yang sama milik dua jemputan atau lebih. */
+  | "diperebutkan";
+
+export interface UsulanSetoran {
+  kandidat: KandidatSetoran[];
+  /** `true` ⇒ sistem menulis pasangan + kelompok sendiri (tepat satu kandidat, baris parser BCA). */
+  otomatis: boolean;
+  alasan: AlasanSetoranManual | null;
+}
+
+export const LABEL_ALASAN_SETORAN: Record<AlasanSetoranManual, string> = {
+  "tanpa-kandidat": "tak ada setoran Kas Besar bernominal sama dalam 3 hari sebelumnya",
+  "banyak-kandidat": "beberapa setoran / tanggal cocok — pilih satu",
+  "sumber-bukan-bca": "rekening koran dari pembaca AI atau ketikan — terima usulan bila benar",
+  "setoran-ke-bank-diketik": "kaki Setoran ke Bank di Kas Besar sudah diketik — periksa dulu",
+  diperebutkan: "setoran yang sama jadi kandidat beberapa jemputan",
+};
 
 const tanggalAsal = (k: KasCocok): string => k.tanggalAsal ?? k.businessDate;
 const dalamJendela = (tanggalBuku: string, tanggalBank: string): boolean =>
@@ -227,15 +282,16 @@ export function usulkanCocok(m: MutasiCocok, ktx: KonteksCocok): UsulanCocok {
   const kandidat: Kandidat[] = [];
   let tandaKosong: TandaCocok | null = null;
 
-  // 3. Setoran jemputan.
-  if (m.amountSen > 0 && ket.includes("SETORAN JEMPUTAN")) {
+  // 3. Setoran jemputan — kaki bank yang sudah tercatat (KTD8 langkah 1).
+  const jemputan = m.amountSen > 0 && ket.includes(PENANDA_JEMPUTAN);
+  if (jemputan) {
     for (const k of ktx.kas) {
       if (
         bebasTakBerkunci(k) &&
         k.accountId === m.accountId &&
-        k.categoryLabel === KATEGORI_SETORAN &&
         k.amountSen === m.amountSen &&
-        dalamJendela(k.businessDate, m.tanggalBank)
+        dalamJendela(k.businessDate, m.tanggalBank) &&
+        (k.categoryLabel === KATEGORI_SETORAN || (k.categoryLabel === KATEGORI_PINDAH_BUKU && adaKakiKasBesar(k, ktx)))
       ) {
         kandidat.push({ cashLedgerId: k.id, aturan: "setoran-jemputan" });
       }
@@ -291,7 +347,89 @@ export function usulkanCocok(m: MutasiCocok, ktx: KonteksCocok): UsulanCocok {
     }
   }
 
-  return hasil(m, kandidat, tandaKosong);
+  const u = hasil(m, kandidat, tandaKosong);
+  // KTD8 langkah 2 — tanpa kaki bank: setoran Kas Besar sebagai kandidat PASANGAN.
+  if (jemputan && u.jenis === "tanpa" && ktx.akunKasBesar) return { ...u, setoran: usulkanSetoranJemputan(m, ktx) };
+  return u;
+}
+
+const PENANDA_JEMPUTAN = "SETORAN JEMPUTAN";
+
+/** Kaki "Pindah Buku" masuk di bank yang pasangannya kaki "Setoran ke Bank" Kas Besar (−nominal, tanggal sama). */
+function adaKakiKasBesar(k: KasCocok, ktx: KonteksCocok): boolean {
+  if (!ktx.akunKasBesar) return false;
+  return ktx.kas.some(
+    (x) =>
+      !x.void &&
+      x.accountId === ktx.akunKasBesar &&
+      x.categoryLabel === KATEGORI_SETORAN_KE_BANK &&
+      x.amountSen === -k.amountSen &&
+      tanggalAsal(x) === tanggalAsal(k),
+  );
+}
+
+/**
+ * K6 U7 (R31, KTD8) — kandidat pasangan Setoran ke Bank untuk satu kredit
+ * SETORAN JEMPUTAN. Setoran = baris "Setoran Hasil Penjualan" Kas Besar yang
+ * belum disetor (non-void, bukan saldo awal, bukan lahiran, belum di kelompok
+ * aktif), hari buku ∈ [tanggal bank − 3, tanggal bank]. Kandidat:
+ *
+ *   (a) satu setoran bernominal = kredit;
+ *   (b) SEMUA setoran satu tanggal bisnis yang totalnya = kredit.
+ *
+ * Bukan subset-sum (KTD8): dua setoran dari tanggal berbeda tak pernah
+ * digabung. Otomatis hanya bila tepat satu kandidat DAN baris dari parser BCA
+ * DAN tak ada kaki Setoran ke Bank Kas Besar ketikan yang belum berpasangan
+ * dalam jendela.
+ */
+export function usulkanSetoranJemputan(m: MutasiCocok, ktx: KonteksCocok): UsulanSetoran {
+  const kasBesar = ktx.akunKasBesar ?? null;
+  const setoran = ktx.kas.filter(
+    (k) =>
+      kasBesar !== null &&
+      k.accountId === kasBesar &&
+      k.categoryLabel === KATEGORI_SETORAN &&
+      k.amountSen > 0 &&
+      !k.void &&
+      !k.saldoAwal &&
+      k.lahirDariCocokId === null &&
+      !ktx.kasDicocokkan.has(k.id) &&
+      dalamJendela(k.businessDate, m.tanggalBank),
+  );
+  const perKunci = new Map<string, KandidatSetoran>();
+  const tambah = (rows: readonly KasCocok[]) => {
+    const kasIds = rows.map((r) => r.id).sort();
+    perKunci.set(kasIds.join(","), { tanggal: rows[0]!.businessDate, kasIds, totalSen: rows.reduce((t, r) => t + r.amountSen, 0) });
+  };
+  for (const k of setoran) if (k.amountSen === m.amountSen) tambah([k]);
+  const perTanggal = new Map<string, KasCocok[]>();
+  for (const k of setoran) perTanggal.set(k.businessDate, [...(perTanggal.get(k.businessDate) ?? []), k]);
+  for (const rows of perTanggal.values()) if (rows.reduce((t, r) => t + r.amountSen, 0) === m.amountSen) tambah(rows);
+  const kandidat = [...perKunci.values()].sort((a, b) =>
+    a.tanggal !== b.tanggal ? (a.tanggal < b.tanggal ? -1 : 1) : a.kasIds.join(",") < b.kasIds.join(",") ? -1 : 1,
+  );
+
+  const kakiKasDiketik = ktx.kas.some(
+    (x) =>
+      !x.void &&
+      x.accountId === kasBesar &&
+      x.categoryLabel === KATEGORI_SETORAN_KE_BANK &&
+      x.amountSen === -m.amountSen &&
+      x.lahirDariCocokId === null &&
+      !ktx.kasDicocokkan.has(x.id) &&
+      dalamJendela(tanggalAsal(x), m.tanggalBank),
+  );
+  const alasan: AlasanSetoranManual | null =
+    kandidat.length === 0
+      ? "tanpa-kandidat"
+      : kandidat.length > 1
+        ? "banyak-kandidat"
+        : m.sumber !== "bca"
+          ? "sumber-bukan-bca"
+          : kakiKasDiketik
+            ? "setoran-ke-bank-diketik"
+            : null;
+  return { kandidat, otomatis: alasan === null, alasan };
 }
 
 /**
@@ -303,12 +441,19 @@ export function usulkanCocok(m: MutasiCocok, ktx: KonteksCocok): UsulanCocok {
 export function usulkanSemua(ms: readonly MutasiCocok[], ktx: KonteksCocok): UsulanCocok[] {
   const usulan = ms.map((m) => usulkanCocok(m, ktx));
   const tunggal = new Map<string, number>();
+  // K6 U7 — setoran Kas Besar yang diklaim pasangan otomatis lebih dari satu jemputan.
+  const setoranOtomatis = new Map<string, number>();
   for (const u of usulan) {
     if (u.jenis === "tunggal") tunggal.set(u.kandidat[0]!.cashLedgerId, (tunggal.get(u.kandidat[0]!.cashLedgerId) ?? 0) + 1);
+    if (u.setoran?.otomatis) for (const id of u.setoran.kandidat[0]!.kasIds) setoranOtomatis.set(id, (setoranOtomatis.get(id) ?? 0) + 1);
   }
-  return usulan.map((u) =>
-    u.jenis === "tunggal" && (tunggal.get(u.kandidat[0]!.cashLedgerId) ?? 0) > 1 ? { ...u, jenis: "banyak", tanda: "diperebutkan" } : u,
-  );
+  return usulan.map((u) => {
+    if (u.jenis === "tunggal" && (tunggal.get(u.kandidat[0]!.cashLedgerId) ?? 0) > 1) return { ...u, jenis: "banyak", tanda: "diperebutkan" };
+    if (u.setoran?.otomatis && u.setoran.kandidat[0]!.kasIds.some((id) => (setoranOtomatis.get(id) ?? 0) > 1)) {
+      return { ...u, setoran: { ...u.setoran, otomatis: false, alasan: "diperebutkan" } };
+    }
+    return u;
+  });
 }
 
 // ---------------------------------------------------------------------------

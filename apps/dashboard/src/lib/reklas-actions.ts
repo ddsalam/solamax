@@ -62,9 +62,13 @@ export async function reklasifikasiBiaya(input: {
       keterangan: string;
       operationalCategory: string | null;
       accountingAccount: string | null;
+      bulanBeku?: boolean;
     }>(
       `SELECT section::text AS section, void, status::text AS status, keterangan,
-              operational_category AS "operationalCategory", accounting_account AS "accountingAccount"
+              operational_category AS "operationalCategory", accounting_account AS "accountingAccount",
+              EXISTS (SELECT 1 FROM app.tutup_bulan t
+                       WHERE t.unit_id = manual_entry.unit_id AND t.buku_besar
+                         AND t.bulan = date_trunc('month', manual_entry.business_date)::date) AS "bulanBeku"
          FROM app.manual_entry
         WHERE id = $1::uuid AND unit_id = $2
         FOR UPDATE`,
@@ -74,6 +78,15 @@ export async function reklasifikasiBiaya(input: {
     if (!baris) {
       await client.query("ROLLBACK");
       return { ok: false, error: "Baris tak ditemukan di unit ini — muat ulang halaman." };
+    }
+    // Bulan yang sudah ditutup dengan buku besar beku (§10.51#1): reklasifikasi
+    // di sana tidak akan pernah masuk jurnal, jadi ditolak (temuan review #6).
+    if (baris.bulanBeku) {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error: "Bulan baris ini sudah ditutup dengan buku besar — reklasifikasi tidak bisa lagi. Hubungi Head of Finance untuk jurnal memorial.",
+      };
     }
     const terakhir = await client.query<{ toAccount: string }>(
       `SELECT to_account AS "toAccount" FROM app.reclassification

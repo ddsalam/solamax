@@ -16,7 +16,13 @@
 import { useState, useTransition } from "react";
 import { bacaRupiah } from "@/lib/angka-input";
 import { simpanPenebusan } from "@/lib/penebusan-actions";
-import { LABEL_KOMPONEN, ringkasKomponen, type KandidatKas, type Komponen } from "@/lib/penebusan-model";
+import {
+  LABEL_KOMPONEN,
+  ringkasKomponen,
+  type KandidatKas,
+  type Komponen,
+  type RingkasKomponen,
+} from "@/lib/penebusan-model";
 import { rpSen } from "@/lib/pihak-lawan-model";
 import { PratinjauAngka } from "./PratinjauAngka";
 
@@ -37,6 +43,29 @@ type Teks = Record<Komponen | "gross", string>;
 const KOSONG: Teks = { net: "", ppn: "", pph: "", pbbkb: "", nota: "", gross: "" };
 
 const rp = (n: number): string => rpSen(n * 100);
+
+/**
+ * Kaki "Σ komponen / Gross / Selisih" — dipakai formulir ini DAN field
+ * penebusan di Tambah mutasi buku bank (K6 U4, R20): satu tampilan selisih.
+ */
+export function KakiKomponen({ k }: { k: RingkasKomponen }) {
+  return (
+    <div className="grid-row mt4" aria-live="polite">
+      <span className="fs16">
+        Σ komponen <span className="num w600">{rp(k.jumlah)}</span>
+      </span>
+      <span className="fs16">
+        Gross <span className="num w600">{k.gross === null ? "—" : rp(k.gross)}</span>
+      </span>
+      <span className={`fs16 ${k.selisih === 0 ? "t-secondary" : "t-danger"}`}>
+        Selisih{" "}
+        <span className="num w600">
+          {k.selisih === null ? "—" : `${k.selisih < 0 ? "−" : k.selisih > 0 ? "+" : ""}${rp(Math.abs(k.selisih))}`}
+        </span>
+      </span>
+    </div>
+  );
+}
 
 export function PenebusanForm({
   code,
@@ -188,20 +217,7 @@ export function PenebusanForm({
         {isianAngka("nota", "Nota debet menambah, nota kredit mengurangi (ketik dengan tanda minus).")}
       </div>
 
-      <div className="grid-row mt4" aria-live="polite">
-        <span className="fs16">
-          Σ komponen <span className="num w600">{rp(k.jumlah)}</span>
-        </span>
-        <span className="fs16">
-          Gross <span className="num w600">{k.gross === null ? "—" : rp(k.gross)}</span>
-        </span>
-        <span className={`fs16 ${k.selisih === 0 ? "t-secondary" : "t-danger"}`}>
-          Selisih{" "}
-          <span className="num w600">
-            {k.selisih === null ? "—" : `${k.selisih < 0 ? "−" : k.selisih > 0 ? "+" : ""}${rp(Math.abs(k.selisih))}`}
-          </span>
-        </span>
-      </div>
+      <KakiKomponen k={k} />
 
       {kandidat !== null && kandidat.length > 1 && (
         <fieldset className="mt4">

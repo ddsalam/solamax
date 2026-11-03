@@ -12,6 +12,9 @@
  *   · mode "cocokkan N:M" memilih banyak baris bank & baris buku, Σ berjalan,
  *     Simpan aktif hanya di Rp 0 (per rekening — server memeriksa ulang);
  *   · baris diparkir punya tombol "Pindahkan dari penampung";
+ *   · kredit SETORAN JEMPUTAN yang terbuka menampilkan usulan setoran Kas
+ *     Besar + "Terima usulan" satu klik (K6 U7, `terimaUsulanSetoran`), dengan
+ *     alasan bila tidak dicocokkan otomatis;
  *   · daftar "baris buku tanpa pasangan" + selisihnya.
  *
  * Semua keputusan ditegakkan server (`klasifikasi-actions.ts`,
@@ -22,7 +25,7 @@ import { useMemo, useState, useTransition } from "react";
 import { bacaRupiah } from "@/lib/angka-input";
 import { rekeningAntarUnit } from "@/lib/antar-unit-actions";
 import { JENIS_ANTAR_UNIT, LABEL_JENIS_ANTAR_UNIT } from "@/lib/antar-unit-model";
-import { cocokkanManual } from "@/lib/cocok-bank-actions";
+import { cocokkanManual, terimaUsulanSetoran } from "@/lib/cocok-bank-actions";
 import {
   klasifikasiAntarUnit,
   klasifikasiKategori,
@@ -31,7 +34,7 @@ import {
   pindahkanDariPenampung,
 } from "@/lib/klasifikasi-actions";
 import { KATEGORI_OPERASIONAL, LABEL_STATUS_IMPOR, sectionBeban, type StatusBarisImpor } from "@/lib/klasifikasi-model";
-import type { BarisImporTampil, BukuTanpaPasangan } from "@/lib/klasifikasi-queries";
+import type { BarisImporTampil, BukuTanpaPasangan, SetoranTampil } from "@/lib/klasifikasi-queries";
 import { KATEGORI_PENAMPUNG } from "@/lib/keuangan-sisi-kas";
 import { kategoriPihakLawan, pihakLawanUntuk, rpSen, rupiahKeSen, type PilihanPihakLawan } from "@/lib/pihak-lawan-model";
 import { PenebusanForm } from "./PenebusanForm";
@@ -64,6 +67,44 @@ function Galat({ teks }: { teks: string | null }) {
   return teks === null ? null : (
     <div className="banner danger keu-banner" role="alert">
       {teks}
+    </div>
+  );
+}
+
+/**
+ * K6 U7 — usulan pasangan "Setoran ke Bank" untuk kredit SETORAN JEMPUTAN:
+ * setoran Kas Besar (satu, atau semua setoran satu tanggal bisnis) bernominal
+ * sama dalam 3 hari sebelumnya. Satu klik per kandidat; server membaca ulang
+ * usulannya dan menolak bila sudah tak berlaku.
+ */
+function UsulanSetoranBaris({ b, s, ctx, bolehTulis }: { b: BarisImporTampil; s: SetoranTampil; ctx: Bersama; bolehTulis: boolean }) {
+  const [galat, setGalat] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const terima = (kasIds: string[]) => {
+    setGalat(null);
+    start(async () => {
+      const r = await terimaUsulanSetoran({ code: ctx.code, mutasiId: b.id, kasIds });
+      if (!r.ok) setGalat(r.error);
+      else ctx.onSelesai(r.pesan);
+    });
+  };
+  return (
+    <div className="fs14 mt2" data-usulan="setoran">
+      <div className="w600">{s.kandidat.length > 0 ? "Usulan: Setoran ke Bank dari Kas Besar" : "Setoran jemputan"}</div>
+      {s.alasan !== null && <div className="t-warning">{s.kandidat.length > 0 ? "Tidak otomatis — " : ""}{s.alasan}.</div>}
+      {s.kandidat.map((k) => (
+        <div key={k.kasIds.join(",")} className="grid-row">
+          <span>
+            setoran {k.tanggal} · {k.kasIds.length} baris · <span className="num">{bertanda(k.totalSen)}</span>
+          </span>
+          {bolehTulis && (
+            <button type="button" className="btn-outline sm" disabled={pending} onClick={() => terima(k.kasIds)}>
+              {pending ? "Menyimpan…" : "Terima usulan"}
+            </button>
+          )}
+        </div>
+      ))}
+      <Galat teks={galat} />
     </div>
   );
 }
@@ -758,6 +799,7 @@ function FragmentBaris({
           {b.keterangan}
           {b.so && <div className="fs14 t-tertiary">SO {b.so}</div>}
           {b.tanda && <div className="fs14 t-warning">{b.tanda}</div>}
+          {b.setoran && !nm && <UsulanSetoranBaris b={b} s={b.setoran} ctx={ctx} bolehTulis={bolehTulis} />}
         </td>
         <td className="num">{bertanda(b.amountSen)}</td>
         <td>

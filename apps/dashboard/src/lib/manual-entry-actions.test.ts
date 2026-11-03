@@ -55,28 +55,8 @@ describe("manual_entry server action — tulis ter-scope", () => {
     expect(q).not.toHaveBeenCalled();
   });
 
-  it("void: UPDATE ter-scope (unit_id=$3) + voided_by/voided_at", async () => {
-    const res = await voidManualEntry({ code: "6478111", date: "2026-06-14", id: "uuid-1" });
-    expect(res).toEqual({ ok: true });
-    const [sql, params] = q.mock.calls[0]!;
-    expect(sql).toMatch(/UPDATE app\.manual_entry/);
-    expect(sql).toContain("void=true");
-    expect(sql).toMatch(/voided_by_user_id=\$1/);
-    expect(sql).toMatch(/unit_id=\$3/);
-    expect(params![2]).toBe(6478); // ter-scope
-  });
-
-  it("setoran_tunai: seksi diterima, INSERT unit_id ter-scope", async () => {
-    const res = await addManualEntry({
-      code: "6478111", date: "2026-06-14", section: "setoran_tunai",
-      keterangan: "Setoran BCA 14:00", amount: 5_000_000,
-    });
-    expect(res).toEqual({ ok: true });
-    const [sql, params] = q.mock.calls[0]!;
-    expect(sql).toContain("INSERT INTO app.manual_entry");
-    expect(params![0]).toBe(6478); // unit_id TER-SCOPE (bukan input mentah)
-    expect(params![2]).toBe("setoran_tunai");
-  });
+  // void & setoran_tunai kini bertransaksi (K6 U5) — diuji di setoran-tulis.test.ts
+  // dan manual-entry-actions.guard.test.ts.
 
   it("setoran_tunai: out-of-scope tetap ditolak (requireUnit notFound), TAK ADA tulis", async () => {
     await expect(

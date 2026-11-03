@@ -1,6 +1,6 @@
 "use server";
 
-import { barisSistemDari, PENJELASAN_BARIS_SISTEM } from "./keuangan-kas-model";
+import { barisSistemDari, kategoriBeban, PENJELASAN_BARIS_SISTEM, rencanaBeban, type RencanaBeban } from "./keuangan-kas-model";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "./keuangan-kas";
@@ -10,9 +10,13 @@ import { hariBukuTerkunci } from "./hari-buku-queries";
 import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen } from "./pihak-lawan-model";
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
-import { tulisBebanFinance } from "./klasifikasi-tulis";
+import { INSERT_KAS_KLASIFIKASI, tulisBebanFinance } from "./klasifikasi-tulis";
+import { senKeTeks } from "./antar-unit-model";
+import type { PoolClient } from "pg";
+import type { ScopedUnitId } from "./scope";
 import { auditKeuangan } from "./keuangan-tx";
 import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
+import { kategoriPenebusan, lewatPenebusan } from "./penebusan-model";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -37,7 +41,7 @@ import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export type KasResult = { ok: true; n?: number } | { ok: false; error: string };
+export type KasResult = { ok: true; n?: number; hariBuku?: string } | { ok: false; error: string };
 
 /**
  * Gerbang bersama ketiga aksi: unit ter-scope + wewenang tulis. Mengembalikan
@@ -99,6 +103,18 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
     if (salah !== null) return { ok: false, error: salah };
   }
 
+  // K6 U3 (R23) — biaya / pendapatan lain-lain / management fee hanya lewat
+  // `simpanMutasiBeban`: mutasi tanpa baris Biaya-nya menggeser kas tanpa
+  // menggeser laba. Kategori lain tak berubah (KTD6, §10.43#1).
+  if (kategoriBeban(input.categoryLabel) !== null) {
+    return {
+      ok: false,
+      error:
+        `“${input.categoryLabel}” dicatat bersama baris Biaya/Pendapatan-nya — simpan dari form Tambah mutasi ` +
+        "(satu simpan menulis keduanya).",
+    };
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -111,6 +127,25 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
       if (salah !== null) {
         await client.query("ROLLBACK");
         return { ok: false, error: salah };
+      }
+    }
+
+    // K6 U4 (R19–R21) — Pembelian BBM di rekening BANK hanya lewat field
+    // penebusan (`simpanPenebusan` dariBukuBank): mutasi tanpa SO di sini
+    // adalah input kedua yang harus ditautkan lagi. Kas Besar tak berubah.
+    if (kategoriPenebusan(input.categoryLabel)) {
+      const akun = await client.query<{ kind: string }>(
+        `SELECT kind::text AS kind FROM app.cash_account WHERE id = $1::uuid AND unit_id = $2`,
+        [input.accountId, unit.unit_id],
+      );
+      if (lewatPenebusan(akun.rows[0]?.kind, input.categoryLabel)) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          error:
+            "Pembelian BBM dari rekening bank dicatat lewat field penebusan (Nomor SO dan komponennya) di form " +
+            "yang sama — pilih kategori itu lalu isi field penebusannya, satu simpan menulis mutasi & penebusan.",
+        };
       }
     }
 
@@ -682,6 +717,284 @@ export async function pecahMutasi(input: PecahanInput): Promise<KasResult> {
       /* abaikan */
     }
     return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan pecahan." };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Baris Biaya/Pendapatan pintu Finance untuk satu baris kas — dipanggil DI
+ * DALAM transaksi, sesudah `hariBukuTerkunci`. Sengaja TIDAK diekspor (berkas
+ * "use server": setiap ekspor adalah endpoint). Pos ditentukan
+ * `tulisBebanFinance`: peta kategori untuk pengeluaran, 4200 untuk
+ * pendapatan_lain (U2). Management Fee: calon kategori pertama yang berpeta
+ * (P20 — "Management Fee" bila HoF sudah memetakannya, selain itu "Lain-Lain").
+ */
+async function tulisBebanMutasi(
+  c: PoolClient,
+  m: { unitId: ScopedUnitId; businessDate: string; rencana: RencanaBeban; keterangan: string; cashLedgerId: string; aktorId: number },
+) {
+  let op = m.rencana.kategoriOperasional[0]!;
+  if (m.rencana.kategoriOperasional.length > 1) {
+    for (const calon of m.rencana.kategoriOperasional) {
+      const ada = await c.query<{ account: string }>(
+        `SELECT accounting_account AS account
+           FROM app.category_account_map
+          WHERE (unit_id = $1 OR unit_id IS NULL)
+            AND operational_category = $2
+            AND effective_from <= $3::date
+          LIMIT 1`,
+        [m.unitId, calon, m.businessDate],
+      );
+      if (ada.rows.length > 0) {
+        op = calon;
+        break;
+      }
+    }
+  }
+  return tulisBebanFinance(c, {
+    unitId: m.unitId,
+    businessDate: m.businessDate,
+    section: m.rencana.section,
+    keterangan: m.keterangan,
+    amountSen: m.rencana.amountSen,
+    operationalCategory: op,
+    cashLedgerId: m.cashLedgerId,
+    aktorId: m.aktorId,
+  });
+}
+
+/**
+ * TAMBAH MUTASI berkategori biaya / pendapatan lain-lain / management fee
+ * (rencana K6 U3; R23, R24, AE6, F4, KTD6). SATU simpan, SATU transaksi:
+ * baris kas + `manual_entry` pintu Finance bertaut `cash_ledger_id`, di hari
+ * buku yang SAMA.
+ *
+ * ⛔ TIGA HAL YANG MENGIKAT:
+ *
+ * 1. **Nominal Biaya = nominal mutasi.** Tak ada field nominal kedua di
+ *    masukan; `rencanaBeban` menurunkannya dari `amount`. Dua angka dari klien
+ *    adalah dua angka yang bisa berselisih.
+ * 2. **Field kedua hanya untuk Biaya Operasional** (`rencanaBeban`), diputus
+ *    sebelum koneksi — predikat yang sama dengan form.
+ * 3. **Penjaga hari tertutup** (KTD6, pola `pecahMutasi`): hari tertutup ⇒
+ *    keduanya dibukukan maju bersama dengan `tanggal_asal`; pra-cut-over ⇒
+ *    tidak dibukukan.
+ *
+ * Pembatalan: `voidMutasiKas` sudah ikut membatalkan baris bertautnya (0053).
+ */
+export interface MutasiBebanInput {
+  code: string;
+  /** Tanggal transaksi. Hari bukunya ditentukan penjaga. */
+  date: string;
+  accountId: string;
+  keterangan: string;
+  jenis: "debet" | "kredit";
+  categoryLabel: string;
+  /** BERTANDA: debet > 0, kredit < 0. Satu-satunya nominal. */
+  amount: number;
+  /** Wajib untuk "Biaya Operasional"; harus kosong untuk dua kategori lain. */
+  operationalCategory?: string | null;
+}
+
+export async function simpanMutasiBeban(input: MutasiBebanInput): Promise<KasResult> {
+  const ctx = await buka(input.code);
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
+  const { scope, unit } = ctx;
+
+  if (!DATE_RE.test(input.date)) return { ok: false, error: "Tanggal tak valid." };
+  if (input.keterangan.trim() === "") return { ok: false, error: "Keterangan wajib diisi." };
+  if (!tandaCocok(input.jenis, input.amount)) {
+    return { ok: false, error: "Tanda nominal harus mengikuti jenis: debet positif, kredit negatif, dan bukan nol." };
+  }
+  const rb = rencanaBeban({
+    categoryLabel: input.categoryLabel,
+    operationalCategory: input.operationalCategory ?? null,
+    amount: input.amount,
+  });
+  if (!rb.ok) return { ok: false, error: rb.error };
+  const sen = rupiahKeSen(input.amount)!;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    const k = await client.query<{ ada: boolean }>(
+      `SELECT true AS ada FROM app.cash_mutation_category
+        WHERE side = $1::app.cash_mutation_side AND label = $2 AND active`,
+      [input.jenis, input.categoryLabel],
+    );
+    if (k.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: `Kategori “${input.categoryLabel}” tidak ada di sisi ${input.jenis}.` };
+    }
+
+    const hari = await hariBukuTerkunci(client, unit.unit_id, input.date, { accountId: input.accountId });
+    if (hari.status === "pra-cut-over") {
+      await client.query("ROLLBACK");
+      return {
+        ok: false,
+        error:
+          `Tanggal mutasi mendahului saldo pembuka (${hari.cutOver}) — sudah termuat di saldo pembuka, ` +
+          `jadi tidak dibukukan. Mencatatnya akan menghitungnya dua kali.`,
+      };
+    }
+    const maju = hari.perluKodeAlasan;
+    const ket = input.keterangan.trim();
+
+    const r = await client.query<{ id: string }>(INSERT_KAS_KLASIFIKASI, [
+      unit.unit_id,
+      input.accountId,
+      hari.hariBuku,
+      ket,
+      input.jenis,
+      input.jenis,
+      input.categoryLabel,
+      senKeTeks(sen),
+      scope.userId,
+      null,
+      maju ? input.date : null,
+      maju ? KODE_MAJU_PECAHAN : null,
+      maju ? "adjustment" : null,
+      null,
+      null,
+    ]);
+    const kasId = r.rows[0]?.id ?? "?";
+    const be = await tulisBebanMutasi(client, {
+      unitId: unit.unit_id,
+      businessDate: hari.hariBuku,
+      rencana: rb.rencana,
+      keterangan: ket,
+      cashLedgerId: kasId,
+      aktorId: scope.userId,
+    });
+    if (!be.ok) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: be.error };
+    }
+
+    await auditKeuangan(client, scope, "kas.beban", `${unit.code}/${input.accountId}`, {
+      tanggal: input.date,
+      hariBuku: hari.hariBuku,
+      nominal: input.amount,
+      kategori: input.categoryLabel,
+      kategoriOperasional: input.operationalCategory ?? null,
+      kas: kasId,
+      beban: be.id,
+      akun: be.akun,
+    });
+    await client.query("COMMIT");
+    revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
+    if (hari.hariBuku !== input.date) revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
+    return { ok: true, n: 1, hariBuku: hari.hariBuku };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan." };
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * LENGKAPI baris Biaya untuk mutasi biaya yang sudah ada tanpa barisnya
+ * (rencana K6 U3; R27 jenis (a)). Staf Keuangan memilih jenis biaya — sistem
+ * tak menebak. Nominal dibaca dari baris kas TERSIMPAN, bukan dari klien.
+ * Hari buku Biaya = hari buku mutasinya, atau hari terbuka berikutnya bila
+ * hari itu sudah tutup hari (penjaga yang sama); bulan tertutup ditolak.
+ */
+export async function lengkapiBebanMutasi(input: {
+  code: string;
+  cashLedgerId: string;
+  operationalCategory?: string | null;
+}): Promise<KasResult> {
+  const ctx = await buka(input.code);
+  if (!ctx.boleh) return { ok: false, error: ctx.error };
+  const { scope, unit } = ctx;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    const baris = await client.query<{
+      accountId: string;
+      businessDate: string;
+      categoryLabel: string | null;
+      keterangan: string;
+      amount: string;
+      saldo_awal: boolean;
+      bebanAktif: boolean;
+    }>(
+      `SELECT l.account_id::text AS "accountId", to_char(l.business_date,'YYYY-MM-DD') AS "businessDate",
+              l.category_label AS "categoryLabel", l.keterangan, l.amount::text AS amount, l.saldo_awal,
+              EXISTS (
+                SELECT 1 FROM app.manual_entry m
+                 WHERE m.cash_ledger_id = l.id AND m.unit_id = l.unit_id AND NOT m.void
+              ) AS "bebanAktif"
+         FROM app.cash_ledger l
+        WHERE l.id = $1::uuid AND l.unit_id = $2 AND NOT l.void
+        FOR UPDATE OF l`,
+      [input.cashLedgerId, unit.unit_id],
+    );
+    const l = baris.rows[0];
+    const tolak = async (error: string): Promise<KasResult> => {
+      await client.query("ROLLBACK");
+      return { ok: false, error };
+    };
+    if (!l || l.saldo_awal) return tolak("Mutasi tak ditemukan atau sudah dibatalkan — muat ulang halaman.");
+    if (l.bebanAktif) return tolak("Mutasi ini sudah punya baris Biaya aktif — satu mutasi hanya untuk satu baris Biaya.");
+    const rb = rencanaBeban({
+      categoryLabel: l.categoryLabel,
+      operationalCategory: input.operationalCategory ?? null,
+      amount: Number(l.amount),
+    });
+    if (!rb.ok) return tolak(rb.error);
+    const bulan = await client.query(
+      `SELECT 1 AS ada FROM app.tutup_bulan
+        WHERE unit_id = $1 AND bulan = date_trunc('month', $2::date)::date`,
+      [unit.unit_id, l.businessDate],
+    );
+    if (bulan.rows.length > 0) {
+      return tolak("Bulan mutasi ini sudah ditutup — koreksinya lewat jurnal memorial Head of Finance.");
+    }
+    const hari = await hariBukuTerkunci(client, unit.unit_id, l.businessDate, { accountId: l.accountId });
+    if (hari.status === "pra-cut-over") return tolak(`Mutasi mendahului saldo pembuka (${hari.cutOver}).`);
+
+    const be = await tulisBebanMutasi(client, {
+      unitId: unit.unit_id,
+      businessDate: hari.hariBuku,
+      rencana: rb.rencana,
+      keterangan: l.keterangan,
+      cashLedgerId: input.cashLedgerId,
+      aktorId: scope.userId,
+    });
+    if (!be.ok) return tolak(be.error);
+
+    await auditKeuangan(client, scope, "kas.lengkapi_beban", `${unit.code}/${l.accountId}`, {
+      kas: input.cashLedgerId,
+      tanggalKas: l.businessDate,
+      hariBuku: hari.hariBuku,
+      kategori: l.categoryLabel,
+      kategoriOperasional: input.operationalCategory ?? null,
+      beban: be.id,
+      akun: be.akun,
+    });
+    await client.query("COMMIT");
+    revalidatePath(`/keuangan/unit/${unit.code}/${hari.hariBuku}/input`);
+    if (hari.hariBuku !== l.businessDate) revalidatePath(`/keuangan/unit/${unit.code}/${l.businessDate}/input`);
+    return { ok: true, n: 1, hariBuku: hari.hariBuku };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan." };
   } finally {
     client.release();
   }

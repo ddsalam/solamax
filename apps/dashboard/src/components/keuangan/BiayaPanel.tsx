@@ -1,9 +1,6 @@
 "use client";
 
-import { bacaRupiah } from "@/lib/angka-input";
-import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
-import { tambahBiayaFinance } from "@/lib/biaya-actions";
 import { reklasifikasiBiaya } from "@/lib/reklas-actions";
 import type { ReklasBaris } from "@/lib/keuangan-input-queries";
 import {
@@ -41,47 +38,31 @@ import {
  * pengawas (termasuk ke dua akun bukan-laba: prive/kontribusi & perpindahan
  * dana) lewat baris baru di `app.reclassification`. Barisnya sendiri tidak
  * berubah; riwayatnya tampil di bawah akun.
+ *
+ * K6 U3 (R25) — **tak ada lagi form input pintu Finance** di sini. Biaya &
+ * pendapatan lain-lain Finance diinput SEKALI dari Tambah mutasi buku kas/bank
+ * (satu simpan menulis mutasi + barisnya); dua pintu input adalah sebab input
+ * ganda. Halaman ini meninjau, mereklasifikasi, dan menampilkan.
  */
 
 const rp = (n: number): string =>
   n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-const KATEGORI = [
-  "Iklan, Promosi, Spanduk",
-  "Transportasi / Kendaraan Milik Perusahaan",
-  "Supir Tangki",
-  "Maintance Operasional SPBU (Tera, Cleaning Tank, Sabun)",
-  "Sumbangan / Donasi",
-  "Komputer dan Internet",
-  "Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)",
-  "Konsumsi Makanan, Lembur, & Hiburan",
-  "Peralatan Kantor (ATK)",
-  "Biaya Taktis",
-  "Gaji Karyawan",
-  "Lain-Lain",
-  "MDR",
-  "Biaya Admin",
-] as const;
-
 export function BiayaPanel({
   code,
   date,
   baris,
-  peta,
   reklas,
   reasonReklas,
-  bolehTulis,
   bolehReklas,
 }: {
   code: string;
   date: string;
   baris: BarisBiaya[];
-  peta: { category: string; account: string }[];
   /** Riwayat reklasifikasi baris hari ini — terbaru dulu. */
   reklas: ReklasBaris[];
   /** Kode alasan grup `reclass` (§10.2). */
   reasonReklas: { code: string; label: string }[];
-  bolehTulis: boolean;
   /**
    * §10.29 — gerbangnya SENDIRI (`canReklasifikasi`): staf Keuangan DAN Head of
    * Finance. Bukan `bolehTulis`, yang menolak HoF (§10.12).
@@ -92,11 +73,6 @@ export function BiayaPanel({
   const [akunKe, setAkunKe] = useState("");
   const [alasanReklas, setAlasanReklas] = useState("");
   const [catatanReklas, setCatatanReklas] = useState("");
-  const [buka, setBuka] = useState(false);
-  const [section, setSection] = useState<"pengeluaran" | "pendapatan_lain">("pengeluaran");
-  const [ket, setKet] = useState("");
-  const [nominal, setNominal] = useState("");
-  const [kategori, setKategori] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -104,8 +80,6 @@ export function BiayaPanel({
   const total = totalPerPintu(baris);
   const tunggu = menungguTinjauan(baris);
   const tanpaAkun = belumBerakun(baris);
-  const akunDari = (k: string): string | null =>
-    peta.find((p) => p.category === k)?.account ?? null;
 
   const riwayatDari = (id: string): ReklasBaris[] => reklas.filter((r) => r.sourceTxnId === id);
 
@@ -254,35 +228,6 @@ export function BiayaPanel({
     );
   };
 
-  const hNominal = bacaRupiah(nominal);
-  const simpan = (): void => {
-    setErr(null);
-    setMsg(null);
-    if (hNominal.keadaan !== "sah") {
-      setErr(hNominal.keadaan === "tolak" ? hNominal.pesan : "Nominal wajib diisi.");
-      return;
-    }
-    const amountRp = hNominal.nilai;
-    start(async () => {
-      const res = await tambahBiayaFinance({
-        code,
-        date,
-        section,
-        keterangan: ket,
-        amountRp,
-        operationalCategory: kategori,
-      });
-      if (!res.ok) setErr(res.error);
-      else {
-        setMsg("Tersimpan lewat pintu Finance — asal-usulnya tercatat pada barisnya.");
-        setKet("");
-        setNominal("");
-        setKategori("");
-        setBuka(false);
-      }
-    });
-  };
-
   return (
     <section aria-labelledby="blok-biaya">
       <div className="section-h">
@@ -426,90 +371,6 @@ export function BiayaPanel({
           <span />
         </div>
       </div>
-
-      {bolehTulis && !buka && (
-        <div className="manual-form-actions">
-          <button type="button" className="btn-tint sm" onClick={() => setBuka(true)}>
-            Tambah biaya yang tidak lewat pengawas…
-          </button>
-        </div>
-      )}
-
-      {bolehTulis && buka && (
-        <div className="card card-pad-lg keu-form">
-          <h4 className="text-h3">Tambah lewat pintu Finance</h4>
-          <p className="fs16 t-tertiary mt2">
-            Barisnya akan ditandai berasal dari Finance, bukan dari Rincian Penjualan — dan
-            tanda itu tidak berubah kelak, apa pun peran Anda nanti.
-          </p>
-          <div className="keu-2col">
-            <label className="keu-fld">
-              <span className="keu-label">Jenis</span>
-              <select
-                className="manual-input"
-                value={section}
-                onChange={(e) => setSection(e.target.value as "pengeluaran" | "pendapatan_lain")}
-              >
-                <option value="pengeluaran">Biaya operasional</option>
-                <option value="pendapatan_lain">Pendapatan lain-lain</option>
-              </select>
-            </label>
-            <label className="keu-fld">
-              <span className="keu-label">Nominal</span>
-              <input
-                className="manual-input num"
-                inputMode="numeric"
-                value={nominal}
-                onChange={(e) => setNominal(e.target.value)}
-                placeholder="contoh 250.000"
-              />
-              <PratinjauAngka hasil={hNominal} />
-            </label>
-          </div>
-          <label className="keu-fld">
-            <span className="keu-label">Keterangan</span>
-            <input className="manual-input" value={ket} onChange={(e) => setKet(e.target.value)} />
-          </label>
-          <label className="keu-fld">
-            <span className="keu-label">Kategori operasional</span>
-            <select
-              className="manual-input"
-              value={kategori}
-              onChange={(e) => setKategori(e.target.value)}
-            >
-              <option value="">— pilih kategori —</option>
-              {KATEGORI.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
-            <span className="fs16 t-tertiary">
-              {kategori === ""
-                ? "Akun akuntansinya dipetakan otomatis dari kategori — tidak diketik."
-                : `Akan dipetakan ke akun ${akunDari(kategori) ?? "— belum ada pemetaan"}`}
-            </span>
-          </label>
-          <div className="manual-form-actions">
-            <button
-              type="button"
-              className="btn-navy"
-              onClick={simpan}
-              disabled={pending || hNominal.keadaan === "tolak"}
-            >
-              {pending ? "Menyimpan…" : "Simpan"}
-            </button>
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => setBuka(false)}
-              disabled={pending}
-            >
-              Batal
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

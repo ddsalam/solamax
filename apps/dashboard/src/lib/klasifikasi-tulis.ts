@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { senKeTeks } from "./antar-unit-model";
 import { jenisDariSen, sectionBeban, type BarisKlasifikasi } from "./klasifikasi-model";
+import { akunPintuFinance } from "./keuangan-reklas";
 import { periksaPihakLawanMutasi } from "./pihak-lawan-model";
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 import type { ScopedUnitId } from "./scope";
@@ -63,7 +64,8 @@ export async function tulisBebanFinance(
       LIMIT 1`,
     [m.unitId, m.operationalCategory, m.businessDate],
   );
-  const akun = peta.rows[0]?.account ?? null;
+  // Pendapatan lain-lain selalu 4200 (K6 U2, §10.46#4) — bukan peta biaya.
+  const akun = akunPintuFinance(m.section, peta.rows[0]?.account ?? null);
   if (akun === null) return { ok: false, error: `Kategori operasional “${m.operationalCategory}” belum punya pemetaan akun akuntansi.` };
   const r = await c.query<{ id: string }>(
     `INSERT INTO app.manual_entry
