@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { senKeTeks } from "./antar-unit-model";
@@ -351,6 +352,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
       cocokId,
       dariBukuBank,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     if (cocokId !== null) revalidatePath(`/keuangan/unit/${unit.code}/impor-bank`);
@@ -483,6 +485,7 @@ export async function batalkanPenebusan(input: { code: string; id: string }): Pr
       cashLedgerId: p.cashLedgerId,
       kasIkutDibatalkan: p.kasDibuat,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     revalidatePath(`/keuangan/unit/${unit.code}/${p.businessDate}/input`);

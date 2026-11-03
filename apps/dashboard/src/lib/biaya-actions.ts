@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { akunPintuFinance } from "./keuangan-reklas";
@@ -122,6 +123,7 @@ export async function tambahBiayaFinance(input: BiayaFinanceInput): Promise<Biay
         scope.userId,
       ],
     );
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     return { ok: true };

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   balikMemorial,
   bentukUlangBukuBesar,
+  koreksiMajuBukuBesar,
   setujuiMemorial,
   simpanSaldoAwalPos,
   tolakMemorial,
@@ -79,6 +80,30 @@ export function BentukUlangTombol({ code, dari, sampai }: { code: string; dari: 
         {pending ? "Membentuk ulang…" : "Bentuk ulang bulan ini"}
       </button>
       <span className="fs16 t-tertiary"> {dari} s.d. {sampai} · satu transaksi per hari, aman diulang</span>
+      {pesan}
+    </div>
+  );
+}
+
+/** Bulan yang ditutup dengan buku besar: periksa ulang → koreksi maju (KTD3). */
+export function KoreksiMajuTombol({ code, bulan }: { code: string; bulan: string }) {
+  const { jalankan, pending, pesan } = useAksi();
+  return (
+    <div className="mt4">
+      <button
+        type="button"
+        className="btn-outline sm"
+        disabled={pending}
+        onClick={() =>
+          jalankan(async () => {
+            const r = await koreksiMajuBukuBesar({ code, bulan });
+            return r.ok ? { ok: true, pesan: r.pesan } : { ok: false, error: `${r.error} (${r.hariSelesai} hari selesai)` };
+          })
+        }
+      >
+        {pending ? "Memeriksa ulang…" : "Periksa ulang & koreksi maju"}
+      </button>
+      <span className="fs16 t-tertiary"> jurnal bulan ini tetap beku; selisih sumber yang berubah diposting di hari buka berikutnya</span>
       {pesan}
     </div>
   );

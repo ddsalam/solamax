@@ -13,7 +13,7 @@ import {
   type Temuan,
 } from "./buku-besar-model";
 import { bacaEasymaxHari, bacaSumberHari, type OpsiBaca, type PembacaEasymax } from "./buku-besar-sumber";
-import { hariBukuTerkunci, kunciHariEksklusif } from "./hari-buku-queries";
+import { hariBukuTerkunci, kunciHariBersama, kunciHariEksklusif } from "./hari-buku-queries";
 import { KODE_MAJU_BUKU_BESAR } from "./keuangan-kode-maju";
 import { addDays } from "./periods";
 import { auditKeuangan, batal, type Aktor } from "./keuangan-tx";
@@ -118,9 +118,10 @@ export const SQL_JURNAL_SUMBER_HARI = `${KOLOM_TERSIMPAN}
    WHERE j.unit_id = $1 AND j.jenis = 'sumber' AND j.tanggal_buku = $2::date
    GROUP BY j.id`;
 
-/** Jurnal sumber untuk kunci `tabel|id` tertentu, tanggal buku mana pun. $1 unit, $2 text[]. */
+/** Jurnal sumber untuk kunci `tabel|id` tertentu, tanggal buku mana pun (indeks `jurnal_sumber_uq`). $1 unit, $2 text[]. */
 export const SQL_JURNAL_SUMBER_KUNCI = `${KOLOM_TERSIMPAN}
-   WHERE j.unit_id = $1 AND j.jenis = 'sumber' AND (j.sumber_tabel || '|' || j.sumber_id) = ANY($2::text[])
+   WHERE j.unit_id = $1 AND j.jenis = 'sumber'
+     AND (j.sumber_tabel, j.sumber_id) IN (SELECT split_part(k, '|', 1), split_part(k, '|', 2) FROM unnest($2::text[]) AS k)
    GROUP BY j.id`;
 
 /** Baris koreksi maju yang sudah diposting untuk hari $2. */
@@ -219,7 +220,9 @@ async function tulisLangsung(
     const id = (
       await c.query<{ id: string }>(SQL_UPSERT_SUMBER, [unit, tanggalBuku, j.tanggalEfektif, j.aturan, j.sumberTabel, j.sumberId, backfill, j.keterangan])
     ).rows[0]!.id;
-    if (t) await c.query(SQL_HAPUS_BARIS, [unit, id]);
+    // Selalu, bukan hanya bila `t` terbaca: penulis lain bisa saja menyisipkan
+    // kunci yang sama sesudah kita membaca (ON CONFLICT jatuh ke barisnya).
+    await c.query(SQL_HAPUS_BARIS, [unit, id]);
     await sisipBaris(c, unit, id, j.baris);
     ditulis++;
   }
@@ -388,4 +391,246 @@ export async function bentukUlangRentang(
     }
   }
   return { ok: true, hari };
+}
+
+export type HasilKoreksiBulan =
+  | { ok: true; hari: HasilBentukUlang[] }
+  | { ok: false; error: string; hari: HasilBentukUlang[] };
+
+/**
+ * Periksa ulang bulan yang sudah DITUTUP DENGAN BUKU BESAR (KTD3, R13): setiap
+ * hari dibentuk ulang dalam mode koreksi maju — selisih sumber yang berubah
+ * sesudah tutup bulan (mis. EasyMax disinkron ulang) diposting sebagai jurnal
+ * koreksi di hari buka pertama bulan terbuka berikutnya; jurnal bulan beku
+ * tidak disentuh. Satu transaksi pendek per hari, idempoten (koreksi yang sudah
+ * diposting ikut dihitung, jadi mengulang tidak menggandakan).
+ *
+ * Bulan yang ditutup TANPA buku besar (K5) ditolak: jurnalnya belum pernah
+ * dibentuk, jadi "selisih" = seluruh bulan — jalannya backfill.
+ */
+export async function koreksiMajuBulan(
+  buka: () => Promise<PoolClient>,
+  unit: ScopedUnitId,
+  bulan: string,
+  opsi: Omit<OpsiBentukUlang, "backfill">,
+): Promise<HasilKoreksiBulan> {
+  if (!/^\d{4}-\d{2}$/.test(bulan)) return { ok: false, error: "Bulan harus berbentuk YYYY-MM.", hari: [] };
+  const awal = await buka();
+  let status: { bulan: string; bukuBesar: boolean } | undefined;
+  try {
+    await awal.query("BEGIN");
+    await awal.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit)]);
+    status = (await awal.query<{ bulan: string; bukuBesar: boolean }>(SQL_TUTUP_BULAN_UNIT, [unit])).rows.find((r) => r.bulan === bulan);
+    await awal.query("ROLLBACK");
+  } catch (e) {
+    await batal(awal);
+    throw e;
+  } finally {
+    awal.release();
+  }
+  if (status === undefined) return { ok: false, error: `Bulan ${bulan} belum ditutup — pakai "Bentuk ulang bulan ini".`, hari: [] };
+  if (!status.bukuBesar) {
+    return { ok: false, error: `Bulan ${bulan} ditutup tanpa buku besar — jurnalnya belum pernah dibentuk; tidak ada yang bisa dikoreksi maju.`, hari: [] };
+  }
+
+  const hari: HasilBentukUlang[] = [];
+  const [y, m] = bulan.split("-").map(Number) as [number, number];
+  const akhir = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  for (let i = 1; i <= akhir; i++) {
+    const d = `${bulan}-${String(i).padStart(2, "0")}`;
+    if (d < MULAI_BUKU_BESAR) continue;
+    const c = await buka();
+    try {
+      await c.query("BEGIN");
+      await c.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit)]);
+      hari.push(await bentukUlangHari(c, unit, d, { ...opsi, backfill: false }));
+      await c.query("COMMIT");
+    } catch (e) {
+      await batal(c);
+      return { ok: false, error: `${d}: ${e instanceof Error ? e.message : String(e)}`, hari };
+    } finally {
+      c.release();
+    }
+  }
+  return { ok: true, hari };
+}
+
+// ---------------------------------------------------------------------------
+// KTD3 pemicu 1 — jalur tulis
+// ---------------------------------------------------------------------------
+
+/** Catatan yang baru ditulis/dibatalkan jalur tulis — id saja; tanggal dicari di sini. */
+export interface SumberDitulis {
+  kas?: readonly string[];
+  manual?: readonly string[];
+  settlement?: readonly string[];
+}
+
+/**
+ * Kunci sumber + hari bukunya, diperluas ke pasangan tautannya (baris kas ↔
+ * baris Biaya Finance; settlement ↔ kaki pencairannya). Tanpa saringan `void`:
+ * jurnal baris yang baru dibatalkan harus ikut dihapus. $1 unit, $2 kas[],
+ * $3 manual[], $4 settlement[].
+ */
+const SQL_KUNCI_DITULIS = `
+  WITH kas AS (
+    SELECT id, business_date FROM app.cash_ledger
+     WHERE unit_id = $1 AND (id = ANY($2::uuid[]) OR edc_settlement_id = ANY($4::uuid[])
+            OR id IN (SELECT cash_ledger_id FROM app.manual_entry WHERE unit_id = $1 AND id = ANY($3::uuid[])))
+  )
+  SELECT 'cash_ledger' AS "sumberTabel", id::text AS "sumberId", to_char(business_date, 'YYYY-MM-DD') AS tanggal FROM kas
+  UNION
+  SELECT 'manual_entry', m.id::text, to_char(m.business_date, 'YYYY-MM-DD') FROM app.manual_entry m
+   WHERE m.unit_id = $1 AND (m.id = ANY($3::uuid[]) OR m.cash_ledger_id IN (SELECT id FROM kas))
+  UNION
+  SELECT 'edc_settlement', l.edc_settlement_id::text, to_char(l.business_date, 'YYYY-MM-DD') FROM app.cash_ledger l
+   WHERE l.unit_id = $1 AND l.edc_settlement_id IS NOT NULL
+     AND (l.edc_settlement_id = ANY($4::uuid[]) OR l.id IN (SELECT id FROM kas))`;
+
+/**
+ * Serialisasi pemicu 1 per unit sampai COMMIT. Tanpa ini dua penulis yang
+ * membentuk kunci yang sama dari snapshot masing-masing bisa saling menimpa
+ * (mis. tautkan M→K bersamaan dengan reklas M: jurnal K terbentuk tanpa
+ * reklasnya). Perluasan kunci dibaca SESUDAH kunci ini (READ COMMITTED:
+ * pernyataan baru, snapshot baru), jadi penulis kedua melihat tulisan pertama.
+ */
+const KUNCI_PEMICU_SQL = "hashtextextended('jurnal-sumber:' || $1::text, 0)";
+
+export interface HasilPemicuTulis {
+  /** Hari yang jurnal sumbernya dibentuk. */
+  dibentuk: string[];
+  /** Hari yang dilewati — sebelum buku besar atau bulan tertutup. */
+  dilewati: string[];
+  /** Kegagalan; catatannya tetap tersimpan (lihat di bawah). `tanggal` null = sebelum per hari. */
+  gagal: { tanggal: string | null; error: string }[];
+}
+
+async function catatGagal(c: PoolClient, unit: ScopedUnitId, aktor: Aktor, tanggal: string | null, e: unknown, sumber: string[]): Promise<{ tanggal: string | null; error: string }> {
+  const error = e instanceof Error ? e.message : String(e);
+  await auditKeuangan(c, aktor, "buku_besar.bentuk_sumber_gagal", `${unit}/${tanggal ?? "-"}`, { sumber, error: error.slice(0, 500) });
+  return { tanggal, error };
+}
+
+/**
+ * Inti pemicu 1 untuk id yang sudah diketahui. Jalur tulis memanggil
+ * {@link bentukJurnalSesudahTulis}, yang mencari id-nya sendiri.
+ *
+ * ⛔ Tidak pernah membatalkan tulisan Finance. Seluruh kerja di dalam SAVEPOINT
+ *    (dan satu SAVEPOINT lagi per hari); gagal ⇒ kembali ke savepoint, dicatat
+ *    di `audit_log`, dan catatannya tetap COMMIT. Tutup bulan (pemicu 3)
+ *    membentuk ulang setiap hari bulan itu, jadi jurnal yang tertinggal tidak
+ *    lolos ke bulan yang ditutup.
+ * ⛔ Bulan tertutup dilewati (koreksinya milik {@link koreksiMajuBulan}). Hari
+ *    tertutup di bulan terbuka TIDAK dilewati — reklasifikasi boleh di sana,
+ *    dan tutup hari tidak berjalan dua kali.
+ * ⛔ Urutan kunci: unit (pemicu, eksklusif) → bulan (bersama) → hari (bersama),
+ *    sama dengan tutup bulan (bulan → hari), jadi menunggu tutup bulan tidak
+ *    sambil memegang kunci hari yang dibutuhkannya.
+ */
+export async function bentukJurnalSumberDitulis(
+  c: PoolClient,
+  unit: ScopedUnitId,
+  sumber: SumberDitulis,
+  aktor: Aktor,
+  opsi: Pick<OpsiBentukUlang, "baca"> = {},
+): Promise<HasilPemicuTulis> {
+  const hasil: HasilPemicuTulis = { dibentuk: [], dilewati: [], gagal: [] };
+  const kas = [...(sumber.kas ?? [])];
+  const manual = [...(sumber.manual ?? [])];
+  const settlement = [...(sumber.settlement ?? [])];
+  if (kas.length + manual.length + settlement.length === 0) return hasil;
+
+  await c.query("SAVEPOINT buku_besar_pemicu");
+  try {
+    await c.query(`SELECT pg_advisory_xact_lock(${KUNCI_PEMICU_SQL})`, [unit]);
+    const kunciRows = (
+      await c.query<{ sumberTabel: string; sumberId: string; tanggal: string }>(SQL_KUNCI_DITULIS, [unit, kas, manual, settlement])
+    ).rows;
+    const perHari = new Map<string, { sumberTabel: string; sumberId: string }[]>();
+    for (const r of kunciRows) perHari.set(r.tanggal, [...(perHari.get(r.tanggal) ?? []), { sumberTabel: r.sumberTabel, sumberId: r.sumberId }]);
+
+    for (const tanggal of [...perHari.keys()].sort()) {
+      const kunci = perHari.get(tanggal)!;
+      if (tanggal < MULAI_BUKU_BESAR) {
+        hasil.dilewati.push(tanggal);
+        continue;
+      }
+      await c.query("SAVEPOINT buku_besar_pemicu_hari");
+      try {
+        if ((await statusBulan(c, unit, tanggal.slice(0, 7))).status !== "terbuka") {
+          await c.query("RELEASE SAVEPOINT buku_besar_pemicu_hari");
+          hasil.dilewati.push(tanggal);
+          continue;
+        }
+        await kunciHariBersama(c, unit, tanggal);
+        await bentukUlangSumber(c, unit, tanggal, kunci, { aktor, baca: opsi.baca });
+        await c.query("RELEASE SAVEPOINT buku_besar_pemicu_hari");
+        hasil.dibentuk.push(tanggal);
+      } catch (e) {
+        await c.query("ROLLBACK TO SAVEPOINT buku_besar_pemicu_hari");
+        hasil.gagal.push(await catatGagal(c, unit, aktor, tanggal, e, kunci.map((k) => `${k.sumberTabel}|${k.sumberId}`)));
+      }
+    }
+    await c.query("RELEASE SAVEPOINT buku_besar_pemicu");
+  } catch (e) {
+    await c.query("ROLLBACK TO SAVEPOINT buku_besar_pemicu");
+    hasil.gagal.push(await catatGagal(c, unit, aktor, null, e, [...kas.map((x) => `cash_ledger|${x}`), ...manual.map((x) => `manual_entry|${x}`)]));
+  }
+  return hasil;
+}
+
+/**
+ * Baris yang ditulis transaksi INI: versi baris yang dibuat transaksi berjalan
+ * punya `xmin` = xid transaksi itu (INSERT dan UPDATE sama-sama membuat versi
+ * baru; tabel ini tidak pernah DELETE — pembatalan = `void`). Sah karena jalur
+ * tulis keuangan tidak memakai SAVEPOINT sebelum menulis (baris di dalam
+ * subtransaksi membawa xid subtransaksinya). Tabel yang DIBACA aturan posting
+ * ikut dipetakan ke sumbernya: penebusan → baris kas, beban non-kas (MDR) →
+ * settlement, reklasifikasi → baris Biaya. $1 unit, $2 tanggal mulai.
+ *
+ * ⚠️ Tidak berindeks (xmin): memindai baris unit sejak $2 di setiap tulisan.
+ */
+const SQL_DITULIS_TRANSAKSI_INI = `
+  WITH x AS (SELECT (pg_current_xact_id()::text::bigint % 4294967296)::text AS xid)
+  SELECT 'kas' AS jenis, l.id::text AS id FROM app.cash_ledger l, x
+   WHERE l.unit_id = $1 AND l.business_date >= $2::date AND l.xmin::text = x.xid
+  UNION ALL
+  SELECT 'kas', p.cash_ledger_id::text FROM app.penebusan p, x
+   WHERE p.unit_id = $1 AND p.cash_ledger_id IS NOT NULL AND p.xmin::text = x.xid
+  UNION ALL
+  SELECT 'manual', m.id::text FROM app.manual_entry m, x
+   WHERE m.unit_id = $1 AND m.business_date >= $2::date AND m.xmin::text = x.xid
+  UNION ALL
+  SELECT 'manual', r.source_txn_id::text FROM app.reclassification r, x
+   WHERE r.unit_id = $1 AND r.source_kind = 'manual_entry' AND r.xmin::text = x.xid
+  UNION ALL
+  SELECT 'settlement', s.id::text FROM app.edc_settlement s, x
+   WHERE s.unit_id = $1 AND s.business_date >= $2::date AND s.xmin::text = x.xid
+  UNION ALL
+  SELECT 'settlement', n.edc_settlement_id::text FROM app.noncash_expense n, x
+   WHERE n.unit_id = $1 AND n.business_date >= $2::date AND n.xmin::text = x.xid`;
+
+/**
+ * KTD3 pemicu 1 — SATU panggilan per unit yang ditulis, tepat sebelum COMMIT:
+ * cari baris sumber (dan tabel yang dibaca aturannya) yang ditulis transaksi
+ * ini, lalu bentuk jurnalnya ({@link bentukJurnalSumberDitulis}). Tidak pernah
+ * membatalkan tulisan Finance.
+ */
+export async function bentukJurnalSesudahTulis(
+  c: PoolClient,
+  unit: ScopedUnitId,
+  aktor: Aktor,
+  opsi: Pick<OpsiBentukUlang, "baca"> = {},
+): Promise<HasilPemicuTulis> {
+  let rows: { jenis: "kas" | "manual" | "settlement"; id: string }[];
+  await c.query("SAVEPOINT buku_besar_pemicu_cari");
+  try {
+    rows = (await c.query<{ jenis: "kas" | "manual" | "settlement"; id: string }>(SQL_DITULIS_TRANSAKSI_INI, [unit, MULAI_BUKU_BESAR])).rows;
+    await c.query("RELEASE SAVEPOINT buku_besar_pemicu_cari");
+  } catch (e) {
+    await c.query("ROLLBACK TO SAVEPOINT buku_besar_pemicu_cari");
+    return { dibentuk: [], dilewati: [], gagal: [await catatGagal(c, unit, aktor, null, e, [])] };
+  }
+  const ambil = (j: string) => [...new Set(rows.filter((r) => r.jenis === j).map((r) => r.id))];
+  return bentukJurnalSumberDitulis(c, unit, { kas: ambil("kas"), manual: ambil("manual"), settlement: ambil("settlement") }, aktor, opsi);
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool, qScoped } from "./db";
 import {
@@ -243,6 +244,7 @@ export async function tetapkanSaldoAwalPihakLawan(input: SaldoAwalPihakLawanInpu
       await batal(client);
       return { ok: false, error: hasil.error };
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     if (lawan !== null) revalidatePath(halaman(lawan.code));
@@ -337,6 +339,7 @@ export async function tetapkanPihakLawanBaris(input: {
       nominal: baris.amount,
       tanggal: baris.businessDate,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return { ok: true, pesan: `Pihak lawan “${pihak?.nama ?? ""}” ditetapkan.` };

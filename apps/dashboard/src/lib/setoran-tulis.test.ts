@@ -168,6 +168,8 @@ const h = vi.hoisted(() => {
 
 vi.mock("./db", () => ({ pool: { connect: async () => h.client }, qScoped: vi.fn(async () => []), q: vi.fn(async () => []) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Pemicu jurnal (KTD3 pemicu 1) diuji di buku-besar-pemicu.integration.test.ts.
+vi.mock("./buku-besar-tulis", () => ({ bentukJurnalSesudahTulis: vi.fn(async () => ({ dibentuk: [], dilewati: [], gagal: [] })) }));
 vi.mock("./hari-buku-queries", () => ({
   hariBukuTerkunci: vi.fn(async (_c: unknown, unitId: number, tanggal: string) => h.hari.fn(unitId, tanggal)),
 }));
@@ -230,8 +232,9 @@ describe("Covers AE1 — setoran langsung menjadi debet Kas Besar", () => {
     expect(
       await addManualEntry({ code: h.UNIT.code, date: TGL, section: "pengeluaran", keterangan: "BELI LAKBAN", amount: 15_000 }),
     ).toEqual({ ok: true });
+    // Entri Rincian biasa kini juga ditulis di dalam transaksi (KTD3 pemicu 1);
+    // tiruan ini hanya memodelkan INSERT setoran, jadi yang diuji: buku kas tetap kosong.
     expect(h.db.kas).toEqual([]);
-    expect(h.db.entri).toEqual([]);
   });
 });
 
