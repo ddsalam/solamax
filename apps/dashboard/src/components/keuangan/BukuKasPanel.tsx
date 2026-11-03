@@ -1,11 +1,18 @@
 "use client";
 
-import { PENJELASAN_BARIS_SISTEM, type BarisSistem } from "@/lib/keuangan-kas-model";
+import {
+  butuhKategoriOperasional,
+  kategoriBeban,
+  KATEGORI_OP_MANAGEMENT_FEE,
+  PENJELASAN_BARIS_SISTEM,
+  type BarisSistem,
+} from "@/lib/keuangan-kas-model";
+import { KATEGORI_OPERASIONAL } from "@/lib/klasifikasi-model";
 import { bacaRupiah } from "@/lib/angka-input";
 import { PratinjauAngka } from "./PratinjauAngka";
 import { useState, useTransition } from "react";
 import { batalkanPencairan } from "@/lib/edc-actions";
-import { setujuiSetoran, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
+import { setujuiSetoran, simpanMutasiBeban, simpanMutasiKas, voidMutasiKas } from "@/lib/kas-actions";
 import { PESAN_PENCAIRAN_DAN_BATCH_DIBATALKAN, PESAN_PENCAIRAN_DIBATALKAN } from "@/lib/keuangan-edc";
 import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
 import type { AkunKas, BarisBuku, KakiBuku, TawaranSetoran } from "@/lib/keuangan-kas-model";
@@ -56,6 +63,7 @@ export function BukuKasPanel({
   bolehTulis,
   bolehSettlement,
   pihakLawan,
+  peta = [],
 }: {
   code: string;
   date: string;
@@ -74,6 +82,8 @@ export function BukuKasPanel({
    */
   bolehSettlement: boolean;
   pihakLawan: PilihanPihakLawan[];
+  /** Peta kategori operasional → pos, hanya untuk kalimat "akan tercatat di pos …" (K6 U3). */
+  peta?: { category: string; account: string }[];
 }) {
   const kasBesar = akun.find((a) => a.kind === "kas") ?? akun[0] ?? null;
   const [akunAktif, setAkunAktif] = useState<string>(kasBesar?.id ?? "");
@@ -85,6 +95,7 @@ export function BukuKasPanel({
   const [pihakId, setPihakId] = useState("");
   const [bukaPecah, setBukaPecah] = useState(false);
   const [nominal, setNominal] = useState("");
+  const [jenisBiaya, setJenisBiaya] = useState("");
   const [noSo, setNoSo] = useState("");
   const [komponen, setKomponen] = useState<TeksKomponen>(KOMPONEN_KOSONG);
   const [err, setErr] = useState<string | null>(null);
@@ -105,6 +116,22 @@ export function BukuKasPanel({
   const modePenebusan = jenis !== "adjustment" && lewatPenebusan(akunTerbuka?.kind, katTerpilih?.label);
   const ringkas = ringkasKomponen({ ...komponen, gross: nominal });
   const siapPenebusan = ringkas.lengkap && ringkas.selisih === 0 && noSo.trim() !== "";
+  // K6 U3 (R23): biaya / pendapatan lain-lain / management fee ⇒ satu simpan
+  // menulis mutasi + baris Biaya. Field kedua HANYA untuk Biaya Operasional —
+  // predikat yang sama ditegakkan `simpanMutasiBeban`.
+  const modeBeban = jenis !== "adjustment" ? kategoriBeban(katTerpilih?.label) : null;
+  const butuhJenisBiaya = jenis !== "adjustment" && butuhKategoriOperasional(katTerpilih?.label);
+  const posDari = (k: string): string | null => peta.find((p) => p.category === k)?.account ?? null;
+  const catatanBeban =
+    modeBeban === "biaya_operasional"
+      ? jenisBiaya === ""
+        ? "Akan tercatat juga di Biaya Operasional — pilih jenis biayanya."
+        : `Akan tercatat juga di Biaya Operasional → pos ${posDari(jenisBiaya) ?? "— belum ada pemetaan"}.`
+      : modeBeban === "pendapatan_lain"
+        ? "Akan tercatat juga di Pendapatan Lain-lain → pos 4200."
+        : modeBeban === "management_fee"
+          ? `Akan tercatat juga di Biaya → pos management fee (${KATEGORI_OP_MANAGEMENT_FEE.map(posDari).find((x) => x !== null) ?? "—"}).`
+          : null;
 
   // Penyesuaian satu-satunya jenis yang arahnya tak tersirat dari namanya —
   // hanya di sana minus boleh diketik (dulu mustahil: semua non-digit dibuang).
@@ -159,6 +186,33 @@ export function BukuKasPanel({
           setNominal("");
           setNoSo("");
           setKomponen(KOMPONEN_KOSONG);
+          setBukaForm(false);
+        }
+      });
+      return;
+    }
+    if (modeBeban !== null && kat !== null && jenis !== "adjustment") {
+      start(async () => {
+        const res = await simpanMutasiBeban({
+          code,
+          date,
+          accountId: akunAktif,
+          keterangan: ket,
+          jenis,
+          categoryLabel: kat.label,
+          amount,
+          operationalCategory: butuhJenisBiaya ? jenisBiaya : null,
+        });
+        if (!res.ok) setErr(res.error);
+        else {
+          setMsg(
+            `Mutasi dan baris ${modeBeban === "pendapatan_lain" ? "Pendapatan Lain-lain" : "Biaya"} tersimpan` +
+              (res.hariBuku && res.hariBuku !== date ? ` di hari buku ${res.hariBuku} (hari ini sudah tutup hari).` : ".") +
+              " Tampil juga di blok Biaya.",
+          );
+          setKet("");
+          setNominal("");
+          setJenisBiaya("");
           setBukaForm(false);
         }
       });
@@ -520,6 +574,7 @@ export function BukuKasPanel({
                 onChange={(e) => {
                   setKatKey(e.target.value);
                   setPihakId("");
+                  setJenisBiaya("");
                 }}
               >
                 <option value="">— pilih kategori —</option>
@@ -531,6 +586,20 @@ export function BukuKasPanel({
               </select>
             </label>
           )}
+          {butuhJenisBiaya && (
+            <label className="keu-fld">
+              <span className="keu-label">Jenis biaya (wajib untuk Biaya Operasional)</span>
+              <select className="manual-input" value={jenisBiaya} onChange={(e) => setJenisBiaya(e.target.value)}>
+                <option value="">— pilih jenis biaya —</option>
+                {KATEGORI_OPERASIONAL.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {catatanBeban !== null && <p className="fs16 t-tertiary keu-p">{catatanBeban}</p>}
           {modePenebusan && (
             <fieldset className="keu-fld">
               <legend className="keu-label">Penebusan SO — muncul karena kategori Pembelian BBM</legend>
@@ -584,7 +653,12 @@ export function BukuKasPanel({
               type="button"
               className="btn-navy"
               onClick={simpan}
-              disabled={pending || hNominal.keadaan === "tolak" || (modePenebusan && !siapPenebusan)}
+              disabled={
+                pending ||
+                hNominal.keadaan === "tolak" ||
+                (modePenebusan && !siapPenebusan) ||
+                (butuhJenisBiaya && jenisBiaya === "")
+              }
             >
               {pending ? "Menyimpan…" : modePenebusan ? "Simpan mutasi & penebusan" : "Simpan mutasi"}
             </button>

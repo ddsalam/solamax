@@ -188,7 +188,8 @@ export async function ubahPetaKategori(input: {
     const salah = periksaPetaBaru(
       { kategori: input.kategori, kodePos: input.kodePos },
       daftar,
-      kat.rows.map((r) => r.kategori),
+      // "Management Fee" boleh dipetakan HoF (P20, §10.47#1) walau belum ada di peta.
+      [...kat.rows.map((r) => r.kategori), "Management Fee"],
     );
     if (salah !== null) {
       await client.query("ROLLBACK");

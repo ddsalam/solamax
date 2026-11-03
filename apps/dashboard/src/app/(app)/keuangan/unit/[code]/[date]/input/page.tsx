@@ -3,6 +3,9 @@ import { todayWib } from "@/lib/periods";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { BiayaPanel } from "@/components/keuangan/BiayaPanel";
 import { BukuKasPanel } from "@/components/keuangan/BukuKasPanel";
+import { PerluDitautkanPanel } from "@/components/keuangan/PerluDitautkanPanel";
+import { getBebanTautan, getKasTautan } from "@/lib/tautan-queries";
+import { susunPerluDitautkan } from "@/lib/tautan-model";
 import { EdcPanel } from "@/components/keuangan/EdcPanel";
 import { EdcShiftSetujuPanel } from "@/components/edc/EdcShiftSetujuPanel";
 import { rakitShiftEdc } from "@/lib/edc-shift-model";
@@ -108,7 +111,7 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening, reklas, reasonReklas] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening, reklas, reasonReklas, kasTautan, bebanTautan] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
     getBiayaHarian(unit.unit_id, date),
@@ -122,7 +125,11 @@ export default async function InputKeuanganPage({
     // §10.29 — riwayat & kode alasan reklasifikasi biaya pengawas.
     getReklasHarian(unit.unit_id, date),
     getReasonCodeReclass(unit.unit_id),
+    // K6 U3 (R27) — baris separuh-tercatat sejak cut-over, seluruh unit.
+    getKasTautan(unit.unit_id),
+    getBebanTautan(unit.unit_id),
   ]);
+  const perluDitautkan = susunPerluDitautkan(kasTautan, bebanTautan);
   const rekeningEdc = versiRekening.filter((v) => !v.void);
   const namaEdc = [
     ...new Set([...petaKartu.map((p) => normalisasiEdc(p.acquirer)), ...rekeningEdc.map((v) => v.acquirer)]),
@@ -221,6 +228,7 @@ export default async function InputKeuanganPage({
           nilaiTertunda={nilaiTertunda(tawaran)}
           bolehTulis={bolehTulis}
           bolehSettlement={bolehSettlement}
+          peta={petaKategori}
           // U3: hanya yang AKTIF yang ditawarkan — server memeriksa ulang.
           pihakLawan={pihakLawan
             .filter((p) => p.aktif)
@@ -256,12 +264,14 @@ export default async function InputKeuanganPage({
           code={unit.code}
           date={date}
           baris={biaya}
-          peta={petaKategori}
           reklas={reklas}
           reasonReklas={reasonReklas}
-          bolehTulis={bolehTulis}
           bolehReklas={canReklasifikasi({ role: scope.role, email: scope.email })}
         />
+      </div>
+
+      <div className="mt10">
+        <PerluDitautkanPanel code={unit.code} daftar={perluDitautkan} peta={petaKategori} bolehTulis={bolehTulis} />
       </div>
     </>
   );
