@@ -404,8 +404,11 @@ export function BukuBesarPanel(p: BukuBesarPanelProps) {
               </ul>
               {p.temuanJurnal.hariTanpaRincian.length > 0 && (
                 <p className="fs16 t-tertiary mt2">
-                  Pembentukan {p.temuanJurnal.hariTanpaRincian.join(", ")} terjadi sebelum rincian dicatat — jalankan &quot;Bentuk ulang bulan ini&quot;
-                  sekali untuk melihat baris mana yang dimaksud.
+                  Pembentukan{" "}
+                  {p.temuanJurnal.hariTanpaRincian.length > 3
+                    ? `${p.temuanJurnal.hariTanpaRincian[0]} s.d. ${p.temuanJurnal.hariTanpaRincian.at(-1)} (${p.temuanJurnal.hariTanpaRincian.length} hari)`
+                    : p.temuanJurnal.hariTanpaRincian.join(", ")}{" "}
+                  terjadi sebelum rincian dicatat — jalankan &quot;Bentuk ulang bulan ini&quot; sekali untuk melihat baris mana yang dimaksud.
                 </p>
               )}
               <div className="tbl-scroll mt4">
@@ -423,7 +426,7 @@ export function BukuBesarPanel(p: BukuBesarPanelProps) {
                       const ke = tautanTemuan(code, bulan, t.tanggal, t.kode);
                       return (
                         <tr key={`${t.tanggal}-${t.kode}-${t.sumberId ?? i}`}>
-                          <td>{t.tanggal}</td>
+                          <td>{t.hari > 1 ? `${t.tanggal} s.d. ${t.sampai} (${t.hari} hari)` : t.tanggal}</td>
                           <td>{t.label}</td>
                           <td className="t-secondary">{t.pesan ?? "—"}</td>
                           <td>

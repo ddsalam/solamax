@@ -25,10 +25,22 @@ describe("temuan pembentukan jurnal — daftar yang bisa ditindaklanjuti", () =>
     expect(r.hariTanpaRincian).toEqual([]);
   });
 
+  it("temuan tingkat hari yang sama digabung jadi satu baris berentang; jumlahnya tetap per kemunculan", () => {
+    const sama = { kode: "saldo_awal_persediaan_kosong" as const, pesan: "Saldo awal pos 1131/1132 belum diisi." };
+    const r = susunTemuanPembentukan(
+      ["2026-10-01", "2026-10-02", "2026-10-03"].map((tanggal) => ({ tanggal, dibentukAt: "x", kode: [sama.kode], rincian: [sama] })),
+    );
+    expect(r.total).toBe(3);
+    expect(r.ringkas).toEqual([{ kode: "saldo_awal_persediaan_kosong", label: LABEL_TEMUAN.saldo_awal_persediaan_kosong, n: 3 }]);
+    expect(r.baris).toHaveLength(1);
+    expect(r.baris[0]).toMatchObject({ tanggal: "2026-10-01", sampai: "2026-10-03", hari: 3 });
+  });
+
   it("catatan lama (hanya kode) tetap terhitung, ditandai tanpa rincian; kode asing dibuang", () => {
     const r = susunTemuanPembentukan([{ tanggal: "2026-10-01", dibentukAt: "x", kode: ["stok_kosong", "stok_kosong", "bukan_kode"], rincian: null }]);
     expect(r.total).toBe(2);
     expect(r.baris.every((b) => b.pesan === null)).toBe(true);
+    expect(r.baris).toEqual([expect.objectContaining({ tanggal: "2026-10-01", sampai: "2026-10-01", hari: 1 })]);
     expect(r.hariTanpaRincian).toEqual(["2026-10-01"]);
   });
 
