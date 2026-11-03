@@ -289,21 +289,7 @@ export function bacaRekeningKoranBca(teks: string): RekeningKoran {
     nDb: db.n,
     saldoAkhirSen: akhir.sen,
   };
-  const crRows = rows.filter((r) => r.amountSen >= 0);
-  const dbRows = rows.filter((r) => r.amountSen < 0);
-  const sumCr = crRows.reduce((s, r) => s + r.amountSen, 0);
-  const sumDb = -dbRows.reduce((s, r) => s + r.amountSen, 0);
-  const cek: Array<[Pemeriksaan, number, number]> = [
-    ["mutasi-cr", sumCr, footer.mutasiCrSen],
-    ["jumlah-cr", crRows.length, footer.nCr],
-    ["mutasi-db", sumDb, footer.mutasiDbSen],
-    ["jumlah-db", dbRows.length, footer.nDb],
-    ["saldo-awal", saldoAwalSen, awalKaki.sen],
-    ["saldo-akhir", saldoAwalSen + sumCr - sumDb, footer.saldoAkhirSen],
-  ];
-  const ketidakcocokan = cek
-    .filter(([, t, k]) => t !== k)
-    .map(([pemeriksaan, terbaca, k]) => ({ pemeriksaan, terbaca, kaki: k, selisih: terbaca - k }));
+  const ketidakcocokan = periksaKaki({ nomorRekening, periode, saldoAwalSen, rows, footer }, awalKaki.sen);
   if (ketidakcocokan.length > 0) {
     const rinci = ketidakcocokan
       .map(({ pemeriksaan: p, terbaca: t, kaki: k, selisih: s }) =>
@@ -320,4 +306,32 @@ export function bacaRekeningKoranBca(teks: string): RekeningKoran {
   }
 
   return { nomorRekening, periode, saldoAwalSen, rows, footer };
+}
+
+/**
+ * Gerbang total yang TIDAK terikat bank (rencana 2026-11-02 U10, KTD9): Σ CR,
+ * Σ DB, jumlah baris CR/DB, saldo awal, dan saldo awal + CR − DB dibandingkan
+ * persis dengan `rk.footer` & `saldoAwalKaki`. Murni — mengembalikan daftar
+ * ketidakcocokan ([] = lolos), tidak melempar.
+ *
+ *   · BCA: kaki = yang tercetak di e-statement (`bacaRekeningKoranBca`);
+ *   · pembaca AI & input manual: kaki = empat angka kontrol yang diketik staf
+ *     Keuangan (jumlah baris dihitung dari baris itu sendiri).
+ */
+export function periksaKaki(rk: RekeningKoran, saldoAwalKaki: number): Ketidakcocokan[] {
+  const crRows = rk.rows.filter((r) => r.amountSen >= 0);
+  const dbRows = rk.rows.filter((r) => r.amountSen < 0);
+  const sumCr = crRows.reduce((s, r) => s + r.amountSen, 0);
+  const sumDb = -dbRows.reduce((s, r) => s + r.amountSen, 0);
+  const cek: Array<[Pemeriksaan, number, number]> = [
+    ["mutasi-cr", sumCr, rk.footer.mutasiCrSen],
+    ["jumlah-cr", crRows.length, rk.footer.nCr],
+    ["mutasi-db", sumDb, rk.footer.mutasiDbSen],
+    ["jumlah-db", dbRows.length, rk.footer.nDb],
+    ["saldo-awal", rk.saldoAwalSen, saldoAwalKaki],
+    ["saldo-akhir", rk.saldoAwalSen + sumCr - sumDb, rk.footer.saldoAkhirSen],
+  ];
+  return cek
+    .filter(([, t, k]) => t !== k)
+    .map(([pemeriksaan, terbaca, k]) => ({ pemeriksaan, terbaca, kaki: k, selisih: terbaca - k }));
 }

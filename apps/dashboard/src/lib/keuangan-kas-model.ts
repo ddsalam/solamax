@@ -1,4 +1,6 @@
 import { saldoAkun, type MutasiKas } from "./keuangan-kas";
+import { KATEGORI_OPERASIONAL, sectionBeban, type SectionBeban } from "./klasifikasi-model";
+import { rupiahKeSen } from "./pihak-lawan-model";
 
 /**
  * Model tampilan blok 2 Layar 3 — "Buku kas besar & lima buku bank".
@@ -174,4 +176,102 @@ export function tawaranTertunda(t: readonly TawaranSetoran[]): TawaranSetoran[] 
  */
 export function nilaiTertunda(t: readonly TawaranSetoran[]): number {
   return tawaranTertunda(t).reduce((s, x) => s + x.amount, 0);
+}
+
+// ---------------------------------------------------------------------------
+// K6 U3 — biaya & pendapatan lain-lain dari Tambah mutasi (R23, R24, P11, P12, P20)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tiga kategori kas yang laba-nya hidup di `manual_entry`, bukan di buku kas
+ * (temuan U6/U11, 0053). Satu simpan di buku kas/bank menulis mutasi DAN baris
+ * Biaya/Pendapatan pintu Finance yang bertaut `cash_ledger_id`.
+ *
+ * Kunci peta ini wajib SAMA dengan label yang `sectionBeban` (peta arus kas)
+ * anggap realisasi laba — dijaga uji, supaya tak ada label keempat yang lolos
+ * tanpa barisnya.
+ */
+export type KategoriBeban = "biaya_operasional" | "pendapatan_lain" | "management_fee";
+
+export const KATEGORI_BEBAN: Readonly<Record<string, KategoriBeban>> = {
+  "Biaya Operasional": "biaya_operasional",
+  "Pendapatan Lain-Lain": "pendapatan_lain",
+  "Management Fee": "management_fee",
+};
+
+/**
+ * Kategori operasional baris Biaya untuk dua kategori TANPA field kedua.
+ * Pos-nya tetap ditentukan `tulisBebanFinance`: seksi `pendapatan_lain` selalu
+ * 4200 (P12, `akunPintuFinance`); Management Fee lewat peta (P20 — "pos yang
+ * HoF tetapkan, awal 5700"): kategori "Management Fee" bila HoF sudah memberinya
+ * baris peta, selain itu "Lain-Lain" (peta 0056 → 5700).
+ */
+export const KATEGORI_OP_PENDAPATAN_LAIN = "Lain-Lain";
+export const KATEGORI_OP_MANAGEMENT_FEE = ["Management Fee", "Lain-Lain"] as const;
+
+/** Predikat murni — dipakai form Tambah mutasi DAN server. `null` = kategori biasa. */
+export function kategoriBeban(label: string | null | undefined): KategoriBeban | null {
+  return label ? (KATEGORI_BEBAN[label] ?? null) : null;
+}
+
+/** Hanya "Biaya Operasional" yang membuka field kedua (jenis biaya). */
+export const butuhKategoriOperasional = (label: string | null | undefined): boolean =>
+  kategoriBeban(label) === "biaya_operasional";
+
+export interface RencanaBeban {
+  section: SectionBeban;
+  /**
+   * Calon kategori operasional, BERURUT — yang pertama berpeta dipakai
+   * (Management Fee). Tak pernah kosong: NULL berarti "belum berkategori"
+   * (0024) dan membuat pendapatan dibaca lewat tebakan keterangan titipan.
+   */
+  kategoriOperasional: readonly string[];
+  /** Sen bulat POSITIF — SELALU dari nominal mutasi, tak pernah dari isian kedua. */
+  amountSen: number;
+}
+
+/**
+ * Vonis + rencana baris Biaya/Pendapatan untuk satu mutasi. Nominal Biaya
+ * DITURUNKAN dari nominal mutasi (bertanda) — tak ada jalan memasukkan angka
+ * kedua. `null` kategori = bukan urusan fungsi ini.
+ */
+export function rencanaBeban(m: {
+  categoryLabel: string | null | undefined;
+  operationalCategory: string | null | undefined;
+  /** Nominal mutasi BERTANDA, rupiah (debet > 0, kredit < 0). */
+  amount: number;
+}): { ok: true; rencana: RencanaBeban } | { ok: false; error: string } {
+  const k = kategoriBeban(m.categoryLabel);
+  const label = m.categoryLabel ?? "";
+  const section = sectionBeban(label);
+  if (k === null || section === null) return { ok: false, error: `“${label || "—"}” bukan kategori biaya atau pendapatan lain-lain.` };
+  const sen = rupiahKeSen(m.amount);
+  if (sen === null || sen === 0) return { ok: false, error: "Nominal tak valid — angka rupiah bukan nol, paling banyak dua desimal." };
+  if (section === "pendapatan_lain" ? sen < 0 : sen > 0) {
+    return {
+      ok: false,
+      error:
+        section === "pendapatan_lain"
+          ? "Pendapatan Lain-Lain adalah kas MASUK — pilih jenis Debet."
+          : `${label} adalah kas KELUAR — pilih jenis Kredit.`,
+    };
+  }
+  const op = (m.operationalCategory ?? "").trim();
+  if (k === "biaya_operasional") {
+    if (!(KATEGORI_OPERASIONAL as readonly string[]).includes(op)) {
+      return { ok: false, error: "Biaya Operasional wajib memilih jenis biaya (kategori operasional) — dari situlah posnya dipetakan." };
+    }
+    return { ok: true, rencana: { section, kategoriOperasional: [op], amountSen: Math.abs(sen) } };
+  }
+  if (op !== "") {
+    return { ok: false, error: `“${label}” tidak memakai jenis biaya — posnya sudah ditetapkan. Kosongkan pilihan itu.` };
+  }
+  return {
+    ok: true,
+    rencana: {
+      section,
+      kategoriOperasional: k === "pendapatan_lain" ? [KATEGORI_OP_PENDAPATAN_LAIN] : KATEGORI_OP_MANAGEMENT_FEE,
+      amountSen: Math.abs(sen),
+    },
+  };
 }

@@ -1,10 +1,10 @@
 import { qScoped } from "./db";
 import { getUsulanRekeningKoran, PREDIKAT_KAS_DICOCOKKAN } from "./cocok-bank-queries";
-import { LABEL_TANDA, type AturanCocok } from "./cocok-bank-model";
+import { LABEL_ALASAN_SETORAN, LABEL_TANDA, type AturanCocok, type KandidatSetoran } from "./cocok-bank-model";
 import { KATEGORI_PENAMPUNG } from "./keuangan-sisi-kas";
 import { statusBarisImpor, type StatusBarisImpor } from "./klasifikasi-model";
 import { teksKeSen } from "./pihak-lawan-model";
-import { PREDIKAT_REKENING_BCA } from "./impor-bank-queries";
+import { PREDIKAT_REKENING_BANK } from "./tutup-bulan-queries";
 import type { ScopedUnitId } from "./scope";
 
 /**
@@ -38,6 +38,18 @@ export interface BarisImporTampil {
   tanda: string | null;
   /** Baris kas parkir yang masih bisa dipindahkan (status diparkir). */
   parkirId: string | null;
+  /**
+   * K6 U7 — usulan pasangan "Setoran ke Bank" dari setoran Kas Besar untuk
+   * kredit SETORAN JEMPUTAN yang masih terbuka (`terimaUsulanSetoran`).
+   */
+  setoran: SetoranTampil | null;
+}
+
+export interface SetoranTampil {
+  kandidat: KandidatSetoran[];
+  otomatis: boolean;
+  /** Mengapa tidak dicocokkan otomatis (`LABEL_ALASAN_SETORAN`); `null` bila otomatis. */
+  alasan: string | null;
 }
 
 export interface BukuTanpaPasangan {
@@ -56,7 +68,11 @@ export interface RekeningBulan {
   rekeningKoranId: string | null;
 }
 
-/** Rekening BCA aktif unit + rekening koran AKTIF bulan itu (bila sudah diunggah). $1 unit, $2 'YYYY-MM-01'. */
+/**
+ * Rekening BANK aktif unit (semua bank — K6 U11, R31: pencocokan & tutup bulan
+ * berlaku untuk semua bank) + rekening koran AKTIF bulan itu (bila sudah ada).
+ * $1 unit, $2 'YYYY-MM-01'.
+ */
 export async function getRekeningBulan(unit: ScopedUnitId, periode: string): Promise<RekeningBulan[]> {
   return qScoped<RekeningBulan>(
     unit,
@@ -65,7 +81,7 @@ export async function getRekeningBulan(unit: ScopedUnitId, periode: string): Pro
               WHERE r.unit_id = cash_account.unit_id AND r.account_id = cash_account.id AND r.status = 'aktif'
                 AND r.periode = $2::date) AS "rekeningKoranId"
        FROM app.cash_account
-      WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BCA}
+      WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BANK}
       ORDER BY nama`,
     [unit, `${periode}-01`],
   );
@@ -144,6 +160,14 @@ export async function getBarisImporBulan(unit: ScopedUnitId, rekening: readonly 
                 }),
           tanda: status === "terbuka" && us?.tanda ? LABEL_TANDA[us.tanda] : null,
           parkirId: status === "diparkir" ? (p?.parkirId ?? null) : null,
+          setoran:
+            status === "terbuka" && us?.setoran
+              ? {
+                  kandidat: us.setoran.kandidat,
+                  otomatis: us.setoran.otomatis,
+                  alasan: us.setoran.alasan === null ? null : LABEL_ALASAN_SETORAN[us.setoran.alasan],
+                }
+              : null,
         });
       }
       return out;

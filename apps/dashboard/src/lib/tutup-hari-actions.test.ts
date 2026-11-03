@@ -12,6 +12,8 @@ const h = vi.hoisted(() => {
   const state = {
     rinci: { penuh: 0 as number | null, dinilai: 0 as number | null, koreksiSusulan: 0 as number | null },
     status: "open" as string | null,
+    /** Galat yang dilempar `bentukUlangHari` tiruan; `null` = berhasil. */
+    galatBukuBesar: null as Error | null,
   };
   const client = {
     query: async (sql: string, params: unknown[] = []) => {
@@ -31,6 +33,13 @@ vi.mock("./db", () => ({ pool: { connect: h.connect }, qScoped: vi.fn(async () =
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("./hari-buku-queries", () => ({ kunciHariEksklusif: vi.fn(async () => {}) }));
 vi.mock("./keuangan-laporan-queries", () => ({ hitungLangkahHarianRinci: vi.fn(async () => h.state.rinci) }));
+vi.mock("./buku-besar-tulis", () => ({
+  bentukUlangHari: vi.fn(async (_c: unknown, unit: number, tanggal: string) => {
+    h.log.push({ sql: "-- bentukUlangHari", params: [unit, tanggal] });
+    if (h.state.galatBukuBesar) throw h.state.galatBukuBesar;
+    return { tanggal, mode: "langsung", backfill: false, ditulis: 3, dihapus: 0, tetap: 0, koreksi: null, temuan: [] };
+  }),
+}));
 vi.mock("./scope", () => ({
   getDataScope: vi.fn(async () => ({
     userId: 7,
@@ -50,6 +59,7 @@ beforeEach(() => {
   h.log.length = 0;
   h.state.status = "open";
   h.state.rinci = { penuh: 0, dinilai: 0, koreksiSusulan: 0 };
+  h.state.galatBukuBesar = null;
 });
 
 describe("tutupHari — koreksi susulan dipisah dari selisih yang dinilai (KTD15)", () => {
@@ -84,5 +94,64 @@ describe("tutupHari — koreksi susulan dipisah dari selisih yang dinilai (KTD15
     const r = await tutupHari({ ...masukan, date: "2026-10-15" });
     expect(r).toEqual({ ok: true, tier: "within_tolerance" });
     expect(h.log.some((l) => /Mutasi Belum Teridentifikasi|parkir_sumber_id|tutup_bulan/.test(l.sql))).toBe(false);
+  });
+});
+
+describe("tutupHari — jurnal buku besar hari itu dibentuk ulang (K6 U8/U9; KTD3 pemicu 2)", () => {
+  const idx = (pola: RegExp) => h.log.findIndex((l) => pola.test(l.sql));
+  const audit = () => h.log.filter((l) => l.sql.includes("INSERT INTO app.audit_log"));
+
+  it("🔴 dibentuk SESUDAH day_close ditulis, di transaksi yang sama, sebelum COMMIT", async () => {
+    const r = await tutupHari(masukan);
+    expect(r).toEqual({ ok: true, tier: "within_tolerance" });
+    const upd = idx(/UPDATE app\.day_close/);
+    const bentuk = idx(/bentukUlangHari/);
+    const commit = idx(/^COMMIT$/);
+    expect(upd).toBeGreaterThan(-1);
+    expect(bentuk).toBeGreaterThan(upd);
+    expect(commit).toBeGreaterThan(bentuk);
+    expect(h.log[bentuk]!.params).toEqual([h.BK.unit_id, masukan.date]);
+    expect(audit().some((a) => String(a.params[2]).includes("gagal"))).toBe(false);
+  });
+
+  it("🔴 bentukUlangHari GAGAL ⇒ tutup hari TETAP berhasil; kerja buku besar digulung ke savepoint dan galatnya diaudit", async () => {
+    h.state.galatBukuBesar = new Error("harga beli belum diisi");
+    const r = await tutupHari(masukan);
+    expect(r).toEqual({ ok: true, tier: "within_tolerance" });
+    const sp = idx(/^SAVEPOINT /);
+    const bentuk = idx(/bentukUlangHari/);
+    const balik = idx(/^ROLLBACK TO SAVEPOINT /);
+    const commit = idx(/^COMMIT$/);
+    expect(sp).toBeGreaterThan(-1);
+    expect(sp).toBeLessThan(bentuk);
+    expect(balik).toBeGreaterThan(bentuk);
+    expect(commit).toBeGreaterThan(balik);
+    // Tidak ada ROLLBACK seluruh transaksi: penutupan hari tersimpan.
+    expect(h.log.some((l) => l.sql === "ROLLBACK")).toBe(false);
+    const gagal = audit().find((a) => a.params[2] === "buku_besar.bentuk_ulang_gagal");
+    expect(gagal, "galat buku besar tercatat di audit_log").toBeDefined();
+    expect(gagal!.params[3]).toBe(`${h.BK.unit_id}/${masukan.date}`);
+    expect(JSON.parse(String(gagal!.params[4]))).toMatchObject({ galat: "harga beli belum diisi", pemicu: "tutup_hari" });
+    // Audit ditulis SESUDAH savepoint digulung — kalau sebelum, ia ikut tergulung.
+    expect(h.log.indexOf(gagal!)).toBeGreaterThan(balik);
+  });
+
+  it("pemeriksaan seimbang tunda dipaksa di dalam savepoint — jurnal tak seimbang tak menggagalkan COMMIT tutup hari", async () => {
+    await tutupHari(masukan);
+    const cek = idx(/^SET CONSTRAINTS .*jurnal_seimbang.* IMMEDIATE$/);
+    expect(cek).toBeGreaterThan(idx(/bentukUlangHari/));
+    expect(cek).toBeLessThan(idx(/^RELEASE SAVEPOINT /));
+  });
+
+  it("hari sebelum buku besar dimulai (1 Okt 2026) tidak dibentuk", async () => {
+    const r = await tutupHari({ ...masukan, date: "2026-09-29" });
+    expect(r.ok).toBe(true);
+    expect(idx(/bentukUlangHari/)).toBe(-1);
+  });
+
+  it("tutup hari yang DITOLAK tidak membentuk buku besar", async () => {
+    h.state.rinci = { penuh: null, dinilai: null, koreksiSusulan: null };
+    await tutupHari(masukan);
+    expect(idx(/bentukUlangHari/)).toBe(-1);
   });
 });

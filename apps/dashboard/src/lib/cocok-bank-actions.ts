@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { pool, qScoped } from "./db";
 import { senKeTeks } from "./antar-unit-model";
-import { periksaKelompokManual } from "./cocok-bank-model";
-import { bacaKasId, bacaMutasiId, SQL_PENEBUSAN_COCOK } from "./cocok-bank-queries";
-import { jalankanCocokOtomatis, tulisKelompok } from "./cocok-bank-tulis";
+import { periksaKelompokManual, usulkanSemua } from "./cocok-bank-model";
+import { bacaKasId, bacaKonteksCocok, bacaMutasiId, SQL_PENEBUSAN_COCOK } from "./cocok-bank-queries";
+import { jalankanCocokOtomatis, tulisKelompok, tulisPasanganJemputan } from "./cocok-bank-tulis";
 import { hariBukuTerkunci } from "./hari-buku-queries";
 import { tulisBalikPasangan } from "./antar-unit-tulis";
 import {
@@ -28,6 +28,8 @@ import { UUID_RE } from "./validasi";
  *   · cocokkan otomatis → Keuangan (`canCocokkanBank`) — juga dijalankan
  *     sendiri sesudah unggah rekening koran yang berhasil (`unggahRekeningKoran`)
  *   · cocokkan manual   → Keuangan (`canCocokkanBank`), kelompok N:M Σ = 0
+ *   · terima usulan setoran jemputan → Keuangan (`canCocokkanBank`), K6 U7:
+ *     pasangan Setoran ke Bank untuk kandidat yang DIUSULKAN mesin cocok
  *   · batalkan cocok    → HoF (`canBatalkanCocokBank`, R31)
  *
  * Pola `tarikRekeningKoran` / `batalkanPenebusan`: gerbang (`requireUnit` +
@@ -178,6 +180,85 @@ export async function cocokkanManual(input: CocokManualInput): Promise<CocokManu
     await batal(client);
     if (tabrakanAnggota(e)) return { ok: false, error: "Ada baris yang baru saja dicocokkan bersamaan — muat ulang halaman." };
     return { ok: false, error: e instanceof Error ? e.message : "Gagal mencocokkan." };
+  } finally {
+    client.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Terima usulan setoran jemputan (K6 U7; R31, KTD8)
+// ---------------------------------------------------------------------------
+
+export interface TerimaUsulanSetoranInput {
+  code: string;
+  mutasiId: string;
+  /** Baris setoran Kas Besar satu kandidat usulan — harus PERSIS salah satu kandidat. */
+  kasIds: string[];
+}
+
+/**
+ * Kredit SETORAN JEMPUTAN yang tak otomatis (pembaca AI / ketikan, beberapa
+ * kandidat, diperebutkan): Keuangan memilih satu kandidat usulan, sistem
+ * menulis pasangan Setoran ke Bank + kelompok — vonis yang SAMA dengan
+ * otomatis, dihitung ULANG di server; pilihan di luar usulan ditolak.
+ */
+export async function terimaUsulanSetoran(input: TerimaUsulanSetoranInput): Promise<CocokManualResult> {
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(input.code);
+  const ctx = { role: scope.role, email: scope.email };
+  if (!canCocokkanBank(ctx)) return { ok: false, error: pesanTakBolehInput(ctx) };
+  const kasIds = input.kasIds ?? [];
+  if (!UUID_RE.test(input.mutasiId) || kasIds.length === 0 || !kasIds.every((x) => UUID_RE.test(x)) || new Set(kasIds).size !== kasIds.length) {
+    return { ok: false, error: "Usulan tak dikenali — muat ulang halaman." };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+
+    const awal = await bacaMutasiId(client, unit.unit_id, [input.mutasiId]);
+    if (awal.length !== 1) {
+      await batal(client);
+      return { ok: false, error: "Baris rekening koran tak ditemukan di unit ini — muat ulang halaman." };
+    }
+    await client.query(
+      `SELECT id FROM app.rekening_koran
+        WHERE unit_id = $1 AND id = $2::uuid
+        FOR NO KEY UPDATE`,
+      [unit.unit_id, awal[0]!.rekeningKoranId],
+    );
+    const mutasi = await bacaMutasiId(client, unit.unit_id, [input.mutasiId]);
+    const ktx = await bacaKonteksCocok(client, unit.unit_id, mutasi);
+    const u = usulkanSemua(mutasi, ktx)[0];
+    const kunci = [...kasIds].sort().join(",");
+    const kandidat = u?.setoran?.kandidat.find((k) => k.kasIds.join(",") === kunci);
+    if (!u || !kandidat || !ktx.akunKasBesar) {
+      await batal(client);
+      return { ok: false, error: "Usulan ini sudah tidak berlaku (baris sudah dicocokkan atau setorannya berubah) — muat ulang halaman." };
+    }
+
+    const aktor = { userId: scope.userId, email: scope.email };
+    const p = await tulisPasanganJemputan(client, {
+      unitId: unit.unit_id,
+      unitCode: unit.code,
+      cara: "manual",
+      aktor,
+      mutasi: mutasi[0]!,
+      akunKasBesar: ktx.akunKasBesar,
+      kandidat,
+    });
+    if (!p.ok) {
+      await batal(client);
+      return { ok: false, error: p.error };
+    }
+    await client.query("COMMIT");
+    revalidatePath(halaman(unit.code));
+    return { ok: true, cocokId: p.cocokId, pesan: `Setoran ke Bank dicatat dan dicocokkan (${kandidat.kasIds.length} setoran Kas Besar).` };
+  } catch (e) {
+    await batal(client);
+    if (tabrakanAnggota(e)) return { ok: false, error: "Ada baris yang baru saja dicocokkan bersamaan — muat ulang halaman." };
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menerima usulan." };
   } finally {
     client.release();
   }

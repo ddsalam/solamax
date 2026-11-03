@@ -1,5 +1,5 @@
 import { isTitipan } from "./titipan-bright";
-import { jenisAkun } from "./keuangan-reklas";
+import { jenisAkun, kodePos } from "./keuangan-reklas";
 /**
  * SATU tempat yang menggabungkan seluruh sumber BEBAN untuk Income Statement.
  *
@@ -131,6 +131,21 @@ export function bebanPerAkun(baris: readonly BarisBeban[]): Map<string | null, n
 }
 
 /**
+ * Total per POS (rencana K6 U2): kode lama dan pos barunya dijumlah bersama —
+ * 6-2400 lama dan 5300 baru duduk di kunci "5300" (`KODE_LAMA_POS`, cermin
+ * 0056). Seperti {@link bebanPerAkun}, tak ada yang dibuang: akun kosong tetap
+ * di kunci `null`, kode tak dikenal tetap di kodenya sendiri.
+ */
+export function bebanPerPos(baris: readonly BarisBeban[]): Map<string | null, number> {
+  const out = new Map<string | null, number>();
+  for (const b of baris) {
+    const k = kodePos(b.accountingAccount) ?? b.accountingAccount;
+    out.set(k, (out.get(k) ?? 0) + b.amountRp);
+  }
+  return out;
+}
+
+/**
  * Sumbangan tiap sumber — untuk laporan DAN untuk penjagaan.
  *
  * Kalau satu sumber menyumbang nol pada periode yang semestinya berisi, itu
@@ -188,7 +203,9 @@ export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   pindahDana: number;
 } {
   // §10.29 — jenis akun EFEKTIF menentukan rumah baris. Baris yang tak pernah
-  // direklasifikasi jatuh ke perilaku lama (pengeluaran = beban).
+  // direklasifikasi jatuh ke perilaku lama (pengeluaran = beban). R26: baris
+  // pendapatan lain berkode beban (6-9900 dari pintu Finance) tetap pendapatan —
+  // aturannya di `jenisAkun`, bukan di sini.
   const jenis = (r: BarisManualLaporan) => jenisAkun(r.accountingAccount, r.section);
   const lain = manual.filter((r) => r.section === "pendapatan_lain" && !r.void);
   const lainBukanTitipan = lain.filter((r) => !isTitipan(r));

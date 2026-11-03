@@ -16,6 +16,12 @@ import type { ScopedUnitId } from "./scope";
  * Auth.js).
  *
  * ⛔ TIDAK menulis `cash_ledger` (KTD6).
+ *
+ * U10 (rencana 2026-11-02; R30): bacaan AI / input manual bank lain disimpan
+ * `asal = { sumber, status: 'menunggu' }` — baris ikut berstatus `menunggu`
+ * (FK cermin 0051 menuntut `rk_status` = status induknya), jadi tak ikut
+ * pencocokan sampai HoF mengonfirmasi. Tanpa `asal` (BCA) SQL & parameternya
+ * tidak berubah: kolom `status`/`sumber` jatuh ke DEFAULT 'aktif'/'bca'.
  */
 export async function simpanRekeningKoran(
   c: PoolClient,
@@ -29,15 +35,17 @@ export async function simpanRekeningKoran(
     /** Per baris `rk.rows` — `tentukanHariBuku(...).status === "pra-cut-over"`. */
     pra: readonly boolean[];
     userId: number;
+    /** U10 — bacaan bank lain yang menunggu konfirmasi HoF. */
+    asal?: { sumber: "ai" | "manual"; status: "menunggu" };
   },
 ): Promise<string> {
-  const { rk } = m;
+  const { rk, asal } = m;
   if (m.pra.length !== rk.rows.length) throw new Error("Penanda pra-cut-over tidak sepanjang baris rekening koran.");
   const ins = await c.query<{ id: string }>(
     `INSERT INTO app.rekening_koran
        (unit_id, account_id, periode, saldo_awal, saldo_akhir, total_cr, n_cr, total_db, n_db,
-        file_sha256, uploaded_by_user_id)
-     VALUES ($1, $2::uuid, $3::date, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric, $9, $10, $11)
+        file_sha256, uploaded_by_user_id${asal ? ", status, sumber" : ""})
+     VALUES ($1, $2::uuid, $3::date, $4::numeric, $5::numeric, $6::numeric, $7, $8::numeric, $9, $10, $11${asal ? ", $12, $13" : ""})
      RETURNING id::text AS id`,
     [
       m.unitId,
@@ -51,6 +59,7 @@ export async function simpanRekeningKoran(
       rk.footer.nDb,
       m.sha256,
       m.userId,
+      ...(asal ? [asal.status, asal.sumber] : []),
     ],
   );
   const rekeningKoranId = ins.rows[0]?.id;
@@ -60,8 +69,8 @@ export async function simpanRekeningKoran(
     await c.query(
       `INSERT INTO app.mutasi_bank
          (unit_id, rekening_koran_id, account_id, tanggal_bank, urutan, keterangan, amount,
-          saldo_setelah, so, dok_ref, pra_cutover)
-       SELECT $1, $2::uuid, $3::uuid, t.tanggal, t.urutan, t.keterangan, t.amount, t.saldo, t.so, t.dok, t.pra
+          saldo_setelah, so, dok_ref, pra_cutover${asal ? ", rk_status" : ""})
+       SELECT $1, $2::uuid, $3::uuid, t.tanggal, t.urutan, t.keterangan, t.amount, t.saldo, t.so, t.dok, t.pra${asal ? ", $12" : ""}
          FROM unnest($4::date[], $5::int[], $6::text[], $7::numeric[], $8::numeric[], $9::text[], $10::text[], $11::bool[])
               AS t(tanggal, urutan, keterangan, amount, saldo, so, dok, pra)`,
       [
@@ -76,6 +85,7 @@ export async function simpanRekeningKoran(
         rk.rows.map((r) => r.so),
         rk.rows.map((r) => r.dokRef),
         [...m.pra],
+        ...(asal ? [asal.status] : []),
       ],
     );
   }

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
 import { pool } from "./db";
-import { SQL_EDC_PER_SHIFT } from "./edc-shift-queries";
-import { keteranganBuku, statusBaris, type CekSlip } from "./edc-shift-model";
+import { vonisCekSlip, type VonisCekSlip } from "./edc-shift-model";
+import { brutoSekarang, postingPenjualanEdc } from "./edc-shift-tulis";
 import {
   alasanTakBolehInput,
   canCekSlipEdc,
@@ -20,11 +20,33 @@ import { getDataScope, type ScopedUnit } from "./scope";
  * kode kartu, dan status cek. Semuanya dihitung ulang DI DALAM transaksi yang
  * menulis — nominal yang dibukukan adalah angka yang dibaca server saat itu,
  * bukan angka yang tampil di layar beberapa menit sebelumnya.
+ *
+ * Rencana K6 U6 (R15, R16, KTD7): pembukuannya hidup di `edc-shift-tulis.ts`
+ * dan dipanggil DUA jalur — `cekSlipEdc` (otomatis bila slip = EasyMax dan
+ * kunci itu tak pernah tercatat beda) dan `setujuiPenjualanEdc` (Finance,
+ * untuk yang ditahan).
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export type EdcShiftResult = { ok: true; n?: number } | { ok: false; error: string };
+export type EdcShiftResult =
+  | {
+      ok: true;
+      n?: number;
+      /** Hanya `cekSlipEdc`: hasil yang dilihat pengawas (R15, R16). */
+      posting?: VonisCekSlip;
+      /** Ditahan karena penjaga inti tulis (hari tertutup, akun belum ada, …) — bukan karena slip. */
+      alasanTahan?: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * KTD7 — SEMUA cek untuk kunci yang sama, TERMASUK yang sudah dibatalkan:
+ * cek ulang tidak menghapus jejak bahwa kunci ini pernah tercatat beda.
+ */
+const SQL_RIWAYAT_CEK = `SELECT k.slip_rp::float8 AS "slipRp", k.easymax_rp::float8 AS "easymaxRp"
+         FROM app.edc_shift_cek k
+        WHERE k.unit_id = $1 AND k.business_date = $2::date AND k.cshift = $3 AND k.acquirer = $4`;
 
 async function mulai(client: PoolClient, unit: ScopedUnit): Promise<void> {
   await client.query("BEGIN");
@@ -38,27 +60,6 @@ async function gagal(client: PoolClient, e: unknown, pesan: string): Promise<Edc
     /* abaikan */
   }
   return { ok: false, error: e instanceof Error ? e.message : pesan };
-}
-
-/** Bruto EasyMax SEKARANG untuk (tanggal, shift, acquirer) — lewat peta kartu. */
-async function brutoSekarang(
-  client: PoolClient,
-  unit: ScopedUnit,
-  date: string,
-  cshift: string,
-  acquirer: string,
-): Promise<number> {
-  const [rows, peta] = await Promise.all([
-    client.query<{ cshift: string; ckdkartu: string; rp: number }>(SQL_EDC_PER_SHIFT, [unit.unit_id, date]),
-    client.query<{ ckdkartu: string; acquirer: string }>(
-      `SELECT ckdkartu, acquirer FROM app.edc_kartu_acquirer WHERE unit_id = $1`,
-      [unit.unit_id],
-    ),
-  ]);
-  const acq = new Map(peta.rows.map((p) => [p.ckdkartu, p.acquirer]));
-  return rows.rows
-    .filter((r) => r.cshift === cshift && acq.get(r.ckdkartu) === acquirer)
-    .reduce((s, r) => s + Number(r.rp), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ export async function cekSlipEdc(input: {
   const client = await pool.connect();
   try {
     await mulai(client, unit);
-    const bruto = await brutoSekarang(client, unit, input.date, input.cshift, input.acquirer);
+    const bruto = await brutoSekarang(client, unit.unit_id, input.date, input.cshift, input.acquirer);
     if (bruto <= 0) {
       await client.query("ROLLBACK");
       return { ok: false, error: "Tidak ada penjualan EDC untuk shift & bank ini di EasyMax." };
@@ -166,9 +167,17 @@ export async function cekSlipEdc(input: {
       await client.query("ROLLBACK");
       return {
         ok: false,
-        error: "Shift ini sudah dibukukan Keuangan. Minta Keuangan membatalkan barisnya dulu bila perlu dicocokkan ulang.",
+        error:
+          "Shift ini sudah terposting ke EDC Penampungan. Bila perlu dicocokkan ulang, minta Keuangan membatalkan " +
+          "baris Penjualan EDC-nya di Buku Kas dulu.",
       };
     }
+    const riwayat = await client.query<{ slipRp: number; easymaxRp: number }>(SQL_RIWAYAT_CEK, [
+      unit.unit_id,
+      input.date,
+      input.cshift,
+      input.acquirer,
+    ]);
     // Mencocokkan ulang = batalkan cek lama, tulis yang baru. Riwayat tetap utuh.
     if (aktif.rows[0]) {
       await client.query(
@@ -177,10 +186,11 @@ export async function cekSlipEdc(input: {
         [scope.userId, aktif.rows[0].id, unit.unit_id],
       );
     }
-    await client.query(
+    const baru = await client.query<{ id: string }>(
       `INSERT INTO app.edc_shift_cek
          (unit_id, business_date, cshift, acquirer, easymax_rp, slip_rp, catatan, checked_by_user_id)
-       VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8)`,
+       VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8)
+       RETURNING id::text AS id`,
       [
         unit.unit_id,
         input.date,
@@ -192,9 +202,29 @@ export async function cekSlipEdc(input: {
         scope.userId,
       ],
     );
+    // R15/R16/KTD7 — slip = EasyMax dan kunci ini tak pernah tercatat beda ⇒
+    // langsung terposting, dalam transaksi yang sama dengan ceknya. Penjaga inti
+    // tulis yang menolak (hari tertutup, akun belum ada) TIDAK membatalkan cek:
+    // ceknya tersimpan dan shift itu ditahan untuk Finance, dengan alasannya.
+    let posting: VonisCekSlip = vonisCekSlip({ slipRp: input.slipRp, easymaxRp: bruto, riwayat: riwayat.rows });
+    let alasanTahan: string | undefined;
+    if (posting === "terposting") {
+      const p = await postingPenjualanEdc(client, {
+        unitId: unit.unit_id,
+        date: input.date,
+        cekId: baru.rows[0]?.id ?? "",
+        aktorId: scope.userId,
+        reasonCode: null,
+      });
+      if (!p.ok) {
+        posting = "ditahan";
+        alasanTahan = p.error;
+      }
+    }
     await client.query("COMMIT");
     revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
-    return { ok: true };
+    revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
+    return alasanTahan === undefined ? { ok: true, posting } : { ok: true, posting, alasanTahan };
   } catch (e) {
     return gagal(client, e, "Gagal menyimpan cek slip.");
   } finally {
@@ -203,7 +233,7 @@ export async function cekSlipEdc(input: {
 }
 
 // ---------------------------------------------------------------------------
-// 3 · Persetujuan Keuangan → Debet EDC Penampungan
+// 3 · Keputusan Keuangan untuk yang DITAHAN → Debet EDC Penampungan
 // ---------------------------------------------------------------------------
 
 export async function setujuiPenjualanEdc(input: {
@@ -223,52 +253,10 @@ export async function setujuiPenjualanEdc(input: {
   try {
     await mulai(client, unit);
 
-    const akun = await client.query<{ id: string; cutOver: string | null }>(
-      `SELECT a.id::text AS id,
-              (SELECT to_char(l.business_date,'YYYY-MM-DD') FROM app.cash_ledger l
-                WHERE l.account_id = a.id AND l.saldo_awal AND NOT l.void) AS "cutOver"
-         FROM app.cash_account a
-        WHERE a.unit_id = $1 AND a.kind = 'edc_penampungan' AND a.active
-        ORDER BY a.created_at
-        LIMIT 1`,
-      [unit.unit_id],
-    );
-    const tujuan = akun.rows[0];
-    if (!tujuan) {
-      await client.query("ROLLBACK");
-      return {
-        ok: false,
-        error: "Unit ini belum punya akun EDC Penampungan aktif — daftarkan di Kelola akun kas.",
-      };
-    }
-    if (tujuan.cutOver !== null && input.date < tujuan.cutOver) {
-      await client.query("ROLLBACK");
-      return {
-        ok: false,
-        error: `Tanggal ini mendahului saldo pembuka EDC Penampungan (${tujuan.cutOver}).`,
-      };
-    }
-
-    const kode = await client.query<{ code: string }>(
-      `SELECT code FROM app.reason_code WHERE applies_to = 'closing'`,
-    );
-    const kodeSah = new Set(kode.rows.map((r) => r.code));
-
     let n = 0;
     for (const p of input.pilihan) {
-      const r = await client.query<{
-        id: string;
-        cshift: string;
-        acquirer: string;
-        easymaxRp: string;
-        slipRp: string;
-        checkedByUserId: number;
-        dibukukan: boolean;
-      }>(
-        `SELECT k.id::text AS id, k.cshift, k.acquirer,
-                k.easymax_rp::text AS "easymaxRp", k.slip_rp::text AS "slipRp",
-                k.checked_by_user_id AS "checkedByUserId",
-                EXISTS (SELECT 1 FROM app.cash_ledger l WHERE l.edc_shift_cek_id = k.id AND NOT l.void) AS dibukukan
+      const r = await client.query<{ cshift: string; acquirer: string; checkedByUserId: number }>(
+        `SELECT k.cshift, k.acquirer, k.checked_by_user_id AS "checkedByUserId"
            FROM app.edc_shift_cek k
           WHERE k.id = $1::uuid AND k.unit_id = $2 AND k.business_date = $3::date AND NOT k.void
           FOR UPDATE`,
@@ -279,7 +267,8 @@ export async function setujuiPenjualanEdc(input: {
         await client.query("ROLLBACK");
         return { ok: false, error: "Sebagian cek tak ditemukan lagi — muat ulang halaman." };
       }
-      // ⛔ Yang mencocokkan tidak menyetujui cek yang sama (§10.25).
+      // ⛔ Yang mencocokkan tidak menyetujui cek yang sama (§10.25). Hanya di
+      // jalur ini: posting otomatis bukan persetujuan siapa pun (R15).
       if (k.checkedByUserId === scope.userId) {
         await client.query("ROLLBACK");
         return {
@@ -287,61 +276,19 @@ export async function setujuiPenjualanEdc(input: {
           error: `Shift ${k.cshift} ${k.acquirer} dicocokkan oleh akun Anda sendiri — persetujuannya harus orang lain.`,
         };
       }
-      const bruto = await brutoSekarang(client, unit, input.date, k.cshift, k.acquirer);
-      const cek: CekSlip = {
-        id: k.id,
-        cshift: k.cshift,
-        acquirer: k.acquirer,
-        easymaxRp: Number(k.easymaxRp),
-        slipRp: Number(k.slipRp),
-        checkedByUserId: k.checkedByUserId,
-        checkedByEmail: null,
-        checkedAt: "",
-        reasonCode: null,
-        dibukukan: k.dibukukan,
-        adaFoto: false,
-      };
-      const status = statusBaris(bruto, cek);
-      if (status === "dibukukan") continue; // idempoten: dua klik tidak membukukan dua kali
-      if (status === "berubah_sesudah_dicek") {
+      const hasil = await postingPenjualanEdc(client, {
+        unitId: unit.unit_id,
+        date: input.date,
+        cekId: p.cekId,
+        aktorId: scope.userId,
+        reasonCode: p.reasonCode,
+        dorongMaju: true,
+      });
+      if (!hasil.ok) {
         await client.query("ROLLBACK");
-        return {
-          ok: false,
-          error: `Data EasyMax shift ${k.cshift} ${k.acquirer} berubah sesudah dicocokkan pengawas — minta pengawas mencocokkan ulang.`,
-        };
+        return { ok: false, error: hasil.error };
       }
-      let reason: string | null = null;
-      if (status === "selisih") {
-        reason = p.reasonCode;
-        if (reason === null || !kodeSah.has(reason)) {
-          await client.query("ROLLBACK");
-          return {
-            ok: false,
-            error: `Shift ${k.cshift} ${k.acquirer} berselisih dengan slip — pilih kode alasannya.`,
-          };
-        }
-        await client.query(
-          `UPDATE app.edc_shift_cek SET reason_code = $1, reason_applies_to = 'closing'
-            WHERE id = $2::uuid AND unit_id = $3`,
-          [reason, k.id, unit.unit_id],
-        );
-      }
-      await client.query(
-        `INSERT INTO app.cash_ledger
-           (unit_id, account_id, business_date, keterangan, jenis,
-            category_side, category_label, amount, created_by_user_id, edc_shift_cek_id)
-         VALUES ($1, $2::uuid, $3::date, $4, 'debet', 'debet', 'Penjualan EDC', $5, $6, $7::uuid)`,
-        [
-          unit.unit_id,
-          tujuan.id,
-          input.date,
-          keteranganBuku(input.date, k.cshift, k.acquirer),
-          cek.easymaxRp,
-          scope.userId,
-          k.id,
-        ],
-      );
-      n += 1;
+      if (hasil.posting === "baru") n += 1; // idempoten: yang sudah terposting tidak dihitung
     }
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);

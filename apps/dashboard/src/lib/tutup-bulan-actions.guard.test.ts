@@ -70,6 +70,19 @@ describe("tutupBulan — penjagaan yang tak boleh hilang", () => {
     expect(HAL).toMatch(/const vonis = periksaTutupBulan\(bahan\)/);
   });
 
+  it("🔴 K6 U11 R33: pembentukan ulang SEBELUM vonis, di klien transaksi; buku_besar ditulis dari vonis", () => {
+    expect(urutan(fn, "bacaBahanTutupBulan(client", "bukuBesarTerkini(client")).toBe("ok");
+    expect(urutan(fn, "bukuBesarTerkini(client", "periksaTutupBulan({ ...bahan, bukuBesar })")).toBe("ok");
+    expect(fn).toMatch(/INSERT INTO app\.tutup_bulan \(unit_id, bulan, ditutup_by_user_id, buku_besar\)/);
+    expect(fn).toMatch(/\[unit\.unit_id, `\$\{input\.bulan\}-01`, scope\.userId, vonis\.bukuBesar\]/);
+    const bb = KODE.slice(KODE.indexOf("async function bukuBesarTerkini"));
+    expect(bb).toMatch(/async function bukuBesarTerkini/);
+    // Hanya bila aktif DAN syarat K5 lolos; setiap hari bulan itu; baca ULANG sesudahnya.
+    expect(urutan(bb, "syaratK5Lolos(", "bentukUlangHari(client")).toBe("ok");
+    expect(bb).toMatch(/for \(const d of hariDalamBulan\(bulan\)\)/);
+    expect(urutan(bb, "bentukUlangHari(client", "bacaBahanBukuBesar(client")).toBe("ok");
+  });
+
   it("tanpa UPDATE/DELETE atas tutup_bulan (bulan tertutup beku)", () => {
     expect(KODE).not.toMatch(/UPDATE app\.tutup_bulan|DELETE FROM/i);
   });
@@ -82,6 +95,13 @@ describe("kunci bulan — eksklusif bagi penutup, bersama bagi jalur tulis, KUNC
     expect(f).toMatch(/\.sort\(\)/);
   });
 
+  it("🔴 pembentukan ulang buku besar memakai kunci bulan yang sama — impor, bukan salinan", () => {
+    const tulis = tanpaKomentar(readFileSync(resolve(__dirname, "buku-besar-tulis.ts"), "utf8"));
+    expect(tulis).toMatch(/import \{ KUNCI_BULAN_SQL \} from "\.\/tutup-bulan-queries"/);
+    expect(tulis).toMatch(/pg_advisory_xact_lock_shared\(\$\{KUNCI_BULAN_SQL\}\)/);
+    expect(tulis).not.toMatch(/hashtextextended\('tutup-bulan:/);
+  });
+
   it("🔴 penutup & jalur tulis memakai kunci yang SAMA (satu ekspresi)", () => {
     const n = (Q.match(/KUNCI_BULAN_SQL/g) ?? []).length;
     expect(n).toBeGreaterThanOrEqual(3); // definisi + eksklusif + bersama
@@ -89,11 +109,18 @@ describe("kunci bulan — eksklusif bagi penutup, bersama bagi jalur tulis, KUNC
     expect(Q).toMatch(/pg_advisory_xact_lock_shared\(\$\{KUNCI_BULAN_SQL\}\)/);
   });
 
-  it("rekening wajib = PREDIKAT_REKENING_BCA (rekening bank lain tak pernah dituntut)", () => {
+  it("🔴 K6 U11 R28: rekening wajib = SEMUA rekening bank aktif (PREDIKAT_REKENING_BANK), bukan BCA saja", () => {
+    expect(Q).toMatch(/export const PREDIKAT_REKENING_BANK = `kind = 'bank' AND active`/);
+    expect(Q).not.toMatch(/PREDIKAT_REKENING_BCA/);
     const rek = Q.slice(Q.indexOf("export const SQL_REKENING_WAJIB"), Q.indexOf("export const SQL_IMPOR_BULAN"));
-    expect(rek).toMatch(/\$\{PREDIKAT_REKENING_BCA\}/);
+    expect(rek).toMatch(/\$\{PREDIKAT_REKENING_BANK\}/);
+    // 'menunggu' (U10) dibaca terpisah — tak pernah dihitung sebagai rekening koran aktif.
+    expect(rek).toMatch(/r\.status = 'aktif' AND r\.periode = \$2::date\) AS "rekeningKoranAktif"/);
+    expect(rek).toMatch(/r\.status = 'menunggu' AND r\.periode = \$2::date\) AS "rekeningKoranMenunggu"/);
+    // Saldo & mutasi menurut TANGGAL EFEKTIF (tanggal asal ?? hari buku).
+    expect(rek).toMatch(/COALESCE\(l\.tanggal_asal, l\.business_date\) < \(\$2::date \+ interval '1 month'\)/);
     const buku = Q.slice(Q.indexOf("export const SQL_BUKU_BULAN"));
-    expect(buku).toMatch(/\$\{PREDIKAT_REKENING_BCA\}/);
+    expect(buku).toMatch(/\$\{PREDIKAT_REKENING_BANK\}/);
   });
 });
 
@@ -107,5 +134,49 @@ describe("halaman tutup bulan — gerbang baca & tombol", () => {
     expect(HAL).toMatch(/\{bolehTutup && tertutup === null && <TutupBulanTombol [^>]*siap=\{vonis\.boleh\}/);
     expect(TOMBOL).toMatch(/disabled=\{pending \|\| !siap\}/);
     expect(TOMBOL).not.toMatch(/canTutupBulan|isHeadOfFinance/);
+  });
+});
+
+describe("jelaskanButirTerbuka (K6 U11, R32) — saran saja, tanpa tulis, tanpa log", () => {
+  const awal = KODE.indexOf("export async function jelaskanButirTerbuka");
+  const fn = KODE.slice(awal, KODE.indexOf("export async function tutupBulan"));
+  const PENJELASAN = tanpaKomentar(readFileSync(resolve(__dirname, "tutup-bulan-penjelasan.ts"), "utf8"));
+  const KOMPONEN = tanpaKomentar(readFileSync(resolve(__dirname, "../components/keuangan/TutupBulanPenjelasan.tsx"), "utf8"));
+
+  it("penjaga ini punya SUBJEK (didefinisikan SEBELUM tutupBulan)", () => {
+    expect(awal).toBeGreaterThanOrEqual(0);
+    expect(fn).toMatch(/jelaskanButir\(/);
+  });
+
+  it("🔴 gerbang staf Keuangan / HoF SEBELUM membaca apa pun; vonis dari pembuat vonis yang sama", () => {
+    expect(urutan(fn, "bolehMintaPenjelasan(", "getBahanTutupBulan(")).toBe("ok");
+    expect(urutan(fn, "getBahanTutupBulan(", "periksaTutupBulan(")).toBe("ok");
+    expect(urutan(fn, "periksaTutupBulan(", "jelaskanButir(")).toBe("ok");
+  });
+
+  it("🔴 tak menulis apa pun & tak mengubah vonis: tanpa INSERT/UPDATE/pool.connect; hasilnya tanpa `boleh`", () => {
+    expect(fn).not.toMatch(/INSERT|UPDATE|pool\.connect|revalidatePath/);
+    expect(fn).not.toMatch(/boleh:/);
+  });
+
+  it("🔴 isi rekening koran tak pernah ke log", () => {
+    for (const src of [fn, PENJELASAN, KOMPONEN]) expect(src).not.toMatch(/console\./);
+  });
+
+  it("klien dari buatKlien (kunci ANTHROPIC_API_KEY; kosong ⇒ gagal tertutup), model claude-opus-5-5", () => {
+    expect(fn).toMatch(/buatKlien\(\)/);
+    expect(PENJELASAN).toMatch(/model: MODEL_PEMBACA/);
+  });
+
+  it("komponen tak mengimpor modul AI/DB (hanya aksi & tipe)", () => {
+    const impor = KOMPONEN.split("\n").filter((l) => l.includes('from "@/lib/tutup-bulan-penjelasan"'));
+    expect(impor.length).toBeGreaterThan(0);
+    for (const l of impor) expect(l).toMatch(/^import type /);
+    expect(KOMPONEN).not.toMatch(/@anthropic-ai|rekening-koran-ai|@\/lib\/db/);
+  });
+
+  it("halaman: tombol penjelasan hanya bagi bolehMintaPenjelasan; tombol tutup tetap canTutupBulan", () => {
+    expect(HAL).toMatch(/const bolehJelaskan = bolehMintaPenjelasan\(ctx\)/);
+    expect(HAL).toMatch(/\{bolehJelaskan && tertutup === null && !vonis\.boleh && <TutupBulanPenjelasan /);
   });
 });

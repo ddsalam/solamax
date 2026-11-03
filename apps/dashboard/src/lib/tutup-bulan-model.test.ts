@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   hariDalamBulan,
   periksaTutupBulan,
+  syaratK5Lolos,
   type BarisBukuBulan,
   type BarisImporBulan,
   type BarisParkirBulan,
   type MasukanTutupBulan,
   type RekeningWajib,
 } from "./tutup-bulan-model";
+import type { MasukanCekBukuBesar } from "./buku-besar-cek";
 
 /**
  * Vonis tutup bulan (rencana 2026-10-29 U12; R25, AE5; KTD14). Data SINTETIS.
@@ -16,6 +18,8 @@ import {
 const BCA = "11111111-1111-4111-8111-111111111111";
 const BCA2 = "22222222-2222-4222-8222-222222222222";
 const BRI = "33333333-3333-4333-8333-333333333333";
+const MANDIRI = "44444444-4444-4444-8444-444444444444";
+const BNI = "55555555-5555-4555-8555-555555555555";
 const G = "99999999-9999-4999-8999-999999999999";
 const P = "88888888-8888-4888-8888-888888888888";
 
@@ -169,7 +173,7 @@ describe("periksaTutupBulan — empat syarat R25", () => {
     expect(v.syarat.rekeningKoran.ok).toBe(true);
   });
 
-  it("🔴 rekening BRI diabaikan: baris buku & impornya di luar rekening wajib tidak dihitung", () => {
+  it("rekening di luar daftar (nonaktif / bukan bank): baris buku & impornya tidak dihitung", () => {
     const v = periksaTutupBulan(
       lengkap({ buku: [buku({ accountId: BRI })], impor: [impor({ accountId: BRI, dicocokkan: false })] }),
     );
@@ -272,5 +276,120 @@ describe("periksaTutupBulan — empat syarat R25", () => {
 
   it("bulan tak sah ⇒ melempar (pemanggil memvalidasi lebih dulu)", () => {
     expect(() => periksaTutupBulan(lengkap({ bulan: "2026-13" }))).toThrow();
+  });
+});
+
+describe("periksaTutupBulan — K6 U11: rekening koran SEMUA bank (R28, R31)", () => {
+  const mandiri = (o: Partial<RekeningWajib> = {}): RekeningWajib =>
+    rek({ id: MANDIRI, nama: "Bank Mandiri - 1400012345678", rekeningKoranAktif: false, adaMutasi: false, saldoAkhirSen: 15_000_000_00, ...o });
+  const bni = (o: Partial<RekeningWajib> = {}): RekeningWajib =>
+    rek({ id: BNI, nama: "Bank BNI - 0123456789", rekeningKoranAktif: false, adaMutasi: false, saldoAkhirSen: 0, ...o });
+
+  it("🔴 rekening Mandiri bersaldo tanpa mutasi & tanpa rekening koran ⇒ ditolak, rekeningnya DISEBUT", () => {
+    const v = periksaTutupBulan(lengkap({ rekening: [rek(), mandiri()] }));
+    expect(v.boleh).toBe(false);
+    expect(v.syarat.rekeningKoran.belumDiimpor.map((r) => r.id)).toEqual([MANDIRI]);
+    expect(v.alasan.join(" ")).toContain("Bank Mandiri - 1400012345678");
+    expect(v.alasan.join(" ")).not.toMatch(/rekening BCA/);
+  });
+
+  it("rekening bank bermutasi bulan itu (saldo akhir nol) tetap dituntut", () => {
+    const v = periksaTutupBulan(lengkap({ rekening: [rek(), mandiri({ adaMutasi: true, saldoAkhirSen: 0 })] }));
+    expect(v.syarat.rekeningKoran.belumDiimpor.map((r) => r.id)).toEqual([MANDIRI]);
+  });
+
+  it("🔴 BNI bersaldo nol tanpa mutasi bulan itu ⇒ DIKECUALIKAN, bulan boleh ditutup", () => {
+    const v = periksaTutupBulan(lengkap({ rekening: [rek(), bni()] }));
+    expect(v.boleh).toBe(true);
+    expect(v.syarat.rekeningKoran.dikecualikan.map((r) => r.id)).toEqual([BNI]);
+    expect(v.syarat.rekeningKoran.wajib.map((r) => r.id)).toEqual([BCA]);
+  });
+
+  it("keterangan saldo/mutasi tak diketahui ⇒ dianggap WAJIB (gagal tertutup)", () => {
+    const v = periksaTutupBulan(lengkap({ rekening: [rek(), rek({ id: BNI, nama: "Bank BNI - 0123456789", rekeningKoranAktif: false })] }));
+    expect(v.syarat.rekeningKoran.belumDiimpor.map((r) => r.id)).toEqual([BNI]);
+  });
+
+  it("🔴 rekening koran berstatus 'menunggu' konfirmasi HoF dihitung BELUM diimpor, dan disebut menunggu", () => {
+    const v = periksaTutupBulan(
+      lengkap({ rekening: [rek(), mandiri({ adaMutasi: true, rekeningKoranAktif: false, rekeningKoranMenunggu: true })] }),
+    );
+    expect(v.boleh).toBe(false);
+    expect(v.syarat.rekeningKoran.belumDiimpor.map((r) => r.id)).toEqual([MANDIRI]);
+    expect(v.alasan.join(" ")).toMatch(/Bank Mandiri - 1400012345678 \(menunggu konfirmasi HoF\)/);
+  });
+
+  it("🔴 baris impor terbuka & baris buku tanpa pasangan di rekening BRI yang wajib ⇒ ditolak", () => {
+    const bri = rek({ id: BRI, nama: "Bank BRI - 0011223344", adaMutasi: true, saldoAkhirSen: 50_000_000_00 });
+    const v = periksaTutupBulan(
+      lengkap({
+        rekening: [rek(), bri],
+        impor: [impor(), impor({ id: "mb", accountId: BRI, dicocokkan: false, amountSen: 19_900_000_00, keterangan: "SETORAN TUNAI" })],
+        buku: [buku({ dicocokkan: true }), buku({ id: "kb", accountId: BRI })],
+      }),
+    );
+    expect(v.syarat.rekeningKoran.imporTerbuka).toBe(1);
+    expect(v.syarat.rekeningKoran.barisTerbuka.map((m) => m.id)).toEqual(["mb"]);
+    expect(v.syarat.bukuTanpaPasangan.baris.map((b) => b.id)).toEqual(["kb"]);
+  });
+
+  it("tanggal efektif: baris BRI bertanggal asal Oktober yang dibukukan maju ke November menahan OKTOBER", () => {
+    const bri = rek({ id: BRI, nama: "Bank BRI - 0011223344", adaMutasi: true, saldoAkhirSen: 1_00 });
+    const maju = buku({ id: "kmaju", accountId: BRI, businessDate: "2026-11-03", tanggalAsal: "2026-10-30" });
+    expect(periksaTutupBulan(lengkap({ rekening: [rek(), bri], buku: [maju] })).syarat.bukuTanpaPasangan.jumlah).toBe(1);
+    const nov = periksaTutupBulan({ ...lengkap({ rekening: [rek(), bri], buku: [maju] }), bulan: "2026-11", hariTertutup: hariDalamBulan("2026-11"), impor: [] });
+    expect(nov.syarat.bukuTanpaPasangan.jumlah).toBe(0);
+  });
+});
+
+describe("K6 U11 R33 — pemeriksaan buku besar ikut vonis tutup bulan", () => {
+  const bb = (o: Partial<MasukanCekBukuBesar> = {}): MasukanCekBukuBesar => ({
+    bulan: "2026-10",
+    saldoAwal: { jumlahBaris: 2, totalSen: 0 },
+    adaTutupBukuBesar: false,
+    saldoPos: [
+      { posKode: "1111", saldoSen: 50_000_000_00 },
+      { posKode: "3100", saldoSen: -50_000_000_00 },
+    ],
+    bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_000_000_00 }],
+    kliring: [],
+    temuanHargaBeli: [],
+    ...o,
+  });
+
+  it("tanpa bahan buku besar (pembaca lama) ⇒ vonis K5 apa adanya, bagian buku besar null", () => {
+    const v = periksaTutupBulan(lengkap());
+    expect(v.boleh).toBe(true);
+    expect(v.syarat.bukuBesar).toBeNull();
+    expect(v.bukuBesar).toBe(false);
+  });
+
+  it("🔴 bulan tanpa saldo awal lengkap ⇒ cek dilewati, tutup boleh menurut K5, penanda buku_besar false", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb({ saldoAwal: { jumlahBaris: 0, totalSen: 0 } }) });
+    expect(v.boleh).toBe(true);
+    expect(v.bukuBesar).toBe(false);
+    expect(v.syarat.bukuBesar).toMatchObject({ aktif: false });
+  });
+
+  it("🔴 Covers AE9: K5 lolos tetapi sub-pos BRI ≠ rekening koran ⇒ vonis menolak, alasannya ikut", () => {
+    const v = periksaTutupBulan({
+      ...lengkap(),
+      bukuBesar: bb({ bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_250_000_00 }] }),
+    });
+    expect(v.boleh).toBe(false);
+    expect(v.alasan.join(" ")).toMatch(/1111 Bank BRI - 0011223344/);
+    expect(syaratK5Lolos(v)).toBe(true);
+  });
+
+  it("🔴 buku besar bersih & K5 lolos ⇒ boleh, penanda buku_besar true", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb() });
+    expect(v.boleh).toBe(true);
+    expect(v.bukuBesar).toBe(true);
+  });
+
+  it("K5 gagal ⇒ menolak walau buku besar bersih; syaratK5Lolos false", () => {
+    const v = periksaTutupBulan({ ...lengkap({ hariTertutup: [] }), bukuBesar: bb() });
+    expect(v.boleh).toBe(false);
+    expect(syaratK5Lolos(v)).toBe(false);
   });
 });

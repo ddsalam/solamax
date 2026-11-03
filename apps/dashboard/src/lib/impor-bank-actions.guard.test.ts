@@ -146,7 +146,79 @@ describe("berkas aksi", () => {
     expect(KODE).not.toMatch(/UPDATE app\.mutasi_bank/);
   });
 
-  it("set_config transaction-local di kedua aksi + transaksi cocok sesudah unggah", () => {
-    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(3);
+  it("set_config transaction-local di setiap transaksi (unggah, tarik, cocok sesudah unggah, percobaan AI, simpan bacaan, konfirmasi)", () => {
+    expect([...KODE.matchAll(/set_config\('app\.unit_ids', \$1, true\)/g)]).toHaveLength(6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U10 (rencana 2026-11-02; R29, R30, KTD9) — pembaca AI & input manual
+// ---------------------------------------------------------------------------
+
+describe("bacaRekeningKoranAiAksi — gerbang, kunci, percobaan SEBELUM API", () => {
+  const fn = badan(KODE, "bacaRekeningKoranAiAksi");
+
+  it("🔴 requireUnit → predikat → kunci API → berkas → ukuran → percobaan COMMIT → baca AI → simpan", () => {
+    expect(fn).not.toBe("");
+    for (const [a, b] of [
+      ["scope.requireUnit(", 'form.get("berkas")'],
+      ["canImporRekeningKoran(ctx)", 'form.get("berkas")'],
+      ["buatKlien()", 'form.get("berkas")'],
+      ['form.get("berkas")', 'periksaBerkas(berkas.size, "ai")'],
+      ['periksaBerkas(berkas.size, "ai")', "berkas.arrayBuffer()"],
+      ["pg_advisory_xact_lock(", "FROM app.audit_log"],
+      ["FROM app.audit_log", "auditKeuangan(client, scope, AKSI_BACA_AI"],
+      ["auditKeuangan(client, scope, AKSI_BACA_AI", 'client.query("COMMIT")'],
+      ['client.query("COMMIT")', "bacaRekeningKoranAi(klien"],
+      ["bacaRekeningKoranAi(klien", "simpanBacaan("],
+    ] as const) {
+      expect(`${a} → ${b}: ${urutan(fn, a, b)}`).toBe(`${a} → ${b}: ok`);
+    }
+    expect(fn).toMatch(/if \(klien === null\) \{\s*return tolakAi\("tanpa-kunci"/);
+    expect(fn).toMatch(/if \(sudah >= BATAS_BACA_AI_PER_BULAN\) \{\s*await batal\(client\);\s*return tolakAi\(\s*"batas-percobaan"/);
+  });
+});
+
+describe("simpanBacaan — gerbang R30 SEBELUM INSERT, status menunggu, tanpa cocok otomatis", () => {
+  const i = KODE.indexOf("async function simpanBacaan(");
+  const fn = KODE.slice(i, KODE.indexOf("\nexport ", i));
+
+  it("🔴 BEGIN → set_config → periksaBacaan → (tolak: batal + return) → simpanRekeningKoran(asal menunggu) → COMMIT", () => {
+    expect(i).toBeGreaterThan(0);
+    expect(urutan(fn, 'client.query("BEGIN")', "set_config('app.unit_ids'")).toBe("ok");
+    expect(urutan(fn, "bulanTertutupTerkunci(", "periksaBacaan(")).toBe("ok");
+    expect(urutan(fn, "periksaBacaan(", "simpanRekeningKoran(client")).toBe("ok");
+    expect(urutan(fn, "simpanRekeningKoran(client", 'client.query("COMMIT")')).toBe("ok");
+    expect(fn).toMatch(/if \(!g\.ok\) \{\s*await batal\(client\);\s*return \{ status: "ditolak-gerbang"/);
+    expect(fn).toMatch(/asal: \{ sumber: m\.sumber, status: "menunggu" \}/);
+    expect(fn).not.toMatch(/cocokSesudahUnggah|jalankanCocokOtomatis/);
+  });
+
+  it("input manual memakai simpanBacaan yang sama", () => {
+    expect(badan(KODE, "simpanMutasiManual")).toMatch(/return simpanBacaan\(\{[^}]*sumber: "manual"/);
+  });
+});
+
+describe("konfirmasiRekeningKoran — HoF, kunci, jangkar ulang SEBELUM UPDATE, cocok SESUDAH COMMIT", () => {
+  const fn = badan(KODE, "konfirmasiRekeningKoran");
+  it("🔴 urutan", () => {
+    expect(fn).not.toBe("");
+    expect(urutan(fn, "canTarikRekeningKoran(", "pool.connect()")).toBe("ok");
+    expect(urutan(fn, "FOR UPDATE", "bulanTertutupTerkunci(")).toBe("ok");
+    expect(urutan(fn, "periksaJangkar(", "UPDATE app.rekening_koran")).toBe("ok");
+    expect(fn).toMatch(/AND status = 'menunggu'/);
+    expect(urutan(fn, "UPDATE app.rekening_koran", "auditKeuangan(client")).toBe("ok");
+    expect(urutan(fn, 'client.query("COMMIT")', "cocokSesudahUnggah(client")).toBe("ok");
+  });
+});
+
+describe("rekening-koran-ai.ts — KTD9", () => {
+  const AI = tanpaKomentar(readFileSync(resolve(__dirname, "rekening-koran-ai.ts"), "utf8"));
+  it("🔴 isi rekening koran tak pernah ke log; model & keluaran terstruktur sesuai KTD9", () => {
+    expect(AI).not.toMatch(/console\./);
+    expect(AI).toMatch(/MODEL_PEMBACA = "claude-opus-5-5"/);
+    expect(AI).toMatch(/output_config: \{ effort: "medium", format: \{ type: "json_schema"/);
+    expect(AI).not.toMatch(/output_format|temperature|top_p/);
+    expect(AI).toMatch(/stop_reason === "refusal"/);
   });
 });

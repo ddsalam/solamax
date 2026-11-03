@@ -26,8 +26,26 @@ const h = vi.hoisted(() => {
   const connect = vi.fn(async () => client);
   const BK = { unit_id: 2, code: "6378301", name: "Bakau" };
   const sesi = { role: "admin_perusahaan", email: "hof@solagroup.co" as string | null, units: [BK] };
-  return { log, state, connect, BK, sesi };
+  // Pembentukan ulang buku besar TIRUAN (K6 U11): mencatat hari yang dibentuk
+  // ulang, mengembalikan temuan per hari, dan boleh "memperbaiki" jurnal
+  // tersimpan (efek yang dibaca ulang sesudahnya).
+  const bb = {
+    hari: [] as string[],
+    temuan: {} as Record<string, { kode: string; pesan: string; produk?: string }[]>,
+    gagal: null as string | null,
+    sesudah: null as (() => void) | null,
+  };
+  return { log, state, connect, BK, sesi, bb };
 });
+
+vi.mock("./buku-besar-tulis", () => ({
+  bentukUlangHari: vi.fn(async (_c: unknown, _unit: number, tanggal: string) => {
+    if (h.bb.gagal === tanggal) throw new Error(`Bentuk ulang ${tanggal} gagal (tiruan)`);
+    h.bb.hari.push(tanggal);
+    if (h.bb.hari.length === 1) h.bb.sesudah?.();
+    return { tanggal, mode: "langsung", backfill: false, ditulis: 0, dihapus: 0, tetap: 0, koreksi: null, temuan: h.bb.temuan[tanggal] ?? [] };
+  }),
+}));
 
 vi.mock("./db", () => ({ pool: { connect: h.connect }, qScoped: vi.fn(async () => []), q: vi.fn(async () => []) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -57,8 +75,17 @@ let parkir: Record<string, unknown>[];
 let rekening: Record<string, unknown>[];
 let impor: Record<string, unknown>[];
 let buku: Record<string, unknown>[];
+// Buku besar (K6 U11): status saldo awal, saldo pos, sub-pos bank, baris kliring.
+let bbStatus: Record<string, unknown>[];
+let saldoPos: Record<string, unknown>[];
+let bankBb: Record<string, unknown>[];
+let kliring: Record<string, unknown>[];
 
 const db = (sql: string): { rows: unknown[]; rowCount?: number } | undefined => {
+  if (sql.includes('AS "adaTutupBukuBesar"')) return { rows: bbStatus };
+  if (sql.includes("WITH gerak AS")) return { rows: saldoPos };
+  if (sql.includes("FROM app.pos_unit u")) return { rows: bankBb };
+  if (sql.includes("b.pos_kode = ANY($3::text[])")) return { rows: kliring };
   if (sql.includes("FROM app.tutup_bulan")) return { rows: sudahDitutup ? [{ ada: 1 }] : [] };
   if (sql.includes("INSERT INTO app.tutup_bulan")) return { rows: [], rowCount: 1 };
   if (sql.includes("FROM app.day_close")) return { rows: hari.map((d) => ({ d })) };
@@ -86,14 +113,35 @@ beforeEach(() => {
   rekening = [{ id: BCA, nama: "Bank BCA - 1234567890", cutOver: "2026-10-01", rekeningKoranAktif: true }];
   impor = [{ id: "m1", accountId: BCA, tanggalBank: "2026-10-05", praCutover: false, dicocokkan: true }];
   buku = [];
+  bbStatus = [];
+  saldoPos = [];
+  bankBb = [];
+  kliring = [];
+  h.bb.hari.length = 0;
+  h.bb.temuan = {};
+  h.bb.gagal = null;
+  h.bb.sesudah = null;
 });
+
+const BRI = "22222222-2222-4222-8222-222222222222";
+/** Buku besar AKTIF & bersih: saldo awal seimbang, BRI = rekening koran, kliring nol. */
+function bukuBesarBersih() {
+  bbStatus = [{ jumlahBaris: 2, totalSaldoAwal: "0", adaTutupBukuBesar: false }];
+  saldoPos = [
+    { posKode: "1111", saldo: "5000000000" },
+    { posKode: "3100", saldo: "-5000000000" },
+  ];
+  bankBb = [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoran: "50000000.00" }];
+}
+const pesan = (r: Awaited<ReturnType<typeof tutupBulan>>) => (r.ok ? "" : r.error);
 
 describe("tutupBulan — HoF, di bawah kunci, idempoten", () => {
   it("🔴 semua syarat terpenuhi ⇒ baris tutup_bulan + audit tutup_bulan.tutup + COMMIT", async () => {
     const r = await tutupBulan(masukan);
     expect(r).toMatchObject({ ok: true, sudahDitutup: false });
     expect(ins()).toHaveLength(1);
-    expect(ins()[0]!.params).toEqual([h.BK.unit_id, "2026-10-01", 7]);
+    // Saldo awal pos belum ada ⇒ pemeriksaan buku besar tak aktif ⇒ tutup K5, buku_besar false.
+    expect(ins()[0]!.params).toEqual([h.BK.unit_id, "2026-10-01", 7, false]);
     const a = h.log.find((l) => l.sql.includes("INSERT INTO app.audit_log"));
     expect(a?.params[2]).toBe("tutup_bulan.tutup");
     expect(a?.params[3]).toBe(`${h.BK.code}/2026-10`);
@@ -169,7 +217,7 @@ describe("tutupBulan — HoF, di bawah kunci, idempoten", () => {
     expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/1 hari/) });
     hari = hariDalamBulan("2026-10");
     rekening = [{ ...rekening[0], rekeningKoranAktif: false }];
-    expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/rekening BCA belum diimpor/) });
+    expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/rekening bank belum punya rekening koran aktif/) });
     rekening = [{ ...rekening[0], rekeningKoranAktif: true }];
     buku = [
       {
@@ -196,5 +244,112 @@ describe("tutupBulan — HoF, di bawah kunci, idempoten", () => {
     expect(await tutupBulan({ ...masukan, bulan: "2026-13" })).toMatchObject({ ok: false });
     expect(await tutupBulan({ ...masukan, bulan: "2026-10-01" })).toMatchObject({ ok: false });
     expect(h.connect).not.toHaveBeenCalled();
+  });
+});
+
+describe("tutupBulan — pemeriksaan buku besar (K6 U11, R33)", () => {
+  it("🔴 bulan tanpa saldo awal lengkap ⇒ cek dilewati, tutup menurut K5, buku_besar false, TANPA pembentukan ulang", async () => {
+    bbStatus = [{ jumlahBaris: 0, totalSaldoAwal: "0", adaTutupBukuBesar: false }];
+    saldoPos = [{ posKode: "1198", saldo: "10000000" }];
+    const r = await tutupBulan(masukan);
+    expect(r).toMatchObject({ ok: true, sudahDitutup: false });
+    expect(ins()[0]!.params[3]).toBe(false);
+    expect(h.bb.hari).toEqual([]);
+  });
+
+  it("🔴 aktif & bersih ⇒ jurnal SETIAP hari dibentuk ulang berurutan, lalu tutup dengan buku_besar = true", async () => {
+    bukuBesarBersih();
+    const r = await tutupBulan(masukan);
+    expect(r).toMatchObject({ ok: true, sudahDitutup: false });
+    expect(h.bb.hari).toEqual(hariDalamBulan("2026-10"));
+    expect(ins()).toHaveLength(1);
+    expect(ins()[0]!.params).toEqual([h.BK.unit_id, "2026-10-01", 7, true]);
+    expect(committed()).toBe(true);
+  });
+
+  it("🔴 vonis membaca jurnal SESUDAH pembentukan ulang, bukan yang tersimpan sebelumnya", async () => {
+    bukuBesarBersih();
+    const bersih = saldoPos;
+    saldoPos = [...bersih, { posKode: "1198", saldo: "10000000" }, { posKode: "1101", saldo: "-10000000" }];
+    h.bb.sesudah = () => {
+      saldoPos = bersih;
+    };
+    expect(await tutupBulan(masukan)).toMatchObject({ ok: true, sudahDitutup: false });
+    expect(ins()[0]!.params[3]).toBe(true);
+  });
+
+  it("🔴 Covers AE9: BRI buku besar Rp 50.000.000 vs rekening koran Rp 50.250.000 ⇒ menolak, tanpa INSERT", async () => {
+    bukuBesarBersih();
+    bankBb = [{ ...bankBb[0], saldoRekeningKoran: "50250000.00" }];
+    const r = await tutupBulan(masukan);
+    expect(r).toMatchObject({ ok: false });
+    expect(pesan(r)).toMatch(/Bank BRI - 0011223344/);
+    expect(ins()).toHaveLength(0);
+    expect(committed()).toBe(false);
+  });
+
+  it("🔴 1198 ≠ 0 sesudah pembentukan ulang ⇒ menolak", async () => {
+    bukuBesarBersih();
+    saldoPos = [...saldoPos, { posKode: "1198", saldo: "2500000" }, { posKode: "1101", saldo: "-2500000" }];
+    const r = await tutupBulan(masukan);
+    expect(pesan(r)).toMatch(/1198/);
+    expect(ins()).toHaveLength(0);
+  });
+
+  it("🔴 1190 bersisa butir dalam perjalanan 2 hari ⇒ lolos; sisa tanpa pasangan ⇒ menolak", async () => {
+    bukuBesarBersih();
+    saldoPos = [
+      { posKode: "1101", saldo: "-500000000" },
+      { posKode: "1111", saldo: "5000000000" },
+      { posKode: "1190", saldo: "500000000" },
+      { posKode: "3100", saldo: "-5000000000" },
+    ];
+    kliring = [
+      { jurnalId: "j1", posKode: "1190", tanggalEfektif: "2026-10-31", keterangan: "Setoran ke Bank", net: "500000000" },
+      { jurnalId: "j2", posKode: "1190", tanggalEfektif: "2026-11-02", keterangan: "Pindah Buku", net: "-500000000" },
+    ];
+    expect(await tutupBulan(masukan)).toMatchObject({ ok: true, sudahDitutup: false });
+    kliring = [kliring[0]!];
+    h.log.length = 0;
+    const r = await tutupBulan(masukan);
+    expect(pesan(r)).toMatch(/1190/);
+    expect(ins()).toHaveLength(0);
+  });
+
+  it("🔴 R11: temuan 'harga beli belum diisi' dari pembentukan ulang ⇒ menolak, produk & tanggal disebut", async () => {
+    bukuBesarBersih();
+    h.bb.temuan["2026-10-14"] = [
+      { kode: "harga_beli_kosong", pesan: "Harga beli PERTALITE belum diisi untuk 2026-10-14", produk: "PERTALITE" },
+      { kode: "losses_gain_kosong", pesan: "tak terhitung", produk: "PERTALITE" },
+    ];
+    const r = await tutupBulan(masukan);
+    expect(pesan(r)).toMatch(/Harga beli belum diisi: PERTALITE 2026-10-14/);
+    expect(ins()).toHaveLength(0);
+  });
+
+  it("neraca tidak seimbang ⇒ menolak", async () => {
+    bukuBesarBersih();
+    saldoPos = [
+      { posKode: "1111", saldo: "5000000000" },
+      { posKode: "3100", saldo: "-4900000000" },
+    ];
+    expect(pesan(await tutupBulan(masukan))).toMatch(/Neraca saldo buku besar tidak seimbang/);
+    expect(ins()).toHaveLength(0);
+  });
+
+  it("syarat K5 gagal ⇒ menolak TANPA membentuk ulang jurnal", async () => {
+    bukuBesarBersih();
+    hari = hariDalamBulan("2026-10").slice(1);
+    expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/1 hari/) });
+    expect(h.bb.hari).toEqual([]);
+  });
+
+  it("pembentukan ulang gagal di tengah ⇒ tutup gagal, tanpa INSERT, tanpa COMMIT", async () => {
+    bukuBesarBersih();
+    h.bb.gagal = "2026-10-20";
+    const r = await tutupBulan(masukan);
+    expect(pesan(r)).toMatch(/2026-10-20/);
+    expect(ins()).toHaveLength(0);
+    expect(committed()).toBe(false);
   });
 });

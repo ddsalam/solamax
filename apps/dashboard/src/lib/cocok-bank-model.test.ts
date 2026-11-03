@@ -231,6 +231,132 @@ describe("kredit SETORAN JEMPUTAN ↔ setoran pengawas yang disetujui", () => {
 });
 
 // ---------------------------------------------------------------------------
+// K6 U7 — jemputan ↔ setoran Kas Besar (R31, AE1, AE2, KTD8)
+// ---------------------------------------------------------------------------
+
+describe("K6 U7 — jemputan ↔ setoran di Kas Besar: pasangan Setoran ke Bank otomatis bila tepat satu kandidat", () => {
+  const KAS_BESAR = "aaaaaaaa-0000-4000-8000-0000000000kb";
+  const nominal = rp(20_000_000);
+  const jemputan = (over: Partial<MutasiCocok> = {}) =>
+    mutasi({ keterangan: "KR OTOMATIS | SETORAN JEMPUTAN | 0981", amountSen: nominal, sumber: "bca", ...over });
+  const setoran = (over: Partial<KasCocok> = {}) =>
+    kas({ accountId: KAS_BESAR, categoryLabel: "Setoran Hasil Penjualan", amountSen: nominal, businessDate: "2026-09-01", ...over });
+  const k = (over: Partial<KonteksCocok> = {}) => ktx({ akunKasBesar: KAS_BESAR, ...over });
+
+  it("🔴 Covers AE1: setoran Kas Besar Rp 20.000.000 + jemputan dua hari kemudian ⇒ satu kandidat, otomatis", () => {
+    const s = setoran();
+    const u = usulkanCocok(jemputan(), k({ kas: [s] }));
+    // Setoran Kas Besar BUKAN kandidat tautan (rekening lain) — ia kandidat PASANGAN.
+    expect(u.kandidat).toEqual([]);
+    expect(u.setoran).toEqual({
+      otomatis: true,
+      alasan: null,
+      kandidat: [{ tanggal: "2026-09-01", kasIds: [s.id], totalSen: rp(20_000_000) }],
+    });
+  });
+
+  it("🔴 jemputan = total tiga setoran satu tanggal bisnis ⇒ SATU kandidat berisi ketiganya, otomatis", () => {
+    const a = setoran({ amountSen: rp(8_000_000) });
+    const b = setoran({ amountSen: rp(7_000_000) });
+    const c = setoran({ amountSen: rp(5_000_000) });
+    const u = usulkanCocok(jemputan(), k({ kas: [a, b, c] }));
+    expect(u.setoran?.otomatis).toBe(true);
+    expect(u.setoran?.kandidat).toEqual([{ tanggal: "2026-09-01", kasIds: [a.id, b.id, c.id].sort(), totalSen: rp(20_000_000) }]);
+  });
+
+  it("🔴 Covers AE2: jemputan Rp 19.900.000 vs setoran Rp 20.000.000 ⇒ tanpa kandidat, tetap terbuka", () => {
+    const u = usulkanCocok(jemputan({ amountSen: rp(19_900_000) }), k({ kas: [setoran()] }));
+    expect(u.jenis).toBe("tanpa");
+    expect(u.setoran).toEqual({ otomatis: false, alasan: "tanpa-kandidat", kandidat: [] });
+  });
+
+  it("🔴 dua tanggal dengan total sama ⇒ dua kandidat, TIDAK otomatis", () => {
+    const u = usulkanCocok(
+      jemputan(),
+      k({
+        kas: [
+          setoran({ businessDate: "2026-09-01", amountSen: rp(12_000_000) }),
+          setoran({ businessDate: "2026-09-01", amountSen: rp(8_000_000) }),
+          setoran({ businessDate: "2026-09-02", amountSen: rp(15_000_000) }),
+          setoran({ businessDate: "2026-09-02", amountSen: rp(5_000_000) }),
+        ],
+      }),
+    );
+    expect(u.setoran?.otomatis).toBe(false);
+    expect(u.setoran?.alasan).toBe("banyak-kandidat");
+    expect(u.setoran?.kandidat.map((x) => x.tanggal)).toEqual(["2026-09-01", "2026-09-02"]);
+  });
+
+  it("satu setoran = jemputan DAN total tanggalnya juga = jemputan (setoran tunggal hari itu) ⇒ satu kandidat, bukan dua", () => {
+    const u = usulkanCocok(jemputan(), k({ kas: [setoran()] }));
+    expect(u.setoran?.kandidat).toHaveLength(1);
+  });
+
+  it("satu setoran = jemputan di hari yang punya setoran lain ⇒ kandidat tunggal setoran itu (total hari ≠ jemputan)", () => {
+    const pas = setoran();
+    const u = usulkanCocok(jemputan(), k({ kas: [pas, setoran({ amountSen: rp(5_000_000) })] }));
+    expect(u.setoran).toMatchObject({ otomatis: true, kandidat: [{ kasIds: [pas.id] }] });
+  });
+
+  it("jendela [tanggal bank − 3, tanggal bank]: −3 masuk; −4 dan sesudah tanggal bank tidak", () => {
+    expect(usulkanCocok(jemputan(), k({ kas: [setoran({ businessDate: "2026-08-31" })] })).setoran?.otomatis).toBe(true);
+    expect(usulkanCocok(jemputan(), k({ kas: [setoran({ businessDate: "2026-08-30" })] })).setoran?.kandidat).toEqual([]);
+    expect(usulkanCocok(jemputan(), k({ kas: [setoran({ businessDate: "2026-09-04" })] })).setoran?.kandidat).toEqual([]);
+  });
+
+  it("setoran yang sudah disetor (di kelompok aktif), void, atau lahir dari kelompok ⇒ bukan kandidat (ulang ⇒ tak ada pasangan kedua)", () => {
+    const sudah = setoran();
+    const u = usulkanCocok(
+      jemputan(),
+      k({ kas: [sudah, setoran({ void: true }), setoran({ lahirDariCocokId: "g-lama" })], kasDicocokkan: new Set([sudah.id]) }),
+    );
+    expect(u.setoran?.kandidat).toEqual([]);
+  });
+
+  it("🔴 kaki \"Setoran ke Bank\" yang sudah diketik Finance (bank masuk + Kas Besar keluar) ⇒ dicocokkan ke kaki itu, tanpa usulan pasangan", () => {
+    const kakiBank = kas({ accountId: BCA, categoryLabel: "Pindah Buku", amountSen: nominal, businessDate: "2026-09-02" });
+    const kakiKas = kas({ accountId: KAS_BESAR, categoryLabel: "Setoran ke Bank", amountSen: -nominal, businessDate: "2026-09-02" });
+    const u = usulkanCocok(jemputan(), k({ kas: [kakiBank, kakiKas, setoran()] }));
+    expect(u).toMatchObject({ jenis: "tunggal", kandidat: [{ cashLedgerId: kakiBank.id, aturan: "setoran-jemputan" }] });
+    expect(u.setoran).toBeUndefined();
+  });
+
+  it("Pindah Buku masuk TANPA kaki Setoran ke Bank di Kas Besar bukan kaki setoran ⇒ jatuh ke kandidat pasangan", () => {
+    const pb = kas({ accountId: BCA, categoryLabel: "Pindah Buku", amountSen: nominal, businessDate: "2026-09-02" });
+    const u = usulkanCocok(jemputan(), k({ kas: [pb, setoran()] }));
+    expect(u.kandidat).toEqual([]);
+    expect(u.setoran?.otomatis).toBe(true);
+  });
+
+  it("🔴 kaki Setoran ke Bank di Kas Besar sudah diketik TANPA kaki bank ⇒ usulan saja (pasangan kedua akan mengkredit Kas Besar dua kali)", () => {
+    const kakiKas = kas({ accountId: KAS_BESAR, categoryLabel: "Setoran ke Bank", amountSen: -nominal, businessDate: "2026-09-02" });
+    const u = usulkanCocok(jemputan(), k({ kas: [kakiKas, setoran()] }));
+    expect(u.setoran).toMatchObject({ otomatis: false, alasan: "setoran-ke-bank-diketik" });
+    expect(u.setoran?.kandidat).toHaveLength(1);
+  });
+
+  it("🔴 baris jemputan dari pembaca AI / ketikan manual ⇒ kandidat tampil sebagai usulan, TIDAK otomatis", () => {
+    for (const sumber of ["ai", "manual"] as const) {
+      const u = usulkanCocok(jemputan({ sumber }), k({ kas: [setoran()] }));
+      expect(u.setoran).toMatchObject({ otomatis: false, alasan: "sumber-bukan-bca" });
+      expect(u.setoran?.kandidat).toHaveLength(1);
+    }
+  });
+
+  it("dua jemputan berebut satu setoran yang sama ⇒ keduanya turun jadi usulan (diperebutkan)", () => {
+    const s = setoran();
+    const [u1, u2] = usulkanSemua([jemputan(), jemputan({ tanggalBank: "2026-09-02" })], k({ kas: [s] }));
+    expect(u1!.setoran).toMatchObject({ otomatis: false, alasan: "diperebutkan" });
+    expect(u2!.setoran).toMatchObject({ otomatis: false, alasan: "diperebutkan" });
+  });
+
+  it("unit tanpa Kas Besar, atau kredit bukan jemputan ⇒ tak ada usulan pasangan", () => {
+    expect(usulkanCocok(jemputan(), ktx({ kas: [setoran()] })).setoran).toBeUndefined();
+    expect(usulkanCocok(jemputan({ keterangan: "TRSF E-BANKING CR" }), k({ kas: [setoran()] })).setoran).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Ketikan manual & kaki antar unit (AE4)
 // ---------------------------------------------------------------------------
 

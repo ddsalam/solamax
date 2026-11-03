@@ -6,7 +6,12 @@ import {
   nilaiTertunda,
   tawaranSetoran,
   tawaranTertunda,
+  butuhKategoriOperasional,
+  kategoriBeban,
+  rencanaBeban,
 } from "./keuangan-kas-model";
+import { sectionBeban } from "./klasifikasi-model";
+import { PETA_KATEGORI_ARUS_KAS } from "./keuangan-sisi-kas";
 
 type Row = MutasiKas & { id: string; keterangan: string; sourceManualEntryId?: string | null };
 
@@ -136,5 +141,71 @@ describe("saldo lintas-akun tetap terpisah", () => {
     ];
     expect(saldoAkun(rows, "KAS", "2026-01-15")).toBe(300_000);
     expect(kasOnHand(rows, "2026-01-15")).toBe(1_000_000);
+  });
+});
+
+describe("K6 U3 — kategoriBeban & rencanaBeban (R23, P11, P12, P20)", () => {
+  it("kelengkapan: tepat label yang sectionBeban anggap realisasi laba", () => {
+    const dariPeta = Object.keys(PETA_KATEGORI_ARUS_KAS).filter((l) => sectionBeban(l) !== null).sort();
+    const dariPredikat = Object.keys(PETA_KATEGORI_ARUS_KAS).filter((l) => kategoriBeban(l) !== null).sort();
+    expect(dariPredikat).toEqual(["Biaya Operasional", "Management Fee", "Pendapatan Lain-Lain"]);
+    expect(dariPredikat).toEqual(dariPeta);
+    expect(kategoriBeban("Pembelian BBM")).toBeNull();
+    expect(kategoriBeban(null)).toBeNull();
+  });
+
+  it("field kedua HANYA untuk Biaya Operasional", () => {
+    expect(butuhKategoriOperasional("Biaya Operasional")).toBe(true);
+    expect(butuhKategoriOperasional("Pendapatan Lain-Lain")).toBe(false);
+    expect(butuhKategoriOperasional("Management Fee")).toBe(false);
+  });
+
+  it("Covers AE6 (bagian murni). Biaya Operasional −1.500.000 + Sarana & Prasarana ⇒ pengeluaran 150.000.000 sen", () => {
+    const r = rencanaBeban({
+      categoryLabel: "Biaya Operasional",
+      operationalCategory: "Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)",
+      amount: -1_500_000,
+    });
+    expect(r).toEqual({
+      ok: true,
+      rencana: {
+        section: "pengeluaran",
+        kategoriOperasional: ["Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)"],
+        amountSen: 150_000_000,
+      },
+    });
+  });
+
+  it("Biaya Operasional tanpa jenis biaya ⇒ ditolak", () => {
+    for (const op of [null, "", "Bukan kategori"]) {
+      const r = rencanaBeban({ categoryLabel: "Biaya Operasional", operationalCategory: op, amount: -10_000 });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/wajib memilih jenis biaya/);
+    }
+  });
+
+  it("Pendapatan Lain-Lain tanpa field kedua ⇒ pendapatan_lain, kategori tak pernah kosong", () => {
+    const r = rencanaBeban({ categoryLabel: "Pendapatan Lain-Lain", operationalCategory: null, amount: 250_000 });
+    expect(r).toEqual({ ok: true, rencana: { section: "pendapatan_lain", kategoriOperasional: ["Lain-Lain"], amountSen: 25_000_000 } });
+  });
+
+  it("Management Fee tanpa field kedua ⇒ peta 'Management Fee' dulu, lalu 'Lain-Lain' (P20 awal 5700)", () => {
+    const r = rencanaBeban({ categoryLabel: "Management Fee", operationalCategory: undefined, amount: -2_000_000 });
+    expect(r).toEqual({
+      ok: true,
+      rencana: { section: "pengeluaran", kategoriOperasional: ["Management Fee", "Lain-Lain"], amountSen: 200_000_000 },
+    });
+  });
+
+  it("field kedua pada kategori bertetapan ⇒ ditolak (bukan diam-diam dibuang)", () => {
+    const r = rencanaBeban({ categoryLabel: "Management Fee", operationalCategory: "Lain-Lain", amount: -1 });
+    expect(r.ok).toBe(false);
+  });
+
+  it("arah salah ⇒ ditolak", () => {
+    expect(rencanaBeban({ categoryLabel: "Pendapatan Lain-Lain", operationalCategory: null, amount: -5 }).ok).toBe(false);
+    expect(rencanaBeban({ categoryLabel: "Management Fee", operationalCategory: null, amount: 5 }).ok).toBe(false);
+    expect(rencanaBeban({ categoryLabel: "Biaya Operasional", operationalCategory: "MDR", amount: 0 }).ok).toBe(false);
+    expect(rencanaBeban({ categoryLabel: "Biaya Operasional", operationalCategory: "MDR", amount: -0.001 }).ok).toBe(false);
   });
 });

@@ -17,6 +17,10 @@ export const KODE_MAJU_PURCHASE = "ADJ-FWD-PURCHASE";
 export const KODE_MAJU_SUSPENSE = "ADJ-FWD-SUSPENSE";
 /** Baris pembalik (selalu terdorong maju). */
 export const KODE_MAJU_REVERSAL = "ADJ-FWD-REVERSAL";
+/** Penjualan EDC per shift yang diputuskan Finance sesudah harinya ditutup (0058, K6 §10.49). */
+export const KODE_MAJU_EDC = "ADJ-FWD-EDC";
+/** Koreksi buku besar untuk sumber di bulan tertutup (0058, K6 KTD3). */
+export const KODE_MAJU_BUKU_BESAR = "ADJ-FWD-LEDGER";
 
 /** Awalan bersama semua kode pembukuan maju. */
 export const PREFIKS_KODE_MAJU = "ADJ-FWD-";
