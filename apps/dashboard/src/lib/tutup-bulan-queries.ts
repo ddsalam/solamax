@@ -1,3 +1,4 @@
+import { POS_PERJALANAN, type BarisKliring, type MasukanCekBukuBesar, type RekeningBankBukuBesar, type TemuanHargaBeli } from "./buku-besar-cek";
 import { kueriScoped, PREDIKAT_KAS_DICOCOKKAN, PREDIKAT_MUTASI_DICOCOKKAN, type Kueri } from "./cocok-bank-queries";
 import { qScoped } from "./db";
 import { KATEGORI_PENAMPUNG } from "./keuangan-sisi-kas";
@@ -28,7 +29,15 @@ import {
  *    penarik melihat bulan yang sudah ditutup.
  */
 
-const KUNCI_BULAN_SQL = "hashtextextended('tutup-bulan:' || $1::text || ':' || $2::text, 0)";
+/**
+ * Ekspresi kunci advisory (unit $1, bulan `YYYY-MM` $2). SATU salinan: dipakai
+ * penutup (eksklusif), jalur tulis (bersama), dan pembentukan ulang buku besar
+ * (`buku-besar-tulis.ts`, bersama). Di sesi yang SAMA, kunci bersama sesudah
+ * kunci eksklusif langsung didapat (lock manager Postgres tak pernah membuat
+ * sesi menunggu kuncinya sendiri) — `tutupBulan` memanggil `bentukUlangHari`
+ * sambil memegang kunci eksklusif bulan itu.
+ */
+export const KUNCI_BULAN_SQL = "hashtextextended('tutup-bulan:' || $1::text || ':' || $2::text, 0)";
 
 /** Penutup: kunci EKSKLUSIF (unit, bulan `YYYY-MM`). Dipakai `tutupBulan`. */
 export async function kunciBulanEksklusif(c: Kueri, unitId: ScopedUnitId, bulan: string): Promise<void> {
@@ -175,6 +184,115 @@ export const SQL_BUKU_BULAN = `WITH rek AS (
              OR l.pasangan_uuid IN (SELECT pasangan_uuid FROM inti))
       ORDER BY COALESCE(l.tanggal_asal, l.business_date), l.created_at`;
 
+// ---------------------------------------------------------------------------
+// Pemeriksaan buku besar (K6 U11, R33) — saldo menurut TANGGAL EFEKTIF
+// ---------------------------------------------------------------------------
+
+/**
+ * Ringkas saldo awal pos + apakah unit sudah punya bulan yang ditutup dengan
+ * buku besar (aturan aktif `bukuBesarAktif`). $1 unit.
+ */
+export const SQL_BB_STATUS = `SELECT
+            (SELECT count(*) FROM app.saldo_awal_pos s WHERE s.unit_id = $1 AND NOT s.void)::int AS "jumlahBaris",
+            (SELECT COALESCE(sum(s.saldo_sen), 0) FROM app.saldo_awal_pos s WHERE s.unit_id = $1 AND NOT s.void)::text AS "totalSaldoAwal",
+            EXISTS (SELECT 1 FROM app.tutup_bulan t WHERE t.unit_id = $1 AND t.buku_besar) AS "adaTutupBukuBesar"`;
+
+/**
+ * Saldo per pos s.d. akhir bulan: saldo awal pos + jurnal AKTIF (bukan jenis
+ * `saldo_awal` — keduanya tak boleh dijumlah, sama dengan `SQL_SALDO_SEBELUM`)
+ * bertanggal EFEKTIF sebelum awal bulan berikutnya. $1 unit, $2 'YYYY-MM-01'.
+ */
+export const SQL_BB_SALDO_POS = `WITH gerak AS (
+       SELECT s.pos_kode, s.saldo_sen AS sen
+         FROM app.saldo_awal_pos s
+        WHERE s.unit_id = $1 AND NOT s.void
+       UNION ALL
+       SELECT b.pos_kode, b.debet_sen - b.kredit_sen
+         FROM app.jurnal_baris b
+         JOIN app.jurnal j ON j.id = b.jurnal_id AND j.unit_id = b.unit_id
+        WHERE b.unit_id = $1 AND j.status = 'aktif' AND j.jenis <> 'saldo_awal'
+          AND j.tanggal_efektif < ($2::date + interval '1 month')
+     )
+     SELECT pos_kode AS "posKode", sum(sen)::text AS saldo
+       FROM gerak GROUP BY pos_kode ORDER BY pos_kode`;
+
+/**
+ * Setiap sub-pos bank unit (pos_unit bertaut rekening) + saldo akhir rekening
+ * koran AKTIF bulan itu (`menunggu` HoF belum dihitung). $1 unit, $2 'YYYY-MM-01'.
+ */
+export const SQL_BB_BANK = `SELECT u.kode AS "posKode", a.id::text AS "accountId", a.nama,
+            (SELECT r.saldo_akhir::text FROM app.rekening_koran r
+              WHERE r.unit_id = a.unit_id AND r.account_id = a.id
+                AND r.status = 'aktif' AND r.periode = $2::date) AS "saldoRekeningKoran"
+       FROM app.pos_unit u
+       JOIN app.cash_account a ON a.id = u.cash_account_id AND a.unit_id = u.unit_id
+      WHERE u.unit_id = $1 AND u.cash_account_id IS NOT NULL
+      ORDER BY u.kode`;
+
+/**
+ * Net per jurnal AKTIF pada pos kliring $3 (1103, 1190), bertanggal efektif
+ * dari awal bulan s.d. hari ke-3 bulan berikutnya — calon butir dalam
+ * perjalanan dan kaki pasangannya. $1 unit, $2 'YYYY-MM-01', $3 text[].
+ */
+export const SQL_BB_KLIRING = `SELECT j.id::text AS "jurnalId", b.pos_kode AS "posKode",
+            to_char(j.tanggal_efektif, 'YYYY-MM-DD') AS "tanggalEfektif", j.keterangan,
+            sum(b.debet_sen - b.kredit_sen)::text AS net
+       FROM app.jurnal_baris b
+       JOIN app.jurnal j ON j.id = b.jurnal_id AND j.unit_id = b.unit_id
+      WHERE b.unit_id = $1 AND j.status = 'aktif' AND j.jenis <> 'saldo_awal'
+        AND b.pos_kode = ANY($3::text[])
+        AND j.tanggal_efektif >= $2::date
+        AND j.tanggal_efektif < ($2::date + interval '1 month' + interval '3 days')
+      GROUP BY j.id, b.pos_kode
+     HAVING sum(b.debet_sen - b.kredit_sen) <> 0
+      ORDER BY j.tanggal_efektif, j.id`;
+
+/** BIGINT sen (teks) → number, gagal keras di luar jangkauan aman. */
+function senBulat(t: string): number {
+  if (!/^-?\d+$/.test(t.trim())) throw new Error(`Sen DB tak terbaca: "${t}".`);
+  const n = Number(t);
+  if (!Number.isSafeInteger(n)) throw new Error(`Sen DB di luar jangkauan: "${t}".`);
+  return n;
+}
+
+/**
+ * Bahan `periksaBukuBesar` untuk (unit, bulan), dibaca lewat `k` — klien
+ * transaksi (`tutupBulan`, SESUDAH pembentukan ulang, di bawah kunci) atau
+ * `kueriScoped` (halaman, jurnal tersimpan apa adanya). Berurutan: `k` bisa
+ * satu klien transaksi. `temuanHargaBeli` = temuan pembentukan ulang; `null`
+ * di halaman (belum diperiksa).
+ */
+export async function bacaBahanBukuBesar(
+  k: Kueri,
+  unitId: ScopedUnitId,
+  bulan: string,
+  temuanHargaBeli: readonly TemuanHargaBeli[] | null,
+): Promise<MasukanCekBukuBesar> {
+  const awal = `${bulan}-01`;
+  const st = (
+    await k.query<{ jumlahBaris: number; totalSaldoAwal: string; adaTutupBukuBesar: boolean }>(SQL_BB_STATUS, [unitId])
+  ).rows[0];
+  const saldo = await k.query<{ posKode: string; saldo: string }>(SQL_BB_SALDO_POS, [unitId, awal]);
+  const bank = await k.query<Omit<RekeningBankBukuBesar, "saldoRekeningKoranSen"> & { saldoRekeningKoran: string | null }>(SQL_BB_BANK, [
+    unitId,
+    awal,
+  ]);
+  const kliring = await k.query<Omit<BarisKliring, "netSen"> & { net: string }>(SQL_BB_KLIRING, [unitId, awal, [...POS_PERJALANAN]]);
+  return {
+    bulan,
+    // Tanpa baris status (pembaca tiruan) ⇒ saldo awal kosong ⇒ pemeriksaan tak aktif.
+    saldoAwal: { jumlahBaris: Number(st?.jumlahBaris ?? 0), totalSen: senBulat(st?.totalSaldoAwal ?? "0") },
+    adaTutupBukuBesar: st?.adaTutupBukuBesar === true,
+    saldoPos: saldo.rows.map((r) => ({ posKode: r.posKode, saldoSen: senBulat(r.saldo) })),
+    bank: bank.rows.map(({ saldoRekeningKoran, ...r }) => ({
+      ...r,
+      saldoRekeningKoranSen: saldoRekeningKoran === null ? null : teksKeSen(saldoRekeningKoran),
+    })),
+    kliring: kliring.rows.map(({ net, ...r }) => ({ ...r, netSen: senBulat(net) })),
+    temuanHargaBeli,
+  };
+}
+
 type BarisParkirSql = Omit<BarisParkirBulan, "amountSen"> & { amount: string; rekening: string };
 
 export interface BarisParkirTampil extends BarisParkirBulan {
@@ -183,7 +301,7 @@ export interface BarisParkirTampil extends BarisParkirBulan {
 
 const keParkir = ({ amount, ...r }: BarisParkirSql): BarisParkirTampil => ({ ...r, amountSen: teksKeSen(amount) });
 
-type BahanTutupBulan = MasukanTutupBulan & { parkir: BarisParkirTampil[] };
+type BahanTutupBulan = MasukanTutupBulan & { parkir: BarisParkirTampil[]; bukuBesar: MasukanCekBukuBesar };
 
 type RekeningSql = Omit<RekeningWajib, "saldoAkhirSen"> & { saldoAkhir?: string };
 type BarisImporSql = Omit<BarisImporBulan, "amountSen"> & { amount?: string };
@@ -218,7 +336,7 @@ function susunBahan(
   rekening: Hasil<"rekening">,
   impor: Hasil<"impor">,
   buku: Hasil<"buku">,
-): BahanTutupBulan {
+): Omit<BahanTutupBulan, "bukuBesar"> {
   return {
     bulan,
     hariTertutup: hari.rows.map((r) => r.d),
@@ -241,7 +359,9 @@ export async function bacaBahanTutupBulan(k: Kueri, unitId: ScopedUnitId, bulan:
   const rekening = await q.rekening();
   const impor = await q.impor();
   const buku = await q.buku();
-  return susunBahan(bulan, hari, parkir, rekening, impor, buku);
+  // Jurnal TERSIMPAN; `tutupBulan` membaca ulang bagian ini sesudah membentuk ulang.
+  const bukuBesar = await bacaBahanBukuBesar(k, unitId, bulan, null);
+  return { ...susunBahan(bulan, hari, parkir, rekening, impor, buku), bukuBesar };
 }
 
 /**
@@ -251,8 +371,16 @@ export async function bacaBahanTutupBulan(k: Kueri, unitId: ScopedUnitId, bulan:
  */
 export async function getBahanTutupBulan(unit: ScopedUnitId, bulan: string): Promise<BahanTutupBulan> {
   const q = bacaanBahan(kueriScoped(unit), unit, `${bulan}-01`);
-  const [hari, parkir, rekening, impor, buku] = await Promise.all([q.hari(), q.parkir(), q.rekening(), q.impor(), q.buku()]);
-  return susunBahan(bulan, hari, parkir, rekening, impor, buku);
+  const [hari, parkir, rekening, impor, buku, bukuBesar] = await Promise.all([
+    q.hari(),
+    q.parkir(),
+    q.rekening(),
+    q.impor(),
+    q.buku(),
+    // Halaman tidak membentuk ulang: jurnal tersimpan, harga beli belum diperiksa.
+    bacaBahanBukuBesar(kueriScoped(unit), unit, bulan, null),
+  ]);
+  return { ...susunBahan(bulan, hari, parkir, rekening, impor, buku), bukuBesar };
 }
 
 /**

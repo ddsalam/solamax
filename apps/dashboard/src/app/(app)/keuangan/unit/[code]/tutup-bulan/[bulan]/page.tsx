@@ -93,7 +93,7 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
         </div>
       ) : vonis.boleh ? (
         <div className="banner info keu-banner mt4" role="status">
-          Keempat syarat terpenuhi — bulan ini siap ditutup.
+          Semua syarat terpenuhi — bulan ini siap ditutup.
         </div>
       ) : (
         <div className="banner warning keu-banner mt4" role="status">

@@ -1,4 +1,5 @@
 import { hariDalamBulan } from "./bulan";
+import { periksaBukuBesar, type MasukanCekBukuBesar, type VonisCekBukuBesar } from "./buku-besar-cek";
 import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 
 /**
@@ -33,6 +34,11 @@ import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
  *                       bulan itu yang tidak di kelompok cocok aktif, KECUALI
  *                       saldo pembuka dan pasangan baris-batal + pembalik
  *                       majunya yang bertaut dan berjumlah Rp 0.
+ *
+ * Plus **pemeriksaan buku besar** (K6 U11, R33) — diputuskan
+ * `periksaBukuBesar` (`buku-besar-cek.ts`), digabung di sini supaya vonis tetap
+ * SATU. Aktif sejak bulan pertama bersaldo awal lengkap; sebelum itu dilewati
+ * dan `bukuBesar` vonis = false (penutupan K5, `tutup_bulan.buku_besar` false).
  *
  * Nominal dalam SEN bulat.
  */
@@ -128,6 +134,12 @@ export interface MasukanTutupBulan {
   rekening: readonly RekeningWajib[];
   impor: readonly BarisImporBulan[];
   buku: readonly BarisBukuBulan[];
+  /**
+   * Bahan pemeriksaan buku besar (K6 U11, R33). Tak dikirim (pembaca tiruan
+   * lama) ⇒ pemeriksaan tidak dijalankan dan bulan ditutup tanpa buku besar.
+   * Pembaca sungguhan (`tutup-bulan-queries.ts`) selalu mengirimnya.
+   */
+  bukuBesar?: MasukanCekBukuBesar;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,9 +180,19 @@ export interface VonisTutupBulan {
       barisTerbuka: BarisImporBulan[];
     };
     bukuTanpaPasangan: { ok: boolean; jumlah: number; nKakiAntarUnit: number; baris: BukuTanpaPasanganBulan[] };
+    /** R33 — `null` = bahan tak dikirim; `{ aktif: false }` = saldo awal belum lengkap. */
+    bukuBesar: VonisCekBukuBesar | null;
   };
+  /** Bulan ini ditutup DENGAN buku besar (pemeriksaan aktif) — nilai `tutup_bulan.buku_besar`. */
+  bukuBesar: boolean;
   /** Satu kalimat per syarat yang gagal, urutan daftar periksa. Kosong ⇔ boleh. */
   alasan: string[];
+}
+
+/** Keempat syarat K5 (tanpa buku besar) terpenuhi — `tutupBulan` baru membentuk ulang jurnal sesudah ini. */
+export function syaratK5Lolos(v: VonisTutupBulan): boolean {
+  const s = v.syarat;
+  return s.hari.ok && s.penampung.ok && s.rekeningKoran.ok && s.bukuTanpaPasangan.ok;
 }
 
 const efektif = (b: BarisBukuBulan): string => b.tanggalAsal ?? b.businessDate;
@@ -289,8 +311,13 @@ export function periksaTutupBulan(i: MasukanTutupBulan): VonisTutupBulan {
     );
   }
 
+  // 5. Buku besar (R33) — sesudah keempat syarat, urutan daftar periksa.
+  const bb = i.bukuBesar === undefined ? null : periksaBukuBesar(i.bukuBesar);
+  if (bb?.aktif) alasan.push(...bb.alasan);
+
   return {
     boleh: alasan.length === 0,
+    bukuBesar: bb?.aktif === true,
     syarat: {
       hari: { ok: belum.length === 0, jumlah: belum.length, belum },
       penampung: { ok: parkir.length === 0, jumlah: parkir.length, totalSen: totalParkir, baris: parkir },
@@ -304,6 +331,7 @@ export function periksaTutupBulan(i: MasukanTutupBulan): VonisTutupBulan {
         barisTerbuka,
       },
       bukuTanpaPasangan: { ok: tanpa.length === 0, jumlah: tanpa.length, nKakiAntarUnit: nKaki, baris: tanpa },
+      bukuBesar: bb,
     },
     alasan,
   };

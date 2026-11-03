@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { PoolClient } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +18,8 @@ vi.hoisted(() => {
 });
 
 import type { BarisKas, MasukanHari } from "./buku-besar-model";
-import { bentukUlangHari, bentukUlangRentang, bentukUlangSumber, KUNCI_BULAN_BUKU_BESAR_SQL } from "./buku-besar-tulis";
+import { bentukUlangHari, bentukUlangRentang, bentukUlangSumber } from "./buku-besar-tulis";
+import { KUNCI_BULAN_SQL } from "./tutup-bulan-queries";
 import type { ScopedUnitId } from "./scope";
 
 type Baris = { posKode: string; debetSen: number; kreditSen: number };
@@ -379,8 +378,17 @@ describe("prasyarat", () => {
     await expect(jalan("2026-09-30", awal())).rejects.toThrow(/dimulai/);
   });
 
-  it("kunci bulan sama persis dengan tutupBulan (tutup-bulan-queries.ts)", () => {
-    const src = readFileSync(resolve(__dirname, "tutup-bulan-queries.ts"), "utf8");
-    expect(src).toContain(`const KUNCI_BULAN_SQL = "${KUNCI_BULAN_BUKU_BESAR_SQL}";`);
+  it("kunci bulan BERSAMA memakai ekspresi kunci tutupBulan yang sama (KUNCI_BULAN_SQL, satu salinan)", async () => {
+    const c = klien();
+    const asli = c.query.bind(c) as (s: string, p?: unknown[]) => Promise<unknown>;
+    const kunci: { sql: string; params: unknown[] }[] = [];
+    (c as unknown as { query: typeof asli }).query = (s, p = []) => {
+      if (s.includes("pg_advisory_xact_lock_shared")) kunci.push({ sql: s, params: p });
+      return asli(s, p);
+    };
+    await c.query("BEGIN");
+    await c.query("SELECT set_config('app.unit_ids', $1, true)", [String(UNIT)]);
+    await bentukUlangHari(c, UNIT, T, { aktor: AKTOR, baca: async () => masukan(T, awal()) });
+    expect(kunci).toContainEqual({ sql: `SELECT pg_advisory_xact_lock_shared(${KUNCI_BULAN_SQL})`, params: [UNIT, "2026-10"] });
   });
 });

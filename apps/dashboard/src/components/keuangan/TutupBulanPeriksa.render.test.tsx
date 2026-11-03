@@ -4,6 +4,7 @@ import { hariDalamBulan, periksaTutupBulan, type MasukanTutupBulan } from "@/lib
 import type { BarisMaju, BarisParkirTampil } from "@/lib/tutup-bulan-queries";
 import { TutupBulanPeriksa } from "./TutupBulanPeriksa";
 import { TutupHariSusulan } from "./TutupHariSusulan";
+import type { MasukanCekBukuBesar } from "@/lib/buku-besar-cek";
 
 /** Tampilan U12 (R24, R25, R32) — data SINTETIS, vonis ASLI. */
 
@@ -64,6 +65,65 @@ describe("TutupBulanPeriksa — empat baris, OK atau hitungan + tautan", () => {
     // ⚠️ isu terbuka U11 — kaki antar unit DIKENALI di daftar.
     expect(html).toContain("kaki antar unit tanpa mutasi bank");
     expect(html).toContain('data-jenis="kaki_antar_unit"');
+  });
+});
+
+describe("TutupBulanPeriksa — pemeriksaan buku besar (K6 U11, R33)", () => {
+  const BRI = "22222222-2222-4222-8222-222222222222";
+  const bb = (o: Partial<MasukanCekBukuBesar> = {}): MasukanCekBukuBesar => ({
+    bulan: "2026-10",
+    saldoAwal: { jumlahBaris: 2, totalSen: 0 },
+    adaTutupBukuBesar: false,
+    saldoPos: [
+      { posKode: "1101", saldoSen: -5_000_000_00 },
+      { posKode: "1111", saldoSen: 50_000_000_00 },
+      { posKode: "1190", saldoSen: 5_000_000_00 },
+      { posKode: "3100", saldoSen: -50_000_000_00 },
+    ],
+    bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_000_000_00 }],
+    kliring: [
+      { jurnalId: "j1", posKode: "1190", tanggalEfektif: "2026-10-31", netSen: 5_000_000_00, keterangan: "Setoran ke Bank BRI" },
+      { jurnalId: "j2", posKode: "1190", tanggalEfektif: "2026-11-02", netSen: -5_000_000_00, keterangan: "Pindah Buku" },
+    ],
+    temuanHargaBeli: null,
+    ...o,
+  });
+
+  it("tanpa bahan buku besar ⇒ tidak ada baris kelima", () => {
+    const html = renderToStaticMarkup(<TutupBulanPeriksa code="6378301" bulan="2026-10" vonis={periksaTutupBulan(lengkap())} />);
+    expect(html).not.toContain('data-syarat="Buku besar"');
+  });
+
+  it("🔴 saldo awal belum lengkap ⇒ baris buku besar 'belum aktif' dengan alasannya", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb({ saldoAwal: { jumlahBaris: 0, totalSen: 0 } }) });
+    const html = renderToStaticMarkup(<TutupBulanPeriksa code="6378301" bulan="2026-10" vonis={v} />);
+    expect(html).toContain('data-syarat="Buku besar"');
+    expect(html).toContain("Belum aktif");
+    expect(html).toMatch(/pemeriksaan buku besar belum aktif — saldo awal belum lengkap/i);
+    expect(html).not.toContain("data-cek=");
+  });
+
+  it("🔴 aktif: setiap cek ✔/✘, butir dalam perjalanan tercantum dengan tanggal, nominal, keterangan", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb() });
+    const html = renderToStaticMarkup(<TutupBulanPeriksa code="6378301" bulan="2026-10" vonis={v} />);
+    for (const c of ["saldo-awal", "neraca", "kliring-nol", "perjalanan", "bank", "harga-beli"]) expect(html).toContain(`data-cek="${c}"`);
+    expect(html).toMatch(/data-daftar="perjalanan"[\s\S]*2026-10-31[\s\S]*Setoran ke Bank BRI[\s\S]*5\.000\.000/);
+    expect(html).toContain("2026-11-02");
+    // Harga beli tak diperiksa di halaman — disebut, bukan ditandai lolos diam-diam.
+    expect(html).toMatch(/data-cek="harga-beli"[^>]*data-hasil="belum"/);
+    expect(html).toMatch(/data-cek="perjalanan"[^>]*data-hasil="ok"/);
+  });
+
+  it("🔴 Covers AE9: sub-pos BRI ≠ rekening koran ⇒ cek bank ✘ menyebut kedua saldo", () => {
+    const v = periksaTutupBulan({
+      ...lengkap(),
+      bukuBesar: bb({ bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_250_000_00 }] }),
+    });
+    const html = renderToStaticMarkup(<TutupBulanPeriksa code="6378301" bulan="2026-10" vonis={v} />);
+    expect(html).toMatch(/data-syarat="Buku besar"/);
+    expect(html).toMatch(/data-cek="bank"[^>]*data-hasil="gagal"/);
+    expect(html).toContain("50.250.000");
+    expect(html).toContain("Bank BRI - 0011223344");
   });
 });
 

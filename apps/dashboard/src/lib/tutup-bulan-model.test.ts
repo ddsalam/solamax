@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   hariDalamBulan,
   periksaTutupBulan,
+  syaratK5Lolos,
   type BarisBukuBulan,
   type BarisImporBulan,
   type BarisParkirBulan,
   type MasukanTutupBulan,
   type RekeningWajib,
 } from "./tutup-bulan-model";
+import type { MasukanCekBukuBesar } from "./buku-besar-cek";
 
 /**
  * Vonis tutup bulan (rencana 2026-10-29 U12; R25, AE5; KTD14). Data SINTETIS.
@@ -337,5 +339,57 @@ describe("periksaTutupBulan — K6 U11: rekening koran SEMUA bank (R28, R31)", (
     expect(periksaTutupBulan(lengkap({ rekening: [rek(), bri], buku: [maju] })).syarat.bukuTanpaPasangan.jumlah).toBe(1);
     const nov = periksaTutupBulan({ ...lengkap({ rekening: [rek(), bri], buku: [maju] }), bulan: "2026-11", hariTertutup: hariDalamBulan("2026-11"), impor: [] });
     expect(nov.syarat.bukuTanpaPasangan.jumlah).toBe(0);
+  });
+});
+
+describe("K6 U11 R33 — pemeriksaan buku besar ikut vonis tutup bulan", () => {
+  const bb = (o: Partial<MasukanCekBukuBesar> = {}): MasukanCekBukuBesar => ({
+    bulan: "2026-10",
+    saldoAwal: { jumlahBaris: 2, totalSen: 0 },
+    adaTutupBukuBesar: false,
+    saldoPos: [
+      { posKode: "1111", saldoSen: 50_000_000_00 },
+      { posKode: "3100", saldoSen: -50_000_000_00 },
+    ],
+    bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_000_000_00 }],
+    kliring: [],
+    temuanHargaBeli: [],
+    ...o,
+  });
+
+  it("tanpa bahan buku besar (pembaca lama) ⇒ vonis K5 apa adanya, bagian buku besar null", () => {
+    const v = periksaTutupBulan(lengkap());
+    expect(v.boleh).toBe(true);
+    expect(v.syarat.bukuBesar).toBeNull();
+    expect(v.bukuBesar).toBe(false);
+  });
+
+  it("🔴 bulan tanpa saldo awal lengkap ⇒ cek dilewati, tutup boleh menurut K5, penanda buku_besar false", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb({ saldoAwal: { jumlahBaris: 0, totalSen: 0 } }) });
+    expect(v.boleh).toBe(true);
+    expect(v.bukuBesar).toBe(false);
+    expect(v.syarat.bukuBesar).toMatchObject({ aktif: false });
+  });
+
+  it("🔴 Covers AE9: K5 lolos tetapi sub-pos BRI ≠ rekening koran ⇒ vonis menolak, alasannya ikut", () => {
+    const v = periksaTutupBulan({
+      ...lengkap(),
+      bukuBesar: bb({ bank: [{ posKode: "1111", accountId: BRI, nama: "Bank BRI - 0011223344", saldoRekeningKoranSen: 50_250_000_00 }] }),
+    });
+    expect(v.boleh).toBe(false);
+    expect(v.alasan.join(" ")).toMatch(/1111 Bank BRI - 0011223344/);
+    expect(syaratK5Lolos(v)).toBe(true);
+  });
+
+  it("🔴 buku besar bersih & K5 lolos ⇒ boleh, penanda buku_besar true", () => {
+    const v = periksaTutupBulan({ ...lengkap(), bukuBesar: bb() });
+    expect(v.boleh).toBe(true);
+    expect(v.bukuBesar).toBe(true);
+  });
+
+  it("K5 gagal ⇒ menolak walau buku besar bersih; syaratK5Lolos false", () => {
+    const v = periksaTutupBulan({ ...lengkap({ hariTertutup: [] }), bukuBesar: bb() });
+    expect(v.boleh).toBe(false);
+    expect(syaratK5Lolos(v)).toBe(false);
   });
 });

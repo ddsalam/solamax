@@ -18,6 +18,11 @@ import { KODE_MAJU_BUKU_BESAR } from "./keuangan-kode-maju";
 import { addDays } from "./periods";
 import { auditKeuangan, batal, type Aktor } from "./keuangan-tx";
 import type { ScopedUnitId } from "./scope";
+// Kunci bulan: SATU salinan ekspresi, milik tutup bulan (penutup eksklusif, jalur tulis bersama).
+import { KUNCI_BULAN_SQL } from "./tutup-bulan-queries";
+
+/** Nama lama kunci bulan, tetap diekspor untuk pemakainya — nilainya `KUNCI_BULAN_SQL`, bukan salinan. */
+export { KUNCI_BULAN_SQL as KUNCI_BULAN_BUKU_BESAR_SQL };
 
 /**
  * Inti TULIS buku besar (rencana 2026-11-02 K6 U8; R6, R7, R13; KTD3). Semua
@@ -50,9 +55,6 @@ import type { ScopedUnitId } from "./scope";
  * koreksi di hari buka pertama bulan terbuka berikutnya, kode ADJ-FWD-LEDGER.
  * Setiap pembentukan tercatat di `app.audit_log`.
  */
-
-/** Kunci bulan — HARUS sama persis dengan `KUNCI_BULAN_SQL` di tutup-bulan-queries.ts (dijaga uji). */
-export const KUNCI_BULAN_BUKU_BESAR_SQL = "hashtextextended('tutup-bulan:' || $1::text || ':' || $2::text, 0)";
 
 const TANGGAL_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -164,7 +166,7 @@ async function pastikanScope(c: PoolClient, unit: ScopedUnitId): Promise<void> {
 
 /** Kunci bulan BERSAMA (unit, bulan) lalu baca status semua bulan unit itu. */
 async function statusBulan(c: PoolClient, unit: ScopedUnitId, bulan: string): Promise<{ status: StatusBulan; adaTutupBukuBesar: boolean }> {
-  await c.query(`SELECT pg_advisory_xact_lock_shared(${KUNCI_BULAN_BUKU_BESAR_SQL})`, [unit, bulan]);
+  await c.query(`SELECT pg_advisory_xact_lock_shared(${KUNCI_BULAN_SQL})`, [unit, bulan]);
   const rows = (await c.query<{ bulan: string; bukuBesar: boolean }>(SQL_TUTUP_BULAN_UNIT, [unit])).rows;
   const ini = rows.find((r) => r.bulan === bulan);
   return {

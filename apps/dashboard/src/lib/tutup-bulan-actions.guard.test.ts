@@ -70,6 +70,19 @@ describe("tutupBulan — penjagaan yang tak boleh hilang", () => {
     expect(HAL).toMatch(/const vonis = periksaTutupBulan\(bahan\)/);
   });
 
+  it("🔴 K6 U11 R33: pembentukan ulang SEBELUM vonis, di klien transaksi; buku_besar ditulis dari vonis", () => {
+    expect(urutan(fn, "bacaBahanTutupBulan(client", "bukuBesarTerkini(client")).toBe("ok");
+    expect(urutan(fn, "bukuBesarTerkini(client", "periksaTutupBulan({ ...bahan, bukuBesar })")).toBe("ok");
+    expect(fn).toMatch(/INSERT INTO app\.tutup_bulan \(unit_id, bulan, ditutup_by_user_id, buku_besar\)/);
+    expect(fn).toMatch(/\[unit\.unit_id, `\$\{input\.bulan\}-01`, scope\.userId, vonis\.bukuBesar\]/);
+    const bb = KODE.slice(KODE.indexOf("async function bukuBesarTerkini"));
+    expect(bb).toMatch(/async function bukuBesarTerkini/);
+    // Hanya bila aktif DAN syarat K5 lolos; setiap hari bulan itu; baca ULANG sesudahnya.
+    expect(urutan(bb, "syaratK5Lolos(", "bentukUlangHari(client")).toBe("ok");
+    expect(bb).toMatch(/for \(const d of hariDalamBulan\(bulan\)\)/);
+    expect(urutan(bb, "bentukUlangHari(client", "bacaBahanBukuBesar(client")).toBe("ok");
+  });
+
   it("tanpa UPDATE/DELETE atas tutup_bulan (bulan tertutup beku)", () => {
     expect(KODE).not.toMatch(/UPDATE app\.tutup_bulan|DELETE FROM/i);
   });
@@ -80,6 +93,13 @@ describe("kunci bulan — eksklusif bagi penutup, bersama bagi jalur tulis, KUNC
     const f = Q.slice(Q.indexOf("export async function bulanTertutupTerkunci"));
     expect(urutan(f, "pg_advisory_xact_lock_shared(", "FROM app.tutup_bulan")).toBe("ok");
     expect(f).toMatch(/\.sort\(\)/);
+  });
+
+  it("🔴 pembentukan ulang buku besar memakai kunci bulan yang sama — impor, bukan salinan", () => {
+    const tulis = tanpaKomentar(readFileSync(resolve(__dirname, "buku-besar-tulis.ts"), "utf8"));
+    expect(tulis).toMatch(/import \{ KUNCI_BULAN_SQL \} from "\.\/tutup-bulan-queries"/);
+    expect(tulis).toMatch(/pg_advisory_xact_lock_shared\(\$\{KUNCI_BULAN_SQL\}\)/);
+    expect(tulis).not.toMatch(/hashtextextended\('tutup-bulan:/);
   });
 
   it("🔴 penutup & jalur tulis memakai kunci yang SAMA (satu ekspresi)", () => {
