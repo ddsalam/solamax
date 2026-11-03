@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { bacaRekeningKoranBca, GalatRekeningKoran, parseSen } from "./impor-bank-parser";
+import { bacaRekeningKoranBca, GalatRekeningKoran, parseSen, periksaKaki, type RekeningKoran } from "./impor-bank-parser";
 
 // Fixture SINTETIS: tata letak `pdftotext -layout` e-statement BCA (kolom,
 // keterangan bertingkat, pergantian halaman, kaki) dengan nama, rekening, dan
@@ -155,5 +155,36 @@ describe("bacaRekeningKoranBca — penolakan utuh", () => {
     const g = tangkap(() => bacaRekeningKoranBca(teks));
     expect(g.kode).toBe("format");
     expect(g.message).toMatch(/kaki/i);
+  });
+});
+
+describe("periksaKaki — gerbang total tanpa ikatan bank (rencana 2026-11-02 U10, KTD9)", () => {
+  // Bentuk `RekeningKoran` rakitan tangan (bukan hasil parser BCA): gerbang yang
+  // sama dipakai pembaca AI & input manual dengan kaki = angka kontrol.
+  const rk = (over: Partial<RekeningKoran["footer"]> = {}): RekeningKoran => ({
+    nomorRekening: "1234567890",
+    periode: "2026-10",
+    saldoAwalSen: 100_000,
+    rows: [
+      { tanggal: "2026-10-02", urutan: 1, keterangan: "SETORAN", amountSen: 50_000, saldoSen: 150_000, so: null, dokRef: null },
+      { tanggal: "2026-10-03", urutan: 1, keterangan: "TRANSFER", amountSen: -20_000, saldoSen: null, so: null, dokRef: null },
+    ],
+    footer: { mutasiCrSen: 50_000, nCr: 1, mutasiDbSen: 20_000, nDb: 1, saldoAkhirSen: 130_000, ...over },
+  });
+
+  it("cocok ⇒ tak ada ketidakcocokan", () => {
+    expect(periksaKaki(rk(), 100_000)).toEqual([]);
+  });
+
+  it("satu baris debet terlewat ⇒ mutasi-db & saldo-akhir berselisih, dengan nilainya", () => {
+    const k = periksaKaki(rk({ mutasiDbSen: 27_500, saldoAkhirSen: 122_500 }), 100_000);
+    expect(k).toEqual([
+      { pemeriksaan: "mutasi-db", terbaca: 20_000, kaki: 27_500, selisih: -7_500 },
+      { pemeriksaan: "saldo-akhir", terbaca: 130_000, kaki: 122_500, selisih: 7_500 },
+    ]);
+  });
+
+  it("saldo awal terbaca ≠ saldo awal kaki ⇒ saldo-awal", () => {
+    expect(periksaKaki(rk(), 100_001).map((x) => x.pemeriksaan)).toEqual(["saldo-awal"]);
   });
 });

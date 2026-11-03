@@ -1148,8 +1148,12 @@ model RekeningKoran {
   fileSha256             String    @map("file_sha256")
   uploadedByUserId       Int       @map("uploaded_by_user_id")
   uploadedAt             DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz()
-  /// 'aktif' | 'ditarik' (CHECK).
+  /// 'aktif' | 'menunggu' | 'ditarik' (CHECK).
   status                 String    @default("aktif")
+  /// 'bca' | 'ai' | 'manual' (CHECK, 0057).
+  sumber                 String    @default("bca")
+  dikonfirmasiAt         DateTime? @map("dikonfirmasi_at") @db.Timestamptz()
+  dikonfirmasiByUserId   Int?      @map("dikonfirmasi_by_user_id")
   ditarikAt              DateTime? @map("ditarik_at") @db.Timestamptz()
   ditarikByUserId        Int?      @map("ditarik_by_user_id")
   ditarikAlasan          String?   @map("ditarik_alasan")
