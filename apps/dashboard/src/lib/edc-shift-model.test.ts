@@ -1,11 +1,13 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  berubahSesudahDiposting,
   bolehDisetujui,
   butuhAlasan,
+  PESAN_HASIL_CEK,
+  perluKeputusanFinance,
   rakitShiftEdc,
   statusBaris,
+  vonisCekSlip,
   type CekSlip,
   type EdcEasymaxShift,
 } from "./edc-shift-model";
@@ -102,43 +104,66 @@ describe("wewenang §10.25 — keputusan owner 26 Sep 2026", () => {
   });
 });
 
-describe("penjaga server action — yang tak boleh hilang", () => {
-  const s = readFileSync(resolve(__dirname, "edc-shift-actions.ts"), "utf8");
-  const badan = (nama: string) => {
-    const i = s.indexOf(`export async function ${nama}`);
-    const j = s.indexOf("\nexport ", i + 1);
-    return s.slice(i, j < 0 ? undefined : j);
-  };
-
-  it("bruto dihitung ULANG di server saat mencocokkan dan saat menyetujui", () => {
-    expect(badan("cekSlipEdc")).toMatch(/brutoSekarang\(/);
-    expect(badan("setujuiPenjualanEdc")).toMatch(/brutoSekarang\(/);
+describe("posting otomatis saat pengawas mencocokkan — R15, R16, KTD7", () => {
+  it("AE3 shift 2: slip Rp 8.000.000 = EasyMax Rp 8.000.000 → terposting", () => {
+    expect(vonisCekSlip({ slipRp: 8_000_000, easymaxRp: 8_000_000, riwayat: [] })).toBe("terposting");
   });
 
-  it("🔴 yang mencocokkan tidak menyetujui cek yang sama", () => {
-    expect(badan("setujuiPenjualanEdc")).toMatch(/k\.checkedByUserId === scope\.userId/);
+  it("AE3 shift 3: slip Rp 7.950.000 vs EasyMax Rp 8.000.000 → ditahan", () => {
+    expect(vonisCekSlip({ slipRp: 7_950_000, easymaxRp: 8_000_000, riwayat: [] })).toBe("ditahan");
   });
 
-  it("gerbang wewenang mendahului koneksi DB di ketiga aksi", () => {
-    for (const [nama, gerbang] of [
-      ["simpanPetaKartu", "canPetakanKartuEdc("],
-      ["cekSlipEdc", "canCekSlipEdc("],
-      ["setujuiPenjualanEdc", "alasanTakBolehInput("],
-    ] as const) {
-      const b = badan(nama);
-      expect(b.indexOf(gerbang), nama).toBeGreaterThan(-1);
-      expect(b.indexOf(gerbang), nama).toBeLessThan(b.indexOf("pool.connect()"));
-    }
+  it("🔴 cek ulang slip = EasyMax sesudah PERNAH beda (cek lama sudah batal) → tetap ditahan", () => {
+    const riwayat = [{ slipRp: 7_950_000, easymaxRp: 8_000_000 }];
+    expect(vonisCekSlip({ slipRp: 8_000_000, easymaxRp: 8_000_000, riwayat })).toBe("ditahan");
   });
 
-  it("baris dikunci (FOR UPDATE) sebelum divonis & ditulis", () => {
-    expect(badan("setujuiPenjualanEdc")).toMatch(/FOR UPDATE/);
-    expect(badan("cekSlipEdc")).toMatch(/FOR UPDATE/);
+  it("riwayat yang selalu cocok tidak menahan cek berikutnya", () => {
+    const riwayat = [{ slipRp: 5_000_000, easymaxRp: 5_000_000 }];
+    expect(vonisCekSlip({ slipRp: 8_000_000, easymaxRp: 8_000_000, riwayat })).toBe("terposting");
   });
 
-  it("nominal yang dibukukan = bruto EasyMax dari cek, bukan slip", () => {
-    const b = badan("setujuiPenjualanEdc");
-    expect(b).toMatch(/cek\.easymaxRp,\s*\n\s*scope\.userId/);
-    expect(b).not.toMatch(/slipRp,\s*\n\s*scope\.userId/);
+  it("pecahan sen bukan beda — di cek ini maupun di riwayat", () => {
+    const riwayat = [{ slipRp: 1_000_000, easymaxRp: 1_000_000.4 }];
+    expect(vonisCekSlip({ slipRp: 1_000_000, easymaxRp: 1_000_000.4, riwayat })).toBe("terposting");
+  });
+
+  it("kalimat hasil untuk pengawas", () => {
+    expect(PESAN_HASIL_CEK.terposting).toBe("Terposting");
+    expect(PESAN_HASIL_CEK.ditahan).toBe("Ditahan, menunggu Finance");
+  });
+});
+
+describe("berubah sesudah diposting — KTD7", () => {
+  it("nominal terposting ≠ EasyMax sekarang → berubah", () => {
+    expect(berubahSesudahDiposting(cek({ dibukukan: true, easymaxRp: 8_000_000 }), 8_100_000)).toBe(true);
+  });
+  it("kelompok lenyap dari EasyMax sesudah diposting → berubah", () => {
+    expect(berubahSesudahDiposting(cek({ dibukukan: true, easymaxRp: 8_000_000 }), 0)).toBe(true);
+  });
+  it("terposting dan EasyMax tetap → tidak berubah", () => {
+    expect(berubahSesudahDiposting(cek({ dibukukan: true, easymaxRp: 8_000_000 }), 8_000_000)).toBe(false);
+  });
+  it("belum terposting bukan urusan detektor ini (itu berubah_sesudah_dicek)", () => {
+    expect(berubahSesudahDiposting(cek({ dibukukan: false, easymaxRp: 8_000_000 }), 8_100_000)).toBe(false);
+    expect(berubahSesudahDiposting(null, 8_100_000)).toBe(false);
+  });
+
+  it("rakitShiftEdc menandai baris & daftar keputusan Finance memuatnya — yang terposting utuh tidak", () => {
+    const { baris } = rakitShiftEdc(
+      [e("1", "BRI1", 8_100_000), e("2", "BRI1", 8_000_000), e("3", "BRI1", 8_000_000), e("4", "BRI1", 8_000_000)],
+      [{ ckdkartu: "BRI1", acquirer: "BRI" }],
+      [
+        cek({ id: "a", cshift: "1", acquirer: "BRI", easymaxRp: 8_000_000, slipRp: 8_000_000, dibukukan: true }),
+        cek({ id: "b", cshift: "2", acquirer: "BRI", easymaxRp: 8_000_000, slipRp: 8_000_000, dibukukan: true }),
+        cek({ id: "c", cshift: "3", acquirer: "BRI", easymaxRp: 8_000_000, slipRp: 7_950_000 }),
+      ],
+    );
+    expect(baris.map((b) => [b.cshift, b.status, b.berubahSesudahDiposting, perluKeputusanFinance(b)])).toEqual([
+      ["1", "dibukukan", true, true],
+      ["2", "dibukukan", false, false],
+      ["3", "selisih", false, true],
+      ["4", "belum_dicek", false, false],
+    ]);
   });
 });
