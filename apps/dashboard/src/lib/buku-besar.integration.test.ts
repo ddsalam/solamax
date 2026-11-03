@@ -142,6 +142,30 @@ d("0058 buku besar — ditegakkan DB", () => {
     });
   });
 
+  it("saldo sebelum hari D tidak menghitung jurnal sumber yang dibukukan PADA D (terdorong maju, efektif < D)", async () => {
+    if (!applied) return;
+    const { SQL_SALDO_SEBELUM } = await import("./buku-besar-sumber");
+    await tx(async (c) => {
+      // P7 penebusan yang terdorong maju: dibukukan HARI, efektif sehari sebelumnya.
+      const j = (
+        await c.query<{ id: string }>(
+          `INSERT INTO app.jurnal (unit_id, tanggal_buku, tanggal_efektif, jenis, aturan, sumber_tabel, sumber_id, keterangan)
+           VALUES ($1, $2::date, ($2::date - 1), 'sumber', 'P7', 'cash_ledger', 'maju-1', 'uji') RETURNING id::text AS id`,
+          [U.unitId, HARI],
+        )
+      ).rows[0]!.id;
+      await baris(c, j, "1132", 100_000, 0);
+      await baris(c, j, U.posBank, 0, 100_000);
+      const r = await c.query<{ kode: string; gerak: string }>(SQL_SALDO_SEBELUM, [U.unitId, HARI]);
+      const g = (k: string) => Number(r.rows.find((x) => x.kode === k)?.gerak ?? "NaN");
+      // Dibentuk ulang dari sumber pada hari ini — tidak boleh ikut saldo pembuka hari itu.
+      expect(g("1132")).toBe(0);
+      // Hari sesudahnya ia memang bagian dari saldo sebelum.
+      const besok = await c.query<{ kode: string; gerak: string }>(SQL_SALDO_SEBELUM, [U.unitId, "2026-10-15"]);
+      expect(Number(besok.rows.find((x) => x.kode === "1132")?.gerak)).toBe(100_000);
+    });
+  });
+
   it("kunci sumber unik untuk jurnal sumber", async () => {
     if (!applied) return;
     await tx(async (c) => {

@@ -196,6 +196,10 @@ export const SQL_SALDO_SEBELUM = `
                      JOIN app.jurnal j ON j.id = b.jurnal_id AND j.unit_id = b.unit_id
                     WHERE b.unit_id = $1 AND b.pos_kode = p.kode AND j.status = 'aktif'
                       AND j.jenis <> 'saldo_awal'
+                      -- Jurnal sumber yang DIBUKUKAN pada hari $2 dibentuk ulang dari
+                      -- sumbernya sekarang; menghitungnya di sini (mis. P7 terdorong
+                      -- maju, efektif < $2) membuat P23 menghitungnya dua kali.
+                      AND NOT (j.jenis = 'sumber' AND j.tanggal_buku = $2::date)
                       AND (j.tanggal_efektif < $2::date
                            OR (j.tanggal_efektif = $2::date AND j.jenis = 'memorial'))), 0)::text AS gerak,
          COALESCE((SELECT sum(b.debet_sen - b.kredit_sen)
