@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { KODE_MAJU_EDC } from "./keuangan-kode-maju";
 import { SQL_EDC_PER_SHIFT } from "./edc-shift-queries";
 import { keteranganBuku, statusBaris, type CekSlip } from "./edc-shift-model";
 import { hariBukuTerkunci } from "./hari-buku-queries";
@@ -62,6 +63,12 @@ export async function postingPenjualanEdc(
     aktorId: number;
     /** Wajib (kode `closing`) bila slip ≠ EasyMax; diabaikan bila cocok. */
     reasonCode: string | null;
+    /**
+     * Hanya jalur keputusan Finance: hari yang sudah ditutup ⇒ dibukukan ke hari
+     * buka berikutnya dengan `tanggal_asal` + ADJ-FWD-EDC (§10.49#4). Posting
+     * otomatis pengawas tidak pernah mendorong maju — ia tetap ditahan.
+     */
+    dorongMaju?: boolean;
   },
 ): Promise<HasilPostingEdc> {
   const akun = await c.query<{ id: string }>(
@@ -136,7 +143,8 @@ export async function postingPenjualanEdc(
   if (hari.status === "pra-cut-over") {
     return { ok: false, error: `Tanggal ini mendahului saldo pembuka EDC Penampungan (${hari.cutOver}).` };
   }
-  if (hari.perluKodeAlasan) {
+  const maju = hari.perluKodeAlasan;
+  if (maju && !m.dorongMaju) {
     return {
       ok: false,
       error: `Hari ${m.date} sudah ditutup — penjualan EDC shift ${k.cshift} ${k.acquirer} tidak dibukukan ke hari lain. Hubungi Head of Finance.`,
@@ -153,8 +161,10 @@ export async function postingPenjualanEdc(
   const ins = await c.query<{ id: string }>(
     `INSERT INTO app.cash_ledger
        (unit_id, account_id, business_date, keterangan, jenis,
-        category_side, category_label, amount, created_by_user_id, edc_shift_cek_id)
-     VALUES ($1, $2::uuid, $3::date, $4, 'debet', 'debet', 'Penjualan EDC', $5, $6, $7::uuid)
+        category_side, category_label, amount, created_by_user_id, edc_shift_cek_id,
+        tanggal_asal, alasan_maju, alasan_maju_applies_to)
+     VALUES ($1, $2::uuid, $3::date, $4, 'debet', 'debet', 'Penjualan EDC', $5, $6, $7::uuid,
+             $8::date, $9, CASE WHEN $9::text IS NULL THEN NULL ELSE 'adjustment' END)
      RETURNING id::text AS id`,
     [
       m.unitId,
@@ -164,6 +174,8 @@ export async function postingPenjualanEdc(
       cek.easymaxRp,
       m.aktorId,
       k.id,
+      maju ? m.date : null,
+      maju ? KODE_MAJU_EDC : null,
     ],
   );
   return { ok: true, posting: "baru", ledgerId: ins.rows[0]?.id ?? "?" };

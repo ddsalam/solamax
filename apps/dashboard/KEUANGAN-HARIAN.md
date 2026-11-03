@@ -2297,7 +2297,8 @@ Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-p
    dengan kode alasan; `checked_by ≠ approver` tetap di jalur ini.
 3. **Sekali pernah beda, tetap ditahan** — cek ulang dengan slip = EasyMax tidak memposting
    otomatis (termasuk cek lama yang di-void).
-4. Hari tertutup ⇒ tidak diposting otomatis; tetap ditahan untuk Finance.
+4. Hari tertutup ⇒ tidak diposting otomatis; tetap ditahan untuk Finance. Keputusan Finance atas shift
+   yang ditahan dibukukan ke **hari buka berikutnya** dengan `tanggal_asal` + kode `ADJ-FWD-EDC`.
 5. Bruto EasyMax berubah sesudah diposting ⇒ ditandai "berubah sesudah diposting"; Finance
    membatalkan baris Penjualan EDC di Buku Kas, lalu pengawas mencocokkan ulang.
 
@@ -2317,6 +2318,10 @@ Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-p
 1. Buku besar **dibentuk dari catatan yang ada** sejak **1 Oktober 2026**; jurnal disimpan dengan
    kunci sumber, dibentuk ulang idempoten. **Garis beku = tutup bulan**: sebelum bulan ditutup,
    jurnal boleh bertanggal hari mana pun di bulan itu; sesudahnya, koreksi bertanggal maju.
+   **Batas diketahui:** belum ada aksi yang membentuk koreksi maju otomatis untuk bulan beku.
+   Reklasifikasi baris di bulan beku ditolak; perubahan sumber lain sesudah tutup bulan (mis.
+   sinkron ulang EasyMax) tampil sebagai beda di tab "Temuan beda" dan dikoreksi lewat jurnal
+   memorial. Jurnal hari terbuka dibentuk saat tutup hari, tutup bulan, atau "Bentuk ulang".
 2. **HPP = liter terjual × harga beli terakhir.** Penebusan menambah SO dibayar (1132), bukan HPP.
    Harga beli kosong ⇒ tidak ada HPP produk itu + temuan; tidak pernah HPP nol.
 3. **Tidak ada angka penyeimbang.** Beda dengan laporan rumus tampil sebagai temuan.

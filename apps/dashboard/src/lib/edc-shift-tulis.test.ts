@@ -24,7 +24,7 @@ type Cek = {
   reason_code: string | null;
   void: boolean;
 };
-type Kas = { id: string; account_id: string; business_date: string; amount: number; edc_shift_cek_id: string; void: boolean; created_by_user_id: number };
+type Kas = { id: string; account_id: string; business_date: string; amount: number; edc_shift_cek_id: string; void: boolean; created_by_user_id: number; tanggal_asal?: string | null; alasan_maju?: string | null };
 
 const h = vi.hoisted(() => {
   process.env.HEAD_OF_FINANCE_EMAILS = "hof@solagroup.co";
@@ -108,12 +108,12 @@ const h = vi.hoisted(() => {
         return ok(kunci.map((c) => ({ slipRp: c.slip_rp, easymaxRp: c.easymax_rp })));
       }
       if (sql.includes("INSERT INTO app.cash_ledger")) {
-        const [, account, date, , amount, by, cekId] = p as [number, string, string, string, number, number, string];
+        const [, account, date, , amount, by, cekId, asal, maju] = p as [number, string, string, string, number, number, string, string | null, string | null];
         if (lihatKas().some((l) => l.edc_shift_cek_id === cekId && !l.void)) {
           throw new Error("duplicate key value violates unique constraint \"cash_ledger_edc_shift_cek_uq\"");
         }
         const id = `kas-${++seq}`;
-        lihatKas().push({ id, account_id: account, business_date: date, amount: Number(amount), edc_shift_cek_id: cekId, void: false, created_by_user_id: by });
+        lihatKas().push({ id, account_id: account, business_date: date, amount: Number(amount), edc_shift_cek_id: cekId, void: false, created_by_user_id: by, tanggal_asal: asal ?? null, alasan_maju: maju ?? null });
         return ok([{ id }]);
       }
       throw new Error(`SQL tak dikenal tiruan: ${sql.slice(0, 80)}`);
@@ -253,6 +253,19 @@ describe("penjaga hari & akun (KTD6)", () => {
     expect(r).toMatchObject({ ok: true, posting: "ditahan" });
     expect(cekAktif("2")).toBeDefined();
     expect(kasAktif()).toEqual([]);
+  });
+
+  it("Finance memutuskan shift ditahan pada hari yang sudah ditutup → dibukukan maju dengan tanggal asal (temuan review #3)", async () => {
+    await cek("3", 7_950_000); // ditahan: slip ≠ EasyMax
+    const id = cekAktif("3").id;
+    // Hari itu kini sudah ditutup: hari buka berikutnya 2 hari kemudian.
+    h.hari.fn = (_u, t) => ({ status: "dibukukan", hariBuku: "2026-10-16", terdorongMaju: t !== "2026-10-16", perluKodeAlasan: t !== "2026-10-16" });
+    sebagaiKeuangan();
+    const r = await setujuiPenjualanEdc({ code: h.UNIT.code, date: TGL, pilihan: [{ cekId: id, reasonCode: "CLS-SLIP" }] });
+    expect(r.ok).toBe(true);
+    expect(kasAktif()).toEqual([
+      expect.objectContaining({ business_date: "2026-10-16", tanggal_asal: TGL, alasan_maju: "ADJ-FWD-EDC", edc_shift_cek_id: id }),
+    ]);
   });
 
   it("tanggal sebelum saldo pembuka → ditahan, tak ada baris buku", async () => {

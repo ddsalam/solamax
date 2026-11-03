@@ -282,6 +282,7 @@ export async function setujuiPenjualanEdc(input: {
         cekId: p.cekId,
         aktorId: scope.userId,
         reasonCode: p.reasonCode,
+        dorongMaju: true,
       });
       if (!hasil.ok) {
         await client.query("ROLLBACK");

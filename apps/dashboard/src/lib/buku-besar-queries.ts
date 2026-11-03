@@ -243,7 +243,9 @@ export async function getMemorial(unit: ScopedUnitId, bulan: string): Promise<Ju
 // ---------------------------------------------------------------------------
 
 /** Hari laporan rumus dibaca bersamaan — tiap hari belasan kueri. */
-const SEREMPAK = 4;
+// Satu hari pada satu waktu: getBahanLaporan ≈ 64 round-trip; 4 serempak menekan
+// pool (max 10) dan bisa menelantarkan permintaan lain (temuan review #5).
+const SEREMPAK = 1;
 
 /**
  * Angka laporan rumus yang sebanding untuk bulan itu, per `batas` = akhir bulan

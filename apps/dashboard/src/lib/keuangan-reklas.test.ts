@@ -215,6 +215,12 @@ describe("server action — baris pengawas TIDAK PERNAH disentuh", () => {
     const ins = [...kode.matchAll(/INSERT INTO (app\.\w+)/g)].map((m) => m[1]);
     expect(ins).toEqual(["app.reclassification"]);
   });
+  it("bulan yang ditutup dengan buku besar menolak reklasifikasi SEBELUM INSERT (temuan review #6)", () => {
+    expect(kode).toMatch(/t\.buku_besar[\s\S]*AS "bulanBeku"/);
+    const tolak = kode.indexOf("if (baris.bulanBeku)");
+    expect(tolak).toBeGreaterThan(-1);
+    expect(tolak).toBeLessThan(kode.indexOf("INSERT INTO app.reclassification"));
+  });
   it("wewenang dicek di server & akun asal dibaca ulang di transaksi", () => {
     expect(kode).toMatch(/canReklasifikasi\(/);
     expect(kode).toMatch(/FROM app\.reclassification[\s\S]*ORDER BY created_at DESC/);

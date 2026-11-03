@@ -12,7 +12,8 @@
 --   app.saldo_awal_pos  — saldo awal per unit per pos per 30 Sep 2026 (R9),
 --                         diisi lewat layar U9. Tabel lahir sekarang.
 --   app.tutup_bulan     — + `buku_besar`: bulan ini ditutup DENGAN buku besar.
---   app.reason_code     — + ADJ-FWD-LEDGER (koreksi buku besar dibukukan maju).
+--   app.reason_code     — + ADJ-FWD-LEDGER (koreksi buku besar dibukukan maju),
+--                         + ADJ-FWD-EDC (EDC shift diputuskan Finance sesudah hari ditutup).
 --
 -- ⛔ KEPUTUSAN YANG MENGIKAT:
 --
@@ -52,7 +53,8 @@ ALTER TABLE "app"."tutup_bulan"
     ADD COLUMN IF NOT EXISTS "buku_besar" BOOLEAN NOT NULL DEFAULT false;
 
 INSERT INTO "app"."reason_code" ("code", "label", "applies_to", "requires_target_date") VALUES
-    ('ADJ-FWD-LEDGER', 'Koreksi buku besar bulan tertutup (dibukukan maju)', 'adjustment', false)
+    ('ADJ-FWD-LEDGER', 'Koreksi buku besar bulan tertutup (dibukukan maju)', 'adjustment', false),
+    ('ADJ-FWD-EDC', 'Penjualan EDC shift diputuskan sesudah hari ditutup (dibukukan maju)', 'adjustment', false)
 ON CONFLICT ("code") DO NOTHING;
 
 -- ---------------------------------------------------------------------------
