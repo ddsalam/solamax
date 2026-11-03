@@ -119,6 +119,12 @@ muncul sebagai usulan yang harus **disetujui** dan meninggalkan jejak siapa
 menyetujui. Sistem yang memposting sendiri ke buku kas akan menghapus satu-satunya
 titik di mana manusia melihat angka itu.
 
+> ⚖️ **Digantikan 2 Nov 2026 (K6, keputusan owner — §10.48).** Setoran tunai pengawas kini
+> **diposting langsung** ke Kas Besar saat baris setoran disimpan. Titik pemeriksaan manusia
+> pindah ke pencocokan rekening koran (setoran jemputan, §10.39 + §10.48) dan tutup bulan.
+> Alasan lama di atas dipertahankan sebagai riwayat: risikonya kini diterima sadar, dan kas
+> opname Kas Besar masih ditunda.
+
 ---
 
 ## 2 · Kepemilikan: fakta transaksi ≠ wewenang klasifikasi
@@ -1699,7 +1705,7 @@ Bakau (saldo Rp 12,4 M).
 | Granularitas | **Per shift × acquirer** |
 | Foto slip | **Opsional sekarang, wajib kelak** — kolom `slip_foto_ref` disiapkan |
 | Peta kode kartu → bank | **Head of Finance / super admin / Direksi (owner) / pengawas** unit itu — staf `keuangan` tidak |
-| Posting | Staf **Keuangan menyetujui** → Debet EDC Penampungan, kategori `Penjualan EDC` |
+| Posting | Staf **Keuangan menyetujui** → Debet EDC Penampungan, kategori `Penjualan EDC` · ⚖️ *sejak 2 Nov 2026 (§10.49): otomatis bila slip = EasyMax; Finance hanya memutuskan yang ditahan* |
 
 **Bentuk (0043):** `app.edc_kartu_acquirer` (peta, PK unit+kode) ·
 `app.edc_shift_cek` (cek slip; `easymax_rp` = bruto SAAT dicocokkan; satu cek aktif
@@ -1713,6 +1719,9 @@ satu posting aktif per cek). RLS §4.1b, VOID-only.
    persetujuan **ditolak** sampai pengawas mencocokkan ulang — slip itu memeriksa
    angka yang sudah tidak ada.
 3. **Yang mencocokkan tidak menyetujui** cek yang sama (`checked_by ≠ approver`).
+   ⚖️ *Diubah 2 Nov 2026 (K6, §10.49):* aturan ini kini berlaku **hanya di jalur Finance**
+   untuk shift yang ditahan. Shift yang slipnya sama dengan EasyMax diposting otomatis —
+   pembandingnya sistem (EasyMax), bukan orang kedua.
 4. Slip ≠ EasyMax ⇒ persetujuan **wajib kode alasan** `closing`; selisihnya tetap
    tercatat di cek, tidak dibulatkan hilang.
 5. Kode kartu **tanpa peta tidak ditebak** ke bank mana pun — ia disebut dengan
@@ -2123,7 +2132,7 @@ idempoten, audit `tutup_bulan.tutup`. Ditolak selama:
 1. ada hari di bulan itu yang belum ditutup;
 2. ada baris parkir yang belum dipindahkan dengan **tanggal bank** di bulan itu — bukan
    tanggal buku: mutasi 20 Okt yang dibukukan 3 Nov menahan **Oktober**;
-3. ada rekening BCA aktif bernomor tanpa rekening koran aktif bulan itu;
+3. ada rekening bank aktif tanpa rekening koran aktif bulan itu (⚖️ sejak K6 §10.52: semua bank, bukan hanya BCA; rekening tanpa mutasi & bersaldo nol dikecualikan);
 4. ada baris buku di rekening itu (tanggal asal di bulan itu) tanpa kelompok cocok aktif —
    **kecuali** saldo pembuka dan pasangan batal + pembalik majunya yang bertaut dan Σ Rp 0.
 
@@ -2225,6 +2234,107 @@ Diputus Dion 2 Nov 2026. Rencana: `docs/plans/2026-11-02-1354-feat-edc-batal-uba
    batalkan batch". "Saja" sengaja di posisi tombol pertama (posisi klik rilis sebelumnya);
    "& batch" merah dan kedua. Pilihan "& batch" tampil di Pemantauan sebagai **dua** kejadian
    kuning yang sama-sama benar: "Pencairan EDC dibatalkan" dan pembatalan batch-nya.
+
+### 10.46 K6 · Daftar pos empat digit (keputusan owner 2 November 2026)
+
+Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-plan.html`
+(R1–R5, U1). Migrasi 0056.
+
+1. **Daftar pos resmi** = Tabel Pos di rencana: kelas 1 Aset, 2 Kewajiban, 3 Modal,
+   4 Pendapatan, 5 Beban. `app.pos` global (tanpa RLS); `app.pos_unit` menampung sub-pos per
+   unit (RLS 0016) — sub-pos bank 1111–1119 dibuat otomatis per rekening bank.
+2. **Kode lama tidak ditulis ulang** di baris tersimpan (trigger 0026 melarang UPDATE hari
+   tertutup). `app.pos_kode_lama` menerjemahkan `6-xxxx`, `7-1100`, `7-1200`, `8-1000`,
+   `3-9100`, `1-1800` ke pos baru saat dibaca.
+3. **Empat belas kategori operasional pengawas tetap.** Peta kategori → pos dipegang HoF
+   (`canKelolaPos`), berlaku untuk baris sesudah perubahan; baris lama tidak ikut berubah.
+4. **Pendapatan lain-lain** selalu terhitung pendapatan (pos 4200) apa pun kode yang tersimpan —
+   cacat lama: baris pintu Finance berkode `6-xxxx` hilang dari laba.
+
+### 10.47 K6 · Input satu kali di buku kas/bank (keputusan owner 2 November 2026)
+
+1. **Biaya Operasional** di Tambah mutasi wajib memilih jenis biaya (kategori operasional);
+   **Pendapatan Lain-Lain** langsung ke 4200; **Management Fee** ke pos yang HoF tetapkan.
+   Satu simpan menulis mutasi + baris Biaya/Pendapatan yang terhubung (`manual_entry.cash_ledger_id`,
+   0053), di bawah `hariBukuTerkunci`. Membatalkan mutasi membatalkan barisnya.
+2. **Form biaya terpisah pintu Finance dihapus** dari halaman Biaya; reklasifikasi tetap.
+3. **Pembelian BBM di rekening bank** membuka field penebusan di Tambah mutasi; satu simpan
+   menulis mutasi + penebusan (`kas_dibuat`). Jalur mutasi biasa menolak Pembelian BBM di
+   rekening bank. Jalur inline tidak mengikat baris lama diam-diam — bila ada baris Pembelian BBM
+   lama dengan nominal/tanggal sama, simpan ditolak dan diarahkan ke halaman Penebusan SO.
+4. **"Perlu ditautkan"** (halaman Biaya): mutasi biaya tanpa baris Biaya, baris Biaya tanpa
+   mutasi, dan Pembelian BBM tanpa penebusan. Sistem tidak menebak tautan.
+
+### 10.48 K6 · Setoran pengawas langsung ke Kas Besar (keputusan owner 2 November 2026)
+
+⚖️ Menggantikan §1.4 "ditawarkan, bukan diposting".
+
+1. Menyimpan baris setoran tunai di Rincian Penjualan langsung menulis debet **Kas Besar**
+   ("Setoran Hasil Penjualan", `source_manual_entry_id`) dalam satu transaksi di bawah
+   `hariBukuTerkunci`. Owner memilih **selalu Kas Besar** (bukan pilihan pengawas, bukan default
+   per unit).
+2. Membatalkan setoran ikut membatalkan baris kasnya; ditolak bila baris kas sudah dicocokkan
+   rekening koran (minta HoF membatalkan cocok). Koreksi = batal + buat ulang; baris lama tetap
+   tersimpan berstatus batal.
+3. Baris rekening koran BCA "SETORAN JEMPUTAN" yang cocok dengan tepat satu kandidat (satu
+   setoran Kas Besar atau total setoran satu tanggal bisnis, 0–3 hari sebelumnya) membuat
+   mutasi "Setoran ke Bank" (Kas Besar keluar, bank masuk) dan grup cocok otomatis. Kaki
+   "Setoran ke Bank" yang sudah diketik Finance diutamakan; baris dari pembaca AI hanya usulan.
+   Pasangan otomatis = kaki bank "Pindah Buku" (+) dan kaki Kas Besar "Setoran ke Bank" (−),
+   keduanya lahir dari grup cocok (`lahir_dari_cocok_id`) yang juga memuat setoran terpakai —
+   karena itu setoran yang sudah tersetor tidak bisa dibatalkan pengawas.
+4. **Batas diketahui:** membatalkan pasangan otomatis di hari yang sudah ditutup **ditolak**
+   (belum ada kategori debet "Setoran ke Bank" untuk pembalikan). Hari terbuka: kedua kaki di-void.
+   Menyimpan setoran pada hari yang sudah ditutup juga ditolak (belum ada kode maju setoran).
+
+### 10.49 K6 · EDC per shift otomatis (keputusan owner 2 November 2026)
+
+⚖️ Mengubah §10.25 butir 3 dan baris "Posting".
+
+1. Pengawas mencocokkan slip: slip = bruto EasyMax ⇒ **terposting otomatis** ke EDC Penampungan
+   (`edc-shift-tulis.ts`). Pengawas melihat "Terposting".
+2. Slip ≠ EasyMax ⇒ **ditahan**; pengawas melihat "Ditahan, menunggu Finance". Finance memutuskan
+   dengan kode alasan; `checked_by ≠ approver` tetap di jalur ini.
+3. **Sekali pernah beda, tetap ditahan** — cek ulang dengan slip = EasyMax tidak memposting
+   otomatis (termasuk cek lama yang di-void).
+4. Hari tertutup ⇒ tidak diposting otomatis; tetap ditahan untuk Finance.
+5. Bruto EasyMax berubah sesudah diposting ⇒ ditandai "berubah sesudah diposting"; Finance
+   membatalkan baris Penjualan EDC di Buku Kas, lalu pengawas mencocokkan ulang.
+
+### 10.50 K6 · Rekening koran semua bank & pembaca AI (keputusan owner 2 November 2026)
+
+1. Rekening koran **BRI, BNI, Mandiri** dibaca **pembaca AI** (Claude API, `claude-opus-5-5`,
+   keluaran terstruktur) atau diketik manual. AI **membaca dan menjelaskan, tidak memutuskan.**
+2. Gerbang: empat angka kontrol diketik staf (saldo awal, total debet, total kredit, saldo akhir),
+   saldo berjalan per baris bila tercetak, tanggal tidak mundur, saldo awal = saldo akhir
+   rekening koran terkonfirmasi bulan lalu (pertama kali: saldo buku bank). Lolos ⇒ status
+   **menunggu** sampai HoF konfirmasi; barisnya belum ikut pencocokan.
+3. Tanpa kunci `ANTHROPIC_API_KEY` ⇒ menolak dan menawarkan input manual. Isi rekening koran
+   tidak ditulis ke log. Batas 10 percobaan per rekening per bulan.
+
+### 10.51 K6 · Buku besar & laporan formal (keputusan owner 2 November 2026)
+
+1. Buku besar **dibentuk dari catatan yang ada** sejak **1 Oktober 2026**; jurnal disimpan dengan
+   kunci sumber, dibentuk ulang idempoten. **Garis beku = tutup bulan**: sebelum bulan ditutup,
+   jurnal boleh bertanggal hari mana pun di bulan itu; sesudahnya, koreksi bertanggal maju.
+2. **HPP = liter terjual × harga beli terakhir.** Penebusan menambah SO dibayar (1132), bukan HPP.
+   Harga beli kosong ⇒ tidak ada HPP produk itu + temuan; tidak pernah HPP nol.
+3. **Tidak ada angka penyeimbang.** Beda dengan laporan rumus tampil sebagai temuan.
+4. **Jurnal memorial** HoF; yang menyentuh 1103/1190/1198/1199/5130 atau > Rp 100.000 menunggu
+   persetujuan Direksi/super admin, pengusul tidak menyetujui sendiri.
+
+### 10.52 K6 · Tutup bulan: semua bank & pemeriksaan buku besar (keputusan owner 2 November 2026)
+
+1. Syarat rekening koran §10.41#3 berlaku untuk **semua rekening bank aktif**. Rekening tanpa
+   mutasi dan bersaldo nol di bulan itu dikecualikan; fakta yang tidak diketahui ⇒ dianggap wajib.
+   Rekening koran berstatus "menunggu" dihitung belum ada.
+2. **Pemeriksaan buku besar** aktif sejak bulan pertama yang saldo awal posnya lengkap: neraca
+   saldo seimbang; 1198 dan 1199 = Rp 0; 1103 dan 1190 = Rp 0 kecuali butir dalam perjalanan
+   yang pasangannya jatuh 0–3 hari di bulan berikutnya (disebut satu per satu); saldo setiap
+   sub-pos bank menurut tanggal efektif = saldo akhir rekening koran terkonfirmasi; tidak ada
+   temuan "harga beli belum diisi". Sebelum tutup, jurnal bulan itu dibentuk ulang.
+3. Tutup bulan dengan pemeriksaan aktif menandai `tutup_bulan.buku_besar` — jurnal bulan itu beku.
+4. **Penjelasan AI** atas butir terbuka bisa diminta staf Keuangan dan HoF; tidak mengubah vonis.
 
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
