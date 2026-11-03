@@ -760,6 +760,59 @@ model CategoryAccountMap {
   @@schema("app")
 }
 
+// Daftar pos resmi (COA empat digit) — Tabel Pos rencana K6 U1 (0056, R1).
+// GLOBAL: berlaku tujuh unit (bagan seragam B1), tanpa unit_id ⇒ tanpa RLS.
+// dashboard_app hanya SELECT; daftar berubah lewat migrasi. Nama `pos`, bukan
+// `gl` — "GL" sudah berarti gain/loss (KTD1).
+model Pos {
+  kode       String  @id
+  nama       String
+  /// aset | kewajiban | modal | pendapatan | beban (CHECK, cocok dgn digit pertama).
+  jenis      String
+  /// Pos induk hanya menjumlahkan sub-posnya — jurnal tak boleh memakainya.
+  induk      Boolean @default(false)
+  kodeInduk  String? @map("kode_induk")
+  /// Pos pengurang (kontra): 1590, 4110.
+  pengurang  Boolean @default(false)
+  /// Wajib Rp 0 saat tutup bulan (R33): 1103, 1190, 1198, 1199.
+  kliring    Boolean @default(false)
+  /// Hanya diisi sistem: 1103, 1198, 3900, 5120, 5130.
+  sistem     Boolean @default(false)
+  keterangan String?
+
+  @@map("pos")
+  @@schema("app")
+}
+
+// Kode lama (6-, 7-, 8-, 3-9100, 1-1800) → pos baru (0056, R2/KTD2). Baris
+// tersimpan TIDAK ditulis ulang; tabel ini menerjemahkan saat dibaca.
+model PosKodeLama {
+  kodeLama String @id @map("kode_lama")
+  posKode  String @map("pos_kode")
+
+  @@map("pos_kode_lama")
+  @@schema("app")
+}
+
+// Sub-pos MILIK SATU UNIT (0056, R4/R5): sub-pos bank 1111–1119 per rekening
+// (lahir dari cash_account lewat trigger) dan sub-pos tambahan HoF. RLS
+// unit_scope predikat 0016. Tanpa UPDATE untuk dashboard_app.
+model PosUnit {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int      @map("unit_id") @db.SmallInt
+  kode            String
+  nama            String
+  kodeInduk       String   @map("kode_induk")
+  /// Hanya sub-pos bank (di bawah 1110 ⇔ terisi, CHECK).
+  cashAccountId   String?  @map("cash_account_id") @db.Uuid
+  createdByUserId Int?     @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([unitId, kode])
+  @@map("pos_unit")
+  @@schema("app")
+}
+
 /// Status penutupan hari (§4.6). `closed` mengunci manual_entry hari itu.
 enum DayCloseStatus {
   open

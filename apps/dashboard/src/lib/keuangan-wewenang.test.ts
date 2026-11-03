@@ -23,6 +23,7 @@ import {
   canCocokkanBank,
   canTutupBulan,
   canKelolaSettlementEdc,
+  canKelolaPos,
   isHeadOfFinance,
   type WewenangCtx,
 } from "./keuangan-wewenang";
@@ -550,5 +551,24 @@ describe("settlement EDC (keputusan owner 2 Nov 2026) — seluruh tim Finance", 
 
   it("daftar HoF kosong ⇒ direksi tetap ditolak (fail-closed)", () => {
     expect(canKelolaSettlementEdc(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+  });
+});
+
+describe("daftar pos (rencana K6 U1; R4) — HoF & super admin", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+
+  it("🔴 canKelolaPos: HoF (peran apa pun) & super_admin; staf Keuangan TIDAK", () => {
+    expect(canKelolaPos(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canKelolaPos(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canKelolaPos(c("super_admin"), HOF5)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canKelolaPos(c(r, "staf@solagroup.co"), HOF5), r).toBe(false);
+    }
+  });
+
+  it("daftar HoF kosong ⇒ tak seorang pun selain super_admin (fail-closed)", () => {
+    expect(canKelolaPos(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+    expect(canKelolaPos(c("keuangan", "hof@solagroup.co"), [])).toBe(false);
   });
 });

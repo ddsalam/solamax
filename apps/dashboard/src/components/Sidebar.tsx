@@ -205,6 +205,14 @@ function buildGroups(
           icon: "clipboard",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/tutup-bulan\//.test(p),
         },
+        {
+          // Rencana 2026-11-02 K6 U1 — daftar pos resmi + sub-pos unit + peta
+          // kategori → pos (HoF mengubah, peran Keuangan lain membaca).
+          href: unitCode ? `/keuangan/unit/${unitCode}/pos` : null,
+          label: "Daftar pos",
+          icon: "clipboard",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/pos$/.test(p),
+        },
       ],
     },
     {

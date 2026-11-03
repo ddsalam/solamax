@@ -30,6 +30,7 @@ export type UnitRouteSegment =
   | "keuangan-edc"
   | "keuangan-pihak-lawan"
   | "keuangan-penebusan"
+  | "keuangan-pos"
   | "keuangan-impor-bank"
   | "keuangan-tutup-bulan"
   | "keuangan-piutang"
@@ -74,6 +75,7 @@ export function unitRouteHref(args: {
   if (segment === "keuangan-pihak-lawan") return `/keuangan/unit/${code}/pihak-lawan${suffix}`;
   // Tanpa dimensi tanggal di path — penebusan per SO; BULAN rekap di QUERY.
   if (segment === "keuangan-penebusan") return `/keuangan/unit/${code}/penebusan${suffix}`;
+  if (segment === "keuangan-pos") return `/keuangan/unit/${code}/pos${suffix}`;
   // Tanpa dimensi tanggal — matriks rekening × bulan impor rekening koran (U9).
   if (segment === "keuangan-impor-bank") return `/keuangan/unit/${code}/impor-bank${suffix}`;
   // BULAN di path (U12): bulan dari tanggal yang dipilih — tanggal apa pun di

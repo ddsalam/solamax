@@ -506,6 +506,25 @@ export function canTutupBulan(ctx: WewenangCtx, daftar?: readonly string[]): boo
 }
 
 // ---------------------------------------------------------------------------
+// Daftar pos (rencana 2026-11-02 K6 U1; R4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGELOLA daftar pos — menambah/menghapus sub-pos dan mengubah peta
+ * kategori operasional → pos (R4)? **Head of Finance** + super admin, setara
+ * {@link canTutupBulan}. Staf `keuangan` TIDAK: peta menentukan pos setiap
+ * biaya yang diketik sesudahnya, dan "HoF memegang daftar pos dan
+ * pemetaannya" (Goal Capsule K6). Membaca halamannya tetap
+ * {@link canViewLaporanKeuangan}.
+ */
+export function canKelolaPos(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/** Pesan penolakan aksi daftar pos — satu sumber untuk layar dan server. */
+export const PESAN_TAK_BOLEH_POS = "Hanya Head of Finance yang boleh mengubah daftar pos dan peta kategori.";
+
+// ---------------------------------------------------------------------------
 // Settlement EDC (rencana 2026-11-02, keputusan owner 2 Nov 2026)
 // ---------------------------------------------------------------------------
 
