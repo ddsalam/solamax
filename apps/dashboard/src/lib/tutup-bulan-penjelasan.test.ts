@@ -8,6 +8,8 @@ import {
   hashButir,
   jelaskanButir,
   susunPrompt,
+  UKURAN_KELOMPOK,
+  type ButirTerbuka,
   type KasKandidat,
 } from "./tutup-bulan-penjelasan";
 
@@ -192,6 +194,45 @@ describe("jelaskanButir — saran saja, gagal tertutup", () => {
     });
     expect(panggil[0]!.model).toBe("claude-opus-5-5");
     expect(panggil[0]!.output_config?.format?.type).toBe("json_schema");
+  });
+
+  it("🔴 butir banyak dikirim per kelompok paralel lalu digabung (pilot 3 Nov: 50 butir dalam satu jawaban terpotong)", async () => {
+    panggil.length = 0;
+    const banyak: ButirTerbuka[] = Array.from({ length: 23 }, (_, i) => ({
+      id: `b-${i}`, jenis: "baris-buku", tanggal: "2026-10-05", amountSen: 1_000_00 * (i + 1),
+      keteranganBank: null, label: null, rekening: null, kandidat: [],
+    }));
+    const jawabUntuk = (p: Anthropic.MessageCreateParamsNonStreaming) => {
+      const teks = (p.messages[0]!.content as { text: string }[])[0]!.text;
+      const ids = [...teks.matchAll(/"id":"(b-\d+)"/g)].map((x) => x[1]!);
+      return pesan({ penjelasan: ids.map((id) => ({ id, apaBeda: "a", kemungkinanSebab: "b", langkah: "c" })) });
+    };
+    const k: KlienAnthropic = { messages: { create: async (p) => (panggil.push(p), jawabUntuk(p)) } };
+    const r = await jelaskanButir(k, { bulan: "2026-10", butir: banyak });
+    expect(panggil).toHaveLength(Math.ceil(23 / UKURAN_KELOMPOK));
+    expect(r.ok && r.penjelasan.map((x) => x.id).sort()).toEqual(banyak.map((b) => b.id).sort());
+    expect(panggil.every((p) => p.max_tokens >= 16_000)).toBe(true);
+  });
+
+  it("satu kelompok terpotong ⇒ kelompok lain tetap dijelaskan; semua gagal ⇒ 'tidak tersedia'", async () => {
+    const banyak: ButirTerbuka[] = Array.from({ length: 15 }, (_, i) => ({
+      id: `c-${i}`, jenis: "baris-buku", tanggal: "2026-10-05", amountSen: 1_000_00,
+      keteranganBank: null, label: null, rekening: null, kandidat: [],
+    }));
+    const sebagian: KlienAnthropic = {
+      messages: {
+        create: async (p) => {
+          const teks = (p.messages[0]!.content as { text: string }[])[0]!.text;
+          if (teks.includes('"id":"c-0"')) return pesan("", "max_tokens");
+          const ids = [...teks.matchAll(/"id":"(c-\d+)"/g)].map((x) => x[1]!);
+          return pesan({ penjelasan: ids.map((id) => ({ id, apaBeda: "a", kemungkinanSebab: "b", langkah: "c" })) });
+        },
+      },
+    };
+    const r = await jelaskanButir(sebagian, { bulan: "2026-10", butir: banyak });
+    expect(r.ok && r.penjelasan.map((x) => x.id)).toEqual(banyak.slice(UKURAN_KELOMPOK).map((b) => b.id));
+    const semua = await jelaskanButir(klien(async () => pesan("", "max_tokens")), { bulan: "2026-10", butir: banyak });
+    expect(semua).toMatchObject({ ok: false, pesan: expect.stringMatching(/jawaban terpotong/) });
   });
 
   it("🔴 penjelasan gagal ⇒ vonis TIDAK berubah (objek vonis utuh, tetap menolak)", async () => {
