@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AgoLive } from "@/components/AgoLive";
 import { NavIcon, type IconName } from "@/components/NavIcon";
+import { bulanBukuBesar } from "@/lib/buku-besar-bulan";
 
 /**
  * Navigasi tunggal: rail kiri ber-grup yang bisa diringkas (desktop) dan
@@ -216,7 +217,7 @@ function buildGroups(
         {
           // Rencana 2026-11-02 K6 U9 — neraca & laba-rugi formal per pos dari
           // jurnal buku besar, saldo awal, dan jurnal memorial (HoF).
-          href: unitCode ? `/keuangan/unit/${unitCode}/buku-besar/${date.slice(0, 7)}` : null,
+          href: unitCode ? `/keuangan/unit/${unitCode}/buku-besar/${bulanBukuBesar(date)}` : null,
           label: "Buku besar",
           icon: "report",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/buku-besar\//.test(p),

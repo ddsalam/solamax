@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { BukuBesarPanel, TAB_BUKU_BESAR, type TabBukuBesar } from "@/components/keuangan/BukuBesarPanel";
 import type { PosIsian } from "@/components/keuangan/BukuBesarAksi";
@@ -47,7 +47,13 @@ export default async function BukuBesarPage({
 }) {
   const { code, bulan } = await params;
   const sp = await searchParams;
-  if (!bulanSah(bulan) || bulan < MULAI_BUKU_BESAR.slice(0, 7)) notFound();
+  if (!bulanSah(bulan)) notFound();
+  // Bulan di luar rentang buku besar (sebelum Okt 2026 / sesudah bulan berjalan)
+  // ⇒ bulan terdekat yang ada, dengan pemberitahuan — bukan 404 kosong.
+  const kini = todayWib().slice(0, 7);
+  const tujuan = bulan < MULAI_BUKU_BESAR.slice(0, 7) ? MULAI_BUKU_BESAR.slice(0, 7) : bulan > kini ? kini : bulan;
+  if (tujuan !== bulan) redirect(`/keuangan/unit/${encodeURIComponent(code)}/buku-besar/${tujuan}?dialihkan=${bulan}`);
+  const dialihkan = typeof sp.dialihkan === "string" && bulanSah(sp.dialihkan) && sp.dialihkan !== bulan ? sp.dialihkan : null;
   const scope = await getDataScope();
   const unit = scope.requireUnit(code);
   const ctx = { role: scope.role, email: scope.email };
@@ -56,7 +62,6 @@ export default async function BukuBesarPage({
   const tab: TabBukuBesar = TAB_BUKU_BESAR.find((t) => t === sp.tab) ?? "neraca";
   const pos = typeof sp.pos === "string" && /^[1-5]\d{3}$/.test(sp.pos) ? sp.pos : null;
   const hariIni = todayWib();
-  if (bulan > hariIni.slice(0, 7)) notFound();
   const [awal, akhir] = rentangBulan(bulan);
 
   const wewenang = {
@@ -104,7 +109,15 @@ export default async function BukuBesarPage({
         date={`${bulan}-01`}
         today={hariIni}
         maxDate={hariIni}
+        minDate={MULAI_BUKU_BESAR}
       />
+      {dialihkan !== null && (
+        <div className="banner info keu-banner" role="status">
+          {dialihkan < MULAI_BUKU_BESAR.slice(0, 7)
+            ? `Buku besar dimulai Oktober 2026 — bulan ${dialihkan} tidak punya buku besar, jadi yang ditampilkan bulan pertamanya.`
+            : `Bulan ${dialihkan} belum berjalan — yang ditampilkan bulan ini.`}
+        </div>
+      )}
       <h1 className="text-h3 t-brand">Buku besar · {labelBulan}</h1>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)}

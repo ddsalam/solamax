@@ -1,3 +1,4 @@
+import { bulanBukuBesar } from "./buku-besar-bulan";
 /**
  * Pembangun URL rute per-unit — MURNI (tanpa import server/next) agar teruji
  * langsung. Dipakai oleh filter MILIK HALAMAN (UnitDateFilters) menggantikan
@@ -85,8 +86,9 @@ export function unitRouteHref(args: {
     return `/keuangan/unit/${code}/tutup-bulan/${(date ?? "").slice(0, 7)}${suffix}`;
   }
   // BULAN di path (K6 U9): neraca & laba-rugi formal per bulan, sama dengan tutup bulan.
+  // Tanggal sebelum buku besar dimulai ⇒ bulan mulai, bukan 404.
   if (segment === "keuangan-buku-besar") {
-    return `/keuangan/unit/${code}/buku-besar/${(date ?? "").slice(0, 7)}${suffix}`;
+    return `/keuangan/unit/${code}/buku-besar/${bulanBukuBesar(date ?? "")}${suffix}`;
   }
   // Unit di QUERY: halaman ini membaca `?unit=`, bukan segmen path.
   if (segment === "keuangan-sumber-data") {
