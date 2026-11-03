@@ -2380,6 +2380,19 @@ Rencana: `docs/plans/2026-11-02-1804-feat-keuangan-buku-besar-posting-otomatis-p
    terbuka berikutnya. Diulang ⇒ tidak menggandakan. Bulan yang ditutup tanpa buku besar
    ditolak (jurnalnya belum pernah dibentuk; jalannya backfill).
 
+### 10.54 K6 · Penebusan masuk 1132 sebesar Gross; nilai persediaan dibulatkan sekali (3 November 2026)
+
+1. **P7: 1132 = Gross** (Net + PPN + PPh + PBBKB + Nota); PPN dan PPh **tidak** lagi ke 1140.
+   Sebab: keputusan owner K5 "HPP tetap Harga Gross ÷ liter" — penerimaan (P8), HPP (P9), dan nilai
+   SO/persediaan (P23) memakai harga gross. Versi lama mengisi 1132 tanpa PPN/PPh, lalu P23
+   mengembalikan selisihnya lewat 5120 sebagai laba: pajak terhitung dua kali (pilot Bakau Okt 2026:
+   1140 = Rp 957 jt, laba tergelembung). Komponen pajak tetap tercatat per SO di `app.penebusan`
+   (Rekap pajak) untuk konsultan pajak. ⚖️ Bila akuntan kelak memisahkan PPN masukan sebagai aset,
+   harga beli HPP harus ikut menjadi harga tanpa PPN — keduanya diubah bersama, tidak satu saja.
+2. **P23 menilai Σ liter × harga persis lalu membulatkan sekali** — sama dengan laporan rumus;
+   pembulatan per produk membuat beda Rp 0,01 di tab Temuan beda.
+3. Sesudah tayang: "Bentuk ulang bulan ini" Oktober & November untuk setiap unit yang sudah dibentuk.
+
 ### Catatan riwayat — yang PERNAH belum terverifikasi (BUKAN keputusan)
 
 ⛔ **Bagian ini sengaja TIDAK bernomor `§10.x`.** Ia pernah bernomor **§10.9**,
