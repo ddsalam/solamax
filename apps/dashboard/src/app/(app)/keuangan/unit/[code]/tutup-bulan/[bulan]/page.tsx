@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
+import { TutupBulanPenjelasan } from "@/components/keuangan/TutupBulanPenjelasan";
 import { TutupBulanPeriksa } from "@/components/keuangan/TutupBulanPeriksa";
 import { TutupBulanTombol } from "@/components/keuangan/TutupBulanTombol";
 import { geserBulan } from "@/lib/bulan";
@@ -9,6 +10,7 @@ import { daftarBulan } from "@/lib/impor-bank-model";
 import { todayWib } from "@/lib/periods";
 import { getDataScope } from "@/lib/scope";
 import { bulanTutupSah, periksaTutupBulan } from "@/lib/tutup-bulan-model";
+import { bolehMintaPenjelasan, butirTerbuka, hashButir } from "@/lib/tutup-bulan-penjelasan";
 import { getBahanTutupBulan, getTutupBulan } from "@/lib/tutup-bulan-queries";
 import { ukur } from "@/lib/ukur-kueri";
 
@@ -28,6 +30,8 @@ const NAMA_BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Jul
  *   · baca  → `canViewLaporanKeuangan`
  *   · tutup → `canTutupBulan` (HoF + super admin) — tombolnya hanya tampil
  *     bagi mereka, dan aktif hanya bila keempat syarat OK.
+ *   · jelaskan butir terbuka (K6 U11, R32) → `bolehMintaPenjelasan` (staf
+ *     Keuangan + HoF), hanya saat vonis menolak; saran AI, tak mengubah vonis.
  */
 export default async function TutupBulanPage({ params }: { params: Promise<{ code: string; bulan: string }> }) {
   const { code, bulan } = await params;
@@ -45,6 +49,7 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
   );
   const vonis = periksaTutupBulan(bahan);
   const bolehTutup = canTutupBulan(ctx);
+  const bolehJelaskan = bolehMintaPenjelasan(ctx);
   const labelBulan = `${NAMA_BULAN[Number(bulan.slice(5, 7)) - 1]} ${bulan.slice(0, 4)}`;
   const hariIni = todayWib();
   const sebelum = geserBulan(bulan, -1);
@@ -73,8 +78,9 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
         )}
       </div>
       <p className="fs16 t-tertiary mt2">
-        Bulan ditutup Head of Finance per unit setelah setiap mutasi rekening koran BCA bulan ini punya tempat yang
-        benar di buku. Penampung boleh bersaldo selama hari-hari berjalan, tetapi wajib nol sebelum bulan ditutup.
+        Bulan ditutup Head of Finance per unit setelah setiap rekening bank yang bermutasi atau bersaldo — BCA, BRI,
+        BNI, Mandiri — punya rekening koran terkonfirmasi, dan setiap mutasinya punya tempat yang benar di buku.
+        Penampung boleh bersaldo selama hari-hari berjalan, tetapi wajib nol sebelum bulan ditutup.
       </p>
 
       {tertutup !== null ? (
@@ -96,6 +102,8 @@ export default async function TutupBulanPage({ params }: { params: Promise<{ cod
       )}
 
       <TutupBulanPeriksa code={unit.code} bulan={bulan} vonis={vonis} />
+
+      {bolehJelaskan && tertutup === null && !vonis.boleh && <TutupBulanPenjelasan code={unit.code} bulan={bulan} hashKini={hashButir(butirTerbuka(vonis, []))} />}
 
       {bolehTutup && tertutup === null && <TutupBulanTombol code={unit.code} bulan={bulan} siap={vonis.boleh} />}
     </>

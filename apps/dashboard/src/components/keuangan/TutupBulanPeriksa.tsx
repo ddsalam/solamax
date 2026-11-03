@@ -68,13 +68,16 @@ export function TutupBulanPeriksa({ code, bulan, vonis }: { code: string; bulan:
 
       <Baris judul="Rekening koran lengkap" ok={rekeningKoran.ok} teks={`${rekeningKoran.jumlah} penghalang`}>
         {rekeningKoran.ok ? (
-          "Setiap rekening BCA aktif punya rekening koran bulan ini, dan semua barisnya sudah selesai."
+          "Setiap rekening bank yang bermutasi atau bersaldo bulan ini punya rekening koran aktif, dan semua barisnya sudah selesai."
         ) : (
           <>
             {rekeningKoran.belumDiimpor.length > 0 && (
               <>
-                Belum diimpor: {rekeningKoran.belumDiimpor.map((r) => r.nama).join(", ")} —{" "}
-                <a href={`/keuangan/unit/${code}/impor-bank`}>unggah di matriks impor</a>.{" "}
+                Belum ada rekening koran aktif:{" "}
+                {rekeningKoran.belumDiimpor
+                  .map((r) => (r.rekeningKoranMenunggu ? `${r.nama} (menunggu konfirmasi HoF)` : r.nama))
+                  .join(", ")}{" "}
+                — <a href={`/keuangan/unit/${code}/impor-bank`}>unggah atau konfirmasi di matriks impor</a>.{" "}
               </>
             )}
             {rekeningKoran.imporTerbuka > 0 && (
@@ -85,11 +88,26 @@ export function TutupBulanPeriksa({ code, bulan, vonis }: { code: string; bulan:
             )}
           </>
         )}
+        {(rekeningKoran.wajib.length > 0 || rekeningKoran.dikecualikan.length > 0) && (
+          <ul className="mt2" data-daftar="rekening-bank">
+            {rekeningKoran.wajib.map((r) => (
+              <li key={r.id} data-rekening="wajib">
+                {r.nama} ·{" "}
+                {r.rekeningKoranAktif ? "rekening koran aktif" : r.rekeningKoranMenunggu ? "menunggu konfirmasi HoF" : "belum ada rekening koran"}
+              </li>
+            ))}
+            {rekeningKoran.dikecualikan.map((r) => (
+              <li key={r.id} data-rekening="dikecualikan" className="t-tertiary">
+                {r.nama} · saldo nol tanpa mutasi bulan ini — tidak dituntut
+              </li>
+            ))}
+          </ul>
+        )}
       </Baris>
 
       <Baris judul="Baris buku punya pasangan" ok={bukuTanpaPasangan.ok} teks={`${bukuTanpaPasangan.jumlah} baris`}>
         {bukuTanpaPasangan.ok ? (
-          "Setiap baris buku di rekening BCA bulan ini punya pasangan di rekening koran."
+          "Setiap baris buku di rekening bank bulan ini punya pasangan di rekening koran."
         ) : (
           <>
             {bukuTanpaPasangan.jumlah} baris buku tanpa pasangan di rekening koran —{" "}

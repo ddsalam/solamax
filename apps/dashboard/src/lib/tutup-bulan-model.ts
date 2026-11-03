@@ -16,10 +16,14 @@ import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
  *                       TANGGAL BANK di bulan itu (bukan tanggal buku: baris
  *                       impor Oktober bisa dibukukan maju ke November, dan
  *                       yang ia tahan adalah Oktober).
- *   3. **rekening koran** — setiap rekening BCA wajib punya rekening koran AKTIF
- *                       bulan itu, DAN setiap baris impornya bertanggal bank di
- *                       bulan itu sudah selesai (tercocok/terklasifikasi/
- *                       diparkir; pra-cut-over tak pernah dicocokkan, R22).
+ *   3. **rekening koran** — setiap rekening BANK aktif (BCA, BRI, BNI, Mandiri —
+ *                       K6 U11, R28) yang punya mutasi atau saldo bulan itu
+ *                       wajib punya rekening koran AKTIF bulan itu (`menunggu`
+ *                       konfirmasi HoF belum dihitung), DAN setiap baris
+ *                       impornya bertanggal bank di bulan itu sudah selesai
+ *                       (tercocok/terklasifikasi/diparkir; pra-cut-over tak
+ *                       pernah dicocokkan, R22). Rekening bersaldo nol tanpa
+ *                       mutasi bulan itu dikecualikan.
  *                       Baris impor terbuka dilipat ke sini — bukan baris
  *                       kelima — karena yang menyelesaikannya layar yang sama
  *                       (klasifikasi rekening koran bulan itu), dan rencana
@@ -65,7 +69,11 @@ export interface BarisParkirBulan {
   lahirDariCocokId: string | null;
 }
 
-/** Rekening BCA aktif bernomor (`PREDIKAT_REKENING_BCA`). Rekening bank lain tak pernah masuk ke sini. */
+/**
+ * Rekening BANK aktif unit (semua bank, K6 U11 R28). Wajib-tidaknya diputuskan
+ * {@link periksaTutupBulan}: dikecualikan HANYA bila diketahui tanpa mutasi DAN
+ * bersaldo nol — keterangan yang tak dikirim dianggap "ada" (gagal tertutup).
+ */
 export interface RekeningWajib {
   id: string;
   nama: string;
@@ -73,6 +81,12 @@ export interface RekeningWajib {
   cutOver: string | null;
   /** Ada rekening koran berstatus aktif untuk bulan itu. */
   rekeningKoranAktif: boolean;
+  /** Ada rekening koran `menunggu` konfirmasi HoF (U10) — tetap BELUM diimpor. */
+  rekeningKoranMenunggu?: boolean;
+  /** Ada baris buku (tanggal efektif) atau baris rekening koran bertanggal bank di bulan itu. */
+  adaMutasi?: boolean;
+  /** Saldo buku menurut tanggal efektif s.d. akhir bulan, sen. */
+  saldoAkhirSen?: number;
 }
 
 /** Baris impor rekening koran AKTIF. */
@@ -83,6 +97,9 @@ export interface BarisImporBulan {
   praCutover: boolean;
   /** Anggota kelompok cocok AKTIF. */
   dicocokkan: boolean;
+  /** Nominal & keterangan bank — hanya untuk penjelasan butir terbuka (R32), tak ikut menilai. */
+  amountSen?: number;
+  keterangan?: string;
 }
 
 /** Baris kas di rekening wajib — calon "tanpa pasangan" + pasangan pembaliknya. */
@@ -139,7 +156,17 @@ export interface VonisTutupBulan {
   syarat: {
     hari: { ok: boolean; jumlah: number; belum: string[] };
     penampung: { ok: boolean; jumlah: number; totalSen: number; baris: BarisParkirBulan[] };
-    rekeningKoran: { ok: boolean; jumlah: number; belumDiimpor: RekeningWajib[]; imporTerbuka: number };
+    rekeningKoran: {
+      ok: boolean;
+      jumlah: number;
+      /** Rekening yang dituntut rekening korannya bulan ini. */
+      wajib: RekeningWajib[];
+      /** Rekening bank aktif bersaldo nol tanpa mutasi bulan ini — tidak dituntut. */
+      dikecualikan: RekeningWajib[];
+      belumDiimpor: RekeningWajib[];
+      imporTerbuka: number;
+      barisTerbuka: BarisImporBulan[];
+    };
     bukuTanpaPasangan: { ok: boolean; jumlah: number; nKakiAntarUnit: number; baris: BukuTanpaPasanganBulan[] };
   };
   /** Satu kalimat per syarat yang gagal, urutan daftar periksa. Kosong ⇔ boleh. */
@@ -147,6 +174,9 @@ export interface VonisTutupBulan {
 }
 
 const efektif = (b: BarisBukuBulan): string => b.tanggalAsal ?? b.businessDate;
+
+/** Rekening bank dituntut rekening korannya kecuali DIKETAHUI tanpa mutasi dan bersaldo nol (R28). */
+const dituntut = (r: RekeningWajib): boolean => !(r.adaMutasi === false && r.saldoAkhirSen === 0);
 
 const bertaut = (a: BarisBukuBulan, b: BarisBukuBulan): boolean =>
   (a.lahirDariCocokId !== null && a.lahirDariCocokId === b.lahirDariCocokId) ||
@@ -218,12 +248,16 @@ export function periksaTutupBulan(i: MasukanTutupBulan): VonisTutupBulan {
 
   // 3. Rekening koran — rekening yang saldo pembukanya sesudah bulan itu belum
   //    berbuku pada bulan itu, jadi tak dituntut.
-  const wajib = i.rekening.filter((r) => r.cutOver === null || r.cutOver <= akhir);
+  //    Rekening bersaldo nol tanpa mutasi bulan itu dikecualikan (K6 U11, R28).
+  const berbuku = i.rekening.filter((r) => r.cutOver === null || r.cutOver <= akhir);
+  const wajib = berbuku.filter(dituntut);
+  const dikecualikan = berbuku.filter((r) => !dituntut(r));
   const idWajib = new Set(wajib.map((r) => r.id));
   const belumDiimpor = wajib.filter((r) => !r.rekeningKoranAktif);
-  const imporTerbuka = i.impor.filter(
+  const barisTerbuka = i.impor.filter(
     (m) => idWajib.has(m.accountId) && diBulan(m.tanggalBank, i.bulan) && !m.praCutover && !m.dicocokkan,
-  ).length;
+  );
+  const imporTerbuka = barisTerbuka.length;
 
   // 4. Baris buku tanpa pasangan.
   const diRekening = i.buku.filter((b) => idWajib.has(b.accountId));
@@ -241,7 +275,10 @@ export function periksaTutupBulan(i: MasukanTutupBulan): VonisTutupBulan {
   }
   if (belumDiimpor.length > 0 || imporTerbuka > 0) {
     const p: string[] = [];
-    if (belumDiimpor.length > 0) p.push(`${belumDiimpor.length} rekening BCA belum diimpor rekening korannya`);
+    if (belumDiimpor.length > 0) {
+      const nama = belumDiimpor.map((r) => (r.rekeningKoranMenunggu ? `${r.nama} (menunggu konfirmasi HoF)` : r.nama));
+      p.push(`${belumDiimpor.length} rekening bank belum punya rekening koran aktif bulan ini (${nama.join(", ")})`);
+    }
     if (imporTerbuka > 0) p.push(`${imporTerbuka} baris rekening koran belum dicocokkan/diklasifikasi`);
     alasan.push(`Rekening koran belum lengkap: ${p.join(" · ")}.`);
   }
@@ -260,8 +297,11 @@ export function periksaTutupBulan(i: MasukanTutupBulan): VonisTutupBulan {
       rekeningKoran: {
         ok: belumDiimpor.length === 0 && imporTerbuka === 0,
         jumlah: belumDiimpor.length + imporTerbuka,
+        wajib,
+        dikecualikan,
         belumDiimpor,
         imporTerbuka,
+        barisTerbuka,
       },
       bukuTanpaPasangan: { ok: tanpa.length === 0, jumlah: tanpa.length, nKakiAntarUnit: nKaki, baris: tanpa },
     },

@@ -4,12 +4,23 @@ import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { canTutupBulan } from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
-import { bacaBahanTutupBulan, kunciBulanEksklusif } from "./tutup-bulan-queries";
+import { bacaBahanTutupBulan, getBahanTutupBulan, getKasKandidatPenjelasan, kunciBulanEksklusif } from "./tutup-bulan-queries";
 import { bulanTutupSah, periksaTutupBulan } from "./tutup-bulan-model";
 import { auditKeuangan, batal } from "./keuangan-tx";
+import { buatKlien } from "./rekening-koran-ai";
+import {
+  BATAS_BUTIR,
+  bolehMintaPenjelasan,
+  butirTerbuka,
+  hashButir,
+  jelaskanButir,
+  judulButir,
+  type PenjelasanButir,
+} from "./tutup-bulan-penjelasan";
 
 /**
- * Server action TUTUP BULAN (rencana 2026-10-29 U12; R25; KTD14).
+ * Server action TUTUP BULAN (rencana 2026-10-29 U12; R25; KTD14) + penjelasan
+ * AI butir terbuka (rencana 2026-11-02 K6 U11; R32).
  *
  * ⛔ TIGA HAL YANG MENGIKAT:
  *
@@ -32,6 +43,48 @@ export interface TutupBulanInput {
   code: string;
   /** `YYYY-MM`. */
   bulan: string;
+}
+
+export interface ButirDijelaskan {
+  id: string;
+  judul: string;
+  penjelasan: PenjelasanButir | null;
+}
+
+export type JelaskanButirResult =
+  | { ok: true; hash: string; dibuatAt: string; butir: ButirDijelaskan[]; tidakDijelaskan: number }
+  | { ok: false; error: string };
+
+/**
+ * K6 U11, R32 — penjelasan AI untuk butir terbuka bulan ini. Staf Keuangan &
+ * HoF (`bolehMintaPenjelasan`). SARAN SAJA: membaca vonis dari
+ * `periksaTutupBulan` yang sama dengan halaman, tidak menulis apa pun, tidak
+ * menyimpan penjelasan, tidak mengembalikan vonis. `hash` = sidik butir yang
+ * dijelaskan — layar menandai USANG bila vonisnya kini bersidik lain.
+ */
+export async function jelaskanButirTerbuka(input: TutupBulanInput): Promise<JelaskanButirResult> {
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(input.code); // di luar scope → notFound()
+  if (!bolehMintaPenjelasan({ role: scope.role, email: scope.email })) {
+    return { ok: false, error: "Hanya staf Keuangan dan Head of Finance yang bisa meminta penjelasan." };
+  }
+  if (!bulanTutupSah(input.bulan)) return { ok: false, error: "Bulan tak valid." };
+
+  const [bahan, kas] = await Promise.all([getBahanTutupBulan(unit.unit_id, input.bulan), getKasKandidatPenjelasan(unit.unit_id, input.bulan)]);
+  const vonis = periksaTutupBulan(bahan);
+  const semua = butirTerbuka(vonis, kas);
+  const hash = hashButir(semua);
+  const dikirim = semua.slice(0, BATAS_BUTIR);
+  const h = await jelaskanButir(buatKlien(), { bulan: input.bulan, butir: dikirim });
+  if (!h.ok) return { ok: false, error: h.pesan };
+  const per = new Map(h.penjelasan.map((p) => [p.id, p]));
+  return {
+    ok: true,
+    hash,
+    dibuatAt: new Date().toISOString(),
+    butir: dikirim.map((b) => ({ id: b.id, judul: judulButir(b), penjelasan: per.get(b.id) ?? null })),
+    tidakDijelaskan: semua.length - dikirim.length,
+  };
 }
 
 export async function tutupBulan(input: TutupBulanInput): Promise<TutupBulanResult> {
@@ -81,7 +134,7 @@ export async function tutupBulan(input: TutupBulanInput): Promise<TutupBulanResu
     await auditKeuangan(client, scope, "tutup_bulan.tutup", `${unit.code}/${input.bulan}`, {
       bulan: input.bulan,
       hari: bahan.hariTertutup.length,
-      rekening: bahan.rekening.map((r) => r.id),
+      rekening: vonis.syarat.rekeningKoran.wajib.map((r) => r.id),
     });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/tutup-bulan/${input.bulan}`);

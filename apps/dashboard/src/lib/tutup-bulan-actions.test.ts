@@ -169,7 +169,7 @@ describe("tutupBulan — HoF, di bawah kunci, idempoten", () => {
     expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/1 hari/) });
     hari = hariDalamBulan("2026-10");
     rekening = [{ ...rekening[0], rekeningKoranAktif: false }];
-    expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/rekening BCA belum diimpor/) });
+    expect(await tutupBulan(masukan)).toMatchObject({ ok: false, error: expect.stringMatching(/rekening bank belum punya rekening koran aktif/) });
     rekening = [{ ...rekening[0], rekeningKoranAktif: true }];
     buku = [
       {

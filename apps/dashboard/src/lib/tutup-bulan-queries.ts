@@ -1,9 +1,9 @@
 import { kueriScoped, PREDIKAT_KAS_DICOCOKKAN, PREDIKAT_MUTASI_DICOCOKKAN, type Kueri } from "./cocok-bank-queries";
 import { qScoped } from "./db";
-import { PREDIKAT_REKENING_BCA } from "./impor-bank-queries";
 import { KATEGORI_PENAMPUNG } from "./keuangan-sisi-kas";
 import { teksKeSen } from "./pihak-lawan-model";
 import type { ScopedUnitId } from "./scope";
+import type { KasKandidat } from "./tutup-bulan-penjelasan";
 import {
   parkirTerbuka,
   type BarisBukuBulan,
@@ -89,7 +89,19 @@ export const SQL_PARKIR = `SELECT l.id::text AS id, l.account_id::text AS "accou
         AND l.business_date >= $3::date AND l.business_date <= $4::date
       ORDER BY l.business_date, l.created_at`;
 
-/** Rekening BCA wajib + rekening koran aktif bulan itu. $1 unit, $2 'YYYY-MM-01'. */
+/**
+ * Rekening yang ikut tutup bulan (K6 U11, R28): SEMUA rekening bank aktif —
+ * BCA, BRI, BNI, Mandiri; bernomor atau belum. Fragmen atas `app.cash_account`
+ * tanpa alias. Rekening bersaldo nol tanpa mutasi bulan itu dikecualikan oleh
+ * model (`periksaTutupBulan`), bukan di sini.
+ */
+export const PREDIKAT_REKENING_BANK = `kind = 'bank' AND active`;
+
+/**
+ * Rekening bank aktif + rekening koran bulan itu (aktif / `menunggu` HoF) +
+ * ada-tidaknya mutasi + saldo akhir — keduanya menurut TANGGAL EFEKTIF
+ * (tanggal asal ?? hari buku), sama dengan syarat 4. $1 unit, $2 'YYYY-MM-01'.
+ */
 export const SQL_REKENING_WAJIB = `SELECT id::text AS id, nama,
             to_char(COALESCE(
               (SELECT min(l.business_date) FROM app.cash_ledger l
@@ -100,28 +112,48 @@ export const SQL_REKENING_WAJIB = `SELECT id::text AS id, nama,
             ), 'YYYY-MM-DD') AS "cutOver",
             EXISTS (SELECT 1 FROM app.rekening_koran r
                      WHERE r.unit_id = cash_account.unit_id AND r.account_id = cash_account.id
-                       AND r.status = 'aktif' AND r.periode = $2::date) AS "rekeningKoranAktif"
+                       AND r.status = 'aktif' AND r.periode = $2::date) AS "rekeningKoranAktif",
+            EXISTS (SELECT 1 FROM app.rekening_koran r
+                     WHERE r.unit_id = cash_account.unit_id AND r.account_id = cash_account.id
+                       AND r.status = 'menunggu' AND r.periode = $2::date) AS "rekeningKoranMenunggu",
+            (EXISTS (SELECT 1 FROM app.cash_ledger l
+                      WHERE l.unit_id = cash_account.unit_id AND l.account_id = cash_account.id
+                        AND NOT l.void AND NOT l.saldo_awal
+                        AND COALESCE(l.tanggal_asal, l.business_date) >= $2::date
+                        AND COALESCE(l.tanggal_asal, l.business_date) < ($2::date + interval '1 month'))
+             OR EXISTS (SELECT 1 FROM app.mutasi_bank m
+                         WHERE m.unit_id = cash_account.unit_id AND m.account_id = cash_account.id
+                           AND m.rk_status IN ('aktif', 'menunggu')
+                           AND m.tanggal_bank >= $2::date AND m.tanggal_bank < ($2::date + interval '1 month'))
+            ) AS "adaMutasi",
+            COALESCE((SELECT sum(l.amount) FROM app.cash_ledger l
+                       WHERE l.unit_id = cash_account.unit_id AND l.account_id = cash_account.id AND NOT l.void
+                         AND COALESCE(l.tanggal_asal, l.business_date) < ($2::date + interval '1 month')), 0)::text AS "saldoAkhir"
        FROM app.cash_account
-      WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BCA}
+      WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BANK}
       ORDER BY nama`;
 
-/** Baris impor rekening koran AKTIF bertanggal bank bulan itu. $1 unit, $2 'YYYY-MM-01'. */
+/**
+ * Baris impor rekening koran AKTIF bertanggal bank bulan itu (nominal &
+ * keterangan hanya untuk penjelasan butir terbuka, R32). $1 unit, $2 'YYYY-MM-01'.
+ */
 export const SQL_IMPOR_BULAN = `SELECT m.id::text AS id, m.account_id::text AS "accountId",
             to_char(m.tanggal_bank, 'YYYY-MM-DD') AS "tanggalBank", m.pra_cutover AS "praCutover",
+            m.amount::text AS amount, m.keterangan,
             ${PREDIKAT_MUTASI_DICOCOKKAN} AS dicocokkan
        FROM app.mutasi_bank m
       WHERE m.unit_id = $1 AND m.rk_status = 'aktif'
         AND m.tanggal_bank >= $2::date AND m.tanggal_bank < ($2::date + interval '1 month')`;
 
 /**
- * Baris kas non-void di rekening BCA wajib dengan tanggal asal ?? hari buku di
+ * Baris kas non-void di rekening bank aktif dengan tanggal asal ?? hari buku di
  * bulan itu, PLUS baris yang bertaut dengannya (kelompok cocok pelahir yang
  * sama, atau `pasangan_uuid` sama) di bulan mana pun — supaya pembalik maju
  * yang jatuh di bulan berikutnya tetap terlihat oleh model untuk dipasangkan.
  * $1 unit, $2 'YYYY-MM-01'.
  */
 export const SQL_BUKU_BULAN = `WITH rek AS (
-       SELECT id FROM app.cash_account WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BCA}
+       SELECT id FROM app.cash_account WHERE unit_id = $1 AND ${PREDIKAT_REKENING_BANK}
      ), inti AS (
        SELECT l.id, l.lahir_dari_cocok_id, l.pasangan_uuid
          FROM app.cash_ledger l
@@ -153,6 +185,16 @@ const keParkir = ({ amount, ...r }: BarisParkirSql): BarisParkirTampil => ({ ...
 
 type BahanTutupBulan = MasukanTutupBulan & { parkir: BarisParkirTampil[] };
 
+type RekeningSql = Omit<RekeningWajib, "saldoAkhirSen"> & { saldoAkhir?: string };
+type BarisImporSql = Omit<BarisImporBulan, "amountSen"> & { amount?: string };
+
+// Kolom tambahan K6 U11 dibaca bila ada (pembaca tiruan lama tak mengirimnya —
+// model menganggap keterangan yang hilang sebagai "wajib", gagal tertutup).
+const keRekening = ({ saldoAkhir, ...r }: RekeningSql): RekeningWajib =>
+  saldoAkhir === undefined ? r : { ...r, saldoAkhirSen: teksKeSen(saldoAkhir) };
+const keImpor = ({ amount, ...m }: BarisImporSql): BarisImporBulan =>
+  amount === undefined ? m : { ...m, amountSen: teksKeSen(amount) };
+
 /** Kelima bacaan masukan tutup bulan — SATU salinan SQL+parameter untuk kedua jalur di bawah. */
 function bacaanBahan(k: Kueri, unitId: ScopedUnitId, awal: string) {
   return {
@@ -161,8 +203,8 @@ function bacaanBahan(k: Kueri, unitId: ScopedUnitId, awal: string) {
     // (pembukuan hanya maju), jadi baris parkir bertanggal bank bulan ini tak
     // mungkin berhari buku sebelum bulan ini.
     parkir: () => k.query<BarisParkirSql>(SQL_PARKIR, [unitId, KATEGORI_PENAMPUNG, awal, "9999-12-31"]),
-    rekening: () => k.query<RekeningWajib>(SQL_REKENING_WAJIB, [unitId, awal]),
-    impor: () => k.query<BarisImporBulan>(SQL_IMPOR_BULAN, [unitId, awal]),
+    rekening: () => k.query<RekeningSql>(SQL_REKENING_WAJIB, [unitId, awal]),
+    impor: () => k.query<BarisImporSql>(SQL_IMPOR_BULAN, [unitId, awal]),
     buku: () => k.query<Omit<BarisBukuBulan, "amountSen"> & { amount: string }>(SQL_BUKU_BULAN, [unitId, awal]),
   };
 }
@@ -181,8 +223,8 @@ function susunBahan(
     bulan,
     hariTertutup: hari.rows.map((r) => r.d),
     parkir: parkir.rows.map(keParkir),
-    rekening: rekening.rows,
-    impor: impor.rows,
+    rekening: rekening.rows.map(keRekening),
+    impor: impor.rows.map(keImpor),
     buku: buku.rows.map(({ amount, ...r }) => ({ ...r, amountSen: teksKeSen(amount) })),
   };
 }
@@ -211,6 +253,30 @@ export async function getBahanTutupBulan(unit: ScopedUnitId, bulan: string): Pro
   const q = bacaanBahan(kueriScoped(unit), unit, `${bulan}-01`);
   const [hari, parkir, rekening, impor, buku] = await Promise.all([q.hari(), q.parkir(), q.rekening(), q.impor(), q.buku()]);
   return susunBahan(bulan, hari, parkir, rekening, impor, buku);
+}
+
+/**
+ * R32 — baris kas unit (semua akun) yang BELUM dicocokkan, tanggal efektif
+ * ∈ [awal bulan − 3 hari, akhir bulan + 3 hari]: calon kandidat untuk
+ * penjelasan AI butir terbuka. Hanya dibaca saat penjelasan diminta; TIDAK
+ * dipakai vonis. Keterangan ketikan sengaja tak dibaca (tak dikirim ke AI).
+ * $1 unit, $2 'YYYY-MM-01'.
+ */
+export const SQL_KAS_KANDIDAT_PENJELASAN = `SELECT l.id::text AS id, l.account_id::text AS "accountId",
+            l.category_label AS "categoryLabel",
+            to_char(COALESCE(l.tanggal_asal, l.business_date), 'YYYY-MM-DD') AS "tanggalEfektif",
+            l.amount::text AS amount
+       FROM app.cash_ledger l
+      WHERE l.unit_id = $1 AND NOT l.void AND NOT l.saldo_awal
+        AND COALESCE(l.tanggal_asal, l.business_date) >= ($2::date - 3)
+        AND COALESCE(l.tanggal_asal, l.business_date) < ($2::date + interval '1 month' + interval '3 days')
+        AND NOT ${PREDIKAT_KAS_DICOCOKKAN}
+      ORDER BY COALESCE(l.tanggal_asal, l.business_date), l.created_at
+      LIMIT 5000`;
+
+export async function getKasKandidatPenjelasan(unit: ScopedUnitId, bulan: string): Promise<KasKandidat[]> {
+  const rows = await qScoped<Omit<KasKandidat, "amountSen"> & { amount: string }>(unit, SQL_KAS_KANDIDAT_PENJELASAN, [unit, `${bulan}-01`]);
+  return rows.map(({ amount, ...r }) => ({ ...r, amountSen: teksKeSen(amount) }));
 }
 
 export interface TutupBulanRow {
