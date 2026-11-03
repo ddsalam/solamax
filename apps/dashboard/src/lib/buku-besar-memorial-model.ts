@@ -83,6 +83,13 @@ export type HasilSaldoAwal =
  * bertanda. Pos neraca saja (kelas 1–3, bukan 3900): laba Jan–Sep sudah ada di
  * 3200 Laba Ditahan dari akuntan.
  */
+/**
+ * Pos yang saldo awal NOL-nya bermakna: P23 hanya menilai ulang 1131/1132 bila
+ * saldo awalnya diketahui (baris ada), jadi nol yang diisi HoF disimpan, bukan
+ * dibuang seperti nol pos lain (tinjauan PR #448).
+ */
+export const SALDO_NOL_DIPERTAHANKAN: ReadonlySet<string> = new Set(["1131", "1132"]);
+
 export function periksaSaldoAwal(i: {
   ketik: readonly { posKode: string; nilaiSen: number }[];
   kas: readonly { posKode: string; saldoSen: number }[];
@@ -108,7 +115,7 @@ export function periksaSaldoAwal(i: {
     if (sudah.has(p.kode)) return { ok: false, error: `Pos ${p.kode} diisi dua kali.` };
     sudah.add(p.kode);
     const saldoSen = saldoDariNilaiNormal(p, k.nilaiSen);
-    if (saldoSen !== 0) baris.push({ posKode: p.kode, saldoSen, sumber: "akuntan" });
+    if (saldoSen !== 0 || SALDO_NOL_DIPERTAHANKAN.has(p.kode)) baris.push({ posKode: p.kode, saldoSen, sumber: "akuntan" });
   }
   baris.sort((a, b) => a.posKode.localeCompare(b.posKode));
 

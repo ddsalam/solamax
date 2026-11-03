@@ -40,6 +40,7 @@ const DAFTAR: Pos[] = [
   pos("1111", "aset", { kodeInduk: "1110", unitId: 2, cashAccountId: "a-bank", id: "pu-1" }),
   pos("1121", "aset"),
   pos("1131", "aset"),
+  pos("1132", "aset"),
   pos("1190", "aset", { kliring: true }),
   pos("1199", "aset", { kliring: true }),
   pos("1510", "aset"),
@@ -107,6 +108,26 @@ describe("saldo awal pos (R9, AE10)", () => {
   it("tidak menambah angka penyeimbang: pos yang tak diketik tetap tak ada", () => {
     const r = periksaSaldoAwal({ ketik: [{ posKode: "3100", nilaiSen: 200 * JT }], kas, daftar: DAFTAR });
     expect(r.ok && r.baris.map((b) => b.posKode)).toEqual(["1101", "1111", "3100"]);
+  });
+
+  it("nol yang diisi untuk 1131/1132 tetap tersimpan (saldo awal diketahui); nol pos lain dibuang", () => {
+    const r = periksaSaldoAwal({
+      ketik: [
+        { posKode: "1131", nilaiSen: 0 },
+        { posKode: "1132", nilaiSen: 0 },
+        { posKode: "2110", nilaiSen: 0 },
+        { posKode: "3100", nilaiSen: 200 * JT },
+      ],
+      kas,
+      daftar: DAFTAR,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const kode = r.baris.map((b) => b.posKode);
+    expect(kode).toContain("1131");
+    expect(kode).toContain("1132");
+    expect(kode).not.toContain("2110");
+    expect(r.baris.find((b) => b.posKode === "1132")?.saldoSen).toBe(0);
   });
 
   it("kas & bank tidak boleh diketik — dibaca dari saldo pembuka rekening", () => {

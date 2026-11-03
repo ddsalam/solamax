@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import type { PoolClient } from "pg";
 import { bacaRupiah } from "./angka-input";
 import { POS, type BarisJurnal } from "./buku-besar-model";
-import { barisPembalikan, periksaMemorial, periksaPersetujuan, periksaSaldoAwal } from "./buku-besar-memorial-model";
+import { SALDO_NOL_DIPERTAHANKAN, barisPembalikan, periksaMemorial, periksaPersetujuan, periksaSaldoAwal } from "./buku-besar-memorial-model";
+import { KUNCI_SALDO_AWAL_POS_SQL } from "./tutup-bulan-queries";
 import { kasPerPos, keKasPembuka, SQL_KAS_PEMBUKA, SQL_SALDO_AWAL_POS, type BarisKasPembuka } from "./buku-besar-queries";
 import { bentukUlangRentang, KUNCI_BULAN_BUKU_BESAR_SQL } from "./buku-besar-tulis";
 import { pool } from "./db";
@@ -160,7 +161,9 @@ export async function simpanSaldoAwalPos(input: SimpanSaldoAwalInput): Promise<B
   for (const n of input.nilai) {
     const h = senDariIsian(n.rupiah, true);
     if ("error" in h) return { ok: false, error: `Pos ${n.posKode}: ${h.error}` };
-    if (h.sen !== 0) ketik.push({ posKode: n.posKode, nilaiSen: h.sen });
+    // Nol yang DIISI untuk 1131/1132 = saldo awal yang diketahui; isian kosong = belum diisi.
+    const nolBermakna = SALDO_NOL_DIPERTAHANKAN.has(n.posKode) && n.rupiah.trim() !== "";
+    if (h.sen !== 0 || nolBermakna) ketik.push({ posKode: n.posKode, nilaiSen: h.sen });
   }
 
   const client = await pool.connect();
@@ -168,7 +171,9 @@ export async function simpanSaldoAwalPos(input: SimpanSaldoAwalInput): Promise<B
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
     // Dua HoF menyimpan bersamaan ⇒ berurutan, set yang terakhir menang utuh.
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('saldo-awal-pos:' || $1::text, 0))", [unit.unit_id]);
+    // Kunci yang SAMA diambil tutupBulan (bersama) — saldo awal tak bisa berganti
+    // di tengah tutup bulan pertama yang memakai buku besar (tinjauan PR #448).
+    await client.query(`SELECT pg_advisory_xact_lock(${KUNCI_SALDO_AWAL_POS_SQL})`, [unit.unit_id]);
     const beku = await client.query<{ ada: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM app.tutup_bulan WHERE unit_id = $1 AND buku_besar) AS ada`,
       [unit.unit_id],

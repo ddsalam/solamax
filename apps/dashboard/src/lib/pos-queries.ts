@@ -85,11 +85,10 @@ export async function getKodeLama(unit: ScopedUnitId): Promise<Map<string, strin
  * Rujukan satu kode pos di unit $1 ($2 = kode) — yang menahan penghapusan (R4).
  *
  *   · peta      — baris peta kategori ber-unit ini yang menunjuk kode itu;
- *   · jurnal    — tabel jurnal belum ada (U8). Sampai itu, catatan sumber yang
- *                 SUDAH menyimpan kode ini (manual_entry, noncash_expense,
- *                 reclassification) dihitung sebagai jurnal: mereka akan
+ *   · jurnal    — baris jurnal (0058) + catatan sumber yang SUDAH menyimpan kode
+ *                 ini (manual_entry, noncash_expense, reclassification): mereka
  *                 menjadi jurnal saat buku besar dibentuk;
- *   · saldoAwal — tabel saldo awal pos belum ada (U9) ⇒ 0.
+ *   · saldoAwal — baris saldo awal pos aktif (0058).
  */
 export const SQL_RUJUKAN_POS = `
   SELECT (SELECT count(*) FROM app.category_account_map m
@@ -99,8 +98,11 @@ export const SQL_RUJUKAN_POS = `
         + (SELECT count(*) FROM app.noncash_expense n
             WHERE n.unit_id = $1 AND n.accounting_account = $2)
         + (SELECT count(*) FROM app.reclassification r
-            WHERE r.unit_id = $1 AND (r.to_account = $2 OR r.from_account = $2)))::int AS jurnal,
-         0 AS "saldoAwal"`;
+            WHERE r.unit_id = $1 AND (r.to_account = $2 OR r.from_account = $2))
+        + (SELECT count(*) FROM app.jurnal_baris b
+            WHERE b.unit_id = $1 AND b.pos_kode = $2))::int AS jurnal,
+         (SELECT count(*) FROM app.saldo_awal_pos s
+           WHERE s.unit_id = $1 AND s.pos_kode = $2 AND NOT s.void)::int AS "saldoAwal"`;
 
 /** Rujukan setiap sub-pos unit (tanpa sub-pos bank: itu tak pernah dihapus di sini). */
 export async function getRujukanSubPos(unit: ScopedUnitId, kode: readonly string[]): Promise<Map<string, RujukanPos>> {

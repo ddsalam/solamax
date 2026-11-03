@@ -39,9 +39,18 @@ import {
  */
 export const KUNCI_BULAN_SQL = "hashtextextended('tutup-bulan:' || $1::text || ':' || $2::text, 0)";
 
+/**
+ * Kunci saldo awal pos per unit. `simpanSaldoAwalPos` memegangnya EKSKLUSIF;
+ * `tutupBulan` BERSAMA, sesudah kunci bulannya — saldo awal tak bisa diganti di
+ * tengah tutup bulan (tinjauan PR #448). Urutan selalu bulan → saldo awal; jalur
+ * saldo awal tak pernah mengambil kunci bulan, jadi tak ada siklus.
+ */
+export const KUNCI_SALDO_AWAL_POS_SQL = "hashtextextended('saldo-awal-pos:' || $1::text, 0)";
+
 /** Penutup: kunci EKSKLUSIF (unit, bulan `YYYY-MM`). Dipakai `tutupBulan`. */
 export async function kunciBulanEksklusif(c: Kueri, unitId: ScopedUnitId, bulan: string): Promise<void> {
   await c.query(`SELECT pg_advisory_xact_lock(${KUNCI_BULAN_SQL})`, [unitId, bulan]);
+  await c.query(`SELECT pg_advisory_xact_lock_shared(${KUNCI_SALDO_AWAL_POS_SQL})`, [unitId]);
 }
 
 /**
