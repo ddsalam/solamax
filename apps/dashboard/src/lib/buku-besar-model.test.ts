@@ -143,6 +143,16 @@ describe("R6 — setiap aturan P menghasilkan jurnal seimbang sampai Rp 0", () =
     ["P6 setoran ke bank (kaki keluar)", kas({ accountId: "akun-kas", amountSen: -rp(5_000_000), kategori: "Setoran ke Bank" }), { "1190": rp(5_000_000), "1101": -rp(5_000_000) }],
     ["P6 pindah buku (kaki masuk)", kas({ amountSen: rp(5_000_000), kategori: "Pindah Buku" }), { "1111": rp(5_000_000), "1190": -rp(5_000_000) }],
     ["P12 pendapatan lain", kas({ amountSen: rp(750_000), kategori: "Pendapatan Lain-Lain" }), { "1111": rp(750_000), "4200": -rp(750_000) }],
+    [
+      "P12 pendapatan bertaut direklas ke 3300 → ikut pos neraca, sisa 4200",
+      kas({ amountSen: rp(750_000), kategori: "Pendapatan Lain-Lain", tertaut: [{ manualEntryId: "me-2", posKode: "3300", amountSen: rp(500_000) }] }),
+      { "1111": rp(750_000), "3300": -rp(500_000), "4200": -rp(250_000) },
+    ],
+    [
+      "P12 pendapatan bertaut pos laba / tanpa pos → 4200",
+      kas({ amountSen: rp(750_000), kategori: "Pendapatan Lain-Lain", tertaut: [{ manualEntryId: "me-3", posKode: "5700", amountSen: rp(400_000) }, { manualEntryId: "me-4", posKode: null, amountSen: rp(350_000) }] }),
+      { "1111": rp(750_000), "4200": -rp(750_000) },
+    ],
     ["P13 pembayaran piutang", kas({ amountSen: rp(2_500_000), kategori: "Transfer Pembayaran Piutang Pelanggan" }), { "1111": rp(2_500_000), "1121": -rp(2_500_000) }],
     ["P14 antar unit (pemberi)", kas({ amountSen: -rp(10_000_000), kategori: "Hutang Piutang", pasanganUuid: "p-1", pihakLawanJenis: "unit" }), { "1122": rp(10_000_000), "1111": -rp(10_000_000) }],
     ["P14 antar unit (penerima)", kas({ amountSen: rp(10_000_000), kategori: "Hutang Piutang", pasanganUuid: "p-1", pihakLawanJenis: "unit" }), { "1111": rp(10_000_000), "2102": -rp(10_000_000) }],

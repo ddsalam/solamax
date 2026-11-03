@@ -80,12 +80,14 @@ let bbStatus: Record<string, unknown>[];
 let saldoPos: Record<string, unknown>[];
 let bankBb: Record<string, unknown>[];
 let kliring: Record<string, unknown>[];
+let memorialMenunggu = 0;
 
 const db = (sql: string): { rows: unknown[]; rowCount?: number } | undefined => {
   if (sql.includes('AS "adaTutupBukuBesar"')) return { rows: bbStatus };
   if (sql.includes("WITH gerak AS")) return { rows: saldoPos };
   if (sql.includes("FROM app.pos_unit u")) return { rows: bankBb };
   if (sql.includes("b.pos_kode = ANY($3::text[])")) return { rows: kliring };
+  if (sql.includes("AS n FROM app.jurnal")) return { rows: [{ n: memorialMenunggu }] };
   if (sql.includes("FROM app.tutup_bulan")) return { rows: sudahDitutup ? [{ ada: 1 }] : [] };
   if (sql.includes("INSERT INTO app.tutup_bulan")) return { rows: [], rowCount: 1 };
   if (sql.includes("FROM app.day_close")) return { rows: hari.map((d) => ({ d })) };
@@ -102,6 +104,7 @@ const ins = () => h.log.filter((l) => l.sql.includes("INSERT INTO app.tutup_bula
 const committed = () => h.log.some((l) => l.sql.trim() === "COMMIT");
 
 beforeEach(() => {
+  memorialMenunggu = 0;
   h.log.length = 0;
   h.connect.mockClear();
   h.state.jawab = db;
@@ -265,6 +268,16 @@ describe("tutupBulan — pemeriksaan buku besar (K6 U11, R33)", () => {
     expect(ins()).toHaveLength(1);
     expect(ins()[0]!.params).toEqual([h.BK.unit_id, "2026-10-01", 7, true]);
     expect(committed()).toBe(true);
+  });
+
+  it("🔴 memorial menunggu di bulan berbuku besar ⇒ menolak, tanpa INSERT", async () => {
+    bukuBesarBersih();
+    memorialMenunggu = 2;
+    const r = await tutupBulan(masukan);
+    expect(r).toMatchObject({ ok: false });
+    expect(pesan(r)).toMatch(/2 jurnal memorial/);
+    expect(ins()).toHaveLength(0);
+    expect(committed()).toBe(false);
   });
 
   it("🔴 vonis membaca jurnal SESUDAH pembentukan ulang, bukan yang tersimpan sebelumnya", async () => {
