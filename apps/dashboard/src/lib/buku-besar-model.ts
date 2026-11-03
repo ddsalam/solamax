@@ -30,7 +30,8 @@ import { tierFor, type Tier } from "./keuangan-tutup-hari";
  */
 
 /** Buku besar dimulai bersama cut-over Keuangan (Key Decision tanggal mulai). */
-export const MULAI_BUKU_BESAR = "2026-10-01";
+export { MULAI_BUKU_BESAR } from "./buku-besar-bulan";
+import { MULAI_BUKU_BESAR } from "./buku-besar-bulan";
 /** Saldo awal pos per tanggal ini (R9, P22). */
 export const TANGGAL_SALDO_AWAL = "2026-09-30";
 
