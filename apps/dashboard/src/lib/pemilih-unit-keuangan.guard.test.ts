@@ -85,7 +85,8 @@ describe("🔴 URL keuangan dibangun SATU tempat, dan menavigasi ke tempat yang 
     ["keuangan-pos", "/keuangan/unit/6378301/pos"],
     ["keuangan-impor-bank", "/keuangan/unit/6378301/impor-bank"],
     ["keuangan-tutup-bulan", "/keuangan/unit/6378301/tutup-bulan/2026-08"],
-    ["keuangan-buku-besar", "/keuangan/unit/6378301/buku-besar/2026-08"],
+    // Tanggal sebelum buku besar dimulai (1 Okt 2026) ⇒ bulan mulai, bukan bulan yang tak ada (404).
+    ["keuangan-buku-besar", "/keuangan/unit/6378301/buku-besar/2026-10"],
     ["keuangan-piutang", "/keuangan/unit/6378301/piutang/2026-08-22"],
   ];
 

@@ -44,6 +44,7 @@ export function UnitDateFilters({
   date,
   today,
   maxDate,
+  minDate,
   note,
   dimensiUnit = "pilih",
 }: {
@@ -65,6 +66,8 @@ export function UnitDateFilters({
    * membatasinya di sini akan diam-diam mengubah alur kerja, bukan tampilan.
    */
   maxDate?: string;
+  /** Batas bawah pemilih tanggal (mis. buku besar dimulai 1 Okt 2026). Opsional. */
+  minDate?: string;
   /** Teks konteks singkat di ujung baris (mis. penjelasan realtime). */
   note?: string;
   /**
@@ -98,6 +101,7 @@ export function UnitDateFilters({
     if (!date) return;
     const next = addDays(date, days);
     if (maxDate && next > maxDate) return;
+    if (minDate && next < minDate) return;
     navDate(next);
   };
 
@@ -196,6 +200,7 @@ export function UnitDateFilters({
             type="button"
             className="btn-outline"
             onClick={() => shift(-1)}
+            disabled={minDate !== undefined && date <= minDate}
             aria-label="Hari sebelumnya"
           >
             ‹
@@ -205,6 +210,7 @@ export function UnitDateFilters({
             type="date"
             value={date}
             max={maxDate}
+            min={minDate}
             onChange={(e) => e.target.value && navDate(e.target.value)}
           />
           <button
