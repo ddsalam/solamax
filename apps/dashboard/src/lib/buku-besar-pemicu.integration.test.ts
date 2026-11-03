@@ -203,6 +203,24 @@ d("KTD3 pemicu 1 & koreksi maju — DB nyata", () => {
     });
   });
 
+  it("tab Temuan jurnal: rincian temuan pembentukan tersimpan di audit dan terbaca kuerinya", async () => {
+    if (!applied) return;
+    const { bentukUlangHari } = await import("./buku-besar-tulis");
+    const { SQL_TEMUAN_PEMBENTUKAN } = await import("./buku-besar-queries");
+    const { susunTemuanPembentukan } = await import("./buku-besar-temuan");
+    await tx(async (c) => {
+      const id = await biaya(c, HARI); // Biaya Operasional tanpa baris Biaya ⇒ belum_tertaut
+      const r = await bentukUlangHari(c, U.unitId as never, HARI, { aktor, easymax });
+      expect(r.temuan.map((t) => t.kode)).toContain("belum_tertaut");
+      const rows = (await c.query(SQL_TEMUAN_PEMBENTUKAN, [U.unitId, HARI.slice(0, 7)])).rows;
+      const t = susunTemuanPembentukan(rows.map((x) => ({ ...x, kode: x.kode ?? [], rincian: Array.isArray(x.rincian) ? x.rincian : null })));
+      const baris = t.baris.find((b) => b.tanggal === HARI && b.sumberId === id)!;
+      expect(baris.kode).toBe("belum_tertaut");
+      expect(baris.pesan).toMatch(/tanpa baris Biaya/);
+      expect(t.total).toBe(r.temuan.length + t.baris.filter((b) => b.tanggal !== HARI).length);
+    });
+  });
+
   /** Satu klien di dalam transaksi luar: BEGIN/COMMIT/ROLLBACK → SAVEPOINT, supaya semuanya tetap di-ROLLBACK. */
   const bukaDalam = (c: PoolClient) => async (): Promise<PoolClient> => {
     let n = 0;

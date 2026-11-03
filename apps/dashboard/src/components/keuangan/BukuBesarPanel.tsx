@@ -1,5 +1,6 @@
 import type { BarisPos, BarisTemuan, LaporanBukuBesar } from "@/lib/buku-besar-laporan-model";
 import { rpSen } from "@/lib/buku-besar-memorial-model";
+import { tautanTemuan, type TemuanPembentukan } from "@/lib/buku-besar-temuan";
 import type { JurnalTampil, KeadaanBukuBesar } from "@/lib/buku-besar-queries";
 import { BentukUlangTombol, KoreksiMajuTombol, MemorialForm, MemorialTombol, SaldoAwalForm, type PosIsian } from "./BukuBesarAksi";
 
@@ -14,12 +15,13 @@ import { BentukUlangTombol, KoreksiMajuTombol, MemorialForm, MemorialTombol, Sal
  * ke catatan sumber.
  */
 
-export const TAB_BUKU_BESAR = ["neraca", "laba-rugi", "temuan", "saldo-awal", "memorial"] as const;
+export const TAB_BUKU_BESAR = ["neraca", "laba-rugi", "temuan-jurnal", "temuan", "saldo-awal", "memorial"] as const;
 export type TabBukuBesar = (typeof TAB_BUKU_BESAR)[number];
 
 const LABEL_TAB: Record<TabBukuBesar, string> = {
   neraca: "Neraca",
   "laba-rugi": "Laba-rugi",
+  "temuan-jurnal": "Temuan jurnal",
   temuan: "Temuan beda",
   "saldo-awal": "Saldo awal",
   memorial: "Jurnal memorial",
@@ -48,6 +50,8 @@ export interface BukuBesarPanelProps {
   rentangBentuk: { dari: string; sampai: string } | null;
   jurnalPos: { jurnal: JurnalTampil[]; terpotong: boolean } | null;
   temuan: { batas: string; baris: BarisTemuan[] } | null;
+  /** Tab "Temuan jurnal" — null bila tab lain. */
+  temuanJurnal: TemuanPembentukan | null;
   memorial: JurnalTampil[] | null;
   saldoAwal: {
     isian: PosIsian[];
@@ -379,6 +383,65 @@ export function BukuBesarPanel(p: BukuBesarPanelProps) {
       )}
 
       {(tab === "neraca" || tab === "laba-rugi") && p.pos && p.jurnalPos && <DaftarJurnalPos code={code} bulan={bulan} pos={p.pos} data={p.jurnalPos} />}
+
+      {tab === "temuan-jurnal" && p.temuanJurnal && (
+        <section aria-label="Temuan jurnal">
+          <p className="fs16 t-tertiary mt4">
+            Hal yang membuat jurnal tidak dibuat atau diparkir di pos kliring (1198/1103) — sama dengan jumlah temuan yang dilaporkan &quot;Bentuk
+            ulang&quot;. Dibaca dari pembentukan terakhir setiap hari (Bentuk ulang, tutup hari, tutup bulan). Bukan selisih dengan laporan rumus — itu
+            tab Temuan beda.
+          </p>
+          {p.temuanJurnal.total === 0 ? (
+            <p className="fs16 mt4">Tidak ada temuan pada pembentukan terakhir bulan ini.</p>
+          ) : (
+            <>
+              <ul className="fs16 mt4">
+                {p.temuanJurnal.ringkas.map((r) => (
+                  <li key={r.kode}>
+                    {r.label}: <b>{r.n}</b>
+                  </li>
+                ))}
+              </ul>
+              {p.temuanJurnal.hariTanpaRincian.length > 0 && (
+                <p className="fs16 t-tertiary mt2">
+                  Pembentukan{" "}
+                  {p.temuanJurnal.hariTanpaRincian.length > 3
+                    ? `${p.temuanJurnal.hariTanpaRincian[0]} s.d. ${p.temuanJurnal.hariTanpaRincian.at(-1)} (${p.temuanJurnal.hariTanpaRincian.length} hari)`
+                    : p.temuanJurnal.hariTanpaRincian.join(", ")}{" "}
+                  terjadi sebelum rincian dicatat — jalankan &quot;Bentuk ulang bulan ini&quot; sekali untuk melihat baris mana yang dimaksud.
+                </p>
+              )}
+              <div className="tbl-scroll mt4">
+                <table className="fs16">
+                  <thead>
+                    <tr>
+                      <th className="left">Tanggal</th>
+                      <th className="left">Temuan</th>
+                      <th className="left">Keterangan</th>
+                      <th className="left">Perbaiki di</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.temuanJurnal.baris.map((t, i) => {
+                      const ke = tautanTemuan(code, bulan, t.tanggal, t.kode);
+                      return (
+                        <tr key={`${t.tanggal}-${t.kode}-${t.sumberId ?? i}`}>
+                          <td>{t.hari > 1 ? `${t.tanggal} s.d. ${t.sampai} (${t.hari} hari)` : t.tanggal}</td>
+                          <td>{t.label}</td>
+                          <td className="t-secondary">{t.pesan ?? "—"}</td>
+                          <td>
+                            <a href={ke.href}>{ke.label}</a>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       {tab === "temuan" && (
         <section aria-label="Temuan beda">
