@@ -171,13 +171,13 @@ describe("R6 — setiap aturan P menghasilkan jurnal seimbang sampai Rp 0", () =
     ],
     ["P26 biaya tanpa tautan → 1198", kas({ amountSen: -rp(900_000), kategori: "Biaya Operasional" }), { "1198": rp(900_000), "1111": -rp(900_000) }],
     [
-      "P7 penebusan: 1132 (Net+PBBKB+Nota) · 1140 (PPN+PPh) = Gross",
+      "P7 penebusan: 1132 = Gross (Net+PPN+PPh+PBBKB+Nota) — HPP & nilai SO memakai harga gross",
       kas({
         amountSen: -rp(110_000_000),
         kategori: "Pembelian BBM",
         penebusan: { id: "pb-1", netSen: rp(96_000_000), ppnSen: rp(10_560_000), pphSen: rp(320_000), pbbkbSen: rp(3_120_000), notaSen: 0, grossSen: rp(110_000_000) },
       }),
-      { "1132": rp(99_120_000), "1140": rp(10_880_000), "1111": -rp(110_000_000) },
+      { "1132": rp(110_000_000), "1111": -rp(110_000_000) },
     ],
     ["P26 Pembelian BBM tanpa penebusan → 1198", kas({ amountSen: -rp(110_000_000), kategori: "Pembelian BBM" }), { "1198": rp(110_000_000), "1111": -rp(110_000_000) }],
   ];
@@ -250,7 +250,7 @@ describe("R11 — HPP = liter terjual × harga beli terakhir", () => {
     expect(hpp(tanpa)).toBe(rp(36_000_000));
     expect(hpp(dengan)).toBe(rp(36_000_000));
     // Penebusan masuk persediaan (1132), bukan HPP.
-    expect(saldo(semuaBaris(dengan.jurnal.filter((j) => j.aturan === "P7")))["1132"]).toBe(rp(99_120_000));
+    expect(saldo(semuaBaris(dengan.jurnal.filter((j) => j.aturan === "P7")))["1132"]).toBe(rp(110_000_000));
   });
 
   it("HPP memakai liter bersih tera (rumus §1.1)", () => {
@@ -293,6 +293,45 @@ describe("P23 — 1131/1132 disesuaikan ke liter × harga beli terakhir, lawan 5
       { g1131: 0, g1132: rp(99_120_000) },
     );
     expect(saldo(jurnal!.baris)).toEqual({ "1132": -rp(120_000), "5120": rp(120_000) });
+  });
+
+  it("Opsi A: nilai dijumlah persis lalu dibulatkan SEKALI (sama dengan laporan rumus) — dua × 0,4 sen = 1 sen, bukan 0", () => {
+    const { jurnal } = p23Revaluasi(
+      T,
+      [
+        produk({ produk: "A", volumeL: 0, stokL: 1, hargaBeli: 0.004, sisaSoAktifL: 0 }),
+        produk({ produk: "B", volumeL: 0, stokL: 1, hargaBeli: 0.004, sisaSoAktifL: 0 }),
+      ],
+      { s1131: 0, s1132: 0 },
+      { g1131: 0, g1132: 0 },
+    );
+    expect(saldo(jurnal!.baris)).toEqual({ "1131": 1, "5120": -1 });
+  });
+
+  it("🔴 penebusan bergross penuh: SO 8.000 L Gross Rp 189.414.838 diterima pada harga gross ⇒ tanpa 5120 (dulu PPN+PPh jadi laba palsu)", () => {
+    const gross = 189_414_838;
+    const harga = gross / 8_000; // harga beli = Gross ÷ liter (keputusan owner K5)
+    const p7 = jurnalKas(
+      T,
+      kas({
+        amountSen: -rp(gross),
+        kategori: "Pembelian BBM",
+        penebusan: { id: "pb-x", netSen: rp(158_781_928), ppnSen: rp(17_971_308), pphSen: rp(408_438), pbbkbSen: rp(12_253_164), notaSen: 0, grossSen: rp(gross) },
+      }),
+      "1111",
+    ).jurnal!;
+    const masuk1132 = saldo(p7.baris)["1132"]!;
+    const keluarP8 = senLiterKaliHarga(8_000, harga); // penerimaan seluruh SO pada harga gross
+    const { jurnal } = p23Revaluasi(
+      T,
+      [produk({ stokL: 0, sisaSoAktifL: 0, hargaBeli: harga })],
+      { s1131: 0, s1132: 0 },
+      { g1131: 0, g1132: masuk1132 - keluarP8 },
+    );
+    // Sisa hanya pembulatan harga per liter (4 desimal), jauh di bawah Rp 10 —
+    // aturan lama menyisakan PPN + PPh Rp 18.379.746 untuk SO ini.
+    expect(Math.abs(masuk1132 - keluarP8)).toBeLessThanOrEqual(rp(10));
+    expect(Math.abs(saldo(jurnal?.baris ?? [])["5120"] ?? 0)).toBeLessThanOrEqual(rp(10));
   });
 
   it("gerak hari itu (P8 − P9 ± P10) tidak ikut dinilai ulang", () => {

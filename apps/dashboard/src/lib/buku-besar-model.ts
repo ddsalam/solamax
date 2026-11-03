@@ -479,7 +479,14 @@ export const p11Biaya = (t: string, r: BarisKas, akun: string) => denganTautan(t
 export const p20ManagementFee = (t: string, r: BarisKas, akun: string) => denganTautan(t, r, akun, "P20", POS.BEBAN_LAIN);
 
 /**
- * P7 — penebusan SO: 1132 (Net + PBBKB + Nota) · 1140 (PPN, PPh) | 111x (Gross).
+ * P7 — penebusan SO: 1132 sebesar Gross (Net + PPN + PPh + PBBKB + Nota) | 111x.
+ *
+ * ⚖️ 3 Nov 2026: PPN & PPh TIDAK lagi ke 1140. Keputusan owner K5 "HPP tetap
+ * Harga Gross ÷ liter": penerimaan (P8), HPP (P9), dan nilai SO/persediaan
+ * (P23) memakai harga gross, jadi 1132 harus terisi gross. Versi lama mengisi
+ * 1132 tanpa PPN/PPh lalu P23 "mengembalikannya" lewat 5120 sebagai laba —
+ * pajak terhitung dua kali (Bakau Okt: 1140 = 5120 sebagian = Rp 957 jt).
+ * Komponen pajak tetap tercatat per SO di `app.penebusan` (Rekap pajak).
  * Tanpa penebusan → P26 (R27). Komponen ≠ nominal kas → sisanya 1198 + temuan.
  */
 export function p7Penebusan(tanggal: string, row: BarisKas, akun: string): { jurnal: JurnalTurunan | null; temuan: Temuan[] } {
@@ -492,9 +499,8 @@ export function p7Penebusan(tanggal: string, row: BarisKas, akun: string): { jur
   }
   const temuan: Temuan[] = [];
   const arah = row.amountSen < 0 ? 1 : -1;
-  const so = arah * (pb.netSen + pb.pbbkbSen + pb.notaSen);
-  const pajak = arah * (pb.ppnSen + pb.pphSen);
-  const sisa = -row.amountSen - so - pajak;
+  const so = arah * (pb.netSen + pb.ppnSen + pb.pphSen + pb.pbbkbSen + pb.notaSen);
+  const sisa = -row.amountSen - so;
   if (sisa !== 0) {
     temuan.push({ kode: "tautan_tak_seimbang", pesan: "Komponen penebusan tidak sama dengan nominal mutasi — sisanya masuk 1198.", sumberId: row.id });
   }
@@ -502,7 +508,6 @@ export function p7Penebusan(tanggal: string, row: BarisKas, akun: string): { jur
     jurnal: buatJurnal("cash_ledger", row.id, "P7", efektif(tanggal, row), row.keterangan, [
       ...kaki(akun, row.amountSen),
       ...kaki(POS.SO_DIBAYAR, so),
-      ...kaki(POS.PAJAK_DIBAYAR_DI_MUKA, pajak),
       ...kaki(POS.BELUM_DIPETAKAN, sisa),
     ]),
     temuan,
@@ -662,8 +667,13 @@ export interface SaldoPersediaan {
 }
 
 /** Target satu pos persediaan: Σ liter × harga. `null` bila ada produk berliter ≠ 0 tanpa harga, atau liternya tak diketahui. */
+/**
+ * Σ liter × harga, dijumlahkan PERSIS lalu dibulatkan ke sen SEKALI — sama
+ * dengan nilai persediaan/SO laporan rumus (Σ lalu bulatkan). Membulatkan per
+ * produk lalu menjumlah membuat beda Rp 0,01 di tab Temuan beda (pilot 3 Nov).
+ */
 function targetNilai(produk: readonly ProdukHari[], liter: (p: ProdukHari) => number | null): { sen: number | null; kurang: ProdukHari[] } {
-  let sen = 0;
+  let persis = 0n; // satuan: mL × (harga × 10.000)
   const kurang: ProdukHari[] = [];
   for (const p of produk) {
     const l = liter(p);
@@ -672,9 +682,9 @@ function targetNilai(produk: readonly ProdukHari[], liter: (p: ProdukHari) => nu
       kurang.push(p);
       continue;
     }
-    sen += senLiterKaliHarga(l, p.hargaBeli);
+    persis += BigInt(Math.round(l * 1000)) * BigInt(Math.round(p.hargaBeli * 10_000));
   }
-  return { sen: kurang.length > 0 ? null : sen, kurang };
+  return { sen: kurang.length > 0 ? null : bagiBulat(persis, 100_000n), kurang };
 }
 
 /**
