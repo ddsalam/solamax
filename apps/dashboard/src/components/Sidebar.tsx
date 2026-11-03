@@ -213,6 +213,14 @@ function buildGroups(
           icon: "clipboard",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/pos$/.test(p),
         },
+        {
+          // Rencana 2026-11-02 K6 U9 — neraca & laba-rugi formal per pos dari
+          // jurnal buku besar, saldo awal, dan jurnal memorial (HoF).
+          href: unitCode ? `/keuangan/unit/${unitCode}/buku-besar/${date.slice(0, 7)}` : null,
+          label: "Buku besar",
+          icon: "report",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/buku-besar\//.test(p),
+        },
       ],
     },
     {

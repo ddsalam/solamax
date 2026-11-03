@@ -33,6 +33,7 @@ export type UnitRouteSegment =
   | "keuangan-pos"
   | "keuangan-impor-bank"
   | "keuangan-tutup-bulan"
+  | "keuangan-buku-besar"
   | "keuangan-piutang"
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
@@ -82,6 +83,10 @@ export function unitRouteHref(args: {
   // bulan itu membuka daftar periksa bulan yang sama.
   if (segment === "keuangan-tutup-bulan") {
     return `/keuangan/unit/${code}/tutup-bulan/${(date ?? "").slice(0, 7)}${suffix}`;
+  }
+  // BULAN di path (K6 U9): neraca & laba-rugi formal per bulan, sama dengan tutup bulan.
+  if (segment === "keuangan-buku-besar") {
+    return `/keuangan/unit/${code}/buku-besar/${(date ?? "").slice(0, 7)}${suffix}`;
   }
   // Unit di QUERY: halaman ini membaca `?unit=`, bukan segmen path.
   if (segment === "keuangan-sumber-data") {

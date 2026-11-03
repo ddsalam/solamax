@@ -38,7 +38,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 13 → 14: Klasifikasi rekening koran per unit × bulan (rencana 2026-10-29 U11).
     // 14 → 15: Tutup bulan per unit × bulan (rencana 2026-10-29 U12).
     // 15 → 16: Daftar pos (K6 U1).
-    expect(RUTE.length).toBe(16);
+    // 16 → 17: Buku besar per unit × bulan (K6 U9).
+    expect(RUTE.length).toBe(17);
   });
 
   for (const f of RUTE) {
@@ -67,7 +68,8 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 10 → 11: Impor rekening koran (U9) — sama.
     // 11 → 12: Klasifikasi rekening koran per bulan (U11) — sama.
     // 12 → 13: Tutup bulan per unit (U12) — sama.
-    expect(lain).toHaveLength(14);
+    // 14 → 15: Buku besar per unit × bulan (K6 U9) — sama.
+    expect(lain).toHaveLength(15);
   });
 });
 
@@ -83,6 +85,7 @@ describe("🔴 URL keuangan dibangun SATU tempat, dan menavigasi ke tempat yang 
     ["keuangan-pos", "/keuangan/unit/6378301/pos"],
     ["keuangan-impor-bank", "/keuangan/unit/6378301/impor-bank"],
     ["keuangan-tutup-bulan", "/keuangan/unit/6378301/tutup-bulan/2026-08"],
+    ["keuangan-buku-besar", "/keuangan/unit/6378301/buku-besar/2026-08"],
     ["keuangan-piutang", "/keuangan/unit/6378301/piutang/2026-08-22"],
   ];
 

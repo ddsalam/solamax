@@ -1,10 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { PoolClient } from "pg";
+import { MULAI_BUKU_BESAR } from "./buku-besar-model";
+import { bentukUlangHari } from "./buku-besar-tulis";
 import { pool } from "./db";
 import { kunciHariEksklusif } from "./hari-buku-queries";
 import { hitungLangkahHarianRinci } from "./keuangan-laporan-queries";
 import { periksaTutupHari, tierFor } from "./keuangan-tutup-hari";
+import { auditKeuangan, type Aktor } from "./keuangan-tx";
 import { getDataScope, type ScopedUnitId } from "./scope";
 
 /**
@@ -25,6 +29,10 @@ import { getDataScope, type ScopedUnitId } from "./scope";
  *    bisa menjawab berbeda untuk pertanyaan yang sama.
  * 4. **Selisih tidak pernah dinolkan atau dibulatkan** — ia disimpan apa
  *    adanya, termasuk yang di dalam toleransi.
+ *
+ * Sesudah `day_close` ditulis, jurnal buku besar hari itu dibentuk ulang di
+ * transaksi yang sama (rencana 2026-11-02 K6 U8/U9; KTD3 pemicu 2) — lihat
+ * {@link bentukBukuBesarHari}. Kegagalannya TIDAK menahan penutupan hari.
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -154,6 +162,10 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
         rinci.koreksiSusulan,
       ],
     );
+    // Buku besar SESUDAH day_close ditulis: P24 membaca persetujuan tier-nya.
+    if (input.date >= MULAI_BUKU_BESAR) {
+      await bentukBukuBesarHari(client, unit.unit_id, input.date, { userId: scope.userId, email: scope.email });
+    }
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/tutup-hari/${input.date}`);
     return { ok: true, tier };
@@ -166,6 +178,40 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
     return { ok: false, error: e instanceof Error ? e.message : "Gagal menutup hari." };
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Bentuk ulang jurnal buku besar satu unit-hari di DALAM transaksi tutup hari
+ * (rencana 2026-11-02 K6 U8/U9; KTD3 pemicu 2).
+ *
+ * ⛔ YANG MENGIKAT:
+ *
+ * 1. **Galat buku besar tidak menahan tutup hari.** Pekerjaannya di dalam
+ *    SAVEPOINT; galat ⇒ digulung ke savepoint, dicatat di `audit_log`
+ *    (`buku_besar.bentuk_ulang_gagal`), dan penutupan tetap COMMIT. Halaman
+ *    Buku Besar menampilkan hari yang tertinggal; HoF memulihkannya lewat
+ *    "Bentuk ulang bulan ini".
+ * 2. **Seimbang diperiksa DI DALAM savepoint.** Trigger seimbang 0058 tertunda
+ *    sampai COMMIT; tanpa `SET CONSTRAINTS … IMMEDIATE` jurnal tak seimbang
+ *    baru meledak saat COMMIT dan menggagalkan seluruh tutup hari.
+ * 3. **Kunci.** `bentukUlangHari` meminta kunci hari EKSKLUSIF yang sudah
+ *    dipegang transaksi ini — kunci advisory re-entrant dalam satu sesi, jadi
+ *    tidak menunggu dirinya sendiri — lalu kunci bulan BERSAMA. `tutupBulan`
+ *    hanya memegang kunci bulan, tak pernah kunci hari: tak ada siklus.
+ */
+async function bentukBukuBesarHari(c: PoolClient, unit: ScopedUnitId, tanggal: string, aktor: Aktor): Promise<void> {
+  await c.query("SAVEPOINT buku_besar_tutup_hari");
+  try {
+    await bentukUlangHari(c, unit, tanggal, { aktor });
+    await c.query("SET CONSTRAINTS app.jurnal_seimbang, app.jurnal_baris_seimbang IMMEDIATE");
+    await c.query("RELEASE SAVEPOINT buku_besar_tutup_hari");
+  } catch (e) {
+    await c.query("ROLLBACK TO SAVEPOINT buku_besar_tutup_hari");
+    await auditKeuangan(c, aktor, "buku_besar.bentuk_ulang_gagal", `${unit}/${tanggal}`, {
+      pemicu: "tutup_hari",
+      galat: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 

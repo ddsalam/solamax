@@ -555,3 +555,44 @@ export function canKelolaSettlementEdc(ctx: WewenangCtx, daftar?: readonly strin
 /** Pesan penolakan aksi settlement — satu sumber untuk layar dan server. */
 export const PESAN_TAK_BOLEH_SETTLEMENT =
   "Hanya tim Finance (staf Keuangan atau Head of Finance) yang boleh mengelola settlement EDC.";
+
+// ---------------------------------------------------------------------------
+// Buku besar — saldo awal pos & jurnal memorial (rencana 2026-11-02 K6 U9; R8, R9, KD13)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGISI saldo awal pos per 30 Sep 2026 (R9)? **Head of Finance** +
+ * super admin. Saldo awal menentukan seluruh neraca formal sesudahnya — setara
+ * {@link canTutupBulan}, bukan pekerjaan staf `keuangan`.
+ */
+export function canIsiSaldoAwalPos(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/**
+ * Boleh MENGETIK jurnal memorial (R8) — termasuk pembaliknya? **Head of
+ * Finance** + super admin. Memorial besar atau yang menyentuh pos kliring baru
+ * terposting sesudah {@link canSetujuiMemorial} (KD13).
+ */
+export function canUsulkanMemorial(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/**
+ * Boleh MENYETUJUI memorial yang menunggu (R8, KD13)? **`direksi` dan
+ * `super_admin`, TANPA Head of Finance** — sama dengan {@link canOverrideAboveMax}:
+ * yang mengetik tidak menyetujui.
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI. HoF pengusul memorial; menyusun predikat ini dari
+ * predikat yang meloloskan HoF akan membuat pengusul menyetujui usulannya
+ * sendiri lewat peran lain. Pengusul = penyetuju juga ditolak per baris
+ * (`app.jurnal` CHECK `jurnal_empat_mata`), termasuk untuk super admin.
+ */
+export function canSetujuiMemorial(ctx: WewenangCtx): boolean {
+  return ctx.role === "direksi" || ctx.role === "super_admin";
+}
+
+/** Pesan penolakan — satu sumber untuk layar dan server. */
+export const PESAN_TAK_BOLEH_SALDO_AWAL_POS = "Hanya Head of Finance yang boleh mengisi saldo awal pos.";
+export const PESAN_TAK_BOLEH_MEMORIAL = "Hanya Head of Finance yang boleh mengetik jurnal memorial.";
+export const PESAN_TAK_BOLEH_SETUJUI_MEMORIAL = "Hanya Direksi yang boleh menyetujui jurnal memorial.";
