@@ -1,10 +1,12 @@
 "use server";
 
+import type { PoolClient } from "pg";
 import { KATEGORI_TITIPAN, POLA_KETERANGAN_TITIPAN } from "./titipan-bright";
 import { revalidatePath } from "next/cache";
-import { qScoped } from "./db";
+import { pool, qScoped } from "./db";
 import type { ManualSection } from "./queries";
-import { getDataScope } from "./scope";
+import { getDataScope, type ScopedUnit } from "./scope";
+import { batalkanKasSetoran, simpanSetoranTunai } from "./setoran-tulis";
 import { UUID_RE } from "./validasi";
 
 /**
@@ -13,6 +15,11 @@ import { UUID_RE } from "./validasi";
  * (notFound bila di luar scope → tak menulis), BUKAN dari input mentah. RBAC:
  * pengawas/role-ber-scope unit ybs. `created_by_user_id` = user sesi. Edit =
  * void + re-create (jejak audit: `voided_by/voided_at`). Lihat ADR-001 / FASE1-PLAN.
+ *
+ * K6 U5 (R14, R17, KTD6): seksi `setoran_tunai` = SATU transaksi — setoran
+ * langsung dibukukan ke Kas Besar lewat `setoran-tulis.ts` (hari buku
+ * terkunci dulu, baru tulis), dan pembatalannya ikut membatalkan baris kas
+ * tertaut. Seksi lain tetap satu pernyataan seperti sebelumnya.
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -90,6 +97,23 @@ export async function addManualEntry(input: {
     pemilik = id;
   }
 
+  if (input.section === "setoran_tunai") {
+    // Nominal baris kas = nominal setoran yang TERSIMPAN (RETURNING di
+    // setoran-tulis), bukan angka kedua dari client.
+    const r = await dalamTransaksi(unit, (c) =>
+      simpanSetoranTunai(c, {
+        unitId: unit.unit_id,
+        date: input.date,
+        keterangan: ket,
+        amount: input.amount,
+        aktorId: scope.userId,
+      }),
+    );
+    if (!r.ok) return r;
+    revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
+    return { ok: true };
+  }
+
   await qScoped(
     unit.unit_id, // RLS (0016): set app.unit_ids → WITH CHECK pada INSERT ke app.manual_entry
     `INSERT INTO app.manual_entry
@@ -113,17 +137,66 @@ export async function voidManualEntry(input: {
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code); // di luar scope → notFound()
 
-  // Lapis-2: `unit_id = $3` ter-scope → mustahil membatalkan entri unit lain
-  // walau `id` ditebak. Void (bukan DELETE) → jejak audit utuh.
-  await qScoped(
-    unit.unit_id, // RLS (0016): app.unit_ids → USING+WITH CHECK pada UPDATE app.manual_entry
-    `UPDATE app.manual_entry
-        SET void=true, voided_by_user_id=$1, voided_at=now(), updated_at=now()
-      WHERE id=$2::uuid AND unit_id=$3 AND NOT void
-        -- Baris pintu Finance bukan milik pengawas (§2): tak bisa dibatalkan dari Rincian.
-        AND source_door = 'pengawas'`,
-    [scope.userId, input.id, unit.unit_id],
-  );
+  // Lapis-2: `unit_id = $2` ter-scope → mustahil membatalkan entri unit lain
+  // walau `id` ditebak. Void (bukan DELETE) → jejak audit utuh. Hari tertutup ⇒
+  // trigger 0026 menolak UPDATE manual_entry dan SELURUH transaksi batal (baris
+  // kas setoran ikut utuh).
+  const r = await dalamTransaksi(unit, async (c) => {
+    // RLS (0016): app.unit_ids → USING pada SELECT/UPDATE app.manual_entry.
+    // Baris pintu Finance bukan milik pengawas (§2): tak bisa dibatalkan dari Rincian.
+    const e = await c.query<{ section: string }>(
+      `SELECT section::text AS section
+         FROM app.manual_entry
+        WHERE id=$1::uuid AND unit_id=$2 AND NOT void AND source_door = 'pengawas'
+        FOR UPDATE`,
+      [input.id, unit.unit_id],
+    );
+    if (e.rows[0]?.section === "setoran_tunai") {
+      const kas = await batalkanKasSetoran(c, { unitId: unit.unit_id, manualEntryId: input.id, aktorId: scope.userId });
+      if (!kas.ok) return kas;
+    }
+    await c.query(
+      `UPDATE app.manual_entry
+          SET void=true, voided_by_user_id=$1, voided_at=now(), updated_at=now()
+        WHERE id=$2::uuid AND unit_id=$3 AND NOT void
+          AND source_door = 'pengawas'`,
+      [scope.userId, input.id, unit.unit_id],
+    );
+    return { ok: true } as const;
+  });
+  if (!r.ok) return r;
   revalidatePath(`/unit/${unit.code}/rincian/${input.date}`);
   return { ok: true };
+}
+
+/**
+ * BEGIN → `set_config('app.unit_ids')` transaction-local → kerja → COMMIT.
+ * Hasil `ok: false` dan galat (mis. trigger 0026/0027) ⇒ ROLLBACK: tak ada
+ * yang tertulis sebagian.
+ */
+async function dalamTransaksi(
+  unit: ScopedUnit,
+  kerja: (c: PoolClient) => Promise<{ ok: true } | { ok: true; posting: string } | { ok: false; error: string }>,
+): Promise<ActionResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.unit_ids', $1, true)", [String(unit.unit_id)]);
+    const r = await kerja(client);
+    if (!r.ok) {
+      await client.query("ROLLBACK");
+      return r;
+    }
+    await client.query("COMMIT");
+    return { ok: true };
+  } catch (e) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* abaikan */
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan." };
+  } finally {
+    client.release();
+  }
 }

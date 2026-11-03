@@ -96,7 +96,8 @@ export function EdcShiftCekPanel({
       </h3>
       <p className="fs16 t-tertiary mt2">
         Angka EasyMax sudah terisi otomatis. Ketik <strong>total di slip settlement</strong> tiap mesin/bank per
-        shift. Keuangan kemudian membukukannya ke EDC Penampungan. Foto slip: menyusul (opsional untuk sekarang).
+        shift. Slip yang sama dengan EasyMax langsung terposting ke EDC Penampungan; slip yang berbeda ditahan dan
+        diputuskan Keuangan. Foto slip: menyusul (opsional untuk sekarang).
       </p>
 
       {kartuTanpaPeta.length > 0 && (
