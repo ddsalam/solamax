@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
+import { akunPintuFinance } from "./keuangan-reklas";
 import { alasanTakBolehInput, PESAN_TAK_BOLEH_INPUT } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 
@@ -77,6 +78,9 @@ export async function tambahBiayaFinance(input: BiayaFinanceInput): Promise<Biay
 
     // CoA dipetakan, tidak diketik (§4.3). Override per-unit menang atas
     // default; di antara beberapa effective_from, yang terbaru menang.
+    // ⛔ R26 — pendapatan lain-lain TIDAK memakai peta ini: isinya pos beban
+    // semua, dan pendapatan berkode beban dulu lenyap dari laba. Ia selalu
+    // menyimpan 4200 (`akunPintuFinance`).
     const peta = await client.query<{ account: string }>(
       `SELECT accounting_account AS account
          FROM app.category_account_map
@@ -87,7 +91,7 @@ export async function tambahBiayaFinance(input: BiayaFinanceInput): Promise<Biay
         LIMIT 1`,
       [unit.unit_id, input.operationalCategory.trim(), input.date],
     );
-    const akun = peta.rows[0]?.account ?? null;
+    const akun = akunPintuFinance(input.section, peta.rows[0]?.account ?? null);
     if (akun === null) {
       await client.query("ROLLBACK");
       return {

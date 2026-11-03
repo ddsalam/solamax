@@ -1,7 +1,42 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { urutan } from "./penjaga-urutan";
+
+// Rencana K6 U2 (R26) — uji PERILAKU tambahBiayaFinance atas klien tiruan:
+// yang diperiksa adalah akun yang benar-benar di-INSERT, bukan teksnya.
+const h = vi.hoisted(() => {
+  process.env.HEAD_OF_FINANCE_EMAILS = "hof@contoh.test";
+  const log: { sql: string; params: unknown[] }[] = [];
+  const state = { peta: "5700" as string | null };
+  const client = {
+    query: async (sql: string, params: unknown[] = []) => {
+      log.push({ sql, params });
+      if (sql.includes("FROM app.category_account_map")) {
+        return { rows: state.peta === null ? [] : [{ account: state.peta }], rowCount: state.peta === null ? 0 : 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release: () => {},
+  };
+  const connect = vi.fn(async () => client);
+  const UNIT = { unit_id: 2, code: "1000001", name: "Contoh" };
+  return { log, state, connect, UNIT };
+});
+
+vi.mock("./db", () => ({ pool: { connect: h.connect } }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("./scope", () => ({
+  getDataScope: vi.fn(async () => ({
+    userId: 7,
+    role: "keuangan",
+    email: "staf@contoh.test",
+    units: [h.UNIT],
+    requireUnit: () => h.UNIT,
+  })),
+}));
+
+const { tambahBiayaFinance } = await import("./biaya-actions");
 
 /**
  * Penjaga TEKS atas `biaya-actions.ts` (Layar 3 blok 4) — dan atas panelnya,
@@ -101,5 +136,49 @@ describe("biaya-actions — penjagaan yang tak boleh hilang", () => {
 
   it("RLS 0016 di-set sebelum DML", () => {
     expect(urutan(KODE, "set_config('app.unit_ids'", "INSERT INTO app.manual_entry")).toBe("ok");
+  });
+});
+
+describe("R26 — tambahBiayaFinance: akun yang TERSIMPAN", () => {
+  beforeEach(() => {
+    h.log.length = 0;
+    h.state.peta = "5700";
+  });
+  const masukan = (o: Partial<Parameters<typeof tambahBiayaFinance>[0]> = {}) => ({
+    code: h.UNIT.code,
+    date: "2026-11-03",
+    section: "pendapatan_lain" as const,
+    keterangan: "PENDAPATAN LAIN",
+    amountRp: 750_000,
+    operationalCategory: "Lain-Lain",
+    ...o,
+  });
+  const akunTersimpan = (): unknown => {
+    const ins = h.log.find((l) => l.sql.includes("INSERT INTO app.manual_entry"));
+    return ins?.params[6];
+  };
+
+  it("Covers AE7. pendapatan lain-lain menyimpan 4200 — bukan pos beban hasil peta", async () => {
+    expect(await tambahBiayaFinance(masukan())).toEqual({ ok: true });
+    expect(akunTersimpan()).toBe("4200");
+  });
+
+  it("pendapatan lain-lain tidak ditolak walau kategorinya tanpa peta", async () => {
+    h.state.peta = null;
+    expect(await tambahBiayaFinance(masukan())).toEqual({ ok: true });
+    expect(akunTersimpan()).toBe("4200");
+  });
+
+  it("pengeluaran tetap menyimpan pos hasil peta", async () => {
+    h.state.peta = "5300";
+    expect(await tambahBiayaFinance(masukan({ section: "pengeluaran" }))).toEqual({ ok: true });
+    expect(akunTersimpan()).toBe("5300");
+  });
+
+  it("pengeluaran berkategori tanpa peta tetap DITOLAK, tanpa INSERT", async () => {
+    h.state.peta = null;
+    const r = await tambahBiayaFinance(masukan({ section: "pengeluaran" }));
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/belum punya pemetaan/) });
+    expect(akunTersimpan()).toBeUndefined();
   });
 });

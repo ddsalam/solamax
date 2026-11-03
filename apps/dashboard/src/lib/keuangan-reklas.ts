@@ -69,23 +69,126 @@ export function akunReklas(kode: string | null): AkunReklas | null {
   return kode === null ? null : (PER_KODE.get(kode) ?? null);
 }
 
-/** "6-9900 Beban Lain-Lain" — atau kode apa adanya bila di luar daftar. */
-export function labelAkun(kode: string | null): string {
-  if (kode === null || kode === AKUN_KOSONG) return "belum dipetakan";
-  const a = PER_KODE.get(kode);
-  return a ? `${a.kode} ${a.nama}` : kode;
+/**
+ * Pos empat digit (rencana K6 U1, migrasi 0056) yang bisa tersimpan di baris
+ * biaya & pendapatan lain-lain: seluruh pos kelas 4 dan 5, plus dua pos
+ * bukan-laba tujuan kode lama (3300 ← 3-9100, 1190 ← 1-1800).
+ *
+ * ⚠️ CERMIN seed `app.pos` 0056, bukan sumber kebenarannya — dipakai layar
+ * klien yang tak bisa membaca basis data. Uji di keuangan-reklas.test.ts
+ * membaca teks migrasi dan memerah bila nama atau jenisnya menyimpang.
+ */
+export const POS_BIAYA: Readonly<Record<string, { nama: string; jenis: JenisAkun }>> = {
+  "1190": { nama: "Dana dalam Perjalanan", jenis: "pindah_dana" },
+  "3300": { nama: "Prive", jenis: "ekuitas" },
+  "4100": { nama: "Penjualan BBM", jenis: "pendapatan" },
+  "4110": { nama: "Tera", jenis: "pendapatan" },
+  "4200": { nama: "Pendapatan Lain-lain", jenis: "pendapatan" },
+  "5100": { nama: "HPP - Harga Pokok BBM", jenis: "beban" },
+  "5110": { nama: "Susut / Losses-Gain BBM", jenis: "beban" },
+  "5120": { nama: "Selisih Harga Pembelian & Persediaan", jenis: "beban" },
+  "5130": { nama: "Selisih Kas", jenis: "beban" },
+  "5200": { nama: "Beban Gaji & THR", jenis: "beban" },
+  "5300": { nama: "Beban Listrik, Air, Internet", jenis: "beban" },
+  "5400": { nama: "Beban Sewa", jenis: "beban" },
+  "5500": { nama: "Beban Bank & Biaya MDR QRIS", jenis: "beban" },
+  "5600": { nama: "Beban Penyusutan", jenis: "beban" },
+  "5700": { nama: "Beban Operasional Lain (ATK, kebersihan)", jenis: "beban" },
+  "5800": { nama: "Beban Pajak", jenis: "beban" },
+  "5900": { nama: "Beban Bunga Bank", jenis: "beban" },
+};
+
+/**
+ * Kode lama → pos empat digit — CERMIN `app.pos_kode_lama` 0056 (dijaga uji
+ * yang sama). Baris lama TIDAK ditulis ulang (KTD2); peta ini hanya
+ * mengelompokkannya di bawah pos barunya saat ditampilkan.
+ */
+export const KODE_LAMA_POS: Readonly<Record<string, string>> = {
+  "6-1100": "5200",
+  "6-2400": "5300",
+  "6-3300": "5300",
+  "7-1200": "5500",
+  "7-1100": "5500",
+  "6-3100": "5700",
+  "6-2300": "5700",
+  "6-2200": "5700",
+  "6-2100": "5700",
+  "6-4100": "5700",
+  "6-3500": "5700",
+  "6-1300": "5700",
+  "6-9100": "5700",
+  "6-9900": "5700",
+  "8-1000": "4200",
+  "3-9100": "3300",
+  "1-1800": "1190",
+};
+
+/** Pos pendapatan lain-lain (pengganti 8-1000) — R26. */
+export const KODE_PENDAPATAN_LAIN = "4200";
+
+/** Pos tempat sebuah kode tersimpan dikelompokkan. Tak dikenal / kosong ⇒ `null`. */
+export function kodePos(kode: string | null): string | null {
+  if (kode === null) return null;
+  if (kode in POS_BIAYA) return kode;
+  return KODE_LAMA_POS[kode] ?? null;
 }
 
 /**
- * Jenis akun efektif sebuah baris. Akun kosong atau di luar daftar mengikuti
- * SEKSInya — perilaku sebelum reklasifikasi ada (pengeluaran = beban,
- * pendapatan lain = pendapatan), supaya laba baris yang tak pernah
- * direklasifikasi tidak berubah serupiah pun.
+ * Label KELOMPOK pos: "5300 Beban Listrik, Air, Internet" untuk 5300 maupun
+ * 6-2400 lama — dipakai saat baris lama dan baru dijumlah bersama.
+ */
+export function labelPos(kode: string | null): string {
+  if (kode === null || kode === AKUN_KOSONG) return "belum dipetakan";
+  const k = kodePos(kode);
+  return k === null ? kode : `${k} ${POS_BIAYA[k]!.nama}`;
+}
+
+/**
+ * Label akun SEBAGAIMANA TERSIMPAN: "6-9900 Beban Lain-Lain", "5300 Beban
+ * Listrik, Air, Internet" — atau kode apa adanya bila di luar kedua daftar.
+ * Kode lama tetap berlabel lamanya (riwayat "semula …").
+ */
+export function labelAkun(kode: string | null): string {
+  if (kode === null || kode === AKUN_KOSONG) return "belum dipetakan";
+  const a = PER_KODE.get(kode);
+  if (a) return `${a.kode} ${a.nama}`;
+  const p = POS_BIAYA[kode];
+  return p ? `${kode} ${p.nama}` : kode;
+}
+
+/**
+ * Jenis akun efektif sebuah baris.
+ *
+ * ⛔ R26 — SEKSI memutuskan arah laba, akun hanya bisa mengeluarkan baris dari
+ * laba. Baris berakun beban/pendapatan berjenis menurut seksinya
+ * (pengeluaran = beban, pendapatan lain = pendapatan), apa pun kode
+ * tersimpannya. Sebelum ini, pendapatan lain dari pintu Finance tersimpan
+ * berkode beban (peta kategori hanya berisi beban) dan lenyap dari laba:
+ * bukan pendapatan karena kodenya beban, bukan beban karena seksinya
+ * pendapatan. Hanya dua akun bukan-laba (prive, pindah dana — kode lama
+ * maupun pos barunya) yang mengubah rumah baris.
+ *
+ * Akun kosong atau di luar daftar juga mengikuti seksi — supaya laba baris
+ * yang tak pernah direklasifikasi tidak berubah serupiah pun.
  */
 export function jenisAkun(kode: string | null, section: string): JenisAkun {
-  const a = akunReklas(kode);
-  if (a !== null) return a.jenis;
+  const k = kodePos(kode);
+  const j = akunReklas(kode)?.jenis ?? (k === null ? null : POS_BIAYA[k]!.jenis);
+  if (j === "ekuitas" || j === "pindah_dana") return j;
   return section === "pendapatan_lain" ? "pendapatan" : "beban";
+}
+
+/**
+ * Akun yang disimpan baris pintu Finance (R26). Pendapatan lain-lain SELALU
+ * 4200 — peta kategori operasional hanya berisi pos beban, dan memakainya
+ * untuk pendapatan menyimpan kode beban. Pengeluaran memakai hasil peta apa
+ * adanya (`null` = kategori tanpa peta ⇒ pemanggil menolak).
+ */
+export function akunPintuFinance(
+  section: SeksiBiaya,
+  akunPeta: string | null,
+): string | null {
+  return section === "pendapatan_lain" ? KODE_PENDAPATAN_LAIN : akunPeta;
 }
 
 /** Apakah akun ini membentuk LABA (beban/pendapatan) — kebalikan dua akun bukan-laba. */

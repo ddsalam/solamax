@@ -1,16 +1,22 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { pilahManualEntry, type BarisManualLaporan } from "./keuangan-beban";
+import { bebanPerPos, kumpulkanBeban, pilahManualEntry, type BarisManualLaporan } from "./keuangan-beban";
 import { canInputKeuangan, canReklasifikasi } from "./keuangan-wewenang";
 import { panelBalance, panelCashFlow } from "./keuangan-laporan-model";
 import {
   AKUN_KOSONG,
   AKUN_REKLAS,
+  akunPintuFinance,
   dampakLaba,
   jenisAkun,
+  KODE_LAMA_POS,
+  KODE_PENDAPATAN_LAIN,
+  kodePos,
   labelAkun,
+  labelPos,
   periksaReklas,
+  POS_BIAYA,
   type CekReklas,
 } from "./keuangan-reklas";
 
@@ -243,5 +249,154 @@ describe("canReklasifikasi — staf Keuangan DAN Head of Finance (keputusan owne
       "utf8",
     );
     expect(hal).toMatch(/bolehReklas=\{canReklasifikasi\(/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rencana K6 U2 (R26, AE7) — pendapatan lain-lain dari pintu Finance dulu
+// tersimpan berkode beban (peta kategori hanya berisi pos beban), lalu hilang
+// dari laba: bukan pendapatan karena kodenya beban, bukan beban karena
+// seksinya pendapatan. Nominal ilustratif.
+// ---------------------------------------------------------------------------
+
+describe("🔴 R26 — seksi pendapatan_lain SELALU pendapatan, apa pun kode tersimpannya", () => {
+  it("Covers AE7. Pendapatan lain Rp 750.000 berkode lama 6-9900 terhitung di pendapatan lain-lain", () => {
+    const p = pilahManualEntry([
+      baris({ section: "pendapatan_lain", keterangan: "PENDAPATAN LAIN", amountRp: 750_000, accountingAccount: "6-9900" }),
+    ]);
+    expect(p.pendapatanLain).toBe(750_000);
+    expect(p.manualBeban).toHaveLength(0);
+  });
+});
+
+describe("R26 — yang TIDAK boleh ikut berubah", () => {
+  it("pengeluaran berkode 6-xxxx tetap beban", () => {
+    const p = pilahManualEntry([baris({ keterangan: "LISTRIK", amountRp: 400_000, accountingAccount: "6-2400" })]);
+    expect(p.manualBeban.map((b) => b.amountRp)).toEqual([400_000]);
+    expect(p.pendapatanLain).toBe(0);
+  });
+  it("reklasifikasi ke 8-1000 lama tetap pendapatan", () => {
+    expect(jenisAkun("8-1000", "pendapatan_lain")).toBe("pendapatan");
+    const p = pilahManualEntry([baris({ section: "pendapatan_lain", amountRp: 120_000, accountingAccount: "8-1000" })]);
+    expect(p.pendapatanLain).toBe(120_000);
+  });
+  it("pos baru 4200 / 5300 berjenis sesuai seksinya", () => {
+    expect(jenisAkun("4200", "pendapatan_lain")).toBe("pendapatan");
+    expect(jenisAkun("5300", "pengeluaran")).toBe("beban");
+    const p = pilahManualEntry([
+      baris({ section: "pendapatan_lain", amountRp: 750_000, accountingAccount: "4200" }),
+      baris({ amountRp: 400_000, accountingAccount: "5300" }),
+    ]);
+    expect(p.pendapatanLain).toBe(750_000);
+    expect(p.manualBeban.map((b) => b.amountRp)).toEqual([400_000]);
+  });
+  it("akun bukan-laba tetap menang atas seksi — reklasifikasi prive/pindah dana tidak terhapus", () => {
+    expect(jenisAkun("3-9100", "pendapatan_lain")).toBe("ekuitas");
+    expect(jenisAkun("1-1800", "pendapatan_lain")).toBe("pindah_dana");
+    expect(jenisAkun("3300", "pengeluaran")).toBe("ekuitas");
+    expect(jenisAkun("1190", "pengeluaran")).toBe("pindah_dana");
+  });
+});
+
+describe("R26 — baris baru pendapatan lain-lain pintu Finance menyimpan 4200", () => {
+  it("pendapatan lain TIDAK memakai peta kategori beban", () => {
+    expect(KODE_PENDAPATAN_LAIN).toBe("4200");
+    expect(akunPintuFinance("pendapatan_lain", "5700")).toBe("4200");
+    expect(akunPintuFinance("pendapatan_lain", null)).toBe("4200");
+  });
+  it("pengeluaran tetap memakai hasil peta", () => {
+    expect(akunPintuFinance("pengeluaran", "5300")).toBe("5300");
+    expect(akunPintuFinance("pengeluaran", null)).toBeNull();
+  });
+  it("0056 benar-benar punya pos 4200 berjenis pendapatan", () => {
+    expect(POS_BIAYA["4200"]).toEqual({ nama: "Pendapatan Lain-lain", jenis: "pendapatan" });
+  });
+});
+
+describe("label & kelompok pos — kode lama dan kode baru duduk di pos yang SAMA", () => {
+  it("5300 baru dan 6-2400 lama berlabel sama", () => {
+    expect(labelPos("5300")).toBe("5300 Beban Listrik, Air, Internet");
+    expect(labelPos("6-2400")).toBe(labelPos("5300"));
+    expect(kodePos("6-2400")).toBe("5300");
+    expect(kodePos("8-1000")).toBe("4200");
+  });
+  it("labelAkun mengenali kode empat digit — tidak lagi kode telanjang", () => {
+    expect(labelAkun("5300")).toBe("5300 Beban Listrik, Air, Internet");
+    expect(labelAkun("4200")).toBe("4200 Pendapatan Lain-lain");
+    // Kode lama tetap berlabel lamanya (riwayat: "semula 6-2400 …").
+    expect(labelAkun("6-2400")).toBe("6-2400 Utilitas & Prasarana");
+  });
+  it("kode tak dikenal / kosong tidak dikarang", () => {
+    expect(kodePos("9-9999")).toBeNull();
+    expect(kodePos(null)).toBeNull();
+    expect(labelPos("9-9999")).toBe("9-9999");
+    expect(labelPos(null)).toBe("belum dipetakan");
+  });
+  it("beban 6-2400 lama dan 5300 baru dijumlah dalam SATU kelompok", () => {
+    const beban = kumpulkanBeban(
+      {
+        manual_entry: [
+          { businessDate: "2026-11-01", accountingAccount: "6-2400", amountRp: 400_000, keterangan: "a", void: false },
+          { businessDate: "2026-11-05", accountingAccount: "5300", amountRp: 250_000, keterangan: "b", void: false },
+          { businessDate: "2026-11-05", accountingAccount: null, amountRp: 10_000, keterangan: "c", void: false },
+          { businessDate: "2026-11-05", accountingAccount: "9-9999", amountRp: 5_000, keterangan: "d", void: false },
+        ],
+        noncash_expense: [],
+      },
+      "2026-11-01",
+      "2026-11-30",
+    );
+    const m = bebanPerPos(beban);
+    expect(m.get("5300")).toBe(650_000);
+    expect(m.has("6-2400")).toBe(false);
+    // Yang tak berpos TIDAK dibuang — tetap di kuncinya sendiri.
+    expect(m.get(null)).toBe(10_000);
+    expect(m.get("9-9999")).toBe(5_000);
+    expect([...m.values()].reduce((a, b) => a + b, 0)).toBe(665_000);
+  });
+});
+
+describe("POS_BIAYA & KODE_LAMA_POS = cermin seed 0056 — tak boleh menyimpang", () => {
+  const sql = readFileSync(
+    resolve(__dirname, "../../../backend/prisma/migrations/0056_pos/migration.sql"),
+    "utf8",
+  ).replace(/--.*$/gm, "");
+  const blok = (tabel: string): string =>
+    new RegExp(`INSERT INTO "app"\\."${tabel}"[\\s\\S]*?ON CONFLICT`).exec(sql)?.[0] ?? "";
+  const pos = new Map(
+    [...blok("pos").matchAll(/\(\s*'(\d{4})',\s*'([^']+)',\s*'(\w+)',\s*(true|false)/g)].map((m) => [
+      m[1]!,
+      { nama: m[2]!, jenis: m[3]!, induk: m[4] === "true" },
+    ]),
+  );
+  const lama = [...blok("pos_kode_lama").matchAll(/\(\s*'(\d-\d{4})'\s*,\s*'(\d{4})'\s*\)/g)].map(
+    (m) => [m[1]!, m[2]!] as const,
+  );
+
+  it("seed terbaca (jangan hijau karena kosong)", () => {
+    expect(pos.size).toBeGreaterThan(40);
+    expect(lama.length).toBe(17);
+  });
+  it("setiap pos kelas 4 & 5 ada dengan nama & jenis yang sama", () => {
+    const laba = [...pos].filter(([k]) => k.startsWith("4") || k.startsWith("5"));
+    expect(laba.length).toBeGreaterThan(10);
+    for (const [k, p] of laba) expect(POS_BIAYA[k], k).toEqual({ nama: p.nama, jenis: p.jenis });
+  });
+  it("dua pos bukan-laba tujuan kode lama: 3300 ekuitas, 1190 pindah dana", () => {
+    expect(POS_BIAYA["3300"]).toEqual({ nama: pos.get("3300")!.nama, jenis: "ekuitas" });
+    expect(POS_BIAYA["1190"]).toEqual({ nama: pos.get("1190")!.nama, jenis: "pindah_dana" });
+    expect(Object.keys(POS_BIAYA).sort()).toEqual(
+      [...pos.keys()].filter((k) => k.startsWith("4") || k.startsWith("5") || k === "3300" || k === "1190").sort(),
+    );
+  });
+  it("peta kode lama sama persis dengan pos_kode_lama", () => {
+    expect(KODE_LAMA_POS).toEqual(Object.fromEntries(lama));
+  });
+  it("setiap tujuan reklasifikasi lama punya pos yang jenisnya sejalan", () => {
+    for (const a of AKUN_REKLAS) {
+      const tujuan = POS_BIAYA[kodePos(a.kode)!];
+      expect(tujuan, a.kode).toBeDefined();
+      expect(tujuan!.jenis, a.kode).toBe(a.jenis);
+    }
   });
 });
