@@ -137,6 +137,23 @@ export async function tutupBulan(input: TutupBulanInput): Promise<TutupBulanResu
       return { ok: false, error: `Bulan belum bisa ditutup: ${vonis.alasan.join(" ")}`, alasan: vonis.alasan };
     }
 
+    // Memorial yang masih menunggu persetujuan akan terkunci selamanya begitu
+    // bulannya beku (setujui/tolak menolak bulan beku) — selesaikan dulu.
+    if (vonis.bukuBesar) {
+      const menunggu = await client.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM app.jurnal
+          WHERE unit_id = $1 AND status = 'menunggu'
+            AND tanggal_efektif >= $2::date AND tanggal_efektif < ($2::date + interval '1 month')`,
+        [unit.unit_id, `${input.bulan}-01`],
+      );
+      const n = menunggu.rows[0]?.n ?? 0;
+      if (n > 0) {
+        const alasan = [`Ada ${n} jurnal memorial bulan ini yang masih menunggu persetujuan — setujui atau batalkan dulu.`];
+        await batal(client);
+        return { ok: false, error: `Bulan belum bisa ditutup: ${alasan.join(" ")}`, alasan };
+      }
+    }
+
     const ins = await client.query(
       `INSERT INTO app.tutup_bulan (unit_id, bulan, ditutup_by_user_id, buku_besar)
        VALUES ($1, $2::date, $3, $4)

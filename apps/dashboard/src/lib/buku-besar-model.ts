@@ -392,8 +392,26 @@ export const p3PenjualanEdc = (t: string, r: BarisKas, akun: string) => lawan(t,
  * "langsung bila tanggal sama, lewat 1190 bila beda".
  */
 export const p6PindahBuku = (t: string, r: BarisKas, akun: string) => lawan(t, r, akun, "P6", POS.DANA_DALAM_PERJALANAN);
-/** P12 — pendapatan lain-lain dari buku kas/bank: kas/bank | 4200 (R26). */
-export const p12PendapatanLain = (t: string, r: BarisKas, akun: string) => lawan(t, r, akun, "P12", POS.PENDAPATAN_LAIN);
+/**
+ * P12 — pendapatan lain-lain dari buku kas/bank: kas/bank | 4200 (R26). Baris
+ * tertaut yang HoF reklasifikasi ke pos neraca (kelas 1–3, mis. 3-9100 → 3300)
+ * mengikuti pos itu; pos laba atau tanpa pos tetap 4200 (U2), begitu pula sisa
+ * nominal yang belum tertaut.
+ */
+export function p12PendapatanLain(tanggal: string, row: BarisKas, akun: string): JurnalTurunan | null {
+  if (row.tertaut.length === 0) return lawan(tanggal, row, akun, "P12", POS.PENDAPATAN_LAIN);
+  const arah = row.amountSen < 0 ? 1 : -1;
+  const baris: BarisJurnal[] = [...kaki(akun, row.amountSen)];
+  let terpakai = 0;
+  for (const t of row.tertaut) {
+    const neraca = t.posKode !== null && /^[123]/.test(t.posKode);
+    baris.push(...kaki(neraca ? t.posKode! : POS.PENDAPATAN_LAIN, arah * t.amountSen));
+    terpakai += arah * t.amountSen;
+  }
+  const sisa = -row.amountSen - terpakai;
+  if (sisa !== 0) baris.push(...kaki(POS.PENDAPATAN_LAIN, sisa));
+  return buatJurnal("cash_ledger", row.id, "P12", efektif(tanggal, row), row.keterangan, baris);
+}
 /** P13 — pembayaran pelanggan EasyMax lewat transfer: 111x | 1121. */
 export const p13PembayaranPiutang = (t: string, r: BarisKas, akun: string) => lawan(t, r, akun, "P13", POS.PIUTANG_EASYMAX);
 /** P14 — pinjaman antar unit: keluar = 1122 (pemberi), masuk = 2102 (penerima). */
