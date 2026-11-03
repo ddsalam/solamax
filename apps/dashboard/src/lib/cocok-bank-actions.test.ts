@@ -50,7 +50,8 @@ vi.mock("./scope", () => ({
   })),
 }));
 
-const { batalkanCocok, cocokkanManual, cocokkanOtomatis } = await import("./cocok-bank-actions");
+const { batalkanCocok, cocokkanManual, cocokkanOtomatis, terimaUsulanSetoran } = await import("./cocok-bank-actions");
+const { batalkanKasSetoran, PESAN_SETORAN_DICOCOKKAN } = await import("./setoran-tulis");
 
 const AKUN = "11111111-1111-4111-8111-111111111111";
 const RK = "22222222-2222-4222-8222-222222222222";
@@ -476,5 +477,186 @@ describe("batalkanCocok — HoF saja, beralasan, beraudit", () => {
     expect((await batalkanCocok({ ...masukan, reasonCode: "ADJ-FWD-REVERSAL" })).ok).toBe(false);
     expect((await batalkanCocok({ ...masukan, reasonCode: "ADJ-NGAWUR" })).ok).toBe(false);
     expect(upd("app.cocok_bank")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K6 U7 — jemputan ↔ setoran Kas Besar: pasangan Setoran ke Bank (R31, AE1, AE2, KTD8)
+// ---------------------------------------------------------------------------
+
+describe("K6 U7 — jemputan membuat pasangan Setoran ke Bank + kelompok cocok", () => {
+  const KAS = "33333333-3333-4333-8333-333333333333";
+  const KAKI_BANK = uid(501);
+  const KAKI_KAS = uid(502);
+  let kakiKe: string[];
+  const jemputan = (over: Mutasi = {}) =>
+    mutasi(uid(1), { keterangan: "KR OTOMATIS | SETORAN JEMPUTAN | 0981", amount: "20000000.00", sumber: "bca", ...over });
+  const setoran = (id: string, over: Kas = {}) =>
+    kas(id, { accountId: KAS, categoryLabel: "Setoran Hasil Penjualan", amount: "20000000.00", businessDate: "2026-09-01", ...over });
+
+  beforeEach(() => {
+    kakiKe = [KAKI_BANK, KAKI_KAS];
+    h.state.jawab = (sql, p) => {
+      if (sql.includes("kind = 'kas'")) return { rows: [{ id: KAS }] };
+      if (/INSERT INTO app\.cash_ledger/.test(sql)) return { rows: [{ id: kakiKe.shift() }] };
+      return db(sql, p);
+    };
+  });
+
+  const kakiDitulis = () => ins("app.cash_ledger").map((l) => l.params);
+  const anggota = () => ins("app.cocok_bank_baris").map((l) => l.params);
+
+  it("🔴 Covers AE1: setoran Kas Besar Rp 20.000.000 + jemputan dua hari kemudian ⇒ pasangan Kas Besar keluar / bank masuk + satu kelompok", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [setoran(uid(11))];
+    const r = await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK });
+    expect(r).toMatchObject({ ok: true, nOtomatis: 1, nBanyak: 0, nTanpa: 0 });
+
+    const [bank, kasBesar] = kakiDitulis();
+    // [unit, akun, hari buku, keterangan, jenis, sisi, kategori, nominal, pembuat, tanggal asal, alasan maju, applies_to, lahir]
+    expect(bank).toEqual([h.BK.unit_id, AKUN, "2026-09-03", expect.any(String), "debet", "debet", "Pindah Buku", "20000000.00", 7, null, null, null, G]);
+    expect(kasBesar).toEqual([h.BK.unit_id, KAS, "2026-09-03", expect.any(String), "kredit", "kredit", "Setoran ke Bank", "-20000000.00", 7, null, null, null, G]);
+    // Kelompok: baris bank + kaki bank (rekening bank Σ 0) + kaki Kas Besar + setoran yang disetor (Kas Besar Σ 0).
+    expect(ins("app.cocok_bank")[0]!.params).toEqual([h.BK.unit_id, "otomatis", 7]);
+    expect(anggota()).toEqual([[h.BK.unit_id, G, [uid(1), null, null, null], [null, KAKI_BANK, KAKI_KAS, uid(11)]]]);
+    expect(JSON.parse(String(audit()[0]!.params[4]))).toMatchObject({ aturan: "setoran-jemputan-pasangan", setoran: [uid(11)] });
+    expect(committed()).toBe(true);
+    // Setoran dikunci FOR UPDATE sebelum pasangan ditulis; hari buku dari TANGGAL BANK.
+    expect(h.log.findIndex((l) => l.sql.includes("FOR UPDATE OF l"))).toBeLessThan(h.log.findIndex((l) => /INSERT INTO app\.cash_ledger/.test(l.sql)));
+    expect(h.hariBukuTerkunci.mock.calls.map((c) => c[2])).toEqual(["2026-09-03", "2026-09-03"]);
+  });
+
+  it("🔴 jemputan = total tiga setoran satu tanggal ⇒ satu kelompok memuat ketiganya", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [
+      setoran(uid(11), { amount: "8000000.00" }),
+      setoran(uid(12), { amount: "7000000.00" }),
+      setoran(uid(13), { amount: "5000000.00" }),
+    ];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 1 });
+    expect(ins("app.cocok_bank")).toHaveLength(1);
+    expect(anggota()[0]![3]).toEqual([null, KAKI_BANK, KAKI_KAS, uid(11), uid(12), uid(13)]);
+  });
+
+  it("🔴 Covers AE2: jemputan Rp 19.900.000 vs setoran Rp 20.000.000 ⇒ tak ada baris kas, tak ada kelompok, tetap terbuka", async () => {
+    semuaMutasi = [jemputan({ amount: "19900000.00" })];
+    semuaKas = [setoran(uid(11))];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 0, nTanpa: 1 });
+    expect(kakiDitulis()).toHaveLength(0);
+    expect(ins("app.cocok_bank")).toHaveLength(0);
+  });
+
+  it("dua tanggal dengan total sama ⇒ tidak otomatis", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [setoran(uid(11)), setoran(uid(12), { businessDate: "2026-09-02" })];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 0 });
+    expect(kakiDitulis()).toHaveLength(0);
+  });
+
+  it("🔴 kaki Setoran ke Bank ketikan Finance (bank masuk + Kas Besar keluar) ⇒ dicocokkan ke kaki itu, TIDAK ada pasangan kedua", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [
+      kas(uid(21), { categoryLabel: "Pindah Buku", amount: "20000000.00", businessDate: "2026-09-02" }),
+      kas(uid(22), { accountId: KAS, categoryLabel: "Setoran ke Bank", amount: "-20000000.00", businessDate: "2026-09-02" }),
+      setoran(uid(11)),
+    ];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 1 });
+    expect(kakiDitulis()).toHaveLength(0);
+    expect(anggota()).toEqual([[h.BK.unit_id, G, [uid(1), null], [null, uid(21)]]]);
+  });
+
+  it("🔴 baris jemputan dari pembaca AI ⇒ usulan saja: tak ada baris kas baru, tak ada kelompok", async () => {
+    semuaMutasi = [jemputan({ sumber: "ai" })];
+    semuaKas = [setoran(uid(11))];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 0, nTanpa: 1 });
+    expect(kakiDitulis()).toHaveLength(0);
+    expect(ins("app.cocok_bank")).toHaveLength(0);
+  });
+
+  it("🔴 idempoten: dijalankan ulang sesudah cocok (baris bank & setoran sudah di kelompok aktif) ⇒ tak ada pasangan kedua", async () => {
+    semuaMutasi = [jemputan({ dicocokkan: true })];
+    semuaKas = [setoran(uid(11), { dicocokkan: true })];
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 0 });
+    expect(kakiDitulis()).toHaveLength(0);
+    expect(ins("app.cocok_bank")).toHaveLength(0);
+  });
+
+  it("setoran berubah sejak dibaca (sudah disetor saat dikunci ulang) ⇒ dilewati, tak ada yang ditulis", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [setoran(uid(11))];
+    const dasar = h.state.jawab;
+    h.state.jawab = (sql, p) => (sql.includes("FOR UPDATE OF l") ? { rows: [setoran(uid(11), { dicocokkan: true })] } : dasar(sql, p));
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 0 });
+    expect(kakiDitulis()).toHaveLength(0);
+    expect(ins("app.cocok_bank")).toHaveLength(0);
+  });
+
+  it("hari tanggal bank sudah ditutup ⇒ kedua kaki maju ke hari terbuka dengan tanggal asal + ADJ-FWD-IMPORT", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [setoran(uid(11))];
+    h.state.hari = () => ({ status: "dibukukan", hariBuku: "2026-09-05", terdorongMaju: true, perluKodeAlasan: true });
+    expect(await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK })).toMatchObject({ ok: true, nOtomatis: 1 });
+    for (const k of kakiDitulis()) {
+      expect(k[2]).toBe("2026-09-05");
+      expect(k.slice(9, 12)).toEqual(["2026-09-03", "ADJ-FWD-IMPORT", "adjustment"]);
+    }
+  });
+
+  it("🔴 setoran yang sudah disetor lewat pasangan ini tidak bisa dibatalkan (batalkanKasSetoran menolak)", async () => {
+    semuaMutasi = [jemputan()];
+    semuaKas = [setoran(uid(11))];
+    await cocokkanOtomatis({ code: h.BK.code, rekeningKoranId: RK });
+    // Keanggotaan AKTIF hasil langkah di atas — yang dibaca predikat `batalkanKasSetoran`.
+    const aktif = new Set(anggota().flatMap((a) => (a[3] as (string | null)[]).filter((x): x is string => x !== null)));
+    const log: string[] = [];
+    const c = {
+      query: async (sql: string) => {
+        log.push(sql);
+        if (sql.includes("source_manual_entry_id = $1::uuid")) return { rows: [{ id: uid(11), dicocokkan: aktif.has(uid(11)) }], rowCount: 1 };
+        return { rows: [], rowCount: 0 };
+      },
+    };
+    const r = await batalkanKasSetoran(c as never, { unitId: h.BK.unit_id as never, manualEntryId: uid(311), aktorId: 7 });
+    expect(r).toEqual({ ok: false, error: PESAN_SETORAN_DICOCOKKAN });
+    expect(log.some((q) => q.includes("UPDATE app.cash_ledger"))).toBe(false);
+  });
+
+  describe("terimaUsulanSetoran — Finance menerima usulan dengan satu tindakan", () => {
+    it("🔴 usulan jemputan pembaca AI diterima ⇒ pasangan + kelompok manual", async () => {
+      semuaMutasi = [jemputan({ sumber: "ai" })];
+      semuaKas = [setoran(uid(11))];
+      const r = await terimaUsulanSetoran({ code: h.BK.code, mutasiId: uid(1), kasIds: [uid(11)] });
+      expect(r).toMatchObject({ ok: true, cocokId: G });
+      expect(kakiDitulis().map((k) => k[6])).toEqual(["Pindah Buku", "Setoran ke Bank"]);
+      expect(ins("app.cocok_bank")[0]!.params).toEqual([h.BK.unit_id, "manual", 7]);
+      expect(anggota()[0]![3]).toEqual([null, KAKI_BANK, KAKI_KAS, uid(11)]);
+      expect(audit()[0]!.params[2]).toBe("cocok_bank.manual");
+      expect(committed()).toBe(true);
+    });
+
+    it("🔴 setoran yang tidak ada di usulan (nominal lain) ⇒ ditolak, tak ada yang ditulis", async () => {
+      semuaMutasi = [jemputan({ sumber: "ai" })];
+      semuaKas = [setoran(uid(11)), setoran(uid(12), { amount: "5000000.00", businessDate: "2026-09-02" })];
+      const r = await terimaUsulanSetoran({ code: h.BK.code, mutasiId: uid(1), kasIds: [uid(12)] });
+      expect(r.ok).toBe(false);
+      expect(kakiDitulis()).toHaveLength(0);
+      expect(committed()).toBe(false);
+    });
+
+    it("baris bank sudah dicocokkan ⇒ ditolak", async () => {
+      semuaMutasi = [jemputan({ dicocokkan: true })];
+      semuaKas = [setoran(uid(11))];
+      expect((await terimaUsulanSetoran({ code: h.BK.code, mutasiId: uid(1), kasIds: [uid(11)] })).ok).toBe(false);
+      expect(kakiDitulis()).toHaveLength(0);
+    });
+
+    it("🔴 HoF tak mencocokkan (§10.12) / masukan rusak ⇒ ditolak sebelum koneksi", async () => {
+      expect((await terimaUsulanSetoran({ code: h.BK.code, mutasiId: "x", kasIds: [uid(11)] })).ok).toBe(false);
+      expect((await terimaUsulanSetoran({ code: h.BK.code, mutasiId: uid(1), kasIds: [] })).ok).toBe(false);
+      h.sesi.role = "admin_perusahaan";
+      h.sesi.email = "hof@solagroup.co";
+      expect((await terimaUsulanSetoran({ code: h.BK.code, mutasiId: uid(1), kasIds: [uid(11)] })).ok).toBe(false);
+      expect(h.connect).not.toHaveBeenCalled();
+    });
   });
 });
