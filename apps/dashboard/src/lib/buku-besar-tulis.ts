@@ -14,6 +14,7 @@ import {
 } from "./buku-besar-model";
 import { bacaEasymaxHari, bacaSumberHari, type OpsiBaca, type PembacaEasymax } from "./buku-besar-sumber";
 import { hariBukuTerkunci, kunciHariBersama, kunciHariEksklusif } from "./hari-buku-queries";
+import { MAKS_RINCIAN_TEMUAN } from "./buku-besar-temuan";
 import { KODE_MAJU_BUKU_BESAR } from "./keuangan-kode-maju";
 import { addDays } from "./periods";
 import { auditKeuangan, batal, type Aktor } from "./keuangan-tx";
@@ -303,6 +304,8 @@ export async function bentukUlangHari(
     tetap: hasil.tetap,
     koreksi: hasil.koreksi?.tanggalBuku ?? null,
     temuan: temuan.map((t) => t.kode),
+    // Rincian untuk tab "Temuan jurnal" (buku-besar-temuan.ts) — catatan ini sumbernya.
+    rincian: temuan.slice(0, MAKS_RINCIAN_TEMUAN).map((t) => ({ kode: t.kode, pesan: t.pesan, sumberId: t.sumberId, produk: t.produk })),
   });
   return hasil;
 }

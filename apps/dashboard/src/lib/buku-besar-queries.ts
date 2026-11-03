@@ -1,5 +1,6 @@
 import { hariDalamBulan, rentangBulan } from "./bulan";
-import { MULAI_BUKU_BESAR, POS, senDariRupiah, TANGGAL_SALDO_AWAL, type BarisJurnal } from "./buku-besar-model";
+import { MULAI_BUKU_BESAR, POS, senDariRupiah, TANGGAL_SALDO_AWAL, type BarisJurnal, type Temuan } from "./buku-besar-model";
+import type { CatatanPembentukan } from "./buku-besar-temuan";
 import type { AngkaRumus, BahanLaporanBukuBesar, GerakPos, KasPembuka } from "./buku-besar-laporan-model";
 import { qScoped } from "./db";
 import { getBahanLaporan } from "./keuangan-laporan-queries";
@@ -279,4 +280,22 @@ export async function getPembandingRumus(unit: ScopedUnitId, bulan: string, hari
       labaRp: laba.some((x) => x === null) ? null : laba.reduce<number>((s, x) => s + (x ?? 0), 0),
     },
   };
+}
+
+/** $1 unit, $2 bulan `YYYY-MM`. Diekspor untuk uji integrasi (dibaca di transaksi uji). */
+export const SQL_TEMUAN_PEMBENTUKAN = `
+  SELECT DISTINCT ON (a.target) split_part(a.target, '/', 2) AS tanggal, a.created_at::text AS "dibentukAt",
+         ARRAY(SELECT jsonb_array_elements_text(COALESCE(a.detail->'temuan', '[]'::jsonb))) AS kode,
+         a.detail->'rincian' AS rincian
+    FROM app.audit_log a
+   WHERE a.action = 'buku_besar.bentuk_ulang' AND a.target LIKE $1::text || '/' || $2 || '-%'
+   ORDER BY a.target, a.created_at DESC`;
+
+/**
+ * Catatan pembentukan TERAKHIR setiap hari bulan itu (`buku_besar.bentuk_ulang`,
+ * target `<unit_id>/<tanggal>`) — sumber tab "Temuan jurnal".
+ */
+export async function getTemuanPembentukan(unit: ScopedUnitId, bulan: string): Promise<CatatanPembentukan[]> {
+  const rows = await qScoped<{ tanggal: string; dibentukAt: string; kode: string[] | null; rincian: Temuan[] | null }>(unit, SQL_TEMUAN_PEMBENTUKAN, [unit, bulan]);
+  return rows.map((r) => ({ tanggal: r.tanggal, dibentukAt: r.dibentukAt, kode: r.kode ?? [], rincian: Array.isArray(r.rincian) ? r.rincian : null }));
 }

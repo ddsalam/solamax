@@ -6,7 +6,8 @@ import { bulanSah, geserBulan, rentangBulan } from "@/lib/bulan";
 import { susunLaporan, temuanBeda } from "@/lib/buku-besar-laporan-model";
 import { normalDebet, posKasBank } from "@/lib/buku-besar-memorial-model";
 import { MULAI_BUKU_BESAR } from "@/lib/buku-besar-model";
-import { BATAS_JURNAL_POS, getBahanBukuBesar, getJurnalPos, getMemorial, getPembandingRumus, kasPerPos } from "@/lib/buku-besar-queries";
+import { BATAS_JURNAL_POS, getBahanBukuBesar, getJurnalPos, getMemorial, getPembandingRumus, getTemuanPembentukan, kasPerPos } from "@/lib/buku-besar-queries";
+import { susunTemuanPembentukan } from "@/lib/buku-besar-temuan";
 import { unitDotted, unitLabel } from "@/lib/config";
 import {
   canIsiSaldoAwalPos,
@@ -72,12 +73,13 @@ export default async function BukuBesarPage({
     bolehBentukUlang: canTutupBulan(ctx),
   };
 
-  const [bahan, jurnalPos, pembanding, memorial] = await ukur("lain", () =>
+  const [bahan, jurnalPos, pembanding, memorial, catatanTemuan] = await ukur("lain", () =>
     Promise.all([
       getBahanBukuBesar(unit.unit_id, bulan),
       pos !== null && (tab === "neraca" || tab === "laba-rugi") ? getJurnalPos(unit.unit_id, bulan, pos) : null,
       tab === "temuan" ? getPembandingRumus(unit.unit_id, bulan, hariIni) : null,
       tab === "memorial" || wewenang.bolehSetujui ? getMemorial(unit.unit_id, bulan) : null,
+      tab === "temuan-jurnal" ? getTemuanPembentukan(unit.unit_id, bulan) : null,
     ]),
   );
   const lap = susunLaporan(bahan);
@@ -149,6 +151,7 @@ export default async function BukuBesarPage({
         wewenang={wewenang}
         rentangBentuk={dariBentuk <= sampaiBentuk ? { dari: dariBentuk, sampai: sampaiBentuk } : null}
         jurnalPos={jurnalPos === null ? null : { jurnal: jurnalPos.slice(0, BATAS_JURNAL_POS), terpotong: jurnalPos.length > BATAS_JURNAL_POS }}
+        temuanJurnal={catatanTemuan === null ? null : susunTemuanPembentukan(catatanTemuan)}
         temuan={pembanding === null ? null : { batas: pembanding.batas, baris: temuanBeda(lap, pembanding.angka, bahan.daftar) }}
         memorial={memorial}
         saldoAwal={
