@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { AKUN_KOSONG, periksaReklas } from "./keuangan-reklas";
@@ -134,6 +135,7 @@ export async function reklasifikasiBiaya(input: {
         scope.userId,
       ],
     );
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}`);

@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool, qScoped } from "./db";
 import { senKeTeks } from "./antar-unit-model";
@@ -79,6 +80,7 @@ export async function cocokkanOtomatis(input: { code: string; rekeningKoranId: s
       await batal(client);
       return h;
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return {
@@ -173,6 +175,7 @@ export async function cocokkanManual(input: CocokManualInput): Promise<CocokManu
       kas: kasIds,
       total: senKeTeks(v.totalSen),
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return { ok: true, cocokId: id, pesan: `${mutasiIds.length} baris bank dicocokkan dengan ${kasIds.length} baris buku.` };
@@ -252,6 +255,7 @@ export async function terimaUsulanSetoran(input: TerimaUsulanSetoranInput): Prom
       await batal(client);
       return { ok: false, error: p.error };
     }
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     return { ok: true, cocokId: p.cocokId, pesan: `Setoran ke Bank dicatat dan dicocokkan (${kandidat.kasIds.length} setoran Kas Besar).` };
@@ -556,6 +560,7 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
       pasangan,
       bebanDibatalkan,
     });
+    for (const u of lawan === null ? [unit] : [unit, lawan]) await bentukJurnalSesudahTulis(client, u.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
     if (lawan !== null) revalidatePath(`/keuangan/unit/${lawan.code}/pihak-lawan`);

@@ -7,7 +7,7 @@ import { POS, type BarisJurnal } from "./buku-besar-model";
 import { SALDO_NOL_DIPERTAHANKAN, barisPembalikan, periksaMemorial, periksaPersetujuan, periksaSaldoAwal } from "./buku-besar-memorial-model";
 import { KUNCI_SALDO_AWAL_POS_SQL } from "./tutup-bulan-queries";
 import { kasPerPos, keKasPembuka, SQL_KAS_PEMBUKA, SQL_SALDO_AWAL_POS, type BarisKasPembuka } from "./buku-besar-queries";
-import { bentukUlangRentang, KUNCI_BULAN_BUKU_BESAR_SQL } from "./buku-besar-tulis";
+import { bentukUlangRentang, koreksiMajuBulan, KUNCI_BULAN_BUKU_BESAR_SQL } from "./buku-besar-tulis";
 import { pool } from "./db";
 import { auditKeuangan, batal } from "./keuangan-tx";
 import {
@@ -82,6 +82,44 @@ export async function bentukUlangBukuBesar(input: BentukUlangInput): Promise<Ben
   }
 }
 
+
+export type KoreksiMajuResult =
+  | { ok: true; hari: number; koreksi: number; pesan: string }
+  | { ok: false; error: string; hariSelesai: number };
+
+/**
+ * "Periksa ulang bulan tertutup" (KTD3, R13) — bulan yang ditutup dengan buku
+ * besar dibentuk ulang per hari dalam mode koreksi maju. Wewenang sama dengan
+ * bentuk ulang (HoF + super admin): yang diubah adalah isi bulan berjalan
+ * berikutnya. Yang datang dari klien hanya unit dan bulan.
+ */
+export async function koreksiMajuBukuBesar(input: { code: string; bulan: string }): Promise<KoreksiMajuResult> {
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(input.code); // di luar scope → notFound()
+  if (!canTutupBulan({ role: scope.role, email: scope.email })) {
+    return { ok: false, error: "Hanya Head of Finance yang boleh memeriksa ulang bulan tertutup.", hariSelesai: 0 };
+  }
+  try {
+    const r = await koreksiMajuBulan(() => pool.connect(), unit.unit_id, input.bulan, {
+      aktor: { userId: scope.userId, email: scope.email },
+    });
+    if (!r.ok) return { ok: false, error: r.error, hariSelesai: r.hari.length };
+    const kor = r.hari.filter((h) => h.koreksi !== null);
+    return {
+      ok: true,
+      hari: r.hari.length,
+      koreksi: kor.length,
+      pesan:
+        kor.length === 0
+          ? `Bulan ${input.bulan} diperiksa ulang (${r.hari.length} hari): tidak ada sumber yang berubah, tidak ada koreksi.`
+          : `Bulan ${input.bulan} diperiksa ulang: ${kor.length} hari berubah, koreksi maju diposting ke ${[...new Set(kor.map((h) => h.koreksi!.tanggalBuku))].join(", ")}.`,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Gagal memeriksa ulang bulan tertutup.", hariSelesai: 0 };
+  } finally {
+    revalidatePath(`/keuangan/unit/${unit.code}/buku-besar`, "layout");
+  }
+}
 
 // ===========================================================================
 // Saldo awal pos & jurnal memorial (rencana 2026-11-02 K6 U9; R8, R9, KD13)

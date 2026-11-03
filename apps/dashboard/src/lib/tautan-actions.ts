@@ -1,5 +1,6 @@
 "use server";
 
+import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { auditKeuangan } from "./keuangan-tx";
@@ -96,6 +97,7 @@ export async function tautkanBebanKeMutasi(input: {
       tanggalKas: kas.businessDate,
       nominal: beban.amount,
     });
+    await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${beban.businessDate}/input`);
     if (kas.businessDate !== beban.businessDate) revalidatePath(`/keuangan/unit/${unit.code}/${kas.businessDate}/input`);
