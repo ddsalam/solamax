@@ -13,6 +13,7 @@ import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
 import { tulisBebanFinance } from "./klasifikasi-tulis";
 import { auditKeuangan } from "./keuangan-tx";
 import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
+import { kategoriPenebusan, lewatPenebusan } from "./penebusan-model";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -111,6 +112,25 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
       if (salah !== null) {
         await client.query("ROLLBACK");
         return { ok: false, error: salah };
+      }
+    }
+
+    // K6 U4 (R19–R21) — Pembelian BBM di rekening BANK hanya lewat field
+    // penebusan (`simpanPenebusan` dariBukuBank): mutasi tanpa SO di sini
+    // adalah input kedua yang harus ditautkan lagi. Kas Besar tak berubah.
+    if (kategoriPenebusan(input.categoryLabel)) {
+      const akun = await client.query<{ kind: string }>(
+        `SELECT kind::text AS kind FROM app.cash_account WHERE id = $1::uuid AND unit_id = $2`,
+        [input.accountId, unit.unit_id],
+      );
+      if (lewatPenebusan(akun.rows[0]?.kind, input.categoryLabel)) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          error:
+            "Pembelian BBM dari rekening bank dicatat lewat field penebusan (Nomor SO dan komponennya) di form " +
+            "yang sama — pilih kategori itu lalu isi field penebusannya, satu simpan menulis mutasi & penebusan.",
+        };
       }
     }
 

@@ -11,6 +11,12 @@ import type { JenisMutasi, SisiKategori } from "@/lib/keuangan-kas";
 import type { AkunKas, BarisBuku, KakiBuku, TawaranSetoran } from "@/lib/keuangan-kas-model";
 import { kategoriPihakLawan, pihakLawanUntuk, type PilihanPihakLawan } from "@/lib/pihak-lawan-model";
 import { PecahMutasiForm } from "./PecahMutasiForm";
+import { simpanPenebusan } from "@/lib/penebusan-actions";
+import { KOMPONEN, LABEL_KOMPONEN, lewatPenebusan, ringkasKomponen, type Komponen } from "@/lib/penebusan-model";
+import { KakiKomponen } from "./PenebusanForm";
+
+type TeksKomponen = Record<Komponen, string>;
+const KOMPONEN_KOSONG: TeksKomponen = { net: "", ppn: "", pph: "", pbbkb: "", nota: "" };
 
 /**
  * Blok 2 Layar 3 — Buku kas besar & lima buku bank (mockup layar 3).
@@ -79,6 +85,8 @@ export function BukuKasPanel({
   const [pihakId, setPihakId] = useState("");
   const [bukaPecah, setBukaPecah] = useState(false);
   const [nominal, setNominal] = useState("");
+  const [noSo, setNoSo] = useState("");
+  const [komponen, setKomponen] = useState<TeksKomponen>(KOMPONEN_KOSONG);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -91,6 +99,12 @@ export function BukuKasPanel({
   const katTerpilih = kategoriSisi.find((k) => `${k.side}|${k.label}` === katKey) ?? null;
   const pilihanPihak = jenis === "adjustment" ? [] : pihakLawanUntuk(katTerpilih?.label ?? null, pihakLawan);
   const butuhPihak = jenis !== "adjustment" && kategoriPihakLawan(katTerpilih?.label);
+  // K6 U4 (R19–R20): rekening bank + "Pembelian BBM" ⇒ field penebusan; Nominal
+  // = Harga Gross. Predikat yang sama ditegakkan ulang di `simpanMutasiKas`.
+  const akunTerbuka = akun.find((a) => a.id === akunAktif) ?? null;
+  const modePenebusan = jenis !== "adjustment" && lewatPenebusan(akunTerbuka?.kind, katTerpilih?.label);
+  const ringkas = ringkasKomponen({ ...komponen, gross: nominal });
+  const siapPenebusan = ringkas.lengkap && ringkas.selisih === 0 && noSo.trim() !== "";
 
   // Penyesuaian satu-satunya jenis yang arahnya tak tersirat dari namanya —
   // hanya di sana minus boleh diketik (dulu mustahil: semua non-digit dibuang).
@@ -115,6 +129,41 @@ export function BukuKasPanel({
       return;
     }
     const kat = kategoriSisi.find((k) => `${k.side}|${k.label}` === katKey) ?? null;
+    if (modePenebusan) {
+      if (!siapPenebusan) return;
+      const nilai = (f: Komponen): number => {
+        const h = bacaRupiah(komponen[f], { bolehNegatif: f === "nota" });
+        return h.keadaan === "sah" ? h.nilai : 0;
+      };
+      // Rekening & tanggal bayar = buku yang terbuka; server membuat baris kas
+      // dan penebusannya dalam SATU transaksi (R21).
+      start(async () => {
+        const res = await simpanPenebusan({
+          code,
+          dariBukuBank: true,
+          keterangan: ket,
+          noSo,
+          tanggalBayar: date,
+          accountId: akunAktif,
+          net: nilai("net"),
+          ppn: nilai("ppn"),
+          pph: nilai("pph"),
+          pbbkb: nilai("pbbkb"),
+          nota: nilai("nota"),
+          gross: Math.abs(amount),
+        });
+        if (!res.ok) setErr(res.error);
+        else {
+          setMsg(`${res.pesan} Tampil juga di halaman Penebusan SO.`);
+          setKet("");
+          setNominal("");
+          setNoSo("");
+          setKomponen(KOMPONEN_KOSONG);
+          setBukaForm(false);
+        }
+      });
+      return;
+    }
     start(async () => {
       const res = await simpanMutasiKas({
         code,
@@ -482,6 +531,35 @@ export function BukuKasPanel({
               </select>
             </label>
           )}
+          {modePenebusan && (
+            <fieldset className="keu-fld">
+              <legend className="keu-label">Penebusan SO — muncul karena kategori Pembelian BBM</legend>
+              <p className="fs16 t-tertiary">
+                Nominal di atas adalah <strong>Harga Gross</strong>. Tanggal bayar {date} dan rekening{" "}
+                {akunTerbuka?.nama ?? ""} diambil dari buku ini.
+              </p>
+              <div className="keu-2col">
+                <label className="keu-fld">
+                  <span className="keu-label">Nomor SO</span>
+                  <input className="manual-input" value={noSo} onChange={(e) => setNoSo(e.target.value)} />
+                </label>
+                {KOMPONEN.map((f) => (
+                  <label className="keu-fld" key={f}>
+                    <span className="keu-label">{LABEL_KOMPONEN[f]}</span>
+                    <input
+                      className="manual-input num"
+                      inputMode="text"
+                      value={komponen[f]}
+                      onChange={(e) => setKomponen((t) => ({ ...t, [f]: e.target.value }))}
+                      placeholder={f === "nota" ? "0 — atau −5.000 untuk nota kredit" : "contoh 11.000.000"}
+                    />
+                    <PratinjauAngka hasil={bacaRupiah(komponen[f], { bolehNegatif: f === "nota" })} />
+                  </label>
+                ))}
+              </div>
+              <KakiKomponen k={ringkas} />
+            </fieldset>
+          )}
           {butuhPihak && (
             <label className="keu-fld">
               <span className="keu-label">Pihak lawan (wajib untuk kategori ini)</span>
@@ -506,10 +584,13 @@ export function BukuKasPanel({
               type="button"
               className="btn-navy"
               onClick={simpan}
-              disabled={pending || hNominal.keadaan === "tolak"}
+              disabled={pending || hNominal.keadaan === "tolak" || (modePenebusan && !siapPenebusan)}
             >
-              {pending ? "Menyimpan…" : "Simpan mutasi"}
+              {pending ? "Menyimpan…" : modePenebusan ? "Simpan mutasi & penebusan" : "Simpan mutasi"}
             </button>
+            {modePenebusan && ringkas.lengkap && ringkas.selisih !== 0 && (
+              <span className="fs16 t-danger">Simpan aktif bila selisihnya Rp 0.</span>
+            )}
             <button
               type="button"
               className="btn-outline"

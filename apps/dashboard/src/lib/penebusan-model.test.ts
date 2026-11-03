@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   KATEGORI_PENEBUSAN,
   KODE_MAJU_PENEBUSAN,
+  kategoriPenebusan,
+  keputusanKasBukuBank,
   keteranganKasPenebusan,
+  lewatPenebusan,
   normalisasiSo,
   periksaPenebusan,
   pilihKandidat,
@@ -209,5 +212,82 @@ describe("unitSatuPt — rekap per PT hanya bagi yang memegang SEMUA unit tenant
 
   it("unit tanpa tenant ⇒ null", () => {
     expect(unitSatuPt("9999999", tenant, [u("9999999", 9)])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K6 U4 — penebusan dari Tambah mutasi bank (R19–R21, AE5)
+// ---------------------------------------------------------------------------
+
+/** AE5 (ilustratif): Gross Rp 110.000.000 — angka contoh, bukan data nyata. */
+const AE5: MasukanPenebusan = {
+  noSo: "SO-0000001",
+  tanggalBayar: "2026-11-03",
+  accountId: "11111111-1111-4111-8111-111111111111",
+  net: 96_000_000,
+  ppn: 10_560_000,
+  pph: 320_000,
+  pbbkb: 3_120_000,
+  nota: 0,
+  gross: 110_000_000,
+};
+
+describe("kategoriPenebusan / lewatPenebusan — satu predikat untuk form & server (R19)", () => {
+  it("hanya label 'Pembelian BBM' persis", () => {
+    expect(kategoriPenebusan("Pembelian BBM")).toBe(true);
+    for (const l of ["pembelian bbm", "Pembelian BBM ", "Biaya Operasional", "", null, undefined]) {
+      expect(kategoriPenebusan(l)).toBe(false);
+    }
+  });
+
+  it("🔴 wajib lewat penebusan hanya di rekening BANK; Kas Besar tetap jalur mutasi biasa", () => {
+    expect(lewatPenebusan("bank", "Pembelian BBM")).toBe(true);
+    expect(lewatPenebusan("kas", "Pembelian BBM")).toBe(false);
+    expect(lewatPenebusan("bank", "Biaya Operasional")).toBe(false);
+    expect(lewatPenebusan(null, "Pembelian BBM")).toBe(false);
+  });
+});
+
+describe("AE5 — Σ komponen vs Gross di form buku bank", () => {
+  it("🔴 Gross 110.000.000 = 96.000.000 + 10.560.000 + 320.000 + 3.120.000 + 0 ⇒ sah", () => {
+    const r = periksaPenebusan(AE5);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.sen.gross).toBe(11_000_000_000);
+  });
+
+  it("🔴 komponen berjumlah 109.990.000 ⇒ ditolak, selisih Rp 10.000 disebut (server)", () => {
+    const r = periksaPenebusan({ ...AE5, pbbkb: 3_110_000 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("Rp 109.990.000");
+      expect(r.error).toContain("selisih Rp 10.000");
+    }
+  });
+
+  it("🔴 kaki form: Nominal (Gross) 110.000.000, Σ 109.990.000 ⇒ selisih −10.000 (Simpan nonaktif)", () => {
+    const k = ringkasKomponen({
+      net: "96.000.000",
+      ppn: "10.560.000",
+      pph: "320.000",
+      pbbkb: "3.110.000",
+      nota: "",
+      gross: "110.000.000",
+    });
+    expect(k).toMatchObject({ lengkap: true, jumlah: 109_990_000, gross: 110_000_000, selisih: -10_000 });
+  });
+});
+
+describe("keputusanKasBukuBank — dari buku bank, baris kas DIBUAT, tak pernah diikat diam-diam", () => {
+  const k = (id: string) => ({ id, businessDate: "2026-11-03", tanggalAsal: null, keterangan: "manual", amountSen: -11_000_000_000 });
+
+  it("nol kandidat ⇒ buat baris kas baru (kas_dibuat = true)", () => {
+    expect(keputusanKasBukuBank([])).toEqual({ aksi: "buat" });
+  });
+
+  it("🔴 satu kandidat pun ⇒ DITOLAK (bukan diikat): mutasi yang diketik tak boleh lenyap jadi tautan", () => {
+    const r = keputusanKasBukuBank([k("a")]);
+    expect(r.aksi).toBe("tolak");
+    if (r.aksi === "tolak") expect(r.error).toMatch(/halaman Penebusan SO/);
+    expect(keputusanKasBukuBank([k("a"), k("b")]).aksi).toBe("tolak");
   });
 });

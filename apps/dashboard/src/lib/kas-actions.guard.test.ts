@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { urutan } from "./penjaga-urutan";
 
 /**
@@ -227,5 +227,83 @@ describe("§10.26 — Rp 0 hanya sah sebagai saldo pembuka SEMENTARA", () => {
     );
     expect(m).toMatch(/"jenis" = 'adjustment' AND "saldo_awal" AND "saldo_awal_sementara" AND "amount" = 0/);
     expect(m).toMatch(/NOT "saldo_awal_sementara" OR "saldo_awal"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K6 U4 (R19–R21) — "Pembelian BBM" di rekening BANK tak lewat jalur mutasi
+// biasa; ia lewat field penebusan (`simpanPenebusan` dariBukuBank). DB TIRUAN
+// (pola `kas-actions.pihak-lawan.test.ts`): "ditolak" = tak ada INSERT.
+// ---------------------------------------------------------------------------
+
+const t = vi.hoisted(() => {
+  process.env.HEAD_OF_FINANCE_EMAILS = "hof@solagroup.co";
+  const log: { sql: string; params: unknown[] }[] = [];
+  const state: { kind: string } = { kind: "bank" };
+  const client = {
+    query: async (sql: string, params: unknown[] = []) => {
+      log.push({ sql, params });
+      if (sql.includes("FROM app.cash_account")) return { rows: [{ kind: state.kind }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+    release: () => {},
+  };
+  const connect = vi.fn(async () => client);
+  return { log, state, connect };
+});
+
+vi.mock("./db", () => ({ pool: { connect: t.connect }, qScoped: vi.fn(), q: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("./scope", () => ({
+  getDataScope: vi.fn(async () => ({
+    userId: 7,
+    role: "keuangan",
+    email: "staf@solagroup.co",
+    requireUnit(code: string) {
+      if (code !== "6300001") throw new Error("NEXT_NOT_FOUND");
+      return { unit_id: 2, code, name: "Contoh" };
+    },
+  })),
+}));
+
+const { simpanMutasiKas } = await import("./kas-actions");
+
+describe("simpanMutasiKas — Pembelian BBM di rekening bank ditolak (K6 U4)", () => {
+  const BBM = {
+    code: "6300001",
+    date: "2026-11-03",
+    accountId: "44444444-4444-4444-8444-444444444444",
+    keterangan: "Bayar SO",
+    jenis: "kredit" as const,
+    categorySide: "kredit" as const,
+    categoryLabel: "Pembelian BBM",
+    amount: -110_000_000,
+  };
+  const insertKas = () => t.log.filter((l) => l.sql.includes("INSERT INTO app.cash_ledger"));
+
+  beforeEach(() => {
+    t.log.length = 0;
+    t.state.kind = "bank";
+  });
+
+  it("🔴 rekening bank + Pembelian BBM ⇒ ditolak, menunjuk field penebusan; tak ada INSERT", async () => {
+    const r = await simpanMutasiKas(BBM);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/field penebusan/);
+    expect(insertKas()).toHaveLength(0);
+    expect(t.log.map((l) => l.sql)).toContain("ROLLBACK");
+  });
+
+  it("Kas Besar + Pembelian BBM ⇒ tetap tersimpan lewat jalur biasa", async () => {
+    t.state.kind = "kas";
+    const r = await simpanMutasiKas(BBM);
+    expect(r).toEqual({ ok: true });
+    expect(insertKas()).toHaveLength(1);
+  });
+
+  it("kategori lain di rekening bank ⇒ jalur biasa tak berubah", async () => {
+    const r = await simpanMutasiKas({ ...BBM, categoryLabel: "Biaya Bank" });
+    expect(r).toEqual({ ok: true });
+    expect(insertKas()).toHaveLength(1);
   });
 });

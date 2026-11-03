@@ -28,6 +28,23 @@ export const KATEGORI_PENEBUSAN = "Pembelian BBM";
 /** Kode alasan maju (0049) bila hari bayarnya sudah ditutup (R28). */
 export const KODE_MAJU_PENEBUSAN = KODE_MAJU_PURCHASE;
 
+/**
+ * K6 U4 (R19) — kategori yang membuka field penebusan di Tambah mutasi. SATU
+ * predikat dipakai formulir (`BukuKasPanel`) DAN server (`simpanMutasiKas`
+ * menolaknya di rekening bank) — pola `kategoriPihakLawan`.
+ */
+export function kategoriPenebusan(label: string | null | undefined): boolean {
+  return label === KATEGORI_PENEBUSAN;
+}
+
+/**
+ * Mutasi ini WAJIB lewat penebusan: rekening bank + kategori Pembelian BBM.
+ * Kas Besar (`kind = 'kas'`) tetap jalur mutasi biasa.
+ */
+export function lewatPenebusan(kindAkun: string | null | undefined, label: string | null | undefined): boolean {
+  return kindAkun === "bank" && kategoriPenebusan(label);
+}
+
 
 /** Konvensi `lower(trim(cnoso))` — `so_macet` (0028) dan join EasyMax di `queries.ts`. */
 export function normalisasiSo(s: string): string {
@@ -160,6 +177,25 @@ export function pilihKandidat(kandidat: readonly KandidatKas[], pilihan: string 
   if (kandidat.length === 0) return { aksi: "buat" };
   if (kandidat.length === 1) return { aksi: "ikat", id: kandidat[0]!.id };
   return { aksi: "pilih", kandidat: [...kandidat] };
+}
+
+/**
+ * K6 U4 (R21) — penebusan dari Tambah mutasi bank: staf MENGETIK mutasi baru,
+ * jadi baris kasnya DIBUAT (`kas_dibuat = true`). Ada baris Pembelian BBM
+ * sebesar Gross di rekening & tanggal yang sama yang belum diikat (diketik
+ * sebelum K6) ⇒ DITOLAK, bukan diikat: mengikat diam-diam membuat mutasi yang
+ * diketik tak pernah muncul, membuat baris kedua menghitung bank dua kali.
+ * Pengikatan tetap di halaman Penebusan SO, dengan kandidat yang terlihat.
+ */
+export function keputusanKasBukuBank(kandidat: readonly KandidatKas[]): PilihanIkat {
+  if (kandidat.length === 0) return { aksi: "buat" };
+  return {
+    aksi: "tolak",
+    error:
+      `Sudah ada ${kandidat.length} baris kas Pembelian BBM sebesar Gross ini di rekening & tanggal yang sama ` +
+      `yang belum punya SO — catat penebusannya dari halaman Penebusan SO untuk mengikat baris itu, ` +
+      `bukan mutasi baru (mencatatnya di sini akan menghitung bank dua kali).`,
+  };
 }
 
 // ---------------------------------------------------------------------------

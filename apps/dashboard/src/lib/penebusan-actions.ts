@@ -12,6 +12,7 @@ import {
 import {
   KATEGORI_PENEBUSAN,
   KODE_MAJU_PENEBUSAN,
+  keputusanKasBukuBank,
   keteranganKasPenebusan,
   periksaPenebusan,
   pilihKandidat,
@@ -68,6 +69,15 @@ export interface SimpanPenebusanInput extends MasukanPenebusan {
    * diikat satu kelompok cocok dalam transaksi yang sama (KTD6).
    */
   mutasiBankId?: string | null;
+  /**
+   * K6 U4 (R19–R21) — dibuka dari Tambah mutasi buku bank: rekening & tanggal
+   * bayar = buku yang terbuka. Baris kasnya SELALU dibuat (`kas_dibuat`);
+   * baris Pembelian BBM lama sebesar Gross yang belum diikat ⇒ ditolak, tidak
+   * diikat diam-diam (`keputusanKasBukuBank`).
+   */
+  dariBukuBank?: boolean;
+  /** Keterangan baris kas yang diketik di Tambah mutasi; kosong ⇒ "Penebusan SO …". */
+  keterangan?: string | null;
 }
 
 const halaman = (code: string): string => `/keuangan/unit/${code}/penebusan`;
@@ -86,6 +96,10 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
 
   const mutasiBankId = input.mutasiBankId ?? null;
   if (mutasiBankId !== null && !UUID_RE.test(mutasiBankId)) return { ok: false, error: "Baris rekening koran tak dikenali — muat ulang halaman." };
+  const dariBukuBank = input.dariBukuBank === true;
+  if (dariBukuBank && (mutasiBankId !== null || (input.cashLedgerId ?? null) !== null)) {
+    return { ok: false, error: "Mutasi baru dari buku bank tidak mengikat baris lain — muat ulang halaman." };
+  }
   // U11 (R11): dibuka dari baris impor ⇒ Gross dari peramban DIABAIKAN — di
   // sini cukup bentuk komponennya (Gross sementara = Σ komponen); Gross yang
   // berlaku dibaca dari baris impor di dalam transaksi dan diperiksa ulang.
@@ -216,7 +230,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
       keterangan: r.keterangan,
       amountSen: teksKeSen(r.amount),
     }));
-    const ikat = pilihKandidat(kandidat, pilihan);
+    const ikat = dariBukuBank ? keputusanKasBukuBank(kandidat) : pilihKandidat(kandidat, pilihan);
     if (ikat.aksi === "tolak") {
       await batal(client);
       return { ok: false, error: ikat.error };
@@ -271,7 +285,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
           unit.unit_id,
           input.accountId,
           hari.hariBuku,
-          keteranganKasPenebusan(noSoTampil),
+          (dariBukuBank ? input.keterangan?.trim() : "") || keteranganKasPenebusan(noSoTampil),
           "kredit",
           "kredit",
           KATEGORI_PENEBUSAN,
@@ -335,6 +349,7 @@ export async function simpanPenebusan(input: SimpanPenebusanInput): Promise<Pene
       hariBuku,
       mutasiBankId,
       cocokId,
+      dariBukuBank,
     });
     await client.query("COMMIT");
     revalidatePath(halaman(unit.code));
