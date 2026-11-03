@@ -74,6 +74,10 @@ export interface CatatanPembentukan {
 
 export interface BarisTemuanPembentukan {
   tanggal: string;
+  /** Hari terakhir bila temuan yang sama (tanpa baris sumber) berulang beberapa hari; sama dengan `tanggal` bila satu hari. */
+  sampai: string;
+  /** Berapa hari temuan ini muncul (digabung). */
+  hari: number;
   kode: KodeTemuan;
   label: string;
   /** null = catatan lama tanpa rincian. */
@@ -99,15 +103,38 @@ export function susunTemuanPembentukan(catatan: readonly CatatanPembentukan[]): 
     if (c.rincian !== null) {
       for (const t of c.rincian) {
         if (!kenal(t.kode)) continue;
-        baris.push({ tanggal: c.tanggal, kode: t.kode, label: LABEL_TEMUAN[t.kode], pesan: t.pesan, sumberId: t.sumberId ?? null });
+        baris.push({ tanggal: c.tanggal, sampai: c.tanggal, hari: 1, kode: t.kode, label: LABEL_TEMUAN[t.kode], pesan: t.pesan, sumberId: t.sumberId ?? null });
       }
       continue;
     }
     if (c.kode.length > 0) hariTanpaRincian.push(c.tanggal);
-    for (const k of c.kode) if (kenal(k)) baris.push({ tanggal: c.tanggal, kode: k, label: LABEL_TEMUAN[k], pesan: null, sumberId: null });
+    for (const k of c.kode) if (kenal(k)) baris.push({ tanggal: c.tanggal, sampai: c.tanggal, hari: 1, kode: k, label: LABEL_TEMUAN[k], pesan: null, sumberId: null });
   }
   const n = new Map<KodeTemuan, number>();
   for (const b of baris) n.set(b.kode, (n.get(b.kode) ?? 0) + 1);
+  // Temuan tingkat hari yang sama persis (tanpa baris sumber, mis. saldo awal
+  // 1131/1132 belum diisi) digabung jadi satu baris berentang — jumlahnya tetap
+  // per kemunculan, sama dengan angka "N temuan" dari Bentuk ulang.
+  const gabung: BarisTemuanPembentukan[] = [];
+  const indeks = new Map<string, BarisTemuanPembentukan>();
+  for (const b of baris) {
+    if (b.sumberId !== null) {
+      gabung.push(b);
+      continue;
+    }
+    const kunci = `${b.kode}|${b.pesan ?? ""}`;
+    const ada = indeks.get(kunci);
+    if (ada) {
+      if (ada.sampai !== b.tanggal) {
+        ada.sampai = b.tanggal;
+        ada.hari += 1;
+      }
+    } else {
+      const baru = { ...b };
+      indeks.set(kunci, baru);
+      gabung.push(baru);
+    }
+  }
   const ringkas = [...n].map(([kode, jumlah]) => ({ kode, label: LABEL_TEMUAN[kode], n: jumlah })).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
-  return { baris, ringkas, hariTanpaRincian, total: baris.length };
+  return { baris: gabung, ringkas, hariTanpaRincian, total: baris.length };
 }
