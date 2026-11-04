@@ -8,6 +8,7 @@
  */
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { ExportConfig } from "./config";
+import { glUnverifiedSection } from "./gl-unverified-doc";
 import { barCanvas, bauranFill, productFill, sparklineCanvas } from "./pdf-charts";
 import { pdfText } from "./glyphs";
 import { CONTENT_WIDTH_LANDSCAPE as CW, keepHeadingsWithTable, ledgerLayout, th } from "./pdf-layout";
@@ -399,6 +400,7 @@ export function buildBoardDocDefinition(args: {
     { text: `Ranking ${meta.unitsCount} unit`, style: "sectionTitle", marginTop: 12, marginBottom: 4, headlineLevel: 1 },
     rankingTable(model),
     ...productMix(model),
+    ...glUnverifiedSection(model.core.glUnverified, { withUnit: true, hint: `periode ${meta.periodLabel}` }),
     ...anomaliesSection(model),
     {
       text: pdfText(

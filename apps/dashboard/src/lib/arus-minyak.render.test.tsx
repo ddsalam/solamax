@@ -293,7 +293,7 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
       `\nPENUTUP-NOL terdeteksi: ${penutupNol.length} baris` +
         (penutupNol.length === 0
           ? " — TAK ADA SUBJEK di tanggal yang disapu; hijau di sini tidak menguji apa pun"
-          : " — angka Losses-nya artefak data, bukan kerugian:"),
+          : " — G/L-nya Belum terverifikasi (bukan angka final; belum tentu rugi/untung):"),
     );
     for (const x of penutupNol) console.log("  · " + x);
     if (potongan.length)
@@ -378,7 +378,7 @@ d("Arus Minyak lintas-unit — tidak rusak (akurasi TIDAK diklaim)", () => {
         }
         // PENUTUP-NOL — kelas yang lolos dari ">= 0" karena 0 memang >= 0.
         // Opname penutup tercatat 0 padahal stok awal ribuan liter → Losses
-        // sebesar seluruh isi tangki, dan itu BUKAN kerugian. Fenomena ini
+        // sebesar seluruh isi tangki, yang Belum terverifikasi. Fenomena ini
         // sudah punya detektor tersendiri (`getZeroClosingEvents`, terpasang di
         // /laporan-harian & feed anomali) tetapi BELUM tersambung ke halaman
         // Laporan. Yang dijaga di sini: jangan sampai ia tampil sebagai angka

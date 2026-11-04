@@ -13,6 +13,7 @@
  *   - provisional → "SEMENTARA" + catatan kaki;
  *   - glIncomplete → peringatan merah tabel G/L;
  *   - catatan kaki penutup-nol (glSuspectUnits) + Pertalite Khusus (notes);
+ *   - seksi "G/L Belum terverifikasi" (rincian + cara verifikasi, = layar);
  *   - kesegaran MIN di FOOTER tiap halaman.
  */
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
@@ -26,6 +27,7 @@ import type {
   UnitStatus,
   ValueRow,
 } from "@/lib/harian-model";
+import { glUnverifiedSection } from "./gl-unverified-doc";
 import { pdfText } from "./glyphs";
 import { divergentGlCanvas, harianSeriesColor, harianTrendCanvas } from "./pdf-charts";
 import { CONTENT_WIDTH_LANDSCAPE as CW, keepHeadingsWithTable } from "./pdf-layout";
@@ -354,6 +356,7 @@ export function buildHarianDocDefinition(args: {
   content.push(...trendCharts(model));
   content.push(...ratioBbkTable(model));
   content.push(...recordSection(model));
+  content.push(...glUnverifiedSection(model.glUnverified, { withUnit: true, hint: `MTD s/d ${meta.dateLong}` }));
 
   // ── Catatan kaki (Pertalite Khusus, penutup-nol 28 Okt, dll) ──────────────
   if (model.notes.length > 0) {

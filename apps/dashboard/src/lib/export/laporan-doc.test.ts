@@ -342,10 +342,10 @@ describe("PDF operational G/L source-integrity nulls", () => {
     }, { unitCode: "SYNTHETIC", date: "2026-10-02", today: "2026-10-04",
       mi: { month: 10, year: 2026, dayOfMonth: 2, daysInMonth: 31 }, detail: true });
     expect(m.sales.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", vol: 600,
-      omzet: 6000000, gl: 150, tera: 50 }]);
+      omzet: 6000000, gl: 150, glUnverified: false, tera: 50 }]);
     expect(m.sales.glTotal).toBe(150);
     expect(m.sales.totTera).toBe(50);
-    expect(m.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, vol: 600 }]);
+    expect(m.glMonthly.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", selisih: 150, unverified: false, vol: 600 }]);
     expect(m.glMonthly.glPctMonth).toBe(0.25);
     expect(m.harga.rows).toEqual([{ ckdbbm: "P", nama: "SOLAR", harga: 10000 }]);
 
@@ -443,7 +443,8 @@ describe("PDF Arus stock and movement completeness", () => {
   it("prints invalid-movement diagnostics but leaves theory and its TOTAL unavailable", () => {
     const { doc, cells } = render([source({ fisik_prev: 2_000, fisik: 0, gl: null,
       movement_invalid: true, provisional: true }), healthy]);
-    expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "2.000,00", "50,00", "30,00", "—", "0,00", "—", "—"]);
+    // Withheld G/L is labelled at row level; the numbers stay diagnostic.
+    expect(cells("SINTETIS P  [Belum terverifikasi]")).toEqual(["SINTETIS P  [Belum terverifikasi]", "2.000,00", "50,00", "30,00", "—", "0,00", "—", "—"]);
     expect(cells("TOTAL")).toEqual(["TOTAL", "2.200,00", "100,00", "60,00", "—", "220,00", "—", "—"]);
     expect(JSON.stringify(doc.content)).toContain("belum final");
     expect(JSON.stringify(doc.content)).not.toContain("[opname 0]");
@@ -452,7 +453,7 @@ describe("PDF Arus stock and movement completeness", () => {
 
   it("prints valid theory when only current physical is missing, with unavailable physical TOTAL", () => {
     const { cells } = render([source({ fisik: null, gl: null, excluded_tanks: 1, provisional: true }), healthy]);
-    expect(cells("SINTETIS P")).toEqual(["SINTETIS P", "100,00", "50,00", "30,00", "120,00", "—", "—", "—"]);
+    expect(cells("SINTETIS P  [Belum terverifikasi]")).toEqual(["SINTETIS P  [Belum terverifikasi]", "100,00", "50,00", "30,00", "120,00", "—", "—", "—"]);
     expect(cells("TOTAL")).toEqual(["TOTAL", "300,00", "100,00", "60,00", "340,00", "—", "—", "—"]);
   });
 
@@ -470,9 +471,9 @@ describe("PDF Arus stock and movement completeness", () => {
   });
 
   it.each([
-    { reason: "penutup_nol" as const, tag: "SINTETIS P  [opname 0]", awal: 6_000, fisik: 0, sales: 30, raw: -5_970 },
-    { reason: "jangkar_nol" as const, tag: "SINTETIS P  [perlu periksa]", awal: 0, fisik: 3_000, sales: 0, raw: 3_000 },
-  ])("prints a $reason artefact with raw stock but never as Losses, % or TOTAL", ({ reason, tag, awal, fisik, sales, raw }) => {
+    { reason: "penutup_nol" as const, tag: "SINTETIS P  [Belum terverifikasi]", awal: 6_000, fisik: 0, sales: 30, raw: -5_970 },
+    { reason: "jangkar_nol" as const, tag: "SINTETIS P  [Belum terverifikasi]", awal: 0, fisik: 3_000, sales: 0, raw: 3_000 },
+  ])("prints a $reason uncertain G/L with raw stock but never as Losses, % or TOTAL", ({ reason, tag, awal, fisik, sales, raw }) => {
     const { doc, cells, m } = render([source({ fisik_prev: awal, fisik, pen_do: 0, sales_gross: sales,
       gl: null, gl_raw: raw, gl_suspect: reason, provisional: true }), healthy]);
     const row = cells(tag);
@@ -481,8 +482,11 @@ describe("PDF Arus stock and movement completeness", () => {
     expect(cells("TOTAL")!.slice(-2)).toEqual(["—", "—"]);
     expect(m.sales.glTotal).toBeNull();
     const text = JSON.stringify(doc.content);
-    expect(text).toContain("BUKAN kerugian");
+    // Approved policy: labelled, auditable, and never a categorical "not a loss".
+    expect(text).toContain("G/L Belum terverifikasi");
     expect(text).toContain("mentah");
+    expect(text).toContain(`= ${num2(raw)} L`);
+    expect(text).not.toMatch(/bukan kerugian|artefak|bukan stok nyata|perlu periksa/i);
     expect(text).not.toContain("sengaja tidak dikoreksi");
     expect(text).not.toMatch(/NaN|undefined/);
   });
