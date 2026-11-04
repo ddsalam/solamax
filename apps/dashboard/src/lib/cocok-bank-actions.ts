@@ -578,3 +578,84 @@ export async function batalkanCocok(input: BatalCocokInput): Promise<BatalCocokR
     client.release();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Batalkan SEMUA cocok satu rekening koran (R31) — HoF, jalan menuju Tarik
+// ---------------------------------------------------------------------------
+
+export interface BatalCocokRekeningKoranInput {
+  code: string;
+  rekeningKoranId: string;
+  reasonCode: string;
+  catatan: string;
+}
+
+export type BatalCocokRekeningKoranResult =
+  | { ok: true; pesan: string; dibatalkan: number; gagal: { cocokId: string; error: string }[] }
+  | { ok: false; error: string };
+
+/**
+ * Batalkan setiap kelompok cocok AKTIF yang memuat baris rekening koran ini —
+ * prasyarat `tarikRekeningKoran` ("batalkan cocok dulu"). Sebelum ini tak ada
+ * pintu ke {@link batalkanCocok} di layar mana pun, jadi rekening koran yang
+ * sudah dicocokkan tidak bisa ditarik sama sekali.
+ *
+ * Sengaja TIDAK satu transaksi besar: tiap kelompok lewat `batalkanCocok` apa
+ * adanya — transaksinya sendiri, gerbang dua unit, U12 bulan tertutup,
+ * void/pembalik baris lahiran, dan audit `cocok_bank.batal` per kelompok.
+ * Kelompok yang ditolak (mis. hari tertutup tanpa sisi lawan) dilaporkan satu
+ * per satu dan tetap aktif; yang lain sudah dibatalkan. Menjalankan ulang aman:
+ * kelompok yang sudah nonaktif tak terbaca lagi.
+ */
+export async function batalkanCocokRekeningKoran(
+  input: BatalCocokRekeningKoranInput,
+): Promise<BatalCocokRekeningKoranResult> {
+  const scope = await getDataScope();
+  const unit = scope.requireUnit(input.code);
+  if (!canBatalkanCocokBank({ role: scope.role, email: scope.email })) {
+    return { ok: false, error: "Hanya Head of Finance yang boleh membatalkan pencocokan rekening koran." };
+  }
+  if (!UUID_RE.test(input.rekeningKoranId)) return { ok: false, error: "Rekening koran tak dikenali — muat ulang halaman." };
+  if (input.catatan.trim() === "") return { ok: false, error: "Catatan wajib diisi — tuliskan kenapa pencocokan ini dibatalkan." };
+  const reasonCode = input.reasonCode.trim();
+  if (reasonCode === "" || reasonCode.startsWith(PREFIKS_KODE_MAJU)) {
+    return { ok: false, error: "Pilih kode alasan koreksi dari daftar (kode pembukuan maju diisi sistem)." };
+  }
+
+  const grup = await qScoped<{ id: string }>(
+    unit.unit_id,
+    `SELECT g.id::text AS id
+       FROM app.cocok_bank g
+      WHERE g.unit_id = $1 AND g.aktif
+        AND EXISTS (
+          SELECT 1
+            FROM app.cocok_bank_baris b
+            JOIN app.mutasi_bank m ON m.id = b.mutasi_bank_id AND m.unit_id = b.unit_id
+           WHERE b.cocok_id = g.id AND b.unit_id = g.unit_id AND b.aktif
+             AND m.rekening_koran_id = $2::uuid
+        )
+      ORDER BY g.dibuat_at DESC, g.id`,
+    [unit.unit_id, input.rekeningKoranId],
+  );
+  if (grup.length === 0) {
+    return { ok: true, pesan: "Tidak ada pencocokan aktif di rekening koran ini.", dibatalkan: 0, gagal: [] };
+  }
+
+  let dibatalkan = 0;
+  const gagal: { cocokId: string; error: string }[] = [];
+  for (const g of grup) {
+    const r = await batalkanCocok({ code: unit.code, cocokId: g.id, reasonCode, catatan: input.catatan });
+    if (r.ok) dibatalkan++;
+    else gagal.push({ cocokId: g.id, error: r.error });
+  }
+  revalidatePath(halaman(unit.code));
+  return {
+    ok: true,
+    dibatalkan,
+    gagal,
+    pesan:
+      gagal.length === 0
+        ? `${dibatalkan} pencocokan dibatalkan; baris rekening koran kembali terbuka.`
+        : `${dibatalkan} dari ${grup.length} pencocokan dibatalkan; ${gagal.length} ditolak dan tetap aktif.`,
+  };
+}
