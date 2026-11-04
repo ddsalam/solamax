@@ -2,6 +2,7 @@ import { rupiahKeSen, type SaldoAwalPihakLawan } from "./pihak-lawan-model";
 import { KODE_MAJU_INTERUNIT, KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 import { UUID_RE } from "./validasi";
 import { DATE_RE } from "./selection-keys";
+import { todayWib } from "./periods";
 
 /**
  * Model MURNI pasangan antar unit (rencana 2026-10-29 U4; R3, R4, R5, R31;
@@ -74,8 +75,14 @@ export type HasilPeriksaAntarUnit =
   | { ok: true; nominalSen: number; jenis: JenisAntarUnit; catatan: string }
   | { ok: false; error: string };
 
-/** Validasi tulis tangan (tanpa zod) — pesan menyebut perbaikannya. */
-export function periksaAntarUnit(m: MasukanAntarUnit): HasilPeriksaAntarUnit {
+/**
+ * Validasi tulis tangan (tanpa zod) — pesan menyebut perbaikannya.
+ *
+ * Tanggal transaksi tak boleh melewati hari ini (WIB): pinjaman antar unit
+ * mencatat transfer yang SUDAH terjadi. Tanpa ini, salah ketik bulan
+ * (19-11 untuk 19-10) lolos dan kakinya menunggu di hari buku masa depan.
+ */
+export function periksaAntarUnit(m: MasukanAntarUnit, hariIni: string = todayWib()): HasilPeriksaAntarUnit {
   if (m.pemberiCode === m.penerimaCode) {
     return { ok: false, error: "Unit pemberi dan penerima harus berbeda — pilih unit lawannya." };
   }
@@ -83,6 +90,12 @@ export function periksaAntarUnit(m: MasukanAntarUnit): HasilPeriksaAntarUnit {
     return { ok: false, error: "Pilih rekening di kedua unit." };
   }
   if (!DATE_RE.test(m.tanggal)) return { ok: false, error: "Tanggal tak valid." };
+  if (m.tanggal > hariIni) {
+    return {
+      ok: false,
+      error: `Tanggal ${m.tanggal} belum terjadi (hari ini ${hariIni}) — periksa bulan dan tahunnya. Catat transfer yang sudah terjadi.`,
+    };
+  }
   if (!(JENIS_ANTAR_UNIT as readonly string[]).includes(m.jenis)) {
     return { ok: false, error: "Jenis harus pinjaman, pengembalian, atau titipan." };
   }
