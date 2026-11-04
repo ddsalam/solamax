@@ -297,7 +297,8 @@ export interface TarikInput {
   catatan: string;
 }
 
-export type TarikResult = { ok: true; pesan: string } | { ok: false; error: string };
+/** `nCocok` — hanya pada penolakan "batalkan cocok dulu": jumlah baris yang masih dicocokkan. */
+export type TarikResult = { ok: true; pesan: string } | { ok: false; error: string; nCocok?: number };
 
 export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult> {
   const scope = await getDataScope();
@@ -373,6 +374,7 @@ export async function tarikRekeningKoran(input: TarikInput): Promise<TarikResult
       await batal(client);
       return {
         ok: false,
+        nCocok,
         error:
           `${nCocok} baris rekening koran ${rk.periode} sudah dicocokkan — batalkan cocok dulu ` +
           "(tindakan Head of Finance), baru tarik impornya.",

@@ -50,7 +50,10 @@ vi.mock("./scope", () => ({
   })),
 }));
 
-const { batalkanCocok, cocokkanManual, cocokkanOtomatis, terimaUsulanSetoran } = await import("./cocok-bank-actions");
+const { batalkanCocok, batalkanCocokRekeningKoran, cocokkanManual, cocokkanOtomatis, terimaUsulanSetoran } = await import(
+  "./cocok-bank-actions"
+);
+const { qScoped } = await import("./db");
 const { batalkanKasSetoran, PESAN_SETORAN_DICOCOKKAN } = await import("./setoran-tulis");
 
 const AKUN = "11111111-1111-4111-8111-111111111111";
@@ -477,6 +480,65 @@ describe("batalkanCocok — HoF saja, beralasan, beraudit", () => {
     expect((await batalkanCocok({ ...masukan, reasonCode: "ADJ-FWD-REVERSAL" })).ok).toBe(false);
     expect((await batalkanCocok({ ...masukan, reasonCode: "ADJ-NGAWUR" })).ok).toBe(false);
     expect(upd("app.cocok_bank")).toHaveLength(0);
+  });
+
+  describe("batalkanCocokRekeningKoran — semua kelompok aktif satu rekening koran, lewat batalkanCocok", () => {
+    const masukanRk = { code: h.BK.code, rekeningKoranId: RK, reasonCode: "ADJ-DUP", catatan: "rekening koran belum lengkap" };
+    const G2 = uid(901);
+    beforeEach(() => vi.mocked(qScoped).mockClear());
+    afterEach(() => {
+      vi.mocked(qScoped).mockReset();
+      vi.mocked(qScoped).mockImplementation(async () => []);
+    });
+
+    it("🔴 staf Keuangan ⇒ ditolak, tanpa baca & tanpa koneksi", async () => {
+      h.sesi.role = "keuangan";
+      h.sesi.email = "staf@solagroup.co";
+      const r = await batalkanCocokRekeningKoran(masukanRk);
+      expect(r).toEqual({ ok: false, error: expect.stringMatching(/Head of Finance/) });
+      expect(qScoped).not.toHaveBeenCalled();
+      expect(h.connect).not.toHaveBeenCalled();
+    });
+
+    it("catatan kosong / kode maju ⇒ ditolak sebelum baca", async () => {
+      expect((await batalkanCocokRekeningKoran({ ...masukanRk, catatan: "  " })).ok).toBe(false);
+      expect((await batalkanCocokRekeningKoran({ ...masukanRk, reasonCode: "ADJ-FWD-REVERSAL" })).ok).toBe(false);
+      expect(qScoped).not.toHaveBeenCalled();
+    });
+
+    it("tanpa kelompok aktif ⇒ ok, nol dibatalkan, tanpa koneksi", async () => {
+      const r = await batalkanCocokRekeningKoran(masukanRk);
+      expect(r).toMatchObject({ ok: true, dibatalkan: 0, gagal: [] });
+      expect(h.connect).not.toHaveBeenCalled();
+    });
+
+    it("🔴 tiap kelompok dibatalkan dalam transaksinya sendiri, beralasan & beraudit; kueri terbatas rekening koran ini", async () => {
+      vi.mocked(qScoped).mockImplementation((async (_u: unknown, q: string) => (q.includes("FROM app.cocok_bank g") ? [{ id: G }, { id: G2 }] : [])) as never);
+      h.state.jawab = (q, p) => (/FROM app\.cocok_bank\s+WHERE id = \$1/.test(q) ? { rows: [{ id: p[0], aktif: true, cara: "otomatis" }] } : dbBatal(q, p));
+      const r = await batalkanCocokRekeningKoran(masukanRk);
+      expect(r).toMatchObject({ ok: true, dibatalkan: 2, gagal: [] });
+      const [, sqlBaca, paramBaca] = vi.mocked(qScoped).mock.calls.find((c) => String(c[1]).includes("FROM app.cocok_bank g"))!;
+      expect(sqlBaca).toMatch(/g\.aktif/);
+      expect(sqlBaca).toMatch(/m\.rekening_koran_id = \$2::uuid/);
+      expect(paramBaca).toEqual([h.BK.unit_id, RK]);
+      expect(h.connect).toHaveBeenCalledTimes(2);
+      expect(upd("app.cocok_bank").map((u) => u.params[0])).toEqual([G, G2]);
+      expect(upd("app.cocok_bank").every((u) => u.params[3] === "ADJ-DUP" && u.params[4] === "rekening koran belum lengkap")).toBe(true);
+      expect(audit()).toHaveLength(2);
+      expect(h.log.filter((l) => l.sql.trim() === "COMMIT")).toHaveLength(2);
+    });
+
+    it("🔴 kelompok yang ditolak dilaporkan & tetap aktif; yang lain tetap dibatalkan", async () => {
+      vi.mocked(qScoped).mockImplementation((async (_u: unknown, q: string) => (q.includes("FROM app.cocok_bank g") ? [{ id: G }, { id: G2 }] : [])) as never);
+      h.state.jawab = (q, p) =>
+        /FROM app\.cocok_bank\s+WHERE id = \$1/.test(q)
+          ? { rows: p[0] === G ? [{ id: G, aktif: true, cara: "otomatis" }] : [{ id: G2, aktif: false, cara: "manual" }] }
+          : dbBatal(q, p);
+      const r = await batalkanCocokRekeningKoran(masukanRk);
+      expect(r).toMatchObject({ ok: true, dibatalkan: 1, gagal: [{ cocokId: G2, error: expect.stringMatching(/sudah dibatalkan/) }] });
+      expect(r.ok && r.pesan).toMatch(/1 dari 2/);
+      expect(upd("app.cocok_bank").map((u) => u.params[0])).toEqual([G]);
+    });
   });
 });
 

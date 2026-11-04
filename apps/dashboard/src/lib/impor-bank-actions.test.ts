@@ -449,6 +449,8 @@ describe("tarikRekeningKoran — HoF saja, beralasan, beraudit", () => {
     const r = await tarikRekeningKoran(masukan);
     expect(r).toMatchObject({ ok: false });
     expect(r.ok === false && r.error).toMatch(/3 baris .* sudah dicocokkan — batalkan cocok dulu/);
+    // Layar memakai `nCocok` untuk menawarkan "Batalkan semua pencocokan" (HoF).
+    expect(r).toMatchObject({ ok: false, nCocok: 3 });
     expect(tulis("app.rekening_koran")).toEqual([]);
     expect(sql()).not.toContain("COMMIT");
   });

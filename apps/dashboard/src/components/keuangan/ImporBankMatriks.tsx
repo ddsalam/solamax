@@ -3,12 +3,15 @@
 /**
  * Matriks impor rekening koran (rencana 2026-10-29 U9; R17–R19, R31):
  * rekening BCA (baris) × bulan (kolom), unggah per rekening dengan panel hasil,
- * dan Tarik (HoF) per sel aktif. Semua keputusan ditegakkan server
- * (`unggahRekeningKoran`, `tarikRekeningKoran`); komponen ini hanya pintunya —
+ * dan Tarik (HoF) per sel aktif — bila masih ada baris yang dicocokkan, panel
+ * Tarik menawarkan "Batalkan semua pencocokan" (HoF) lebih dulu. Semua
+ * keputusan ditegakkan server (`unggahRekeningKoran`, `tarikRekeningKoran`,
+ * `batalkanCocokRekeningKoran`); komponen ini hanya pintunya —
  * kecuali batas ukuran, yang WAJIB diperiksa di sini juga: berkas di atas
  * `bodySizeLimit` ditolak Next sebelum aksi berjalan, dengan galat tak berpesan.
  */
 import { useRef, useState, useTransition } from "react";
+import { batalkanCocokRekeningKoran } from "@/lib/cocok-bank-actions";
 import { tarikRekeningKoran, unggahRekeningKoran } from "@/lib/impor-bank-actions";
 import { periksaBerkas, type HasilUnggah, type PerbandinganSaldoAwal, type SelMatriks } from "@/lib/impor-bank-model";
 import type { Ketidakcocokan } from "@/lib/impor-bank-parser";
@@ -190,6 +193,9 @@ function Tarik({
   const [alasan, setAlasan] = useState("");
   const [catatan, setCatatan] = useState("");
   const [galat, setGalat] = useState<string | null>(null);
+  /** Baris yang masih dicocokkan menurut penolakan Tarik terakhir (null = belum ada penolakan itu). */
+  const [nCocok, setNCocok] = useState<number | null>(null);
+  const [hasilBatal, setHasilBatal] = useState<{ pesan: string; gagal: string[] } | null>(null);
   const [pending, start] = useTransition();
 
   if (!buka) {
@@ -201,10 +207,25 @@ function Tarik({
   }
   const kirim = () => {
     setGalat(null);
+    setHasilBatal(null);
     start(async () => {
       const r = await tarikRekeningKoran({ code, rekeningKoranId: id, reasonCode: alasan, catatan });
-      if (!r.ok) setGalat(r.error);
-      else setBuka(false);
+      if (!r.ok) {
+        setGalat(r.error);
+        setNCocok(r.nCocok ?? null);
+      } else setBuka(false);
+    });
+  };
+  const batalkanSemua = () => {
+    setGalat(null);
+    start(async () => {
+      const r = await batalkanCocokRekeningKoran({ code, rekeningKoranId: id, reasonCode: alasan, catatan });
+      if (!r.ok) {
+        setGalat(r.error);
+        return;
+      }
+      setHasilBatal({ pesan: r.pesan, gagal: [...new Set(r.gagal.map((g) => g.error))] });
+      if (r.gagal.length === 0) setNCocok(null);
     });
   };
   return (
@@ -241,6 +262,34 @@ function Tarik({
       {galat !== null && (
         <div className="banner danger keu-banner" role="alert">
           {galat}
+        </div>
+      )}
+      {nCocok !== null && (
+        <div className="mt2">
+          <p className="fs14 t-secondary">
+            Membatalkan pencocokan membuka kembali baris rekening koran ini. Baris buku yang lahir dari klasifikasi
+            di-void bila harinya masih terbuka, atau dibalik maju bila sudah ditutup — klasifikasinya perlu diulang
+            sesudah rekening koran yang benar diunggah. Kode alasan & catatan di atas ikut dicatat di tiap pembatalan.
+          </p>
+          <button
+            type="button"
+            className="btn-outline sm t-danger mt2"
+            disabled={pending || alasan === "" || catatan.trim() === ""}
+            onClick={batalkanSemua}
+          >
+            {pending ? "Membatalkan…" : "Batalkan semua pencocokan"}
+          </button>
+        </div>
+      )}
+      {hasilBatal !== null && (
+        <div className={`banner ${hasilBatal.gagal.length === 0 ? "info" : "warning"} keu-banner`} role="status">
+          {hasilBatal.pesan}
+          {hasilBatal.gagal.length === 0 ? " Sekarang tekan “Ya, tarik” lagi." : ""}
+          {hasilBatal.gagal.map((e) => (
+            <div key={e} className="fs14 mt2">
+              · {e}
+            </div>
+          ))}
         </div>
       )}
     </div>
