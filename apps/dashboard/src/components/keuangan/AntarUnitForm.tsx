@@ -21,6 +21,7 @@ import {
   type PasanganRingkas,
 } from "@/lib/antar-unit-model";
 import { rpSen } from "@/lib/pihak-lawan-model";
+import { todayWib } from "@/lib/periods";
 
 export interface UnitLawanPilihan {
   code: string;
@@ -229,7 +230,13 @@ export function AntarUnitForm({
             </label>
             <label className="keu-fld">
               <span className="keu-label">Tanggal transaksi</span>
-              <input className="manual-input" type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
+              <input
+                className="manual-input"
+                type="date"
+                max={todayWib()}
+                value={tanggal}
+                onChange={(e) => setTanggal(e.target.value)}
+              />
             </label>
             <label className="keu-fld">
               <span className="keu-label">Nominal</span>

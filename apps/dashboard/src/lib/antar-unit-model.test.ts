@@ -76,6 +76,13 @@ describe("periksaAntarUnit — validasi sebelum koneksi", () => {
   ])("ditolak: %s", (_n, ubah) => {
     expect(periksaAntarUnit({ ...sah, ...ubah }).ok).toBe(false);
   });
+  it("tanggal masa depan ditolak, hari ini & kemarin lolos (WIB)", () => {
+    const r = periksaAntarUnit({ ...sah, tanggal: "2026-11-19" }, "2026-11-04");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("belum terjadi");
+    expect(periksaAntarUnit({ ...sah, tanggal: "2026-11-04" }, "2026-11-04").ok).toBe(true);
+    expect(periksaAntarUnit({ ...sah, tanggal: "2026-10-19" }, "2026-11-04").ok).toBe(true);
+  });
 });
 
 describe("kaki & keterangan — jenis hanya label, arah = siapa membayar siapa", () => {
