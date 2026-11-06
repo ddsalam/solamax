@@ -1650,3 +1650,28 @@ describe("0055_pihak_lawan_unit_baru — unit sesudah 0049 tak lagi tanpa pasang
     expect(st).not.toMatch(/CREATE TABLE|ROW LEVEL SECURITY|CREATE POLICY|DROP POLICY|GRANT|REVOKE/);
   });
 });
+
+describe("0059: alasan Batalkan pintu Finance (rencana 2026-11-07 KTD4)", () => {
+  const sql = MIG("0059_manual_entry_batal");
+  it("grup kode `void` ditambahkan ke daftar tertutup, tiga grup lama tetap", () => {
+    expect(sql).toMatch(/"applies_to" IN \('closing', 'adjustment', 'reclass', 'void'\)/);
+  });
+  it("empat kode VOID-* ber-applies_to void", () => {
+    expect([...sql.matchAll(/\('(VOID-[A-Z]+)',.*'void',\s+false\)/g)].map((m) => m[1])).toEqual([
+      "VOID-DUP",
+      "VOID-SALAH",
+      "VOID-NOMINAL",
+      "VOID-LAIN",
+    ]);
+  });
+  it("kode dikunci FK komposit + CHECK grup, pasangan kode↔alasan utuh, alasan hanya pada baris void", () => {
+    const stmt = pernyataan(sql);
+    expect(stmt).toMatch(/FOREIGN KEY \("void_reason_code", "void_reason_applies_to"\)/);
+    expect(stmt).toMatch(/"void_reason_applies_to" = 'void'/);
+    expect(stmt).toMatch(/"void" AND btrim\("void_alasan"\) <> ''/);
+  });
+  it("aditif: tak ada DROP kolom, tak ada sentuhan trigger 0024/0026/0027", () => {
+    const stmt = pernyataan(sql);
+    expect(stmt).not.toMatch(/DROP COLUMN|DROP TRIGGER|CREATE (OR REPLACE )?TRIGGER|CREATE OR REPLACE FUNCTION/);
+  });
+});

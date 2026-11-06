@@ -606,6 +606,12 @@ model ManualEntry {
   updatedAt       DateTime           @default(now()) @map("updated_at") @db.Timestamptz()
   voidedByUserId  Int?               @map("voided_by_user_id")
   voidedAt        DateTime?          @map("voided_at") @db.Timestamptz()
+  /// 0059 (rencana 2026-11-07) — alasan Batalkan pintu Finance: kode grup
+  /// `void` (FK komposit ke reason_code) + alasan tertulis. NULL untuk void lain
+  /// (pengawas, kaskade pembatalan mutasi kas) yang sah tanpa alasan.
+  voidReasonCode       String?        @map("void_reason_code")
+  voidReasonAppliesTo  String?        @map("void_reason_applies_to")
+  voidAlasan           String?        @map("void_alasan")
 
   /// Milik PENGAWAS (§2.1). NULL = belum berkategori — JANGAN diturunkan dari
   /// `keterangan`; itu menebak milik orang lain. Wajib menyusul mode transisi.
