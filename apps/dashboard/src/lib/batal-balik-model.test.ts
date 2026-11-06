@@ -70,6 +70,9 @@ describe("dampakBatal — perubahan laba bersih bila baris dibatalkan (U4)", () 
   it("pendapatan lain 6-9900 50.000 dibatalkan → laba turun 50.000 (6-9900 dari pintu Finance tetap pendapatan, R26)", () => {
     expect(dampakBatal("pendapatan_lain", "6-9900", 50_000)).toBe(-50_000);
   });
+  it("🔴 titipan outlet (§10.27) bukan laba → 0, sama dengan laporan (tinjauan kode)", () => {
+    expect(dampakBatal("pendapatan_lain", "4200", 50_000, true)).toBe(0);
+  });
   it("baris yang sudah direklas ke akun bukan-laba (1-1800) → 0 (AE2)", () => {
     expect(dampakBatal("pengeluaran", "1-1800", 30_000)).toBe(0);
     expect(dampakBatal("pendapatan_lain", "1-1800", 50_000)).toBe(0);
@@ -124,6 +127,7 @@ describe("ringkasDibalik — dampak Balik ditampilkan terpisah dari selisih beku
     pengaju: null,
     penyetuju: null,
     waktu: "2026-11-07 09:00",
+    titipan: false,
     ...o,
   });
   it("Bakau 2 Okt: tiga baris ganda dibalik → laba bersih hari itu −12.440", () => {

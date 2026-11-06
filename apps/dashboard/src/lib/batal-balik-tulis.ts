@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { KODE_BALIK, periksaAjukanBalik, periksaBatal, PESAN_BALIK, type IsianBatal } from "./batal-balik-model";
+import { ALASAN_MIN, KODE_BALIK, periksaAjukanBalik, periksaBatal, PESAN_BALIK, type IsianBatal } from "./batal-balik-model";
 import { kunciHariBersama } from "./hari-buku-queries";
 import { auditKeuangan, type Aktor } from "./keuangan-tx";
 import type { ScopedUnitId } from "./scope";
@@ -27,12 +27,15 @@ import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 
 export type HasilBatal = { ok: true; businessDate: string } | { ok: false; error: string };
 
-export async function batalkanBarisFinance(
-  c: PoolClient,
-  unitId: ScopedUnitId,
-  aktor: Aktor,
-  input: IsianBatal & { entryId: string },
-): Promise<HasilBatal> {
+
+/**
+ * Fakta baris yang menentukan Batalkan DAN Balik — SATU urutan kunci untuk
+ * keduanya: baris `FOR UPDATE`, lalu kunci BERSAMA bulan → hari (urutan
+ * `cocok-bank-actions`), lalu fakta dibaca ULANG di bawah kunci, supaya
+ * `tutupHari`/`tutupBulan` tak bisa menyelip di antara periksa dan tulis.
+ * `null` = baris tak ada di unit ini (atau bukan biaya/pendapatan lain).
+ */
+async function faktaBaris(c: PoolClient, unitId: ScopedUnitId, entryId: string) {
   const r = await c.query<{
     businessDate: string;
     sourceDoor: string;
@@ -44,33 +47,42 @@ export async function batalkanBarisFinance(
     `SELECT to_char(business_date, 'YYYY-MM-DD') AS "businessDate", source_door AS "sourceDoor",
             void, cash_ledger_id::text AS "cashLedgerId", section::text AS section, amount::text AS amount
        FROM app.manual_entry
-      WHERE id = $1::uuid AND unit_id = $2
-        AND section IN ('pengeluaran', 'pendapatan_lain')
+      WHERE id = $1::uuid AND unit_id = $2 AND section IN ('pengeluaran', 'pendapatan_lain')
       FOR UPDATE`,
-    [input.entryId, unitId],
+    [entryId, unitId],
   );
   const b = r.rows[0];
-  if (!b) return { ok: false, error: "Baris tak ditemukan di unit ini — muat ulang halaman." };
-
+  if (!b) return null;
   const bulanTutup = (await bulanTertutupTerkunci(c, unitId, [b.businessDate.slice(0, 7)])).length > 0;
   await kunciHariBersama(c, unitId, b.businessDate);
-  const hari = await c.query<{ tutup: boolean }>(
+  const f = await c.query<{ hariTutup: boolean; dibalik: boolean; menunggu: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM app.day_close
-                     WHERE unit_id = $1 AND business_date = $2::date AND status = 'closed') AS tutup`,
-    [unitId, b.businessDate],
+                     WHERE unit_id = $1 AND business_date = $2::date AND status = 'closed') AS "hariTutup",
+            EXISTS (SELECT 1 FROM app.correction_entry
+                     WHERE source_kind = 'manual_entry' AND kind = 'reversal'
+                       AND original_txn_id = $3::uuid AND unit_id = $1) AS dibalik,
+            EXISTS (SELECT 1 FROM app.correction_request
+                     WHERE source_kind = 'manual_entry' AND status = 'menunggu'
+                       AND original_txn_id = $3::uuid AND unit_id = $1) AS menunggu`,
+    [unitId, b.businessDate, entryId],
   );
+  return { ...b, bulanTutup, ...f.rows[0]! };
+}
+
+export async function batalkanBarisFinance(
+  c: PoolClient,
+  unitId: ScopedUnitId,
+  aktor: Aktor,
+  input: IsianBatal & { entryId: string },
+): Promise<HasilBatal> {
+  const b = await faktaBaris(c, unitId, input.entryId);
+  if (!b) return { ok: false, error: "Baris tak ditemukan di unit ini — muat ulang halaman." };
   const kode = await c.query<{ code: string }>(
     `SELECT code FROM app.reason_code WHERE applies_to = 'void' AND active`,
   );
 
   const salah = periksaBatal(
-    {
-      sourceDoor: b.sourceDoor,
-      void: b.void,
-      cashLedgerId: b.cashLedgerId,
-      hariTutup: hari.rows[0]?.tutup === true,
-      bulanTutup,
-    },
+    b,
     input,
     new Set(kode.rows.map((k) => k.code)),
   );
@@ -109,47 +121,13 @@ export async function batalkanBarisFinance(
 
 export type HasilBalik = { ok: true; businessDate: string; requestId: string } | { ok: false; error: string };
 
-/** Fakta baris untuk Balik, dibaca di bawah kunci (bulan → hari), seperti Batalkan. */
-async function faktaBalik(c: PoolClient, unitId: ScopedUnitId, entryId: string) {
-  const r = await c.query<{
-    businessDate: string;
-    sourceDoor: string;
-    void: boolean;
-    cashLedgerId: string | null;
-    amount: string;
-  }>(
-    `SELECT to_char(business_date, 'YYYY-MM-DD') AS "businessDate", source_door AS "sourceDoor",
-            void, cash_ledger_id::text AS "cashLedgerId", amount::text AS amount
-       FROM app.manual_entry
-      WHERE id = $1::uuid AND unit_id = $2 AND section IN ('pengeluaran', 'pendapatan_lain')
-      FOR UPDATE`,
-    [entryId, unitId],
-  );
-  const b = r.rows[0];
-  if (!b) return null;
-  const bulanTutup = (await bulanTertutupTerkunci(c, unitId, [b.businessDate.slice(0, 7)])).length > 0;
-  await kunciHariBersama(c, unitId, b.businessDate);
-  const f = await c.query<{ hariTutup: boolean; dibalik: boolean; menunggu: boolean }>(
-    `SELECT EXISTS (SELECT 1 FROM app.day_close
-                     WHERE unit_id = $1 AND business_date = $2::date AND status = 'closed') AS "hariTutup",
-            EXISTS (SELECT 1 FROM app.correction_entry
-                     WHERE source_kind = 'manual_entry' AND kind = 'reversal'
-                       AND original_txn_id = $3::uuid AND unit_id = $1) AS dibalik,
-            EXISTS (SELECT 1 FROM app.correction_request
-                     WHERE source_kind = 'manual_entry' AND status = 'menunggu'
-                       AND original_txn_id = $3::uuid AND unit_id = $1) AS menunggu`,
-    [unitId, b.businessDate, entryId],
-  );
-  return { ...b, bulanTutup, ...f.rows[0]! };
-}
-
 export async function ajukanBalik(
   c: PoolClient,
   unitId: ScopedUnitId,
   aktor: Aktor,
   input: IsianBatal & { entryId: string },
 ): Promise<HasilBalik> {
-  const b = await faktaBalik(c, unitId, input.entryId);
+  const b = await faktaBaris(c, unitId, input.entryId);
   if (!b) return { ok: false, error: "Baris tak ditemukan di unit ini — muat ulang halaman." };
   const kode = await c.query<{ code: string }>(
     `SELECT code FROM app.reason_code WHERE applies_to = 'adjustment' AND active AND code = ANY($1::text[])`,
@@ -228,7 +206,7 @@ export async function tolakBalik(
   if (!q) return { ok: false, error: "Pengajuan tak ditemukan di unit ini — muat ulang halaman." };
   if (q.status !== "menunggu") return { ok: false, error: PESAN_BALIK.bukanMenunggu };
   if (q.requestedBy === aktor.userId) return { ok: false, error: PESAN_BALIK.diriSendiri };
-  if (input.catatan.trim().length < 5) return { ok: false, error: PESAN_BALIK.catatan };
+  if (input.catatan.trim().length < ALASAN_MIN) return { ok: false, error: PESAN_BALIK.catatan };
   const u = await c.query(
     `UPDATE app.correction_request
         SET status = 'ditolak', decided_by_user_id = $2, decided_at = now(), catatan_keputusan = $3
@@ -257,7 +235,7 @@ export async function setujuiBalik(
   if (!q) return { ok: false, error: "Pengajuan tak ditemukan di unit ini — muat ulang halaman." };
   if (q.status !== "menunggu") return { ok: false, error: PESAN_BALIK.bukanMenunggu };
   if (q.requestedBy === aktor.userId) return { ok: false, error: PESAN_BALIK.diriSendiri };
-  const b = await faktaBalik(c, unitId, q.entryId);
+  const b = await faktaBaris(c, unitId, q.entryId);
   if (!b) return { ok: false, error: "Baris tak ditemukan di unit ini — muat ulang halaman." };
   if (b.void) return { ok: false, error: PESAN_BALIK.sudahBatal };
   if (b.dibalik) return { ok: false, error: PESAN_BALIK.sudahDibalik };

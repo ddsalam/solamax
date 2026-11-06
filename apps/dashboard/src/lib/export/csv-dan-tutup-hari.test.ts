@@ -286,6 +286,7 @@ describe("PDF tutup hari — dibalik sesudah ditutup (rencana 2026-11-07 R12b)",
     pengaju: "keuangan@contoh.test",
     penyetuju: "hof@contoh.test",
     waktu: "2026-11-07 09:15",
+    titipan: false,
   };
   it("🔴 selisih saat ditutup TETAP tampil; bagian dibalik menyebut baris, kode, penyetuju, dan perubahan laba", () => {
     const s = teks(buildTutupHariDoc({ ...dasarDoc, dayClose: DC, dibalik: [d] }));

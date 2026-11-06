@@ -55,7 +55,9 @@ export function periksaBatal(b: BarisBatal, isian: IsianBatal, kodeSah: Readonly
  * bukan-laba tidak lagi membentuk laba, jadi membatalkannya tak mengubah laba
  * (AE2 — tidak dihitung dua kali).
  */
-export function dampakBatal(section: string, akunEfektif: string | null, amount: number): number {
+export function dampakBatal(section: string, akunEfektif: string | null, amount: number, titipan = false): number {
+  // §10.27 — titipan outlet bukan pendapatan (pilahManualEntry mengeluarkannya dari laba).
+  if (titipan) return 0;
   if (!membentukLaba(jenisAkun(akunEfektif, section))) return 0;
   const n = Math.abs(amount);
   return section === "pengeluaran" ? n : -n;
@@ -118,6 +120,8 @@ export interface BarisDibalik {
   penyetuju: string | null;
   /** WIB, `YYYY-MM-DD HH24:MI`. */
   waktu: string;
+  /** §10.27 — titipan outlet: bukan laba. */
+  titipan: boolean;
 }
 
 /**
@@ -128,6 +132,6 @@ export interface BarisDibalik {
 export function ringkasDibalik(rows: readonly BarisDibalik[]): { n: number; dampakLaba: number } {
   return {
     n: rows.length,
-    dampakLaba: rows.reduce((s, r) => s + dampakBatal(r.section, r.akun, r.amount), 0),
+    dampakLaba: rows.reduce((s, r) => s + dampakBatal(r.section, r.akun, r.amount, r.titipan), 0),
   };
 }

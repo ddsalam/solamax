@@ -157,7 +157,7 @@ export function BiayaPanel({
   };
 
   const formBatal = (b: BarisBiaya) => {
-    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount);
+    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount, b.titipanBright);
     return (
       <div className="card card-pad-lg keu-form reklas-form">
         <h4 className="text-h3">Batalkan — {b.keterangan}</h4>
@@ -236,7 +236,7 @@ export function BiayaPanel({
 
   const formBalik = (b: BarisBiaya) => {
     if (balikForm === null) return null;
-    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount);
+    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount, b.titipanBright);
     const tolak = balikForm.mode === "tolak";
     return (
       <div className="card card-pad-lg keu-form reklas-form">

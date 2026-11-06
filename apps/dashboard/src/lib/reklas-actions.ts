@@ -4,6 +4,7 @@ import { bentukJurnalSesudahTulis } from "./buku-besar-tulis";
 import { revalidatePath } from "next/cache";
 import { pool } from "./db";
 import { AKUN_KOSONG, periksaReklas } from "./keuangan-reklas";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { canReklasifikasi } from "./keuangan-wewenang";
 import { getDataScope } from "./scope";
 import { isTitipan } from "./titipan-bright";
@@ -65,7 +66,9 @@ export async function reklasifikasiBiaya(input: {
       accountingAccount: string | null;
       bulanBeku?: boolean;
     }>(
-      `SELECT section::text AS section, void, status::text AS status, keterangan,
+      // Rencana 2026-11-07 — baris DIBALIK juga ditolak (bukan hanya void): reklas
+      // atas baris yang tak berlaku hanya mengubah "dampak balik" yang tampil.
+      `SELECT section::text AS section, ${SQL_ME_TAK_BERLAKU("manual_entry")} AS void, status::text AS status, keterangan,
               operational_category AS "operationalCategory", accounting_account AS "accountingAccount",
               EXISTS (SELECT 1 FROM app.tutup_bulan t
                        WHERE t.unit_id = manual_entry.unit_id AND t.buku_besar

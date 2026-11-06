@@ -76,7 +76,7 @@ export interface PengajuanBalik {
 }
 
 /**
- * Empat tindakan bernama (§2.3). **`edit` bukan salah satunya, dan tak akan
+ * Tindakan bernama (§2.3; Batalkan ditambahkan rencana 2026-11-07). **`edit` bukan salah satunya, dan tak akan
  * pernah jadi salah satunya.**
  */
 export const TINDAKAN = ["review", "return", "reclassify", "batalkan", "correct"] as const;

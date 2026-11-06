@@ -354,7 +354,8 @@ export async function getDibalikSesudahTutup(unit: ScopedUnitId, date: string): 
     `SELECT m.keterangan, m.section::text AS section, ${SQL_AKUN_EFEKTIF("m")} AS akun,
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS amount, ce.reason_code AS kode,
             COALESCE(q.alasan, '') AS alasan, us.email AS pengaju, ua.email AS penyetuju,
-            to_char(ce.approved_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS waktu
+            to_char(ce.approved_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS waktu,
+            ${sqlTitipan("m")} AS titipan
        FROM app.correction_entry ce
        JOIN app.manual_entry m ON m.id = ce.original_txn_id AND m.unit_id = ce.unit_id
        LEFT JOIN app.correction_request q ON q.correction_entry_id = ce.id

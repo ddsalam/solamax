@@ -395,6 +395,40 @@ d("Balik baris pintu Finance hari tertutup — DB nyata (rencana 2026-11-07 U5; 
       expect((await T.ajukanBalik(c, UNIT, pengaju, { entryId: id, ...adj })).ok).toBe(true);
     }));
 
+  it("🔴 Tarik oleh BUKAN pengaju ditolak; Setujui sesudah baris berubah (void) ditolak tanpa reversal (tinjauan kode)", () =>
+    tx(async (c) => {
+      const id = await barisHariTutup(c);
+      const a = await T.ajukanBalik(c, UNIT, pengaju, { entryId: id, ...adj });
+      if (!a.ok) throw new Error(a.error);
+      expect(await T.tarikBalik(c, UNIT, hof, { requestId: a.requestId })).toEqual({
+        ok: false,
+        error: "Hanya pengaju yang bisa menarik pengajuannya.",
+      });
+      // Baris di-void lewat jalur lain sesudah diajukan (trigger 0026 dimatikan HANYA di savepoint ini).
+      await c.query("SAVEPOINT v");
+      await c.query("SET LOCAL session_replication_role = replica");
+      await c.query(`UPDATE app.manual_entry SET void = true, voided_at = now(), voided_by_user_id = 1 WHERE id = $1::uuid`, [id]);
+      await c.query("SET LOCAL session_replication_role = origin");
+      expect(await T.setujuiBalik(c, UNIT, hof, { requestId: a.requestId })).toEqual({ ok: false, error: "Baris ini sudah dibatalkan." });
+      const n = await c.query(`SELECT count(*)::int AS n FROM app.correction_entry WHERE original_txn_id = $1::uuid`, [id]);
+      expect(n.rows[0].n).toBe(0);
+      await c.query("ROLLBACK TO SAVEPOINT v");
+    }));
+
+  it("🔴 pembaca UANG nyata (buku besar bacaSumberHari) membuang baris DIBALIK — bukan hanya fragmennya (tinjauan kode)", () =>
+    tx(async (c) => {
+      const id = await barisHariTutup(c);
+      const klien = { query: (sql: string, p: unknown[] = []) => c.query(sql, p) } as never;
+      const { bacaSumberHari } = await import("./buku-besar-sumber");
+      const ids = (h: unknown) => JSON.stringify(h).includes(id);
+      const kosong = { easymax: async () => ({ produk: [], pelanggan: null }) } as never;
+      expect(ids(await bacaSumberHari(klien, UNIT, HARI, kosong))).toBe(true);
+      const a = await T.ajukanBalik(c, UNIT, pengaju, { entryId: id, ...adj });
+      if (!a.ok) throw new Error(a.error);
+      expect((await T.setujuiBalik(c, UNIT, hof, { requestId: a.requestId })).ok).toBe(true);
+      expect(ids(await bacaSumberHari(klien, UNIT, HARI, kosong))).toBe(false);
+    }));
+
   it("🔴 bulan tertutup K5 → ajukan DAN setujui ditolak; reversal kedua ditolak indeks unik", () =>
     tx(async (c) => {
       const id = await barisHariTutup(c);
