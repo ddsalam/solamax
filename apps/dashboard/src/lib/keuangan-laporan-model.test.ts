@@ -39,7 +39,7 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
   kasAkhir: 1_320_000,
   omzet: 400_000,
   teraValue: 0,
-  transaksiPiutangEasymax: -50_000,
+  transaksiPiutangEasymax: -50_000, transaksiDepositEasymax: 0,
   hutangPiutangNonEasymax: 10_000,
   penebusanSo: 0,
   temporaryInvestment: 0,
@@ -56,7 +56,7 @@ const bs = (o: Partial<BalanceInput> = {}): BalanceInput => ({
   cashOnHand: 7_304_915_872,
   inventoryValue: 747_646_746,
   soValue: 573_658_336,
-  piutangEasymax: 7_245_821_009,
+  piutangEasymax: 7_245_821_009, depositEasymax: 0,
   hutangPiutangNonEasymax: -2_177_793_746,
   penampung: 0,
   temporaryInvestment: 0,
@@ -194,7 +194,7 @@ describe("Balance Sheet — kumulatif vs LANGKAH harian", () => {
     const asset = 1_000_000_000;
     const p = panelBalance(
       bs({ openedRetainedEarnings: null, netIncome: 0, totalAssetKemarin: asset - 52_779_482,
-           cashOnHand: asset, inventoryValue: 0, soValue: 0, piutangEasymax: 0, hutangPiutangNonEasymax: 0 }),
+           cashOnHand: asset, inventoryValue: 0, soValue: 0, piutangEasymax: 0, depositEasymax: 0, hutangPiutangNonEasymax: 0 }),
     );
     expect(p.langkahHarian).toBe(-52_779_482);
     expect(nadaPemeriksa(p.langkahHarian)).toBe("buruk");
@@ -268,7 +268,7 @@ describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U
     totals: totals(),
     kasAkhir: 1_000_000_000,
     sebabKas: null,
-    piutangEasymax: 200_000_000,
+    piutangEasymax: 200_000_000, depositEasymax: 0,
     hutangPiutangNonEasymax: 0,
     penampung: 0,
     temporaryInvestment: 0,
@@ -287,7 +287,7 @@ describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U
       sebabKas: null,
       inventoryValue: bahan.totals.inventoryValue,
       soValue: bahan.totals.soValue,
-      piutangEasymax: bahan.piutangEasymax,
+      piutangEasymax: bahan.piutangEasymax, depositEasymax: 0,
       hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
       penampung: 0,
       temporaryInvestment: 0,
@@ -325,7 +325,7 @@ describe("langkahHarianRinci — KTD15: koreksi susulan terpisah dari yang dinil
     totals: totals(),
     kasAkhir: 1_000_000_000,
     sebabKas: null,
-    piutangEasymax: 200_000_000,
+    piutangEasymax: 200_000_000, depositEasymax: 0,
     hutangPiutangNonEasymax: 0,
     penampung: 0,
     temporaryInvestment: 0,

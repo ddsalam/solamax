@@ -76,7 +76,7 @@ describe("KTD12 — peta kategori kas → baris arus kas", () => {
 
   it("baris arus yang dijumlah dari buku kas memakai baris panel yang ADA", () => {
     const p = panelCashFlow({
-      sebabKas: null, kasAwalPerAkun: [], kasAkhir: 0, omzet: 0, teraValue: 0, transaksiPiutangEasymax: 0,
+      sebabKas: null, kasAwalPerAkun: [], kasAkhir: 0, omzet: 0, teraValue: 0, transaksiPiutangEasymax: 0, transaksiDepositEasymax: 0,
       hutangPiutangNonEasymax: 0, penebusanSo: 0, temporaryInvestment: 0, penampung: 0, pendapatanLain: 0,
       biayaOperasional: 0, arusTitipanBright: 0, kontribusiPemilik: 0,
     });
@@ -142,7 +142,7 @@ describe("cek arus kas terhitung & identitasnya berlaku (R16, KTD12)", () => {
       kasAkhir: 1_000_000_000 - 320_000_000 + 50_000_000 - 10_000_000 + 7_000_000 - 2_000_000 - 5_000_000 + 12_000_000,
       omzet: 12_000_000,
       teraValue: 0,
-      transaksiPiutangEasymax: 0,
+      transaksiPiutangEasymax: 0, transaksiDepositEasymax: 0,
       hutangPiutangNonEasymax: a.get("Transaksi hutang piutang non-EasyMax")!,
       penebusanSo: a.get("Penebusan SO")!,
       temporaryInvestment: a.get("Temporary investment")!,
@@ -261,7 +261,7 @@ describe("barisSusulan (KTD15)", () => {
 
 describe("neraca menandai saldo pembuka sementara & merinci titipan per pemilik", () => {
   const dasar: BalanceInput = {
-    sebabKas: null, cashOnHand: 100, inventoryValue: 0, soValue: 0, piutangEasymax: 0,
+    sebabKas: null, cashOnHand: 100, inventoryValue: 0, soValue: 0, piutangEasymax: 0, depositEasymax: 0,
     hutangPiutangNonEasymax: -40, penampung: 0, temporaryInvestment: 0, openedRetainedEarnings: null,
     netIncome: 0, incomeAdjustment: null, totalAssetKemarin: null, deltaKontribusi: 0, saldoTitipanBright: 30,
   };

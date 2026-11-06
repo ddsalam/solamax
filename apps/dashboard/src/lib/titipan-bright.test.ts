@@ -72,7 +72,7 @@ describe("laporan — titipan keluar dari laba, masuk liabilitas", () => {
       cashOnHand: 1_000_000_000 + X,
       inventoryValue: 500_000_000,
       soValue: 0,
-      piutangEasymax: 0,
+      piutangEasymax: 0, depositEasymax: 0,
       hutangPiutangNonEasymax: 0,
       penampung: 0,
       temporaryInvestment: 0,

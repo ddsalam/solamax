@@ -74,6 +74,8 @@ export function hitungBakau(rows: readonly BarisManualLaporan[]) {
       kasAwalPerAkun: [{ nama: "BCA", saldo: 1_000_000 }],
       kasAkhir: 1_420_763.5,
       deltaPiutangEasymax: 0,
+      // Deposit pelanggan EasyMax (#468): Bakau 2 Okt tanpa pemakaian/top-up deposit.
+      deltaDepositEasymax: 0,
       arusHutangPiutangNonEasymax: 0,
       penebusanSo: 0,
       arusTemporaryInvestment: 0,
@@ -90,6 +92,7 @@ export function hitungBakau(rows: readonly BarisManualLaporan[]) {
     kasAkhir: 1_420_763.5,
     sebabKas: null,
     piutangEasymax: 0,
+    depositEasymax: 0,
     hutangPiutangNonEasymax: 0,
     penampung: 0,
     temporaryInvestment: 0,

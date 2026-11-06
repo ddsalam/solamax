@@ -80,6 +80,11 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
 
     expect(bahan.piutangEasymax).toBe(24);
     expect(bahan.deltaPiutangEasymax).toBe(-11);
+    // Deposit (Hutang Lokal) terpisah dari piutang — buku besar membandingkan
+    // `piutangEasymax` dengan akun 1121; deposit milik 2101.
+    expect(bahan.depositEasymax).toBe(-5);
+    // −2 → −5: deposit bertambah 3 (top-up) ⇒ arus kas +3.
+    expect(bahan.deltaDepositEasymax).toBe(3);
     expect(qScoped.mock.calls.filter(([, sql]) => String(sql).includes("WITH piut AS"))).toHaveLength(2);
   });
 
@@ -109,5 +114,30 @@ describe("saldo EasyMax pada laporan Keuangan selama transisi snapshot", () => {
     expect(bahan.totals.inventoryValue).toBe(9_000_000);
     expect(bahan.totals.lossesGainValue).toBe(0);
     expect(bahan.totals.revenue).toBe(1_000_000);
+  });
+
+  it("🔴 asset KEMARIN memuat deposit pelanggan (Hutang Lokal) — tanpanya langkah harian melenceng", async () => {
+    // Pemakaian deposit menaikkan saldo Hutang Lokal tanpa uang masuk. Bila sisi kemarin tak memuat deposit sementara
+    // hari ini memuatnya, langkah melompat sebesar SALDO deposit, bukan arusnya.
+    getDailyGlByProduct.mockResolvedValue([{
+      d: "2026-08-03", ckdbbm: "P", nama: null, fisik: 1_000, fisik_prev: 1_100,
+      pen_do: 0, sales_gross: 100, tera: 0, gl: 0, movement_invalid: false, excluded_tanks: 0, provisional: false,
+    }]);
+    getHargaBeliRows.mockResolvedValue([{ productKey: "P", effectiveFrom: "2026-01-01", price: 9_000, void: false }]);
+    getAkunKas.mockResolvedValue([{ id: "synthetic-account", nama: "Synthetic" }]);
+    const dengan = (await getBahanLaporan(U, "2026-08-04", "2026-08-03")).totalAssetKemarin;
+
+    qScoped.mockImplementation((_unit: ScopedUnitId, sql: string) => Promise.resolve(
+      sql.includes("FROM app.saldo_pelanggan_snapshot_pointer")
+        ? []
+        : sql.includes("WITH piut AS")
+          ? [{ awalPiutangLokal: 10, akhirPiutangLokal: 20, awalPiutangOnline: 3, akhirPiutangOnline: 4,
+               awalHutangLokal: 0, akhirHutangLokal: 0 }]
+          : [],
+    ));
+    const tanpa = (await getBahanLaporan(U, "2026-08-04", "2026-08-03")).totalAssetKemarin;
+
+    expect(dengan).not.toBeNull();
+    expect(dengan! - tanpa!).toBe(-5);
   });
 });
