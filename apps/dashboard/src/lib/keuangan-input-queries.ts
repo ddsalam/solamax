@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { KODE_BALIK, type BarisDibalik } from "./batal-balik-model";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
 import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
@@ -342,6 +343,44 @@ export async function getReasonCodeVoid(
   );
 }
 
+/**
+ * R12b — baris yang dibalik sesudah hari ditutup (reversal disetujui, 0060).
+ * `day_close` hari itu tak dihitung ulang; daftar ini yang menjelaskan beda
+ * antara selisih saat ditutup dan angka sekarang.
+ */
+export async function getDibalikSesudahTutup(unit: ScopedUnitId, date: string): Promise<BarisDibalik[]> {
+  return qScoped<BarisDibalik>(
+    unit,
+    `SELECT m.keterangan, m.section::text AS section, ${SQL_AKUN_EFEKTIF("m")} AS akun,
+            ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS amount, ce.reason_code AS kode,
+            COALESCE(q.alasan, '') AS alasan, us.email AS pengaju, ua.email AS penyetuju,
+            to_char(ce.approved_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS waktu
+       FROM app.correction_entry ce
+       JOIN app.manual_entry m ON m.id = ce.original_txn_id AND m.unit_id = ce.unit_id
+       LEFT JOIN app.correction_request q ON q.correction_entry_id = ce.id
+       LEFT JOIN app.users us ON us.id = ce.submitted_by_user_id
+       LEFT JOIN app.users ua ON ua.id = ce.approved_by_user_id
+      WHERE ce.unit_id = $1 AND ce.source_kind = 'manual_entry' AND ce.kind = 'reversal'
+        AND m.business_date = $2::date
+      ORDER BY ce.approved_at`,
+    [unit, date],
+  );
+}
+
+/** Kode alasan Balik (rencana 2026-11-07 R8) — grup `adjustment`, daftar `KODE_BALIK`. */
+export async function getReasonCodeBalik(
+  unit: ScopedUnitId,
+): Promise<{ code: string; label: string }[]> {
+  return qScoped<{ code: string; label: string }>(
+    unit,
+    `SELECT code, label
+       FROM app.reason_code
+      WHERE applies_to = 'adjustment' AND active AND code = ANY($1::text[])
+      ORDER BY code`,
+    [[...KODE_BALIK]],
+  );
+}
+
 /** Satu reklasifikasi yang pernah dibuat atas baris `manual_entry` (0021). */
 export interface ReklasBaris {
   sourceTxnId: string;
@@ -425,9 +464,26 @@ export async function getBiayaHarian(
             to_char(m.voided_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI') AS "voidAt",
             uv.email              AS "voidOleh",
             m.void_reason_code    AS "voidReasonCode",
-            m.void_alasan         AS "voidAlasan"
+            m.void_alasan         AS "voidAlasan",
+            -- Rilis 2 (0060) — dibalik & pengajuan Balik TERAKHIR.
+            EXISTS (SELECT 1 FROM app.correction_entry ce
+                     WHERE ce.source_kind = 'manual_entry' AND ce.kind = 'reversal'
+                       AND ce.original_txn_id = m.id AND ce.unit_id = m.unit_id) AS dibalik,
+            CASE WHEN q.id IS NULL THEN NULL ELSE json_build_object(
+              'id', q.id::text, 'status', q.status, 'olehId', q.requested_by_user_id, 'oleh', uq.email,
+              'waktu', to_char(q.requested_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI'),
+              'kode', q.reason_code, 'alasan', q.alasan, 'putusOleh', ud.email,
+              'putusWaktu', to_char(q.decided_at AT TIME ZONE 'Asia/Pontianak', 'YYYY-MM-DD HH24:MI'),
+              'catatan', q.catatan_keputusan) END AS balik
        FROM app.manual_entry m
        LEFT JOIN app.users uv ON uv.id = m.voided_by_user_id
+       LEFT JOIN LATERAL (
+              SELECT * FROM app.correction_request r
+               WHERE r.source_kind = 'manual_entry' AND r.original_txn_id = m.id AND r.unit_id = m.unit_id
+               ORDER BY r.requested_at DESC, r.id DESC
+               LIMIT 1) q ON true
+       LEFT JOIN app.users uq ON uq.id = q.requested_by_user_id
+       LEFT JOIN app.users ud ON ud.id = q.decided_by_user_id
       WHERE m.unit_id = $1 AND m.business_date = $2::date
         AND m.section IN ('pendapatan_lain','pengeluaran')
       ORDER BY m.section, m.urut, m.created_at`,

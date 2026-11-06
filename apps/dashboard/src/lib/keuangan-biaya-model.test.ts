@@ -29,6 +29,8 @@ const b = (o: Partial<BarisBiaya> = {}): BarisBiaya => ({
   voidOleh: null,
   voidReasonCode: null,
   voidAlasan: null,
+  dibalik: false,
+  balik: null,
   ...o,
 });
 
@@ -65,11 +67,22 @@ describe("tindakanTersedia — tindakan bernama, dan TIDAK ADA edit", () => {
   it("🔴 hari TERTUTUP (day_close) — bukan hanya status baris — memberi reklasifikasi & koreksi saja", () => {
     // status baris tak pernah di-set 'closed' oleh aplikasi; yang menutup hari adalah day_close.
     expect(tindakanTersedia(b({ sourceDoor: "finance", hariTutup: true }))).toEqual(["reclassify", "correct"]);
-    expect(tindakanTersedia(b({ hariTutup: true }))).toEqual(["reclassify", "correct"]);
+    expect(tindakanTersedia(b({ hariTutup: true }))).toEqual(["reclassify"]);
   });
 
-  it("closed: hanya reklasifikasi & koreksi — transaksi asli beku", () => {
-    expect(tindakanTersedia(b({ status: "closed" }))).toEqual(["reclassify", "correct"]);
+  it("🔴 Balik (rencana 2026-11-07 Rilis 2): bertaut kas di hari tertutup tak ditawari; baris DIBALIK tak punya tindakan", () => {
+    expect(tindakanTersedia(b({ sourceDoor: "finance", hariTutup: true, bertautKas: true }))).toEqual(["reclassify"]);
+    expect(tindakanTersedia(b({ sourceDoor: "finance", hariTutup: true, dibalik: true, void: true }))).toEqual([]);
+  });
+
+  it("🔴 baris dibalik tidak ikut total pintu (void = TIDAK BERLAKU dari kueri)", () => {
+    const rows = [b({ sourceDoor: "finance", amount: 7_560, void: true, dibalik: true }), b({ sourceDoor: "finance", amount: 1_000 })];
+    expect(totalPerPintu(rows).finance).toBe(-1_000);
+  });
+
+  it("closed: transaksi asli beku — pengawas hanya reklasifikasi (Balik pengawas ditunda), Finance + koreksi", () => {
+    expect(tindakanTersedia(b({ status: "closed" }))).toEqual(["reclassify"]);
+    expect(tindakanTersedia(b({ status: "closed", sourceDoor: "finance" }))).toEqual(["reclassify", "correct"]);
   });
 
   it("baris void tak menawarkan tindakan apa pun", () => {
