@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { dampakBatal, periksaBatal, PESAN_BATAL, type BarisBatal } from "./batal-balik-model";
+import {
+  dampakBatal,
+  periksaAjukanBalik,
+  periksaBatal,
+  PESAN_BALIK,
+  PESAN_BATAL,
+  ringkasDibalik,
+  type BarisBalik,
+  type BarisDibalik,
+  type BarisBatal,
+} from "./batal-balik-model";
 
 const KODE = new Set(["VOID-DUP", "VOID-LAIN"]);
 const baris = (o: Partial<BarisBatal> = {}): BarisBatal => ({
@@ -63,5 +73,69 @@ describe("dampakBatal — perubahan laba bersih bila baris dibatalkan (U4)", () 
   it("baris yang sudah direklas ke akun bukan-laba (1-1800) → 0 (AE2)", () => {
     expect(dampakBatal("pengeluaran", "1-1800", 30_000)).toBe(0);
     expect(dampakBatal("pendapatan_lain", "1-1800", 50_000)).toBe(0);
+  });
+});
+
+describe("periksaAjukanBalik — pengajuan Balik hari tertutup (rencana 2026-11-07 R8, R12)", () => {
+  const KODE_ADJ = new Set(["ADJ-DUP", "ADJ-AMOUNT", "ADJ-DATE", "ADJ-PARTY"]);
+  const bb = (o: Partial<BarisBalik> = {}): BarisBalik => ({
+    sourceDoor: "finance",
+    void: false,
+    cashLedgerId: null,
+    hariTutup: true,
+    bulanTutup: false,
+    dibalik: false,
+    menunggu: false,
+    ...o,
+  });
+  const isi = { reasonCode: "ADJ-DUP", alasan: "ganda dengan MDR otomatis settlement" };
+
+  it("baris Finance di hari tertutup → boleh diajukan", () => {
+    expect(periksaAjukanBalik(bb(), isi, KODE_ADJ)).toBeNull();
+  });
+  it("🔴 hari masih terbuka → pakai Batalkan, bukan Balik", () => {
+    expect(periksaAjukanBalik(bb({ hariTutup: false }), isi, KODE_ADJ)).toBe(PESAN_BALIK.hariTerbuka);
+  });
+  it("🔴 pengawas / bertaut kas / void / bulan tertutup → ditolak dengan jalurnya", () => {
+    expect(periksaAjukanBalik(bb({ sourceDoor: "pengawas" }), isi, KODE_ADJ)).toBe(PESAN_BALIK.pengawas);
+    expect(periksaAjukanBalik(bb({ cashLedgerId: "k" }), isi, KODE_ADJ)).toBe(PESAN_BALIK.bertautKas);
+    expect(periksaAjukanBalik(bb({ void: true }), isi, KODE_ADJ)).toBe(PESAN_BALIK.sudahBatal);
+    expect(periksaAjukanBalik(bb({ bulanTutup: true }), isi, KODE_ADJ)).toBe(PESAN_BALIK.bulanTutup);
+  });
+  it("🔴 sudah dibalik / sudah ada pengajuan menunggu → ditolak", () => {
+    expect(periksaAjukanBalik(bb({ dibalik: true }), isi, KODE_ADJ)).toBe(PESAN_BALIK.sudahDibalik);
+    expect(periksaAjukanBalik(bb({ menunggu: true }), isi, KODE_ADJ)).toBe(PESAN_BALIK.sudahMenunggu);
+  });
+  it("kode harus dari daftar koreksi (bukan VOID-*, bukan ADJ-FWD-*); alasan ≥ 5 huruf", () => {
+    expect(periksaAjukanBalik(bb(), { ...isi, reasonCode: "VOID-DUP" }, KODE_ADJ)).toBe(PESAN_BALIK.kode);
+    expect(periksaAjukanBalik(bb(), { ...isi, reasonCode: "ADJ-FWD-REVERSAL" }, KODE_ADJ)).toBe(PESAN_BALIK.kode);
+    expect(periksaAjukanBalik(bb(), { ...isi, alasan: "  ab " }, KODE_ADJ)).toBe(PESAN_BALIK.alasan);
+  });
+});
+
+describe("ringkasDibalik — dampak Balik ditampilkan terpisah dari selisih beku (R12b)", () => {
+  const r = (o: Partial<BarisDibalik>): BarisDibalik => ({
+    keterangan: "x",
+    section: "pengeluaran",
+    akun: "7-1200",
+    amount: 0,
+    kode: "ADJ-DUP",
+    alasan: "ganda",
+    pengaju: null,
+    penyetuju: null,
+    waktu: "2026-11-07 09:00",
+    ...o,
+  });
+  it("Bakau 2 Okt: tiga baris ganda dibalik → laba bersih hari itu −12.440", () => {
+    expect(
+      ringkasDibalik([
+        r({ amount: 7_560 }),
+        r({ amount: 30_000, akun: "6-9100" }),
+        r({ amount: 50_000, section: "pendapatan_lain", akun: "6-9900" }),
+      ]),
+    ).toEqual({ n: 3, dampakLaba: 7_560 + 30_000 - 50_000 });
+  });
+  it("kosong → nol, bukan null", () => {
+    expect(ringkasDibalik([])).toEqual({ n: 0, dampakLaba: 0 });
   });
 });

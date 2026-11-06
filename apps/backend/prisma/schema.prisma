@@ -725,6 +725,32 @@ model CorrectionEntry {
   @@schema("app")
 }
 
+/// 0060 (rencana 2026-11-07) — pengajuan BALIK baris pintu Finance di hari
+/// tertutup. Disetujui ⇒ satu `correction_entry` reversal. Pemisahan tugas,
+/// pasangan keputusan, dan pembekuan sesudah diputus ditegakkan di DB.
+model CorrectionRequest {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId             Int       @map("unit_id") @db.SmallInt
+  sourceKind         String    @default("manual_entry") @map("source_kind")
+  originalTxnId      String    @map("original_txn_id") @db.Uuid
+  reasonCode         String    @map("reason_code")
+  reasonAppliesTo    String    @map("reason_applies_to")
+  alasan             String
+  valueBefore        Decimal   @map("value_before") @db.Decimal(17, 2)
+  /// 'menunggu' | 'disetujui' | 'ditolak' | 'ditarik' (CHECK di 0060).
+  status             String    @default("menunggu")
+  requestedByUserId  Int       @map("requested_by_user_id")
+  requestedAt        DateTime  @default(now()) @map("requested_at") @db.Timestamptz()
+  decidedByUserId    Int?      @map("decided_by_user_id")
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz()
+  catatanKeputusan   String?   @map("catatan_keputusan")
+  correctionEntryId  String?   @map("correction_entry_id") @db.Uuid
+
+  @@index([unitId, requestedAt])
+  @@map("correction_request")
+  @@schema("app")
+}
+
 // Master sebab-selisih — DAFTAR TERTUTUP (B2, §10.2). 19 kode di-seed migrasi
 // 0022. dashboard_app hanya SELECT: menambah kode = migrasi = keputusan owner.
 // Tanpa unit_id ⇒ tanpa RLS, disengaja (master rujukan, bukan data per-unit).

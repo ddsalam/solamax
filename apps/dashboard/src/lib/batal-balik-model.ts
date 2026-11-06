@@ -31,7 +31,7 @@ export const PESAN_BATAL = {
     "Baris ini dicatat pengawas — Finance tidak membatalkannya. Pakai \"Kembalikan untuk perbaikan\" supaya pengawas yang memperbaiki.",
   bertautKas:
     "Baris ini lahir dari mutasi kas/bank. Batalkan mutasi kas asalnya di buku kas/bank — bebannya ikut batal, supaya kas dan laba tidak berpisah.",
-  hariTutup: "Hari ini sudah ditutup — baris tidak bisa dibatalkan. Pembalikan untuk hari tertutup menyusul.",
+  hariTutup: "Hari ini sudah ditutup — baris tidak bisa dibatalkan. Pakai \"Ajukan balik\" (perlu persetujuan orang kedua).",
   bulanTutup: "Bulan baris ini sudah ditutup — baris tidak bisa dibatalkan atau dibalik lagi.",
   sudahBatal: "Baris ini sudah dibatalkan.",
   kode: "Pilih kode alasan pembatalan dari daftar.",
@@ -59,4 +59,75 @@ export function dampakBatal(section: string, akunEfektif: string | null, amount:
   if (!membentukLaba(jenisAkun(akunEfektif, section))) return 0;
   const n = Math.abs(amount);
   return section === "pengeluaran" ? n : -n;
+}
+
+// ---------------------------------------------------------------------------
+// Balik (rencana 2026-11-07 Rilis 2; R8–R12)
+// ---------------------------------------------------------------------------
+
+/** Kode alasan Balik: grup `adjustment` tanpa kode pembukuan maju (diisi sistem) & legacy Direksi. */
+export const KODE_BALIK = ["ADJ-DUP", "ADJ-AMOUNT", "ADJ-DATE", "ADJ-PARTY"] as const;
+
+export interface BarisBalik extends BarisBatal {
+  /** Sudah ada `correction_entry` reversal untuk baris ini. */
+  dibalik: boolean;
+  /** Sudah ada `correction_request` berstatus menunggu untuk baris ini. */
+  menunggu: boolean;
+}
+
+export const PESAN_BALIK = {
+  pengawas: PESAN_BATAL.pengawas,
+  bertautKas:
+    "Baris ini lahir dari mutasi kas/bank — membaliknya sendiri memisahkan kas dari laba. Hubungi Head of Finance untuk koreksi mutasi kas asalnya.",
+  sudahBatal: PESAN_BATAL.sudahBatal,
+  bulanTutup: PESAN_BATAL.bulanTutup,
+  hariTerbuka: "Hari ini belum ditutup — pakai Batalkan, bukan Balik.",
+  sudahDibalik: "Baris ini sudah dibalik.",
+  sudahMenunggu: "Sudah ada pengajuan balik yang menunggu persetujuan untuk baris ini.",
+  kode: "Pilih kode alasan koreksi dari daftar.",
+  alasan: `Tulis alasan pembalikan (minimal ${ALASAN_MIN} huruf).`,
+  catatan: `Tulis catatan penolakan (minimal ${ALASAN_MIN} huruf).`,
+  bukanMenunggu: "Pengajuan ini sudah diputus atau ditarik — muat ulang halaman.",
+  diriSendiri: "Pengajuan balik tidak bisa disetujui atau ditolak oleh pengajunya sendiri — perlu orang kedua.",
+  bukanPengaju: "Hanya pengaju yang bisa menarik pengajuannya.",
+} as const;
+
+export function periksaAjukanBalik(b: BarisBalik, isian: IsianBatal, kodeSah: ReadonlySet<string>): string | null {
+  if (b.sourceDoor !== "finance") return PESAN_BALIK.pengawas;
+  if (b.void) return PESAN_BALIK.sudahBatal;
+  if (b.dibalik) return PESAN_BALIK.sudahDibalik;
+  if (b.cashLedgerId !== null) return PESAN_BALIK.bertautKas;
+  if (b.bulanTutup) return PESAN_BALIK.bulanTutup;
+  if (!b.hariTutup) return PESAN_BALIK.hariTerbuka;
+  if (b.menunggu) return PESAN_BALIK.sudahMenunggu;
+  if (!kodeSah.has(isian.reasonCode)) return PESAN_BALIK.kode;
+  if (isian.alasan.trim().length < ALASAN_MIN) return PESAN_BALIK.alasan;
+  return null;
+}
+
+/** Satu baris yang dibalik SESUDAH harinya ditutup (R12b) — untuk Layar 4 & PDF tutup hari. */
+export interface BarisDibalik {
+  keterangan: string;
+  section: string;
+  /** Akun EFEKTIF saat ini. */
+  akun: string | null;
+  amount: number;
+  kode: string;
+  alasan: string;
+  pengaju: string | null;
+  penyetuju: string | null;
+  /** WIB, `YYYY-MM-DD HH24:MI`. */
+  waktu: string;
+}
+
+/**
+ * R12b — `day_close` hari itu BEKU (§10.15): selisih saat ditutup tidak dihitung
+ * ulang. Dampak Balik ditampilkan TERPISAH sebagai perubahan laba bersih hari
+ * itu, supaya "angka yang disahkan" dan "angka sekarang" sama-sama terbaca.
+ */
+export function ringkasDibalik(rows: readonly BarisDibalik[]): { n: number; dampakLaba: number } {
+  return {
+    n: rows.length,
+    dampakLaba: rows.reduce((s, r) => s + dampakBatal(r.section, r.akun, r.amount), 0),
+  };
 }
