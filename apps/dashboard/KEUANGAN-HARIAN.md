@@ -2420,6 +2420,30 @@ berbunyi seperti pertanyaan yang masih terbuka.
 
 ---
 
+### 10.55 Batalkan baris pintu Finance di hari terbuka (keputusan owner 6–7 November 2026)
+
+**Keputusan owner (rencana `docs/plans/2026-11-07-0010-feat-keuangan-batal-balik-baris-finance-plan.md`):**
+Finance boleh **membatalkan** baris biaya/pendapatan lain-lain **pintu Finance** selama
+hari belum ditutup. Pemicunya Bakau 2 Okt: tiga baris Finance ganda tanpa mutasi kas
+(+12.440) yang hanya bisa ditambal dengan reklasifikasi ke 1-1800.
+
+- **Bukan Edit (§2.3 tetap utuh).** Batalkan = void (UPDATE kolom `void`, 0007) dengan
+  **kode alasan grup `void`** (`VOID-DUP`, `VOID-SALAH`, `VOID-NOMINAL`, `VOID-LAIN`, 0059) dan
+  **alasan tertulis** wajib. Baris tetap tampil, bertanda dibatalkan, beserta siapa, kapan,
+  kode, dan alasannya. Kejadian `batal_biaya_finance` tampil kuning di Pemantauan.
+- **Pelaku:** staf Keuangan, Head of Finance, super admin (`canBatalkanBarisFinance` —
+  anggota sama dengan reklasifikasi §10.29, predikat sendiri).
+- **Yang ditolak di server**, bukan hanya disembunyikan tombolnya: baris **pengawas**
+  (jalurnya Kembalikan untuk perbaikan, §2.1), baris **bertaut mutasi kas** (0053 —
+  batalkan mutasi kas asalnya, supaya kas dan laba tak berpisah), **hari tertutup**
+  (trigger 0026 tetap jaring terakhir), dan **bulan tertutup** (K5 maupun buku besar).
+- **Satu aturan "baris berlaku"** (`keuangan-berlaku.ts`): setiap pembaca uang —
+  laporan harian, Papan, tutup hari, buku besar, Perlu ditautkan, titipan, ekspor —
+  memakai `SQL_ME_TAK_BERLAKU`. `keuangan-berlaku.guard.test.ts` memerah bila kueri
+  baru menulis saringan void sendiri. Sebelumnya cabang `keluar` di `pilahManualEntry`
+  tidak menyaring void; beban benar hanya karena `kumpulkanBeban` menyaring ulang.
+- **Pembalikan untuk hari tertutup** menyusul di rilis kedua rencana yang sama.
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu

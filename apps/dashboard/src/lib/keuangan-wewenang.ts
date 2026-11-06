@@ -334,6 +334,24 @@ export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): 
   );
 }
 
+/**
+ * Boleh MEMBATALKAN baris biaya/pendapatan lain-lain pintu Finance di hari yang
+ * belum ditutup (rencana 2026-11-07 R4, KTD7)? Staf `keuangan`, super admin,
+ * DAN Head of Finance — keputusan Dion (session-settled): anggota yang sama
+ * dengan {@link canReklasifikasi}, sebab pemakai nyatanya sama (tim Finance,
+ * termasuk akun HoF).
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI, bukan `canReklasifikasi(...)`: yang dipatok adalah
+ * keputusannya. Kalau kelak wewenang reklasifikasi bergeser, Batalkan tidak ikut
+ * bergeser diam-diam (dan sebaliknya). Kontrolnya keterlihatan: setiap
+ * pembatalan membawa kode + alasan dan tampil di Pemantauan.
+ */
+export function canBatalkanBarisFinance(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Pihak lawan (rencana 2026-10-29 U3; R26) — SATU predikat per keputusan.
 //
