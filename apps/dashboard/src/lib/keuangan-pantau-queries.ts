@@ -111,6 +111,7 @@ export type JenisKejadian =
   | "rekening_edc_diubah"
   | "rekening_pencairan_beda"
   | "reklasifikasi_biaya"
+  | "batal_biaya_finance"
   | "balik_antar_unit"
   | "tarik_rekening_koran";
 
@@ -681,6 +682,18 @@ const KUERI_KEJADIAN = `
      WHERE r.unit_id = ANY($1::int[]) AND r.source_kind = 'manual_entry'
        AND ${SAAT_DALAM_JENDELA("r.created_at")}
 
+    -- Rencana 2026-11-07 R13 — setiap Batalkan baris pintu Finance terlihat:
+    -- baris keluar dari laba & arus kas, dengan siapa, kode, dan alasannya.
+    UNION ALL
+    SELECT m.unit_id::int, 'batal_biaya_finance', ${WIB_TEKS("m.voided_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.section::text || ' — ' || m.keterangan || ' · ' || m.void_reason_code || ' · ' || m.void_alasan),
+           abs(m.amount)::float8, NULL
+      FROM app.manual_entry m
+      LEFT JOIN app.users u ON u.id = m.voided_by_user_id
+     WHERE m.unit_id = ANY($1::int[]) AND m.void AND m.void_reason_code IS NOT NULL
+       AND ${SAAT_DALAM_JENDELA("m.voided_at")}
+
     UNION ALL
     SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},
            to_char(k.business_date, 'YYYY-MM-DD'), u.email,
@@ -801,6 +814,12 @@ const KUERI_AKTIVITAS = `
       FROM app.manual_entry
      WHERE unit_id = ANY($1::int[]) AND source_door = 'finance'
        AND ${SAAT_DALAM_JENDELA("created_at")}
+    UNION ALL
+    -- Rencana 2026-11-07 R13 — Batalkan pintu Finance (beralasan) dihitung pembatalan.
+    SELECT voided_by_user_id, 'pembatalan', voided_at
+      FROM app.manual_entry
+     WHERE unit_id = ANY($1::int[]) AND void AND void_reason_code IS NOT NULL
+       AND ${SAAT_DALAM_JENDELA("voided_at")}
     UNION ALL
     SELECT closed_by_user_id, 'tutup hari', closed_at
       FROM app.day_close

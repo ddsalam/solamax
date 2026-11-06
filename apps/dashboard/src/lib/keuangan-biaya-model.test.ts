@@ -23,12 +23,20 @@ const b = (o: Partial<BarisBiaya> = {}): BarisBiaya => ({
   status: "submitted",
   sourceDoor: "pengawas",
   void: false,
+  bertautKas: false,
+  hariTutup: false,
+  voidAt: null,
+  voidOleh: null,
+  voidReasonCode: null,
+  voidAlasan: null,
   ...o,
 });
 
-describe("tindakanTersedia — empat tindakan bernama, dan TIDAK ADA edit", () => {
+describe("tindakanTersedia — tindakan bernama, dan TIDAK ADA edit", () => {
   it("🔴 `edit` bukan salah satu tindakan — sekarang maupun nanti (§2.3)", () => {
-    expect([...TINDAKAN]).toEqual(["review", "return", "reclassify", "correct"]);
+    // Rencana 2026-11-07: Batalkan (void beralasan, hari terbuka, pintu Finance)
+    // ditambahkan atas keputusan Dion. Tetap bukan Edit — nominal tak berubah.
+    expect([...TINDAKAN]).toEqual(["review", "return", "reclassify", "batalkan", "correct"]);
     expect(TINDAKAN as readonly string[]).not.toContain("edit");
     expect(Object.values(LABEL_TINDAKAN).join(" ")).not.toMatch(/edit/i);
   });
@@ -41,9 +49,23 @@ describe("tindakanTersedia — empat tindakan bernama, dan TIDAK ADA edit", () =
     expect(tindakanTersedia(b())).toEqual(["review", "return", "reclassify"]);
   });
 
-  it("🔴 baris pintu FINANCE tak punya 'kembalikan' — tak ada pengawas yang dituju", () => {
+  it("🔴 baris pintu FINANCE tak punya 'kembalikan' — tak ada pengawas yang dituju; ia punya Batalkan", () => {
     // Tombol yang tak punya tujuan lebih buruk daripada tombol yang tak ada.
-    expect(tindakanTersedia(b({ sourceDoor: "finance" }))).toEqual(["review", "reclassify"]);
+    expect(tindakanTersedia(b({ sourceDoor: "finance" }))).toEqual(["review", "reclassify", "batalkan"]);
+  });
+
+  it("🔴 baris Finance bertaut mutasi kas: tak ada Batalkan (batalkan lewat mutasi asal)", () => {
+    expect(tindakanTersedia(b({ sourceDoor: "finance", bertautKas: true }))).toEqual(["review", "reclassify"]);
+  });
+
+  it("🔴 baris pengawas tak pernah ditawari Batalkan", () => {
+    expect(tindakanTersedia(b())).not.toContain("batalkan");
+  });
+
+  it("🔴 hari TERTUTUP (day_close) — bukan hanya status baris — memberi reklasifikasi & koreksi saja", () => {
+    // status baris tak pernah di-set 'closed' oleh aplikasi; yang menutup hari adalah day_close.
+    expect(tindakanTersedia(b({ sourceDoor: "finance", hariTutup: true }))).toEqual(["reclassify", "correct"]);
+    expect(tindakanTersedia(b({ hariTutup: true }))).toEqual(["reclassify", "correct"]);
   });
 
   it("closed: hanya reklasifikasi & koreksi — transaksi asli beku", () => {

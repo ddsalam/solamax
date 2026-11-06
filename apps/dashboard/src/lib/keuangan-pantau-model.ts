@@ -478,6 +478,7 @@ export const LABEL_KEJADIAN: Record<JenisKejadian, string> = {
   rekening_edc_diubah: "Rekening pencairan EDC diubah",
   rekening_pencairan_beda: "Dana EDC masuk ke rekening lain dari pengaturan",
   reklasifikasi_biaya: "Biaya/pendapatan pengawas direklasifikasi Finance",
+  batal_biaya_finance: "Biaya Finance dibatalkan",
   balik_antar_unit: "Pasangan antar unit dibalik (Head of Finance)",
   tarik_rekening_koran: "Rekening koran impor ditarik (Head of Finance)",
 };
@@ -503,6 +504,8 @@ export const NADA_KEJADIAN: Record<JenisKejadian, Nada> = {
   rekening_pencairan_beda: "kuning",
   // §10.29 — memindahkan pos keluar dari laba mengubah laba; pemilik melihatnya.
   reklasifikasi_biaya: "kuning",
+  // Rencana 2026-11-07 R13 — membatalkan baris mengubah laba & arus kas; sah, dilihat pemilik.
+  batal_biaya_finance: "kuning",
   // R31 — membalik menyentuh DUA buku sekaligus; sah, tetapi pemilik melihatnya.
   balik_antar_unit: "kuning",
   // R31 — menarik impor membuka kembali satu bulan rekening koran; sah, dilihat pemilik.

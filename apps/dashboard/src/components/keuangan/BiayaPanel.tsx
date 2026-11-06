@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { reklasifikasiBiaya } from "@/lib/reklas-actions";
+import { batalkanBiayaFinance } from "@/lib/batal-balik-actions";
+import { ALASAN_MIN, dampakBatal } from "@/lib/batal-balik-model";
 import type { ReklasBaris } from "@/lib/keuangan-input-queries";
 import {
   AKUN_REKLAS,
@@ -43,6 +45,12 @@ import {
  * pendapatan lain-lain Finance diinput SEKALI dari Tambah mutasi buku kas/bank
  * (satu simpan menulis mutasi + barisnya); dua pintu input adalah sebab input
  * ganda. Halaman ini meninjau, mereklasifikasi, dan menampilkan.
+ *
+ * Rencana 2026-11-07 — **Batalkan** baris pintu Finance di hari terbuka: void
+ * beralasan (kode grup `void` + alasan tertulis), bukan Edit. Barisnya tetap
+ * tampil, dicoret statusnya, beserta siapa, kapan, dan mengapa. Baris pengawas
+ * dan baris yang lahir dari mutasi kas tidak ditawari tombolnya — dan server
+ * menolaknya juga (`batal-balik-tulis.ts`).
  */
 
 const rp = (n: number): string =>
@@ -55,6 +63,8 @@ export function BiayaPanel({
   reklas,
   reasonReklas,
   bolehReklas,
+  reasonVoid,
+  bolehBatal,
 }: {
   code: string;
   date: string;
@@ -68,11 +78,18 @@ export function BiayaPanel({
    * Finance. Bukan `bolehTulis`, yang menolak HoF (§10.12).
    */
   bolehReklas: boolean;
+  /** Kode alasan grup `void` (0059). */
+  reasonVoid: { code: string; label: string }[];
+  /** Rencana 2026-11-07 KTD7 — `canBatalkanBarisFinance`: staf Keuangan, HoF, super admin. */
+  bolehBatal: boolean;
 }) {
   const [reklasId, setReklasId] = useState<string | null>(null);
   const [akunKe, setAkunKe] = useState("");
   const [alasanReklas, setAlasanReklas] = useState("");
   const [catatanReklas, setCatatanReklas] = useState("");
+  const [batalId, setBatalId] = useState<string | null>(null);
+  const [kodeBatal, setKodeBatal] = useState("");
+  const [alasanBatal, setAlasanBatal] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -86,10 +103,88 @@ export function BiayaPanel({
   const bukaReklas = (id: string): void => {
     setErr(null);
     setMsg(null);
+    setBatalId(null);
     setReklasId(id);
     setAkunKe("");
     setAlasanReklas("");
     setCatatanReklas("");
+  };
+
+  const bukaBatal = (id: string): void => {
+    setErr(null);
+    setMsg(null);
+    setReklasId(null);
+    setBatalId(id);
+    setKodeBatal("");
+    setAlasanBatal("");
+  };
+
+  const simpanBatal = (b: BarisBiaya): void => {
+    setErr(null);
+    setMsg(null);
+    start(async () => {
+      const res = await batalkanBiayaFinance({ code, date, entryId: b.id, reasonCode: kodeBatal, alasan: alasanBatal });
+      if (!res.ok) setErr(res.error);
+      else {
+        setMsg(`“${b.keterangan}” dibatalkan. Barisnya tetap tercatat beserta alasannya, dan tidak lagi dihitung di laporan.`);
+        setBatalId(null);
+      }
+    });
+  };
+
+  const formBatal = (b: BarisBiaya) => {
+    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount);
+    return (
+      <div className="card card-pad-lg keu-form reklas-form">
+        <h4 className="text-h3">Batalkan — {b.keterangan}</h4>
+        <p className="fs16 t-tertiary mt2">
+          Baris tidak dihapus dan tidak disunting. Ia ditandai <strong>dibatalkan</strong> beserta alasannya, lalu
+          keluar dari laporan laba rugi, arus kas, neraca, dan buku besar tanggal {date}.
+        </p>
+        <div className="keu-2col">
+          <label className="keu-fld">
+            <span className="keu-label">Alasan pembatalan</span>
+            <select className="manual-input" value={kodeBatal} onChange={(e) => setKodeBatal(e.target.value)}>
+              <option value="">— pilih alasan —</option>
+              {reasonVoid.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} — {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="keu-fld">
+            <span className="keu-label">Keterangan (wajib)</span>
+            <input
+              className="manual-input"
+              value={alasanBatal}
+              onChange={(e) => setAlasanBatal(e.target.value)}
+              placeholder="contoh: ganda dengan MDR otomatis settlement BCA"
+            />
+          </label>
+        </div>
+        <div className={`banner ${dampak === 0 ? "info" : "warning"} keu-banner`} role="status">
+          <b>
+            {dampak === 0
+              ? "Laba bersih tidak berubah — baris ini sudah tidak membentuk laba."
+              : `Laba bersih ${date} ${dampak > 0 ? "naik" : "turun"} Rp ${rp(Math.abs(dampak))}.`}
+          </b>
+        </div>
+        <div className="manual-form-actions">
+          <button
+            type="button"
+            className="btn-navy"
+            onClick={() => simpanBatal(b)}
+            disabled={pending || kodeBatal === "" || alasanBatal.trim().length < ALASAN_MIN}
+          >
+            {pending ? "Menyimpan…" : "Ya, batalkan baris ini"}
+          </button>
+          <button type="button" className="btn-outline" onClick={() => setBatalId(null)} disabled={pending}>
+            Batal
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const simpanReklas = (b: BarisBiaya): void => {
@@ -242,7 +337,7 @@ export function BiayaPanel({
       <div className="banner info keu-banner" role="status">
         <b>Finance tidak punya tombol Edit di sini</b>
         <p className="keu-p">
-          Transaksi yang dicatat pengawas tidak bisa ditimpa. Yang tersedia hanya empat
+          Transaksi yang dicatat pengawas tidak bisa ditimpa. Yang tersedia hanya
           tindakan eksplisit: <strong>{Object.values(LABEL_TINDAKAN).join(" · ")}</strong>.
           Dua kolom terpisah menjaga batasnya — kategori operasional dipilih pengawas, akun
           akuntansi jadi tanggung jawab Finance.
@@ -250,7 +345,9 @@ export function BiayaPanel({
         <p className="keu-p">
           <strong>Reklasifikasi</strong> sudah bisa dipakai: pindahkan pos yang bukan biaya
           (prive, setoran ke bank, penjualan via transfer) ke akun bukan-laba. Baris pengawasnya
-          tetap utuh. Tindakan lain menyusul.
+          tetap utuh. <strong>{LABEL_TINDAKAN.batalkan}</strong> tersedia untuk baris pintu Finance
+          yang salah input (mis. tercatat ganda) selama hari belum ditutup — dengan alasan, tanpa
+          menghapus. Pembalikan untuk hari yang sudah ditutup menyusul.
         </p>
       </div>
 
@@ -294,6 +391,8 @@ export function BiayaPanel({
             const riwayat = riwayatDari(b.id);
             const bukanLaba = !membentukLaba(jenisAkun(b.accountingAccount, b.section));
             const bisaReklas = bolehReklas && tindakan.includes("reclassify") && !b.titipanBright;
+            const bisaBatal = tindakan.includes("batalkan");
+            const finance = b.sourceDoor === "finance" && !b.void;
             return (
               <div key={b.id}>
               <div className="grid-row cols-biaya">
@@ -331,7 +430,21 @@ export function BiayaPanel({
                   {rp(nilaiBertanda(b))}
                 </span>
                 <span className="fs16 t-secondary">
-                  {b.void ? "dibatalkan" : b.status === "closed" ? "disahkan · terkunci" : b.status}
+                  {b.void ? (
+                    <>
+                      <span className="keu-chip nada-merah">dibatalkan</span>
+                      {b.voidReasonCode !== null && (
+                        <span className="keu-p t-tertiary">
+                          {b.voidAt}
+                          {b.voidOleh !== null && ` oleh ${b.voidOleh}`} · {b.voidReasonCode} · {b.voidAlasan}
+                        </span>
+                      )}
+                    </>
+                  ) : b.hariTutup || b.status === "closed" ? (
+                    "disahkan · terkunci"
+                  ) : (
+                    b.status
+                  )}
                 </span>
                 <span className="fs16 t-tertiary">
                   {/* Tak ada "Edit" di sini, dan tak akan pernah ada. */}
@@ -353,9 +466,27 @@ export function BiayaPanel({
                   ) : (
                     "—"
                   )}
+                  {bisaBatal &&
+                    (bolehBatal ? (
+                      <button
+                        type="button"
+                        className="btn-outline sm t-danger"
+                        disabled={pending}
+                        onClick={() => (batalId === b.id ? setBatalId(null) : bukaBatal(b.id))}
+                      >
+                        {LABEL_TINDAKAN.batalkan}
+                      </button>
+                    ) : (
+                      <span className="keu-p">{LABEL_TINDAKAN.batalkan} oleh staf Keuangan / Head of Finance</span>
+                    ))}
+                  {finance && b.bertautKas && !b.hariTutup && (
+                    <span className="keu-p t-tertiary">batalkan lewat mutasi kas asalnya</span>
+                  )}
+                  {finance && b.hariTutup && <span className="keu-p t-tertiary">hari ditutup · pembalikan menyusul</span>}
                 </span>
               </div>
               {reklasId === b.id && formReklas(b)}
+              {batalId === b.id && formBatal(b)}
               </div>
             );
           })

@@ -25,6 +25,7 @@ const IZIN: Record<string, { n: number; alasan: string }> = {
   "lib/kas-actions.ts": { n: 3, alasan: "penjaga tulis + kaskade void mutasi kas → beban" },
   "lib/cocok-bank-actions.ts": { n: 2, alasan: "kaskade void batalkan cocok → beban" },
   "lib/tautan-actions.ts": { n: 2, alasan: "penjaga tulis tautan beban ↔ mutasi" },
+  "lib/batal-balik-tulis.ts": { n: 1, alasan: "UPDATE bersyarat Batalkan — void sekali, tak menimpa void lain" },
 };
 
 const KATA_KUNCI = new Set([

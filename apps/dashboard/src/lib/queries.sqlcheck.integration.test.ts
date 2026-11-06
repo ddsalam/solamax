@@ -293,6 +293,7 @@ const KASUS_U6: Array<[string, () => Promise<unknown>]> = [
   ["getKodeAlasanBalik", async () => (await import("./antar-unit-queries")).getKodeAlasanBalik()],
   ["getPemilikTitipanAktif", async () => (await import("./titipan-queries")).getPemilikTitipanAktif(U)],
   // Rencana 2026-11-07 KTD1 — pembaca uang yang kini memakai SQL_ME_TAK_BERLAKU.
+  ["getReasonCodeVoid (0059)", async () => (await import("./keuangan-input-queries")).getReasonCodeVoid(U)],
   ["getKasTautan (berlaku)", async () => (await import("./tautan-queries")).getKasTautan(U)],
   ["getBebanTautan (berlaku)", async () => (await import("./tautan-queries")).getBebanTautan(U)],
   ["getKelengkapanInput (berlaku)", async () => (await import("./keuangan-input-queries")).getKelengkapanInput(U, D)],
