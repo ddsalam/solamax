@@ -1,6 +1,7 @@
 import { qScoped } from "./db";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { sqlTitipan } from "./titipan-bright";
 import type { ScopedUnitId } from "./scope";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
@@ -557,9 +558,9 @@ export async function getKelengkapanInput(
     ),
     qScoped<{ n: number }>(
       unit,
-      `SELECT count(*)::int AS n FROM app.manual_entry
-        WHERE unit_id = $1 AND business_date = $2::date AND NOT void
-          AND section IN ('pengeluaran','pendapatan_lain') AND status = 'submitted'`,
+      `SELECT count(*)::int AS n FROM app.manual_entry m
+        WHERE m.unit_id = $1 AND m.business_date = $2::date AND NOT ${SQL_ME_TAK_BERLAKU("m")}
+          AND m.section IN ('pengeluaran','pendapatan_lain') AND m.status = 'submitted'`,
       [unit, date],
     ),
   ]);

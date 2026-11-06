@@ -3,6 +3,7 @@ import { todayWib } from "@/lib/periods";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { unitDotted, unitLabel } from "@/lib/config";
 import { qScoped } from "@/lib/db";
+import { SQL_ME_TAK_BERLAKU } from "@/lib/keuangan-berlaku";
 import { getKelengkapanInput } from "@/lib/keuangan-input-queries";
 import { getDoHarian } from "@/lib/queries";
 import { PENJELASAN_KOSONG } from "@/lib/keuangan-laporan-model";
@@ -198,9 +199,9 @@ async function getFakta(unit: ScopedUnitId, date: string): Promise<FaktaSumber> 
       unit,
       `SELECT count(*) FILTER (WHERE source_door = 'pengawas')::int AS pengawas,
               count(*) FILTER (WHERE source_door = 'finance')::int  AS finance
-         FROM app.manual_entry
-        WHERE unit_id = $1 AND business_date = $2::date AND NOT void
-          AND section = 'pengeluaran'`,
+         FROM app.manual_entry m
+        WHERE m.unit_id = $1 AND m.business_date = $2::date AND NOT ${SQL_ME_TAK_BERLAKU("m")}
+          AND m.section = 'pengeluaran'`,
       [unit, date],
     ),
     // Produk yang tak punya data SO hari itu — dari `getDoHarian`, kueri yang

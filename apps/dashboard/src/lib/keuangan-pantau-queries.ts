@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { addDays } from "./periods";
 import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 import type { ScopedUnitId } from "./scope";
@@ -651,7 +652,7 @@ const KUERI_KEJADIAN = `
            to_char(m.business_date, 'YYYY-MM-DD'), NULL,
            (m.section::text || ' — ' || m.keterangan), m.amount::float8, NULL
       FROM app.manual_entry m
-     WHERE m.unit_id = ANY($1::int[]) AND NOT m.void
+     WHERE m.unit_id = ANY($1::int[]) AND NOT ${SQL_ME_TAK_BERLAKU("m")}
        AND m.section IN ('pengeluaran', 'pendapatan_lain')
        AND m.status = 'submitted'
        AND m.business_date BETWEEN $2::date AND $3::date
