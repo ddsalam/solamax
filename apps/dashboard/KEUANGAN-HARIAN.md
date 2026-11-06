@@ -2442,7 +2442,37 @@ hari belum ditutup. Pemicunya Bakau 2 Okt: tiga baris Finance ganda tanpa mutasi
   memakai `SQL_ME_TAK_BERLAKU`. `keuangan-berlaku.guard.test.ts` memerah bila kueri
   baru menulis saringan void sendiri. Sebelumnya cabang `keluar` di `pilahManualEntry`
   tidak menyaring void; beban benar hanya karena `kumpulkanBeban` menyaring ulang.
-- **Pembalikan untuk hari tertutup** menyusul di rilis kedua rencana yang sama.
+- **Pembalikan untuk hari tertutup**: §10.56.
+
+### 10.56 Balik baris pintu Finance di hari tertutup — berlaku di hari ASLI (keputusan owner 7 November 2026)
+
+**Keputusan owner (session-settled, dipilih DUA KALI — kedua kalinya sesudah bentrokan dengan
+§10.33 ditunjukkan):** pembalikan baris pintu Finance di hari yang sudah ditutup berlaku di
+**hari asli** baris itu, **bukan** dibukukan maju ke hari terbuka pertama.
+
+⚖️ **Pengecualian tercatat atas §10.33** ("hari tertutup tidak pernah disunting; koreksi dibukukan
+maju"). Ruangnya sempit: hanya Balik baris `manual_entry` pintu Finance tanpa tautan kas, lewat
+persetujuan orang kedua. Jalur tulis lain tetap tunduk §10.33 (`tentukanHariBuku`).
+
+- **Baris asli tidak pernah di-UPDATE** (trigger 0026 tetap utuh). Yang lahir adalah satu
+  `app.correction_entry` (0021) `kind = 'reversal'` dengan tujuh field audit §4.5
+  (`value_after = 0`, `evidence_ref = correction_request:<id>`). Aturan "baris berlaku"
+  (`SQL_ME_TAK_BERLAKU`) membacanya, jadi baris itu bernilai nol di laporan hari aslinya —
+  satu tempat, seluruh pembaca uang ikut.
+- **Dua orang** (`app.correction_request`, 0060): Finance (`canAjukanBalikBaris` — staf Keuangan,
+  HoF, super admin) mengajukan dengan kode `ADJ-DUP`/`ADJ-AMOUNT`/`ADJ-DATE`/`ADJ-PARTY` + alasan;
+  HoF/Direksi/super admin (`canSetujuiBalikBaris`) **yang bukan pengajunya** menyetujui atau
+  menolak (catatan wajib). Pengaju boleh menarik. Pemisahan tugas, pasangan keputusan, satu
+  pengajuan menunggu & satu reversal per baris, dan pembekuan pengajuan yang sudah diputus
+  ditegakkan **di DB**; keanggotaan penyetuju di server (HoF hidup di ENV, §10.4).
+- **Bulan tertutup** (baris `tutup_bulan` apa pun) → Balik ditolak. Hari tertutup di bulan
+  terbuka dibentuk ulang jurnalnya (pemicu 1 mengenali `correction_entry`).
+- **`day_close` tetap beku (§10.15).** Selisih yang disahkan saat ditutup tidak dihitung ulang.
+  Layar 4 dan PDF tutup hari menampilkan "dibalik sesudah ditutup" (jumlah baris, perubahan
+  laba, siapa menyetujui) TERPISAH dari selisih itu — pola `koreksi_susulan_rp` (§10.34).
+- **Belum:** Balik untuk baris pengawas di hari tertutup, `corrected_entry` (balik + nilai baru),
+  dan kotak masuk persetujuan lintas unit (sementara: kejadian `balik_biaya_menunggu` di
+  Pemantauan, berulang sampai diputus).
 
 ## 9 · Gerbang masuk K1 — daftar periksa
 

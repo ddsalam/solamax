@@ -10,7 +10,9 @@ import {
   getBackdateOverride,
   getDayClose,
   getKelengkapanInput,
+  getDibalikSesudahTutup,
 } from "@/lib/keuangan-input-queries";
+import { ringkasDibalik } from "@/lib/batal-balik-model";
 import { getBahanLaporan } from "@/lib/keuangan-laporan-queries";
 import { cashFlowInputDari, langkahHarianRinci, panelCashFlow } from "@/lib/keuangan-laporan-model";
 import { getBarisMajuKe, getParkirTerbukaSampai } from "@/lib/tutup-bulan-queries";
@@ -81,10 +83,13 @@ export default async function TutupHariPage({
 
   // `getDayClose` SESUDAH `pastikanBarisDayClose` — ia membaca baris yang baru lahir.
   const bahan = bahanAwal;
-  const [dayClose, [overrides, kelengkapan, reasonCodes, maju, parkir]] = await Promise.all([
+  const [dayClose, [overrides, kelengkapan, reasonCodes, maju, parkir], dibalik] = await Promise.all([
     getDayClose(unit.unit_id, date),
     lainP,
+    // Rencana 2026-11-07 R12b — dibalik sesudah ditutup; day_close tetap beku.
+    getDibalikSesudahTutup(unit.unit_id, date),
   ]);
+  const ringkasBalik = ringkasDibalik(dibalik);
 
   const cf = panelCashFlow(cashFlowInputDari(bahan));
   // ⛔ KTD15 — yang DINILAI tangga toleransi adalah langkah TANPA koreksi
@@ -135,11 +140,25 @@ export default async function TutupHariPage({
           tier={langkahDinilai === null ? null : tierFor(langkahDinilai)}
           overrides={overrides}
           labelReason={Object.fromEntries(reasonCodes.map((r) => [r.code, r.label]))}
+          dibalik={dibalik}
         />
       </div>
       <div className="fs16 t-secondary mt2">
         {unit.name} · {unitLabel(unit.code)} — {date}
       </div>
+
+      {ringkasBalik.n > 0 && (
+        <div className="banner warning keu-banner mt6" role="status">
+          <b>
+            {ringkasBalik.n} baris dibalik sesudah hari ini ditutup — laba bersih hari ini berubah Rp{" "}
+            {ringkasBalik.dampakLaba.toLocaleString("id-ID")}.
+          </b>
+          <p className="keu-p">
+            Selisih yang disahkan saat ditutup tetap tercatat apa adanya dan tidak dihitung ulang (§10.15).{" "}
+            {dibalik.map((d) => `${d.keterangan} (${d.kode}, disetujui ${d.penyetuju ?? "?"} ${d.waktu})`).join(" · ")}
+          </p>
+        </div>
+      )}
 
       <div className="mt6">
         <TutupHariPanel

@@ -2,7 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { reklasifikasiBiaya } from "@/lib/reklas-actions";
-import { batalkanBiayaFinance } from "@/lib/batal-balik-actions";
+import {
+  ajukanBalikBiaya,
+  batalkanBiayaFinance,
+  setujuiBalikBiaya,
+  tarikBalikBiaya,
+  tolakBalikBiaya,
+} from "@/lib/batal-balik-actions";
 import { ALASAN_MIN, dampakBatal } from "@/lib/batal-balik-model";
 import type { ReklasBaris } from "@/lib/keuangan-input-queries";
 import {
@@ -65,6 +71,10 @@ export function BiayaPanel({
   bolehReklas,
   reasonVoid,
   bolehBatal,
+  reasonBalik,
+  bolehAjukanBalik,
+  bolehSetujuiBalik,
+  userId,
 }: {
   code: string;
   date: string;
@@ -82,6 +92,14 @@ export function BiayaPanel({
   reasonVoid: { code: string; label: string }[];
   /** Rencana 2026-11-07 KTD7 — `canBatalkanBarisFinance`: staf Keuangan, HoF, super admin. */
   bolehBatal: boolean;
+  /** Rilis 2 — kode alasan Balik (grup `adjustment`, `KODE_BALIK`). */
+  reasonBalik: { code: string; label: string }[];
+  /** `canAjukanBalikBaris` — staf Keuangan, HoF, super admin. */
+  bolehAjukanBalik: boolean;
+  /** `canSetujuiBalikBaris` — HoF, Direksi, super admin; tetap BUKAN pengajunya sendiri (server + DB). */
+  bolehSetujuiBalik: boolean;
+  /** Pengguna yang membuka halaman — untuk membedakan pengaju dari penyetuju. */
+  userId: number;
 }) {
   const [reklasId, setReklasId] = useState<string | null>(null);
   const [akunKe, setAkunKe] = useState("");
@@ -90,6 +108,10 @@ export function BiayaPanel({
   const [batalId, setBatalId] = useState<string | null>(null);
   const [kodeBatal, setKodeBatal] = useState("");
   const [alasanBatal, setAlasanBatal] = useState("");
+  // Rilis 2 — satu form Balik terbuka per kali: ajukan, atau tolak (catatan).
+  const [balikForm, setBalikForm] = useState<{ id: string; mode: "ajukan" | "tolak" } | null>(null);
+  const [kodeBalik, setKodeBalik] = useState("");
+  const [teksBalik, setTeksBalik] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -104,6 +126,7 @@ export function BiayaPanel({
     setErr(null);
     setMsg(null);
     setBatalId(null);
+    setBalikForm(null);
     setReklasId(id);
     setAkunKe("");
     setAlasanReklas("");
@@ -114,6 +137,7 @@ export function BiayaPanel({
     setErr(null);
     setMsg(null);
     setReklasId(null);
+    setBalikForm(null);
     setBatalId(id);
     setKodeBatal("");
     setAlasanBatal("");
@@ -133,7 +157,7 @@ export function BiayaPanel({
   };
 
   const formBatal = (b: BarisBiaya) => {
-    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount);
+    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount, b.titipanBright);
     return (
       <div className="card card-pad-lg keu-form reklas-form">
         <h4 className="text-h3">Batalkan — {b.keterangan}</h4>
@@ -180,6 +204,104 @@ export function BiayaPanel({
             {pending ? "Menyimpan…" : "Ya, batalkan baris ini"}
           </button>
           <button type="button" className="btn-outline" onClick={() => setBatalId(null)} disabled={pending}>
+            Batal
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const bukaBalik = (id: string, mode: "ajukan" | "tolak"): void => {
+    setErr(null);
+    setMsg(null);
+    setReklasId(null);
+    setBatalId(null);
+    setBalikForm({ id, mode });
+    setKodeBalik("");
+    setTeksBalik("");
+  };
+
+  const jalankan = (aksi: () => Promise<{ ok: true } | { ok: false; error: string }>, sukses: string): void => {
+    setErr(null);
+    setMsg(null);
+    start(async () => {
+      const res = await aksi();
+      if (!res.ok) setErr(res.error);
+      else {
+        setMsg(sukses);
+        setBalikForm(null);
+      }
+    });
+  };
+
+  const formBalik = (b: BarisBiaya) => {
+    if (balikForm === null) return null;
+    const dampak = dampakBatal(b.section, b.accountingAccount, b.amount, b.titipanBright);
+    const tolak = balikForm.mode === "tolak";
+    return (
+      <div className="card card-pad-lg keu-form reklas-form">
+        <h4 className="text-h3">
+          {tolak ? "Tolak pengajuan balik" : "Ajukan balik"} — {b.keterangan}
+        </h4>
+        {!tolak && (
+          <>
+            <p className="fs16 t-tertiary mt2">
+              Hari {date} sudah ditutup. Baris tidak disunting: yang lahir adalah satu entri pembalik yang
+              <strong> wajib disetujui orang lain</strong> (Head of Finance, Direksi, atau super admin). Sesudah
+              disetujui, baris tidak lagi dihitung di laporan tanggal {date}. Selisih saat hari ditutup tetap
+              tercatat apa adanya.
+            </p>
+            <label className="keu-fld">
+              <span className="keu-label">Alasan koreksi</span>
+              <select className="manual-input" value={kodeBalik} onChange={(e) => setKodeBalik(e.target.value)}>
+                <option value="">— pilih alasan —</option>
+                {reasonBalik.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.code} — {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+        <label className="keu-fld">
+          <span className="keu-label">{tolak ? "Catatan penolakan (wajib)" : "Keterangan (wajib)"}</span>
+          <input
+            className="manual-input"
+            value={teksBalik}
+            onChange={(e) => setTeksBalik(e.target.value)}
+            placeholder={tolak ? "contoh: MDR ini ditagih terpisah, bukan ganda" : "contoh: ganda dengan MDR otomatis settlement BCA"}
+          />
+        </label>
+        {!tolak && (
+          <div className={`banner ${dampak === 0 ? "info" : "warning"} keu-banner`} role="status">
+            <b>
+              {dampak === 0
+                ? "Laba bersih tidak berubah — baris ini sudah tidak membentuk laba."
+                : `Bila disetujui: laba bersih ${date} ${dampak > 0 ? "naik" : "turun"} Rp ${rp(Math.abs(dampak))}.`}
+            </b>
+          </div>
+        )}
+        <div className="manual-form-actions">
+          <button
+            type="button"
+            className="btn-navy"
+            disabled={pending || teksBalik.trim().length < ALASAN_MIN || (!tolak && kodeBalik === "")}
+            onClick={() =>
+              tolak
+                ? jalankan(
+                    () => tolakBalikBiaya({ code, date, requestId: b.balik!.id, catatan: teksBalik }),
+                    `Pengajuan balik “${b.keterangan}” ditolak. Baris tetap berlaku.`,
+                  )
+                : jalankan(
+                    () => ajukanBalikBiaya({ code, date, entryId: b.id, reasonCode: kodeBalik, alasan: teksBalik }),
+                    `Balik “${b.keterangan}” diajukan — menunggu persetujuan orang kedua.`,
+                  )
+            }
+          >
+            {pending ? "Menyimpan…" : tolak ? "Tolak pengajuan" : "Ajukan balik"}
+          </button>
+          <button type="button" className="btn-outline" onClick={() => setBalikForm(null)} disabled={pending}>
             Batal
           </button>
         </div>
@@ -347,7 +469,8 @@ export function BiayaPanel({
           (prive, setoran ke bank, penjualan via transfer) ke akun bukan-laba. Baris pengawasnya
           tetap utuh. <strong>{LABEL_TINDAKAN.batalkan}</strong> tersedia untuk baris pintu Finance
           yang salah input (mis. tercatat ganda) selama hari belum ditutup — dengan alasan, tanpa
-          menghapus. Pembalikan untuk hari yang sudah ditutup menyusul.
+          menghapus. Untuk hari yang sudah ditutup, baris pintu Finance bisa <strong>diajukan balik</strong>:
+          entri pembalik yang wajib disetujui orang kedua (Head of Finance, Direksi, atau super admin).
         </p>
       </div>
 
@@ -430,7 +553,15 @@ export function BiayaPanel({
                   {rp(nilaiBertanda(b))}
                 </span>
                 <span className="fs16 t-secondary">
-                  {b.void ? (
+                  {b.dibalik && b.balik !== null ? (
+                    <>
+                      <span className="keu-chip nada-merah">dibalik</span>
+                      <span className="keu-p t-tertiary">
+                        diajukan {b.balik.oleh ?? "?"} · disetujui {b.balik.putusOleh ?? "?"} {b.balik.putusWaktu} ·{" "}
+                        {b.balik.kode} · {b.balik.alasan}
+                      </span>
+                    </>
+                  ) : b.void ? (
                     <>
                       <span className="keu-chip nada-merah">dibatalkan</span>
                       {b.voidReasonCode !== null && (
@@ -441,7 +572,21 @@ export function BiayaPanel({
                       )}
                     </>
                   ) : b.hariTutup || b.status === "closed" ? (
-                    "disahkan · terkunci"
+                    <>
+                      {"disahkan · terkunci"}
+                      {b.balik?.status === "menunggu" && (
+                        <span className="keu-p">
+                          <span className="keu-chip nada-kuning">menunggu balik</span> diajukan{" "}
+                          {b.balik.oleh ?? "?"} {b.balik.waktu} · {b.balik.kode} · {b.balik.alasan}
+                        </span>
+                      )}
+                      {(b.balik?.status === "ditolak" || b.balik?.status === "ditarik") && (
+                        <span className="keu-p t-tertiary">
+                          balik terakhir {b.balik.status} oleh {b.balik.putusOleh ?? "?"} {b.balik.putusWaktu}
+                          {b.balik.catatan !== null && ` · ${b.balik.catatan}`}
+                        </span>
+                      )}
+                    </>
                   ) : (
                     b.status
                   )}
@@ -482,11 +627,69 @@ export function BiayaPanel({
                   {finance && b.bertautKas && !b.hariTutup && (
                     <span className="keu-p t-tertiary">batalkan lewat mutasi kas asalnya</span>
                   )}
-                  {finance && b.hariTutup && <span className="keu-p t-tertiary">hari ditutup · pembalikan menyusul</span>}
+                  {tindakan.includes("correct") &&
+                    (b.balik?.status === "menunggu" ? (
+                      <>
+                        {b.balik.olehId === userId && bolehAjukanBalik && (
+                          <button
+                            type="button"
+                            className="btn-outline sm"
+                            disabled={pending}
+                            onClick={() =>
+                              jalankan(
+                                () => tarikBalikBiaya({ code, date, requestId: b.balik!.id }),
+                                `Pengajuan balik “${b.keterangan}” ditarik.`,
+                              )
+                            }
+                          >
+                            Tarik pengajuan
+                          </button>
+                        )}
+                        {b.balik.olehId !== userId && bolehSetujuiBalik ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-navy sm"
+                              disabled={pending}
+                              onClick={() =>
+                                jalankan(
+                                  () => setujuiBalikBiaya({ code, date, requestId: b.balik!.id }),
+                                  `Balik “${b.keterangan}” disetujui — baris tidak lagi dihitung di laporan ${date}.`,
+                                )
+                              }
+                            >
+                              Setujui balik
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-outline sm"
+                              disabled={pending}
+                              onClick={() => bukaBalik(b.id, "tolak")}
+                            >
+                              Tolak
+                            </button>
+                          </>
+                        ) : (
+                          b.balik.olehId === userId && (
+                            <span className="keu-p t-tertiary">menunggu Head of Finance / Direksi lain</span>
+                          )
+                        )}
+                      </>
+                    ) : bolehAjukanBalik ? (
+                      <button type="button" className="btn-outline sm" disabled={pending} onClick={() => bukaBalik(b.id, "ajukan")}>
+                        Ajukan balik
+                      </button>
+                    ) : (
+                      <span className="keu-p">{LABEL_TINDAKAN.correct} oleh staf Keuangan / Head of Finance</span>
+                    ))}
+                  {finance && b.hariTutup && b.bertautKas && (
+                    <span className="keu-p t-tertiary">bertaut mutasi kas — hubungi Head of Finance</span>
+                  )}
                 </span>
               </div>
               {reklasId === b.id && formReklas(b)}
               {batalId === b.id && formBatal(b)}
+              {balikForm?.id === b.id && formBalik(b)}
               </div>
             );
           })

@@ -70,3 +70,28 @@ describe("gerbang server Batalkan", () => {
     expect(TULIS).not.toMatch(/DELETE FROM/i);
   });
 });
+
+describe("gerbang server Balik — wewenang di aksi, sebelum koneksi", () => {
+  const kasus = [
+    { nama: "ajukanBalikBiaya", wewenang: "canAjukanBalikBaris(" },
+    { nama: "tarikBalikBiaya", wewenang: "canAjukanBalikBaris(" },
+    { nama: "tolakBalikBiaya", wewenang: "canSetujuiBalikBaris(" },
+    { nama: "setujuiBalikBiaya", wewenang: "canSetujuiBalikBaris(" },
+  ];
+  for (const k of kasus) {
+    it(`🔴 ${k.nama}: requireUnit + ${k.wewenang.slice(0, -1)} mendahului jalankanBalik (koneksi & BEGIN)`, () => {
+      const fn = badan(AKSI, k.nama);
+      expect(fn, "subjek").not.toBe("");
+      for (const g of ["scope.requireUnit(", k.wewenang]) expect(urutan(fn, g, "jalankanBalik(")).toBe("ok");
+    });
+  }
+  it("jalankanBalik: BEGIN lalu unit_ids, dan pemicu jurnal sebelum COMMIT", () => {
+    const fn = AKSI.slice(AKSI.indexOf("async function jalankanBalik"));
+    expect(urutan(fn, 'client.query("BEGIN")', "set_config('app.unit_ids'")).toBe("ok");
+    expect(urutan(fn, "bentukJurnalSesudahTulis(", 'client.query("COMMIT")')).toBe("ok");
+  });
+  it("daya-beda: menyetujui memakai predikat PENYETUJU, bukan predikat pengaju", () => {
+    expect(badan(AKSI, "setujuiBalikBiaya")).not.toMatch(/canAjukanBalikBaris\(/);
+    expect(badan(AKSI, "tolakBalikBiaya")).not.toMatch(/canAjukanBalikBaris\(/);
+  });
+});

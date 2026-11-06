@@ -55,10 +55,28 @@ export interface BarisBiaya {
   voidOleh: string | null;
   voidReasonCode: string | null;
   voidAlasan: string | null;
+  /** Rencana 2026-11-07 Rilis 2 — ada `correction_entry` reversal (0060). `void` juga true. */
+  dibalik: boolean;
+  /** Pengajuan Balik TERAKHIR untuk baris ini (menunggu/disetujui/ditolak/ditarik), bila ada. */
+  balik: PengajuanBalik | null;
+}
+
+export interface PengajuanBalik {
+  id: string;
+  status: "menunggu" | "disetujui" | "ditolak" | "ditarik";
+  olehId: number;
+  oleh: string | null;
+  /** WIB, `YYYY-MM-DD HH24:MI`. */
+  waktu: string;
+  kode: string;
+  alasan: string;
+  putusOleh: string | null;
+  putusWaktu: string | null;
+  catatan: string | null;
 }
 
 /**
- * Empat tindakan bernama (§2.3). **`edit` bukan salah satunya, dan tak akan
+ * Tindakan bernama (§2.3; Batalkan ditambahkan rencana 2026-11-07). **`edit` bukan salah satunya, dan tak akan
  * pernah jadi salah satunya.**
  */
 export const TINDAKAN = ["review", "return", "reclassify", "batalkan", "correct"] as const;
@@ -93,7 +111,12 @@ export function tindakanTersedia(b: BarisBiaya): Tindakan[] {
   if (b.status === "draft") return [];
   // Hari ditutup oleh `day_close`, bukan oleh status baris (aplikasi tak pernah
   // menyetel status 'closed') — dua-duanya dihormati.
-  if (b.hariTutup || b.status === "closed") return ["reclassify", "correct"];
+  if (b.hariTutup || b.status === "closed") {
+    // Rencana 2026-11-07 R8 — Balik hanya baris pintu Finance tanpa tautan kas.
+    // Baris pengawas di hari tertutup: Balik-nya ditunda (Deferred), jangan
+    // tampilkan nama tindakan tanpa jalan.
+    return b.sourceDoor === "finance" && !b.bertautKas ? ["reclassify", "correct"] : ["reclassify"];
+  }
   // submitted / returned
   const t: Tindakan[] = ["review", "reclassify"];
   if (b.sourceDoor === "pengawas") t.splice(1, 0, "return");

@@ -112,6 +112,8 @@ export type JenisKejadian =
   | "rekening_pencairan_beda"
   | "reklasifikasi_biaya"
   | "batal_biaya_finance"
+  | "balik_biaya_menunggu"
+  | "balik_biaya"
   | "balik_antar_unit"
   | "tarik_rekening_koran";
 
@@ -693,6 +695,30 @@ const KUERI_KEJADIAN = `
       LEFT JOIN app.users u ON u.id = m.voided_by_user_id
      WHERE m.unit_id = ANY($1::int[]) AND m.void AND m.void_reason_code IS NOT NULL
        AND ${SAAT_DALAM_JENDELA("m.voided_at")}
+
+    -- Rencana 2026-11-07 R13 — pengajuan Balik yang MENUNGGU (diulang tiap
+    -- jendela sampai diputus: penyetuju tak perlu tahu tanggalnya lebih dulu) dan
+    -- Balik yang disetujui (mengubah angka hari yang sudah disahkan).
+    UNION ALL
+    SELECT q.unit_id::int, 'balik_biaya_menunggu', ${WIB_TEKS("q.requested_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.keterangan || ' · ' || q.reason_code || ' · ' || q.alasan
+             || ' · buka Input keuangan tanggal ' || to_char(m.business_date, 'YYYY-MM-DD')),
+           abs(m.amount)::float8, NULL
+      FROM app.correction_request q
+      JOIN app.manual_entry m ON m.id = q.original_txn_id AND m.unit_id = q.unit_id
+      LEFT JOIN app.users u ON u.id = q.requested_by_user_id
+     WHERE q.unit_id = ANY($1::int[]) AND q.status = 'menunggu'
+    UNION ALL
+    SELECT ce.unit_id::int, 'balik_biaya', ${WIB_TEKS("ce.approved_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.keterangan || ' · ' || ce.reason_code || ' · disetujui sesudah hari ditutup'),
+           abs(m.amount)::float8, NULL
+      FROM app.correction_entry ce
+      JOIN app.manual_entry m ON m.id = ce.original_txn_id AND m.unit_id = ce.unit_id
+      LEFT JOIN app.users u ON u.id = ce.approved_by_user_id
+     WHERE ce.unit_id = ANY($1::int[]) AND ce.source_kind = 'manual_entry' AND ce.kind = 'reversal'
+       AND ${SAAT_DALAM_JENDELA("ce.approved_at")}
 
     UNION ALL
     SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},
