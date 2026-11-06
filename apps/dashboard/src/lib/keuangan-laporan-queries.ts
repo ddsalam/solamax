@@ -98,6 +98,10 @@ export interface BahanLaporan {
   arusTitipanBright: number;
   piutangEasymax: number;
   deltaPiutangEasymax: number;
+  /** SALDO buku "Hutang Lokal" EasyMax akhir hari (negatif = deposit yang kita hutangi). */
+  depositEasymax: number;
+  /** ARUS deposit hari itu, bertanda kas: −(akhir − awal). */
+  deltaDepositEasymax: number;
   beban: BarisBeban[];
   pendapatanLain: number;
   /**
@@ -317,7 +321,9 @@ async function totalAssetPada(
       };
     }),
   );
-  const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
+  // Deposit pelanggan (Hutang Lokal) ikut — tanpa itu langkah harian melenceng
+  // sebesar pemakaian deposit (data pilot Okt 2026).
+  const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline + saldo.akhir.hutangLokal;
   // ⛔ Term sisi kas lewat fungsi yang SAMA dengan hari ini (`sisiKasNeraca`):
   //    kas, pihak lawan (KTD2), penampung (KTD8), temporary investment, titipan
   //    (liabilitas — mengurangi asset bersih). Kemarin dihitung PENUH — baris
@@ -456,6 +462,12 @@ async function bahanLaporan(
   const piutangEasymax = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
   const piutangAwal = saldo.awal.piutangLokal + saldo.awal.piutangOnline;
   const deltaPiutangEasymax = -(piutangEasymax - piutangAwal);
+  // Deposit pelanggan EasyMax (buku "Hutang Lokal") — DIPISAH dari piutang:
+  // buku besar membandingkan `piutangEasymax` dengan akun 1121 dan menaruh
+  // deposit di 2101. Pemakaian deposit menaikkan saldo (mis. −12 jt → −11,75 jt)
+  // tanpa uang masuk ⇒ arus kasnya negatif.
+  const depositEasymax = saldo.akhir.hutangLokal;
+  const deltaDepositEasymax = -(saldo.akhir.hutangLokal - saldo.awal.hutangLokal);
 
   return {
     totals,
@@ -479,6 +491,8 @@ async function bahanLaporan(
     arusTitipanBright,
     piutangEasymax,
     deltaPiutangEasymax,
+    depositEasymax,
+    deltaDepositEasymax,
     beban: bp.beban,
     pendapatanLain: bp.pendapatanLain,
     kontribusi: langkahDari(sisi.penuh).kontribusi,
