@@ -7,7 +7,7 @@ import {
   HarianSummaryCards,
   MatrixTable,
   MonthlyMatrix,
-  RatioBbkTable,
+  PerbandinganKumulatif,
   RecordCard,
   StaleBanner,
 } from "@/components/harian/HarianSections";
@@ -249,7 +249,7 @@ async function HarianBody({ params, today }: { params: HarianParams; today: stri
             totalMaxAvg={model.trend.totalMaxAvg}
           />
 
-          <RatioBbkTable units={model.units} model={model} />
+          <PerbandinganKumulatif units={model.units} model={model} />
           <RecordCard units={model.units} model={model} />
           <HarianNotes notes={model.notes} />
         </>

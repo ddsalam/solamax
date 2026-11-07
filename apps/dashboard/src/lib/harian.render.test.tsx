@@ -7,7 +7,7 @@ import {
   HarianNotes,
   MatrixTable,
   MonthlyMatrix,
-  RatioBbkTable,
+  PerbandinganKumulatif,
   RecordCard,
   StaleBanner,
 } from "@/components/harian/HarianSections";
@@ -220,7 +220,7 @@ function Page({ model }: { model: HarianModel }) {
         barMaxAvg={model.trend.barMaxAvg}
         totalMaxAvg={model.trend.totalMaxAvg}
       />
-      <RatioBbkTable units={model.units} model={model} />
+      <PerbandinganKumulatif units={model.units} model={model} />
       <RecordCard units={model.units} model={model} />
       <HarianNotes notes={model.notes} />
     </div>

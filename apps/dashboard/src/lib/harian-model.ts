@@ -8,18 +8,17 @@
  *   - "Rata-Rata" bulanan = Kumulatif ÷ HARI KALENDER BERJALAN (day-of-month
  *     tanggal laporan). Bukti: 6.445.250 ÷ 292.966 = 22,000 (22 Jul);
  *     74.262 ÷ 3.909 = 19,000 (19 Jul).
- *   - Baris "Total" RASIO ≡ bauran gasoil = (Dexlite + P.Dex) ÷ Solar.
- *   - "Persentase BBK" ≠ bauran: BBK = NPSO ÷ (NPSO + PSO) dalam jenis yang sama
- *     ≡ b/(1+b). Bukti KB MTD 22 Jul: gasoline 11,444 % (PDF 11,44 %),
- *     diesel 28,266 % (PDF 28,27 %) — sedangkan bauran memberi 12,93 % / 39,40 %.
+ *   - Rasio & Persentase BBK DIGANTI Perbandingan Penjualan Kumulatif (SOLA-424,
+ *     `perbandingan-kumulatif.ts`).
  *   - Rekor = SATU tanggal saat TOTAL grup tertinggi, rincian = aktual tanggal
  *     itu. Hipotesis "hari terbaik masing-masing unit" GUGUR: hari terbaik tiap
  *     unit semuanya tanggal berbeda (IB 2 Apr, BK 18 Mar, AS 31 Mar, KB 8 Mar,
  *     BL 1 Apr, KR 6 Nov 2021, 28 Okt 7 Jul 2022).
  */
 import { canonicalProductKey, FLEET_RECORD_FLOOR } from "./config";
-import { bauran, GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, usableGl, type ProductVol } from "./derive";
+import { GARBAGE_DAY_SALES_L, isDailyGlSuspect, normalizeProductIdentity, usableGl } from "./derive";
 import { worstSyncAt, worstSyncUnitId } from "./freshness";
+import { buildPerbandingan, type Perbandingan } from "./perbandingan-kumulatif";
 import { addDays, monthInfo, monthStart } from "./periods";
 import type { DailyGlRow, DailySalesRow, SyncRow, UnitCoverageRow } from "./queries";
 import type { ScopedUnit } from "./scope-rule";
@@ -107,16 +106,6 @@ export interface TrendMonth {
   days: number;
 }
 
-export interface RatioCell {
-  dexSolar: number | null;
-  pdexSolar: number | null;
-  total: number | null;
-}
-export interface BbkCell {
-  gasoline: number | null;
-  diesel: number | null;
-}
-
 export interface ShareRow extends UnitRef {
   kum: number;
   avg: number;
@@ -173,8 +162,8 @@ export interface HarianModel {
     barMaxAvg: number;
     totalMaxAvg: number;
   };
-  ratios: { daily: Record<number, RatioCell>; monthly: Record<number, RatioCell>; dailyTotal: RatioCell; monthlyTotal: RatioCell };
-  bbk: { monthly: Record<number, BbkCell>; monthlyTotal: BbkCell };
+  /** Perbandingan Penjualan Kumulatif format Pak Hendra (SOLA-424; menggantikan Rasio & BBK). */
+  perbandingan: Perbandingan;
   record: RecordFact;
   /** Sel G/L yang tersentuh penutup opname bernilai NOL (lihat glZeroNotes). */
   glSuspectUnits: UnitRef[];
@@ -253,24 +242,6 @@ function labelOf(key: RowKey): string {
   return key === OTHER_KEY
     ? "Lain-lain"
     : (HARIAN_PRODUCTS.find((p) => p.key === key)?.label ?? key);
-}
-
-function emptyRatio(): RatioCell {
-  return { dexSolar: null, pdexSolar: null, total: null };
-}
-
-function ratioOf(v: Partial<Record<HarianProductKey, number>>): RatioCell {
-  const solar = v.SOLAR ?? 0;
-  if (solar <= 0) return emptyRatio();
-  const dex = (v.DEXLITE ?? 0) / solar;
-  const pdex = (v["PERTAMINA DEX"] ?? 0) / solar;
-  return { dexSolar: dex, pdexSolar: pdex, total: dex + pdex };
-}
-
-/** BBK = NPSO / (NPSO + PSO) dalam satu jenis ≡ b/(1+b). */
-function bbkOf(products: ProductVol[]): BbkCell {
-  const conv = (b: number | null): number | null => (b === null ? null : b / (1 + b));
-  return { gasoline: conv(bauran(products, "gasoline")), diesel: conv(bauran(products, "gasoil")) };
 }
 
 export function buildHarianModel(input: HarianInput): HarianModel {
@@ -573,33 +544,12 @@ export function buildHarianModel(input: HarianInput): HarianModel {
   const barMaxAvg = Math.max(1, ...months.flatMap((m) => unitIds.map((id) => m.avgByUnit[id] ?? 0)));
   const totalMaxAvg = Math.max(1, ...months.map((m) => m.avgTotalKl));
 
-  // ── Rasio & BBK ───────────────────────────────────────────────────────────
-  const volsFor = (src: Map<string, number>, id: number): Partial<Record<HarianProductKey, number>> => {
-    const o: Partial<Record<HarianProductKey, number>> = {};
-    for (const p of HARIAN_PRODUCTS) o[p.key] = src.get(`${id}|${p.key}`) ?? 0;
-    return o;
-  };
-  const toProductVol = (v: Partial<Record<HarianProductKey, number>>): ProductVol[] =>
-    HARIAN_PRODUCTS.map((p) => ({ nama: p.key, vol: v[p.key] ?? 0 }));
-  const sumVols = (src: Map<string, number>): Partial<Record<HarianProductKey, number>> => {
-    const o: Partial<Record<HarianProductKey, number>> = {};
-    for (const p of HARIAN_PRODUCTS) {
-      o[p.key] = unitIds.reduce((s, id) => s + (src.get(`${id}|${p.key}`) ?? 0), 0);
-    }
-    return o;
-  };
-
-  const ratiosDaily: Record<number, RatioCell> = {};
-  const ratiosMonthly: Record<number, RatioCell> = {};
-  const bbkMonthly: Record<number, BbkCell> = {};
-  for (const id of unitIds) {
-    ratiosDaily[id] = ratioOf(volsFor(dayCell, id));
-    const mv = volsFor(mtdCell, id);
-    ratiosMonthly[id] = ratioOf(mv);
-    bbkMonthly[id] = bbkOf(toProductVol(mv));
-  }
-  const dayAll = sumVols(dayCell);
-  const mtdAll = sumVols(mtdCell);
+  // ── Perbandingan kumulatif (SOLA-424) ─────────────────────────────────────
+  const perbandingan = buildPerbandingan(
+    dailySales,
+    units.map((u) => ({ unitId: u.unit_id as number, code: u.code, name: u.name })),
+    date,
+  );
 
   // ── Rekor grup ────────────────────────────────────────────────────────────
   const recFrom = recordFloor;
@@ -700,13 +650,7 @@ export function buildHarianModel(input: HarianInput): HarianModel {
     glMonthly,
     share,
     trend: { months, barMaxKum, totalMaxKum, barMaxAvg, totalMaxAvg },
-    ratios: {
-      daily: ratiosDaily,
-      monthly: ratiosMonthly,
-      dailyTotal: ratioOf(dayAll),
-      monthlyTotal: ratioOf(mtdAll),
-    },
-    bbk: { monthly: bbkMonthly, monthlyTotal: bbkOf(toProductVol(mtdAll)) },
+    perbandingan,
     record,
     glSuspectUnits: suspects.map((s) => ({ unitId: s.unitId, code: s.code, name: s.name })),
     glProvisional,
