@@ -10,7 +10,7 @@ import {
 import { barisCsv, papanCsv, selCsv, susunCsv } from "./csv";
 import { KOSONG_RINGKAS, angkaTeks, selKosong } from "./teks-kosong";
 import { buildTutupHariDoc } from "./tutup-hari-doc";
-import type { KopKeuangan } from "./keuangan-kop";
+import { rupiah, type KopKeuangan } from "./keuangan-kop";
 
 const KOP: KopKeuangan = {
   ptLabel: "PT Sola Petra Abadi",
@@ -272,5 +272,32 @@ describe("§10.22 · bagan tak lengkap ikut ke CSV dan PDF", () => {
       if (l === "" || l.startsWith("Ringkasan")) continue;
       for (const sel of l.split(",")) expect(selKosong(sel), l).toBe(false);
     }
+  });
+});
+
+describe("PDF tutup hari — dibalik sesudah ditutup (rencana 2026-11-07 R12b)", () => {
+  const d = {
+    keterangan: "Biaya MDR EDC",
+    section: "pengeluaran",
+    akun: "7-1200",
+    amount: 7_560,
+    kode: "ADJ-DUP",
+    alasan: "ganda dengan MDR otomatis settlement BCA",
+    pengaju: "keuangan@contoh.test",
+    penyetuju: "hof@contoh.test",
+    waktu: "2026-11-07 09:15",
+    titipan: false,
+  };
+  it("🔴 selisih saat ditutup TETAP tampil; bagian dibalik menyebut baris, kode, penyetuju, dan perubahan laba", () => {
+    const s = teks(buildTutupHariDoc({ ...dasarDoc, dayClose: DC, dibalik: [d] }));
+    expect(s).toContain("Dibalik sesudah ditutup");
+    expect(s).toContain("Biaya MDR EDC");
+    expect(s).toContain("ADJ-DUP");
+    expect(s).toContain("hof@contoh.test");
+    expect(s).toContain("tidak dihitung ulang");
+    // angka beku day_close tetap ada di kertas, tak dihitung ulang
+    const beku = { ...DC, differenceRp: 11_676.5, tier: "exception_hof" as const };
+    expect(teks(buildTutupHariDoc({ ...dasarDoc, dayClose: beku, dibalik: [d] }))).toContain(rupiah(11_676.5));
+    expect(teks(buildTutupHariDoc({ ...dasarDoc, dayClose: DC }))).not.toContain("Dibalik sesudah ditutup");
   });
 });

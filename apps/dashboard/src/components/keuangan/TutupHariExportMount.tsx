@@ -6,6 +6,7 @@ import type { DayCloseRow, OverrideRow } from "@/lib/keuangan-input-queries";
 import type { Tier } from "@/lib/keuangan-tutup-hari";
 import { buildTutupHariDoc } from "@/lib/export/tutup-hari-doc";
 import type { KopKeuangan } from "@/lib/export/keuangan-kop";
+import type { BarisDibalik } from "@/lib/batal-balik-model";
 import { KeuanganExport } from "./KeuanganExport";
 
 export function TutupHariExportMount({
@@ -16,6 +17,7 @@ export function TutupHariExportMount({
   tier,
   overrides,
   labelReason,
+  dibalik,
 }: {
   kop: KopKeuangan;
   filename: string;
@@ -24,10 +26,11 @@ export function TutupHariExportMount({
   tier: Tier | null;
   overrides: readonly OverrideRow[];
   labelReason: Record<string, string>;
+  dibalik: readonly BarisDibalik[];
 }) {
   const buildDoc = useCallback(
-    () => buildTutupHariDoc({ kop, dayClose, langkahHarian, tier, overrides, labelReason }),
-    [kop, dayClose, langkahHarian, tier, overrides, labelReason],
+    () => buildTutupHariDoc({ kop, dayClose, langkahHarian, tier, overrides, labelReason, dibalik }),
+    [kop, dayClose, langkahHarian, tier, overrides, labelReason, dibalik],
   );
   return <KeuanganExport judul="Cetak lembar penutupan hari" filename={filename} buildDoc={buildDoc} />;
 }

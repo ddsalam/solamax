@@ -2420,6 +2420,60 @@ berbunyi seperti pertanyaan yang masih terbuka.
 
 ---
 
+### 10.55 Batalkan baris pintu Finance di hari terbuka (keputusan owner 6–7 November 2026)
+
+**Keputusan owner (rencana `docs/plans/2026-11-07-0010-feat-keuangan-batal-balik-baris-finance-plan.md`):**
+Finance boleh **membatalkan** baris biaya/pendapatan lain-lain **pintu Finance** selama
+hari belum ditutup. Pemicunya Bakau 2 Okt: tiga baris Finance ganda tanpa mutasi kas
+(+12.440) yang hanya bisa ditambal dengan reklasifikasi ke 1-1800.
+
+- **Bukan Edit (§2.3 tetap utuh).** Batalkan = void (UPDATE kolom `void`, 0007) dengan
+  **kode alasan grup `void`** (`VOID-DUP`, `VOID-SALAH`, `VOID-NOMINAL`, `VOID-LAIN`, 0059) dan
+  **alasan tertulis** wajib. Baris tetap tampil, bertanda dibatalkan, beserta siapa, kapan,
+  kode, dan alasannya. Kejadian `batal_biaya_finance` tampil kuning di Pemantauan.
+- **Pelaku:** staf Keuangan, Head of Finance, super admin (`canBatalkanBarisFinance` —
+  anggota sama dengan reklasifikasi §10.29, predikat sendiri).
+- **Yang ditolak di server**, bukan hanya disembunyikan tombolnya: baris **pengawas**
+  (jalurnya Kembalikan untuk perbaikan, §2.1), baris **bertaut mutasi kas** (0053 —
+  batalkan mutasi kas asalnya, supaya kas dan laba tak berpisah), **hari tertutup**
+  (trigger 0026 tetap jaring terakhir), dan **bulan tertutup** (K5 maupun buku besar).
+- **Satu aturan "baris berlaku"** (`keuangan-berlaku.ts`): setiap pembaca uang —
+  laporan harian, Papan, tutup hari, buku besar, Perlu ditautkan, titipan, ekspor —
+  memakai `SQL_ME_TAK_BERLAKU`. `keuangan-berlaku.guard.test.ts` memerah bila kueri
+  baru menulis saringan void sendiri. Sebelumnya cabang `keluar` di `pilahManualEntry`
+  tidak menyaring void; beban benar hanya karena `kumpulkanBeban` menyaring ulang.
+- **Pembalikan untuk hari tertutup**: §10.56.
+
+### 10.56 Balik baris pintu Finance di hari tertutup — berlaku di hari ASLI (keputusan owner 7 November 2026)
+
+**Keputusan owner (session-settled, dipilih DUA KALI — kedua kalinya sesudah bentrokan dengan
+§10.33 ditunjukkan):** pembalikan baris pintu Finance di hari yang sudah ditutup berlaku di
+**hari asli** baris itu, **bukan** dibukukan maju ke hari terbuka pertama.
+
+⚖️ **Pengecualian tercatat atas §10.33** ("hari tertutup tidak pernah disunting; koreksi dibukukan
+maju"). Ruangnya sempit: hanya Balik baris `manual_entry` pintu Finance tanpa tautan kas, lewat
+persetujuan orang kedua. Jalur tulis lain tetap tunduk §10.33 (`tentukanHariBuku`).
+
+- **Baris asli tidak pernah di-UPDATE** (trigger 0026 tetap utuh). Yang lahir adalah satu
+  `app.correction_entry` (0021) `kind = 'reversal'` dengan tujuh field audit §4.5
+  (`value_after = 0`, `evidence_ref = correction_request:<id>`). Aturan "baris berlaku"
+  (`SQL_ME_TAK_BERLAKU`) membacanya, jadi baris itu bernilai nol di laporan hari aslinya —
+  satu tempat, seluruh pembaca uang ikut.
+- **Dua orang** (`app.correction_request`, 0060): Finance (`canAjukanBalikBaris` — staf Keuangan,
+  HoF, super admin) mengajukan dengan kode `ADJ-DUP`/`ADJ-AMOUNT`/`ADJ-DATE`/`ADJ-PARTY` + alasan;
+  HoF/Direksi/super admin (`canSetujuiBalikBaris`) **yang bukan pengajunya** menyetujui atau
+  menolak (catatan wajib). Pengaju boleh menarik. Pemisahan tugas, pasangan keputusan, satu
+  pengajuan menunggu & satu reversal per baris, dan pembekuan pengajuan yang sudah diputus
+  ditegakkan **di DB**; keanggotaan penyetuju di server (HoF hidup di ENV, §10.4).
+- **Bulan tertutup** (baris `tutup_bulan` apa pun) → Balik ditolak. Hari tertutup di bulan
+  terbuka dibentuk ulang jurnalnya (pemicu 1 mengenali `correction_entry`).
+- **`day_close` tetap beku (§10.15).** Selisih yang disahkan saat ditutup tidak dihitung ulang.
+  Layar 4 dan PDF tutup hari menampilkan "dibalik sesudah ditutup" (jumlah baris, perubahan
+  laba, siapa menyetujui) TERPISAH dari selisih itu — pola `koreksi_susulan_rp` (§10.34).
+- **Belum:** Balik untuk baris pengawas di hari tertutup, `corrected_entry` (balik + nilai baru),
+  dan kotak masuk persetujuan lintas unit (sementara: kejadian `balik_biaya_menunggu` di
+  Pemantauan, berulang sampai diputus).
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu

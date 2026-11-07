@@ -1,5 +1,6 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { DayCloseRow, OverrideRow } from "@/lib/keuangan-input-queries";
+import { ringkasDibalik, type BarisDibalik } from "@/lib/batal-balik-model";
 import { LABEL_WEWENANG_TIER, type Tier } from "@/lib/keuangan-tutup-hari";
 import { pdfText } from "./glyphs";
 import { footerKeuangan, gayaKeuangan, kopKeuangan, rupiah, type KopKeuangan } from "./keuangan-kop";
@@ -37,6 +38,11 @@ export interface TutupHariDocInput {
   overrides: readonly OverrideRow[];
   /** Label kode alasan (dari master), supaya kertas tak hanya memuat kodenya. */
   labelReason: Record<string, string>;
+  /**
+   * Rencana 2026-11-07 R12b — baris yang DIBALIK sesudah hari ditutup. Selisih di
+   * atas tetap angka saat ditutup (§10.15); bagian ini menjelaskan bedanya.
+   */
+  dibalik?: readonly BarisDibalik[];
 }
 
 function baris(label: string, isi: Content | string): TableCell[] {
@@ -147,6 +153,38 @@ export function buildTutupHariDoc(i: TutupHariDocInput): TDocumentDefinitions {
             { text: pdfText(o.requestedBy ?? "—"), fontSize: 7.5 },
             { text: pdfText(`${o.approvedBy ?? "—"}\n${o.approvedAt ?? ""}`), fontSize: 7.5 },
             { text: pdfText(o.consumedAt ?? "belum"), fontSize: 7.5 },
+          ]),
+        ],
+      },
+      layout: headerOnlyLayout,
+    });
+  }
+
+  // R12b — dibalik sesudah ditutup: tampil TERPISAH, selisih beku tak diubah.
+  const dibalik = i.dibalik ?? [];
+  if (dibalik.length > 0) {
+    const r = ringkasDibalik(dibalik);
+    isi.push({ text: pdfText("Dibalik sesudah ditutup"), style: "judul", fontSize: 11, margin: [0, 12, 0, 4] });
+    isi.push({
+      text: pdfText(
+        `${r.n} baris dibalik sesudah hari ini ditutup — laba bersih hari ini berubah ${rupiah(r.dampakLaba)}. ` +
+          "Selisih di atas adalah angka SAAT DITUTUP dan tidak dihitung ulang.",
+      ),
+      fontSize: 8.5,
+      margin: [0, 0, 0, 4],
+    });
+    isi.push({
+      table: {
+        headerRows: 1,
+        widths: [CW - 310, 60, 70, 90, 90],
+        body: [
+          [th("Baris"), th("Nominal"), th("Kode"), th("Diajukan"), th("Disetujui")],
+          ...dibalik.map((d): TableCell[] => [
+            { text: pdfText(`${d.keterangan}\n${d.alasan}`), fontSize: 8 },
+            { text: rupiah(d.section === "pengeluaran" ? -Math.abs(d.amount) : Math.abs(d.amount)), fontSize: 8, alignment: "right" },
+            { text: pdfText(d.kode), fontSize: 8 },
+            { text: pdfText(d.pengaju ?? "—"), fontSize: 7.5 },
+            { text: pdfText(`${d.penyetuju ?? "—"}\n${d.waktu}`), fontSize: 7.5 },
           ]),
         ],
       },

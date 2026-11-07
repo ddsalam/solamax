@@ -46,19 +46,47 @@ export interface BarisBiaya {
   status: StatusBiaya;
   sourceDoor: PintuBiaya;
   void: boolean;
+  /** 0053 — baris pintu Finance yang lahir dari mutasi kas/bank (`cash_ledger_id`). */
+  bertautKas: boolean;
+  /** `day_close.status = 'closed'` untuk (unit, tanggal) — yang benar-benar menutup hari. */
+  hariTutup: boolean;
+  /** Jejak Batalkan (rencana 2026-11-07, 0059): kapan (WIB), oleh siapa, kode, alasan. */
+  voidAt: string | null;
+  voidOleh: string | null;
+  voidReasonCode: string | null;
+  voidAlasan: string | null;
+  /** Rencana 2026-11-07 Rilis 2 — ada `correction_entry` reversal (0060). `void` juga true. */
+  dibalik: boolean;
+  /** Pengajuan Balik TERAKHIR untuk baris ini (menunggu/disetujui/ditolak/ditarik), bila ada. */
+  balik: PengajuanBalik | null;
+}
+
+export interface PengajuanBalik {
+  id: string;
+  status: "menunggu" | "disetujui" | "ditolak" | "ditarik";
+  olehId: number;
+  oleh: string | null;
+  /** WIB, `YYYY-MM-DD HH24:MI`. */
+  waktu: string;
+  kode: string;
+  alasan: string;
+  putusOleh: string | null;
+  putusWaktu: string | null;
+  catatan: string | null;
 }
 
 /**
- * Empat tindakan bernama (§2.3). **`edit` bukan salah satunya, dan tak akan
+ * Tindakan bernama (§2.3; Batalkan ditambahkan rencana 2026-11-07). **`edit` bukan salah satunya, dan tak akan
  * pernah jadi salah satunya.**
  */
-export const TINDAKAN = ["review", "return", "reclassify", "correct"] as const;
+export const TINDAKAN = ["review", "return", "reclassify", "batalkan", "correct"] as const;
 export type Tindakan = (typeof TINDAKAN)[number];
 
 export const LABEL_TINDAKAN: Record<Tindakan, string> = {
   review: "Tinjau",
   return: "Kembalikan untuk perbaikan",
   reclassify: "Reklasifikasi",
+  batalkan: "Batalkan",
   correct: "Koreksi / balik",
 };
 
@@ -68,7 +96,7 @@ export const LABEL_TINDAKAN: Record<Tindakan, string> = {
  * | tahap | Finance boleh |
  * |---|---|
  * | `draft` | — (belum terlihat Finance) |
- * | `submitted`, hari belum ditutup | Tinjau · Kembalikan · Reklasifikasi |
+ * | `submitted`, hari belum ditutup | Tinjau · Kembalikan (pengawas) · Reklasifikasi · Batalkan (Finance, tanpa tautan kas) |
  * | `closed` | Reklasifikasi · Koreksi / balik |
  *
  * `Reklasifikasi` tersedia **kapan saja** setelah baris terlihat: ia tidak
@@ -81,10 +109,20 @@ export const LABEL_TINDAKAN: Record<Tindakan, string> = {
 export function tindakanTersedia(b: BarisBiaya): Tindakan[] {
   if (b.void) return [];
   if (b.status === "draft") return [];
-  if (b.status === "closed") return ["reclassify", "correct"];
+  // Hari ditutup oleh `day_close`, bukan oleh status baris (aplikasi tak pernah
+  // menyetel status 'closed') — dua-duanya dihormati.
+  if (b.hariTutup || b.status === "closed") {
+    // Rencana 2026-11-07 R8 — Balik hanya baris pintu Finance tanpa tautan kas.
+    // Baris pengawas di hari tertutup: Balik-nya ditunda (Deferred), jangan
+    // tampilkan nama tindakan tanpa jalan.
+    return b.sourceDoor === "finance" && !b.bertautKas ? ["reclassify", "correct"] : ["reclassify"];
+  }
   // submitted / returned
   const t: Tindakan[] = ["review", "reclassify"];
   if (b.sourceDoor === "pengawas") t.splice(1, 0, "return");
+  // Rencana 2026-11-07 R1 — Batalkan hanya baris pintu Finance yang TIDAK lahir
+  // dari mutasi kas (yang itu dibatalkan lewat mutasi asalnya, R3).
+  if (b.sourceDoor === "finance" && !b.bertautKas) t.push("batalkan");
   return t;
 }
 

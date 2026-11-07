@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { addDays } from "./periods";
 import { KODE_MAJU_REVERSAL } from "./keuangan-kode-maju";
 import type { ScopedUnitId } from "./scope";
@@ -110,6 +111,9 @@ export type JenisKejadian =
   | "rekening_edc_diubah"
   | "rekening_pencairan_beda"
   | "reklasifikasi_biaya"
+  | "batal_biaya_finance"
+  | "balik_biaya_menunggu"
+  | "balik_biaya"
   | "balik_antar_unit"
   | "tarik_rekening_koran";
 
@@ -651,7 +655,7 @@ const KUERI_KEJADIAN = `
            to_char(m.business_date, 'YYYY-MM-DD'), NULL,
            (m.section::text || ' — ' || m.keterangan), m.amount::float8, NULL
       FROM app.manual_entry m
-     WHERE m.unit_id = ANY($1::int[]) AND NOT m.void
+     WHERE m.unit_id = ANY($1::int[]) AND NOT ${SQL_ME_TAK_BERLAKU("m")}
        AND m.section IN ('pengeluaran', 'pendapatan_lain')
        AND m.status = 'submitted'
        AND m.business_date BETWEEN $2::date AND $3::date
@@ -679,6 +683,42 @@ const KUERI_KEJADIAN = `
       LEFT JOIN app.users u ON u.id = r.created_by_user_id
      WHERE r.unit_id = ANY($1::int[]) AND r.source_kind = 'manual_entry'
        AND ${SAAT_DALAM_JENDELA("r.created_at")}
+
+    -- Rencana 2026-11-07 R13 — setiap Batalkan baris pintu Finance terlihat:
+    -- baris keluar dari laba & arus kas, dengan siapa, kode, dan alasannya.
+    UNION ALL
+    SELECT m.unit_id::int, 'batal_biaya_finance', ${WIB_TEKS("m.voided_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.section::text || ' — ' || m.keterangan || ' · ' || m.void_reason_code || ' · ' || m.void_alasan),
+           abs(m.amount)::float8, NULL
+      FROM app.manual_entry m
+      LEFT JOIN app.users u ON u.id = m.voided_by_user_id
+     WHERE m.unit_id = ANY($1::int[]) AND m.void AND m.void_reason_code IS NOT NULL
+       AND ${SAAT_DALAM_JENDELA("m.voided_at")}
+
+    -- Rencana 2026-11-07 R13 — pengajuan Balik yang MENUNGGU (diulang tiap
+    -- jendela sampai diputus: penyetuju tak perlu tahu tanggalnya lebih dulu) dan
+    -- Balik yang disetujui (mengubah angka hari yang sudah disahkan).
+    UNION ALL
+    SELECT q.unit_id::int, 'balik_biaya_menunggu', ${WIB_TEKS("q.requested_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.keterangan || ' · ' || q.reason_code || ' · ' || q.alasan
+             || ' · buka Input keuangan tanggal ' || to_char(m.business_date, 'YYYY-MM-DD')),
+           abs(m.amount)::float8, NULL
+      FROM app.correction_request q
+      JOIN app.manual_entry m ON m.id = q.original_txn_id AND m.unit_id = q.unit_id
+      LEFT JOIN app.users u ON u.id = q.requested_by_user_id
+     WHERE q.unit_id = ANY($1::int[]) AND q.status = 'menunggu'
+    UNION ALL
+    SELECT ce.unit_id::int, 'balik_biaya', ${WIB_TEKS("ce.approved_at")},
+           to_char(m.business_date, 'YYYY-MM-DD'), u.email,
+           (m.keterangan || ' · ' || ce.reason_code || ' · disetujui sesudah hari ditutup'),
+           abs(m.amount)::float8, NULL
+      FROM app.correction_entry ce
+      JOIN app.manual_entry m ON m.id = ce.original_txn_id AND m.unit_id = ce.unit_id
+      LEFT JOIN app.users u ON u.id = ce.approved_by_user_id
+     WHERE ce.unit_id = ANY($1::int[]) AND ce.source_kind = 'manual_entry' AND ce.kind = 'reversal'
+       AND ${SAAT_DALAM_JENDELA("ce.approved_at")}
 
     UNION ALL
     SELECT k.unit_id::int, 'selisih_slip_edc', ${WIB_TEKS("k.checked_at")},
@@ -800,6 +840,12 @@ const KUERI_AKTIVITAS = `
       FROM app.manual_entry
      WHERE unit_id = ANY($1::int[]) AND source_door = 'finance'
        AND ${SAAT_DALAM_JENDELA("created_at")}
+    UNION ALL
+    -- Rencana 2026-11-07 R13 — Batalkan pintu Finance (beralasan) dihitung pembatalan.
+    SELECT voided_by_user_id, 'pembatalan', voided_at
+      FROM app.manual_entry
+     WHERE unit_id = ANY($1::int[]) AND void AND void_reason_code IS NOT NULL
+       AND ${SAAT_DALAM_JENDELA("voided_at")}
     UNION ALL
     SELECT closed_by_user_id, 'tutup hari', closed_at
       FROM app.day_close

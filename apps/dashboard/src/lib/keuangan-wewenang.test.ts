@@ -16,6 +16,10 @@ import {
   canTetapkanPihakLawanBaris,
   canTetapkanSaldoAwalPihakLawan,
   canBalikPasanganAntarUnit,
+  canBatalkanBarisFinance,
+  canAjukanBalikBaris,
+  canSetujuiBalikBaris,
+  canReklasifikasi,
   canCatatAntarUnit,
   canImporRekeningKoran,
   canTarikRekeningKoran,
@@ -608,5 +612,53 @@ describe("buku besar (rencana K6 U9; R8, R9, KD13) — pengusul ≠ penyetuju", 
     const badan = src.slice(i, src.indexOf("\n}", i));
     expect(i).toBeGreaterThan(-1);
     expect(badan).not.toMatch(/isHeadOfFinance|canCloseException/);
+  });
+});
+
+describe("Batalkan baris pintu Finance (rencana 2026-11-07 KTD7) — predikat sendiri", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 staf Keuangan, super admin, DAN Head of Finance (peran admin_perusahaan + ENV)", () => {
+    expect(semua.filter((r) => canBatalkanBarisFinance(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    // ⛔ Gerbang baru mewarisi pengecualian lama: HoF pernah tertolak Reklasifikasi
+    // (27 Sep). Pemakai nyata Batalkan termasuk HoF — dipatok di sini.
+    expect(canBatalkanBarisFinance(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canBatalkanBarisFinance(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+  });
+
+  it("pengawas, direksi, admin perusahaan biasa TIDAK", () => {
+    for (const r of ["pengawas", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canBatalkanBarisFinance(c(r, "orang@solagroup.co"), HOF5), r).toBe(false);
+    }
+  });
+
+  it("anggotanya hari ini sama dengan reklasifikasi — keputusan Dion, bukan kebetulan", () => {
+    for (const r of semua) {
+      for (const e of [null, "hof@solagroup.co"]) {
+        expect(canBatalkanBarisFinance(c(r, e), HOF5), `${r}/${e}`).toBe(canReklasifikasi(c(r, e), HOF5));
+      }
+    }
+  });
+});
+
+describe("Balik baris pintu Finance (rencana 2026-11-07 KTD7, R10) — dua predikat, dua keputusan", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 mengajukan: staf Keuangan, super admin, HoF — anggota sama dengan Batalkan", () => {
+    expect(semua.filter((r) => canAjukanBalikBaris(c(r), HOF5))).toEqual(["keuangan", "super_admin"]);
+    expect(canAjukanBalikBaris(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+  });
+
+  it("🔴 menyetujui: Direksi, super admin, HoF — tingkat kedua §3.2 (canCloseException); staf Keuangan TIDAK", () => {
+    expect(semua.filter((r) => canSetujuiBalikBaris(c(r), HOF5))).toEqual(["direksi", "super_admin"]);
+    expect(canSetujuiBalikBaris(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canSetujuiBalikBaris(c("keuangan"), HOF5)).toBe(false);
+    for (const r of semua) {
+      expect(canSetujuiBalikBaris(c(r, "hof@solagroup.co"), HOF5), r).toBe(canCloseException(c(r, "hof@solagroup.co"), HOF5));
+    }
   });
 });

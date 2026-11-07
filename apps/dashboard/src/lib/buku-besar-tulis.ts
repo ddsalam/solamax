@@ -589,7 +589,7 @@ export async function bentukJurnalSumberDitulis(
  * tulis keuangan tidak memakai SAVEPOINT sebelum menulis (baris di dalam
  * subtransaksi membawa xid subtransaksinya). Tabel yang DIBACA aturan posting
  * ikut dipetakan ke sumbernya: penebusan → baris kas, beban non-kas (MDR) →
- * settlement, reklasifikasi → baris Biaya. $1 unit, $2 tanggal mulai.
+ * settlement, reklasifikasi & reversal Balik (0060) → baris Biaya. $1 unit, $2 tanggal mulai.
  *
  * ⚠️ Tidak berindeks (xmin): memindai baris unit sejak $2 di setiap tulisan.
  */
@@ -606,6 +606,9 @@ const SQL_DITULIS_TRANSAKSI_INI = `
   UNION ALL
   SELECT 'manual', r.source_txn_id::text FROM app.reclassification r, x
    WHERE r.unit_id = $1 AND r.source_kind = 'manual_entry' AND r.xmin::text = x.xid
+  UNION ALL
+  SELECT 'manual', ce.original_txn_id::text FROM app.correction_entry ce, x
+   WHERE ce.unit_id = $1 AND ce.source_kind = 'manual_entry' AND ce.xmin::text = x.xid
   UNION ALL
   SELECT 'settlement', s.id::text FROM app.edc_settlement s, x
    WHERE s.unit_id = $1 AND s.business_date >= $2::date AND s.xmin::text = x.xid

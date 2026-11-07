@@ -3,8 +3,9 @@ import type { TDocumentDefinitions } from "pdfmake/interfaces";
 import type { PanelBalance, PanelLaporan } from "@/lib/keuangan-laporan-model";
 import type { BarisUnit } from "@/lib/keuangan-papan-model";
 import { buildLaporanKeuanganDoc } from "./keuangan-harian-doc";
+import { BAKAU_BARIS, bakauBatalkan, hitungBakau } from "../__fixtures__/bakau-2-okt";
 import { buildPapanKeuanganDoc } from "./keuangan-papan-doc";
-import { catatanSebab, selNilai, tekstKaki, type KopKeuangan } from "./keuangan-kop";
+import { catatanSebab, rupiah, selNilai, tekstKaki, type KopKeuangan } from "./keuangan-kop";
 
 /**
  * Kelas cacat yang dijaga berkas ini — masing-masing dinamai:
@@ -154,4 +155,29 @@ const belumDibuka = (n: string): BarisUnit => ({
 const belum = (code: string, nama: string): BarisUnit => ({
   ...dasar(code, nama), status: "belum_dimodelkan",
   labaBersih: null, kasAkhir: null, langkahHarian: null, nada: "tak_terhitung",
+});
+
+describe("F · baris dibatalkan hilang dari PDF laporan harian (rencana 2026-11-07 R5)", () => {
+  const doc = (rows: Parameters<typeof hitungBakau>[0]) => {
+    const h = hitungBakau(rows);
+    return teks(
+      buildLaporanKeuanganDoc({
+        kop: KOP,
+        cashFlow: h.cashFlow,
+        income: h.income,
+        balance: h.balance,
+        incomplete: [],
+        catatanNilaiDo: "",
+      }),
+    );
+  };
+
+  it("🔴 Bakau 2 Okt: sesudah tiga baris dibatalkan, kertas memuat angka sesudahnya", () => {
+    const sebelum = doc(BAKAU_BARIS);
+    const sesudah = doc(bakauBatalkan(BAKAU_BARIS));
+    expect(sebelum).toContain(rupiah(11_073_820));
+    expect(sesudah).toContain(rupiah(11_061_380));
+    expect(sesudah).not.toContain(rupiah(11_073_820));
+    expect(sesudah).toContain(rupiah(-763.5));
+  });
 });
