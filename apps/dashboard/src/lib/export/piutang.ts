@@ -1,5 +1,5 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import { PIUTANG_BOOKS, piutangBookTotalAmounts, piutangBookLabel, piutangBookAmounts, booksForPiutangRow, type PiutangBook, type PiutangExportView, type PiutangSection, type PiutangViewRow } from "@/lib/piutang-model";
+import { PIUTANG_BOOKS, piutangBookTotalAmounts, piutangBookLabel, piutangBookAmounts, piutangSaldoSelisih, booksForPiutangRow, type PiutangBook, type PiutangExportView, type PiutangSection, type PiutangViewRow } from "@/lib/piutang-model";
 import { susunCsv } from "./csv";
 import { footerKeuangan, gayaKeuangan, kopKeuangan, type KopKeuangan } from "./keuangan-kop";
 import { pdfText } from "./glyphs";
@@ -16,6 +16,14 @@ export function safeSpreadsheetText(value: string): string {
 }
 
 const numeric = (value: number): string => String(Object.is(value, -0) ? 0 : value);
+
+function csvBookAmounts(row: PiutangViewRow, book: PiutangBook): string[] {
+  const amounts = piutangBookAmounts(row, book);
+  return [
+    ...Object.values(amounts).flatMap((boundary) => [numeric(boundary.debet), numeric(boundary.kredit), numeric(boundary.saldo)]),
+    numeric(piutangSaldoSelisih(amounts)),
+  ];
+}
 const PDF_NUMBER = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 
 function piutangProvenance(view: PiutangExportView): string {
@@ -55,7 +63,7 @@ export function piutangCsv(input: {
     [],
     [
       "Kode unit", "Nama unit", "Tanggal", "Batas awal", "Batas akhir",
-      "Seksi", "Buku", "Keanggotaan buku", "Kode pelanggan", "Nama pelanggan", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo",
+      "Seksi", "Buku", "Keanggotaan buku", "Kode pelanggan", "Nama pelanggan", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo", "Selisih Saldo",
     ],
     ...view.sections.flatMap((section) => section.rows.flatMap((row) => booksForPiutangRow(section, row).map((book) => [
       text(unit.code),
@@ -68,7 +76,7 @@ export function piutangCsv(input: {
       [piutangBookLabel(row.bookCount), section.book && section.book.id !== book.id ? "buku bersaldo nol" : null].filter(Boolean).join("; "),
       text(row.customerCode),
       text(row.customerName ?? "Nama belum tersedia"),
-      ...Object.values(piutangBookAmounts(row, book)).flatMap((amounts) => [numeric(amounts.debet), numeric(amounts.kredit), numeric(amounts.saldo)]),
+      ...csvBookAmounts(row, book),
     ]))),
   ];
   return susunCsv(rows);
@@ -94,19 +102,20 @@ function rowCells(row: PiutangViewRow, book: PiutangBook, section: PiutangSectio
     { text: pdfText(row.customerCode), fontSize: 7 },
     { text: pdfText(`${row.customerName ?? "Nama belum tersedia"}${label ? `\n${label}` : ""}\n${book.title}${section.book && section.book.id !== book.id ? " · buku bersaldo nol" : ""}`), fontSize: 7 },
     ...[amounts.awal, amounts.akhir].flatMap((boundary) => [moneyCell(boundary.debet, true), moneyCell(boundary.kredit, true), moneyCell(boundary.saldo)]),
+    moneyCell(piutangSaldoSelisih(amounts)),
   ];
 }
 
 function sectionContent(section: PiutangSection): Content[] {
   const headers = [header("Kode"), header("Pelanggan / Buku"), ...["Awal", "Akhir"].flatMap((boundary) => [
     header(`${boundary} Debet`), header(`${boundary} Kredit`), header(`${boundary} Saldo`),
-  ])];
+  ]), header("Selisih Saldo")];
   return [
     { text: pdfText(`${section.title} · ${section.rows.length.toLocaleString("id-ID")} pelanggan`), bold: true, fontSize: 10, margin: [0, 12, 0, 6] },
     ...(section.rows.length ? [{
       table: {
         headerRows: 1,
-        widths: [45, "*", 88, 88, 88, 88, 88, 88],
+        widths: [45, "*", 78, 78, 78, 78, 78, 78, 72],
         body: [headers, ...section.rows.flatMap((row) => booksForPiutangRow(section, row).map((book) => rowCells(row, book, section)))],
       },
       layout: "lightHorizontalLines",

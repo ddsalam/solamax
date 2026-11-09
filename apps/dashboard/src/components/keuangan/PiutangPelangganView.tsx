@@ -6,6 +6,7 @@ import {
   PIUTANG_FILTERS,
   piutangBookLabel,
   piutangBookAmounts,
+  piutangSaldoSelisih,
   booksForPiutangRow,
   type PiutangBookAmounts,
   type PiutangBoundaryAmounts,
@@ -28,6 +29,9 @@ export interface PiutangQueryState {
   search: string;
   filter: PiutangFilter;
   sort: PiutangSort;
+  /** Dua saringan mandiri; bukan nilai baru pada `filter`. */
+  mutasiKredit: boolean;
+  mutasiDebet: boolean;
   totalRows: number;
   occurrenceCount: number;
 }
@@ -163,6 +167,15 @@ function BucketPair({ name, amounts }: { name: string; amounts: PiutangBookAmoun
       <div className="b6-piutang-pair">
         <div><span className="b6-piutang-mobile-bound">Awal</span><BoundaryAmounts amounts={amounts.awal} /></div>
         <div><span className="b6-piutang-mobile-bound">Akhir</span><BoundaryAmounts amounts={amounts.akhir} /></div>
+        <div className="b6-piutang-selisih">
+          <span className="b6-piutang-mobile-bound">Selisih</span>
+          <dl className="b6-piutang-triplet">
+            <div className="b6-piutang-saldo">
+              <dt>Selisih</dt>
+              <dd><Nilai value={piutangSaldoSelisih(amounts)} /></dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>
   );
@@ -175,6 +188,7 @@ function HeaderBucket({ name }: { name: string }) {
       <div className="b6-piutang-head-pair">
         <span><b>Awal</b><small>dtgl &lt; D · s.d. D−1</small></span>
         <span><b>Akhir</b><small>dtgl ≤ D · s.d. D</small></span>
+        <span><b>Selisih</b><small>akhir − awal</small></span>
       </div>
     </div>
   );
@@ -228,6 +242,52 @@ function NotReady({ props }: { props: Extract<PiutangPelangganViewProps, { state
   );
 }
 
+function MutasiHidden({ query }: { query: PiutangQueryState }) {
+  return (
+    <>
+      {query.mutasiKredit && <input type="hidden" name="mutasi_kredit" value="1" />}
+      {query.mutasiDebet && <input type="hidden" name="mutasi_debet" value="1" />}
+    </>
+  );
+}
+
+function MutasiFilter({
+  query,
+  side,
+}: {
+  query: PiutangQueryState;
+  side: "kredit" | "debet";
+}) {
+  const active = side === "kredit" ? query.mutasiKredit : query.mutasiDebet;
+  const label = side === "kredit" ? "Mutasi kredit" : "Mutasi debet";
+  const href = (on: boolean) => piutangQueryHref({
+    ...query,
+    mutasiKredit: side === "kredit" ? on : query.mutasiKredit,
+    mutasiDebet: side === "debet" ? on : query.mutasiDebet,
+  });
+  return (
+    <div className="b6-piutang-mutasi">
+      <span>{label}</span>
+      <nav className="seg" aria-label={`Filter ${label.toLocaleLowerCase("id-ID")} pada tanggal bisnis yang dibuka`}>
+        <a
+          href={href(false)}
+          className={`seg-btn${active ? "" : " active"}`}
+          aria-current={active ? undefined : "page"}
+        >
+          Semua
+        </a>
+        <a
+          href={href(true)}
+          className={`seg-btn${active ? " active" : ""}`}
+          aria-current={active ? "page" : undefined}
+        >
+          {label}
+        </a>
+      </nav>
+    </div>
+  );
+}
+
 function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state: "ready" }> }) {
   const { query } = props;
   return (
@@ -235,6 +295,7 @@ function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state
       <form method="get" className="b6-piutang-search">
         <input type="hidden" name="filter" value={query.filter} />
         <input type="hidden" name="sort" value={query.sort} />
+        <MutasiHidden query={query} />
         <label htmlFor="b6-piutang-q">Cari kode atau nama pelanggan</label>
         <div>
           <input id="b6-piutang-q" name="q" type="search" defaultValue={query.search} />
@@ -260,6 +321,7 @@ function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state
       <form method="get" className="b6-piutang-sort">
         {query.search && <input type="hidden" name="q" value={query.search} />}
         <input type="hidden" name="filter" value={query.filter} />
+        <MutasiHidden query={query} />
         <label htmlFor="b6-piutang-sort">Urutkan</label>
         <select id="b6-piutang-sort" name="sort" defaultValue={query.sort}>
           {PIUTANG_SORTS.map((value) => (
@@ -270,6 +332,14 @@ function Controls({ props }: { props: Extract<PiutangPelangganViewProps, { state
           Terapkan
         </button>
       </form>
+
+      <div className="b6-piutang-mutasi-row">
+        <MutasiFilter query={query} side="kredit" />
+        <MutasiFilter query={query} side="debet" />
+        <p>
+          Mutasi pada tanggal bisnis yang sedang dibuka: akumulasi Kredit atau Debet di batas akhir berbeda dari batas awal. Kedua saringan berdiri sendiri; dipakai bersama, pelanggan harus punya keduanya.
+        </p>
+      </div>
     </div>
   );
 }

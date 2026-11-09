@@ -26,6 +26,12 @@ export interface PiutangViewInput {
   search?: string | null;
   filter?: string | null;
   sort?: string | null;
+  /**
+   * Saringan mutasi pada tanggal bisnis yang sedang dibuka. String dari URL
+   * (`"1"` menyala); boolean setelah dinormalisasi. Keduanya mandiri.
+   */
+  mutasiKredit?: string | boolean | null;
+  mutasiDebet?: string | boolean | null;
   pages?: Partial<Record<PiutangSectionId, string | number | null>>;
 }
 
@@ -33,6 +39,10 @@ export interface PiutangViewRow extends SaldoSnapshotRow {
   /** Presentation-only predicate; it never adds or nets the three buckets. */
   isZeroBalance: boolean;
   bookCount: number;
+  /** Akumulasi kredit batas akhir berbeda dari batas awal, pada buku mana pun. */
+  hasMutasiKredit: boolean;
+  /** Akumulasi debet batas akhir berbeda dari batas awal, pada buku mana pun. */
+  hasMutasiDebet: boolean;
 }
 
 export interface PiutangNotReadyView {
@@ -59,6 +69,10 @@ export interface PiutangReadyView {
   zeroSectionOpen: boolean;
   filter: PiutangFilter;
   sort: PiutangSort;
+  /** Menyala hanya untuk pelanggan yang akumulasi kreditnya bergerak pada tanggal bisnis ini. */
+  mutasiKredit: boolean;
+  /** Menyala hanya untuk pelanggan yang akumulasi debetnya bergerak pada tanggal bisnis ini. */
+  mutasiDebet: boolean;
   search: string;
 }
 
@@ -77,6 +91,8 @@ export interface PiutangExportView {
   resultCount: number;
   filter: PiutangFilter;
   sort: PiutangSort;
+  mutasiKredit: boolean;
+  mutasiDebet: boolean;
   search: string;
 }
 
@@ -101,6 +117,28 @@ export function piutangBookAmounts(row: SaldoSnapshotRow, book: PiutangBook): Pi
     awal: { debet: row[book.awalDebet], kredit: row[book.awalKredit], saldo: row[book.awal] },
     akhir: { debet: row[book.akhirDebet], kredit: row[book.akhirKredit], saldo: row[book.akhir] },
   };
+}
+
+/**
+ * Selisih saldo yang sudah tampil: saldo akhir dikurangi saldo awal pada buku
+ * yang sama. Bukan definisi saldo baru, dan tidak menjumlahkan buku.
+ */
+export function piutangSaldoSelisih(amounts: PiutangBookAmounts): number {
+  return amounts.akhir.saldo - amounts.awal.saldo;
+}
+
+/**
+ * Mutasi satu sisi pada tanggal bisnis yang dibuka.
+ *
+ * Batas awal = akumulasi `dtgl < D`, batas akhir = akumulasi `dtgl <= D`,
+ * jadi selisih akumulasi itulah mutasi hari D. Hari D adalah tanggal bisnis
+ * di URL layar ini — tidak ada jam hari-operasi lain pada layar saldo.
+ * Perbandingan tepat, sama seperti keanggotaan saldo; buku tidak dinetokan.
+ */
+export function piutangHasMutasi(row: SaldoSnapshotRow, side: "debet" | "kredit"): boolean {
+  return PIUTANG_BOOKS.some((book) => side === "debet"
+    ? row[book.akhirDebet] !== row[book.awalDebet]
+    : row[book.akhirKredit] !== row[book.awalKredit]);
 }
 
 export function piutangBookTotalAmounts(metadata: Pick<SaldoSnapshotMetadata, "totals" | "debetTotals" | "kreditTotals">, book: PiutangBook): PiutangBookAmounts {
@@ -199,7 +237,14 @@ function normalizeRow(row: SaldoSnapshotRow): PiutangViewRow {
     ...normalized,
     isZeroBalance: isZeroBalance(normalized),
     bookCount: PIUTANG_BOOKS.filter((book) => normalized[book.awal] !== 0 || normalized[book.akhir] !== 0).length,
+    hasMutasiKredit: piutangHasMutasi(normalized, "kredit"),
+    hasMutasiDebet: piutangHasMutasi(normalized, "debet"),
   };
+}
+
+/** `"1"` atau `true` menyala. Nilai lain — termasuk yang tak dikenal — mati, sama seperti filter saldo yang jatuh ke bawaan. */
+export function normalizePiutangMutasi(value: string | boolean | null | undefined): boolean {
+  return value === true || value === "1";
 }
 
 function normalizeFilter(value: string | null | undefined): PiutangFilter {
@@ -246,6 +291,8 @@ function selectRows(
   const searchKey = search.toLocaleLowerCase("id-ID");
   const filter = normalizeFilter(input.filter);
   const sort = normalizeSort(input.sort);
+  const mutasiKredit = normalizePiutangMutasi(input.mutasiKredit);
+  const mutasiDebet = normalizePiutangMutasi(input.mutasiDebet);
   const normalizedRows = snapshot.rows.map(normalizeRow);
   const rows = normalizedRows.filter((row) => {
     const matchesSearch = searchKey.length === 0
@@ -253,9 +300,12 @@ function selectRows(
       || (row.customerName?.toLocaleLowerCase("id-ID").includes(searchKey) ?? false);
     const matchesFilter = filter === "semua"
       || (filter === "nol" ? row.isZeroBalance : !row.isZeroBalance);
-    return matchesSearch && matchesFilter;
+    // Dua saringan mandiri: yang mati tidak membatasi. Keduanya hidup = irisan.
+    const matchesKredit = !mutasiKredit || row.hasMutasiKredit;
+    const matchesDebet = !mutasiDebet || row.hasMutasiDebet;
+    return matchesSearch && matchesFilter && matchesKredit && matchesDebet;
   }).sort(compareRows(sort));
-  return { search, filter, sort, normalizedRows, rows };
+  return { search, filter, sort, mutasiKredit, mutasiDebet, normalizedRows, rows };
 }
 
 /** Pure presentation boundary: no database reads and no derived cross-bucket amount. */
@@ -272,7 +322,7 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
     };
   }
 
-  const { search, filter, sort, normalizedRows, rows: filteredRows } = selectRows(snapshot, input);
+  const { search, filter, sort, mutasiKredit, mutasiDebet, normalizedRows, rows: filteredRows } = selectRows(snapshot, input);
 
   const groups = groupPiutangRows(filteredRows, snapshot.hasOnlineCustomer);
   const sections = groups.map((section): PiutangPageSection => {
@@ -291,12 +341,14 @@ export function buildPiutangView(snapshot: SaldoSnapshot, input: PiutangViewInpu
     rows: filteredRows,
     sections,
     occurrenceCount: groups.reduce((count, section) => count + section.rows.length, 0),
-    zeroSectionOpen: Boolean(search || filter === "nol" || input.pages?.nol != null),
+    zeroSectionOpen: Boolean(search || filter === "nol" || mutasiKredit || mutasiDebet || input.pages?.nol != null),
     hasOnlineCustomer: snapshot.hasOnlineCustomer,
     totalCount: normalizedRows.length,
     resultCount: filteredRows.length,
     filter,
     sort,
+    mutasiKredit,
+    mutasiDebet,
     search,
   };
 }
@@ -307,7 +359,7 @@ export function buildPiutangExportView(
   input: PiutangViewInput,
 ): PiutangNotReadyView | PiutangExportView {
   if (snapshot.status === "not_ready") return buildPiutangView(snapshot, input);
-  const { search, filter, sort, normalizedRows, rows } = selectRows(snapshot, input);
+  const { search, filter, sort, mutasiKredit, mutasiDebet, normalizedRows, rows } = selectRows(snapshot, input);
   const sections = groupPiutangRows(rows, snapshot.hasOnlineCustomer);
   return {
     status: "ready",
@@ -322,6 +374,8 @@ export function buildPiutangExportView(
     resultCount: rows.length,
     filter,
     sort,
+    mutasiKredit,
+    mutasiDebet,
     search,
   };
 }
