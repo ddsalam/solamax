@@ -18,6 +18,7 @@ const rows: PiutangViewRow[] = [
     awalPiutangOnlineDebet: 0, awalPiutangOnlineKredit: 0, akhirPiutangOnlineDebet: 0, akhirPiutangOnlineKredit: 0,
     awalHutangLokalDebet: 0, awalHutangLokalKredit: 20000, akhirHutangLokalDebet: 10000, akhirHutangLokalKredit: 20000,
     customerCode: "A-001", customerName: "Andi", isZeroBalance: false, bookCount: 2,
+    hasMutasiKredit: true, hasMutasiDebet: true,
     awalPiutangLokal: 125_000, akhirPiutangLokal: 100_000,
     awalPiutangOnline: 0, akhirPiutangOnline: 0,
     awalHutangLokal: -20_000, akhirHutangLokal: -10_000 },
@@ -25,6 +26,7 @@ const rows: PiutangViewRow[] = [
     awalPiutangOnlineDebet: 8.5, awalPiutangOnlineKredit: 8.5, akhirPiutangOnlineDebet: 8.5, akhirPiutangOnlineKredit: 8.5,
     awalHutangLokalDebet: 9.75, awalHutangLokalKredit: 9.75, akhirHutangLokalDebet: 9.75, akhirHutangLokalKredit: 9.75,
     customerCode: "NOL/02", customerName: "Budi Saldo Nol", isZeroBalance: true, bookCount: 0,
+    hasMutasiKredit: false, hasMutasiDebet: false,
     awalPiutangLokal: 0, akhirPiutangLokal: 0, awalPiutangOnline: 0,
     akhirPiutangOnline: 0, awalHutangLokal: 0, akhirHutangLokal: 0 },
 ];
@@ -34,7 +36,7 @@ const ready = (o: Partial<Omit<ReadyProps, "state">> = {}): ReadyProps => ({
   date: "2026-09-09",
   detailBaseUrl: "/keuangan/unit/IB/piutang/2026-09-09/pelanggan",
   hasOnlineCustomer: true,
-  query: { search: "", filter: "semua", sort: "default", totalRows: 2, occurrenceCount: 3 },
+  query: { search: "", filter: "semua", sort: "default", mutasiKredit: false, mutasiDebet: false, totalRows: 2, occurrenceCount: 3 },
   provenance: {
     formulaVersion: "saldo-pelanggan-v1",
     computedAtLabel: "9 September 2026, 23.17 WIB",
@@ -81,7 +83,7 @@ describe("PiutangPelangganView", () => {
     expect(h).toContain("Budi Saldo Nol");
     expect(h).toContain("Saldo nol pada kedua batas");
     const zeroSection = h.slice(h.indexOf('id="piutang-nol"'));
-    expect(zeroSection.match(/Rp0/g)).toHaveLength(6);
+    expect(zeroSection.match(/Rp0/g)).toHaveLength(15);
     expect(zeroSection).toContain("Rp 7,25");
     expect(zeroSection).toContain("Rp 8,5");
     expect(zeroSection).toContain("Rp 9,75");
@@ -101,6 +103,8 @@ describe("PiutangPelangganView", () => {
           search: "andi",
           filter: "bersaldo",
           sort: "nama",
+          mutasiKredit: false,
+          mutasiDebet: false,
           totalRows: 121,
           occurrenceCount: 121,
         },
@@ -117,6 +121,61 @@ describe("PiutangPelangganView", () => {
     expect(h).toContain("page_hutang=2");
     expect(h).toContain("filter=bersaldo");
     expect(h).toContain("sort=nama");
+    expect(h).toContain("Filter mutasi kredit");
+    expect(h).toContain("Filter mutasi debet");
+  });
+
+  it("menyaring mutasi kredit dan mutasi debet sebagai dua kontrol terpisah", () => {
+    const h = html(ready({
+      query: {
+        search: "andi",
+        filter: "semua",
+        sort: "kode",
+        mutasiKredit: true,
+        mutasiDebet: false,
+        totalRows: 1,
+        occurrenceCount: 1,
+      },
+    }));
+    const kredit = h.slice(h.indexOf('aria-label="Filter mutasi kredit'), h.indexOf('aria-label="Filter mutasi debet'));
+    const debet = h.slice(h.indexOf('aria-label="Filter mutasi debet'));
+    expect(kredit).toContain("mutasi_kredit=1");
+    expect(kredit).toContain('aria-current="page"');
+    expect(kredit).toContain("Mutasi kredit");
+    expect(debet).toContain("mutasi_kredit=1");
+    expect(debet).toContain("mutasi_debet=1");
+    expect(debet).not.toMatch(/aria-current="page"[^>]*>Mutasi debet/);
+    expect(h).toContain('name="mutasi_kredit" value="1"');
+    expect(h).not.toContain('name="mutasi_debet"');
+  });
+
+  it("menulis selisih debet, kredit, dan saldo sebagai akhir dikurangi awal", () => {
+    const h = html(ready());
+    const card = (name: string, next: string) => h.slice(h.indexOf(`aria-label="Ringkasan ${name}"`), h.indexOf(next));
+    const lokalCard = card("Piutang Lokal", 'aria-label="Ringkasan Piutang Online"');
+    const onlineCard = card("Piutang Online", 'aria-label="Ringkasan Hutang Lokal"');
+    const hutangCard = card("Hutang Lokal", "Debet/Kredit adalah akumulasi");
+    for (const summary of [lokalCard, onlineCard, hutangCard]) {
+      expect(summary).toContain("Selisih · akhir − awal");
+      expect(summary).toContain(">Debet<");
+      expect(summary).toContain(">Kredit<");
+      expect(summary).toContain(">Saldo<");
+    }
+    expect(lokalCard).toContain("−Rp 25.000");
+    expect(onlineCard).toContain("Rp 25.000");
+    expect(hutangCard).toContain("−Rp 10.000");
+    expect(hutangCard).toContain("Rp 10.000");
+
+    const lokal = h.slice(h.indexOf('id="piutang-lokal"'), h.indexOf('id="piutang-online"'));
+    const hutang = h.slice(h.indexOf('id="piutang-hutang"'), h.indexOf('id="piutang-nol"'));
+    expect(lokal).toContain("akhir − awal");
+    // Akhir kredit, selisih kredit, dan selisih saldo (bertanda) memuat "Rp 25.000".
+    expect(lokal.match(/Rp 25\.000/g)).toHaveLength(3);
+    expect(lokal).toContain("−Rp 25.000");
+    expect(lokal.match(/Rp0/g)).toHaveLength(2);
+    // Akhir debet, saldo akhir (bertanda), selisih debet, dan selisih saldo.
+    expect(hutang.match(/Rp 10\.000/g)).toHaveLength(4);
+    expect(hutang.match(/Rp0/g)).toHaveLength(2);
   });
 
   it("not-ready adalah keadaan utama tanpa angka, tabel, atau ekspor numerik", () => {

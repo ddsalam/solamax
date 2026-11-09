@@ -1422,7 +1422,7 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-summaries.has-online { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .b6-piutang-summary-card { overflow: hidden; }
 .b6-piutang-summary-card h3 { margin: 0; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--color-border-hairline); background: var(--neutral-50); color: var(--color-text-secondary); font-size: 16px; }
-.b6-piutang-summary-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.b6-piutang-summary-pair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .b6-piutang-summary-pair > div { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: var(--space-4) var(--space-5); }
 .b6-piutang-summary-pair > div + div { border-left: 1px solid var(--color-border-hairline); }
 .b6-piutang-summary-pair span:first-child { color: var(--color-text-tertiary); font-size: 15px; }
@@ -1461,7 +1461,7 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-customer-head { display: flex; align-items: center; padding: var(--space-4) var(--space-5); color: var(--color-text-tertiary); font-size: 15px; font-weight: 700; }
 .b6-piutang-head-bucket { border-left: 2px solid var(--color-border); text-align: center; }
 .b6-piutang-head-bucket > strong { display: block; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border-hairline); color: var(--color-text-secondary); font-size: 15px; }
-.b6-piutang-head-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.b6-piutang-head-pair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .b6-piutang-head-pair > span { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3) var(--space-3); }
 .b6-piutang-head-pair > span + span { border-left: 1px solid var(--color-border-hairline); }
 .b6-piutang-head-pair b { color: var(--color-text-primary); font-size: 15px; }
@@ -1475,7 +1475,7 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-zero-badge { margin-top: 4px; padding: 3px 9px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); color: var(--color-text-secondary); font-size: 13px; font-weight: 600; }
 .b6-piutang-bucket { border-left: 2px solid var(--color-border); }
 .b6-piutang-bucket-name { display: none; }
-.b6-piutang-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: 100%; }
+.b6-piutang-pair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 100%; }
 .b6-piutang-pair > div { display: flex; align-items: center; justify-content: flex-end; min-width: 0; padding: var(--space-4) var(--space-3); }
 .b6-piutang-pair > div + div { border-left: 1px solid var(--color-border-hairline); }
 .b6-piutang-value { color: var(--color-text-primary); font-size: 16px; white-space: nowrap; }
@@ -1539,7 +1539,11 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-summary-pair > div { align-items: stretch; min-width: 0; }
 .b6-piutang-summary-pair > div > span { font-size: 13px; }
 .b6-piutang-summary-pair .b6-piutang-value { font-size: 16px; }
-.b6-piutang-ledger-head.single-book, .b6-piutang-ledger-row.single-book { grid-template-columns: minmax(210px, 1fr) minmax(560px, 3fr); min-width: 800px; }
+.b6-piutang-ledger-head.single-book, .b6-piutang-ledger-row.single-book { grid-template-columns: minmax(210px, 1fr) minmax(900px, 3fr); min-width: 1160px; }
+.b6-piutang-mutasi-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-4) var(--space-5); }
+.b6-piutang-mutasi { display: flex; flex-direction: column; gap: 6px; }
+.b6-piutang-mutasi > span { color: var(--color-text-tertiary); font-size: 15px; font-weight: 600; }
+.b6-piutang-mutasi-row > p { flex: 1 1 280px; margin: 0; color: var(--color-text-tertiary); font-size: 15px; }
 .b6-piutang-pair > div { flex-direction: column; align-items: stretch; justify-content: center; }
 .b6-piutang-triplet { display: grid; gap: 6px; width: 100%; margin: 0; }
 .b6-piutang-triplet > div { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 12px; }
