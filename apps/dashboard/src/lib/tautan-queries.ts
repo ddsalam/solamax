@@ -1,4 +1,5 @@
 import { qScoped } from "./db";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { KATEGORI_BEBAN } from "./keuangan-kas-model";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { KATEGORI_PENEBUSAN } from "./penebusan-model";
@@ -31,7 +32,7 @@ export async function getKasTautan(unit: ScopedUnitId): Promise<KasTautan[]> {
             to_char(l.business_date,'YYYY-MM-DD') AS "businessDate", l.keterangan,
             l.category_label AS "categoryLabel", l.amount::float8 AS amount, l.void,
             EXISTS (SELECT 1 FROM app.manual_entry m
-                     WHERE m.cash_ledger_id = l.id AND m.unit_id = l.unit_id AND NOT m.void) AS "bebanAktif",
+                     WHERE m.cash_ledger_id = l.id AND m.unit_id = l.unit_id AND NOT ${SQL_ME_TAK_BERLAKU("m")}) AS "bebanAktif",
             EXISTS (SELECT 1 FROM app.penebusan p
                      WHERE p.cash_ledger_id = l.id AND p.unit_id = l.unit_id AND NOT p.void) AS "penebusanAktif",
             EXISTS (SELECT 1 FROM app.tutup_bulan t
@@ -61,7 +62,7 @@ export async function getBebanTautan(unit: ScopedUnitId): Promise<BebanTautan[]>
             EXISTS (SELECT 1 FROM app.tutup_bulan t
                      WHERE t.unit_id = m.unit_id AND t.bulan = date_trunc('month', m.business_date)::date) AS "bulanTertutup"
        FROM app.manual_entry m
-      WHERE m.unit_id = $1 AND NOT m.void AND m.source_door = 'finance' AND m.cash_ledger_id IS NULL
+      WHERE m.unit_id = $1 AND NOT ${SQL_ME_TAK_BERLAKU("m")} AND m.source_door = 'finance' AND m.cash_ledger_id IS NULL
         AND m.section IN ('pengeluaran','pendapatan_lain')
         AND m.business_date >= (SELECT min(business_date) FROM app.cash_ledger
                                  WHERE unit_id = $1 AND saldo_awal AND NOT void)

@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   bebanPerAkun,
   kumpulkanBeban,
+  pilahManualEntry,
   ringkasPerSumber,
+  type BarisManualLaporan,
   SUMBER_BEBAN,
   totalBeban,
   type SumberBebanInput,
@@ -146,5 +148,40 @@ describe("dua jalur MDR, satu akun 7-1200", () => {
     // "siapa yang menaruh ini" tetap punya jawaban.
     expect(dariMesin[0]!.sumber).toBe("noncash_expense");
     expect(dariManusia[0]!.sumber).toBe("manual_entry");
+  });
+});
+
+describe("pilahManualEntry — baris TAK BERLAKU (void/dibalik) nol di SETIAP cabang (rencana 2026-11-07 KTD2)", () => {
+  const baris = (o: Partial<BarisManualLaporan> = {}): BarisManualLaporan => ({
+    businessDate: "2026-10-02",
+    accountingAccount: "6-9100",
+    amountRp: 30_000,
+    keterangan: "Biaya Admin Bank",
+    void: false,
+    section: "pengeluaran",
+    operationalCategory: null,
+    ...o,
+  });
+
+  it("🔴 pengeluaran ber-akun beban yang void TIDAK ikut manualBeban (dulu hanya diselamatkan kumpulkanBeban)", () => {
+    const r = pilahManualEntry([baris({ void: true }), baris({ keterangan: "Biaya sah", amountRp: 5_000 })]);
+    expect(r.manualBeban.map((b) => b.keterangan)).toEqual(["Biaya sah"]);
+  });
+
+  it("void di setiap jenis akun menyumbang nol", () => {
+    const semuaVoid = [
+      baris({ void: true }),
+      baris({ void: true, section: "pendapatan_lain", accountingAccount: "6-9900", amountRp: 50_000 }),
+      baris({ void: true, accountingAccount: "3-9100", amountRp: 70_000 }), // ekuitas
+      baris({ void: true, accountingAccount: "1-1800", amountRp: 80_000 }), // pindah dana
+      baris({ void: true, section: "pendapatan_lain", accountingAccount: "1-1800", amountRp: 90_000 }),
+    ];
+    expect(pilahManualEntry(semuaVoid)).toEqual({
+      manualBeban: [],
+      pendapatanLain: 0,
+      titipanBright: 0,
+      kontribusi: 0,
+      pindahDana: 0,
+    });
   });
 });

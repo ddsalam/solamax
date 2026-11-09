@@ -10,6 +10,7 @@ import {
 } from "./keuangan-beban";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { sqlTitipan, type SaldoTitipanPemilik, type TitipanDiterima } from "./titipan-bright";
 import { cutOverTerawal, saldoAkun } from "./keuangan-kas";
 import { computeDay, sisaSoAktif, type DayProductInput, type DayTotals } from "./keuangan-mesin";
@@ -98,6 +99,10 @@ export interface BahanLaporan {
   arusTitipanBright: number;
   piutangEasymax: number;
   deltaPiutangEasymax: number;
+  /** SALDO buku "Hutang Lokal" EasyMax akhir hari (negatif = deposit yang kita hutangi). */
+  depositEasymax: number;
+  /** ARUS deposit hari itu, bertanda kas: −(akhir − awal). */
+  deltaDepositEasymax: number;
   beban: BarisBeban[];
   pendapatanLain: number;
   /**
@@ -136,7 +141,10 @@ async function getBebanDanPendapatan(
             -- §10.29 — akun EFEKTIF: reklasifikasi terakhir, kalau tidak akun beku.
             ${SQL_AKUN_EFEKTIF("m")}            AS "accountingAccount",
             ${NOMINAL_MANUAL_ENTRY_SQL}::float8 AS "amountRp",
-            keterangan, void, section::text     AS section,
+            keterangan,
+            -- Rencana 2026-11-07 KTD1 — kolom void di sini berarti TIDAK BERLAKU (satu aturan).
+            ${SQL_ME_TAK_BERLAKU("m")}         AS void,
+            section::text                       AS section,
             operational_category                AS "operationalCategory",
             cash_ledger_id::text                AS "cashLedgerId"
        FROM app.manual_entry m
@@ -217,7 +225,7 @@ export async function getTitipanDiterima(unit: ScopedUnitId, mulai: string, d: s
     `WITH t AS (
        SELECT m.pihak_lawan_id AS pid, m.business_date AS d, sum(m.amount) AS rp
          FROM app.manual_entry m
-        WHERE m.unit_id = $1 AND NOT m.void
+        WHERE m.unit_id = $1 AND NOT ${SQL_ME_TAK_BERLAKU("m")}
           AND m.business_date BETWEEN $2::date AND $3::date
           AND ${sqlTitipan("m")}
         GROUP BY m.pihak_lawan_id, m.business_date
@@ -317,7 +325,9 @@ async function totalAssetPada(
       };
     }),
   );
-  const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
+  // Deposit pelanggan (Hutang Lokal) ikut — tanpa itu langkah harian melenceng
+  // sebesar pemakaian deposit (data pilot Okt 2026).
+  const piutang = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline + saldo.akhir.hutangLokal;
   // ⛔ Term sisi kas lewat fungsi yang SAMA dengan hari ini (`sisiKasNeraca`):
   //    kas, pihak lawan (KTD2), penampung (KTD8), temporary investment, titipan
   //    (liabilitas — mengurangi asset bersih). Kemarin dihitung PENUH — baris
@@ -456,6 +466,12 @@ async function bahanLaporan(
   const piutangEasymax = saldo.akhir.piutangLokal + saldo.akhir.piutangOnline;
   const piutangAwal = saldo.awal.piutangLokal + saldo.awal.piutangOnline;
   const deltaPiutangEasymax = -(piutangEasymax - piutangAwal);
+  // Deposit pelanggan EasyMax (buku "Hutang Lokal") — DIPISAH dari piutang:
+  // buku besar membandingkan `piutangEasymax` dengan akun 1121 dan menaruh
+  // deposit di 2101. Pemakaian deposit menaikkan saldo (mis. −12 jt → −11,75 jt)
+  // tanpa uang masuk ⇒ arus kasnya negatif.
+  const depositEasymax = saldo.akhir.hutangLokal;
+  const deltaDepositEasymax = -(saldo.akhir.hutangLokal - saldo.awal.hutangLokal);
 
   return {
     totals,
@@ -479,6 +495,8 @@ async function bahanLaporan(
     arusTitipanBright,
     piutangEasymax,
     deltaPiutangEasymax,
+    depositEasymax,
+    deltaDepositEasymax,
     beban: bp.beban,
     pendapatanLain: bp.pendapatanLain,
     kontribusi: langkahDari(sisi.penuh).kontribusi,

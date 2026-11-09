@@ -1,5 +1,5 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import { PIUTANG_BOOKS, piutangBookTotalAmounts, piutangBookLabel, piutangBookAmounts, booksForPiutangRow, type PiutangBook, type PiutangExportView, type PiutangSection, type PiutangViewRow } from "@/lib/piutang-model";
+import { PIUTANG_BOOKS, piutangBookTotalAmounts, piutangBookLabel, piutangBookAmounts, piutangSelisih, booksForPiutangRow, type PiutangBook, type PiutangBookAmounts, type PiutangBoundaryAmounts, type PiutangExportView, type PiutangSection, type PiutangViewRow } from "@/lib/piutang-model";
 import { susunCsv } from "./csv";
 import { footerKeuangan, gayaKeuangan, kopKeuangan, type KopKeuangan } from "./keuangan-kop";
 import { pdfText } from "./glyphs";
@@ -16,6 +16,18 @@ export function safeSpreadsheetText(value: string): string {
 }
 
 const numeric = (value: number): string => String(Object.is(value, -0) ? 0 : value);
+
+const csvTriplet = (amounts: PiutangBoundaryAmounts): string[] =>
+  [numeric(amounts.debet), numeric(amounts.kredit), numeric(amounts.saldo)];
+
+function csvBookAmounts(row: PiutangViewRow, book: PiutangBook): string[] {
+  const amounts = piutangBookAmounts(row, book);
+  return [...csvBoundaryTriplets(amounts), ...csvTriplet(piutangSelisih(amounts))];
+}
+
+function csvBoundaryTriplets(amounts: PiutangBookAmounts): string[] {
+  return [amounts.awal, amounts.akhir].flatMap(csvTriplet);
+}
 const PDF_NUMBER = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 
 function piutangProvenance(view: PiutangExportView): string {
@@ -48,14 +60,15 @@ export function piutangCsv(input: {
     ["Catatan Debet/Kredit", "Setiap buku dengan saldo atau Debet/Kredit ditampilkan sekali per pelanggan. Buku bersaldo nol dengan Debet/Kredit dicantumkan pada seksi aktif pertama pelanggan."],
     ["Catatan seksi nol", "Tanpa saldo di ketiga buku berarti keenam saldo Awal/Akhir nol; setiap pelanggan dicantumkan untuk tiga buku agar Debet/Kredit tetap terlihat walaupun saldo nol."],
     [],
-    ["Ringkasan seluruh snapshot", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo"],
-    ...PIUTANG_BOOKS.filter((book) => book.id !== "online" || view.hasOnlineCustomer).map((book) => [
-      book.title, ...Object.values(piutangBookTotalAmounts(view.metadata, book)).flatMap((amounts) => [numeric(amounts.debet), numeric(amounts.kredit), numeric(amounts.saldo)]),
-    ]),
+    ["Ringkasan seluruh snapshot", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo", "Selisih Debet", "Selisih Kredit", "Selisih Saldo"],
+    ...PIUTANG_BOOKS.filter((book) => book.id !== "online" || view.hasOnlineCustomer).map((book) => {
+      const amounts = piutangBookTotalAmounts(view.metadata, book);
+      return [book.title, ...csvBoundaryTriplets(amounts), ...csvTriplet(piutangSelisih(amounts))];
+    }),
     [],
     [
       "Kode unit", "Nama unit", "Tanggal", "Batas awal", "Batas akhir",
-      "Seksi", "Buku", "Keanggotaan buku", "Kode pelanggan", "Nama pelanggan", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo",
+      "Seksi", "Buku", "Keanggotaan buku", "Kode pelanggan", "Nama pelanggan", "Awal Debet", "Awal Kredit", "Awal Saldo", "Akhir Debet", "Akhir Kredit", "Akhir Saldo", "Selisih Debet", "Selisih Kredit", "Selisih Saldo",
     ],
     ...view.sections.flatMap((section) => section.rows.flatMap((row) => booksForPiutangRow(section, row).map((book) => [
       text(unit.code),
@@ -68,7 +81,7 @@ export function piutangCsv(input: {
       [piutangBookLabel(row.bookCount), section.book && section.book.id !== book.id ? "buku bersaldo nol" : null].filter(Boolean).join("; "),
       text(row.customerCode),
       text(row.customerName ?? "Nama belum tersedia"),
-      ...Object.values(piutangBookAmounts(row, book)).flatMap((amounts) => [numeric(amounts.debet), numeric(amounts.kredit), numeric(amounts.saldo)]),
+      ...csvBookAmounts(row, book),
     ]))),
   ];
   return susunCsv(rows);
@@ -94,19 +107,26 @@ function rowCells(row: PiutangViewRow, book: PiutangBook, section: PiutangSectio
     { text: pdfText(row.customerCode), fontSize: 7 },
     { text: pdfText(`${row.customerName ?? "Nama belum tersedia"}${label ? `\n${label}` : ""}\n${book.title}${section.book && section.book.id !== book.id ? " · buku bersaldo nol" : ""}`), fontSize: 7 },
     ...[amounts.awal, amounts.akhir].flatMap((boundary) => [moneyCell(boundary.debet, true), moneyCell(boundary.kredit, true), moneyCell(boundary.saldo)]),
+    ...selisihCells(amounts),
   ];
+}
+
+/** Selisih layar membulatkan seperti saldo, jadi PDF ikut membulatkan ketiganya. */
+function selisihCells(amounts: PiutangBookAmounts): TableCell[] {
+  const selisih = piutangSelisih(amounts);
+  return [moneyCell(selisih.debet), moneyCell(selisih.kredit), moneyCell(selisih.saldo)];
 }
 
 function sectionContent(section: PiutangSection): Content[] {
   const headers = [header("Kode"), header("Pelanggan / Buku"), ...["Awal", "Akhir"].flatMap((boundary) => [
     header(`${boundary} Debet`), header(`${boundary} Kredit`), header(`${boundary} Saldo`),
-  ])];
+  ]), header("Selisih Debet"), header("Selisih Kredit"), header("Selisih Saldo")];
   return [
     { text: pdfText(`${section.title} · ${section.rows.length.toLocaleString("id-ID")} pelanggan`), bold: true, fontSize: 10, margin: [0, 12, 0, 6] },
     ...(section.rows.length ? [{
       table: {
         headerRows: 1,
-        widths: [45, "*", 88, 88, 88, 88, 88, 88],
+        widths: [40, "*", 56, 56, 56, 56, 56, 56, 52, 52, 52],
         body: [headers, ...section.rows.flatMap((row) => booksForPiutangRow(section, row).map((book) => rowCells(row, book, section)))],
       },
       layout: "lightHorizontalLines",
@@ -128,12 +148,17 @@ export function buildPiutangDoc(input: { kop: KopKeuangan; view: PiutangExportVi
       { text: `${view.resultCount.toLocaleString("id-ID")} pelanggan unik · ${view.occurrenceCount.toLocaleString("id-ID")} kemunculan dalam seksi`, fontSize: 8, margin: [0, 0, 0, 8] },
       { text: "Ringkasan seluruh snapshot", bold: true, fontSize: 10, margin: [0, 4, 0, 6] },
       { table: {
-        headerRows: 1, widths: ["*", 88, 88, 88, 88, 88, 88],
+        headerRows: 1, widths: ["*", 62, 62, 58, 62, 62, 58, 52, 52, 52],
         body: [
-          [header("Buku"), ...["Awal", "Akhir"].flatMap((boundary) => [header(`${boundary} Debet`), header(`${boundary} Kredit`), header(`${boundary} Saldo`)])],
-          ...PIUTANG_BOOKS.filter((book) => book.id !== "online" || view.hasOnlineCustomer).map((book) => [
-            { text: book.title, fontSize: 7 }, ...Object.values(piutangBookTotalAmounts(view.metadata, book)).flatMap((amounts) => [moneyCell(amounts.debet, true), moneyCell(amounts.kredit, true), moneyCell(amounts.saldo)]),
-          ]),
+          [header("Buku"), ...["Awal", "Akhir"].flatMap((boundary) => [header(`${boundary} Debet`), header(`${boundary} Kredit`), header(`${boundary} Saldo`)]), header("Selisih Debet"), header("Selisih Kredit"), header("Selisih Saldo")],
+          ...PIUTANG_BOOKS.filter((book) => book.id !== "online" || view.hasOnlineCustomer).map((book) => {
+            const amounts = piutangBookTotalAmounts(view.metadata, book);
+            return [
+              { text: book.title, fontSize: 7 },
+              ...[amounts.awal, amounts.akhir].flatMap((boundary) => [moneyCell(boundary.debet, true), moneyCell(boundary.kredit, true), moneyCell(boundary.saldo)]),
+              ...selisihCells(amounts),
+            ];
+          }),
         ],
       }, layout: "lightHorizontalLines" },
       ...view.sections.flatMap(sectionContent),

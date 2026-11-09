@@ -27,6 +27,8 @@ import {
   getReasonCodeClosing,
   getReasonCodeReclass,
   getReklasHarian,
+  getReasonCodeVoid,
+  getReasonCodeBalik,
   getSetoranPengawas,
   getSettlements,
 } from "@/lib/keuangan-input-queries";
@@ -44,6 +46,9 @@ import {
   alasanTakBolehInput,
   canInputKeuangan,
   canKelolaSettlementEdc,
+  canBatalkanBarisFinance,
+  canAjukanBalikBaris,
+  canSetujuiBalikBaris,
   canReklasifikasi,
   canViewLaporanKeuangan,
   PESAN_TAK_BOLEH_INPUT,
@@ -111,7 +116,7 @@ export default async function InputKeuanganPage({
   // Blok 3 — jendela settlement: 60 hari ke belakang supaya kontrol MDR% punya
   // lebih dari satu bulan untuk dibandingkan. Pergeseran tarif hanya terlihat
   // bila ada bulan pembanding.
-  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening, reklas, reasonReklas, kasTautan, bebanTautan] = await Promise.all([
+  const [settlements, reasonCodes, biaya, petaKategori, edcShift, petaKartu, cekSlip, versiRekening, reklas, reasonReklas, kasTautan, bebanTautan, reasonVoid, reasonBalik] = await Promise.all([
     getSettlements(unit.unit_id, mundur(date, 60), date),
     getReasonCodeClosing(unit.unit_id),
     getBiayaHarian(unit.unit_id, date),
@@ -128,6 +133,9 @@ export default async function InputKeuanganPage({
     // K6 U3 (R27) — baris separuh-tercatat sejak cut-over, seluruh unit.
     getKasTautan(unit.unit_id),
     getBebanTautan(unit.unit_id),
+    // Rencana 2026-11-07 U4 — kode alasan Batalkan (grup `void`, 0059).
+    getReasonCodeVoid(unit.unit_id),
+    getReasonCodeBalik(unit.unit_id),
   ]);
   const perluDitautkan = susunPerluDitautkan(kasTautan, bebanTautan);
   const rekeningEdc = versiRekening.filter((v) => !v.void);
@@ -267,6 +275,12 @@ export default async function InputKeuanganPage({
           reklas={reklas}
           reasonReklas={reasonReklas}
           bolehReklas={canReklasifikasi({ role: scope.role, email: scope.email })}
+          reasonVoid={reasonVoid}
+          bolehBatal={canBatalkanBarisFinance({ role: scope.role, email: scope.email })}
+          reasonBalik={reasonBalik}
+          bolehAjukanBalik={canAjukanBalikBaris({ role: scope.role, email: scope.email })}
+          bolehSetujuiBalik={canSetujuiBalikBaris({ role: scope.role, email: scope.email })}
+          userId={scope.userId}
         />
       </div>
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BarisBeban } from "./keuangan-beban";
+import { BAKAU_BARIS, bakauBatalkan, bakauReklas1800, hitungBakau } from "./__fixtures__/bakau-2-okt";
 import type { DayTotals } from "./keuangan-mesin";
 import {
   PENJELASAN_KOSONG,
@@ -38,7 +39,7 @@ const cf = (o: Partial<CashFlowInput> = {}): CashFlowInput => ({
   kasAkhir: 1_320_000,
   omzet: 400_000,
   teraValue: 0,
-  transaksiPiutangEasymax: -50_000,
+  transaksiPiutangEasymax: -50_000, transaksiDepositEasymax: 0,
   hutangPiutangNonEasymax: 10_000,
   penebusanSo: 0,
   temporaryInvestment: 0,
@@ -55,7 +56,7 @@ const bs = (o: Partial<BalanceInput> = {}): BalanceInput => ({
   cashOnHand: 7_304_915_872,
   inventoryValue: 747_646_746,
   soValue: 573_658_336,
-  piutangEasymax: 7_245_821_009,
+  piutangEasymax: 7_245_821_009, depositEasymax: 0,
   hutangPiutangNonEasymax: -2_177_793_746,
   penampung: 0,
   temporaryInvestment: 0,
@@ -193,7 +194,7 @@ describe("Balance Sheet — kumulatif vs LANGKAH harian", () => {
     const asset = 1_000_000_000;
     const p = panelBalance(
       bs({ openedRetainedEarnings: null, netIncome: 0, totalAssetKemarin: asset - 52_779_482,
-           cashOnHand: asset, inventoryValue: 0, soValue: 0, piutangEasymax: 0, hutangPiutangNonEasymax: 0 }),
+           cashOnHand: asset, inventoryValue: 0, soValue: 0, piutangEasymax: 0, depositEasymax: 0, hutangPiutangNonEasymax: 0 }),
     );
     expect(p.langkahHarian).toBe(-52_779_482);
     expect(nadaPemeriksa(p.langkahHarian)).toBe("buruk");
@@ -267,7 +268,7 @@ describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U
     totals: totals(),
     kasAkhir: 1_000_000_000,
     sebabKas: null,
-    piutangEasymax: 200_000_000,
+    piutangEasymax: 200_000_000, depositEasymax: 0,
     hutangPiutangNonEasymax: 0,
     penampung: 0,
     temporaryInvestment: 0,
@@ -286,7 +287,7 @@ describe("langkahHarianDari — SATU jalur hitung untuk Layar 4 dan tutupHari (U
       sebabKas: null,
       inventoryValue: bahan.totals.inventoryValue,
       soValue: bahan.totals.soValue,
-      piutangEasymax: bahan.piutangEasymax,
+      piutangEasymax: bahan.piutangEasymax, depositEasymax: 0,
       hutangPiutangNonEasymax: bahan.hutangPiutangNonEasymax,
       penampung: 0,
       temporaryInvestment: 0,
@@ -324,7 +325,7 @@ describe("langkahHarianRinci — KTD15: koreksi susulan terpisah dari yang dinil
     totals: totals(),
     kasAkhir: 1_000_000_000,
     sebabKas: null,
-    piutangEasymax: 200_000_000,
+    piutangEasymax: 200_000_000, depositEasymax: 0,
     hutangPiutangNonEasymax: 0,
     penampung: 0,
     temporaryInvestment: 0,
@@ -362,5 +363,32 @@ describe("langkahHarianRinci — KTD15: koreksi susulan terpisah dari yang dinil
     const r = langkahHarianRinci({ ...bahan, tanpaSusulan: { ...bahan, kasAkhir: null } });
     expect(r.dinilai).toBeNull();
     expect(r.koreksiSusulan).toBeNull();
+  });
+});
+
+describe("Bakau 2 Okt — tiga baris ganda dibatalkan (AE1, AE2)", () => {
+  it("sebelum: sama dengan layar produksi", () => {
+    const s = hitungBakau(BAKAU_BARIS);
+    expect(s.cfCheck).toBe(11_676.5);
+    expect(s.laba).toBe(11_073_820);
+  });
+
+  it("🔴 sesudah tiga baris dibatalkan: Cash flow check, laba bersih & langkah neraca turun TEPAT 12.440", () => {
+    const s = hitungBakau(BAKAU_BARIS);
+    const v = hitungBakau(bakauBatalkan(BAKAU_BARIS));
+    expect(v.cfCheck).toBe(-763.5);
+    expect(v.laba).toBe(11_061_380);
+    expect(v.cfCheck! - s.cfCheck!).toBe(-12_440);
+    expect(v.laba! - s.laba!).toBe(-12_440);
+    expect(v.langkah! - s.langkah!).toBe(-12_440);
+  });
+
+  it("reklasifikasi 1-1800 lalu dibatalkan = dibatalkan saja (tak dihitung dua kali)", () => {
+    const v = hitungBakau(bakauBatalkan(BAKAU_BARIS));
+    const rv = hitungBakau(bakauBatalkan(bakauReklas1800(BAKAU_BARIS)));
+    expect([rv.cfCheck, rv.laba, rv.langkah]).toEqual([v.cfCheck, v.laba, v.langkah]);
+    // Tambalan reklas saja sudah menghasilkan laba yang sama; pembatalan
+    // sesudahnya tidak mengurangi untuk kedua kalinya.
+    expect(hitungBakau(bakauReklas1800(BAKAU_BARIS)).laba).toBe(11_061_380);
   });
 });

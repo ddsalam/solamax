@@ -95,6 +95,14 @@ export interface CashFlowInput {
   teraValue: number;
   /** Δ piutang pelanggan EasyMax pada hari itu (bertanda arus kas). */
   transaksiPiutangEasymax: number | null;
+  /**
+   * Δ deposit pelanggan EasyMax (buku "Hutang Lokal") hari itu, bertanda arus
+   * kas: pemakaian deposit = NEGATIF (omzet yang tak membawa uang), top-up =
+   * positif. Tanpa baris ini penjualan ke pelanggan deposit terbaca sebagai
+   * kas masuk dan Cash flow check + langkah neraca sama-sama melenceng sebesar
+   * pemakaiannya (ditemukan pada data pilot Okt 2026).
+   */
+  transaksiDepositEasymax: number;
   /** Δ hutang-piutang non-EasyMax (buku kas kategori `Hutang Piutang`). */
   hutangPiutangNonEasymax: number | null;
   /** R16 — Σ buku kas kategori `Pembelian BBM` hari itu (keluar = negatif). */
@@ -134,6 +142,7 @@ export function panelCashFlow(i: CashFlowInput): PanelLaporan {
       nilai: i.transaksiPiutangEasymax,
       sebab: i.transaksiPiutangEasymax === null ? "tak_bersumber" : undefined,
     },
+    { label: "Transaksi deposit pelanggan EasyMax", nilai: i.transaksiDepositEasymax },
     {
       label: "Transaksi hutang piutang non-EasyMax",
       nilai: i.hutangPiutangNonEasymax,
@@ -263,6 +272,14 @@ export interface BalanceInput {
   soValue: number;
   piutangEasymax: number | null;
   /**
+   * SALDO deposit pelanggan EasyMax (buku "Hutang Lokal"), tanda EasyMax:
+   * negatif = deposit yang masih kita hutangi (liabilitas), positif = deposit
+   * yang terpakai melebihi setorannya. Ditambahkan apa adanya ke asset bersih.
+   * Terpisah dari `piutangEasymax` karena buku besar menaruhnya di akun lain
+   * (2101 Deposit Pelanggan EasyMax, bukan 1121).
+   */
+  depositEasymax: number;
+  /**
    * KTD2 — Σ saldo pihak lawan (positif = piutang) + baris lama tanpa pihak
    * lawan. Menggantikan agregat "Hutang Piutang" yang tandanya terbalik.
    */
@@ -316,6 +333,7 @@ export function panelBalance(i: BalanceInput): PanelBalance {
       (i.inventoryValue ?? 0) +
       i.soValue +
       (i.piutangEasymax ?? 0) +
+      i.depositEasymax +
       (i.hutangPiutangNonEasymax ?? 0) +
       (i.penampung ?? 0) +
       (i.temporaryInvestment ?? 0) -
@@ -349,6 +367,7 @@ export function panelBalance(i: BalanceInput): PanelBalance {
         sebab: i.inventoryValue === null ? "data_stok_gl_tak_lengkap" : undefined },
       { label: "Nilai DO", nilai: i.soValue, ind: true },
       { label: "Hutang piutang pelanggan EasyMax", nilai: i.piutangEasymax, ind: true, sebab: i.piutangEasymax === null ? "tak_bersumber" : undefined },
+      { label: "Deposit pelanggan EasyMax (hutang lokal)", nilai: i.depositEasymax, ind: true },
       { label: "Hutang piutang non-EasyMax", nilai: i.hutangPiutangNonEasymax, ind: true, sebab: i.hutangPiutangNonEasymax === null ? sebabKas(i.sebabKas) : undefined,
         tanda: i.pihakLawanSementara ? SEMENTARA : undefined },
       // KTD3 — baris lama tanpa pihak lawan tetap DIIMBANGI (langkah 0), tetapi
@@ -408,6 +427,8 @@ export interface BahanLangkahHarian extends SisiKasLangkah {
   totals: DayTotals;
   sebabKas: SebabKasInput;
   piutangEasymax: number;
+  /** SALDO buku "Hutang Lokal" EasyMax akhir hari — lihat `BalanceInput.depositEasymax`. */
+  depositEasymax: number;
   beban: readonly BarisBeban[];
   pendapatanLain: number;
   totalAssetKemarin: number | null;
@@ -434,6 +455,8 @@ export interface BahanArus {
   kasAwalPerAkun: { nama: string; saldo: number }[] | null;
   kasAkhir: number | null;
   deltaPiutangEasymax: number;
+  /** ARUS deposit pelanggan EasyMax hari itu — lihat `CashFlowInput.transaksiDepositEasymax`. */
+  deltaDepositEasymax: number;
   arusHutangPiutangNonEasymax: number | null;
   penebusanSo: number | null;
   arusTemporaryInvestment: number | null;
@@ -456,6 +479,7 @@ export function balanceInputDari(b: BahanNeraca, netIncome: number | null, sisi:
     inventoryValue: b.totals.inventoryValue,
     soValue: b.totals.soValue,
     piutangEasymax: b.piutangEasymax,
+    depositEasymax: b.depositEasymax,
     hutangPiutangNonEasymax: sisi.hutangPiutangNonEasymax,
     pihakLawanBelumDitetapkan: b.pihakLawanBelumDitetapkan,
     pihakLawanSementara: b.pihakLawanSementara,
@@ -482,6 +506,7 @@ export function cashFlowInputDari(b: BahanArus): CashFlowInput {
     omzet: b.totals.revenue,
     teraValue: b.totals.teraValue,
     transaksiPiutangEasymax: b.deltaPiutangEasymax,
+    transaksiDepositEasymax: b.deltaDepositEasymax,
     hutangPiutangNonEasymax: b.arusHutangPiutangNonEasymax,
     penebusanSo: b.penebusanSo,
     temporaryInvestment: b.arusTemporaryInvestment,

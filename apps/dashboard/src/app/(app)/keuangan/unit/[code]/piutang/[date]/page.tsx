@@ -89,6 +89,8 @@ export default async function PiutangPelangganPage({
             search: view.search,
             filter: view.filter,
             sort: view.sort,
+            mutasiKredit: view.mutasiKredit,
+            mutasiDebet: view.mutasiDebet,
             totalRows: view.resultCount,
             occurrenceCount: view.occurrenceCount,
           }}

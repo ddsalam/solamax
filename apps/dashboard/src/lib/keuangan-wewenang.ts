@@ -334,6 +334,55 @@ export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): 
   );
 }
 
+/**
+ * Boleh MEMBATALKAN baris biaya/pendapatan lain-lain pintu Finance di hari yang
+ * belum ditutup (rencana 2026-11-07 R4, KTD7)? Staf `keuangan`, super admin,
+ * DAN Head of Finance — keputusan Dion (session-settled): anggota yang sama
+ * dengan {@link canReklasifikasi}, sebab pemakai nyatanya sama (tim Finance,
+ * termasuk akun HoF).
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI, bukan `canReklasifikasi(...)`: yang dipatok adalah
+ * keputusannya. Kalau kelak wewenang reklasifikasi bergeser, Batalkan tidak ikut
+ * bergeser diam-diam (dan sebaliknya). Kontrolnya keterlihatan: setiap
+ * pembatalan membawa kode + alasan dan tampil di Pemantauan.
+ */
+export function canBatalkanBarisFinance(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/**
+ * Boleh MENGAJUKAN Balik baris pintu Finance di hari yang sudah ditutup
+ * (rencana 2026-11-07 R8, KTD7)? Anggota sama dengan
+ * {@link canBatalkanBarisFinance} — keputusan Dion — tetapi predikat sendiri:
+ * mengajukan dan membatalkan adalah dua keputusan.
+ */
+export function canAjukanBalikBaris(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/**
+ * Boleh MENYETUJUI/MENOLAK Balik (rencana 2026-11-07 R10)? Direksi, super admin,
+ * Head of Finance — tingkat kedua §3.2, sama sensitifnya dengan menutup hari di
+ * luar toleransi, sebab Balik mengubah angka hari yang sudah disahkan. Ditulis
+ * BERDIRI SENDIRI (bukan `canCloseException(...)`) supaya pergeseran salah satu
+ * tak merembes diam-diam.
+ *
+ * ⛔ "Bukan pengaju" BUKAN urusan predikat ini — ia dijaga jalur tulis DAN CHECK
+ * 0060. HoF yang mengajukan sendiri tidak bisa menyetujui pengajuannya; yang
+ * menyetujui orang lain (Direksi/super admin).
+ */
+export function canSetujuiBalikBaris(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    ctx.role === "direksi" ||
+    ctx.role === "super_admin" ||
+    isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Pihak lawan (rencana 2026-10-29 U3; R26) — SATU predikat per keputusan.
 //

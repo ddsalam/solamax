@@ -606,6 +606,12 @@ model ManualEntry {
   updatedAt       DateTime           @default(now()) @map("updated_at") @db.Timestamptz()
   voidedByUserId  Int?               @map("voided_by_user_id")
   voidedAt        DateTime?          @map("voided_at") @db.Timestamptz()
+  /// 0059 (rencana 2026-11-07) — alasan Batalkan pintu Finance: kode grup
+  /// `void` (FK komposit ke reason_code) + alasan tertulis. NULL untuk void lain
+  /// (pengawas, kaskade pembatalan mutasi kas) yang sah tanpa alasan.
+  voidReasonCode       String?        @map("void_reason_code")
+  voidReasonAppliesTo  String?        @map("void_reason_applies_to")
+  voidAlasan           String?        @map("void_alasan")
 
   /// Milik PENGAWAS (§2.1). NULL = belum berkategori — JANGAN diturunkan dari
   /// `keterangan`; itu menebak milik orang lain. Wajib menyusul mode transisi.
@@ -716,6 +722,32 @@ model CorrectionEntry {
   @@index([sourceKind, originalTxnId, createdAt])
   @@index([unitId, reasonCode, createdAt])
   @@map("correction_entry")
+  @@schema("app")
+}
+
+/// 0060 (rencana 2026-11-07) — pengajuan BALIK baris pintu Finance di hari
+/// tertutup. Disetujui ⇒ satu `correction_entry` reversal. Pemisahan tugas,
+/// pasangan keputusan, dan pembekuan sesudah diputus ditegakkan di DB.
+model CorrectionRequest {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId             Int       @map("unit_id") @db.SmallInt
+  sourceKind         String    @default("manual_entry") @map("source_kind")
+  originalTxnId      String    @map("original_txn_id") @db.Uuid
+  reasonCode         String    @map("reason_code")
+  reasonAppliesTo    String    @map("reason_applies_to")
+  alasan             String
+  valueBefore        Decimal   @map("value_before") @db.Decimal(17, 2)
+  /// 'menunggu' | 'disetujui' | 'ditolak' | 'ditarik' (CHECK di 0060).
+  status             String    @default("menunggu")
+  requestedByUserId  Int       @map("requested_by_user_id")
+  requestedAt        DateTime  @default(now()) @map("requested_at") @db.Timestamptz()
+  decidedByUserId    Int?      @map("decided_by_user_id")
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz()
+  catatanKeputusan   String?   @map("catatan_keputusan")
+  correctionEntryId  String?   @map("correction_entry_id") @db.Uuid
+
+  @@index([unitId, requestedAt])
+  @@map("correction_request")
   @@schema("app")
 }
 

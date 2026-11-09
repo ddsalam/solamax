@@ -3,6 +3,7 @@ import { effectiveBuyPrice } from "./harga-beli";
 import { getHargaBeliRows } from "./keuangan-input-queries";
 import { sisaSoAktif } from "./keuangan-mesin";
 import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
+import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { NOMINAL_MANUAL_ENTRY_SQL } from "./manual-entry-nominal";
 import { getDailyGlByProduct, getDoHarian, getSalesByProduct, getSaldoPelanggan } from "./queries";
 import { posUntukKode, type Pos } from "./pos-model";
@@ -144,7 +145,7 @@ const SQL_TERTAUT = `
   SELECT m.cash_ledger_id::text AS "cashLedgerId", m.id::text AS id,
          ${SQL_AKUN_EFEKTIF("m")} AS akun, ${NOMINAL_MANUAL_ENTRY_SQL}::text AS nominal
     FROM app.manual_entry m
-   WHERE m.unit_id = $1 AND NOT m.void AND m.source_door = 'finance'
+   WHERE m.unit_id = $1 AND NOT ${SQL_ME_TAK_BERLAKU("m")} AND m.source_door = 'finance'
      AND m.cash_ledger_id = ANY($2::uuid[])
    ORDER BY m.id`;
 
@@ -171,7 +172,7 @@ const SQL_MANUAL_HARI = `
          ${SQL_AKUN_EFEKTIF("m")} AS akun, ${NOMINAL_MANUAL_ENTRY_SQL}::text AS nominal,
          ${sqlTitipan("m")} AS titipan, m.keterangan
     FROM app.manual_entry m
-   WHERE m.unit_id = $1 AND m.business_date = $2::date AND NOT m.void
+   WHERE m.unit_id = $1 AND m.business_date = $2::date AND NOT ${SQL_ME_TAK_BERLAKU("m")}
      AND NOT (m.source_door = 'finance' AND m.cash_ledger_id IS NOT NULL AND EXISTS (
            SELECT 1 FROM app.cash_ledger l
             WHERE l.id = m.cash_ledger_id AND l.unit_id = m.unit_id AND NOT l.void))

@@ -1,3 +1,4 @@
+import { barisBerlaku } from "./keuangan-berlaku";
 import { isTitipan } from "./titipan-bright";
 import { jenisAkun, kodePos } from "./keuangan-reklas";
 /**
@@ -88,7 +89,7 @@ export function kumpulkanBeban(
   const out: BarisBeban[] = [];
 
   for (const r of sumber.manual_entry) {
-    if (r.void || !dalamRentang(r.businessDate)) continue;
+    if (!barisBerlaku(r) || !dalamRentang(r.businessDate)) continue;
     out.push({
       sumber: "manual_entry",
       businessDate: r.businessDate,
@@ -99,7 +100,7 @@ export function kumpulkanBeban(
   }
 
   for (const r of sumber.noncash_expense) {
-    if (r.void || !dalamRentang(r.businessDate)) continue;
+    if (!barisBerlaku(r) || !dalamRentang(r.businessDate)) continue;
     out.push({
       sumber: "noncash_expense",
       businessDate: r.businessDate,
@@ -207,19 +208,23 @@ export function pilahManualEntry(manual: readonly BarisManualLaporan[]): {
   // pendapatan lain berkode beban (6-9900 dari pintu Finance) tetap pendapatan —
   // aturannya di `jenisAkun`, bukan di sini.
   const jenis = (r: BarisManualLaporan) => jenisAkun(r.accountingAccount, r.section);
-  const lain = manual.filter((r) => r.section === "pendapatan_lain" && !r.void);
+  // ⛔ Rencana 2026-11-07 KTD2 — SATU saringan di puncak, sebelum cabang apa pun.
+  // Dulu `lain` menyaring sendiri sedangkan `keluar` tidak: baris void ikut
+  // `manualBeban` dan hanya diselamatkan `kumpulkanBeban` di hilir.
+  const aktif = manual.filter(barisBerlaku);
+  const lain = aktif.filter((r) => r.section === "pendapatan_lain");
   const lainBukanTitipan = lain.filter((r) => !isTitipan(r));
-  const keluar = manual.filter((r) => r.section === "pengeluaran");
+  const keluar = aktif.filter((r) => r.section === "pengeluaran");
   const jumlah = (xs: readonly BarisManualLaporan[]) => xs.reduce((s, r) => s + r.amountRp, 0);
   return {
     manualBeban: keluar.filter((r) => jenis(r) === "beban"),
     pendapatanLain: jumlah(lainBukanTitipan.filter((r) => jenis(r) === "pendapatan")),
     titipanBright: jumlah(lain.filter((r) => isTitipan(r))),
     kontribusi:
-      jumlah(keluar.filter((r) => !r.void && jenis(r) === "ekuitas")) -
+      jumlah(keluar.filter((r) => jenis(r) === "ekuitas")) -
       jumlah(lainBukanTitipan.filter((r) => jenis(r) === "ekuitas")),
     pindahDana:
-      jumlah(keluar.filter((r) => !r.void && jenis(r) === "pindah_dana")) +
+      jumlah(keluar.filter((r) => jenis(r) === "pindah_dana")) +
       jumlah(lainBukanTitipan.filter((r) => jenis(r) === "pindah_dana")),
   };
 }

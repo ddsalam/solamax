@@ -133,6 +133,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0052", sql0052, ["cocok_bank", "cocok_bank_baris"]],
     // Rencana 2026-10-29 U12 — penutupan bulan per unit (KTD14).
     ["0054", sql0054, ["tutup_bulan"]],
+    // Rencana 2026-11-07 U5 — pengajuan Balik (KTD5).
+    ["0060", MIG("0060_correction_request"), ["correction_request"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -1648,5 +1650,50 @@ describe("0055_pihak_lawan_unit_baru — unit sesudah 0049 tak lagi tanpa pasang
 
   it("tanpa tabel baru, tanpa menyentuh RLS/policy (tak ada tabel unit-scoped baru)", () => {
     expect(st).not.toMatch(/CREATE TABLE|ROW LEVEL SECURITY|CREATE POLICY|DROP POLICY|GRANT|REVOKE/);
+  });
+});
+
+describe("0059: alasan Batalkan pintu Finance (rencana 2026-11-07 KTD4)", () => {
+  const sql = MIG("0059_manual_entry_batal");
+  it("grup kode `void` ditambahkan ke daftar tertutup, tiga grup lama tetap", () => {
+    expect(sql).toMatch(/"applies_to" IN \('closing', 'adjustment', 'reclass', 'void'\)/);
+  });
+  it("empat kode VOID-* ber-applies_to void", () => {
+    expect([...sql.matchAll(/\('(VOID-[A-Z]+)',.*'void',\s+false\)/g)].map((m) => m[1])).toEqual([
+      "VOID-DUP",
+      "VOID-SALAH",
+      "VOID-NOMINAL",
+      "VOID-LAIN",
+    ]);
+  });
+  it("kode dikunci FK komposit + CHECK grup, pasangan kode↔alasan utuh, alasan hanya pada baris void", () => {
+    const stmt = pernyataan(sql);
+    expect(stmt).toMatch(/FOREIGN KEY \("void_reason_code", "void_reason_applies_to"\)/);
+    expect(stmt).toMatch(/"void_reason_applies_to" = 'void'/);
+    expect(stmt).toMatch(/"void" AND btrim\("void_alasan"\) <> ''/);
+  });
+  it("aditif: tak ada DROP kolom, tak ada sentuhan trigger 0024/0026/0027", () => {
+    const stmt = pernyataan(sql);
+    expect(stmt).not.toMatch(/DROP COLUMN|DROP TRIGGER|CREATE (OR REPLACE )?TRIGGER|CREATE OR REPLACE FUNCTION/);
+  });
+});
+
+describe("0060: pengajuan Balik — pemisahan tugas & pembekuan DI DB (rencana 2026-11-07 KTD5)", () => {
+  const sql = MIG("0060_correction_request");
+  it("menyetujui/menolak ≠ pengaju; menarik = pengaju", () => {
+    expect(sql).toMatch(/"status" NOT IN \('disetujui', 'ditolak'\) OR "decided_by_user_id" <> "requested_by_user_id"/);
+    expect(sql).toMatch(/"status" <> 'ditarik' OR "decided_by_user_id" = "requested_by_user_id"/);
+  });
+  it("satu pengajuan menunggu per baris; satu reversal per baris", () => {
+    expect(sql).toMatch(/correction_request_menunggu_uq[\s\S]*WHERE "status" = 'menunggu'/);
+    expect(sql).toMatch(/correction_entry_reversal_uq[\s\S]*WHERE "kind" = 'reversal'/);
+  });
+  it("baris yang sudah diputus beku (trigger BEFORE UPDATE); tanpa DELETE untuk dashboard_app", () => {
+    const stmt = pernyataan(sql);
+    expect(stmt).toMatch(/CREATE TRIGGER "correction_request_beku"\s+BEFORE UPDATE/);
+    expect(stmt).toMatch(/REVOKE DELETE ON "app"\."correction_request" FROM dashboard_app/);
+  });
+  it("trigger hari tertutup manual_entry (0024/0026/0027) tidak disentuh", () => {
+    expect(pernyataan(sql)).not.toMatch(/manual_entry_(block|backdate)|DROP TRIGGER IF EXISTS "manual_entry/);
   });
 });

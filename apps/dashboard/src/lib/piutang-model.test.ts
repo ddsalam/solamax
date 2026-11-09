@@ -4,6 +4,10 @@ import {
   buildPiutangView,
   groupPiutangRows,
   booksForPiutangRow,
+  piutangBookAmounts,
+  piutangSelisih,
+  piutangSaldoSelisih,
+  PIUTANG_BOOKS,
   type PiutangFilter,
   type PiutangSort,
 } from "./piutang-model";
@@ -124,7 +128,9 @@ describe("buildPiutangView", () => {
       withSaldo("A-1", "Alpha", -2),
       zeroRow("Z-1", "Zulu"),
     ]), {});
-    expect(result).toMatchObject({ status: "ready", filter: "semua", sort: "default", search: "" });
+    expect(result).toMatchObject({
+      status: "ready", filter: "semua", sort: "default", search: "", mutasiKredit: false, mutasiDebet: false,
+    });
     if (result.status !== "ready") throw new Error("expected ready");
     expect(result.rows.map((row) => row.customerCode)).toEqual(["A-1", "B-2", "Z-2", "Z-1"]);
     expect(result.rows.map((row) => row.isZeroBalance)).toEqual([false, false, true, true]);
@@ -277,6 +283,77 @@ it("retains zero-saldo gross turnover once without changing section membership",
     booksForPiutangRow(section, entry).map((book) => [section.id, book.id])))).toEqual([
       ["lokal", "lokal"], ["lokal", "hutang"], ["online", "online"],
     ]);
+});
+
+describe("mutasi tanggal bisnis dan selisih saldo", () => {
+  const kredit = {
+    ...zeroRow("K", "Kredit"),
+    awalPiutangLokalDebet: 10, akhirPiutangLokalDebet: 10,
+    awalPiutangLokalKredit: 4, akhirPiutangLokalKredit: 1,
+    awalPiutangLokal: 6, akhirPiutangLokal: 9,
+  };
+  const debet = {
+    ...zeroRow("D", "Debet"),
+    awalHutangLokalKredit: 3, akhirHutangLokalKredit: 3,
+    awalHutangLokalDebet: 1, akhirHutangLokalDebet: 8,
+    awalHutangLokal: -2, akhirHutangLokal: -4,
+  };
+  const keduanya = {
+    ...zeroRow("N", "Netral"),
+    awalPiutangOnlineDebet: 2, akhirPiutangOnlineDebet: 5,
+    awalPiutangOnlineKredit: 2, akhirPiutangOnlineKredit: 5,
+  };
+  const saldoSaja = { ...zeroRow("S", "Saldo"), awalPiutangLokal: 5, akhirPiutangLokal: 8 };
+  const diam = zeroRow("Z", "Diam");
+  const snapshot = ready([kredit, debet, keduanya, saldoSaja, diam], true);
+
+  it("menyaring kredit dan debet sendiri-sendiri, dan irisan bila keduanya hidup", () => {
+    const codes = (input: Parameters<typeof buildPiutangView>[1]) => {
+      const view = buildPiutangView(snapshot, input);
+      if (view.status !== "ready") throw new Error("expected ready");
+      return view.rows.map((row) => row.customerCode);
+    };
+    expect(codes({ mutasiKredit: "1" })).toEqual(["K", "N"]);
+    expect(codes({ mutasiDebet: "1" })).toEqual(["D", "N"]);
+    expect(codes({ mutasiKredit: "1", mutasiDebet: "1" })).toEqual(["N"]);
+    expect(codes({ mutasiKredit: "ya", mutasiDebet: "0" })).toEqual(["D", "K", "S", "Z", "N"]);
+    expect(codes({ mutasiKredit: true, filter: "bersaldo" })).toEqual(["K"]);
+    expect(codes({ mutasiDebet: "1", search: "kred" })).toEqual([]);
+  });
+
+  it("mutasi adalah perubahan akumulasi pada tanggal bisnis ini, bukan perubahan saldo", () => {
+    const view = buildPiutangView(snapshot, { mutasiKredit: "1" });
+    if (view.status !== "ready") throw new Error("expected ready");
+    expect(view.rows.map((row) => row.customerCode)).not.toContain("S");
+    expect(view.rows.map((row) => row.customerCode)).not.toContain("D");
+    const netral = view.rows.find((row) => row.customerCode === "N");
+    expect(netral).toMatchObject({ hasMutasiKredit: true, hasMutasiDebet: true, isZeroBalance: true });
+    expect(view.zeroSectionOpen).toBe(true);
+    expect(view.sections.find((section) => section.id === "nol")?.rows.map((row) => row.customerCode)).toEqual(["N"]);
+
+    const exported = buildPiutangExportView(snapshot, { mutasiDebet: true });
+    if (exported.status !== "ready") throw new Error("expected ready");
+    expect(exported.rows.map((row) => row.customerCode)).toEqual(["D", "N"]);
+    expect(exported.mutasiDebet).toBe(true);
+    expect(exported.mutasiKredit).toBe(false);
+  });
+
+  it("selisih tiap buku = akhir − awal untuk debet, kredit, dan saldo, tanpa menjumlahkan buku", () => {
+    const lokal = piutangSelisih(piutangBookAmounts(kredit, PIUTANG_BOOKS[0]));
+    const hutang = piutangSelisih(piutangBookAmounts(debet, PIUTANG_BOOKS[2]));
+    const online = piutangSelisih(piutangBookAmounts(keduanya, PIUTANG_BOOKS[1]));
+    expect(lokal).toEqual({ debet: 0, kredit: 1 - 4, saldo: 9 - 6 });
+    expect(hutang).toEqual({ debet: 8 - 1, kredit: 0, saldo: -4 - -2 });
+    expect(online).toEqual({ debet: 5 - 2, kredit: 5 - 2, saldo: 0 });
+    expect(piutangSaldoSelisih(piutangBookAmounts(kredit, PIUTANG_BOOKS[0]))).toBe(lokal.saldo);
+    const pecahan = piutangSelisih(piutangBookAmounts(
+      { ...zeroRow("P", "Pecahan"), awalPiutangLokalDebet: 1.25, akhirPiutangLokalDebet: 1.5, awalPiutangLokal: 12.5, akhirPiutangLokal: 12.25 },
+      PIUTANG_BOOKS[0],
+    ));
+    expect(pecahan.debet).toBeCloseTo(0.25, 10);
+    expect(pecahan.kredit).toBe(0);
+    expect(pecahan.saldo).toBeCloseTo(-0.25, 10);
+  });
 });
 
 describe("historical snapshot provenance", () => {

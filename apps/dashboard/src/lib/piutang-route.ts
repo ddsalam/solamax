@@ -6,6 +6,10 @@ import {
   type PiutangSectionId,
   type PiutangViewInput,
 } from "./piutang-model";
+
+/** Query mandiri. `"1"` menyala; absen berarti mati. Bukan bagian dari enum `filter`. */
+export const PIUTANG_MUTASI_KREDIT_PARAM = "mutasi_kredit";
+export const PIUTANG_MUTASI_DEBET_PARAM = "mutasi_debet";
 import { rp } from "./format";
 import type { SaldoFreshness } from "./saldo-freshness";
 import type { SaldoSnapshot } from "./saldo-snapshot";
@@ -14,13 +18,26 @@ export function piutangViewInput(params: Record<string, string | string[] | unde
   const one = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   return {
     search: one(params.q), filter: one(params.filter), sort: one(params.sort),
+    mutasiKredit: one(params[PIUTANG_MUTASI_KREDIT_PARAM]),
+    mutasiDebet: one(params[PIUTANG_MUTASI_DEBET_PARAM]),
     pages: Object.fromEntries(PIUTANG_SECTION_IDS.map((id) => [id, one(params[`page_${id}`])])),
   };
 }
 
+function appendMutasiParams(
+  params: URLSearchParams,
+  input: { mutasiKredit?: boolean; mutasiDebet?: boolean },
+): void {
+  if (input.mutasiKredit) params.set(PIUTANG_MUTASI_KREDIT_PARAM, "1");
+  if (input.mutasiDebet) params.set(PIUTANG_MUTASI_DEBET_PARAM, "1");
+}
+
 /** Section navigation retains every other section page; filter changes omit all pages. */
 export function piutangQueryHref(
-  input: Pick<PiutangReadyView, "search" | "filter" | "sort">,
+  input: Pick<PiutangReadyView, "search" | "filter" | "sort"> & {
+    mutasiKredit?: boolean;
+    mutasiDebet?: boolean;
+  },
   pages: Partial<Record<PiutangSectionId, number>> = {},
   sectionId?: PiutangSectionId,
 ): string {
@@ -28,31 +45,49 @@ export function piutangQueryHref(
   if (input.search) params.set("q", input.search);
   params.set("filter", input.filter);
   params.set("sort", input.sort);
+  appendMutasiParams(params, input);
   for (const id of PIUTANG_SECTION_IDS) {
     if (pages[id] !== undefined) params.set(`page_${id}`, String(pages[id]));
   }
   return `?${params}${sectionId ? `#piutang-${sectionId}` : ""}`;
 }
 
+/**
+ * `"1"` menyala, absen atau `"0"` mati. Nilai lain ditolak — ekspor tidak
+ * menormalisasi diam-diam, sama seperti enum filter/sort.
+ */
+export function parsePiutangMutasiParam(value: string | null): boolean | null {
+  if (value === null || value === "" || value === "0") return false;
+  if (value === "1") return true;
+  return null;
+}
+
 /** Export handlers reject unknown enum values rather than silently normalising them. */
 export function validPiutangExportInput(params: URLSearchParams): PiutangViewInput | null {
   const filter = params.get("filter");
   const sort = params.get("sort");
+  const mutasiKredit = parsePiutangMutasiParam(params.get(PIUTANG_MUTASI_KREDIT_PARAM));
+  const mutasiDebet = parsePiutangMutasiParam(params.get(PIUTANG_MUTASI_DEBET_PARAM));
   if (filter !== null && !isPiutangFilter(filter)) return null;
   if (sort !== null && !isPiutangSort(sort)) return null;
-  return { search: params.get("q"), filter, sort };
+  if (mutasiKredit === null || mutasiDebet === null) return null;
+  return { search: params.get("q"), filter, sort, mutasiKredit, mutasiDebet };
 }
 
 export function piutangExportHref(
   format: "csv" | "pdf",
   unitCode: string,
   date: string,
-  input: Pick<PiutangReadyView, "search" | "filter" | "sort">,
+  input: Pick<PiutangReadyView, "search" | "filter" | "sort"> & {
+    mutasiKredit?: boolean;
+    mutasiDebet?: boolean;
+  },
 ): string {
   const params = new URLSearchParams();
   if (input.search) params.set("q", input.search);
   params.set("filter", input.filter);
   params.set("sort", input.sort);
+  appendMutasiParams(params, input);
   return `/api/keuangan/unit/${encodeURIComponent(unitCode)}/piutang/${date}/${format}?${params}`;
 }
 

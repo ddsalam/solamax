@@ -137,6 +137,10 @@ jobs:
             u.searchParams.delete("host"); u.hostname="127.0.0.1"; u.port="5432";
             process.stdout.write(u.toString());')"
           export DATABASE_URL SQLCHECK_DB=1
+          # Tunggu migrate-test backend (workflow LAIN, paralel) memasang semua
+          # migrasi commit ini dulu — tanpa ini push yang membawa migrasi baru
+          # merah palsu (7 Nov: 0060 belum ada saat K1 jalan). Lihat skripnya.
+          node apps/dashboard/scripts/tunggu-migrasi.mjs
           pnpm --filter @solamax/dashboard exec vitest run src/lib/queries.sqlcheck.integration.test.ts
 
   # ── TIER TESTING (staging → rlsstg): otomatis, tanpa reviewer. Environment
