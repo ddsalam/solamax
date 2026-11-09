@@ -125,8 +125,9 @@ describe("buildBoardDocDefinition (redesign filter+evaluasi)", () => {
         coverage: new Map([[1, TODAY]]), incompleteToday: false }),
     };
     const json = JSON.stringify(buildBoardDocDefinition({ model: suspectModel, meta, config: DEFAULT_EXPORT_CONFIG }).content);
-    expect(json).toContain("data sumber perlu verifikasi");
-    expect(json).toContain("PERLU PERIKSA");
+    expect(json).toContain("G/L Belum terverifikasi");
+    expect(json).toContain("— · Belum terverifikasi"); // ranking G/L cell
+    expect(json).not.toMatch(/bukan kerugian|artefak|PERLU PERIKSA/i);
     expect(json).not.toMatch(/73,17|6\.000 L/);
   });
 

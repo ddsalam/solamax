@@ -90,7 +90,11 @@ interface PageNode {
  * blok dipindah), dan daftar "following/next" pdfmake masih memuat halaman
  * tentatif itu; yang final hanyalah `startPosition.pageNumber` sel penanda —
  * jadi itulah yang dibandingkan, tanpa ambang ruang (terbukti di
- * pdf-layout.test & pdf-layout.reports.test). Judul yang sudah di puncak halaman
+ * pdf-layout.test & pdf-layout.reports.test). Halaman judul pun sama: judul
+ * atomik ditata dulu di konteks sementara lalu didorong utuh ke halaman berikut
+ * bila tak muat, dan pdfmake hanya mengoreksi halaman simpul TEKS ber-id —
+ * kontainer `columns` tetap melapor halaman lama. Maka halaman judul dibaca dari
+ * penanda teksnya (`keep-i-head`) bila ada. Judul yang sudah di puncak halaman
  * tak dipindah (baris raksasa tak muat di mana pun; memindah hanya menambah
  * halaman kosong). Simpul tanpa id pasangan tak pernah dipindah.
  *
@@ -104,8 +108,10 @@ export function orphanHeadingBreak(
   previousNodesOnPage?: PageNode[],
 ): boolean {
   if (typeof node.id !== "string" || !KEEP_ID.test(node.id) || !node.startPosition) return false;
-  const { pageNumber, top } = node.startPosition;
-  const row = [...followingNodesOnPage, ...(nodesOnNextPage ?? [])].find((n) => n.id === `${node.id}-row`);
+  const { top } = node.startPosition;
+  const near = [...followingNodesOnPage, ...(nodesOnNextPage ?? [])];
+  const pageNumber = near.find((n) => n.id === `${node.id}-head`)?.startPosition?.pageNumber ?? node.startPosition.pageNumber;
+  const row = near.find((n) => n.id === `${node.id}-row`);
   if (row?.startPosition?.pageNumber === pageNumber) return false;
   return (previousNodesOnPage ?? []).some((n) => n.startPosition?.pageNumber === pageNumber && n.startPosition.top < top);
 }
@@ -143,7 +149,8 @@ function polylineRestorer(content: Content[]): () => void {
  * di halaman berikut). Judul ditandai `headlineLevel: 1`; judul top-level
  * dipasangkan dengan TABEL top-level pertama sesudahnya (sebelum judul
  * berikutnya) lewat id `keep-i` / `keep-i-body` / `keep-i-row` (sel baris badan
- * pertama). Blok di antaranya (hint/catatan) ikut pindah. Hanya judul yang
+ * pertama) / `keep-i-head` (teks pertama judul `columns`/`stack`). Blok di
+ * antaranya (hint/catatan) ikut pindah. Hanya judul yang
  * dipindah: tabel tetap boleh terpecah antarhalaman dengan header berulang.
  * Hasilnya disebar ke docDefinition: `{ ...keepHeadingsWithTable(content), … }`.
  * Input tidak dimutasi.
@@ -156,13 +163,21 @@ export function keepHeadingsWithTable(content: Content[]): {
   const isHeading = (n: Content) => typeof n === "object" && !Array.isArray(n) && "headlineLevel" in n && n.headlineLevel === 1;
   for (let i = 0; i < out.length; i++) {
     if (!isHeading(out[i]!)) continue;
+    // Judul = satu baris atomik. Judul `columns` (judul + status, mis. "belum
+    // final") ditata per kolom: kolom status yang lebih pendek bisa tetap muat di
+    // dasar halaman sementara judulnya pindah, dan posisi judul yang dibaca
+    // penjaga hanyalah kolom pertamanya. Tanpa ambang tinggi; tabel tetap pecah.
+    out[i] = { ...(out[i] as object), unbreakable: true } as Content;
     for (let j = i + 1; j < out.length && !isHeading(out[j]!); j++) {
       const node = out[j]!;
       if (typeof node === "object" && !Array.isArray(node) && "table" in node && node.table) {
         const t = (node as ContentTable).table;
         const body = markFirstRow(t.body, t.headerRows ?? 0, `keep-${i}-row`);
         if (body === null) break; // tabel kosong: tak ada baris untuk dijaga
-        out[i] = { ...(out[i] as object), id: `keep-${i}` } as Content;
+        // Judul teks: id-nya sendiri sudah di simpul teks. Judul `columns`/`stack`:
+        // tandai teks pertamanya — halaman kontainernya bisa halaman lama.
+        const head = "text" in (out[i] as object) ? null : markText(out[i], `keep-${i}-head`);
+        out[i] = { ...((head ?? out[i]) as object), id: `keep-${i}` } as Content;
         out[j] = { ...(node as ContentTable), id: `keep-${i}-body`, table: { ...t, body } } as unknown as Content;
         break;
       }

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
-import { arusArtefakNote, buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
+import { arusQualityNote, buildArusMinyak, lossPct, losses, stockTeori } from "@/lib/arus-minyak";
 import { gradeArus, parseArusHtml, ringkas } from "@/lib/arus-minyak.grade";
 import type { DailyGlRow } from "@/lib/queries";
 
@@ -416,7 +416,7 @@ describe("badge penutup-nol kelas 1 (tanpa DB, tanpa kalender)", () => {
       [{ unit_id: 1, d: "2026-08-06", ckdtangki: "T-05", ckdbbm: "BB-02", nama: "PERTAMAX", bk: 0, prev: 5000, next: 6500, recv_next: 5000 }],
     );
     expect(a.rows[0]).toMatchObject({ losses: 1500, artefak: null, zeroClosing: { kelas: 2 } });
-    const note = arusArtefakNote(a, (v) => String(v))!;
+    const note = arusQualityNote(a, (v) => String(v))!;
     expect(note).toContain("hasil ukur kanonis");
     expect(note).toContain("tidak membuktikan kerugian maupun saldo yang tidak sah");
     expect(note).not.toMatch(/≤ 1\.000|BUKAN kerugian/);

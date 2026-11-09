@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { EmptyPanel } from "@/components/EmptyPanel";
+import { GlUnverifiedPanel } from "@/components/GlUnverifiedPanel";
 import { ArusMinyakSection } from "@/components/laporan/ArusMinyakSection";
 import { LaporanExport } from "@/components/laporan/LaporanExport";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
@@ -27,6 +28,7 @@ import {
   getZeroClosingEvents,
 } from "@/lib/queries";
 import { getDataScope } from "@/lib/scope";
+import { GL_UNVERIFIED, GL_UNVERIFIED_TITLE } from "@/lib/gl-verification";
 import { alurSelisihNote, buildLaporanModel } from "@/lib/laporan-model";
 import { getSaldoPelangganCached } from "@/lib/saldo-cache";
 
@@ -324,6 +326,7 @@ export default async function LaporanPage({
                 className={`right fs16 num ${p.gl !== null && p.gl < 0 ? "t-danger w700" : p.gl !== null && p.gl > 0 ? "t-success" : "t-tertiary"}`}
               >
                 {p.gl !== null ? signed(p.gl) : "—"}
+                {p.glUnverified && <span className="fs15 t-warning"><br />{GL_UNVERIFIED}</span>}
               </span>
               <span className="right fs16 t-tertiary num">{p.tera > 0 ? idn(p.tera) : "—"}</span>
               <span className="right fs16 num nowrap">{rp(p.omzet)}</span>
@@ -340,7 +343,9 @@ export default async function LaporanPage({
           </div>
         </div>
         <div className="fs15 t-tertiary mt2">
-          {glTotal === null || glPctDay === null
+          {sales.rows.some((r) => r.glUnverified)
+            ? `Gain/Losses ditahan: ada nilai “${GL_UNVERIFIED}” — sebab, hitungan mentah, dan cara verifikasi di panel “${GL_UNVERIFIED_TITLE}” di bawah. `
+            : glTotal === null || glPctDay === null
             ? "Gain/Losses belum bisa dihitung lengkap: data stok atau mutasi belum lengkap/valid. "
             : glProvisional
               ? `G/L harian (metode RESUME: fisik − [stok awal + penerimaan DO − jual bersih]; kekurangan kiriman DO tergabung) ${signed(glTotal)} L berjalan — belum final, menunggu opname penutup${glGarbageCount > 0 ? `; ${glGarbageCount} baris di luar batas wajar dikecualikan` : ""}. `
@@ -349,6 +354,12 @@ export default async function LaporanPage({
           {oilMix !== null ? pct(oilMix) : "—"}.
         </div>
       </div>
+
+      {/* Rincian G/L Belum terverifikasi — tampil di versi ringkas maupun lengkap. */}
+      <GlUnverifiedPanel
+        items={m.glUnverified}
+        hint={`bulan berjalan 1–${mi.dayOfMonth} ${dateLong(date).split(" ")[2]} · ditahan dari total, persen & alarm`}
+      />
 
       {/* 3 · RECAP HARIAN — Saldo Piutang/Hutang + 6 angka recap (sumber Rincian) */}
       {hasRecap && (
@@ -444,6 +455,7 @@ export default async function LaporanPage({
                     className={`right fs16 num ${g.selisih === null ? "t-tertiary" : g.selisih < 0 ? (g.selisih < -100 ? "t-danger w700" : "t-danger") : g.selisih > 0 ? "t-success" : "t-tertiary"}`}
                   >
                     {g.selisih === null ? "—" : `${signed(g.selisih)} L`}
+                    {g.selisih === null && g.unverified && <span className="fs15 t-warning"><br />{GL_UNVERIFIED}</span>}
                   </span>
                   <span className="right fs16 t-tertiary num">
                     {g.selisih !== null && g.vol > 0 ? pct(Math.abs(g.selisih) / g.vol, 2) : "—"}

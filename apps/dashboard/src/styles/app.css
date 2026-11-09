@@ -1221,6 +1221,13 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
    sengaja tidak dikoreksi — yang salah adalah inputnya, bukan hitungannya. */
 .zc-tag { margin-left: 6px; vertical-align: middle; }
 .zc-note { border-left: 3px solid var(--color-warning, #b45309); }
+/* Panel "G/L Belum terverifikasi" (GlUnverifiedPanel) — satu komponen untuk
+   laporan operasional, laporan harian, dan board. Varian `.unit` = kolom SPBU. */
+.cols-glverif { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.8fr) minmax(0, 2.2fr); align-items: start; padding-top: 11px; padding-bottom: 11px; }
+.cols-glverif.unit { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.8fr) minmax(0, 2.2fr); }
+.tbl-scroll .cols-glverif { min-width: 820px; }
+.tbl-scroll .cols-glverif.unit { min-width: 960px; }
+.glverif-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Layar 3 — Input Keuangan (K2). Namespace `keu-*`, pola yang sama dengan

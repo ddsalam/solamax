@@ -1,6 +1,6 @@
-import { arusArtefakNote, arusTag, type ArusMinyak, type ArusRow, type ZeroFlag } from "@/lib/arus-minyak";
-import type { GlSuspect } from "@/lib/derive";
+import { arusQualityNote, arusTag, type ArusMinyak, type ArusRow, type ZeroFlag } from "@/lib/arus-minyak";
 import { num2 as liter2 } from "@/lib/format";
+import { GL_UNVERIFIED, GL_UNVERIFIED_TITLE } from "@/lib/gl-verification";
 
 /**
  * ARUS MINYAK HARIAN — padanan blok "ARUS MINYAK" pada LAPORAN RESUME
@@ -17,7 +17,7 @@ import { num2 as liter2 } from "@/lib/format";
  * sesi tidak boleh disentuh.
  */
 export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
-  const artefakNote = arusArtefakNote(arus, liter2);
+  const qualityNote = arusQualityNote(arus, liter2);
   return (
     <div className="mt10">
       <div className="section-h">
@@ -42,9 +42,9 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
           <span className="right">Losses (L)</span>
           <span className="right">%</span>
         </div>
-        {artefakNote && (
+        {qualityNote && (
           <div className="empty-inline t-warning zc-note">
-            <strong>⚠ {artefakNote}</strong>
+            <strong>⚠ {qualityNote}</strong>
           </div>
         )}
         {arus.rows.length === 0 && (
@@ -118,11 +118,11 @@ export function ArusMinyakSection({ arus }: { arus: ArusMinyak }) {
  * sesuatu. Kelas 2 menyebut tangkinya karena di situlah ralatnya.
  */
 function tagPesan(p: ArusRow): string {
-  const asal = p.zeroClosing ? zcAsal(p.zeroClosing) : ARTEFAK_ASAL[p.artefak!];
-  const status = p.artefak
-    ? ` Losses & % baris ini artefak input, BUKAN kerugian. Angka mentah Fisik − Teori ${liter2(p.glMentah)} L tidak dihitung.`
-    : " Losses yang tampil tetap hasil ukur kanonis; peringatan ini saja tidak membuktikan kerugian maupun saldo yang tidak sah.";
-  return `${asal}${status} Periksa entri di EasyMax; bila salah, ralat lalu muat ulang.`;
+  if (arusTag(p) === GL_UNVERIFIED) {
+    const mentah = p.glMentah !== null ? ` Hitungan mentah Fisik − Teori ${liter2(p.glMentah)} L hanya untuk audit.` : "";
+    return `G/L ${GL_UNVERIFIED}: Losses & % ditahan dan tidak dihitung.${mentah} Sebab dan cara verifikasinya ada di panel “${GL_UNVERIFIED_TITLE}”.`;
+  }
+  return `${zcAsal(p.zeroClosing!)} Losses yang tampil tetap hasil ukur kanonis; peringatan ini saja tidak membuktikan kerugian maupun saldo yang tidak sah. Periksa entri di EasyMax; bila salah, ralat lalu muat ulang.`;
 }
 
 function zcAsal(z: ZeroFlag): string {
@@ -130,11 +130,6 @@ function zcAsal(z: ZeroFlag): string {
     ? `Tangki ${z.tangki.join(", ")}: penutup opname 0 sementara hari sebelum & sesudahnya berisi, tanpa DO yang menjelaskan.`
     : "Penutup opname 0 padahal Stock Teori menunjukkan tangki mestinya berisi ribuan liter.";
 }
-
-const ARTEFAK_ASAL: Record<GlSuspect, string> = {
-  penutup_nol: "Penutup opname produk tercatat 0 padahal Stock Teori > 1.000 L.",
-  jangkar_nol: "Stock Awal berasal dari penutup opname 0 sebelumnya yang sudah ditahan (bukan stok nyata); selisih hari ini tidak terukur.",
-};
 
 /** Warna Losses/% — konvensi sama dgn kolom Gain/Losses panel Omset. */
 function lossTone(v: number | null): string {

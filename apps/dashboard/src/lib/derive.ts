@@ -176,7 +176,7 @@ export function normalizeProductIdentity(value: unknown): string | null {
 }
 
 /**
- * Ambang HEURISTIK artefak input G/L (L), dipinjam dari `prev > 1000` detektor
+ * Ambang HEURISTIK penahanan G/L "Belum terverifikasi" (L), dipinjam dari `prev > 1000` detektor
  * tertala `getZeroClosingEvents` dan kelas-1 Arus Minyak. Itu ambang deteksi
  * penutup-nol, BUKAN toleransi stok yang terukur: nilai di bawah ambang (stok 0)
  * TIDAK dinyatakan sah — hanya tidak ditahan oleh heuristik ini. Dipakai SQL
@@ -185,13 +185,14 @@ export function normalizeProductIdentity(value: unknown): string | null {
 export const GL_ARTEFACT_MIN_L = 1000;
 
 /**
- * Vonis artefak input dari getDailyGlByProduct (null = heuristik tidak menyala,
+ * Pola penahanan G/L dari getDailyGlByProduct (null = heuristik tidak menyala,
  * bukan sertifikat sah). Angka G/L mentahnya tetap di `gl_raw`, tetapi `gl` =
- * null: bukan losses/gain nyata.
+ * null: "Belum terverifikasi" (gl-verification.ts) — belum tentu rugi/untung,
+ * belum tentu salah input.
  * - penutup_nol: penutup produk (semua tangki) 0 padahal stok teori > 1.000 L
  *   (kelas 1);
  * - jangkar_nol: Stock Awal = penutup pendahulu (riwayat tangki koheren: produk
- *   sama, lolos guard) yang sendirinya penutup_nol → stok awal bukan stok nyata.
+ *   sama, lolos guard) yang sendirinya penutup_nol → stok awal belum terverifikasi.
  *   Penerimaan hari ini maupun stok buku tidak merehabilitasinya; tangki yang
  *   kosong sah bukan penutup_nol, jadi pengisian berikutnya tetap terukur.
  * Satu tangki 0 di produk multi-tangki dan stok teori negatif tidak divonis
@@ -219,7 +220,7 @@ export interface DailyGlInput {
 }
 
 /**
- * Artefak input: jangan pernah dijumlah sebagai G/L. Vonis SQL berwenang bila
+ * Pola penahanan "Belum terverifikasi": jangan pernah dijumlah sebagai G/L. Vonis SQL berwenang bila
  * ada; baris tanpa vonis memakai aturan kelas-1 lama, dan seperti SQL hanya
  * menilai saldo yang terhitung (gl ≠ null). Tak pernah mengimputasi stok.
  */
@@ -235,7 +236,7 @@ export function isDailyGlSuspect(r: DailyGlInput): boolean {
 }
 
 /**
- * G/L yang boleh dijumlah; null bila tak terhitung ATAU artefak input. Query
+ * G/L yang boleh dijumlah; null bila tak terhitung ATAU belum terverifikasi. Query
  * kanonis sudah menolak identitas kosong, tangki ter-guard, mutasi tak valid
  * dan angka tak hingga; baris struktural/legacy dinilai ulang di sini agar
  * tidak ada konsumen yang menerbitkan nilai itu hanya karena SQL biasanya
@@ -258,7 +259,7 @@ export interface DailyGlAgg {
   excludedTanks: number;
   /** A required row/stock is uncomputable; partial sums are not full totals. */
   incomplete: boolean;
-  /** Ada artefak input (isDailyGlSuspect): tidak dijumlah, agregat incomplete. */
+  /** Ada pola penahanan (isDailyGlSuspect) → "Belum terverifikasi": tidak dijumlah, agregat incomplete. */
   suspect: boolean;
   /** Ada minimal satu baris G/L yang boleh dijumlah (usableGl != null). */
   hasGl: boolean;
@@ -268,7 +269,7 @@ export interface DailyGlAgg {
  * Agregasi G/L harian (metode RESUME) per produk untuk satu hari (filter ke
  * tanggal di pemanggil) atau seluruh bulan (Σ harian → kumulatif). Baris yang
  * tak lolos usableGl (anchor D−1 hilang, tangki ter-guard, mutasi tak valid,
- * angka tak hingga, artefak input) dilewati dari jumlah tapi menandai
+ * angka tak hingga, Belum terverifikasi) dilewati dari jumlah tapi menandai
  * incomplete — totalSigned saat itu hanya subtotal diagnostik. Tera tetap
  * dijumlah (kolom info, tak tergantung G/L terhitung).
  */

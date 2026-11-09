@@ -24,6 +24,7 @@ import { buildArusMinyak, type ArusMinyak } from "@/lib/arus-minyak";
 import { ringkasHarga } from "@/lib/harga-wajar";
 import { aggregateDailyGl, alarmScore, bauran, glPercent, normalizeProductIdentity, usableGl, type AlarmCheck } from "@/lib/derive";
 import { fmtL, parenNeg, pct, signed } from "@/lib/format";
+import { collectGlMissing, collectGlUnverified, GL_UNVERIFIED, GL_UNVERIFIED_TITLE, sortGlUnverified, type GlUnverifiedItem } from "@/lib/gl-verification";
 import { uangTunai } from "@/lib/rekon";
 import type * as Q from "@/lib/queries";
 
@@ -56,6 +57,8 @@ export interface SalesRow {
   nama: string;
   vol: number;
   gl: number | null;
+  /** G/L produk hari ini "Belum terverifikasi" (sel tampil "—"). */
+  glUnverified: boolean;
   tera: number;
   omzet: number;
 }
@@ -63,6 +66,8 @@ export interface GlMonthRow {
   ckdbbm: string | null;
   nama: string;
   selisih: number | null;
+  /** Ada hari bulan berjalan yang G/L produk ini "Belum terverifikasi". */
+  unverified: boolean;
   vol: number;
 }
 export interface TargetRow {
@@ -147,6 +152,8 @@ export interface LaporanModel {
   };
   /** Arus Minyak Harian — dekomposisi G/L RESUME per produk (lihat arus-minyak.ts). */
   arusMinyak: ArusMinyak;
+  /** G/L "Belum terverifikasi" 1–D bulan berjalan (terbaru dulu) — panel rincian & verifikasi. */
+  glUnverified: GlUnverifiedItem[];
   target: { rows: TargetRow[] };
   doHarian: {
     rows: DoHarianRow[];
@@ -473,6 +480,14 @@ export function buildLaporanModel(
     .map((r) => normalizeProductIdentity(r.ckdbbm)));
   const glByCode = new Map([...dayAgg.byProduct].map(([k, v]) =>
     [k, invalidDayProducts.has(k) ? null : v.signed] as const));
+  // Rincian "Belum terverifikasi" = baris yang SAMA yang ditolak usableGl di atas,
+  // ditambah produk terjual hari D tanpa baris G/L hari D (R1, = soldWithoutGlDay).
+  const glUnverified = sortGlUnverified([
+    ...collectGlUnverified(glRows.filter((r) => r.d <= date)),
+    ...collectGlMissing(glRows.filter((r) => r.d === date), prodDay.map((p) => ({ ...p, d: date }))),
+  ]);
+  const unverifiedDay = new Set(glUnverified.filter((i) => i.d === date).map((i) => i.ckdbbm));
+  const unverifiedMonth = new Set(glUnverified.map((i) => i.ckdbbm));
   const unidentifiedZeroDay = zeroClosing.some((z) => z.d === date && normalizeProductIdentity(z.ckdbbm) === null);
   const unidentifiedZeroMonth = zeroClosing.some((z) => z.d <= date && z.d.slice(0, 7) === date.slice(0, 7) && normalizeProductIdentity(z.ckdbbm) === null);
   /** Terjual hari D tapi tanpa baris G/L hari D: MTD-nya tak mencakup D. */
@@ -493,6 +508,7 @@ export function buildLaporanModel(
     nama: p.nama,
     vol: p.vol,
     gl: p.ckdbbm === null ? null : glByCode.get(p.ckdbbm) ?? null,
+    glUnverified: unverifiedDay.has(p.ckdbbm),
     tera: p.ckdbbm === null ? 0 : teraByCode.get(p.ckdbbm) ?? 0,
     omzet: p.omzet,
   }));
@@ -539,20 +555,24 @@ export function buildLaporanModel(
     note: `belum tersedia · ${domain}`,
   });
 
-  // Artefak input menahan G/L; alarmnya menyebut sebabnya, bukan "losses".
-  const artefakCheck = (label: string): AlarmCheck => ({
-    label: `${label} — perlu periksa data sumber`,
+  // G/L Belum terverifikasi menahan alarm G/L: tak pernah menyala sebagai
+  // losses/gain, dan tak pernah dinyatakan "bukan kerugian".
+  const unverifiedCheck = (label: string): AlarmCheck => ({
+    label: `${label} — ${GL_UNVERIFIED}`,
     state: "na",
-    note: "artefak input (penutup opname 0, ambang heuristik) — bukan kerugian; angka mentah di Arus Minyak. Periksa entri EasyMax.",
+    note: `pola penutup opname 0 (hari ini atau penutup sebelumnya) — G/L ditahan dari total, persen, dan alarm sampai data sumber diverifikasi; rincian, hitungan mentah, dan cara verifikasi di panel “${GL_UNVERIFIED_TITLE}”.`,
   });
 
+  // Status generik tetap; bila ada produk "Belum terverifikasi", tunjuk rinciannya.
+  const panelRef = (n: number) => n > 0 ? ` — ${n} produk “${GL_UNVERIFIED}”, rincian di panel “${GL_UNVERIFIED_TITLE}”` : "";
+
   const dailyLoss = (): AlarmCheck => {
-    if (dayAgg.suspect) return artefakCheck("G/L harian");
+    if (dayAgg.suspect) return unverifiedCheck("G/L harian");
     if (glTotal === null || glPctDay === null)
       return {
         label: "G/L harian — menunggu opname",
         state: "na",
-        note: "data stok/mutasi belum lengkap atau belum valid",
+        note: `data stok/mutasi belum lengkap atau belum valid${panelRef(unverifiedDay.size)}`,
       };
     if (glProvisional)
       return {
@@ -569,9 +589,9 @@ export function buildLaporanModel(
   };
 
   const monthlyWithin = glPctMonth !== null && Math.abs(glPctMonth) <= 0.005;
-  const monthlyLoss: AlarmCheck = monthAgg.suspect ? artefakCheck("G/L bulanan")
+  const monthlyLoss: AlarmCheck = monthAgg.suspect ? unverifiedCheck("G/L bulanan")
     : glMonthTotal === null || glPctMonth === null
-    ? { label: "G/L bulanan — data belum lengkap", state: "na", note: "data stok/mutasi belum lengkap atau belum valid" }
+    ? { label: "G/L bulanan — data belum lengkap", state: "na", note: `data stok/mutasi belum lengkap atau belum valid${panelRef(unverifiedMonth.size)}` }
     : glMonthProvisional
       ? { label: "G/L bulanan — sementara", state: "provisional", note: `${signed(glMonthTotal)} L · belum final` }
       : { label: monthlyWithin ? "G/L bulanan aman" : "G/L bulanan di atas ambang",
@@ -721,6 +741,7 @@ export function buildLaporanModel(
       ckdbbm,
       nama: productLabel(ckdbbm, v.nama),
       selisih: invalidMonthProducts.has(ckdbbm) || soldWithoutGlDay(ckdbbm) ? null : v.signed,
+      unverified: unverifiedMonth.has(ckdbbm),
       vol: prodMonth.find((p) => p.ckdbbm === ckdbbm)?.vol ?? 0,
     })),
   );
@@ -730,6 +751,7 @@ export function buildLaporanModel(
     // Aggregation rejects unidentified balances; keep their diagnostic row
     // visible without inventing a real product or a zero-valued G/L.
     glMonthRows.push({ ckdbbm: null, nama: productLabel(null, null), selisih: null,
+      unverified: unverifiedMonth.has(null),
       vol: prodMonth.filter((p) => p.ckdbbm === null).reduce((sum, p) => sum + p.vol, 0) });
   }
 
@@ -799,6 +821,7 @@ export function buildLaporanModel(
     recap: { hasRecap, hasSaldo, saldoRows, recapBoxes },
     glMonthly: { rows: glMonthRows, glMonthTotal, glPctMonth, provisional: glMonthProvisional },
     arusMinyak,
+    glUnverified,
     target: { rows: targetRows },
     doHarian: {
       rows: doRows,

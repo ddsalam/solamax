@@ -394,7 +394,11 @@ describe("G/L", () => {
       expect(m.glMonthly.grand.kum).toBeNull();
       expect(m).toMatchObject({ glProvisional: true, glMonthlyProvisional: true, glIncomplete: true });
       expect(m.glSuspectUnits.map((u) => u.unitId)).toEqual([4]);
-      expect(m.notes.join(" ")).toContain("artefak input");
+      expect(m.notes.join(" ")).toContain("“Belum terverifikasi”");
+      expect(m.notes.join(" ")).not.toMatch(/bukan kerugian|artefak/i);
+      // Details name the actual unit/date/product and reason, with the raw audit.
+      expect(m.glUnverified).toEqual([expect.objectContaining({
+        unit: { code: expect.any(String), name: "Bundaran Kotabaru" }, d: "2026-07-22", produk: "SOLAR", reason })]);
     });
 
   it("artefak hari sebelumnya: hari-D tetap angka, MTD unit & grup “—”", () => {
@@ -648,6 +652,27 @@ describe("guard cakupan G/L — regresi BLOCKER Gate 4 (cache 24 jam menyajikan 
     expect(m.glIncomplete).toBe(false);
     expect(m.glDaily.totalsByUnit[4]).toBe(42);
     expect(m.glMonthly.totalsByUnit[4]!.kum).toBe(52); // MTD ≠ harian
+  });
+
+  it("R1: produk terjual tanpa baris G/L → “Belum terverifikasi” dengan rincian; nol terukur tetap 0", () => {
+    const m = buildHarianModel(
+      base({
+        date: "2026-07-22",
+        dailySales: [...salesDays(4, ["2026-07-21", "2026-07-22"]), sale(4, "2026-07-22", "PERTAMAX", 500),
+          sale(4, "2026-07-22", "DEXLITE", 0)], // nol volume: tidak dilabeli (cakupan tak diperluas)
+        gl: new Map([[4, [glRow("2026-07-21", 0), glRow("2026-07-22", 0)]]]),
+      }),
+    );
+    expect(m.glDaily.rows.find((r) => r.key === "SOLAR")!.byUnit[4]).toBe(0);
+    expect(m.glDaily.rows.find((r) => r.key === "PERTAMAX")!.byUnit[4]).toBeNull();
+    expect(m.glDaily.totalsByUnit[4]).toBeNull();
+    expect(m.glMonthly.grand.kum).toBeNull();
+    expect(m.glUnverified).toEqual([{ unit: { code: KB.code, name: KB.name }, d: "2026-07-22", ckdbbm: "BB-02",
+      produk: "PERTAMAX", reason: "penutup_tak_ada", tangki: null, prevDate: null, priorTeori: null, audit: null, terjual: 500 }]);
+    // Status generik tetap ada dan menunjuk rinciannya.
+    expect(m.glIncomplete).toBe(true);
+    expect(m.notes.join(" ")).toContain("Gain/Losses TIDAK LENGKAP");
+    expect(m.notes.join(" ")).toContain("panel “G/L Belum terverifikasi”");
   });
 
   it("hari G/L LEBIH banyak dari hari penjualan bukan alarm (opname tanpa jualan)", () => {
