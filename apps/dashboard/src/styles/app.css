@@ -1137,6 +1137,14 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .harian-min > * { min-width: 720px; }
 .harian-min-wide > * { min-width: 1040px; }
 .harian-subhead { background: var(--neutral-50); }
+/* Perbandingan Penjualan Kumulatif (SOLA-424) — 7 kolom tetap per kartu unit. */
+.cols-pk { grid-template-columns: minmax(170px, 1.6fr) repeat(6, minmax(84px, 1fr)); }
+.pk-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 640px), 1fr)); }
+.pk-title { padding: 10px 14px; font-weight: 700; font-size: 16px; background: var(--brand-navy); color: #fff; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.pk-stale { font-size: 14px; font-weight: 500; opacity: .9; }
+.pk-group { grid-column: 1 / -1; font-style: italic; }
+.pk-total { background: #fff4cc; }
+.pk-note { padding: 8px 14px; }
 .harian-delta { background: var(--neutral-50); }
 .harian-span2 { grid-column: span 2; }
 /* Kolom unit BASI — ditandai keras, tapi angkanya TETAP tampil (keputusan №4). */

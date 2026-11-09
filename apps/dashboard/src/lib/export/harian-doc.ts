@@ -22,10 +22,11 @@ import type {
   HarianModel,
   MonthlyCell,
   MonthlyRow,
-  RatioCell,
   UnitStatus,
   ValueRow,
 } from "@/lib/harian-model";
+import type { PkRow, PkTable } from "@/lib/perbandingan-kumulatif";
+import { unitDotted } from "@/lib/config";
 import { pdfText } from "./glyphs";
 import { divergentGlCanvas, harianSeriesColor, harianTrendCanvas } from "./pdf-charts";
 import { CONTENT_WIDTH_LANDSCAPE as CW, keepHeadingsWithTable } from "./pdf-layout";
@@ -182,34 +183,83 @@ function monthlyTable(
   ];
 }
 
-function ratioBbkTable(model: HarianModel): Content[] {
-  const units = model.units;
-  const widths = ["auto", ...units.map(() => "*"), "*"];
-  const P = (v: number | null) => (v === null ? "—" : pct(v, 2));
-  const body: TableCell[][] = [];
-  body.push([{ text: "Rasio / BBK", style: "th", fontSize: 7 }, ...units.map(unitHead), { text: "TOTAL", style: "th", alignment: "right", fontSize: 7 }]);
-  const sub = (label: string) => body.push([{ text: label, bold: true, fontSize: 6.5, color: PDF.textMuted, colSpan: units.length + 2, fillColor: PDF.zebra } as TableCell, ...units.map(() => ({}) as TableCell), {} as TableCell]);
-  const ratioRow = (name: string, pick: (c: RatioCell) => number | null, get: (id: number) => RatioCell, total: RatioCell) =>
-    body.push([{ text: name, fontSize: 7.5 }, ...units.map((u) => ({ text: u.notYet || u.stale ? "—" : P(pick(get(u.unitId))), alignment: "right", fontSize: 7.5 }) as TableCell), { text: P(pick(total)), alignment: "right", bold: true, fontSize: 7.5 }]);
-  sub("HARIAN");
-  ratioRow("% Dexlite / Solar", (c) => c.dexSolar, (id) => model.ratios.daily[id] ?? emptyRatio(), model.ratios.dailyTotal);
-  ratioRow("% P Dex / Solar", (c) => c.pdexSolar, (id) => model.ratios.daily[id] ?? emptyRatio(), model.ratios.dailyTotal);
-  ratioRow("Total (= bauran gasoil)", (c) => c.total, (id) => model.ratios.daily[id] ?? emptyRatio(), model.ratios.dailyTotal);
-  sub("BULANAN (MTD)");
-  ratioRow("% Dexlite / Solar", (c) => c.dexSolar, (id) => model.ratios.monthly[id] ?? emptyRatio(), model.ratios.monthlyTotal);
-  ratioRow("% P Dex / Solar", (c) => c.pdexSolar, (id) => model.ratios.monthly[id] ?? emptyRatio(), model.ratios.monthlyTotal);
-  ratioRow("Total (= bauran gasoil)", (c) => c.total, (id) => model.ratios.monthly[id] ?? emptyRatio(), model.ratios.monthlyTotal);
-  sub("PERSENTASE BBK (bulan berjalan)");
-  body.push([{ text: "GASOLINE", fontSize: 7.5 }, ...units.map((u) => ({ text: u.notYet || u.stale ? "—" : P(model.bbk.monthly[u.unitId]?.gasoline ?? null), alignment: "right", fontSize: 7.5 }) as TableCell), { text: P(model.bbk.monthlyTotal.gasoline), alignment: "right", bold: true, fontSize: 7.5 }]);
-  body.push([{ text: "DIESEL", fontSize: 7.5 }, ...units.map((u) => ({ text: u.notYet || u.stale ? "—" : P(model.bbk.monthly[u.unitId]?.diesel ?? null), alignment: "right", fontSize: 7.5 }) as TableCell), { text: P(model.bbk.monthlyTotal.diesel), alignment: "right", bold: true, fontSize: 7.5 }]);
-  return [
-    { text: "Rasio & Persentase BBK", style: "sectionTitle", marginTop: 10, headlineLevel: 1 },
-    { text: pdfText("Rasio: pembilang ÷ Solar (Total ≡ bauran gasoil). BBK: NPSO ÷ (NPSO+PSO) jenis sama ≡ b/(1+b). Keduanya bukan angka yang sama."), style: "hint", marginBottom: 3 },
-    { table: { headerRows: 1, keepWithHeaderRows: 1, dontBreakRows: true, widths, body }, layout: harianLayout },
+const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+/** Kepala kolom tabel perbandingan — biru muda seperti PDF laporan Pak Hendra. */
+const PK_HEAD = "#DCE3F0";
+const BULAN_PANJANG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+/** Perbandingan Penjualan Kumulatif — format Pak Hendra (SOLA-424), dua tabel unit per halaman. */
+function perbandinganSection(model: HarianModel): Content[] {
+  const { ranges, tables } = model.perbandingan;
+  const bln = (from: string, long = false) => `${(long ? BULAN_PANJANG : BULAN)[Number(from.slice(5, 7)) - 1]} ${from.slice(0, 4)}`;
+  const status = new Map(model.units.map((u) => [u.unitId, u]));
+  const anyStale = model.units.some((u) => u.stale || u.notYet);
+  const P = (v: number | null, kind: PkRow["kind"]) => (kind !== "item" ? "" : v === null ? "—" : pct(v, 2));
+  const D = (v: number | null) => (v === null ? "—" : pct(v, 2));
+  const fs = 8;
+  const num = (text: string, bold: boolean, danger = false): TableCell => ({ text, alignment: "right", fontSize: fs, bold, color: danger ? PDF.danger : PDF.textPrimary });
+
+  const rowCells = (r: PkRow): TableCell[] => {
+    const bold = r.kind !== "item";
+    const fill = r.kind === "total" ? "#FFF4CC" : undefined;
+    return [
+      { text: r.label, fontSize: fs, bold },
+      num(idn(r.cur), bold),
+      num(P(r.curShare, r.kind), false),
+      num(idn(r.prev), bold),
+      num(P(r.prevShare, r.kind), false),
+      num(idn(r.delta), bold, r.delta < 0),
+      num(D(r.deltaPct), bold, r.deltaPct !== null && r.deltaPct < 0),
+    ].map((c) => (fill ? ({ ...(c as object), fillColor: fill } as TableCell) : c));
+  };
+
+  const card = (t: PkTable): Content[] => {
+    const u = t.unitId === null ? null : status.get(t.unitId);
+    const stale = t.unitId === null ? anyStale : !!(u && (u.stale || u.notYet));
+    const title = `${t.unitId === null ? "ALL" : unitDotted(t.code)} · ${t.name.toUpperCase()}${stale ? (t.unitId === null ? "  ⚠ ada unit belum lengkap" : u?.lastDataDate ? `  ⚠ data s/d ${u.lastDataDate.slice(8)}/${u.lastDataDate.slice(5, 7)}` : "  ⚠ belum ada data") : ""}`;
+    const body: TableCell[][] = [
+      [{ text: pdfText(title), colSpan: 7, bold: true, fontSize: 7.5, color: PDF.onNavy, fillColor: PDF.navy } as TableCell, ...Array.from({ length: 6 }, () => ({}) as TableCell)],
+      [
+        { text: "Produk", bold: true, fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: `${bln(ranges.cur.from)}\n(tgl 1–${ranges.cur.lastDay})`, bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: "Porsi", bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: `${bln(ranges.prev.from)}\n(tgl 1–${ranges.prev.lastDay})`, bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: "Porsi", bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: "Delta (L)", bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+        { text: "Delta %", bold: true, alignment: "right", fontSize: fs, fillColor: PK_HEAD, color: PDF.navy },
+      ],
+    ];
+    for (const g of t.groups) {
+      body.push([{ text: g.label, italics: true, bold: true, fontSize: 6, color: PDF.textMuted, colSpan: 7, fillColor: PDF.zebra } as TableCell, ...Array.from({ length: 6 }, () => ({}) as TableCell)]);
+      for (const r of g.rows) body.push(rowCells(r));
+    }
+    body.push(rowCells(t.total));
+    if (t.otherCur > 0 || t.otherPrev > 0) {
+      body.push([{ text: pdfText(`Produk lain (mis. PLK) tidak dihitung: ${idn(t.otherCur)} L / ${idn(t.otherPrev)} L.`), colSpan: 7, fontSize: 6.5, color: PDF.textMuted } as TableCell, ...Array.from({ length: 6 }, () => ({}) as TableCell)]);
+    }
+    return [{ table: { headerRows: 2, keepWithHeaderRows: 1, dontBreakRows: true, widths: ["*", 76, 50, 76, 50, 70, 55], body }, layout: harianLayout }];
+  };
+
+  const out: Content[] = [
+    { text: "Perbandingan Penjualan Kumulatif", style: "sectionTitle", marginTop: 10, headlineLevel: 1, pageBreak: "before" },
+    { text: pdfText(`Tanggal 1–${ranges.cur.lastDay} ${bln(ranges.cur.from, true)} vs Tanggal 1–${ranges.prev.lastDay} ${bln(ranges.prev.from, true)} · liter · porsi Solar ÷ BioSolar, Bensin ÷ Pertalite`), style: "hint", marginBottom: 3 },
   ];
-}
-function emptyRatio(): RatioCell {
-  return { dexSolar: null, pdexSolar: null, total: null };
+  // ALL penuh lebar tepat di bawah judul (judul tak boleh yatim — keepHeadingsWithTable
+  // mencari tabel tingkat-atas), lalu dua tabel unit penuh lebar per halaman.
+  const [all, ...unitTables] = tables;
+  out.push(...card(all!));
+  for (let i = 0; i < unitTables.length; i += 2) {
+    const right = unitTables[i + 1];
+    out.push({
+      stack: [
+        ...card(unitTables[i]!),
+        ...(right ? [{ stack: card(right), marginTop: 10 } as Content] : []),
+      ],
+      pageBreak: "before",
+      unbreakable: true,
+    } as Content);
+  }
+  return out;
 }
 
 function trendCharts(model: HarianModel): Content[] {
@@ -352,7 +402,7 @@ export function buildHarianDocDefinition(args: {
   if (model.glMonthlyProvisional) content.push(glWarn(GL_MONTHLY_PROVISIONAL_WARNING));
   if (model.glIncomplete) content.push(glWarn(GL_INCOMPLETE_WARNING));
   content.push(...trendCharts(model));
-  content.push(...ratioBbkTable(model));
+  content.push(...perbandinganSection(model));
   content.push(...recordSection(model));
 
   // ── Catatan kaki (Pertalite Khusus, penutup-nol 28 Okt, dll) ──────────────

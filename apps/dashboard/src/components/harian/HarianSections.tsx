@@ -7,17 +7,17 @@
  *  - Unit yang BELUM beroperasi pada tanggal itu dirender "—", bukan 0.
  */
 import { Fragment } from "react";
+import { unitDotted } from "@/lib/config";
 import { fmtL, idn, pct, signed } from "@/lib/format";
 import { GL_DAILY_PROVISIONAL_WARNING, GL_INCOMPLETE_WARNING, GL_MONTHLY_PROVISIONAL_WARNING, glStatusText, glValueText } from "@/lib/harian-gl-display";
 import type {
-  BbkCell,
   HarianModel,
   MonthlyCell,
   MonthlyRow,
-  RatioCell,
   UnitStatus,
   ValueRow,
 } from "@/lib/harian-model";
+import type { PkRange, PkRow, PkTable } from "@/lib/perbandingan-kumulatif";
 
 const nbsp = " ";
 
@@ -286,100 +286,94 @@ export function MonthlyMatrix({
 
 // ---------------------------------------------------------------------------
 
+const BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const BULAN_PANJANG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+/** "Okt 2026" / "Oktober 2026" dari rentang. */
+function bulanOf(r: PkRange, long = false): string {
+  const m = Number(r.from.slice(5, 7)) - 1;
+  return `${(long ? BULAN_PANJANG : BULAN)[m]} ${r.from.slice(0, 4)}`;
+}
+
 /**
- * RASIO + BBK dalam SATU tabel dengan rumusnya tercetak. Digabung dengan sengaja:
- * keduanya turun dari angka yang sama tetapi punya PENYEBUT berbeda, dan selama
- * ini hidup di dua halaman berbeda sehingga dikira sama. Rumus di layar =
- * pertahanan termurah terhadap kekeliruan itu.
+ * Perbandingan Penjualan Kumulatif — format laporan Pak Hendra (SOLA-424),
+ * menggantikan "Rasio & Persentase BBK". Rumus di `lib/perbandingan-kumulatif.ts`
+ * (sama dengan spreadsheet); komponen ini hanya membaca `model.perbandingan`.
  */
-export function RatioBbkTable({
-  units,
-  model,
-}: {
-  units: UnitStatus[];
-  model: HarianModel;
-}) {
-  const style = colStyle(units.length);
-  const P = (v: number | null) => (v === null ? "—" : pct(v, 2));
+export function PerbandinganKumulatif({ units, model }: { units: UnitStatus[]; model: HarianModel }) {
+  const { ranges, tables } = model.perbandingan;
+  const status = new Map(units.map((u) => [u.unitId, u]));
+  const anyStale = units.some((u) => u.stale || u.notYet);
+  const P = (v: number | null, kind: PkRow["kind"]) => (kind !== "item" ? "" : v === null ? "—" : pct(v, 2));
+  const D = (v: number | null) => (v === null ? "—" : pct(v, 2));
+  const neg = (v: number | null) => (v !== null && v < 0 ? " t-danger" : "");
 
-  const block = (
-    label: string,
-    get: (id: number) => RatioCell,
-    total: RatioCell,
-  ) => (
-    <>
-      <div className="grid-row cols-harian harian-subhead" style={style}>
-        <span className="fs15 w700 t-tertiary">{label}</span>
-        {units.map((u) => (
-          <span key={u.unitId} />
-        ))}
-        <span />
-      </div>
-      {(
-        [
-          ["% Dexlite / Solar", (c: RatioCell) => c.dexSolar],
-          ["% P Dex / Solar", (c: RatioCell) => c.pdexSolar],
-          ["Total (= bauran gasoil)", (c: RatioCell) => c.total],
-        ] as const
-      ).map(([name, pick]) => (
-        <div key={name} className="grid-row cols-harian" style={style}>
-          <span className="fs16 t-primary">{name}</span>
-          {units.map((u) => (
-            <span key={u.unitId} className="fs16 right num">
-              {u.notYet || u.stale ? "—" : P(pick(get(u.unitId)))}
-            </span>
-          ))}
-          <span className="fs16 w600 right num">{P(pick(total))}</span>
-        </div>
-      ))}
-    </>
-  );
-
-  const bbkRow = (name: string, pick: (c: BbkCell) => number | null) => (
-    <div key={name} className="grid-row cols-harian" style={style}>
-      <span className="fs16 t-primary">{name}</span>
-      {units.map((u) => (
-        <span key={u.unitId} className="fs16 right num">
-          {u.notYet || u.stale
-            ? "—"
-            : P(pick(model.bbk.monthly[u.unitId] ?? { gasoline: null, diesel: null }))}
-        </span>
-      ))}
-      <span className="fs16 w600 right num">{P(pick(model.bbk.monthlyTotal))}</span>
+  const line = (r: PkRow) => (
+    <div key={r.key} className={`grid-row cols-pk${r.kind === "total" ? " pk-total" : ""}`}>
+      <span className={`fs16 ${r.kind === "item" ? "t-primary" : "w700"}`}>{r.label}</span>
+      <span className={`fs16 right num${r.kind === "item" ? "" : " w700"}`}>{idn(r.cur)}</span>
+      <span className="fs16 right num">{P(r.curShare, r.kind)}</span>
+      <span className={`fs16 right num${r.kind === "item" ? "" : " w700"}`}>{idn(r.prev)}</span>
+      <span className="fs16 right num">{P(r.prevShare, r.kind)}</span>
+      <span className={`fs16 right num${r.kind === "item" ? "" : " w700"}${neg(r.delta)}`}>{idn(r.delta)}</span>
+      <span className={`fs16 right num${r.kind === "item" ? "" : " w700"}${neg(r.deltaPct)}`}>{D(r.deltaPct)}</span>
     </div>
   );
+
+  const card = (t: PkTable) => {
+    const u = t.unitId === null ? null : status.get(t.unitId);
+    const stale = t.unitId === null ? anyStale : !!(u && (u.stale || u.notYet));
+    return (
+      <div key={t.code} className="card tbl-card harian-scroll">
+        <div className="harian-min">
+          <div className="pk-title">
+            {t.unitId === null ? "ALL" : unitDotted(t.code)} · {t.name.toUpperCase()}
+            {stale && (
+              <span className="pk-stale">
+                ⚠ {t.unitId === null ? "ada unit belum lengkap" : u?.lastDataDate ? `data s/d ${u.lastDataDate.slice(8)}/${u.lastDataDate.slice(5, 7)}` : "belum ada data"}
+              </span>
+            )}
+          </div>
+          <div className="grid-head cols-pk">
+            <span>Produk</span>
+            <span className="right">{bulanOf(ranges.cur)} (tgl 1–{ranges.cur.lastDay})</span>
+            <span className="right">Porsi</span>
+            <span className="right">{bulanOf(ranges.prev)} (tgl 1–{ranges.prev.lastDay})</span>
+            <span className="right">Porsi</span>
+            <span className="right">Delta (L)</span>
+            <span className="right">Delta %</span>
+          </div>
+          {t.groups.map((g) => (
+            <Fragment key={g.label}>
+              <div className="grid-row cols-pk harian-subhead">
+                <span className="fs15 w700 t-tertiary pk-group">{g.label}</span>
+              </div>
+              {g.rows.map(line)}
+            </Fragment>
+          ))}
+          {line(t.total)}
+          {(t.otherCur > 0 || t.otherPrev > 0) && (
+            <div className="fs15 t-tertiary pk-note">
+              Produk lain (mis. PLK) tidak dihitung: {idn(t.otherCur)} L / {idn(t.otherPrev)} L.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="mt10">
       <div className="section-h">
-        <div className="text-h5 t-brand">Rasio &amp; Persentase BBK</div>
-        <span className="fs16 t-tertiary">dua definisi berbeda — penyebutnya tercetak</span>
+        <div className="text-h5 t-brand">Perbandingan Penjualan Kumulatif</div>
+        <span className="fs16 t-tertiary">
+          Tanggal 1–{ranges.cur.lastDay} {bulanOf(ranges.cur, true)} vs Tanggal 1–{ranges.prev.lastDay} {bulanOf(ranges.prev, true)} · liter
+        </span>
       </div>
-      <div className="card tbl-card mt5 harian-scroll">
-        <div className="harian-min">
-          <div className="grid-head cols-harian" style={style}>
-            <span>Rasio</span>
-            <UnitHeads units={units} />
-            <span className="right">TOTAL</span>
-          </div>
-          {block("HARIAN", (id) => model.ratios.daily[id] ?? { dexSolar: null, pdexSolar: null, total: null }, model.ratios.dailyTotal)}
-          {block("BULANAN (MTD)", (id) => model.ratios.monthly[id] ?? { dexSolar: null, pdexSolar: null, total: null }, model.ratios.monthlyTotal)}
-          <div className="grid-row cols-harian harian-subhead" style={style}>
-            <span className="fs15 w700 t-tertiary">PERSENTASE BBK (bulan berjalan)</span>
-            {units.map((u) => (
-              <span key={u.unitId} />
-            ))}
-            <span />
-          </div>
-          {bbkRow("GASOLINE", (c) => c.gasoline)}
-          {bbkRow("DIESEL", (c) => c.diesel)}
-        </div>
-      </div>
+      <div className="pk-grid mt5">{tables.map(card)}</div>
       <div className="fs15 t-tertiary mt2">
-        Rasio: pembilang ÷ <b>Solar</b> (baris Total ≡ bauran gasoil (Dexlite + P.Dex) ÷ Solar).
-        BBK: NPSO ÷ (NPSO + PSO) <i>dalam jenis yang sama</i> — GASOLINE = (Pertamax + Turbo) ÷
-        (Pertalite + Pertamax + Turbo), DIESEL = (Dexlite + P.Dex) ÷ (Solar + Dexlite + P.Dex).
-        Keduanya bukan angka yang sama.
+        Porsi Solar ÷ <b>BioSolar</b>, porsi Bensin ÷ <b>Pertalite</b>. D+D = Dexlite + P.Dex · JML ALL = JML Solar + JML Bensin ·
+        Delta % = Delta ÷ bulan lalu. Bila tanggal yang sama tidak ada di bulan lalu, dipakai tanggal terakhir bulan lalu.
       </div>
     </div>
   );
