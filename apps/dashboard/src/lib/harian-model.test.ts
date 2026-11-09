@@ -58,46 +58,33 @@ const KB_MTD: Array<[string, number]> = [
   ["PERTAMAX TURBO", 5_042],
 ];
 
-describe("rumus terkunci — BBK ≠ bauran", () => {
+describe("perbandingan kumulatif (SOLA-424) ikut model — layar & PDF membaca angka yang sama", () => {
   const m = buildHarianModel(
-    base({ dailySales: KB_MTD.map(([n, v]) => sale(4, "2026-07-22", n, v)) }),
+    base({
+      dailySales: [
+        ...KB_MTD.map(([n, v]) => sale(4, "2026-07-22", n, v)),
+        sale(4, "2026-06-10", "PERTALITE", 600_000),
+        sale(4, "2026-06-23", "PERTALITE", 99_999), // di luar tgl 1–22 Juni
+      ],
+    }),
   );
-
-  // Oracle sesungguhnya = angka TAMPIL di laporan Excel yang berjalan (2 desimal).
   const pct2 = (x: number | null): string => `${(x! * 100).toFixed(2)}%`;
+  const kb = m.perbandingan.tables.find((t) => t.unitId === 4)!;
+  const rowOf = (key: string) => kb.groups.flatMap((g) => g.rows).find((r) => r.key === key)!;
 
-  it("BBK GASOLINE = (Pertamax+Turbo)/(Pertalite+Pertamax+Turbo) → PDF 11,44%", () => {
-    // 91.553 / 799.990
-    expect(m.bbk.monthly[4]!.gasoline).toBeCloseTo(91_553 / 799_990, 12);
-    expect(pct2(m.bbk.monthly[4]!.gasoline)).toBe("11.44%");
-    // bauran (NPSO/PSO) memberi 12,93% — HARUS berbeda; ini definisi yang bersaing
-    expect(pct2(91_553 / 708_437)).toBe("12.92%");
-    expect(m.bbk.monthly[4]!.gasoline).not.toBeCloseTo(91_553 / 708_437, 4);
+  it("rentang Juli 1–22 vs Juni 1–22; ALL dulu, lalu unit", () => {
+    expect(m.perbandingan.ranges.prev).toEqual({ from: "2026-06-01", to: "2026-06-22", lastDay: 22 });
+    expect(m.perbandingan.tables[0]!.unitId).toBeNull();
   });
 
-  it("BBK DIESEL = (Dexlite+P.Dex)/(Solar+Dexlite+P.Dex) → PDF 28,27%", () => {
-    expect(m.bbk.monthly[4]!.diesel).toBeCloseTo(80_979 / 286_492, 12);
-    expect(pct2(m.bbk.monthly[4]!.diesel)).toBe("28.27%");
+  it("porsi D+D thd BioSolar = (Dexlite+P.Dex)/Solar → 39,40% (sama dgn laporan Excel lama)", () => {
+    expect(pct2(rowOf("DD").curShare)).toBe("39.40%");
+    expect(pct2(rowOf("DL").curShare)).toBe("28.00%");
   });
 
-  it('baris "Total" RASIO ≡ bauran gasoil = (Dexlite+P.Dex)/Solar → PDF 39,40%', () => {
-    expect(m.ratios.monthly[4]!.dexSolar).toBeCloseTo(57_548 / 205_513, 12);
-    expect(m.ratios.monthly[4]!.pdexSolar).toBeCloseTo(23_431 / 205_513, 12);
-    expect(pct2(m.ratios.monthly[4]!.dexSolar)).toBe("28.00%"); // PDF 28,00%
-    expect(pct2(m.ratios.monthly[4]!.pdexSolar)).toBe("11.40%"); // PDF 11,40%
-    expect(pct2(m.ratios.monthly[4]!.total)).toBe("39.40%"); // PDF 39,40%
-  });
-
-  it("BBK adalah transformasi b/(1+b) dari baris Total rasio", () => {
-    const b = m.ratios.monthly[4]!.total!;
-    expect(m.bbk.monthly[4]!.diesel).toBeCloseTo(b / (1 + b), 9);
-  });
-
-  it("Solar 0 → rasio null, BUKAN 0%", () => {
-    const m0 = buildHarianModel(base({ dailySales: [sale(4, "2026-07-22", "PERTALITE", 100)] }));
-    expect(m0.ratios.monthly[4]).toEqual({ dexSolar: null, pdexSolar: null, total: null });
-    expect(m0.bbk.monthly[4]!.diesel).toBeNull();
-    expect(m0.bbk.monthly[4]!.gasoline).toBeCloseTo(0, 9); // PSO ada, NPSO 0 → 0%, sah
+  it("bulan lalu hanya tgl 1–22, delta Pertalite", () => {
+    expect(rowOf("PL").prev).toBe(600_000);
+    expect(rowOf("PL").delta).toBe(108_437);
   });
 });
 
