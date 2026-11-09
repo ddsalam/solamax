@@ -5,6 +5,7 @@ import {
   groupPiutangRows,
   booksForPiutangRow,
   piutangBookAmounts,
+  piutangSelisih,
   piutangSaldoSelisih,
   PIUTANG_BOOKS,
   type PiutangFilter,
@@ -337,17 +338,21 @@ describe("mutasi tanggal bisnis dan selisih saldo", () => {
     expect(exported.mutasiKredit).toBe(false);
   });
 
-  it("selisih tiap buku = saldo akhir − saldo awal yang sudah tampil", () => {
-    const lokal = piutangSaldoSelisih(piutangBookAmounts(kredit, PIUTANG_BOOKS[0]));
-    const hutang = piutangSaldoSelisih(piutangBookAmounts(debet, PIUTANG_BOOKS[2]));
-    const online = piutangSaldoSelisih(piutangBookAmounts(keduanya, PIUTANG_BOOKS[1]));
-    expect(lokal).toBe(9 - 6);
-    expect(hutang).toBe(-4 - -2);
-    expect(online).toBe(0);
-    expect(piutangSaldoSelisih(piutangBookAmounts(
-      { ...zeroRow("P", "Pecahan"), awalPiutangLokal: 12.5, akhirPiutangLokal: 12.25 },
+  it("selisih tiap buku = akhir − awal untuk debet, kredit, dan saldo, tanpa menjumlahkan buku", () => {
+    const lokal = piutangSelisih(piutangBookAmounts(kredit, PIUTANG_BOOKS[0]));
+    const hutang = piutangSelisih(piutangBookAmounts(debet, PIUTANG_BOOKS[2]));
+    const online = piutangSelisih(piutangBookAmounts(keduanya, PIUTANG_BOOKS[1]));
+    expect(lokal).toEqual({ debet: 0, kredit: 1 - 4, saldo: 9 - 6 });
+    expect(hutang).toEqual({ debet: 8 - 1, kredit: 0, saldo: -4 - -2 });
+    expect(online).toEqual({ debet: 5 - 2, kredit: 5 - 2, saldo: 0 });
+    expect(piutangSaldoSelisih(piutangBookAmounts(kredit, PIUTANG_BOOKS[0]))).toBe(lokal.saldo);
+    const pecahan = piutangSelisih(piutangBookAmounts(
+      { ...zeroRow("P", "Pecahan"), awalPiutangLokalDebet: 1.25, akhirPiutangLokalDebet: 1.5, awalPiutangLokal: 12.5, akhirPiutangLokal: 12.25 },
       PIUTANG_BOOKS[0],
-    ))).toBeCloseTo(-0.25, 10);
+    ));
+    expect(pecahan.debet).toBeCloseTo(0.25, 10);
+    expect(pecahan.kredit).toBe(0);
+    expect(pecahan.saldo).toBeCloseTo(-0.25, 10);
   });
 });
 

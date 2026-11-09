@@ -83,7 +83,7 @@ describe("PiutangPelangganView", () => {
     expect(h).toContain("Budi Saldo Nol");
     expect(h).toContain("Saldo nol pada kedua batas");
     const zeroSection = h.slice(h.indexOf('id="piutang-nol"'));
-    expect(zeroSection.match(/Rp0/g)).toHaveLength(9);
+    expect(zeroSection.match(/Rp0/g)).toHaveLength(15);
     expect(zeroSection).toContain("Rp 7,25");
     expect(zeroSection).toContain("Rp 8,5");
     expect(zeroSection).toContain("Rp 9,75");
@@ -149,15 +149,33 @@ describe("PiutangPelangganView", () => {
     expect(h).not.toContain('name="mutasi_debet"');
   });
 
-  it("menulis selisih saldo akhir dikurangi saldo awal dengan pembulatan rupiah yang sama", () => {
+  it("menulis selisih debet, kredit, dan saldo sebagai akhir dikurangi awal", () => {
     const h = html(ready());
+    const card = (name: string, next: string) => h.slice(h.indexOf(`aria-label="Ringkasan ${name}"`), h.indexOf(next));
+    const lokalCard = card("Piutang Lokal", 'aria-label="Ringkasan Piutang Online"');
+    const onlineCard = card("Piutang Online", 'aria-label="Ringkasan Hutang Lokal"');
+    const hutangCard = card("Hutang Lokal", "Debet/Kredit adalah akumulasi");
+    for (const summary of [lokalCard, onlineCard, hutangCard]) {
+      expect(summary).toContain("Selisih · akhir − awal");
+      expect(summary).toContain(">Debet<");
+      expect(summary).toContain(">Kredit<");
+      expect(summary).toContain(">Saldo<");
+    }
+    expect(lokalCard).toContain("−Rp 25.000");
+    expect(onlineCard).toContain("Rp 25.000");
+    expect(hutangCard).toContain("−Rp 10.000");
+    expect(hutangCard).toContain("Rp 10.000");
+
     const lokal = h.slice(h.indexOf('id="piutang-lokal"'), h.indexOf('id="piutang-online"'));
     const hutang = h.slice(h.indexOf('id="piutang-hutang"'), h.indexOf('id="piutang-nol"'));
-    expect(lokal).toContain("Selisih");
     expect(lokal).toContain("akhir − awal");
+    // Akhir kredit, selisih kredit, dan selisih saldo (bertanda) memuat "Rp 25.000".
+    expect(lokal.match(/Rp 25\.000/g)).toHaveLength(3);
     expect(lokal).toContain("−Rp 25.000");
-    // Akhir debet, saldo akhir (bertanda), dan selisih semuanya memuat "Rp 10.000".
-    expect(hutang.match(/Rp 10\.000/g)).toHaveLength(3);
+    expect(lokal.match(/Rp0/g)).toHaveLength(2);
+    // Akhir debet, saldo akhir (bertanda), selisih debet, dan selisih saldo.
+    expect(hutang.match(/Rp 10\.000/g)).toHaveLength(4);
+    expect(hutang.match(/Rp0/g)).toHaveLength(2);
   });
 
   it("not-ready adalah keadaan utama tanpa angka, tabel, atau ekspor numerik", () => {

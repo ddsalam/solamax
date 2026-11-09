@@ -79,20 +79,21 @@ describe("piutang export", () => {
     expect(csv).toContain("'=Unit");
     expect(csv).toContain("'=HYPERLINK");
     expect(csv).toContain("NOL/02");
-    expect(csv).toContain(",7.25,7.25,0,7.25,7.25,0,0\r\n");
-    expect(csv).toContain("Akhir Saldo,Selisih Saldo");
+    expect(csv).toContain(",7.25,7.25,0,7.25,7.25,0,0,0,0\r\n");
+    expect(csv).toContain("Akhir Saldo,Selisih Debet,Selisih Kredit,Selisih Saldo");
+    expect(csv).toContain("Selisih Debet,Selisih Kredit,Selisih Saldo");
     expect(csv).toContain("keenam saldo Awal/Akhir nol");
     expect(csv).toContain("Tanpa saldo di ketiga buku,Piutang Lokal");
     expect(csv.match(/NOL\/02/g)).toHaveLength(3);
     const data = csv.split("\r\n").filter((line) => line.startsWith("6478111,"));
     expect(data).toHaveLength(6);
     expect(data[0]).toContain("Piutang Lokal,Piutang Lokal");
-    expect(data[0]).toMatch(/,1,0,1,4,0,4,3$/);
+    expect(data[0]).toMatch(/,1,0,1,4,0,4,3,0,3$/);
     expect(data[1]).toContain("Piutang Online,Piutang Online");
-    expect(data[1]).toMatch(/,2,0,2,5,0,5,3$/);
+    expect(data[1]).toMatch(/,2,0,2,5,0,5,3,0,3$/);
     expect(data[2]).toContain("Hutang Lokal,Hutang Lokal");
-    expect(data[2]).toMatch(/,0,3,-3,0,6,-6,-3$/);
-    expect(data[3]).toMatch(/,7.25,7.25,0,7.25,7.25,0,0$/);
+    expect(data[2]).toMatch(/,0,3,-3,0,6,-6,0,3,-3$/);
+    expect(data[3]).toMatch(/,7.25,7.25,0,7.25,7.25,0,0,0,0$/);
     expect(data[4]).toContain("Piutang Online");
     expect(data[5]).toContain("Hutang Lokal");
   });
@@ -104,6 +105,8 @@ describe("piutang export", () => {
     });
     expect(doc.pageOrientation).toBe("landscape");
     expect(JSON.stringify(doc)).toContain("Awal Debet");
+    expect(JSON.stringify(doc)).toContain("Selisih Debet");
+    expect(JSON.stringify(doc)).toContain("Selisih Kredit");
     expect(JSON.stringify(doc)).toContain("Selisih Saldo");
     expect(JSON.stringify(doc)).toContain("tidak dijumlahkan/netto");
     expect(typeof doc.footer).toBe("function");
@@ -144,7 +147,7 @@ it("keeps CSV decimal values exact and the existing PDF rounding unchanged", () 
     rows: [{ ...snapshot.rows[1]!, awalPiutangLokal: 13_052_684_187.5, akhirPiutangLokal: 13_052_684_187.5 }],
   });
   const csv = piutangCsv({ unit: { code: "IB", name: "Imam Bonjol" }, ptLabel: "PT", view: precise, generatedLabel: "sekarang", generatedBy: "Dion" });
-  expect(csv).toContain(",1,0,13052684187.5,4,0,13052684187.5,0\r\n");
+  expect(csv).toContain(",1,0,13052684187.5,4,0,13052684187.5,3,0,0\r\n");
   const doc = buildPiutangDoc({
     kop: { ptLabel: "PT", judul: "Piutang", subjudul: "IB", generatedLabel: "sekarang", dicetakOleh: "Dion" },
     view: precise,
@@ -178,7 +181,7 @@ it("exports gross turnover in an inactive book exactly once alongside the first 
   expect(data[0]).toContain("Piutang Lokal,Piutang Lokal");
   expect(data[1]).toContain("Piutang Lokal,Hutang Lokal");
   expect(data[1]).toContain("buku bersaldo nol");
-  expect(data[1]).toMatch(/,71.25,71.25,0,71.25,71.25,0,0$/);
+  expect(data[1]).toMatch(/,71.25,71.25,0,71.25,71.25,0,0,0,0$/);
   expect(data[2]).toContain("Piutang Online,Piutang Online");
   const doc = buildPiutangDoc({ kop: { ptLabel: "PT", judul: "Piutang", subjudul: "IB", generatedLabel: "sekarang", dicetakOleh: "Dion" }, view: sample });
   expect(JSON.stringify(doc).match(/71,25/g)).toHaveLength(4);

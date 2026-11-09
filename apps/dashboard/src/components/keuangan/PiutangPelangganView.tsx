@@ -6,7 +6,7 @@ import {
   PIUTANG_FILTERS,
   piutangBookLabel,
   piutangBookAmounts,
-  piutangSaldoSelisih,
+  piutangSelisih,
   booksForPiutangRow,
   type PiutangBookAmounts,
   type PiutangBoundaryAmounts,
@@ -160,6 +160,19 @@ function BoundaryAmounts({ amounts, saldoFormat = rupiah }: {
   </dl>;
 }
 
+/** Tiga selisih, pembulatan dan tanda sama dengan saldo (bukan Debet/Kredit presisi). */
+function SelisihAmounts({ amounts, saldoFormat = rupiah }: {
+  amounts: PiutangBookAmounts;
+  saldoFormat?: (value: number) => string;
+}) {
+  const selisih = piutangSelisih(amounts);
+  return <dl className="b6-piutang-triplet">
+    <div><dt>Debet</dt><dd><Nilai value={selisih.debet} format={saldoFormat} /></dd></div>
+    <div><dt>Kredit</dt><dd><Nilai value={selisih.kredit} format={saldoFormat} /></dd></div>
+    <div className="b6-piutang-saldo"><dt>Saldo</dt><dd><Nilai value={selisih.saldo} format={saldoFormat} /></dd></div>
+  </dl>;
+}
+
 function BucketPair({ name, amounts }: { name: string; amounts: PiutangBookAmounts }) {
   return (
     <div className="b6-piutang-bucket" role="cell">
@@ -169,12 +182,7 @@ function BucketPair({ name, amounts }: { name: string; amounts: PiutangBookAmoun
         <div><span className="b6-piutang-mobile-bound">Akhir</span><BoundaryAmounts amounts={amounts.akhir} /></div>
         <div className="b6-piutang-selisih">
           <span className="b6-piutang-mobile-bound">Selisih</span>
-          <dl className="b6-piutang-triplet">
-            <div className="b6-piutang-saldo">
-              <dt>Selisih</dt>
-              <dd><Nilai value={piutangSaldoSelisih(amounts)} /></dd>
-            </div>
-          </dl>
+          <SelisihAmounts amounts={amounts} />
         </div>
       </div>
     </div>
@@ -205,6 +213,7 @@ export function PiutangSummaryBucket({ name, amounts, saldoFormat }: {
       <div className="b6-piutang-summary-pair">
         <div><span>Awal · dtgl &lt; D · s.d. D−1</span><BoundaryAmounts amounts={amounts.awal} saldoFormat={saldoFormat} /></div>
         <div><span>Akhir · dtgl ≤ D · s.d. D</span><BoundaryAmounts amounts={amounts.akhir} saldoFormat={saldoFormat} /></div>
+        <div><span>Selisih · akhir − awal</span><SelisihAmounts amounts={amounts} saldoFormat={saldoFormat} /></div>
       </div>
     </section>
   );

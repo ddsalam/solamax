@@ -120,11 +120,21 @@ export function piutangBookAmounts(row: SaldoSnapshotRow, book: PiutangBook): Pi
 }
 
 /**
- * Selisih saldo yang sudah tampil: saldo akhir dikurangi saldo awal pada buku
- * yang sama. Bukan definisi saldo baru, dan tidak menjumlahkan buku.
+ * Selisih satu buku: tiap angka akhir dikurangi angka awal yang sudah tampil.
+ * Debet, kredit, dan saldo dihitung sendiri-sendiri — tidak dinetokan, dan
+ * tidak menjumlahkan buku.
  */
+export function piutangSelisih(amounts: PiutangBookAmounts): PiutangBoundaryAmounts {
+  return {
+    debet: amounts.akhir.debet - amounts.awal.debet,
+    kredit: amounts.akhir.kredit - amounts.awal.kredit,
+    saldo: amounts.akhir.saldo - amounts.awal.saldo,
+  };
+}
+
+/** Selisih saldo saja. Sama dengan `piutangSelisih(amounts).saldo`. */
 export function piutangSaldoSelisih(amounts: PiutangBookAmounts): number {
-  return amounts.akhir.saldo - amounts.awal.saldo;
+  return piutangSelisih(amounts).saldo;
 }
 
 /**
