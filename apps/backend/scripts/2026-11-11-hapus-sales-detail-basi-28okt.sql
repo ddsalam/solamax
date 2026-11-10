@@ -15,6 +15,14 @@ SELECT * FROM sales_detail
 WHERE unit_id = 7 AND ckdjualbbm = 'JB202600843' AND nurut = 0
   AND id BETWEEN 34526480 AND 34526509;
 
+-- Penjaga awal SEBELUM \copy: run kedua (target kosong) harus berhenti di sini,
+-- bukan menimpa CSV cadangan dgn berkas kosong. Jalankan psql dari direktori cadangan.
+DO $$ BEGIN
+  IF (SELECT count(*) FROM target) <> 30 THEN
+    RAISE EXCEPTION 'penjaga: target % baris, harus 30 (sudah dijalankan?)', (SELECT count(*) FROM target);
+  END IF;
+END $$;
+
 \copy (SELECT * FROM target ORDER BY id) TO 'backup-sales-detail-basi-28okt-2026-11-11.csv' CSV HEADER
 
 BEGIN;
