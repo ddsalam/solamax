@@ -1082,6 +1082,9 @@ model CashLedger {
   /// U10/U11). FK komposit (id, unit_id) ke app.cocok_bank. NULL untuk baris
   /// yang hanya dicocokkan — pencocokan tak menulis baris kas (KTD6).
   lahirDariCocokId    String?           @map("lahir_dari_cocok_id") @db.Uuid
+  /// Kunci transfer Kas Besar → bank DUA KAKI (0062, KTD1): kedua kaki dalam
+  /// satu unit berbagi nilai ini. BUKAN `pasanganUuid` (= antar unit).
+  transferUuid        String?           @map("transfer_uuid") @db.Uuid
 
   /// Target FK komposit tautan baris parkir (0049).
   @@unique([id, unitId])

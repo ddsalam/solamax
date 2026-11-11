@@ -46,6 +46,7 @@ import {
   alasanTakBolehInput,
   canInputKeuangan,
   canKelolaSettlementEdc,
+  canJadikanTransfer,
   canBatalkanBarisFinance,
   canAjukanBalikBaris,
   canSetujuiBalikBaris,
@@ -55,6 +56,7 @@ import {
 } from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
 import { getPihakLawan } from "@/lib/pihak-lawan-queries";
+import { getKoreksiTransfer } from "@/lib/transfer-kas-queries";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +103,12 @@ export default async function InputKeuanganPage({
   const alasan = alasanTakBolehInput({ role: scope.role, email: scope.email });
   // Rencana 2026-11-02 — siklus settlement EDC milik seluruh tim Finance (HoF ikut).
   const bolehSettlement = canKelolaSettlementEdc({ role: scope.role, email: scope.email });
+  // Rencana 2026-11-11 U6 — tautan "baris bank tampaknya transfer" hanya bagi
+  // yang boleh mengoreksinya; yang lain tak perlu membayar kuerinya.
+  // Dimulai sekarang, ditunggu di render — jalan sejajar dengan kueri lain.
+  const nKoreksiTransferP = canJadikanTransfer({ role: scope.role, email: scope.email })
+    ? getKoreksiTransfer(unit.unit_id).then((k) => k.siap.length)
+    : Promise.resolve(0);
 
   const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran, pihakLawan] = await Promise.all([
     getProdukUnit(unit.unit_id),
@@ -137,6 +145,7 @@ export default async function InputKeuanganPage({
     getReasonCodeVoid(unit.unit_id),
     getReasonCodeBalik(unit.unit_id),
   ]);
+  const nKoreksiTransfer = await nKoreksiTransferP;
   const perluDitautkan = susunPerluDitautkan(kasTautan, bebanTautan);
   const rekeningEdc = versiRekening.filter((v) => !v.void);
   const namaEdc = [
@@ -237,6 +246,7 @@ export default async function InputKeuanganPage({
           bolehTulis={bolehTulis}
           bolehSettlement={bolehSettlement}
           peta={petaKategori}
+          nKoreksiTransfer={nKoreksiTransfer}
           // U3: hanya yang AKTIF yang ditawarkan — server memeriksa ulang.
           pihakLawan={pihakLawan
             .filter((p) => p.aktif)

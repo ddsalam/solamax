@@ -40,9 +40,11 @@ export interface BarisBuku extends MutasiKas {
   barisSistem: BarisSistem | null;
   /** Batch settlement yang melahirkan kaki pencairan ini — sasaran "Batalkan pencairan". */
   edcSettlementId?: string | null;
+  /** 0062 — kunci transfer Kas Besar → bank dua kaki; sasaran "Batalkan transfer". */
+  transferUuid?: string | null;
 }
 
-export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan" | "antar_unit";
+export type BarisSistem = "saldo_awal" | "pencairan_edc" | "penebusan" | "antar_unit" | "transfer";
 
 export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
   saldo_awal: "Saldo pembuka — hanya Head of Finance yang menggantinya, di Kelola akun kas.",
@@ -55,6 +57,7 @@ export const PENJELASAN_BARIS_SISTEM: Record<BarisSistem, string> = {
   antar_unit:
     "Kaki pinjaman antar unit (satu pasangan, dua buku). Membatalkan satu kaki membuat saldo kedua unit " +
     "berselisih — minta Head of Finance memakai \"Balik pasangan\" di halaman Pihak lawan › Pinjaman antar unit.",
+  transfer: "Satu kaki transfer Kas Besar ↔ bank. Batalkan lewat 'Batalkan transfer' — kedua kaki batal bersama.",
 };
 
 /** Satu pembuat vonis untuk "baris ini baris sistem?" — dipakai layar DAN server. */
@@ -64,11 +67,14 @@ export function barisSistemDari(m: {
   dariPenebusan?: boolean;
   /** `pasangan_uuid IS NOT NULL` — kaki asli ATAU pembalik (maju) sebuah pasangan antar unit. */
   antarUnit?: boolean;
+  /** `transfer_uuid IS NOT NULL` (0062) — kaki transfer Kas Besar → bank: dibatalkan berdua (KTD6). */
+  transfer?: boolean;
 }): BarisSistem | null {
   if (m.saldoAwal) return "saldo_awal";
   if (m.dariPencairanEdc) return "pencairan_edc";
   if (m.dariPenebusan) return "penebusan";
   if (m.antarUnit) return "antar_unit";
+  if (m.transfer) return "transfer";
   return null;
 }
 
@@ -86,6 +92,7 @@ export function barisBuku(
     dariPencairanEdc?: boolean;
     edcSettlementId?: string | null;
     antarUnit?: boolean;
+    transferUuid?: string | null;
   })[],
   accountId: string,
   date: string,
@@ -100,7 +107,7 @@ export function barisBuku(
       ...m,
       saldoBerjalan: saldo,
       dariSetoranPengawas: !!m.sourceManualEntryId,
-      barisSistem: barisSistemDari(m),
+      barisSistem: barisSistemDari({ ...m, transfer: m.transferUuid != null }),
     });
   }
   return out;

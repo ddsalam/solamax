@@ -2474,6 +2474,56 @@ persetujuan orang kedua. Jalur tulis lain tetap tunduk §10.33 (`tentukanHariBuk
   dan kotak masuk persetujuan lintas unit (sementara: kejadian `balik_biaya_menunggu` di
   Pemantauan, berulang sampai diputus).
 
+### 10.57 Transfer Kas Besar → bank dua kaki (rencana 11 November 2026; keputusan owner 11 November 2026 17:54 WIB)
+
+**Diagnosis yang dikoreksi.** "Setoran ke Bank" hanya ada di sisi **kredit** (0029 menanam
+kategori per sisi, bukan per jenis rekening), jadi kaki bank sebuah setoran dari Kas Besar
+**tidak pernah** bisa berlabel itu. Kaki bank yang benar adalah debet **"Pindah Buku"** — P6
+seperti kaki Kas Besarnya: keduanya lewat 1190 dan menolkan di hari yang sama, 1103 tak
+tersentuh. Finance memilih "Setoran Hasil Penjualan" (P2) di tab bank, yang mengkredit 1103
+**kedua kalinya** (36 baris Okt–Nov). Rencana:
+`docs/plans/2026-11-11-1638-feat-keuangan-transfer-kas-bank-dua-kaki-plan.md`.
+
+- **Satu isian, dua kaki** ("Setor ke bank…" di tab Kas Besar, `catatTransferKeBank`): Kas Besar
+  kredit "Setoran ke Bank" + bank debet "Pindah Buku", satu transaksi, kategori ditetapkan
+  server. Kedua kaki berbagi kolom baru **`transfer_uuid`** (0062) — **bukan** `pasangan_uuid`,
+  yang bagi sedikitnya sembilan pembaca berarti "antar unit" (KTD1). Kunci = UUID dari form;
+  kiriman ganda tak menulis apa pun (indeks unik `(transfer_uuid, account_id)`).
+- **Hari tertutup → kedua kaki maju bersama** (`hariBukuTerkunci` per rekening, `tanggal_asal` +
+  `ADJ-FWD-TRANSFER`); hari buku kedua kaki berbeda → ditolak. **Bulan tertutup → ditolak**
+  (KTD4, pola KTD5 rencana 29 Oktober).
+- **Batalkan berdua** ("Batalkan transfer", `batalkanTransfer`). "Batalkan" satu baris menolak
+  kaki transfer (baris sistem `transfer`). Ditolak bila salah satu kaki di kelompok cocok aktif,
+  hari bukunya tertutup, atau bulannya tertutup — sejalan §10.48 #4 (KTD6).
+- **Penjaga tab bank, bukan larangan** (KTD8): debet "Setoran Hasil Penjualan" di rekening bank
+  yang menyamai (tanggal + nominal, sen) kaki keluar Kas Besar bebas ditolak kecuali dicentang
+  "setoran langsung"; centang itu diaudit `kas.setoran_bank_bukan_transfer`. Label itu tetap sah
+  untuk setoran langsung (aturan cocok 3).
+- **Koreksi baris lama = tindakan di aplikasi** ("Jadikan transfer", `/keuangan/unit/<kode>/koreksi-transfer`,
+  KTD9): void baris bank lama, sisip ulang "Pindah Buku" bertanggal & bernominal sama, tautkan
+  kaki Kas Besar (`UPDATE transfer_uuid` saja), audit `kas.transfer.koreksi`. Tak pernah
+  menyunting kategori, tak pernah skrip. Wewenang `canJadikanTransfer` (staf Keuangan, HoF, super
+  admin); hari tertutup hanya HoF/super admin + alasan (`canJadikanTransferHariTutup`). Calon yang
+  tak tunggal, atau baris bank yang lahir dari setoran pengawas yang disetujui, tampil "periksa
+  manual" tanpa tombol.
+- ⚖️ **Konfirmasi eksplisit di setiap hari** (keputusan owner 11 Nov 2026 17:54 WIB). Tombol baris
+  hanya membuka langkah konfirmasi: unit, tanggal, nominal, kaki Kas Besar (kredit, kategorinya,
+  id8) dan kaki bank (debet "Pindah Buku", rekening 4 digit terakhir, id8 baris lama). Wajib
+  dicentang "Saya yakin" (+ alasan di hari tertutup). **Server** menolak tanpa
+  `konfirmasi.yakin === true` (`periksaKonfirmasiJadikan`) dan menolak bila tanggal/nominal/4 digit rekening yang
+  dikonfirmasi tak sama dengan baris yang dikunci. Konfirmasi + kedua kaki tercatat di detail
+  `kas.transfer.koreksi` (`konfirmasi`, `kaki`).
+- ⚖️ **Bakau 22 Okt `28e717f3` (hari tertutup) = "Jadikan transfer" saja, TANPA jurnal memorial**
+  (keputusan owner D3, 11 Nov 2026 17:54 WIB). Koreksi tidak dibukukan maju: kedua kaki tetap
+  22 Okt, kaki bank tak lagi mengkredit 1103, 1190 = 0, `day_close` tetap `closed` selisih −470
+  (dibuktikan uji integrasi lokal yang mencerminkan kasus ini). "Jadikan transfer" di bulan
+  tertutup ditolak tanpa menyarankan memorial.
+- **Batas yang diketahui:** `setujuiSetoran` masih bisa menulis "Setoran Hasil Penjualan" ke tab
+  bank (D7, PR lanjutan); `voidMutasiKas` biasa masih tanpa `audit_log` (D8); pasangan otomatis
+  jemputan belum memakai `transfer_uuid`; bank → Kas Besar dan bank → bank di luar cakupan.
+  Revert kode sesudah ada pasangan tertulis membuat "Batalkan" tunggal bisa memisahkan pasangan —
+  perbaiki maju, jangan revert.
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu
