@@ -103,11 +103,22 @@ export const bacaEasymaxHari: PembacaEasymax = async (unit, tanggal) => {
     pelanggan: {
       piutangAwalSen: senDariRupiah(saldo.awal.piutangLokal + saldo.awal.piutangOnline),
       piutangAkhirSen: senDariRupiah(saldo.akhir.piutangLokal + saldo.akhir.piutangOnline),
-      depositAwalSen: senDariRupiah(saldo.awal.hutangLokal),
-      depositAkhirSen: senDariRupiah(saldo.akhir.hutangLokal),
+      depositAwalSen: depositSen(saldo.awal.hutangLokal),
+      depositAkhirSen: depositSen(saldo.akhir.hutangLokal),
     },
   };
 };
+
+/**
+ * `hutangLokal` EasyMax bertanda NEGATIF untuk deposit yang kita utangi
+ * (`getSaldoPelanggan`: liabilitas negatif); {@link SaldoPelangganHari} meminta
+ * positif = kewajiban. Tanpa pembalikan ini P28 membalik arah 2101: pemakaian
+ * deposit Rp 300.000 di Bakau 22 Okt (−3.429.860,5 → −3.129.860,5) terjurnal
+ * Kr 2101 alih-alih Dr 2101. `0 - x`, bukan `-x`: saldo nol tetap +0, bukan −0.
+ */
+function depositSen(hutangLokal: number): number {
+  return senDariRupiah(0 - hutangLokal);
+}
 
 // ---------------------------------------------------------------------------
 // SQL — $1 unit, $2 tanggal (kecuali disebut lain)
