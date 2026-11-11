@@ -1697,3 +1697,36 @@ describe("0060: pengajuan Balik — pemisahan tugas & pembekuan DI DB (rencana 2
     expect(pernyataan(sql)).not.toMatch(/manual_entry_(block|backdate)|DROP TRIGGER IF EXISTS "manual_entry/);
   });
 });
+
+describe("0061: day_close_reason_required hanya untuk baris closed (perbaikan 2026-11-11)", () => {
+  const sql = MIG("0061_day_close_reason_closed_only");
+  const stmt = pernyataan(sql);
+
+  it("🔴 CHECK baru membebaskan baris yang belum ditutup — baris open lahir sebelum kode dipilih", () => {
+    const add = pernyataanYangDimulai(sql, 'ALTER TABLE "app"."day_close" ADD CONSTRAINT "day_close_reason_required"');
+    expect(add, "ADD CONSTRAINT tidak ditemukan utuh").not.toBe("");
+    expect(add).toMatch(/CHECK \(\s*"status" <> 'closed' OR "difference_rp" = 0 OR "reason_code" IS NOT NULL\s*\)/);
+  });
+
+  it("idempoten: DROP … IF EXISTS mendahului ADD", () => {
+    const drop = stmt.indexOf('DROP CONSTRAINT IF EXISTS "day_close_reason_required"');
+    expect(drop).toBeGreaterThan(-1);
+    expect(drop).toBeLessThan(stmt.indexOf('ADD CONSTRAINT "day_close_reason_required"'));
+  });
+
+  it("hanya constraint itu yang disentuh — tier, bayangan, target, persetujuan, RLS, trigger 0026 utuh", () => {
+    expect(stmt.match(/DROP CONSTRAINT/g)).toHaveLength(1);
+    expect(stmt).not.toMatch(
+      /tier_matches_difference|reason_shadow|target_required|approval_required|POLICY|ROW LEVEL SECURITY|TRIGGER|GRANT|REVOKE|UPDATE "app"|DELETE FROM/,
+    );
+  });
+
+  it("SQL rollback tertulis di migrasinya", () => {
+    expect(sql).toMatch(/ROLLBACK/);
+    expect(sql).toMatch(/--\s+CHECK \("difference_rp" = 0 OR "reason_code" IS NOT NULL\);/);
+  });
+
+  it("⛔ 0026 TIDAK disunting (checksum migrate deploy) — CHECK lamanya masih di sana", () => {
+    expect(pernyataan(sql0026)).toMatch(/"difference_rp" = 0 OR "reason_code" IS NOT NULL/);
+  });
+});

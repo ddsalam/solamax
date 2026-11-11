@@ -83,8 +83,8 @@ export async function tutupHari(input: TutupHariInput): Promise<TutupResult> {
       return {
         ok: false,
         error:
-          "Hari ini belum punya baris penilaian. Selisihnya harus dihitung lebih dulu " +
-          "sebelum bisa ditutup.",
+          "Hari ini belum punya baris penilaian. Baris itu dibuat saat layar ini dibuka — " +
+          "muat ulang layar; bila ada pesan galat penyimpanan di atas, laporkan ke admin.",
       };
     }
     if (row.status === "closed") {
@@ -241,7 +241,24 @@ function pesanKurang(kurang: readonly string[]): string {
  * `langkahHarian === null` ⇒ **tidak menulis apa pun**. Hari yang belum bisa
  * dinilai tidak boleh mendapat baris bernilai nol — nol akan terbaca sebagai
  * "seimbang", padahal artinya "belum terhitung".
+ *
+ * 🔴 **GALAT TIDAK DITELAN** (perbaikan 2026-11-11). Sampai 0061, setiap hari
+ * berselisih bukan nol gagal di CHECK `day_close_reason_required` (23514), dan
+ * `catch {}` di sini menelannya — halaman lalu berkata "belum punya baris
+ * penilaian" tanpa sebab, dan `day_close` tetap 0 baris di ketujuh unit.
+ * Sekarang galatnya DICATAT (unit, tanggal, kode) dan DIKEMBALIKAN ke halaman
+ * untuk ditampilkan. Halaman tetap tidak jatuh — gerbangnya masih bisa dibaca.
+ * Satu-satunya galat yang diabaikan dengan sengaja: 23505 (penyisipan bersamaan
+ * dari tab lain menang lebih dulu — barisnya ADA, dan itu yang dibutuhkan).
  */
+export type HasilBarisDayClose = { ok: true } | { ok: false; kode: string | null; pesan: string };
+
+/** Kode SQLSTATE dari galat `pg`, bila ada. */
+function kodeGalat(e: unknown): string | null {
+  const k = (e as { code?: unknown } | null)?.code;
+  return typeof k === "string" ? k : null;
+}
+
 export async function pastikanBarisDayClose(
   // ⛔ `ScopedUnitId`, bukan `number`. Tinjauan pra-promosi menemukan tanda-tipe
   // ini menerima angka mentah: pemanggil hari ini benar (`unit.unit_id` dari
@@ -253,8 +270,8 @@ export async function pastikanBarisDayClose(
   langkahHarian: number | null,
   /** KTD15 (U12) — disimpan di samping selisih; tak menentukan tier. */
   koreksiSusulan: number | null = null,
-): Promise<void> {
-  if (langkahHarian === null) return;
+): Promise<HasilBarisDayClose> {
+  if (langkahHarian === null) return { ok: true };
   const tier = tierFor(langkahHarian);
   const client = await pool.connect();
   try {
@@ -272,14 +289,33 @@ export async function pastikanBarisDayClose(
       [unitId, date, langkahHarian, tier, koreksiSusulan],
     );
     await client.query("COMMIT");
-  } catch {
+    return { ok: true };
+  } catch (e) {
     // Kegagalan di sini TIDAK boleh menjatuhkan halaman: gerbangnya masih bisa
-    // dibaca, dan `tutupHari` menolak sendiri bila barisnya tak ada.
+    // dibaca, dan `tutupHari` menolak sendiri bila barisnya tak ada. Tetapi
+    // galatnya TIDAK ditelan — dicatat dan dikembalikan untuk ditampilkan.
     try {
       await client.query("ROLLBACK");
     } catch {
       /* abaikan */
     }
+    const kode = kodeGalat(e);
+    // 23505: penyisipan bersamaan menang lebih dulu — barisnya ada. Bukan galat.
+    if (kode === "23505") return { ok: true };
+    console.error("[pastikanBarisDayClose] gagal menyiapkan baris day_close", {
+      unitId,
+      date,
+      kode,
+      galat: e instanceof Error ? e.message : String(e),
+    });
+    return {
+      ok: false,
+      kode,
+      pesan:
+        `Baris penilaian hari ini gagal disimpan${kode ? ` (kode galat ${kode})` : ""}. ` +
+        "Hari ini belum bisa ditutup sampai ini beres — muat ulang layar; bila pesan ini tetap muncul, " +
+        "laporkan ke admin beserta unit, tanggal, dan kode galatnya.",
+    };
   } finally {
     client.release();
   }

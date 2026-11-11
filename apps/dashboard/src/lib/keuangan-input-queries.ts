@@ -5,6 +5,8 @@ import { SQL_AKUN_EFEKTIF } from "./keuangan-reklas";
 import { SQL_ME_TAK_BERLAKU } from "./keuangan-berlaku";
 import { sqlTitipan } from "./titipan-bright";
 import type { ScopedUnitId } from "./scope";
+import { edcBelumDiposting, rakitShiftEdc, type EdcBelumDiposting } from "./edc-shift-model";
+import { getCekSlip, getEdcPerShift, getPetaKartu } from "./edc-shift-queries";
 import type { PurchasePriceRow, SellPricePoint } from "./harga-beli";
 import type { AkunKasRow } from "./keuangan-akun-model";
 import type { BarisBiaya } from "./keuangan-biaya-model";
@@ -615,13 +617,18 @@ export interface KelengkapanInput {
   adaAkunKas: boolean;
   settlementBelumCair: number;
   biayaMenungguTinjauan: number;
+  /**
+   * EDC per shift (§10.25) yang belum terposting ke buku — sel (shift × bank)
+   * DIRAKIT persis seperti layar pengawas (`rakitShiftEdc`). Peringatan saja.
+   */
+  edcBelumDiposting: EdcBelumDiposting;
 }
 
 export async function getKelengkapanInput(
   unit: ScopedUnitId,
   date: string,
 ): Promise<KelengkapanInput> {
-  const [produk, harga, akun, edc, biaya] = await Promise.all([
+  const [produk, harga, akun, edc, biaya, edcShift, petaKartu, cekSlip] = await Promise.all([
     qScoped<{ n: number }>(unit, `SELECT count(*)::int AS n FROM product WHERE unit_id = $1`, [unit]),
     qScoped<{ n: number }>(
       unit,
@@ -644,6 +651,10 @@ export async function getKelengkapanInput(
           AND m.section IN ('pengeluaran','pendapatan_lain') AND m.status = 'submitted'`,
       [unit, date],
     ),
+    // Bahan yang SAMA dengan panel pengawas (EdcShiftCekPanel) — satu kueri.
+    getEdcPerShift(unit, date),
+    getPetaKartu(unit),
+    getCekSlip(unit, date),
   ]);
   const nProduk = produk[0]?.n ?? 0;
   const nHarga = harga[0]?.n ?? 0;
@@ -653,6 +664,7 @@ export async function getKelengkapanInput(
     adaAkunKas: (akun[0]?.n ?? 0) > 0,
     settlementBelumCair: edc[0]?.n ?? 0,
     biayaMenungguTinjauan: biaya[0]?.n ?? 0,
+    edcBelumDiposting: edcBelumDiposting(rakitShiftEdc(edcShift, petaKartu, cekSlip)),
   };
 }
 
