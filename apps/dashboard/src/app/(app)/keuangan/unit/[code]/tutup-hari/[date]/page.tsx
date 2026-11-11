@@ -22,6 +22,8 @@ import { pastikanBarisDayClose } from "@/lib/tutup-hari-actions";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { qScoped } from "@/lib/db";
 import { getDataScope } from "@/lib/scope";
+import { getPembayaranPiutangSekitar } from "@/lib/selisih-arus-kas-queries";
+import { jelaskanSelisihArusKas, type PenjelasanAtauGalat } from "@/lib/selisih-arus-kas-model";
 import { DATE_RE } from "@/lib/selection-keys";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +96,20 @@ export default async function TutupHariPage({
   const ringkasBalik = ringkasDibalik(dibalik);
 
   const cf = panelCashFlow(cashFlowInputDari(bahan));
+  // Rencana 2026-11-11-2210 (KTD1/KTD3) — cek DIURAI, tidak dihitung ulang;
+  // dibaca hanya bila ≠ 0. Galat ditampilkan, tidak ditelan dan tidak ditebak.
+  let penjelasanArusKas: PenjelasanAtauGalat | null = null;
+  if (cf.pemeriksa.nilai !== null && cf.pemeriksa.nilai !== 0) {
+    try {
+      penjelasanArusKas = jelaskanSelisihArusKas({
+        date,
+        check: cf.pemeriksa.nilai,
+        hari: await getPembayaranPiutangSekitar(unit.unit_id, date),
+      });
+    } catch (e) {
+      penjelasanArusKas = { galat: e instanceof Error ? e.message : String(e) };
+    }
+  }
   // ⛔ KTD15 — yang DINILAI tangga toleransi adalah langkah TANPA koreksi
   //    susulan (`rinci.dinilai`), sama dengan `tutupHari` dan baris
   //    `day_close` di atas. Koreksi susulannya tampil TERPISAH (R32): hari
@@ -175,6 +191,7 @@ export default async function TutupHariPage({
           bolehMenutupTier={bolehMenutupTier}
           koreksiSusulan={koreksiSusulan}
           galatBarisDayClose={barisDayClose.ok ? null : barisDayClose.pesan}
+          penjelasanArusKas={penjelasanArusKas}
         />
         <TutupHariSusulan code={unit.code} date={date} maju={maju} parkir={parkir} koreksiSusulan={koreksiSusulan} />
       </div>
