@@ -21,6 +21,10 @@ import { PecahMutasiForm } from "./PecahMutasiForm";
 import { simpanPenebusan } from "@/lib/penebusan-actions";
 import { KOMPONEN, LABEL_KOMPONEN, lewatPenebusan, ringkasKomponen, type Komponen } from "@/lib/penebusan-model";
 import { KakiKomponen } from "./PenebusanForm";
+import { TransferKeBankForm } from "./TransferKeBankForm";
+import { batalkanTransfer } from "@/lib/transfer-kas-actions";
+import { kakiTransferTerlewat, PESAN_KAKI_TRANSFER_TERLEWAT } from "@/lib/transfer-kas-model";
+import { rupiahKeSen } from "@/lib/pihak-lawan-model";
 
 type TeksKomponen = Record<Komponen, string>;
 const KOMPONEN_KOSONG: TeksKomponen = { net: "", ppn: "", pph: "", pbbkb: "", nota: "" };
@@ -45,6 +49,14 @@ const LABEL_BARIS_SISTEM: Record<BarisSistem, string> = {
   pencairan_edc: "pencairan EDC",
   penebusan: "penebusan",
   antar_unit: "antar unit",
+  transfer: "transfer",
+};
+
+/** Sen POSITIF dari isian nominal debet/kredit, atau `null` (dipakai penjaga kaki transfer). */
+const hNominalAwal = (teks: string, jenis: JenisMutasi): number | null => {
+  if (jenis === "adjustment") return null;
+  const h = bacaRupiah(teks);
+  return h.keadaan === "sah" && h.nilai !== 0 ? rupiahKeSen(Math.abs(h.nilai)) : null;
 };
 
 const rp = (n: number): string =>
@@ -64,6 +76,7 @@ export function BukuKasPanel({
   bolehSettlement,
   pihakLawan,
   peta = [],
+  nKoreksiTransfer = 0,
 }: {
   code: string;
   date: string;
@@ -84,6 +97,12 @@ export function BukuKasPanel({
   pihakLawan: PilihanPihakLawan[];
   /** Peta kategori operasional → pos, hanya untuk kalimat "akan tercatat di pos …" (K6 U3). */
   peta?: { category: string; account: string }[];
+  /**
+   * Rencana 2026-11-11 U6 — jumlah baris bank "Setoran Hasil Penjualan" yang
+   * tampaknya kaki bank transfer dari Kas Besar (siap "Jadikan transfer").
+   * 0 = tautan koreksi tak ditampilkan.
+   */
+  nKoreksiTransfer?: number;
 }) {
   const kasBesar = akun.find((a) => a.kind === "kas") ?? akun[0] ?? null;
   const [akunAktif, setAkunAktif] = useState<string>(kasBesar?.id ?? "");
@@ -94,6 +113,8 @@ export function BukuKasPanel({
   const [katKey, setKatKey] = useState("");
   const [pihakId, setPihakId] = useState("");
   const [bukaPecah, setBukaPecah] = useState(false);
+  const [bukaTransfer, setBukaTransfer] = useState(false);
+  const [bukanTransfer, setBukanTransfer] = useState(false);
   const [nominal, setNominal] = useState("");
   const [jenisBiaya, setJenisBiaya] = useState("");
   const [noSo, setNoSo] = useState("");
@@ -121,6 +142,25 @@ export function BukuKasPanel({
   // predikat yang sama ditegakkan `simpanMutasiBeban`.
   const modeBeban = jenis !== "adjustment" ? kategoriBeban(katTerpilih?.label) : null;
   const butuhJenisBiaya = jenis !== "adjustment" && butuhKategoriOperasional(katTerpilih?.label);
+  // Rencana 2026-11-11 R13/KTD8 — debet "Setoran Hasil Penjualan" di tab bank
+  // bernominal sama dengan kaki keluar Kas Besar hari ini: peringatan sebelum
+  // simpan. Predikat yang SAMA ditegakkan ulang di `simpanMutasiKas`.
+  const senKetik = hNominalAwal(nominal, jenis);
+  const kasHariIni = kasBesar ? (bukuPerAkun[kasBesar.id] ?? []) : [];
+  const transferTerlewat =
+    jenis === "debet" &&
+    senKetik !== null &&
+    kakiTransferTerlewat(
+      { accountKind: akunTerbuka?.kind, jenis, kategori: katTerpilih?.label ?? null, amountSen: senKetik, tanggal: date },
+      kasHariIni.map((b) => ({
+        id: b.id,
+        tanggal: b.businessDate,
+        kategori: b.categoryLabel,
+        amountSen: rupiahKeSen(b.amount) ?? 0,
+        transferUuid: b.transferUuid ?? null,
+        void: b.void,
+      })),
+    );
   const posDari = (k: string): string | null => peta.find((p) => p.category === k)?.account ?? null;
   const catatanBeban =
     modeBeban === "biaya_operasional"
@@ -229,6 +269,7 @@ export function BukuKasPanel({
         categoryLabel: jenis === "adjustment" ? null : (kat?.label ?? null),
         amount,
         pihakLawanId: butuhPihak && pihakId !== "" ? pihakId : null,
+        bukanTransfer: transferTerlewat && bukanTransfer,
       });
       if (!res.ok) setErr(res.error);
       else {
@@ -236,6 +277,7 @@ export function BukuKasPanel({
         setKet("");
         setNominal("");
         setPihakId("");
+        setBukanTransfer(false);
         setBukaForm(false);
       }
     });
@@ -271,6 +313,18 @@ export function BukuKasPanel({
       const res = await voidMutasiKas({ code, date, id });
       if (!res.ok) setErr(res.error);
       else setMsg("Baris dibatalkan — tercatat, tidak dihapus.");
+    });
+  };
+
+  // Kaki transfer Kas Besar → bank: dibatalkan KEDUANYA lewat kuncinya (KTD6).
+  const batalTransfer = (transferUuid: string): void => {
+    setErr(null);
+    setMsg(null);
+    setYakin(null);
+    start(async () => {
+      const res = await batalkanTransfer({ code, date, transferUuid });
+      if (!res.ok) setErr(res.error);
+      else setMsg(res.pesan);
     });
   };
 
@@ -448,6 +502,38 @@ export function BukuKasPanel({
                         Batalkan pencairan
                       </button>
                     )
+                  ) : b.barisSistem === "transfer" && b.transferUuid ? (
+                    <span className="keu-yakin">
+                      <span className="keu-chip" title={PENJELASAN_BARIS_SISTEM.transfer}>
+                        {LABEL_BARIS_SISTEM.transfer}
+                      </span>
+                      {bolehTulis &&
+                        (yakin === b.id ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-outline sm t-danger"
+                              onClick={() => batalTransfer(b.transferUuid as string)}
+                              disabled={pending}
+                            >
+                              Ya, batalkan kedua kaki
+                            </button>
+                            <button type="button" className="btn-outline sm" onClick={() => setYakin(null)} disabled={pending}>
+                              Tidak
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-outline sm"
+                            title={PENJELASAN_BARIS_SISTEM.transfer}
+                            onClick={() => setYakin(b.id)}
+                            disabled={pending}
+                          >
+                            Batalkan transfer
+                          </button>
+                        ))}
+                    </span>
                   ) : b.barisSistem !== null ? (
                     <span className="keu-chip" title={PENJELASAN_BARIS_SISTEM[b.barisSistem]}>
                       {LABEL_BARIS_SISTEM[b.barisSistem]}
@@ -498,8 +584,21 @@ export function BukuKasPanel({
         </div>
       </div>
 
-      {bolehTulis && !bukaForm && !bukaPecah && (
+      {nKoreksiTransfer > 0 && akunTerbuka?.kind === "bank" && (
+        <div className="banner warning keu-banner" role="status" data-koreksi-transfer>
+          <a href={`/keuangan/unit/${code}/koreksi-transfer`}>
+            {nKoreksiTransfer} baris bank tampaknya transfer dari Kas Besar — koreksi
+          </a>
+        </div>
+      )}
+
+      {bolehTulis && !bukaForm && !bukaPecah && !bukaTransfer && (
         <div className="manual-form-actions">
+          {akunTerbuka?.kind === "kas" && (
+            <button type="button" className="btn-tint sm" onClick={() => setBukaTransfer(true)}>
+              Setor ke bank…
+            </button>
+          )}
           <button type="button" className="btn-tint sm" onClick={() => setBukaForm(true)}>
             Tambah mutasi yang tidak lewat Rincian…
           </button>
@@ -507,6 +606,18 @@ export function BukuKasPanel({
             Pecah satu mutasi jadi beberapa baris…
           </button>
         </div>
+      )}
+
+      {bolehTulis && bukaTransfer && akunTerbuka?.kind === "kas" && (
+        <TransferKeBankForm
+          code={code}
+          date={date}
+          akunBank={akun.filter((a) => a.kind === "bank" && a.active)}
+          onSelesai={(m) => {
+            setBukaTransfer(false);
+            if (m !== null) setMsg(m);
+          }}
+        />
       )}
 
       {bolehTulis && bukaPecah && akunAktif !== "" && (
@@ -575,6 +686,7 @@ export function BukuKasPanel({
                   setKatKey(e.target.value);
                   setPihakId("");
                   setJenisBiaya("");
+                  setBukanTransfer(false);
                 }}
               >
                 <option value="">— pilih kategori —</option>
@@ -585,6 +697,30 @@ export function BukuKasPanel({
                 ))}
               </select>
             </label>
+          )}
+          {jenis === "debet" && katTerpilih?.label === "Pindah Buku" && (
+            <p className="fs16 t-tertiary keu-p">Untuk uang dari Kas Besar atau rekening sendiri.</p>
+          )}
+          {transferTerlewat && senKetik !== null && (
+            <div className="banner warning keu-banner" role="alert" data-peringatan="kaki-transfer">
+              <p className="keu-p">{PESAN_KAKI_TRANSFER_TERLEWAT((senKetik / 100).toLocaleString("id-ID"))}</p>
+              <div className="manual-form-actions">
+                <button
+                  type="button"
+                  className="btn-outline sm"
+                  onClick={() => {
+                    setKatKey("debet|Pindah Buku");
+                    setBukanTransfer(false);
+                  }}
+                >
+                  Ganti ke Pindah Buku
+                </button>
+              </div>
+              <label className="keu-attest">
+                <input type="checkbox" checked={bukanTransfer} onChange={(e) => setBukanTransfer(e.target.checked)} />
+                <span>Ini setoran langsung ke bank, bukan dari Kas Besar</span>
+              </label>
+            </div>
           )}
           {butuhJenisBiaya && (
             <label className="keu-fld">
@@ -657,7 +793,8 @@ export function BukuKasPanel({
                 pending ||
                 hNominal.keadaan === "tolak" ||
                 (modePenebusan && !siapPenebusan) ||
-                (butuhJenisBiaya && jenisBiaya === "")
+                (butuhJenisBiaya && jenisBiaya === "") ||
+                (transferTerlewat && !bukanTransfer)
               }
             >
               {pending ? "Menyimpan…" : modePenebusan ? "Simpan mutasi & penebusan" : "Simpan mutasi"}
