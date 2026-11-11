@@ -335,6 +335,35 @@ export function canReklasifikasi(ctx: WewenangCtx, daftar?: readonly string[]): 
 }
 
 /**
+ * Boleh "JADIKAN TRANSFER" — mengoreksi kaki bank "Setoran Hasil Penjualan"
+ * yang sebenarnya kaki bank sebuah transfer dari Kas Besar menjadi "Pindah
+ * Buku" yang bertaut (rencana 2026-11-11 KTD7, R17)? Staf `keuangan`, super
+ * admin, DAN Head of Finance — anggota yang sama dengan {@link canReklasifikasi}:
+ * tindakan ini KLASIFIKASI (tak melahirkan kas, nominal, maupun tanggal baru),
+ * dan pembersihan datanya milik HoF.
+ *
+ * ⛔ Ditulis BERDIRI SENDIRI, bukan `canReklasifikasi(...)`: yang dipatok adalah
+ * keputusannya — reklasifikasi biaya pengawas yang bergeser tak boleh ikut
+ * menggeser koreksi transfer diam-diam. Membuat & membatalkan transfer tetap
+ * `canInputKeuangan` (mengetik, §10.12).
+ */
+export function canJadikanTransfer(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/**
+ * "Jadikan transfer" pada hari yang SUDAH DITUTUP (bulan masih terbuka):
+ * **Head of Finance atau super admin saja**, dengan alasan tertulis (KTD7).
+ * Mengubah jurnal hari tertutup — walau kasnya tak berubah — adalah keputusan
+ * penyetuju, bukan pengetik; karena itu staf `keuangan` tidak termasuk.
+ */
+export function canJadikanTransferHariTutup(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return ctx.role === "super_admin" || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS);
+}
+
+/**
  * Boleh MEMBATALKAN baris biaya/pendapatan lain-lain pintu Finance di hari yang
  * belum ditutup (rencana 2026-11-07 R4, KTD7)? Staf `keuangan`, super admin,
  * DAN Head of Finance — keputusan Dion (session-settled): anggota yang sama

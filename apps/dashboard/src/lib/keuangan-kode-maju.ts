@@ -22,5 +22,8 @@ export const KODE_MAJU_EDC = "ADJ-FWD-EDC";
 /** Koreksi buku besar untuk sumber di bulan tertutup (0058, K6 KTD3). */
 export const KODE_MAJU_BUKU_BESAR = "ADJ-FWD-LEDGER";
 
+/** Transfer Kas Besar → bank dua kaki yang tanggalnya sudah tutup hari (0062, KTD4). */
+export const KODE_MAJU_TRANSFER = "ADJ-FWD-TRANSFER";
+
 /** Awalan bersama semua kode pembukuan maju. */
 export const PREFIKS_KODE_MAJU = "ADJ-FWD-";
