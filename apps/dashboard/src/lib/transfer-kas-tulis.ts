@@ -5,6 +5,7 @@ import { hariBukuTerkunci, kunciHariBersama } from "./hari-buku-queries";
 import type { AkunKas } from "./keuangan-kas-model";
 import { KODE_MAJU_TRANSFER } from "./keuangan-kode-maju";
 import { auditKeuangan, type Aktor } from "./keuangan-tx";
+import { KATEGORI_SETORAN } from "./cocok-bank-model";
 import { teksKeSen } from "./pihak-lawan-model";
 import type { ScopedUnitId } from "./scope";
 import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
@@ -302,11 +303,26 @@ export async function tulisJadikanTransfer(
   // Calon dibaca ulang terhadap SEMUA kaki keluar Kas Besar hari itu: satu
   // kaki Kas Besar kedua bernominal sama membuat pasangannya tak lagi tunggal.
   const kasRows = await bacaKasKeluarHari(c, m.unitId, bank.tanggal);
+  // Baris bank SHP lain di hari yang sama ikut dinilai: satu kaki Kas Besar yang
+  // diperebutkan dua baris bank harus "periksa manual" — sama dengan daftarnya.
+  const bankLain = await c.query<{ id: string; accountId: string; amount: string; dibuat: string; dariSetoranPengawas: boolean }>(
+    `SELECT l.id::text AS id, l.account_id::text AS "accountId", l.amount::text AS amount, l.created_at::text AS dibuat,
+            (l.source_manual_entry_id IS NOT NULL) AS "dariSetoranPengawas"
+       FROM app.cash_ledger l
+       JOIN app.cash_account a ON a.id = l.account_id AND a.unit_id = l.unit_id
+      WHERE l.unit_id = $1 AND a.kind = 'bank' AND l.jenis = 'debet' AND l.business_date = $2::date
+        AND l.category_label = $3 AND NOT l.void AND l.transfer_uuid IS NULL AND l.id <> $4::uuid`,
+    [m.unitId, bank.tanggal, KATEGORI_SETORAN, bank.id],
+  );
   const calon = kandidatJadikanTransfer(
-    [{ id: bank.id, accountId: bank.accountId, tanggal: bank.tanggal, kategori: bank.kategori, amountSen: teksKeSen(bank.amount), transferUuid: bank.transferUuid, void: bank.void, dibuat: bank.dibuat, dariSetoranPengawas: bank.dariSetoranPengawas }],
+    [
+      { id: bank.id, accountId: bank.accountId, tanggal: bank.tanggal, kategori: bank.kategori, amountSen: teksKeSen(bank.amount), transferUuid: bank.transferUuid, void: bank.void, dibuat: bank.dibuat, dariSetoranPengawas: bank.dariSetoranPengawas },
+      ...bankLain.rows.map((b) => ({ ...b, tanggal: bank.tanggal, kategori: KATEGORI_SETORAN, amountSen: teksKeSen(b.amount), transferUuid: null, void: false })),
+    ],
     kasRows,
   );
-  if (calon.siap.length !== 1 || calon.siap[0]!.kas.id !== kas.id) return { ok: false, error: BERUBAH };
+  const siap = calon.siap.find((x) => x.bank.id === bank.id);
+  if (!siap || siap.kas.id !== kas.id) return { ok: false, error: BERUBAH };
 
   const bulanTutup = await bulanTertutup(c, m.unitId, bank.tanggal);
   const hariTutup = await adaHariTertutup(c, m.unitId, [bank.tanggal]);

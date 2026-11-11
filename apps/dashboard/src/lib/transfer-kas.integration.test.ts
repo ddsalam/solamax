@@ -466,6 +466,17 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         if (!r.ok) expect(r.error).toMatch(/muat ulang/);
       }));
 
+    it("satu kaki Kas Besar diperebutkan dua baris bank ⇒ ditolak di server (sama dengan daftar)", () =>
+      tx(async (c) => {
+        const p = await pasanganLama(c, "2026-10-17", 2_000_000);
+        await c.query(
+          `INSERT INTO app.cash_ledger (unit_id, account_id, business_date, keterangan, jenis, category_side, category_label, amount, created_by_user_id)
+           VALUES ($1, $2::uuid, '2026-10-17', 'bank kedua', 'debet', 'debet', 'Setoran Hasil Penjualan', 2000000, 24)`,
+          [A, akun.bank],
+        );
+        expect((await jadikan(c, p)).ok).toBe(false);
+      }));
+
     it("dua kaki Kas Besar bernominal sama di hari itu ⇒ ditolak (periksa manual)", () =>
       tx(async (c) => {
         const p = await pasanganLama(c, "2026-10-16", 1_000_000);
