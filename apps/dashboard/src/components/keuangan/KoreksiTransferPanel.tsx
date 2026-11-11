@@ -12,12 +12,11 @@
  */
 import { useState, useTransition } from "react";
 import { jadikanTransfer } from "@/lib/transfer-kas-actions";
-import { ringkasKakiJadikan } from "@/lib/transfer-kas-model";
+import { PESAN_BULAN_TUTUP_KOREKSI, id8, ringkasKakiJadikan } from "@/lib/transfer-kas-model";
 import type { KoreksiManual, KoreksiSiap } from "@/lib/transfer-kas-queries";
 
 const rp = (sen: number): string =>
   (sen / 100).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const id8 = (id: string): string => id.slice(0, 8);
 
 /** Langkah konfirmasi satu baris — murni dari props, agar bisa diuji render statis. */
 export function KonfirmasiJadikanTransfer({
@@ -176,9 +175,7 @@ export function KoreksiTransferPanel({
                   {k.keterangan} — kaki Kas Besar: {k.kasKategori} ({id8(k.kasId)}) · baris bank {id8(k.bankId)}
                 </span>
                 {k.catatan !== null && <span className="fs16 t-tertiary">{k.catatan}</span>}
-                {k.bulanTutup && (
-                  <span className="fs16 t-warning">Bulan sudah ditutup — &ldquo;Jadikan transfer&rdquo; tidak bisa dijalankan. Bicarakan dengan HoF.</span>
-                )}
+                {k.bulanTutup && <span className="fs16 t-warning">{PESAN_BULAN_TUTUP_KOREKSI}</span>}
                 {k.dicocokkan && (
                   <span className="fs16 t-warning">Sudah dicocokkan dengan rekening koran — HoF membatalkan cocoknya dulu.</span>
                 )}

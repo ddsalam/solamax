@@ -349,6 +349,9 @@ export function periksaKonfirmasiJadikan(k: unknown): { ok: true; konfirmasi: Ko
   return { ok: true, konfirmasi: { yakin: true, tanggal: x.tanggal, nominalSen: x.nominalSen, rekening4 } };
 }
 
+/** Id baris pendek (8 karakter) — sama di layar konfirmasi dan di `audit_log`. */
+export const id8 = (id: string): string => id.slice(0, 8);
+
 /** 4 digit terakhir rekening (dari `nomor_rekening`, atau angka di ujung `nama`); tak pernah nomor penuh. */
 export function empatDigitRekening(a: { nama: string; nomorRekening: string | null }): string | null {
   const m = /(\d{4})\D*$/.exec(a.nomorRekening ?? "") ?? /(\d{4})\s*$/.exec(a.nama);
@@ -372,12 +375,12 @@ export function ringkasKakiJadikan(m: {
     unit: m.unitCode,
     tanggal: m.tanggal,
     nominalSen: m.nominalSen,
-    kasBesar: { sisi: "kredit" as const, kategori: m.kasKategori, baris: m.kasId.slice(0, 8) },
+    kasBesar: { sisi: "kredit" as const, kategori: m.kasKategori, baris: id8(m.kasId) },
     bank: {
       sisi: "debet" as const,
       kategori: KATEGORI_KAKI_BANK,
       rekening: m.rekening4 === null ? null : `…${m.rekening4}`,
-      barisLama: m.bankId.slice(0, 8),
+      barisLama: id8(m.bankId),
     },
   };
 }

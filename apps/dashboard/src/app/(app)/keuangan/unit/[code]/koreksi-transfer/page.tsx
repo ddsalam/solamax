@@ -16,8 +16,9 @@ export const dynamic = "force-dynamic";
  * satu kaki keluar Kas Besar bernominal sama — kaki bank transfer yang salah
  * label (mengkredit 1103 dua kali). Per baris, sesudah konfirmasi eksplisit
  * (keputusan Dion 11 Nov 2026 17:54 WIB): void baris lama, sisip baru "Pindah
- * Buku" bertanggal sama, tautkan ke kaki Kas Besar, audit, jurnal dibentuk ulang. Yang tak bisa dipasangkan otomatis tampil "periksa manual"
- * tanpa tombol.
+ * Buku" bertanggal sama, tautkan ke kaki Kas Besar, audit, jurnal dibentuk
+ * ulang. Yang tak bisa dipasangkan otomatis tampil "periksa manual" tanpa
+ * tombol.
  *
  * Wewenang dihitung DI SERVER, satu predikat per tindakan:
  *   · baca                     → `canViewLaporanKeuangan`

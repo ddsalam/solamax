@@ -281,6 +281,7 @@ export async function tulisJadikanTransfer(
     konfirmasi: KonfirmasiJadikan;
   },
 ): Promise<HasilKoreksi> {
+  // Pertahanan berlapis untuk pemanggil selain aksi (mis. skrip uji): tanpa centang, tak menulis.
   if (m.konfirmasi?.yakin !== true) return { ok: false, error: PESAN_TANPA_KONFIRMASI };
   const baris = await c.query<BarisKoreksiDb>(
     `SELECT l.id::text AS id, l.account_id::text AS "accountId", a.kind::text AS kind,
