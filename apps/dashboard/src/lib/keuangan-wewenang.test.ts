@@ -17,6 +17,8 @@ import {
   canTetapkanSaldoAwalPihakLawan,
   canBalikPasanganAntarUnit,
   canBatalkanBarisFinance,
+  canJadikanTransfer,
+  canJadikanTransferHariTutup,
   canAjukanBalikBaris,
   canSetujuiBalikBaris,
   canReklasifikasi,
@@ -476,6 +478,33 @@ describe("pasangan antar unit (U4; R26, R30, R31) — satu predikat per keputusa
     expect(catat).not.toEqual(balik);
     expect(canCatatAntarUnit(hof, HOF5)).toBe(false);
     expect(canBalikPasanganAntarUnit(c("keuangan"), HOF5)).toBe(false);
+  });
+});
+
+describe("transfer Kas Besar → bank (rencana 2026-11-11 KTD7) — satu predikat per keputusan", () => {
+  const HOF6 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const hof = c("admin_perusahaan", "hof@solagroup.co");
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 catat & batalkan transfer = mengetik: canInputKeuangan (keuangan non-HoF, super_admin); HoF TIDAK", () => {
+    expect(semua.filter((r) => canInputKeuangan(c(r), HOF6))).toEqual(["keuangan", "super_admin"]);
+    expect(canInputKeuangan(hof, HOF6)).toBe(false);
+  });
+
+  it("🔴 canJadikanTransfer: keuangan, super_admin, DAN HoF; pengawas & direksi TIDAK", () => {
+    expect(semua.filter((r) => canJadikanTransfer(c(r), HOF6))).toEqual(["keuangan", "super_admin"]);
+    expect(canJadikanTransfer(hof, HOF6)).toBe(true);
+    expect(canJadikanTransfer(c("direksi"), HOF6)).toBe(false);
+    expect(canJadikanTransfer(c("pengawas"), HOF6)).toBe(false);
+  });
+
+  it("🔴 canJadikanTransferHariTutup: HoF & super_admin saja; staf keuangan TIDAK", () => {
+    expect(canJadikanTransferHariTutup(hof, HOF6)).toBe(true);
+    expect(canJadikanTransferHariTutup(c("super_admin"), HOF6)).toBe(true);
+    for (const r of ["pengawas", "keuangan", "direksi", "admin_perusahaan"] as Role[]) {
+      expect(canJadikanTransferHariTutup(c(r), HOF6), r).toBe(false);
+    }
   });
 });
 

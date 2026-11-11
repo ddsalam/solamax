@@ -237,7 +237,9 @@ describe("§10.26 — Rp 0 hanya sah sebagai saldo pembuka SEMENTARA", () => {
 // (pola `kas-actions.pihak-lawan.test.ts`): "ditolak" = tak ada INSERT.
 // ---------------------------------------------------------------------------
 
-type KasT = { id: string; account_id: string; business_date: string; category_label: string | null; amount: number; void: boolean; tanggal_asal: string | null; alasan_maju: string | null; saldo_awal: boolean };
+type KasT = { id: string; account_id: string; business_date: string; category_label: string | null; amount: number; void: boolean; tanggal_asal: string | null; alasan_maju: string | null; saldo_awal: boolean; transfer?: boolean };
+/** Kaki keluar Kas Besar yang dibaca penjaga tab bank (rencana 2026-11-11 U5). */
+type KasBesarT = { id: string; tanggal: string; kategori: string | null; amount: string; transferUuid: string | null; void: boolean };
 type BebanT = { id: string; business_date: string; section: string; amount: number; operational_category: string; accounting_account: string; source_door: string; cash_ledger_id: string | null; void: boolean };
 
 const t = vi.hoisted(() => {
@@ -252,6 +254,7 @@ const t = vi.hoisted(() => {
     peta: { "Sarana & Prasarana (Listrik, Air, Lampu, Tlpn, Genset, Jalan)": "5300", "Lain-Lain": "5700" } as Record<string, string>,
     kategori: ["kredit|Biaya Operasional", "kredit|Management Fee", "debet|Pendapatan Lain-Lain", "kredit|Pembelian BBM", "kredit|Biaya Bank"],
     tutupBulan: false,
+    kasBesar: [] as KasBesarT[],
     hari: (tgl: string): unknown => ({ status: "dibukukan", hariBuku: tgl, terdorongMaju: false, perluKodeAlasan: false }),
   };
   let staged: { kas: KasT[]; beban: BebanT[] } | null = null;
@@ -277,6 +280,7 @@ const t = vi.hoisted(() => {
         return ok();
       }
       if (sql.includes("set_config")) return ok();
+      if (sql.includes("a.kind = 'kas'")) return ok(state.kasBesar.filter((k) => k.tanggal === p[1]));
       if (sql.includes("FROM app.cash_account")) return ok([{ kind: state.kind }]);
       if (sql.includes("FROM app.cash_mutation_category")) return ok(state.kategori.includes(`${p[0]}|${p[1]}`) ? [{ ada: true }] : []);
       if (sql.includes("FROM app.category_account_map")) {
@@ -320,6 +324,7 @@ const t = vi.hoisted(() => {
             dari_edc: false,
             dari_penebusan: false,
             antar_unit: false,
+            transfer: k.transfer ?? false,
             dicocokkan: false,
             accountId: k.account_id,
             businessDate: k.business_date,
@@ -571,5 +576,114 @@ describe("lengkapiBebanMutasi — R27 (a): mutasi biaya tanpa baris Biaya", () =
     const r = await lengkapiBebanMutasi({ code: "6300001", cashLedgerId: "kas-lama", operationalCategory: SARANA });
     expect(r.ok).toBe(false);
     expect(t.state.beban).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rencana 2026-11-11 U5 (R13, R14, KTD8) — penjaga tab bank: debet "Setoran
+// Hasil Penjualan" yang menyamai kaki keluar Kas Besar hari itu ditolak tanpa
+// konfirmasi "setoran langsung"; konfirmasi diaudit. U3 (KTD6): void satu
+// kaki transfer ditolak — jalannya "Batalkan transfer".
+// ---------------------------------------------------------------------------
+
+describe("simpanMutasiKas — penjaga kaki bank transfer (rencana 2026-11-11 U5)", () => {
+  const BCA = "44444444-4444-4444-8444-444444444444";
+  const SHP = {
+    code: "6300001",
+    date: "2026-11-03",
+    accountId: BCA,
+    keterangan: "setoran penjualan dari kas besar",
+    jenis: "debet" as const,
+    categorySide: "debet" as const,
+    categoryLabel: "Setoran Hasil Penjualan",
+    amount: 399_979_000,
+  };
+  const kakiKas = (o: Partial<KasBesarT> = {}): KasBesarT => ({
+    id: "kas-sk",
+    tanggal: "2026-11-03",
+    kategori: "Setoran ke Bank",
+    amount: "-399979000.00",
+    transferUuid: null,
+    void: false,
+    ...o,
+  });
+  const insertKas = () => t.log.filter((l) => l.sql.includes("INSERT INTO app.cash_ledger"));
+  const bacaKasBesar = () => t.log.filter((l) => l.sql.includes("a.kind = 'kas'"));
+
+  beforeEach(() => {
+    t.log.length = 0;
+    t.state.kind = "bank";
+    t.state.kas = [];
+    t.state.audit = [];
+    t.state.kasBesar = [kakiKas()];
+  });
+
+  it("🔴 Covers AE5. Tab bank, nominal & tanggal sama dengan 'Setoran ke Bank' Kas Besar ⇒ ditolak tanpa centang; tak ada INSERT", async () => {
+    const r = await simpanMutasiKas(SHP);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/kategorinya 'Pindah Buku'/);
+      expect(r.error).toMatch(/Rp 399\.979\.000/);
+      expect(r.error).toMatch(/centang 'setoran langsung'/);
+    }
+    expect(insertKas()).toHaveLength(0);
+  });
+
+  it("dengan centang 'setoran langsung' ⇒ tersimpan, dan konfirmasinya diaudit", async () => {
+    const r = await simpanMutasiKas({ ...SHP, bukanTransfer: true });
+    expect(r).toEqual({ ok: true });
+    expect(t.state.kas).toHaveLength(1);
+    const a = t.state.audit.find((x) => x.action === "kas.setoran_bank_bukan_transfer");
+    expect(a?.detail).toMatchObject({ kas: t.state.kas[0]!.id, tanggal: "2026-11-03", nominal: 399_979_000 });
+  });
+
+  it("nominal berbeda ⇒ tersimpan tanpa peringatan dan tanpa audit konfirmasi", async () => {
+    const r = await simpanMutasiKas({ ...SHP, amount: 399_978_999 });
+    expect(r).toEqual({ ok: true });
+    expect(t.state.audit.map((x) => x.action)).not.toContain("kas.setoran_bank_bukan_transfer");
+  });
+
+  it("kaki Kas Besar sudah bertaut transfer ⇒ tak dianggap terlewat", async () => {
+    t.state.kasBesar = [kakiKas({ transferUuid: "6f1c0b8e-2a4d-4c3b-9e1f-0a2b3c4d5e6f" })];
+    expect(await simpanMutasiKas(SHP)).toEqual({ ok: true });
+  });
+
+  it("R14: tab Kas Besar 'Setoran Hasil Penjualan' tak pernah diperiksa", async () => {
+    t.state.kind = "kas";
+    expect(await simpanMutasiKas(SHP)).toEqual({ ok: true });
+    expect(bacaKasBesar()).toHaveLength(0);
+  });
+
+  it("setujuiSetoran tak berubah — tak membaca kaki Kas Besar (D7 ditunda)", () => {
+    expect(badanFungsi("setujuiSetoran")).not.toMatch(/kakiTransferTerlewat|bukanTransfer/);
+  });
+});
+
+describe("voidMutasiKas — kaki transfer ditolak satu per satu (rencana 2026-11-11 KTD6)", () => {
+  beforeEach(() => {
+    t.log.length = 0;
+    t.state.kas = [
+      { id: "kaki-tf", account_id: "A", business_date: "2026-11-03", category_label: "Pindah Buku", amount: 100, void: false, tanggal_asal: null, alasan_maju: null, saldo_awal: false, transfer: true },
+      { id: "biasa", account_id: "A", business_date: "2026-11-03", category_label: "Biaya Bank", amount: -5, void: false, tanggal_asal: null, alasan_maju: null, saldo_awal: false },
+    ];
+    t.state.beban = [];
+  });
+
+  it("🔴 kaki transfer ⇒ ditolak, menunjuk 'Batalkan transfer'; tak ada UPDATE", async () => {
+    const r = await voidMutasiKas({ code: "6300001", date: "2026-11-03", id: "kaki-tf" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/Batalkan transfer/);
+    expect(t.log.some((l) => l.sql.includes("UPDATE app.cash_ledger"))).toBe(false);
+    expect(t.state.kas[0]!.void).toBe(false);
+  });
+
+  it("baris biasa tetap bisa dibatalkan (regresi)", async () => {
+    expect(await voidMutasiKas({ code: "6300001", date: "2026-11-03", id: "biasa" })).toEqual({ ok: true });
+    expect(t.state.kas[1]!.void).toBe(true);
+  });
+
+  it("UPDATE void ikut menuntut transfer_uuid IS NULL (sabuk kedua)", () => {
+    const upd = badanFungsi("voidMutasiKas");
+    expect(upd).toMatch(/AND pasangan_uuid IS NULL\s+AND transfer_uuid IS NULL/);
   });
 });

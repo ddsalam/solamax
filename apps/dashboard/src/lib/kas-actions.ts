@@ -8,7 +8,7 @@ import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "
 import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canNonaktifkanAkunKas } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 import { hariBukuTerkunci } from "./hari-buku-queries";
-import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen } from "./pihak-lawan-model";
+import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen, teksKeSen } from "./pihak-lawan-model";
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
 import { INSERT_KAS_KLASIFIKASI, tulisBebanFinance } from "./klasifikasi-tulis";
@@ -18,6 +18,8 @@ import type { ScopedUnitId } from "./scope";
 import { auditKeuangan } from "./keuangan-tx";
 import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
 import { kategoriPenebusan, lewatPenebusan } from "./penebusan-model";
+import { kakiTransferTerlewat, PESAN_TOLAK_TANPA_KONFIRMASI } from "./transfer-kas-model";
+import { KATEGORI_SETORAN } from "./cocok-bank-model";
 
 /**
  * Server action buku kas & buku bank (Layar 3 blok 2).
@@ -77,6 +79,12 @@ export interface MutasiInput {
    * ulang di server: harus milik unit ini, aktif, dan sejenis dengan kategorinya.
    */
   pihakLawanId?: string | null;
+  /**
+   * Rencana 2026-11-11 R13/KTD8 — konfirmasi EKSPLISIT bahwa debet "Setoran
+   * Hasil Penjualan" di rekening bank ini setoran LANGSUNG, bukan kaki bank
+   * transfer dari Kas Besar. Hanya centang di form yang mengirim `true`.
+   */
+  bukanTransfer?: boolean;
 }
 
 export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
@@ -131,15 +139,21 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
       }
     }
 
+    const setoranDiBank = input.jenis === "debet" && input.categoryLabel === KATEGORI_SETORAN;
+    const akun =
+      kategoriPenebusan(input.categoryLabel) || setoranDiBank
+        ? await client.query<{ kind: string }>(
+            `SELECT kind::text AS kind FROM app.cash_account WHERE id = $1::uuid AND unit_id = $2`,
+            [input.accountId, unit.unit_id],
+          )
+        : null;
+    const kindAkun = akun?.rows[0]?.kind;
+
     // K6 U4 (R19–R21) — Pembelian BBM di rekening BANK hanya lewat field
     // penebusan (`simpanPenebusan` dariBukuBank): mutasi tanpa SO di sini
     // adalah input kedua yang harus ditautkan lagi. Kas Besar tak berubah.
     if (kategoriPenebusan(input.categoryLabel)) {
-      const akun = await client.query<{ kind: string }>(
-        `SELECT kind::text AS kind FROM app.cash_account WHERE id = $1::uuid AND unit_id = $2`,
-        [input.accountId, unit.unit_id],
-      );
-      if (lewatPenebusan(akun.rows[0]?.kind, input.categoryLabel)) {
+      if (lewatPenebusan(kindAkun, input.categoryLabel)) {
         await client.query("ROLLBACK");
         return {
           ok: false,
@@ -148,6 +162,35 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
             "yang sama — pilih kategori itu lalu isi field penebusannya, satu simpan menulis mutasi & penebusan.",
         };
       }
+    }
+
+    // Rencana 2026-11-11 R13/KTD8 — debet "Setoran Hasil Penjualan" di rekening
+    // BANK yang bernominal & bertanggal sama dengan kaki keluar Kas Besar bebas
+    // hampir pasti kaki bank sebuah transfer (seharusnya "Pindah Buku", P6):
+    // labelnya mengkredit 1103 KEDUA kalinya. Ditolak kecuali dikonfirmasi
+    // eksplisit sebagai setoran langsung (aturan cocok 3 tetap sah); konfirmasi
+    // itu diaudit. Bukan larangan — sengaja (KTD8).
+    let konfirmasiBukanTransfer = false;
+    const sen = rupiahKeSen(input.amount);
+    if (setoranDiBank && kindAkun === "bank" && sen !== null) {
+      const kasHari = await client.query<{ id: string; tanggal: string; kategori: string | null; amount: string; transferUuid: string | null; void: boolean }>(
+        `SELECT l.id::text AS id, to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.category_label AS kategori,
+                l.amount::text AS amount, l.transfer_uuid::text AS "transferUuid", l.void
+           FROM app.cash_ledger l
+           JOIN app.cash_account a ON a.id = l.account_id AND a.unit_id = l.unit_id
+          WHERE l.unit_id = $1 AND a.kind = 'kas' AND l.business_date = $2::date
+            AND NOT l.void AND l.jenis = 'kredit'`,
+        [unit.unit_id, input.date],
+      );
+      const terlewat = kakiTransferTerlewat(
+        { accountKind: kindAkun, jenis: input.jenis, kategori: input.categoryLabel, amountSen: sen, tanggal: input.date },
+        kasHari.rows.map((k) => ({ ...k, amountSen: teksKeSen(k.amount) })),
+      );
+      if (terlewat && input.bukanTransfer !== true) {
+        await client.query("ROLLBACK");
+        return { ok: false, error: PESAN_TOLAK_TANPA_KONFIRMASI((sen / 100).toLocaleString("id-ID")) };
+      }
+      konfirmasiBukanTransfer = terlewat;
     }
 
     // ⛔ §10.24 butir 2 — MUSTAHIL KE DEPAN. Mutasi baru tak boleh mendahului
@@ -172,12 +215,13 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
       };
     }
 
-    await client.query(
+    const baru = await client.query<{ id: string }>(
       `INSERT INTO app.cash_ledger
          (unit_id, account_id, business_date, keterangan, jenis,
           category_side, category_label, amount, created_by_user_id, pihak_lawan_id)
        VALUES ($1,$2::uuid,$3::date,$4,$5::app.cash_mutation_jenis,
-               $6::app.cash_mutation_side,$7,$8,$9,$10::uuid)`,
+               $6::app.cash_mutation_side,$7,$8,$9,$10::uuid)
+       RETURNING id::text AS id`,
       [
         unit.unit_id,
         input.accountId,
@@ -191,6 +235,14 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
         pihakLawanId,
       ],
     );
+    if (konfirmasiBukanTransfer) {
+      await auditKeuangan(client, scope, "kas.setoran_bank_bukan_transfer", `${unit.code}/${input.accountId}`, {
+        kas: baru.rows[0]?.id ?? null,
+        tanggal: input.date,
+        nominal: input.amount,
+        kategori: input.categoryLabel,
+      });
+    }
     await bentukJurnalSesudahTulis(client, unit.unit_id, { userId: scope.userId, email: scope.email });
     await client.query("COMMIT");
     revalidatePath(`/keuangan/unit/${unit.code}/${input.date}/input`);
@@ -327,15 +379,20 @@ export async function voidMutasiKas(input: {
     // yang membawa `pasangan_uuid`) juga baris sistem — void satu kaki membuat
     // saldo kedua unit berselisih DAN menutup jalan `balikPasanganAntarUnit`
     // (rencanaBalik menolak pasangan berkaki void). Jalannya "Balik pasangan" (HoF).
+    // Rencana 2026-11-11 KTD6: kaki transfer Kas Besar → bank (`transfer_uuid`)
+    // juga baris sistem — void satu kaki meninggalkan 1190 terbuka. Jalannya
+    // "Batalkan transfer", yang membatalkan KEDUA kaki.
     const cek = await client.query<{
       saldo_awal: boolean;
       dari_edc: boolean;
       dari_penebusan: boolean;
       antar_unit: boolean;
+      transfer: boolean;
       dicocokkan: boolean;
     }>(
       `SELECT l.saldo_awal, (l.edc_settlement_id IS NOT NULL) AS dari_edc,
               (l.pasangan_uuid IS NOT NULL) AS antar_unit,
+              (l.transfer_uuid IS NOT NULL) AS transfer,
               EXISTS (
                 SELECT 1 FROM app.penebusan p
                  WHERE p.cash_ledger_id = l.id AND p.unit_id = l.unit_id AND NOT p.void
@@ -355,6 +412,7 @@ export async function voidMutasiKas(input: {
           dariPencairanEdc: cek.rows[0].dari_edc,
           dariPenebusan: cek.rows[0].dari_penebusan,
           antarUnit: cek.rows[0].antar_unit,
+          transfer: cek.rows[0].transfer,
         })
       : null;
     if (sistem !== null) {
@@ -380,6 +438,7 @@ export async function voidMutasiKas(input: {
         WHERE id=$2::uuid AND unit_id=$3 AND NOT void
           AND NOT saldo_awal AND edc_settlement_id IS NULL
           AND pasangan_uuid IS NULL
+          AND transfer_uuid IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM app.penebusan p
              WHERE p.cash_ledger_id = app.cash_ledger.id AND p.unit_id = app.cash_ledger.unit_id AND NOT p.void
