@@ -152,7 +152,7 @@ Two things change.
   - writes `audit_log` `kas.transfer.koreksi` with the old id, new id, Kas Besar id and reason, plus the confirmation and both legs as shown (`konfirmasi`, `kaki`);
   - rebuilds journals.
 - R17. **Who may run "Jadikan transfer":** keuangan (non-HoF), HoF or super_admin on open days. On a closed day (month open), only HoF or super_admin, and a reason is required. It is refused in a closed month and when either row is in an active bank-match group.
-- R18. **Explicit confirmation on every day** (Dion, 11 Nov 2026 17:54 WIB). The row button only opens a confirmation step. It shows the unit, date and amount, the Kas Besar leg (kredit, its category, id8) and the bank leg (debet "Pindah Buku", last 4 digits of the account, id8 of the old row). The user must tick "Saya yakin"; on a closed day the written reason is also required. The **server** refuses a request without `konfirmasi.yakin === true`, and refuses when the confirmed date or amount differs from the locked row. The confirmation and the legs go into the audit detail.
+- R18. **Explicit confirmation on every day** (Dion, 11 Nov 2026 17:54 WIB). The row button only opens a confirmation step. It shows the unit, date and amount, the Kas Besar leg (kredit, its category, id8) and the bank leg (debet "Pindah Buku", last 4 digits of the account, id8 of the old row). The user must tick "Saya yakin"; on a closed day the written reason is also required. The **server** refuses a request without `konfirmasi.yakin === true`, and refuses when the confirmed date, amount or account last 4 digits differ from the locked row. The confirmation and the legs go into the audit detail.
 
 ### Acceptance Examples
 

@@ -2510,7 +2510,7 @@ tersentuh. Finance memilih "Setoran Hasil Penjualan" (P2) di tab bank, yang meng
   hanya membuka langkah konfirmasi: unit, tanggal, nominal, kaki Kas Besar (kredit, kategorinya,
   id8) dan kaki bank (debet "Pindah Buku", rekening 4 digit terakhir, id8 baris lama). Wajib
   dicentang "Saya yakin" (+ alasan di hari tertutup). **Server** menolak tanpa
-  `konfirmasi.yakin === true` (`periksaKonfirmasiJadikan`) dan menolak bila tanggal/nominal yang
+  `konfirmasi.yakin === true` (`periksaKonfirmasiJadikan`) dan menolak bila tanggal/nominal/4 digit rekening yang
   dikonfirmasi tak sama dengan baris yang dikunci. Konfirmasi + kedua kaki tercatat di detail
   `kas.transfer.koreksi` (`konfirmasi`, `kaki`).
 - ⚖️ **Bakau 22 Okt `28e717f3` (hari tertutup) = "Jadikan transfer" saja, TANPA jurnal memorial**

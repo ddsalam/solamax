@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import type { ScopedUnitId } from "./scope";
+import type { KonfirmasiJadikan } from "./transfer-kas-model";
 
 type Tulis = typeof import("./transfer-kas-tulis");
 
@@ -386,11 +387,11 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
       return { bank, kas, tanggal, nominal };
     };
     // Konfirmasi = apa yang ditampilkan langkah konfirmasi untuk pasangan itu.
-    const yakin = (p: Pasangan) => ({ yakin: true as const, tanggal: p.tanggal, nominalSen: p.nominal * 100, rekening4: "0001" });
+    const yakin = (p: Pasangan): KonfirmasiJadikan => ({ yakin: true, tanggal: p.tanggal, nominalSen: p.nominal * 100, rekening4: "0001" });
     const jadikan = (
       c: PoolClient,
       p: Pasangan,
-      o: { bolehHariTutup?: boolean; alasan?: string; konfirmasi?: ReturnType<typeof yakin> } = {},
+      o: { bolehHariTutup?: boolean; alasan?: string; konfirmasi?: KonfirmasiJadikan } = {},
     ) =>
       tulisJadikanTransfer(c, {
         unitId: unit,
@@ -464,15 +465,20 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         expect(dc.rows[0]).toEqual({ d: "0.00", s: "closed" });
       }));
 
-    it("konfirmasi yang tak sama dengan baris terkunci (nominal / tanggal lain) ⇒ ditolak, tak ada yang berubah", () =>
+    it("konfirmasi yang tak sama dengan baris terkunci (nominal / tanggal / rekening lain) ⇒ ditolak, tak ada yang berubah", () =>
       tx(async (c) => {
         const p = await pasanganLama(c);
         const r1 = await jadikan(c, p, { konfirmasi: { ...yakin(p), nominalSen: 1 } });
         expect(r1.ok).toBe(false);
         if (!r1.ok) expect(r1.error).toMatch(/Yang dikonfirmasi tidak sama/);
         expect((await jadikan(c, p, { konfirmasi: { ...yakin(p), tanggal: BESOK } })).ok).toBe(false);
+        // Rekening yang dikonfirmasi (4 digit) juga harus sama — audit tak boleh mencatat rekening lain.
+        const r4 = await jadikan(c, p, { konfirmasi: { ...yakin(p), rekening4: "9999" } });
+        expect(r4.ok).toBe(false);
+        if (!r4.ok) expect(r4.error).toMatch(/rekening/);
+        expect((await jadikan(c, p, { konfirmasi: { ...yakin(p), rekening4: null } })).ok).toBe(false);
         // Inti tulis juga menolak tanpa centang (pertahanan berlapis di bawah aksi).
-        const r3 = await jadikan(c, p, { konfirmasi: { ...yakin(p), yakin: false } as unknown as ReturnType<typeof yakin> });
+        const r3 = await jadikan(c, p, { konfirmasi: { ...yakin(p), yakin: false } as unknown as KonfirmasiJadikan });
         expect(r3.ok).toBe(false);
         const lama = await c.query(`SELECT void FROM app.cash_ledger WHERE id = $1::uuid`, [p.bank]);
         expect(lama.rows[0]).toEqual({ void: false });

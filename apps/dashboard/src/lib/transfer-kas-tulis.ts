@@ -337,8 +337,11 @@ export async function tulisJadikanTransfer(
   // Yang dikonfirmasi pengguna harus SAMA dengan baris yang kini dikunci.
   const nominalSen = teksKeSen(bank.amount);
   const rekening4 = empatDigitRekening({ nama: bank.namaAkun, nomorRekening: bank.nomorRekening });
-  if (m.konfirmasi.tanggal !== bank.tanggal || m.konfirmasi.nominalSen !== nominalSen) {
-    return { ok: false, error: "Yang dikonfirmasi tidak sama dengan baris saat ini (tanggal atau nominal) — muat ulang halaman." };
+  if (m.konfirmasi.tanggal !== bank.tanggal || m.konfirmasi.nominalSen !== nominalSen || m.konfirmasi.rekening4 !== rekening4) {
+    return {
+      ok: false,
+      error: "Yang dikonfirmasi tidak sama dengan baris saat ini (tanggal, nominal, atau rekening) — muat ulang halaman.",
+    };
   }
 
   const bulanTutup = await bulanTertutup(c, m.unitId, bank.tanggal);

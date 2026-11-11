@@ -291,6 +291,11 @@ describe("konfirmasi eksplisit 'Jadikan transfer' (keputusan Dion 11 Nov 2026 17
     expect(periksaKonfirmasiJadikan({ ...K, nominalSen: 0 }).ok).toBe(false);
     expect(periksaKonfirmasiJadikan({ ...K, nominalSen: 1.5 }).ok).toBe(false);
   });
+  it("4 digit rekening yang ditampilkan: harus tepat 4 angka atau null — bentuk lain ditolak, bukan dibuang", () => {
+    for (const rekening4 of ["12345", "68a1", 6811, ""]) {
+      expect(periksaKonfirmasiJadikan({ ...K, rekening4 }).ok, String(rekening4)).toBe(false);
+    }
+  });
   it("dicentang dengan yang ditampilkan ⇒ diterima apa adanya", () => {
     expect(periksaKonfirmasiJadikan(K)).toEqual({ ok: true, konfirmasi: K });
     expect(periksaKonfirmasiJadikan({ ...K, rekening4: null })).toEqual({ ok: true, konfirmasi: { ...K, rekening4: null } });

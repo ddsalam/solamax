@@ -345,7 +345,10 @@ export function periksaKonfirmasiJadikan(k: unknown): { ok: true; konfirmasi: Ko
   if (typeof x.nominalSen !== "number" || !Number.isSafeInteger(x.nominalSen) || x.nominalSen <= 0) {
     return { ok: false, error: PESAN_TANPA_KONFIRMASI };
   }
-  const rekening4 = typeof x.rekening4 === "string" && /^\d{4}$/.test(x.rekening4) ? x.rekening4 : null;
+  const rekening4 = x.rekening4 ?? null;
+  if (rekening4 !== null && (typeof rekening4 !== "string" || !/^\d{4}$/.test(rekening4))) {
+    return { ok: false, error: PESAN_TANPA_KONFIRMASI };
+  }
   return { ok: true, konfirmasi: { yakin: true, tanggal: x.tanggal, nominalSen: x.nominalSen, rekening4 } };
 }
 

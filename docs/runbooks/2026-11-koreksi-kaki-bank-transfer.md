@@ -42,7 +42,7 @@ Tombol **"Jadikan transfer…"** di baris hanya membuka langkah konfirmasi. Peri
 
 Lalu centang **"Saya yakin ini transfer Kas Besar → bank dan kedua kaki di atas benar."** dan tekan
 **"Konfirmasi: jadikan transfer"**. Tanpa centang tombolnya mati, dan server menolak permintaan tanpa
-konfirmasi. Bila tanggal atau nominal yang dikonfirmasi sudah tidak sama dengan baris saat ini, server
+konfirmasi. Bila tanggal, nominal, atau 4 digit rekening yang dikonfirmasi sudah tidak sama dengan baris saat ini, server
 menolak dan meminta muat ulang. Konfirmasi dan kedua kaki yang ditampilkan tercatat di `audit_log`
 (`kas.transfer.koreksi`).
 
