@@ -18,7 +18,7 @@ execution: code
 - **Execution profile:** Deep. One additive migration (`0062`), new server actions, UI on Input keuangan, and a data correction (36 rows, Rp 12.489.731.000). This touches money, journals and roles.
 - **Stop conditions:** Stop and ask Dion if (a) an existing migration must be edited, (b) `pasangan_uuid` semantics must change, (c) any step needs a production write outside the app (no scripts against `cash_ledger`), (d) the P28 deposit-sign PR turns out to conflict with this branch, or (e) a merge to `main` or the `pilot` gate is needed.
 - **Who finishes:** `ce-work` on branch `grok/2026-11-11-transfer-kas-bank-dua-kaki` (from `origin/staging` 6a6e8d5). It opens one PR to `staging` and does not merge. Dion merges, promotes, and approves `pilot`. Finance and HoF run the data correction in the app afterwards.
-- **Open blockers:** None for the code. The cleanup has decisions for Dion (see "Open decisions for Dion"). Each one has a recommendation the executor follows by default.
+- **Open blockers:** None. Dion answered the open decisions on 11 Nov 2026 at 17:54 WIB (see "Decision log"): D3 is "Jadikan transfer" only, with no memorial, and "Jadikan transfer" requires an explicit confirmation on every day.
 
 ---
 
@@ -96,7 +96,7 @@ Two things change.
 - A1 **Finance staff:** role `keuangan`, not HoF. Types transfers and runs the corrections on open days.
 - A2 **Head of Finance (HoF):** listed in `HEAD_OF_FINANCE_EMAILS`. Does not type (§10.12). May run "Jadikan transfer" (classification, like `canReklasifikasi`). Runs the correction for the closed day.
 - A3 **super_admin:** everything A1 and A2 can do.
-- A4 **Direksi:** read-only here. Approves a memorial only if the memorial fallback (D3) is chosen.
+- A4 **Direksi:** read-only here. Dion's D3 decision means no memorial is used for this correction.
 
 ### Requirements
 
@@ -149,9 +149,10 @@ Two things change.
   - voids the bank row;
   - inserts a new bank row with the same account, business date, `tanggal_asal`/`alasan_maju`, description and amount, debet "Pindah Buku", and a new `transfer_uuid`;
   - sets the same `transfer_uuid` on the Kas Besar leg (category unchanged);
-  - writes `audit_log` `kas.transfer.koreksi` with the old id, new id, Kas Besar id and reason;
+  - writes `audit_log` `kas.transfer.koreksi` with the old id, new id, Kas Besar id and reason, plus the confirmation and both legs as shown (`konfirmasi`, `kaki`);
   - rebuilds journals.
 - R17. **Who may run "Jadikan transfer":** keuangan (non-HoF), HoF or super_admin on open days. On a closed day (month open), only HoF or super_admin, and a reason is required. It is refused in a closed month and when either row is in an active bank-match group.
+- R18. **Explicit confirmation on every day** (Dion, 11 Nov 2026 17:54 WIB). The row button only opens a confirmation step. It shows the unit, date and amount, the Kas Besar leg (kredit, its category, id8) and the bank leg (debet "Pindah Buku", last 4 digits of the account, id8 of the old row). The user must tick "Saya yakin"; on a closed day the written reason is also required. The **server** refuses a request without `konfirmasi.yakin === true`, and refuses when the confirmed date or amount differs from the locked row. The confirmation and the legs go into the audit detail.
 
 ### Acceptance Examples
 
@@ -534,7 +535,7 @@ U1 (migration) → U2 (pure model) → U3 (write core and actions) → U4 (UI on
 1. **The P28 deposit-sign PR** is merged, verified on testing (`-rlsstg`) and promoted (independent of this PR, either order).
 2. **This PR** is merged to `staging`, verified on testing (see Verification Contract), then promoted to `main` through the `pilot` gate.
 3. **Finance (keuangan, user 24) on `/keuangan/unit/6378301/koreksi-transfer`:** "Jadikan transfer" for the 31 open-day Bakau rows, oldest first. Then the same for Adisucipto's open-day row (Rp 160.417.000, 1 Oct, BCA …3811). That is 32 rows, Rp 11.080.496.000.
-4. **HoF, Bakau 22 Oct `28e717f3`:** "Jadikan transfer" with the reason *"Kaki bank transfer Kas Besar → BCA …6811 salah kategori (Setoran Hasil Penjualan → Pindah Buku); 1103 terkredit dua kali. Ref REPORT6/7B."*. **No memorial.** If Dion chooses the memorial instead (D3), HoF proposes Dr 1103 / Cr 1190 Rp 399.979.000 dated 2026-10-22, Direksi approves, and the row is **never** converted. Use one route only.
+4. **HoF, Bakau 22 Oct `28e717f3`:** "Jadikan transfer" with the reason *"Kaki bank transfer Kas Besar → BCA …6811 salah kategori (Setoran Hasil Penjualan → Pindah Buku); 1103 terkredit dua kali. Ref REPORT6/7B."*, after checking both legs on the confirmation step and ticking "Saya yakin". **No memorial** (Dion's D3, 11 Nov 2026 17:54 WIB). Expected result: both legs stay dated 22 Oct (no booking forward), the bank leg no longer credits 1103, 1190 nets to 0, and the day close stays `closed` with difference −470.
 5. **The three "periksa manual" rows** (Finance checks the deposit slips and statements first; see D6):
    - **Imam Bonjol 1 Oct `60cd0454` and Adisucipto 2 Oct `95a4f8a7`:** expected to be real direct deposits. No action.
    - **Bakau 1 Oct `977285c9`, Rp 170.341.000:**
@@ -599,7 +600,7 @@ U1 (migration) → U2 (pure model) → U3 (write core and actions) → U4 (UI on
   - it removes `ADJ-FWD-TRANSFER` only if unreferenced.
 
   The migration directory stays (checksum rule); a follow-up migration would be needed to re-add.
-- **Rollback (data correction):** each "Jadikan transfer" is reversible on an open day by "Batalkan transfer" plus Finance re-entering the old row (audit shows both). On a closed day, a memorial is the only reversal.
+- **Rollback (data correction):** each "Jadikan transfer" is reversible on an open day by "Batalkan transfer" plus Finance re-entering the old row (audit shows both). On a closed day there is no in-app reversal; this is why the closed-day action needs HoF, a written reason and the explicit confirmation. Any later change to that day is a new decision for Dion.
 
 ## Risks
 
@@ -607,11 +608,18 @@ U1 (migration) → U2 (pure model) → U3 (write core and actions) → U4 (UI on
 - **Deadlock with tutup hari.** This is the known §10.53 #3 limit: the trigger side is caught by its SAVEPOINT, and HoF retries tutup hari.
 - **Old paths still write bank "Setoran Hasil Penjualan".** `setujuiSetoran` on a bank tab, and an overridden guard. These are mitigated by audit and deferred item D7.
 - **False positives in the guard.** A direct deposit coinciding with an unrelated Kas Besar transfer of the same amount is possible but rare. The tick overrides it, with audit.
-- **Changing a closed day.** The category conversion on Bakau 22 Oct changes journals of a closed day. The cash numbers are unchanged, and it is HoF-gated, reasoned and audited. If Dion rejects that, use the memorial (D3).
+- **Changing a closed day.** The category conversion on Bakau 22 Oct changes journals of a closed day. The cash numbers are unchanged, and it is HoF-gated, reasoned, explicitly confirmed and audited. Dion accepted this route (D3).
 - **Migration number clash.** `0062` could clash with a parallel branch; CI catches it, rebase.
 - **Ordering with P28.** "Bentuk ulang" before P28 is live leaves the −600.000 P28 error. Run it after both PRs are live.
 
-## Open decisions for Dion
+## Decision log
+
+- **11 Nov 2026, 17:54 WIB — Dion:**
+  - **D3 answered:** Bakau 22 Oct `28e717f3` (closed day) is corrected with "Jadikan transfer" **only**. **No memorial**, not as an alternative and not in addition.
+  - **Explicit confirmation (new, R18):** "Jadikan transfer" must require an explicit confirmation on **open days too** (it was one click). Built on all days, enforced by the server, logged in `audit_log`.
+  - The other decisions (D1, D2, D4–D9) were not changed and stay at the recommendation, as built.
+
+## Open decisions for Dion (answered — see "Decision log")
 
 Each decision has a recommendation, and the executor builds the recommendation unless Dion says otherwise.
 
@@ -622,9 +630,8 @@ Each decision has a recommendation, and the executor builds the recommendation u
    - **Recommendation:** the in-app "Jadikan transfer" action (b).
    - **Alternative:** Finance void + re-type (a).
    - The script (c) is not recommended.
-3. **D3. Bakau 22 Oct `28e717f3` (closed day).**
-   - **Recommendation:** HoF runs "Jadikan transfer" with a reason. It is cash-neutral and keeps source data and journals consistent on every rebuild.
-   - **Alternative:** a memorial Dr 1103 / Cr 1190 Rp 399.979.000 (HoF proposes, Direksi approves) and never convert the row. Never both.
+3. **D3. Bakau 22 Oct `28e717f3` (closed day).** **Answered 11 Nov 2026 17:54 WIB: "Jadikan transfer" only, no memorial.**
+   - HoF runs "Jadikan transfer" with a reason and the explicit confirmation. It is cash-neutral and keeps source data and journals consistent on every rebuild.
 4. **D4. Who may run "Jadikan transfer".**
    - **Recommendation:** keuangan, HoF or super_admin on open days; HoF or super_admin only on closed days, with a reason.
 5. **D5. The bank-tab guard.**

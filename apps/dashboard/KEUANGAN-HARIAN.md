@@ -2474,7 +2474,7 @@ persetujuan orang kedua. Jalur tulis lain tetap tunduk §10.33 (`tentukanHariBuk
   dan kotak masuk persetujuan lintas unit (sementara: kejadian `balik_biaya_menunggu` di
   Pemantauan, berulang sampai diputus).
 
-### 10.57 Transfer Kas Besar → bank dua kaki (rencana 11 November 2026 — menunggu keputusan owner)
+### 10.57 Transfer Kas Besar → bank dua kaki (rencana 11 November 2026; keputusan owner 11 November 2026 17:54 WIB)
 
 **Diagnosis yang dikoreksi.** "Setoran ke Bank" hanya ada di sisi **kredit** (0029 menanam
 kategori per sisi, bukan per jenis rekening), jadi kaki bank sebuah setoran dari Kas Besar
@@ -2506,6 +2506,18 @@ tersentuh. Finance memilih "Setoran Hasil Penjualan" (P2) di tab bank, yang meng
   admin); hari tertutup hanya HoF/super admin + alasan (`canJadikanTransferHariTutup`). Calon yang
   tak tunggal, atau baris bank yang lahir dari setoran pengawas yang disetujui, tampil "periksa
   manual" tanpa tombol.
+- ⚖️ **Konfirmasi eksplisit di setiap hari** (keputusan owner 11 Nov 2026 17:54 WIB). Tombol baris
+  hanya membuka langkah konfirmasi: unit, tanggal, nominal, kaki Kas Besar (kredit, kategorinya,
+  id8) dan kaki bank (debet "Pindah Buku", rekening 4 digit terakhir, id8 baris lama). Wajib
+  dicentang "Saya yakin" (+ alasan di hari tertutup). **Server** menolak tanpa
+  `konfirmasi.yakin === true` (`periksaKonfirmasiJadikan`) dan menolak bila tanggal/nominal yang
+  dikonfirmasi tak sama dengan baris yang dikunci. Konfirmasi + kedua kaki tercatat di detail
+  `kas.transfer.koreksi` (`konfirmasi`, `kaki`).
+- ⚖️ **Bakau 22 Okt `28e717f3` (hari tertutup) = "Jadikan transfer" saja, TANPA jurnal memorial**
+  (keputusan owner D3, 11 Nov 2026 17:54 WIB). Koreksi tidak dibukukan maju: kedua kaki tetap
+  22 Okt, kaki bank tak lagi mengkredit 1103, 1190 = 0, `day_close` tetap `closed` selisih −470
+  (dibuktikan uji integrasi lokal yang mencerminkan kasus ini). "Jadikan transfer" di bulan
+  tertutup ditolak tanpa menyarankan memorial.
 - **Batas yang diketahui:** `setujuiSetoran` masih bisa menulis "Setoran Hasil Penjualan" ke tab
   bank (D7, PR lanjutan); `voidMutasiKas` biasa masih tanpa `audit_log` (D8); pasangan otomatis
   jemputan belum memakai `transfer_uuid`; bank → Kas Besar dan bank → bank di luar cakupan.

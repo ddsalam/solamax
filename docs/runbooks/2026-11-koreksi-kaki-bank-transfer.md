@@ -26,13 +26,32 @@ sama, dan tutup bulan Oktober ditolak.
 
 1. PR perbaikan tanda setoran P28 sudah live di pilot (terpisah; urutan bebas terhadap PR ini).
 2. PR transfer dua kaki (migrasi 0062) sudah live di pilot — Dion menyetujui gerbang `pilot`.
-3. Dion sudah memutus keputusan D1–D6 di rencana (bawaan: rekomendasinya).
+3. Keputusan Dion 11 Nov 2026 17:54 WIB: **D3 = "Jadikan transfer" saja, tanpa jurnal memorial**;
+   **"Jadikan transfer" wajib dikonfirmasi eksplisit di setiap hari** (terbuka maupun tertutup).
+   Keputusan lain (D1, D2, D4–D9) mengikuti rekomendasi rencana.
+
+## Langkah konfirmasi (setiap baris, setiap hari)
+
+Tombol **"Jadikan transfer…"** di baris hanya membuka langkah konfirmasi. Periksa yang ditampilkan:
+
+- unit, tanggal, nominal;
+- **Kaki 1 — Kas Besar kredit** "Setoran ke Bank" (atau "Pindah Buku" untuk baris lama), id8 barisnya
+  — tetap, hanya ditautkan;
+- **Kaki 2 — bank debet "Pindah Buku"**, rekening 4 digit terakhir (mis. …6811), menggantikan baris
+  bank lama (id8) yang dibatalkan.
+
+Lalu centang **"Saya yakin ini transfer Kas Besar → bank dan kedua kaki di atas benar."** dan tekan
+**"Konfirmasi: jadikan transfer"**. Tanpa centang tombolnya mati, dan server menolak permintaan tanpa
+konfirmasi. Bila tanggal atau nominal yang dikonfirmasi sudah tidak sama dengan baris saat ini, server
+menolak dan meminta muat ulang. Konfirmasi dan kedua kaki yang ditampilkan tercatat di `audit_log`
+(`kas.transfer.koreksi`).
 
 ## Langkah
 
 1. **Finance (peran `keuangan`)** membuka `/keuangan/unit/6378301/koreksi-transfer` (Bakau).
    Daftar "Siap dikoreksi" urut terlama dulu. Untuk tiap baris **hari terbuka**: periksa tanggal,
-   rekening (BCA …6811 dst.), nominal, dan kaki Kas Besar-nya, lalu tekan **"Jadikan transfer"**.
+   rekening (BCA …6811 dst.), nominal, dan kaki Kas Besar-nya, lalu tekan **"Jadikan transfer…"** dan
+   selesaikan langkah konfirmasi di atas.
    Hasil per baris: baris bank lama dibatalkan (tetap terlihat sebagai riwayat), baris baru
    "Pindah Buku" bertanggal & bernominal sama, tertaut ke kaki Kas Besar; jurnal hari itu dibentuk
    ulang. Saldo kas & bank **tidak berubah**.
@@ -40,12 +59,15 @@ sama, dan tutup bulan Oktober ditolak.
      catatan bahwa pencocok rekening koran memakai aturan 6 untuk baris itu.
 2. Ulangi untuk **Adisucipto** (1 baris hari terbuka, Rp 160.417.000, 1 Okt, BCA …3811).
    Total langkah 1–2: 32 baris, Rp 11.080.496.000.
-3. **HoF — Bakau 22 Okt `28e717f3`** (hari tertutup): di halaman yang sama, isi **Alasan**:
+3. **HoF — Bakau 22 Okt `28e717f3`** (hari tertutup, BCA …6811, Rp 399.979.000): di halaman yang
+   sama tekan **"Jadikan transfer…"**, periksa kedua kaki, isi **Alasan**:
    *"Kaki bank transfer Kas Besar → BCA …6811 salah kategori (Setoran Hasil Penjualan → Pindah
-   Buku); 1103 terkredit dua kali. Ref REPORT6/7B."*, lalu **"Jadikan transfer"**. Staf Keuangan
-   akan ditolak di baris ini — itu disengaja.
-   - **Jangan** juga membuat jurnal memorial untuk baris ini. Bila Dion memilih jalur memorial
-     (D3), lewati langkah ini dan baris ini tidak pernah dikonversi. Satu jalur saja.
+   Buku); 1103 terkredit dua kali. Ref REPORT6/7B."*, centang **"Saya yakin"**, lalu
+   **"Konfirmasi: jadikan transfer"**. Staf Keuangan akan ditolak di baris ini — itu disengaja.
+   - **Hanya "Jadikan transfer". Tanpa jurnal memorial** (keputusan Dion D3, 11 Nov 2026 17:54 WIB).
+   - Hasil yang diharapkan: kedua kaki tetap bertanggal 22 Okt (tidak dibukukan maju), kaki bank
+     tidak lagi mengkredit 1103, 1190 kedua kaki = 0, tutup hari 22 Okt tetap `closed` dengan
+     selisih −470.
 4. **Periksa manual** (tanpa tombol) — Finance memeriksa slip setoran & rekening koran dulu (D6):
    - Imam Bonjol 1 Okt `60cd0454` dan Adisucipto 2 Okt `95a4f8a7`: lahir dari setoran pengawas
      yang disetujui langsung ke bank — setoran langsung, P2 benar. **Tidak ada tindakan.**
@@ -69,7 +91,8 @@ sama, dan tutup bulan Oktober ditolak.
 
 - Hari terbuka: "Batalkan transfer" di tab Kas Besar atau bank (kedua kaki batal), lalu Finance
   mengetik ulang baris lama bila memang perlu. `audit_log` menyimpan keduanya.
-- Hari tertutup: hanya lewat jurnal memorial HoF (disetujui Direksi).
+- Hari tertutup: tidak ada pembalikan di aplikasi. Karena itu koreksi hari tertutup butuh HoF,
+  alasan tertulis, dan konfirmasi eksplisit. Perubahan berikutnya atas hari itu = keputusan baru Dion.
 
 ## Ke depan
 
