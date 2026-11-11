@@ -10,6 +10,8 @@ import {
   tierFor,
   type Tier,
 } from "@/lib/keuangan-tutup-hari";
+import type { PenjelasanSelisihArusKas as Penjelasan } from "@/lib/selisih-arus-kas-model";
+import { PenjelasanSelisihArusKas } from "./PenjelasanSelisihArusKas";
 
 /**
  * Layar 4 — gerbang tutup hari (mockup layar 4).
@@ -47,6 +49,7 @@ export function TutupHariPanel({
   bolehMenutupTier,
   koreksiSusulan,
   galatBarisDayClose = null,
+  penjelasanArusKas = null,
 }: {
   code: string;
   date: string;
@@ -66,6 +69,11 @@ export function TutupHariPanel({
   koreksiSusulan: number | null;
   /** Galat `pastikanBarisDayClose` saat halaman dibuka; `null` = baris siap. */
   galatBarisDayClose?: string | null;
+  /**
+   * Rencana 2026-11-11-2210 — penguraian Cash flow check yang ≠ 0 (atau galat
+   * bacaannya). `null` = cek 0/belum terhitung: tak ada blok.
+   */
+  penjelasanArusKas?: Penjelasan | { galat: string } | null;
 }) {
   const [kode, setKode] = useState("");
   const [target, setTarget] = useState("");
@@ -148,6 +156,8 @@ export function TutupHariPanel({
           teks={syaratKurang.length === 0 ? "Lengkap" : `${syaratKurang.length} belum`}
         />
       </div>
+
+      {penjelasanArusKas !== null && <PenjelasanSelisihArusKas penjelasan={penjelasanArusKas} />}
 
       {/* KTD15 / R32 — koreksi susulan TERPISAH dari selisih yang dinilai. */}
       <div className="banner info keu-banner" role="status" data-koreksi-susulan>
