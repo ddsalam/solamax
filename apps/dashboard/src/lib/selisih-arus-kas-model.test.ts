@@ -147,6 +147,24 @@ describe("jelaskanSelisihArusKas — hari lain", () => {
     expect(p.petunjuk[0]!.selisihRp).toBe(1_700);
   });
 
+  it("petunjuk dibatasi tiga hari terdekat", () => {
+    const e = (tanggal: string): HariPiutang => ({
+      tanggal,
+      easymax: [{ kode: tanggal, pelanggan: "P", ref: null, keterangan: null, rp: 100 }],
+      bank: [],
+    });
+    const hari: HariPiutang[] = [
+      { tanggal: "2026-10-15", easymax: [], bank: [{ id: "x", rekening: "Kas", tanggalAsal: null, keterangan: null, rp: 100 }] },
+      e("2026-10-19"),
+      e("2026-10-11"),
+      e("2026-10-16"),
+      e("2026-10-14"),
+    ];
+    const p = jelaskan("2026-10-15", -100, hari)!;
+    expect(p.petunjuk.map((h) => h.tanggal)).toEqual(["2026-10-14", "2026-10-16", "2026-10-11"]);
+    expect(p.tanpaHariBerlawanan).toBe(false);
+  });
+
   it("invarian: Σ baris (sen) === cek (sen) untuk setiap hari & cek", () => {
     for (const [date, check] of [
       ["2026-10-26", CEK_26_OKT],

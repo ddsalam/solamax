@@ -75,7 +75,7 @@ export interface PenjelasanSelisihArusKas {
   /** Baris EasyMax & bank hari D sendiri — agar Finance bisa menyebut barisnya. */
   hariIni: HariPiutang;
   sisaDiLuarToleransi: boolean;
-  /** Hari dalam ±7 dengan baris 1 bertanda berlawanan; terdekat dulu. */
+  /** Hari dalam ±7 dengan baris 1 bertanda berlawanan; terdekat dulu, maks. `MAKS_PETUNJUK`. */
   petunjuk: PetunjukHari[];
   /** Baris 1 ≠ 0 tetapi tak ada hari berlawanan dalam ±7. */
   tanpaHariBerlawanan: boolean;
@@ -83,10 +83,18 @@ export interface PenjelasanSelisihArusKas {
   aksi: "piutang_waktu" | "sisa_di_luar_toleransi" | null;
 }
 
+/** Label kategori kas yang arusnya dari EasyMax (kunci `PETA_KATEGORI_ARUS_KAS`, `dariBukuKas: false`). */
+export const KATEGORI_PIUTANG_PELANGGAN = "Transfer Pembayaran Piutang Pelanggan";
+
+/** Penjelasan, atau galat bacaannya (R8) — bentuk yang dikirim halaman ke panel. */
+export type PenjelasanAtauGalat = PenjelasanSelisihArusKas | { galat: string };
+
 /** Rentang hari pencarian petunjuk (D−7…D+7) — sama dengan jendela kueri. */
 export const JENDELA_HARI = 7;
 /** KTD2 — pencarian subset persis hanya bila hari surplus-EasyMax ≤ 16 baris. */
 export const BATAS_BARIS_PENCARIAN = 16;
+/** Petunjuk yang dikembalikan & ditampilkan — tiga hari terdekat. */
+export const MAKS_PETUNJUK = 3;
 
 export const TEKS_AKSI_PIUTANG_WAKTU =
   "Minta kasir mencatat pembayaran di EasyMax pada tanggal bank (dianjurkan). " +
@@ -95,6 +103,8 @@ export const TEKS_AKSI_PIUTANG_WAKTU =
 
 export const TEKS_SISA_DI_LUAR_TOLERANSI =
   "Selisih di luar waktu pembayaran piutang — telusuri di baris arus kas di Laporan keuangan.";
+
+export const TEKS_SISA_DALAM_TOLERANSI = "Sisa dalam toleransi — pembulatan setoran.";
 
 export const TEKS_TANPA_HARI_BERLAWANAN =
   "Tidak ada hari dalam ±7 hari dengan selisih berlawanan — periksa tanggal pembayaran di EasyMax.";
@@ -116,30 +126,24 @@ export const rpTeks = (n: number): string => n.toLocaleString("id-ID", { maximum
 /**
  * Subset baris (berurutan) yang jumlahnya persis `targetSen`. Bila lebih dari
  * satu, yang daftar indeksnya terkecil secara leksikografis (urutan baris
- * terendah) menang. `null` bila tak ada atau baris > `BATAS_BARIS_PENCARIAN`.
+ * terendah) menang — DFS "ambil dulu, lalu lewati" menurut urutan indeks
+ * menemukannya pertama. `null` bila tak ada atau baris > `BATAS_BARIS_PENCARIAN`.
  */
 function subsetPersis(baris: readonly BarisPiutangEasymax[], targetSen: number): BarisPiutangEasymax[] | null {
   if (targetSen <= 0 || baris.length === 0 || baris.length > BATAS_BARIS_PENCARIAN) return null;
   const nilai = baris.map((b) => sen(b.rp));
-  let terbaik: number[] | null = null;
-  for (let mask = 1; mask < 1 << nilai.length; mask++) {
-    let s = 0;
-    const idx: number[] = [];
-    for (let i = 0; i < nilai.length; i++) {
-      if (mask & (1 << i)) {
-        s += nilai[i]!;
-        idx.push(i);
-      }
-    }
-    if (s !== targetSen) continue;
-    if (terbaik === null || lebihAwal(idx, terbaik)) terbaik = idx;
-  }
-  return terbaik === null ? null : terbaik.map((i) => baris[i]!);
-}
-
-function lebihAwal(a: readonly number[], b: readonly number[]): boolean {
-  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! < b[i]!;
-  return a.length < b.length;
+  // Pangkas cabang yang melampaui target hanya bila semua nilai positif.
+  const bolehPangkas = nilai.every((v) => v > 0);
+  const idx: number[] = [];
+  const cari = (i: number, s: number): boolean => {
+    if (idx.length > 0 && s === targetSen) return true;
+    if (i === nilai.length || (bolehPangkas && s > targetSen)) return false;
+    idx.push(i);
+    if (cari(i + 1, s + nilai[i]!)) return true;
+    idx.pop();
+    return cari(i + 1, s);
+  };
+  return cari(0, 0) ? idx.map((i) => baris[i]!) : null;
 }
 
 /** Kelompokkan baris kueri per tanggal (urutan baris dipertahankan). */
@@ -173,7 +177,7 @@ export function jelaskanSelisihArusKas(x: {
   const sisaDiLuarToleransi = Math.abs(sisaSen) > sen(TOLERANSI_RP);
 
   const d0 = hariKe(x.date);
-  const petunjuk: PetunjukHari[] =
+  const berlawanan =
     piutangSen === 0
       ? []
       : x.hari
@@ -182,23 +186,25 @@ export function jelaskanSelisihArusKas(x: {
             const s = selisihSen(h);
             return h.tanggal !== x.date && jarak <= JENDELA_HARI && s !== 0 && Math.sign(s) !== Math.sign(piutangSen);
           })
-          .sort((a, b) => Math.abs(hariKe(a.tanggal) - d0) - Math.abs(hariKe(b.tanggal) - d0) || a.tanggal.localeCompare(b.tanggal))
-          .map((h) => {
-            // R4 — hari surplus-bank memberi target (Σ bank-nya); subset dicari
-            // di baris EasyMax hari surplus-EasyMax.
-            const [hariEasymax, hariBank] = piutangSen > 0 ? [hariD, h] : [h, hariD];
-            const baris = subsetPersis(hariEasymax.easymax, jumlahSen(hariBank.bank));
-            return {
-              tanggal: h.tanggal,
-              selisihRp: rupiah(selisihSen(h)),
-              easymax: h.easymax,
-              bank: h.bank,
-              cocok:
-                baris === null
-                  ? null
-                  : { tanggalEasymax: hariEasymax.tanggal, tanggalBank: hariBank.tanggal, rp: rupiah(jumlahSen(baris)), baris },
-            };
-          });
+          .sort((a, b) => Math.abs(hariKe(a.tanggal) - d0) - Math.abs(hariKe(b.tanggal) - d0) || a.tanggal.localeCompare(b.tanggal));
+  const petunjuk: PetunjukHari[] = berlawanan
+      .slice(0, MAKS_PETUNJUK)
+      .map((h) => {
+        // R4 — hari surplus-bank memberi target (Σ bank-nya); subset dicari
+        // di baris EasyMax hari surplus-EasyMax.
+        const [hariEasymax, hariBank] = piutangSen > 0 ? [hariD, h] : [h, hariD];
+        const baris = subsetPersis(hariEasymax.easymax, jumlahSen(hariBank.bank));
+        return {
+          tanggal: h.tanggal,
+          selisihRp: rupiah(selisihSen(h)),
+          easymax: h.easymax,
+          bank: h.bank,
+          cocok:
+            baris === null
+              ? null
+              : { tanggalEasymax: hariEasymax.tanggal, tanggalBank: hariBank.tanggal, rp: rupiah(jumlahSen(baris)), baris },
+        };
+      });
 
   return {
     date: x.date,
@@ -212,7 +218,7 @@ export function jelaskanSelisihArusKas(x: {
     hariIni: hariD,
     sisaDiLuarToleransi,
     petunjuk,
-    tanpaHariBerlawanan: piutangSen !== 0 && petunjuk.length === 0,
+    tanpaHariBerlawanan: piutangSen !== 0 && berlawanan.length === 0,
     aksi: piutangSen !== 0 ? "piutang_waktu" : sisaDiLuarToleransi ? "sisa_di_luar_toleransi" : null,
   };
 }

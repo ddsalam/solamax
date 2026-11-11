@@ -5,9 +5,8 @@ import { READ_SALDO_PELANGGAN_LEGACY_SQL } from "./queries";
 
 vi.mock("./db", () => ({ qScoped: vi.fn(async () => []), q: vi.fn(async () => []) }));
 
-const { KATEGORI_PIUTANG_PELANGGAN, SQL_PEMBAYARAN_PIUTANG_SEKITAR, namaAkunSamar } = await import(
-  "./selisih-arus-kas-queries"
-);
+const { SQL_PEMBAYARAN_PIUTANG_SEKITAR, namaAkunSamar } = await import("./selisih-arus-kas-queries");
+const { KATEGORI_PIUTANG_PELANGGAN } = await import("./selisih-arus-kas-model");
 
 /**
  * Bentuk SQL penjelasan selisih (U2; R2, R7). ⚠️ Batas: SQL tidak dijalankan

@@ -23,7 +23,7 @@ import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { qScoped } from "@/lib/db";
 import { getDataScope } from "@/lib/scope";
 import { getPembayaranPiutangSekitar } from "@/lib/selisih-arus-kas-queries";
-import { jelaskanSelisihArusKas, type PenjelasanSelisihArusKas } from "@/lib/selisih-arus-kas-model";
+import { jelaskanSelisihArusKas, type PenjelasanAtauGalat } from "@/lib/selisih-arus-kas-model";
 import { DATE_RE } from "@/lib/selection-keys";
 
 export const dynamic = "force-dynamic";
@@ -98,7 +98,7 @@ export default async function TutupHariPage({
   const cf = panelCashFlow(cashFlowInputDari(bahan));
   // Rencana 2026-11-11-2210 (KTD1/KTD3) — cek DIURAI, tidak dihitung ulang;
   // dibaca hanya bila ≠ 0. Galat ditampilkan, tidak ditelan dan tidak ditebak.
-  let penjelasanArusKas: PenjelasanSelisihArusKas | { galat: string } | null = null;
+  let penjelasanArusKas: PenjelasanAtauGalat | null = null;
   if (cf.pemeriksa.nilai !== null && cf.pemeriksa.nilai !== 0) {
     try {
       penjelasanArusKas = jelaskanSelisihArusKas({

@@ -1,25 +1,25 @@
+import { id8 } from "@/lib/transfer-kas-model";
 import {
+  KATEGORI_PIUTANG_PELANGGAN,
   kalimatCocok,
   kalimatPiutangWaktu,
   rpTeks,
   tanggalPendek,
   TEKS_AKSI_PIUTANG_WAKTU,
+  TEKS_SISA_DALAM_TOLERANSI,
   TEKS_SISA_DI_LUAR_TOLERANSI,
   TEKS_TANPA_HARI_BERLAWANAN,
   type HariPiutang,
-  type PenjelasanSelisihArusKas as Penjelasan,
+  type PenjelasanAtauGalat,
   type PetunjukHari,
 } from "@/lib/selisih-arus-kas-model";
-
-/** Petunjuk yang ditampilkan — tiga hari terdekat. */
-const MAKS_PETUNJUK = 3;
 
 /**
  * "Penjelasan selisih arus kas" di Tutup hari (rencana 2026-11-11-2210 U3;
  * R1, R3–R5, R8). Presentasi saja: angka & pilihan teks datang dari
  * `jelaskanSelisihArusKas`. Kartu Cash flow check tidak diubah.
  */
-export function PenjelasanSelisihArusKas({ penjelasan }: { penjelasan: Penjelasan | { galat: string } }) {
+export function PenjelasanSelisihArusKas({ penjelasan }: { penjelasan: PenjelasanAtauGalat }) {
   if ("galat" in penjelasan) {
     return (
       <div className="banner danger keu-banner" role="alert" data-penjelasan-arus-kas="galat">
@@ -63,7 +63,7 @@ export function PenjelasanSelisihArusKas({ penjelasan }: { penjelasan: Penjelasa
       </div>
       <p className="keu-p">
         Pembayaran/pengurangan piutang di EasyMax {tanggalPendek(p.date)}: Rp {rpTeks(p.easymax.rp)} ({p.easymax.n} baris).
-        Diterima rekening dengan kategori “Transfer Pembayaran Piutang Pelanggan”: Rp {rpTeks(p.bank.rp)} ({p.bank.n}{" "}
+        Diterima rekening dengan kategori “{KATEGORI_PIUTANG_PELANGGAN}”: Rp {rpTeks(p.bank.rp)} ({p.bank.n}{" "}
         baris).
       </p>
       {(p.hariIni.easymax.length > 0 || p.hariIni.bank.length > 0) && (
@@ -74,7 +74,7 @@ export function PenjelasanSelisihArusKas({ penjelasan }: { penjelasan: Penjelasa
       {kalimat !== null && <p className="keu-p">{kalimat}</p>}
       {p.petunjuk.length > 0 && (
         <ul className="keu-p" data-petunjuk>
-          {p.petunjuk.slice(0, MAKS_PETUNJUK).map((h) => (
+          {p.petunjuk.map((h) => (
             <Petunjuk key={h.tanggal} h={h} />
           ))}
         </ul>
@@ -90,7 +90,7 @@ export function PenjelasanSelisihArusKas({ penjelasan }: { penjelasan: Penjelasa
           <strong>{TEKS_SISA_DI_LUAR_TOLERANSI}</strong>
         </p>
       )}
-      {p.aksi === null && <p className="keu-p">Sisa dalam toleransi — pembulatan setoran.</p>}
+      {p.aksi === null && <p className="keu-p">{TEKS_SISA_DALAM_TOLERANSI}</p>}
     </div>
   );
 }
@@ -113,7 +113,7 @@ function RincianBaris({ h }: { h: HariPiutang }) {
   return (
     <>
       {h.easymax.length > 0 && <>EasyMax: {h.easymax.map((e) => `${e.pelanggan} ${rpTeks(e.rp)}${ket(e.keterangan)}`).join(", ")}. </>}
-      {h.bank.length > 0 && <>Bank: {h.bank.map((b) => `${b.id.slice(0, 8)} ${b.rekening} ${rpTeks(b.rp)}${ket(b.keterangan)}`).join(", ")}.</>}
+      {h.bank.length > 0 && <>Bank: {h.bank.map((b) => `${id8(b.id)} ${b.rekening} ${rpTeks(b.rp)}${ket(b.keterangan)}`).join(", ")}.</>}
     </>
   );
 }

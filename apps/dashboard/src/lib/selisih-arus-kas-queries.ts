@@ -1,7 +1,7 @@
 import { qScoped } from "./db";
 import type { ScopedUnitId } from "./scope-rule";
 import { DATE_RE } from "./selection-keys";
-import { kelompokkanPerHari, JENDELA_HARI, type HariPiutang } from "./selisih-arus-kas-model";
+import { kelompokkanPerHari, JENDELA_HARI, KATEGORI_PIUTANG_PELANGGAN, type HariPiutang } from "./selisih-arus-kas-model";
 
 /**
  * Bacaan penjelasan selisih Cash flow check (rencana 2026-11-11-2210 U2;
@@ -17,9 +17,6 @@ import { kelompokkanPerHari, JENDELA_HARI, type HariPiutang } from "./selisih-ar
  * bukan saldo awal, menurut `business_date` (hari buku) — sama dengan sisi
  * kas cek (`arusBukuKas`/`sisiKasPada`), BUKAN `tanggal_asal`.
  */
-
-/** Label kategori kas yang arusnya dari EasyMax (`PETA_KATEGORI_ARUS_KAS`, `dariBukuKas: false`). */
-export const KATEGORI_PIUTANG_PELANGGAN = "Transfer Pembayaran Piutang Pelanggan";
 
 export const SQL_PEMBAYARAN_PIUTANG_SEKITAR = `
 SELECT 'easymax' AS sisi,

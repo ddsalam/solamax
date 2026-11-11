@@ -10,7 +10,7 @@ import {
   tierFor,
   type Tier,
 } from "@/lib/keuangan-tutup-hari";
-import type { PenjelasanSelisihArusKas as Penjelasan } from "@/lib/selisih-arus-kas-model";
+import type { PenjelasanAtauGalat } from "@/lib/selisih-arus-kas-model";
 import { PenjelasanSelisihArusKas } from "./PenjelasanSelisihArusKas";
 
 /**
@@ -73,7 +73,7 @@ export function TutupHariPanel({
    * Rencana 2026-11-11-2210 — penguraian Cash flow check yang ≠ 0 (atau galat
    * bacaannya). `null` = cek 0/belum terhitung: tak ada blok.
    */
-  penjelasanArusKas?: Penjelasan | { galat: string } | null;
+  penjelasanArusKas?: PenjelasanAtauGalat | null;
 }) {
   const [kode, setKode] = useState("");
   const [target, setTarget] = useState("");

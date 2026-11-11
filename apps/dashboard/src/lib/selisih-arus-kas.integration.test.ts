@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import type { ScopedUnitId } from "./scope-rule";
 
+import { KATEGORI_PIUTANG_PELANGGAN } from "./selisih-arus-kas-model";
+
 type Q = typeof import("./selisih-arus-kas-queries");
 
 /**
@@ -153,7 +155,7 @@ d("getPembayaranPiutangSekitar — DB lokal nyata, dashboard_app di bawah RLS", 
   });
 
   it("RLS fail-closed: tanpa app.unit_ids, dashboard_app tak melihat satu baris pun", async () => {
-    const r = await dash.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, Qm.KATEGORI_PIUTANG_PELANGGAN]);
+    const r = await dash.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, KATEGORI_PIUTANG_PELANGGAN]);
     expect(r.rowCount).toBe(0);
     // Kontrol positif: SQL yang sama dengan konteks unit B (unit lain) juga nol,
     // dengan konteks unit A tidak — jadi nol di atas memang dari RLS.
@@ -161,9 +163,9 @@ d("getPembayaranPiutangSekitar — DB lokal nyata, dashboard_app di bawah RLS", 
     try {
       await c.query("BEGIN");
       await c.query("SELECT set_config('app.unit_ids', $1, true)", [String(B)]);
-      expect((await c.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, Qm.KATEGORI_PIUTANG_PELANGGAN])).rowCount).toBe(0);
+      expect((await c.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, KATEGORI_PIUTANG_PELANGGAN])).rowCount).toBe(0);
       await c.query("SELECT set_config('app.unit_ids', $1, true)", [String(A)]);
-      expect((await c.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, Qm.KATEGORI_PIUTANG_PELANGGAN])).rowCount).toBe(4);
+      expect((await c.query(Qm.SQL_PEMBAYARAN_PIUTANG_SEKITAR, [A, D, KATEGORI_PIUTANG_PELANGGAN])).rowCount).toBe(4);
     } finally {
       await c.query("ROLLBACK").catch(() => {});
       c.release();
