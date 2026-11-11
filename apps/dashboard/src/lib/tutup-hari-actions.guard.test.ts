@@ -148,7 +148,7 @@ describe("§10.15 — baris day_close lahir saat halaman dibuka", () => {
       KODE.indexOf("export async function pastikanBarisDayClose"),
       KODE.indexOf("const client = await pool.connect()", KODE.indexOf("pastikanBarisDayClose")),
     );
-    expect(fn).toMatch(/if \(langkahHarian === null\) return;/);
+    expect(fn).toMatch(/if \(langkahHarian === null\) return \{ ok: true \};/);
   });
 
   it("🔴 unitId ber-BRAND ScopedUnitId, bukan number mentah", () => {
@@ -168,8 +168,20 @@ describe("§10.15 — baris day_close lahir saat halaman dibuka", () => {
     // Gerbangnya masih bisa dibaca, dan `tutupHari` menolak sendiri bila
     // barisnya tak ada — jadi gagal di sini tak boleh jadi layar error.
     const fn = KODE.slice(KODE.indexOf("export async function pastikanBarisDayClose"));
-    expect(fn).toMatch(/catch \{/);
+    expect(fn).toMatch(/catch \(e\) \{/);
     expect(fn).not.toMatch(/throw /);
+  });
+
+  it("🔴 …tetapi galatnya TIDAK DITELAN: dicatat, dikembalikan, dan ditampilkan halaman (2026-11-11)", () => {
+    // `catch {}` yang menelan galat menyembunyikan cacat CHECK 0026 berbulan-
+    // bulan: `day_close` 0 baris di ketujuh unit, tanpa satu pun jejak di log.
+    const fn = KODE.slice(KODE.indexOf("export async function pastikanBarisDayClose"));
+    expect(fn).toMatch(/Promise<HasilBarisDayClose>/);
+    expect(fn).toMatch(/console\.error\(/);
+    expect(fn).toMatch(/kode === "23505"/);
+    expect(HAL).toMatch(/const barisDayClose = await pastikanBarisDayClose\(/);
+    expect(HAL).toMatch(/galatBarisDayClose=\{barisDayClose\.ok \? null : barisDayClose\.pesan\}/);
+    expect(PANEL).toMatch(/galatBarisDayClose &&/);
   });
 });
 

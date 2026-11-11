@@ -204,6 +204,46 @@ export function perluKeputusanFinance(b: BarisShiftEdc): boolean {
   return bolehDisetujui(b) || b.berubahSesudahDiposting;
 }
 
+/** Satu sel (shift × bank) dari EasyMax yang belum terposting ke buku. */
+export interface SelEdcBelumDiposting {
+  cshift: string;
+  acquirer: string;
+  easymaxRp: number;
+  status: Exclude<StatusShiftEdc, "dibukukan">;
+}
+
+export interface EdcBelumDiposting {
+  sel: SelEdcBelumDiposting[];
+  /** Kode kartu EasyMax tanpa peta bank — tak bisa dicek, apalagi diposting. */
+  kartuTanpaPeta: KartuTanpaPeta[];
+  /** Jumlah bruto EasyMax sel + kartu tanpa peta di atas. */
+  totalRp: number;
+}
+
+/**
+ * Kelengkapan tutup hari — EDC per shift yang belum diposting (2026-11-11).
+ *
+ * Membaca HASIL {@link rakitShiftEdc}, jadi selnya persis sel layar pengawas
+ * (blank-card sudah tersisih di `SQL_EDC_PER_SHIFT`). Sel dihitung bila ia
+ * punya transaksi EasyMax DAN statusnya bukan `dibukukan` — belum dicek,
+ * ditahan (cocok/selisih), atau ceknya basi. Cek tanpa transaksi EasyMax
+ * (kelompoknya lenyap dari POS) tidak dihitung: tak ada penjualan untuk
+ * diposting. Kartu tanpa peta ikut: penjualannya nyata tetapi tak bisa diposting.
+ */
+export function edcBelumDiposting(r: {
+  baris: readonly BarisShiftEdc[];
+  kartuTanpaPeta: readonly KartuTanpaPeta[];
+}): EdcBelumDiposting {
+  const sel: SelEdcBelumDiposting[] = [];
+  for (const b of r.baris) {
+    if (b.nTransaksi <= 0 || b.status === "dibukukan") continue;
+    sel.push({ cshift: b.cshift, acquirer: b.acquirer, easymaxRp: b.easymaxRp, status: b.status });
+  }
+  const totalRp =
+    sel.reduce((s, x) => s + x.easymaxRp, 0) + r.kartuTanpaPeta.reduce((s, k) => s + k.rp, 0);
+  return { sel, kartuTanpaPeta: [...r.kartuTanpaPeta], totalRp };
+}
+
 export type VonisCekSlip = "terposting" | "ditahan";
 
 /** Kalimat hasil yang dilihat pengawas sesudah menyimpan cek (R15, R16). */
