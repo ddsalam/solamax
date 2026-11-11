@@ -79,7 +79,9 @@ export default async function TutupHariPage({
   const langkahAwal = rinci.dinilai;
   // §10.15 — barisnya lahir SAAT HALAMAN DIBUKA, bukan dari job harian. Baris
   // yang sudah TERTUTUP tidak pernah disentuh (dijaga `WHERE status='open'`).
-  await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
+  // Galatnya TIDAK ditelan (2026-11-11): ditampilkan di panel, bukan disamarkan
+  // menjadi "belum punya baris penilaian" saat tombol tutup ditekan.
+  const barisDayClose = await pastikanBarisDayClose(unit.unit_id, date, langkahAwal, rinci.koreksiSusulan);
 
   // `getDayClose` SESUDAH `pastikanBarisDayClose` — ia membaca baris yang baru lahir.
   const bahan = bahanAwal;
@@ -172,6 +174,7 @@ export default async function TutupHariPage({
           sudahDitutup={dayClose?.status === "closed"}
           bolehMenutupTier={bolehMenutupTier}
           koreksiSusulan={koreksiSusulan}
+          galatBarisDayClose={barisDayClose.ok ? null : barisDayClose.pesan}
         />
         <TutupHariSusulan code={unit.code} date={date} maju={maju} parkir={parkir} koreksiSusulan={koreksiSusulan} />
       </div>

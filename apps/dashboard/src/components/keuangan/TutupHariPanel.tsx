@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { tutupHari } from "@/lib/tutup-hari-actions";
 import type { KelengkapanInput, OverrideRow } from "@/lib/keuangan-input-queries";
+import { syaratKelengkapan } from "@/lib/keuangan-kelengkapan";
 import {
   BATAS_HOF_RP,
   TOLERANSI_RP,
@@ -45,6 +46,7 @@ export function TutupHariPanel({
   sudahDitutup,
   bolehMenutupTier,
   koreksiSusulan,
+  galatBarisDayClose = null,
 }: {
   code: string;
   date: string;
@@ -62,6 +64,8 @@ export function TutupHariPanel({
    * TERPISAH dan tidak ikut menentukan tier. `null` = belum terhitung.
    */
   koreksiSusulan: number | null;
+  /** Galat `pastikanBarisDayClose` saat halaman dibuka; `null` = baris siap. */
+  galatBarisDayClose?: string | null;
 }) {
   const [kode, setKode] = useState("");
   const [target, setTarget] = useState("");
@@ -74,17 +78,8 @@ export function TutupHariPanel({
   const rc = reasonCodes.find((r) => r.code === kode) ?? null;
   const butuhTarget = rc?.requiresTarget === true;
 
-  const syaratKurang: string[] = [];
-  if (!kelengkapan.hargaBeliLengkap) {
-    syaratKurang.push(`${kelengkapan.produkTanpaHarga} produk belum punya harga beli`);
-  }
-  if (!kelengkapan.adaAkunKas) syaratKurang.push("belum ada akun kas");
-  if (kelengkapan.settlementBelumCair > 0) {
-    syaratKurang.push(`${kelengkapan.settlementBelumCair} settlement EDC belum disetujui`);
-  }
-  if (kelengkapan.biayaMenungguTinjauan > 0) {
-    syaratKurang.push(`${kelengkapan.biayaMenungguTinjauan} baris biaya menunggu tinjauan`);
-  }
+  // Peringatan saja — kelengkapan TIDAK menahan tombol tutup.
+  const syaratKurang = syaratKelengkapan(kelengkapan);
 
   const tutup = (): void => {
     setErr(null);
@@ -229,6 +224,11 @@ export function TutupHariPanel({
         </p>
       </div>
 
+      {galatBarisDayClose && !sudahDitutup && (
+        <div className="banner danger keu-banner" role="alert" data-galat-baris-day-close>
+          {galatBarisDayClose}
+        </div>
+      )}
       {msg !== null && (
         <div className="banner info keu-banner" role="status">
           {msg}

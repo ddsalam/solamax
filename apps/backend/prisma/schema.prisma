@@ -870,6 +870,9 @@ enum DayCloseTier {
 // dinolkan, termasuk yang ≤ Rp 10.000). `reasonRequiresTarget` adalah bayangan
 // reason_code.requires_target_date yang dikunci FK KOMPOSIT — itulah yang
 // membuat CHECK tanggal-target membaca DATA, bukan menghardcode nama kode.
+// CHECK `day_close_reason_required` (0061, menggantikan 0026): kode alasan wajib
+// untuk selisih bukan nol HANYA pada baris `closed` — baris `open` lahir saat
+// Layar 4 dibuka, sebelum ada yang memilih kode.
 model DayClose {
   unitId       Int            @map("unit_id") @db.SmallInt
   businessDate DateTime       @map("business_date") @db.Date
