@@ -8,7 +8,7 @@ import { kategoriCocok, tandaCocok, type JenisMutasi, type SisiKategori } from "
 import { PESAN_TAK_BOLEH_INPUT, alasanTakBolehInput, canNonaktifkanAkunKas } from "./keuangan-wewenang";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
 import { hariBukuTerkunci } from "./hari-buku-queries";
-import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen, teksKeSen } from "./pihak-lawan-model";
+import { kategoriPihakLawan, periksaPecahan, periksaPihakLawanMutasi, rupiahKeSen } from "./pihak-lawan-model";
 import { bacaPihakLawanTerkunci } from "./pihak-lawan-tulis";
 import { KATEGORI_OPERASIONAL, sectionBeban } from "./klasifikasi-model";
 import { INSERT_KAS_KLASIFIKASI, tulisBebanFinance } from "./klasifikasi-tulis";
@@ -19,6 +19,7 @@ import { auditKeuangan } from "./keuangan-tx";
 import { KODE_MAJU_IMPOR as KODE_MAJU_PECAHAN } from "./keuangan-kode-maju";
 import { kategoriPenebusan, lewatPenebusan } from "./penebusan-model";
 import { kakiTransferTerlewat, PESAN_TOLAK_TANPA_KONFIRMASI } from "./transfer-kas-model";
+import { bacaKasKeluarHari } from "./transfer-kas-tulis";
 import { KATEGORI_SETORAN } from "./cocok-bank-model";
 
 /**
@@ -173,18 +174,9 @@ export async function simpanMutasiKas(input: MutasiInput): Promise<KasResult> {
     let konfirmasiBukanTransfer = false;
     const sen = rupiahKeSen(input.amount);
     if (setoranDiBank && kindAkun === "bank" && sen !== null) {
-      const kasHari = await client.query<{ id: string; tanggal: string; kategori: string | null; amount: string; transferUuid: string | null; void: boolean }>(
-        `SELECT l.id::text AS id, to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.category_label AS kategori,
-                l.amount::text AS amount, l.transfer_uuid::text AS "transferUuid", l.void
-           FROM app.cash_ledger l
-           JOIN app.cash_account a ON a.id = l.account_id AND a.unit_id = l.unit_id
-          WHERE l.unit_id = $1 AND a.kind = 'kas' AND l.business_date = $2::date
-            AND NOT l.void AND l.jenis = 'kredit'`,
-        [unit.unit_id, input.date],
-      );
       const terlewat = kakiTransferTerlewat(
         { accountKind: kindAkun, jenis: input.jenis, kategori: input.categoryLabel, amountSen: sen, tanggal: input.date },
-        kasHari.rows.map((k) => ({ ...k, amountSen: teksKeSen(k.amount) })),
+        await bacaKasKeluarHari(client, unit.unit_id, input.date),
       );
       if (terlewat && input.bukanTransfer !== true) {
         await client.query("ROLLBACK");

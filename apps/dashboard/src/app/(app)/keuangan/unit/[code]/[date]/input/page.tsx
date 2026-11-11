@@ -105,9 +105,10 @@ export default async function InputKeuanganPage({
   const bolehSettlement = canKelolaSettlementEdc({ role: scope.role, email: scope.email });
   // Rencana 2026-11-11 U6 — tautan "baris bank tampaknya transfer" hanya bagi
   // yang boleh mengoreksinya; yang lain tak perlu membayar kuerinya.
-  const nKoreksiTransfer = canJadikanTransfer({ role: scope.role, email: scope.email })
-    ? (await getKoreksiTransfer(unit.unit_id)).siap.length
-    : 0;
+  // Dimulai sekarang, ditunggu di render — jalan sejajar dengan kueri lain.
+  const nKoreksiTransferP = canJadikanTransfer({ role: scope.role, email: scope.email })
+    ? getKoreksiTransfer(unit.unit_id).then((k) => k.siap.length)
+    : Promise.resolve(0);
 
   const [produk, buyRows, sellHistory, akun, mutasi, kategori, setoran, pihakLawan] = await Promise.all([
     getProdukUnit(unit.unit_id),
@@ -144,6 +145,7 @@ export default async function InputKeuanganPage({
     getReasonCodeVoid(unit.unit_id),
     getReasonCodeBalik(unit.unit_id),
   ]);
+  const nKoreksiTransfer = await nKoreksiTransferP;
   const perluDitautkan = susunPerluDitautkan(kasTautan, bebanTautan);
   const rekeningEdc = versiRekening.filter((v) => !v.void);
   const namaEdc = [

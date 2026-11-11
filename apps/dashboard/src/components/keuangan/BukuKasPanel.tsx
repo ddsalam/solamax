@@ -52,13 +52,6 @@ const LABEL_BARIS_SISTEM: Record<BarisSistem, string> = {
   transfer: "transfer",
 };
 
-/** Sen POSITIF dari isian nominal debet/kredit, atau `null` (dipakai penjaga kaki transfer). */
-const hNominalAwal = (teks: string, jenis: JenisMutasi): number | null => {
-  if (jenis === "adjustment") return null;
-  const h = bacaRupiah(teks);
-  return h.keadaan === "sah" && h.nilai !== 0 ? rupiahKeSen(Math.abs(h.nilai)) : null;
-};
-
 const rp = (n: number): string =>
   n.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
@@ -142,25 +135,6 @@ export function BukuKasPanel({
   // predikat yang sama ditegakkan `simpanMutasiBeban`.
   const modeBeban = jenis !== "adjustment" ? kategoriBeban(katTerpilih?.label) : null;
   const butuhJenisBiaya = jenis !== "adjustment" && butuhKategoriOperasional(katTerpilih?.label);
-  // Rencana 2026-11-11 R13/KTD8 — debet "Setoran Hasil Penjualan" di tab bank
-  // bernominal sama dengan kaki keluar Kas Besar hari ini: peringatan sebelum
-  // simpan. Predikat yang SAMA ditegakkan ulang di `simpanMutasiKas`.
-  const senKetik = hNominalAwal(nominal, jenis);
-  const kasHariIni = kasBesar ? (bukuPerAkun[kasBesar.id] ?? []) : [];
-  const transferTerlewat =
-    jenis === "debet" &&
-    senKetik !== null &&
-    kakiTransferTerlewat(
-      { accountKind: akunTerbuka?.kind, jenis, kategori: katTerpilih?.label ?? null, amountSen: senKetik, tanggal: date },
-      kasHariIni.map((b) => ({
-        id: b.id,
-        tanggal: b.businessDate,
-        kategori: b.categoryLabel,
-        amountSen: rupiahKeSen(b.amount) ?? 0,
-        transferUuid: b.transferUuid ?? null,
-        void: b.void,
-      })),
-    );
   const posDari = (k: string): string | null => peta.find((p) => p.category === k)?.account ?? null;
   const catatanBeban =
     modeBeban === "biaya_operasional"
@@ -176,6 +150,26 @@ export function BukuKasPanel({
   // Penyesuaian satu-satunya jenis yang arahnya tak tersirat dari namanya —
   // hanya di sana minus boleh diketik (dulu mustahil: semua non-digit dibuang).
   const hNominal = bacaRupiah(nominal, { bolehNegatif: jenis === "adjustment" });
+  // Rencana 2026-11-11 R13/KTD8 — debet "Setoran Hasil Penjualan" di tab bank
+  // bernominal sama dengan kaki keluar Kas Besar hari ini: peringatan sebelum
+  // simpan. Predikat yang SAMA ditegakkan ulang di `simpanMutasiKas`.
+  const senKetik =
+    jenis !== "adjustment" && hNominal.keadaan === "sah" && hNominal.nilai !== 0 ? rupiahKeSen(Math.abs(hNominal.nilai)) : null;
+  const kasHariIni = kasBesar ? (bukuPerAkun[kasBesar.id] ?? []) : [];
+  const transferTerlewat =
+    jenis === "debet" &&
+    senKetik !== null &&
+    kakiTransferTerlewat(
+      { accountKind: akunTerbuka?.kind, jenis, kategori: katTerpilih?.label ?? null, amountSen: senKetik, tanggal: date },
+      kasHariIni.map((b) => ({
+        id: b.id,
+        tanggal: b.businessDate,
+        kategori: b.categoryLabel,
+        amountSen: rupiahKeSen(b.amount) ?? 0,
+        transferUuid: b.transferUuid ?? null,
+        void: b.void,
+      })),
+    );
   const angka = (): number => {
     if (hNominal.keadaan !== "sah" || hNominal.nilai === 0) return NaN;
     const n = hNominal.nilai;

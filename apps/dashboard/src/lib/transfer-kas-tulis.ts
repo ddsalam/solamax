@@ -7,6 +7,7 @@ import { KODE_MAJU_TRANSFER } from "./keuangan-kode-maju";
 import { auditKeuangan, type Aktor } from "./keuangan-tx";
 import { teksKeSen } from "./pihak-lawan-model";
 import type { ScopedUnitId } from "./scope";
+import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 import {
   KATEGORI_KAKI_BANK,
   KATEGORI_KELUAR_KAS_BESAR,
@@ -50,14 +51,31 @@ const INSERT_KAKI_TRANSFER = `INSERT INTO app.cash_ledger
                $10::date,$11,$12,$13::uuid)
        RETURNING id::text AS id`;
 
-/** Bulan `tanggal` sudah ditutup (K5/U12)? */
+/**
+ * Bulan `tanggal` sudah ditutup? Lewat `bulanTertutupTerkunci` — kunci BERSAMA
+ * bulan diambil dulu, jadi "Tutup bulan" yang berjalan menunggu tulisan ini.
+ * Urutan kunci selalu bulan → hari (pola `batal-balik-tulis.ts`).
+ */
 async function bulanTertutup(c: PoolClient, unitId: ScopedUnitId, tanggal: string): Promise<boolean> {
-  const r = await c.query(
-    `SELECT 1 AS ada FROM app.tutup_bulan
-      WHERE unit_id = $1 AND bulan = date_trunc('month', $2::date)::date`,
-    [unitId, tanggal],
+  return (await bulanTertutupTerkunci(c, unitId, [tanggal.slice(0, 7)])).length > 0;
+}
+
+/**
+ * Kaki keluar Kas Besar (kredit P6, non-void) pada satu hari buku — bahan
+ * `kakiTransferTerlewat` (penjaga tab bank) dan pemeriksaan ulang calon
+ * "Jadikan transfer". Satu kueri untuk keduanya.
+ */
+export async function bacaKasKeluarHari(c: PoolClient, unitId: ScopedUnitId, tanggal: string): Promise<BarisKasBesar[]> {
+  const r = await c.query<{ id: string; tanggal: string; kategori: string | null; amount: string; transferUuid: string | null; void: boolean }>(
+    `SELECT l.id::text AS id, to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.category_label AS kategori,
+            l.amount::text AS amount, l.transfer_uuid::text AS "transferUuid", l.void
+       FROM app.cash_ledger l
+       JOIN app.cash_account a ON a.id = l.account_id AND a.unit_id = l.unit_id
+      WHERE l.unit_id = $1 AND a.kind = 'kas' AND l.business_date = $2::date
+        AND NOT l.void AND l.category_label = ANY($3::text[])`,
+    [unitId, tanggal, KATEGORI_KELUAR_KAS_BESAR],
   );
-  return r.rows.length > 0;
+  return r.rows.map((k) => ({ ...k, amountSen: teksKeSen(k.amount) }));
 }
 
 /**
@@ -183,11 +201,12 @@ export async function tulisBatalTransfer(
   );
   const legs = kaki.rows;
   const hari = legs.map((l) => l.hari);
+  const bulanTutup = legs.length === 2 && (await bulanTertutup(c, m.unitId, hari[0]!));
   const tolak = vonisBatalTransfer({
     legs,
     dicocokkan: legs.some((l) => l.dicocokkan),
     hariTutup: legs.length === 2 && (await adaHariTertutup(c, m.unitId, hari)),
-    bulanTutup: legs.length === 2 && (await bulanTertutup(c, m.unitId, hari[0]!)),
+    bulanTutup,
   });
   if (tolak !== null) return { ok: false, error: tolak };
 
@@ -282,25 +301,17 @@ export async function tulisJadikanTransfer(
 
   // Calon dibaca ulang terhadap SEMUA kaki keluar Kas Besar hari itu: satu
   // kaki Kas Besar kedua bernominal sama membuat pasangannya tak lagi tunggal.
-  const kasHari = await c.query<{ id: string; tanggal: string; kategori: string | null; amount: string; transferUuid: string | null; void: boolean }>(
-    `SELECT l.id::text AS id, to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.category_label AS kategori,
-            l.amount::text AS amount, l.transfer_uuid::text AS "transferUuid", l.void
-       FROM app.cash_ledger l
-       JOIN app.cash_account a ON a.id = l.account_id AND a.unit_id = l.unit_id
-      WHERE l.unit_id = $1 AND a.kind = 'kas' AND l.business_date = $2::date
-        AND NOT l.void AND l.category_label = ANY($3::text[])`,
-    [m.unitId, bank.tanggal, KATEGORI_KELUAR_KAS_BESAR],
-  );
-  const kasRows: BarisKasBesar[] = kasHari.rows.map((k) => ({ ...k, amountSen: teksKeSen(k.amount) }));
+  const kasRows = await bacaKasKeluarHari(c, m.unitId, bank.tanggal);
   const calon = kandidatJadikanTransfer(
     [{ id: bank.id, accountId: bank.accountId, tanggal: bank.tanggal, kategori: bank.kategori, amountSen: teksKeSen(bank.amount), transferUuid: bank.transferUuid, void: bank.void, dibuat: bank.dibuat, dariSetoranPengawas: bank.dariSetoranPengawas }],
     kasRows,
   );
   if (calon.siap.length !== 1 || calon.siap[0]!.kas.id !== kas.id) return { ok: false, error: BERUBAH };
 
+  const bulanTutup = await bulanTertutup(c, m.unitId, bank.tanggal);
   const hariTutup = await adaHariTertutup(c, m.unitId, [bank.tanggal]);
   const tolak = vonisJadikanTransfer({
-    bulanTutup: await bulanTertutup(c, m.unitId, bank.tanggal),
+    bulanTutup,
     hariTutup,
     dicocokkan: bank.dicocokkan || kas.dicocokkan,
     bolehHariTutup: m.bolehHariTutup,

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import type { ScopedUnitId } from "./scope";
-import { galatKunciGanda, tulisBatalTransfer, tulisJadikanTransfer, tulisTransferKeBank } from "./transfer-kas-tulis";
+
+type Tulis = typeof import("./transfer-kas-tulis");
 
 /**
  * TRANSFER KAS BESAR → BANK di Postgres NYATA (rencana 2026-11-11 U1/U3/U6) —
@@ -33,10 +34,16 @@ const BESOK = "2026-10-15";
 d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
   let pool: Pool;
   let applied = false;
+  // Diimpor sesudah DATABASE_URL di-set: modul itu menarik `db.ts` lewat `tutup-bulan-queries`.
+  let tulisTransferKeBank: Tulis["tulisTransferKeBank"];
+  let tulisBatalTransfer: Tulis["tulisBatalTransfer"];
+  let tulisJadikanTransfer: Tulis["tulisJadikanTransfer"];
+  let galatKunciGanda: Tulis["galatKunciGanda"];
   const akun = { kas: "", bank: "", bankB: "" };
 
   beforeAll(async () => {
     process.env.DATABASE_URL ??= process.env.TRANSFER_DB_URL;
+    ({ tulisTransferKeBank, tulisBatalTransfer, tulisJadikanTransfer, galatKunciGanda } = await import("./transfer-kas-tulis"));
     pool = new Pool({ connectionString: process.env.TRANSFER_DB_URL, max: 4 });
     const db = await pool.query<{ db: string; ada: boolean }>(
       `SELECT current_database() AS db,

@@ -46,6 +46,8 @@ async function buka(code: string): Promise<Buka> {
   return { boleh: true, scope, unit };
 }
 
+const PESAN_SUDAH_ADA = "Transfer ini sudah tercatat — tidak ditulis dua kali.";
+
 const halamanInput = (code: string, d: string): string => `/keuangan/unit/${code}/${d}/input`;
 const halamanKoreksi = (code: string): string => `/keuangan/unit/${code}/koreksi-transfer`;
 const rp = (sen: number): string =>
@@ -93,7 +95,7 @@ export async function catatTransferKeBank(input: TransferInput): Promise<Transfe
     });
     if (!r.ok || r.sudahAda) {
       await batal(client);
-      return r.ok ? { ok: true, sudahAda: true, pesan: "Transfer ini sudah tercatat — tidak ditulis dua kali." } : r;
+      return r.ok ? { ok: true, sudahAda: true, pesan: PESAN_SUDAH_ADA } : r;
     }
     await bentukJurnalSesudahTulis(client, unit.unit_id, aktor);
     await client.query("COMMIT");
@@ -109,7 +111,7 @@ export async function catatTransferKeBank(input: TransferInput): Promise<Transfe
   } catch (e) {
     await batal(client);
     // Dua kiriman bersamaan dengan kunci sama: yang kedua menabrak indeks unik 0062.
-    if (galatKunciGanda(e)) return { ok: true, sudahAda: true, pesan: "Transfer ini sudah tercatat — tidak ditulis dua kali." };
+    if (galatKunciGanda(e)) return { ok: true, sudahAda: true, pesan: PESAN_SUDAH_ADA };
     return { ok: false, error: e instanceof Error ? e.message : "Gagal menyimpan transfer." };
   } finally {
     client.release();
