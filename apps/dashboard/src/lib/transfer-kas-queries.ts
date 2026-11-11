@@ -5,6 +5,7 @@ import { teksKeSen } from "./pihak-lawan-model";
 import type { ScopedUnitId } from "./scope";
 import {
   KATEGORI_KELUAR_KAS_BESAR,
+  empatDigitRekening,
   kandidatJadikanTransfer,
   type BarisBankKoreksi,
   type BarisKasBesar,
@@ -21,6 +22,8 @@ export interface BarisKoreksiTampil {
   bankId: string;
   tanggal: string;
   namaBank: string;
+  /** 4 digit terakhir rekening — untuk langkah konfirmasi; tak pernah nomor penuh. */
+  rekening4: string | null;
   nominalSen: number;
   keterangan: string;
   hariTutup: boolean;
@@ -43,6 +46,7 @@ interface Bank {
   id: string;
   accountId: string;
   namaBank: string;
+  nomorRekening: string | null;
   tanggal: string;
   kategori: string | null;
   amount: string;
@@ -65,7 +69,7 @@ export async function getKoreksiTransfer(unit: ScopedUnitId): Promise<{ siap: Ko
   const [bank, kas, tutupHari, tutupBulan] = await Promise.all([
     qScoped<Bank>(
       unit,
-      `SELECT l.id::text AS id, l.account_id::text AS "accountId", a.nama AS "namaBank",
+      `SELECT l.id::text AS id, l.account_id::text AS "accountId", a.nama AS "namaBank", a.nomor_rekening AS "nomorRekening",
               to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.category_label AS kategori,
               l.amount::text AS amount, l.keterangan, l.created_at::text AS dibuat,
               (l.source_manual_entry_id IS NOT NULL) AS "dariSetoranPengawas",
@@ -137,6 +141,7 @@ export async function getKoreksiTransfer(unit: ScopedUnitId): Promise<{ siap: Ko
       bankId: b.id,
       tanggal: b.tanggal,
       namaBank: x.namaBank,
+      rekening4: empatDigitRekening({ nama: x.namaBank, nomorRekening: x.nomorRekening }),
       nominalSen: b.amountSen,
       keterangan: x.keterangan,
       hariTutup: hariTutup.has(b.tanggal),

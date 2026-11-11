@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
  *
  * Baris bank "Setoran Hasil Penjualan" yang pada tanggal yang sama punya tepat
  * satu kaki keluar Kas Besar bernominal sama — kaki bank transfer yang salah
- * label (mengkredit 1103 dua kali). Satu klik per baris: void baris lama, sisip
- * baru "Pindah Buku" bertanggal sama, tautkan ke kaki Kas Besar, audit, jurnal
- * dibentuk ulang. Yang tak bisa dipasangkan otomatis tampil "periksa manual"
+ * label (mengkredit 1103 dua kali). Per baris, sesudah konfirmasi eksplisit
+ * (keputusan Dion 11 Nov 2026 17:54 WIB): void baris lama, sisip baru "Pindah
+ * Buku" bertanggal sama, tautkan ke kaki Kas Besar, audit, jurnal dibentuk ulang. Yang tak bisa dipasangkan otomatis tampil "periksa manual"
  * tanpa tombol.
  *
  * Wewenang dihitung DI SERVER, satu predikat per tindakan:
@@ -50,11 +50,13 @@ export default async function KoreksiTransferPage({ params }: { params: Promise<
         &ldquo;Pindah Buku&rdquo;. Baris di bawah tercatat di bank sebagai &ldquo;Setoran Hasil Penjualan&rdquo;, yang
         mengurangi Penjualan Belum Disetor (1103) untuk kedua kalinya. &ldquo;Jadikan transfer&rdquo; membatalkan baris
         bank itu, mencatat ulang sebagai &ldquo;Pindah Buku&rdquo; dengan tanggal dan nominal yang sama, dan menautkannya
-        ke kaki Kas Besar-nya. Saldo kas dan bank tidak berubah.
+        ke kaki Kas Besar-nya. Sebelum dijalankan, kedua kaki ditampilkan dan Anda wajib mencentang konfirmasi. Saldo
+        kas dan bank tidak berubah.
       </p>
       <div className="mt6">
         <KoreksiTransferPanel
           code={unit.code}
+          unitNama={unit.name}
           siap={siap}
           periksaManual={periksaManual}
           bolehJadikan={canJadikanTransfer(ctx)}

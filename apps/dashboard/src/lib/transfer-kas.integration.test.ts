@@ -370,7 +370,8 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
   });
 
   describe("U6 · jadikan transfer (KTD9)", () => {
-    const pasanganLama = async (c: PoolClient, tanggal = HARI, nominal = 399_979_000): Promise<{ bank: string; kas: string }> => {
+    type Pasangan = { bank: string; kas: string; tanggal: string; nominal: number };
+    const pasanganLama = async (c: PoolClient, tanggal = HARI, nominal = 399_979_000): Promise<Pasangan> => {
       const ins = async (account: string, jenis: string, kategori: string, amount: number) =>
         (
           await c.query<{ id: string }>(
@@ -382,9 +383,15 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         ).rows[0]!.id;
       const kas = await ins(akun.kas, "kredit", "Setoran ke Bank", -nominal);
       const bank = await ins(akun.bank, "debet", "Setoran Hasil Penjualan", nominal);
-      return { bank, kas };
+      return { bank, kas, tanggal, nominal };
     };
-    const jadikan = (c: PoolClient, p: { bank: string; kas: string }, o: { bolehHariTutup?: boolean; alasan?: string } = {}) =>
+    // Konfirmasi = apa yang ditampilkan langkah konfirmasi untuk pasangan itu.
+    const yakin = (p: Pasangan) => ({ yakin: true as const, tanggal: p.tanggal, nominalSen: p.nominal * 100, rekening4: "0001" });
+    const jadikan = (
+      c: PoolClient,
+      p: Pasangan,
+      o: { bolehHariTutup?: boolean; alasan?: string; konfirmasi?: ReturnType<typeof yakin> } = {},
+    ) =>
       tulisJadikanTransfer(c, {
         unitId: unit,
         unitCode: "UJI-TF-A",
@@ -393,6 +400,7 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         kasId: p.kas,
         alasan: o.alasan ?? "",
         bolehHariTutup: o.bolehHariTutup ?? false,
+        konfirmasi: o.konfirmasi ?? yakin(p),
       });
     const pos1103 = async (c: PoolClient, ids: string[]) =>
       (await jurnalPos(c, ids)).find((x) => x.pos === "1103")?.net ?? "0";
@@ -417,7 +425,23 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         expect(await pos1103(c, [...ids, p.bank])).toBe("0");
         expect((await jurnalPos(c, ids)).find((x) => x.pos === "1190")).toEqual({ pos: "1190", net: "0" });
         expect(await audit(c, "kas.transfer.koreksi", `UJI-TF-A/${r.transferUuid}`)).toEqual([
-          { detail: expect.objectContaining({ lama: p.bank, baru: r.baru, kas: p.kas, hariTutup: false }) },
+          {
+            detail: expect.objectContaining({
+              lama: p.bank,
+              baru: r.baru,
+              kas: p.kas,
+              hariTutup: false,
+              // Konfirmasi eksplisit + kedua kaki yang ditampilkan ikut tercatat.
+              konfirmasi: { yakin: true, ditampilkan: { tanggal: HARI, nominalSen: 39_997_900_000, rekening4: "0001" } },
+              kaki: {
+                unit: "UJI-TF-A",
+                tanggal: HARI,
+                nominalSen: 39_997_900_000,
+                kasBesar: { sisi: "kredit", kategori: "Setoran ke Bank", baris: p.kas.slice(0, 8) },
+                bank: { sisi: "debet", kategori: "Pindah Buku", rekening: "…0001", barisLama: p.bank.slice(0, 8) },
+              },
+            }),
+          },
         ]);
         // Pasangan hasil koreksi bisa dibatalkan berdua di hari terbuka.
         expect((await tulisBatalTransfer(c, { unitId: unit, unitCode: "UJI-TF-A", aktor: AKTOR, transferUuid: r.transferUuid })).ok).toBe(true);
@@ -438,6 +462,87 @@ d("transfer Kas Besar → bank — dua kaki, DB nyata", () => {
         if (r.ok) expect((await kaki(c, r.transferUuid)).every((x) => x.hari === HARI)).toBe(true);
         const dc = await c.query(`SELECT difference_rp::text AS d, status::text AS s FROM app.day_close WHERE unit_id=$1 AND business_date=$2::date`, [A, HARI]);
         expect(dc.rows[0]).toEqual({ d: "0.00", s: "closed" });
+      }));
+
+    it("konfirmasi yang tak sama dengan baris terkunci (nominal / tanggal lain) ⇒ ditolak, tak ada yang berubah", () =>
+      tx(async (c) => {
+        const p = await pasanganLama(c);
+        const r1 = await jadikan(c, p, { konfirmasi: { ...yakin(p), nominalSen: 1 } });
+        expect(r1.ok).toBe(false);
+        if (!r1.ok) expect(r1.error).toMatch(/Yang dikonfirmasi tidak sama/);
+        expect((await jadikan(c, p, { konfirmasi: { ...yakin(p), tanggal: BESOK } })).ok).toBe(false);
+        // Inti tulis juga menolak tanpa centang (pertahanan berlapis di bawah aksi).
+        const r3 = await jadikan(c, p, { konfirmasi: { ...yakin(p), yakin: false } as unknown as ReturnType<typeof yakin> });
+        expect(r3.ok).toBe(false);
+        const lama = await c.query(`SELECT void FROM app.cash_ledger WHERE id = $1::uuid`, [p.bank]);
+        expect(lama.rows[0]).toEqual({ void: false });
+      }));
+
+    /**
+     * CERMIN KASUS NYATA Bakau 22 Okt (`28e717f3`, BCA …6811, Rp 399.979.000,
+     * hari TERTUTUP, selisih day_close −470). Keputusan Dion D3 (11 Nov 2026
+     * 17:54 WIB): HANYA "Jadikan transfer", TANPA jurnal memorial.
+     * Hasil yang diharapkan, eksak:
+     *   · kedua kaki tetap bertanggal 2026-10-22 (koreksi tidak dibukukan maju —
+     *     D1 "maju" hanya untuk transfer BARU; `tanggal_asal` tetap NULL);
+     *   · baris bank lama void (kategori lama tersimpan sebagai bukti), baris baru
+     *     "Pindah Buku" bernominal sama, tertaut ke kaki Kas Besar;
+     *   · jurnal: 1103 TIDAK lagi dikredit kaki bank (−399.979.000 dari baris itu
+     *     hilang), 1190 kedua kaki net 0;
+     *   · day_close: status 'closed', difference_rp −470 TIDAK berubah;
+     *   · tak ada jurnal memorial yang dibuat.
+     */
+    it("Bakau 22 Okt (hari tertutup, D3): HoF + alasan + konfirmasi ⇒ dua kaki tetap 22 Okt, 1103 lepas dari kaki bank, 1190 nol, selisih −470 tetap, tanpa memorial", () =>
+      tx(async (c) => {
+        const T22 = "2026-10-22";
+        const p = await pasanganLama(c, T22, 399_979_000);
+        await bentuk(c);
+        expect(await pos1103(c, [p.bank])).toBe("-39997900000"); // P2: kaki bank mengkredit 1103
+        await c.query(
+          `INSERT INTO app.day_close (unit_id, business_date, status, difference_rp, tier, reason_code, reason_requires_target, closed_by_user_id, closed_at)
+           VALUES ($1, $2::date, 'closed', -470, 'within_tolerance', 'CLS-ROUND', false, 2, now())`,
+          [A, T22],
+        );
+        const memorialSebelum = await c.query<{ n: string }>(`SELECT count(*)::text AS n FROM app.jurnal WHERE unit_id = $1 AND jenis = 'memorial'`, [A]);
+
+        // Keuangan (bukan HoF) ditolak, bahkan dengan konfirmasi.
+        expect((await jadikan(c, p)).ok).toBe(false);
+        const r = await jadikan(c, p, {
+          bolehHariTutup: true,
+          alasan: "Kaki bank transfer Kas Besar → BCA …6811 salah kategori (Setoran Hasil Penjualan → Pindah Buku); 1103 terkredit dua kali. Ref REPORT6/7B.",
+        });
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.tanggal).toBe(T22);
+
+        const k = await kaki(c, r.transferUuid);
+        expect(k.map((x) => [x.id === p.kas, x.kategori, x.amount, x.hari, x.asal])).toEqual([
+          [true, "Setoran ke Bank", "-399979000.00", T22, null],
+          [false, "Pindah Buku", "399979000.00", T22, null],
+        ]);
+        const lama = await c.query(`SELECT void, category_label FROM app.cash_ledger WHERE id = $1::uuid`, [p.bank]);
+        expect(lama.rows[0]).toEqual({ void: true, category_label: "Setoran Hasil Penjualan" });
+
+        await bentuk(c);
+        expect(await pos1103(c, [p.bank, r.baru, p.kas])).toBe("0");
+        expect((await jurnalPos(c, [p.kas, r.baru])).find((x) => x.pos === "1190")).toEqual({ pos: "1190", net: "0" });
+
+        const dc = await c.query(`SELECT difference_rp::text AS d, status::text AS s FROM app.day_close WHERE unit_id=$1 AND business_date=$2::date`, [A, T22]);
+        expect(dc.rows[0]).toEqual({ d: "-470.00", s: "closed" });
+        const memorialSesudah = await c.query<{ n: string }>(`SELECT count(*)::text AS n FROM app.jurnal WHERE unit_id = $1 AND jenis = 'memorial'`, [A]);
+        expect(memorialSesudah.rows[0]).toEqual(memorialSebelum.rows[0]);
+        expect(memorialSesudah.rows[0]).toEqual({ n: "0" });
+
+        const a = await audit(c, "kas.transfer.koreksi", `UJI-TF-A/${r.transferUuid}`);
+        expect(a).toEqual([
+          {
+            detail: expect.objectContaining({
+              hariTutup: true,
+              alasan: expect.stringMatching(/Ref REPORT6\/7B/),
+              konfirmasi: { yakin: true, ditampilkan: { tanggal: T22, nominalSen: 39_997_900_000, rekening4: "0001" } },
+            }),
+          },
+        ]);
       }));
 
     it("bulan tertutup ⇒ ditolak", () =>

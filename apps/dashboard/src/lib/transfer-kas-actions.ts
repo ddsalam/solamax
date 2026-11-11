@@ -12,7 +12,7 @@ import {
 } from "./keuangan-wewenang";
 import { batal } from "./keuangan-tx";
 import { getDataScope, type DataScope, type ScopedUnit } from "./scope";
-import { periksaMasukanTransfer } from "./transfer-kas-model";
+import { periksaKonfirmasiJadikan, periksaMasukanTransfer, type KonfirmasiJadikan } from "./transfer-kas-model";
 import { galatKunciGanda, tulisBatalTransfer, tulisJadikanTransfer, tulisTransferKeBank } from "./transfer-kas-tulis";
 import { UUID_RE } from "./validasi";
 
@@ -24,6 +24,8 @@ import { UUID_RE } from "./validasi";
  *   · batalkan transfer   → mengetik: `canInputKeuangan`
  *   · jadikan transfer    → klasifikasi: `canJadikanTransfer` (+ HoF/super admin
  *                           saja pada hari tertutup: `canJadikanTransferHariTutup`)
+ *                           + KONFIRMASI EKSPLISIT di setiap hari (keputusan Dion
+ *                           11 Nov 2026 17:54 WIB) — ditolak server tanpa itu
  *
  * Pola `kas-actions.ts`: gerbang → validasi → BEGIN → `set_config` transaction-
  * local → tulis (inti di `transfer-kas-tulis.ts`) → audit → pembentuk jurnal →
@@ -161,6 +163,11 @@ export async function jadikanTransfer(input: {
   kasId: string;
   /** Wajib bila harinya sudah ditutup. */
   alasan?: string;
+  /**
+   * Centang "Saya yakin" + yang ditampilkan di langkah konfirmasi. Wajib di
+   * SETIAP hari; tanpa ini ditolak di sini, tak bergantung pada klien.
+   */
+  konfirmasi?: KonfirmasiJadikan;
 }): Promise<TransferResult> {
   const scope = await getDataScope();
   const unit = scope.requireUnit(input.code);
@@ -169,6 +176,8 @@ export async function jadikanTransfer(input: {
   if (!UUID_RE.test(input.bankId) || !UUID_RE.test(input.kasId)) {
     return { ok: false, error: "Baris tak valid — muat ulang halaman." };
   }
+  const kf = periksaKonfirmasiJadikan(input.konfirmasi);
+  if (!kf.ok) return { ok: false, error: kf.error };
 
   const client = await pool.connect();
   try {
@@ -183,6 +192,7 @@ export async function jadikanTransfer(input: {
       kasId: input.kasId,
       alasan: input.alasan ?? "",
       bolehHariTutup: canJadikanTransferHariTutup(ctx),
+      konfirmasi: kf.konfirmasi,
     });
     if (!r.ok) {
       await batal(client);

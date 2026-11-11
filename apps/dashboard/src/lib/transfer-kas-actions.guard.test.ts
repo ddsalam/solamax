@@ -130,7 +130,7 @@ describe("masukan & idempotensi (R7, R8, KTD5)", () => {
 });
 
 describe("jadikan transfer — klasifikasi (canJadikanTransfer, KTD7)", () => {
-  const J = { code: "6300001", bankId: BANK, kasId: KUNCI };
+  const J = { code: "6300001", bankId: BANK, kasId: KUNCI, konfirmasi: { yakin: true as const, tanggal: "2026-10-22", nominalSen: 39_997_900_000, rekening4: "6811" } };
   it.each([
     ["pengawas", null],
     ["direksi", null],
@@ -147,6 +147,41 @@ describe("jadikan transfer — klasifikasi (canJadikanTransfer, KTD7)", () => {
     sebagai(role, email);
     expect((await jadikanTransfer(J)).ok).toBe(true);
     expect(t.log).toContain("COMMIT");
+  });
+});
+
+describe("jadikan transfer — konfirmasi eksplisit WAJIB di server (keputusan Dion 11 Nov 2026 17:54 WIB)", () => {
+  const J = { code: "6300001", bankId: BANK, kasId: KUNCI };
+  const K = { yakin: true as const, tanggal: "2026-10-22", nominalSen: 39_997_900_000, rekening4: "6811" };
+
+  it("🔴 hari terbuka, keuangan, TANPA konfirmasi ⇒ ditolak sebelum koneksi", async () => {
+    sebagai("keuangan", "staf@solagroup.co");
+    const r = await jadikanTransfer(J);
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/Konfirmasi wajib/) });
+    expect(t.connect).not.toHaveBeenCalled();
+  });
+
+  it("🔴 hari tertutup, HoF dengan alasan tertulis, TANPA konfirmasi ⇒ tetap ditolak sebelum koneksi", async () => {
+    sebagai("admin_perusahaan", "hof@solagroup.co");
+    const r = await jadikanTransfer({ ...J, alasan: "Kaki bank transfer salah kategori. Ref REPORT6/7B." });
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/Konfirmasi wajib/) });
+    expect(t.connect).not.toHaveBeenCalled();
+  });
+
+  it("🔴 centang tak benar-benar true (mis. string dari klien rakitan) ⇒ ditolak", async () => {
+    sebagai("super_admin", null);
+    const r = await jadikanTransfer({ ...J, konfirmasi: { ...K, yakin: "true" } as unknown as typeof K });
+    expect(r.ok).toBe(false);
+    expect(t.connect).not.toHaveBeenCalled();
+  });
+
+  it("dengan konfirmasi ⇒ diterima; konfirmasi diteruskan ke inti tulis (yang mencocokkan & mengauditnya)", async () => {
+    sebagai("keuangan", "staf@solagroup.co");
+    const { tulisJadikanTransfer } = await import("./transfer-kas-tulis");
+    const r = await jadikanTransfer({ ...J, konfirmasi: K });
+    expect(r.ok).toBe(true);
+    expect(t.log).toContain("COMMIT");
+    expect(vi.mocked(tulisJadikanTransfer).mock.lastCall?.[1]).toMatchObject({ bankId: BANK, kasId: KUNCI, konfirmasi: K });
   });
 });
 

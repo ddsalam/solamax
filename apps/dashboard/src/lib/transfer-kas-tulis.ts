@@ -12,12 +12,16 @@ import { bulanTertutupTerkunci } from "./tutup-bulan-queries";
 import {
   KATEGORI_KAKI_BANK,
   KATEGORI_KELUAR_KAS_BESAR,
+  PESAN_TANPA_KONFIRMASI,
+  empatDigitRekening,
   kandidatJadikanTransfer,
   periksaRekeningTransfer,
   rencanaTransfer,
+  ringkasKakiJadikan,
   vonisBatalTransfer,
   vonisJadikanTransfer,
   type BarisKasBesar,
+  type KonfirmasiJadikan,
 } from "./transfer-kas-model";
 
 /**
@@ -249,6 +253,8 @@ interface BarisKoreksiDb {
   alasanMaju: string | null;
   alasanMajuAppliesTo: string | null;
   dibuat: string;
+  namaAkun: string;
+  nomorRekening: string | null;
   dicocokkan: boolean;
 }
 
@@ -271,8 +277,11 @@ export async function tulisJadikanTransfer(
     kasId: string;
     alasan: string;
     bolehHariTutup: boolean;
+    /** Sudah diperiksa aksi (`periksaKonfirmasiJadikan`); dicocokkan ulang di sini. */
+    konfirmasi: KonfirmasiJadikan;
   },
 ): Promise<HasilKoreksi> {
+  if (m.konfirmasi?.yakin !== true) return { ok: false, error: PESAN_TANPA_KONFIRMASI };
   const baris = await c.query<BarisKoreksiDb>(
     `SELECT l.id::text AS id, l.account_id::text AS "accountId", a.kind::text AS kind,
             to_char(l.business_date,'YYYY-MM-DD') AS tanggal, l.jenis::text AS jenis,
@@ -281,7 +290,7 @@ export async function tulisJadikanTransfer(
             l.saldo_awal AS "saldoAwal", (l.source_manual_entry_id IS NOT NULL) AS "dariSetoranPengawas",
             l.keterangan, to_char(l.tanggal_asal,'YYYY-MM-DD') AS "tanggalAsal",
             l.alasan_maju AS "alasanMaju", l.alasan_maju_applies_to AS "alasanMajuAppliesTo",
-            l.created_at::text AS dibuat,
+            l.created_at::text AS dibuat, a.nama AS "namaAkun", a.nomor_rekening AS "nomorRekening",
             EXISTS (
               SELECT 1 FROM app.cocok_bank_baris b
                WHERE b.cash_ledger_id = l.id AND b.unit_id = l.unit_id AND b.aktif
@@ -323,6 +332,13 @@ export async function tulisJadikanTransfer(
   );
   const siap = calon.siap.find((x) => x.bank.id === bank.id);
   if (!siap || siap.kas.id !== kas.id) return { ok: false, error: BERUBAH };
+
+  // Yang dikonfirmasi pengguna harus SAMA dengan baris yang kini dikunci.
+  const nominalSen = teksKeSen(bank.amount);
+  const rekening4 = empatDigitRekening({ nama: bank.namaAkun, nomorRekening: bank.nomorRekening });
+  if (m.konfirmasi.tanggal !== bank.tanggal || m.konfirmasi.nominalSen !== nominalSen) {
+    return { ok: false, error: "Yang dikonfirmasi tidak sama dengan baris saat ini (tanggal atau nominal) — muat ulang halaman." };
+  }
 
   const bulanTutup = await bulanTertutup(c, m.unitId, bank.tanggal);
   const hariTutup = await adaHariTertutup(c, m.unitId, [bank.tanggal]);
@@ -380,6 +396,17 @@ export async function tulisJadikanTransfer(
     kategoriLama: bank.kategori,
     hariTutup,
     alasan: m.alasan.trim() || null,
+    // Kedua kaki menurut server + yang dikonfirmasi pengguna (tanggal, nominal, 4 digit rekening).
+    kaki: ringkasKakiJadikan({
+      unitCode: m.unitCode,
+      tanggal: bank.tanggal,
+      nominalSen,
+      rekening4,
+      kasKategori: kas.kategori ?? "",
+      bankId: bank.id,
+      kasId: kas.id,
+    }),
+    konfirmasi: { yakin: true, ditampilkan: { tanggal: m.konfirmasi.tanggal, nominalSen: m.konfirmasi.nominalSen, rekening4: m.konfirmasi.rekening4 } },
   });
   return { ok: true, baru, transferUuid, tanggal: bank.tanggal };
 }

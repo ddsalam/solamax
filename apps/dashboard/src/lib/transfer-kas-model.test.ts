@@ -3,8 +3,11 @@ import { jurnalKas, type BarisJurnal, type BarisKas } from "./buku-besar-model";
 import { barisBuku, barisSistemDari, PENJELASAN_BARIS_SISTEM, type AkunKas } from "./keuangan-kas-model";
 import {
   CATATAN_KAKI_PINDAH_BUKU,
+  empatDigitRekening,
   kakiTransferTerlewat,
   kandidatJadikanTransfer,
+  periksaKonfirmasiJadikan,
+  ringkasKakiJadikan,
   rencanaTransfer,
   vonisBatalTransfer,
   vonisJadikanTransfer,
@@ -268,6 +271,54 @@ describe("vonis pembatalan & koreksi (R11, R17)", () => {
   it("jadikan transfer: bulan tertutup / dicocokkan ⇒ ditolak, siapa pun", () => {
     expect(vonisJadikanTransfer({ ...j, bulanTutup: true, bolehHariTutup: true, alasan: "x" })).toMatch(/Bulan/);
     expect(vonisJadikanTransfer({ ...j, dicocokkan: true })).toMatch(/dicocokkan/);
+  });
+  it("jadikan transfer: bulan tertutup TIDAK menyarankan jurnal memorial (keputusan Dion D3, 11 Nov 2026)", () => {
+    expect(vonisJadikanTransfer({ ...j, bulanTutup: true })).not.toMatch(/memorial/i);
+  });
+});
+
+describe("konfirmasi eksplisit 'Jadikan transfer' (keputusan Dion 11 Nov 2026 17:54 WIB)", () => {
+  const K = { yakin: true, tanggal: T, nominalSen: 39_997_900_000, rekening4: "6811" };
+  it("tanpa konfirmasi / tak dicentang ⇒ ditolak, apa pun harinya", () => {
+    for (const k of [undefined, null, {}, { ...K, yakin: false }, { ...K, yakin: "true" }]) {
+      const r = periksaKonfirmasiJadikan(k);
+      expect(r.ok, JSON.stringify(k)).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/konfirmasi/i);
+    }
+  });
+  it("yang ditampilkan wajib ikut: tanggal & nominal sen positif", () => {
+    expect(periksaKonfirmasiJadikan({ ...K, tanggal: "22-10-2026" }).ok).toBe(false);
+    expect(periksaKonfirmasiJadikan({ ...K, nominalSen: 0 }).ok).toBe(false);
+    expect(periksaKonfirmasiJadikan({ ...K, nominalSen: 1.5 }).ok).toBe(false);
+  });
+  it("dicentang dengan yang ditampilkan ⇒ diterima apa adanya", () => {
+    expect(periksaKonfirmasiJadikan(K)).toEqual({ ok: true, konfirmasi: K });
+    expect(periksaKonfirmasiJadikan({ ...K, rekening4: null })).toEqual({ ok: true, konfirmasi: { ...K, rekening4: null } });
+  });
+  it("empatDigitRekening: hanya 4 digit terakhir, tak pernah nomor penuh", () => {
+    expect(empatDigitRekening({ nama: "BCA - 00006811", nomorRekening: "00006811" })).toBe("6811");
+    expect(empatDigitRekening({ nama: "BCA - 00006811", nomorRekening: null })).toBe("6811");
+    expect(empatDigitRekening({ nama: "BCA …6811", nomorRekening: null })).toBe("6811");
+    expect(empatDigitRekening({ nama: "Bank tanpa nomor", nomorRekening: null })).toBeNull();
+  });
+  it("ringkasKakiJadikan: dua kaki, kategori ditetapkan, unit/tanggal/nominal, rekening 4 digit, id8", () => {
+    expect(
+      ringkasKakiJadikan({
+        unitCode: "6378301",
+        tanggal: T,
+        nominalSen: 39_997_900_000,
+        rekening4: "6811",
+        kasKategori: "Setoran ke Bank",
+        bankId: "28e717f3-0000-4000-8000-000000000000",
+        kasId: "aaaabbbb-0000-4000-8000-000000000000",
+      }),
+    ).toEqual({
+      unit: "6378301",
+      tanggal: T,
+      nominalSen: 39_997_900_000,
+      kasBesar: { sisi: "kredit", kategori: "Setoran ke Bank", baris: "aaaabbbb" },
+      bank: { sisi: "debet", kategori: "Pindah Buku", rekening: "…6811", barisLama: "28e717f3" },
+    });
   });
 });
 

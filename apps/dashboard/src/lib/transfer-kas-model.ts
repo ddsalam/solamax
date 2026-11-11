@@ -271,6 +271,13 @@ export const PESAN_TRANSFER_DICOCOKKAN =
   "Salah satu kaki transfer sudah dicocokkan dengan rekening koran — minta Head of Finance membatalkan cocoknya dulu " +
   "(Impor rekening koran), baru transfer bisa dibatalkan.";
 export const PESAN_BULAN_TUTUP = "Bulan ini sudah ditutup — koreksinya lewat jurnal memorial Head of Finance.";
+/**
+ * Bulan tertutup pada "Jadikan transfer". Sengaja TIDAK menyarankan jurnal
+ * memorial: koreksi kaki bank transfer hanya lewat "Jadikan transfer"
+ * (keputusan Dion D3, 11 Nov 2026 17:54 WIB).
+ */
+export const PESAN_BULAN_TUTUP_KOREKSI =
+  "Bulan ini sudah ditutup — \"Jadikan transfer\" tidak bisa dijalankan. Bicarakan dengan Head of Finance.";
 
 /** `null` = boleh dibatalkan. Dua kaki, keduanya hidup; tak dicocokkan; hari & bulan terbuka. */
 export function vonisBatalTransfer(m: {
@@ -300,7 +307,7 @@ export function vonisJadikanTransfer(m: {
   bolehHariTutup: boolean;
   alasan: string;
 }): string | null {
-  if (m.bulanTutup) return PESAN_BULAN_TUTUP;
+  if (m.bulanTutup) return PESAN_BULAN_TUTUP_KOREKSI;
   if (m.dicocokkan) {
     return "Baris bank atau kaki Kas Besarnya sudah dicocokkan dengan rekening koran — minta Head of Finance membatalkan cocoknya dulu.";
   }
@@ -309,4 +316,68 @@ export function vonisJadikanTransfer(m: {
     if (m.alasan.trim() === "") return "Hari ini sudah ditutup — alasan koreksi wajib diisi.";
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Konfirmasi eksplisit "Jadikan transfer" (keputusan Dion 11 Nov 2026 17:54 WIB)
+// ---------------------------------------------------------------------------
+
+/**
+ * Yang dikonfirmasi pengguna: centang `yakin` + apa yang DITAMPILKAN kepadanya
+ * (tanggal, nominal, 4 digit rekening). Wajib di SETIAP hari — terbuka maupun
+ * tertutup; server menolak tanpa ini (tak bergantung pada klien), lalu
+ * mencocokkan tanggal & nominalnya dengan baris yang dikunci.
+ */
+export interface KonfirmasiJadikan {
+  yakin: true;
+  tanggal: string;
+  nominalSen: number;
+  rekening4: string | null;
+}
+
+export const PESAN_TANPA_KONFIRMASI =
+  "Konfirmasi wajib: periksa kedua kaki transfer, centang \"Saya yakin\", lalu tekan konfirmasi.";
+
+export function periksaKonfirmasiJadikan(k: unknown): { ok: true; konfirmasi: KonfirmasiJadikan } | { ok: false; error: string } {
+  const x = (k ?? {}) as Partial<Record<keyof KonfirmasiJadikan, unknown>>;
+  if (x.yakin !== true) return { ok: false, error: PESAN_TANPA_KONFIRMASI };
+  if (typeof x.tanggal !== "string" || !DATE_RE.test(x.tanggal)) return { ok: false, error: PESAN_TANPA_KONFIRMASI };
+  if (typeof x.nominalSen !== "number" || !Number.isSafeInteger(x.nominalSen) || x.nominalSen <= 0) {
+    return { ok: false, error: PESAN_TANPA_KONFIRMASI };
+  }
+  const rekening4 = typeof x.rekening4 === "string" && /^\d{4}$/.test(x.rekening4) ? x.rekening4 : null;
+  return { ok: true, konfirmasi: { yakin: true, tanggal: x.tanggal, nominalSen: x.nominalSen, rekening4 } };
+}
+
+/** 4 digit terakhir rekening (dari `nomor_rekening`, atau angka di ujung `nama`); tak pernah nomor penuh. */
+export function empatDigitRekening(a: { nama: string; nomorRekening: string | null }): string | null {
+  const m = /(\d{4})\D*$/.exec(a.nomorRekening ?? "") ?? /(\d{4})\s*$/.exec(a.nama);
+  return m ? m[1]! : null;
+}
+
+/**
+ * Kedua kaki sebagaimana DITAMPILKAN di langkah konfirmasi dan DICATAT di
+ * `audit_log` (`kas.transfer.koreksi` → `kaki`). Satu sumber untuk keduanya.
+ */
+export function ringkasKakiJadikan(m: {
+  unitCode: string;
+  tanggal: string;
+  nominalSen: number;
+  rekening4: string | null;
+  kasKategori: string;
+  bankId: string;
+  kasId: string;
+}) {
+  return {
+    unit: m.unitCode,
+    tanggal: m.tanggal,
+    nominalSen: m.nominalSen,
+    kasBesar: { sisi: "kredit" as const, kategori: m.kasKategori, baris: m.kasId.slice(0, 8) },
+    bank: {
+      sisi: "debet" as const,
+      kategori: KATEGORI_KAKI_BANK,
+      rekening: m.rekening4 === null ? null : `…${m.rekening4}`,
+      barisLama: m.bankId.slice(0, 8),
+    },
+  };
 }
