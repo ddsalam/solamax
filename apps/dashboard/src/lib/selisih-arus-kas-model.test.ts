@@ -147,6 +147,21 @@ describe("jelaskanSelisihArusKas — hari lain", () => {
     expect(p.petunjuk[0]!.selisihRp).toBe(1_700);
   });
 
+  it("hari campuran: target = surplus BERSIH hari bank, bukan Σ bank kotor (baris yang sudah berpasangan tak ikut)", () => {
+    const e = (kode: string, pelanggan: string, rp: number) => ({ kode, pelanggan, ref: null, keterangan: null, rp });
+    const b = (id: string, rp: number) => ({ id, rekening: "Kas", tanggalAsal: null, keterangan: null, rp });
+    const hari: HariPiutang[] = [
+      // 27: A 1.000 berpasangan di hari yang sama; B 500 masuk bank, EasyMax mencatatnya 30.
+      { tanggal: "2026-10-27", easymax: [e("k1", "A", 1_000)], bank: [b("b1", 1_000), b("b2", 500)] },
+      // 30: B 500 (milik 27) + C 1.000 yang berpasangan dengan bank 30.
+      { tanggal: "2026-10-30", easymax: [e("k2", "C", 1_000), e("k3", "B", 500)], bank: [b("b3", 1_000)] },
+    ];
+    const p = jelaskan("2026-10-27", -500, hari)!;
+    expect(p.baris[0].rp).toBe(-500);
+    expect(p.petunjuk[0]!.cocok!.baris.map((x) => x.pelanggan)).toEqual(["B"]);
+    expect(p.petunjuk[0]!.cocok!.rp).toBe(500);
+  });
+
   it("petunjuk dibatasi tiga hari terdekat", () => {
     const e = (tanggal: string): HariPiutang => ({
       tanggal,

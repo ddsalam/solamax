@@ -2,10 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { PETA_KATEGORI_ARUS_KAS } from "./keuangan-sisi-kas";
 import { READ_SALDO_PELANGGAN_LEGACY_SQL } from "./queries";
+import type { ScopedUnitId } from "./scope-rule";
 
 vi.mock("./db", () => ({ qScoped: vi.fn(async () => []), q: vi.fn(async () => []) }));
 
-const { SQL_PEMBAYARAN_PIUTANG_SEKITAR, namaAkunSamar } = await import("./selisih-arus-kas-queries");
+const { SQL_PEMBAYARAN_PIUTANG_SEKITAR, getPembayaranPiutangSekitar, namaAkunSamar } = await import(
+  "./selisih-arus-kas-queries"
+);
+const { qScoped } = await import("./db");
 const { KATEGORI_PIUTANG_PELANGGAN } = await import("./selisih-arus-kas-model");
 
 /**
@@ -67,5 +71,43 @@ describe("namaAkunSamar — nomor rekening tak pernah penuh", () => {
   });
   it("tanpa nomor sama sekali → nama apa adanya", () => {
     expect(namaAkunSamar("Kas Besar", null)).toBe("Kas Besar");
+  });
+});
+
+describe("getPembayaranPiutangSekitar — urutan parameter, pemetaan baris, penjaga tanggal", () => {
+  const unit = 2 as unknown as ScopedUnitId;
+
+  it("param [unit, tanggal, kategori]; baris → per hari, rp angka, rekening disamarkan", async () => {
+    vi.mocked(qScoped).mockResolvedValueOnce([
+      { sisi: "bank", tanggal: "2026-10-26", id: "a8b2f689-0000-4000-8000-000000000026", pelanggan: null, ref: null,
+        keterangan: "SP2D", amount: "123196000.00", nama_akun: "Bank Contoh - 1234500000", nomor_rekening: null, tanggal_asal: null },
+      { sisi: "easymax", tanggal: "2026-10-29", id: "BT01", pelanggan: "PLG0607", ref: "R1", keterangan: "uji",
+        amount: "86136000", nama_akun: null, nomor_rekening: null, tanggal_asal: null },
+    ]);
+    const hari = await getPembayaranPiutangSekitar(unit, "2026-10-26");
+    expect(vi.mocked(qScoped)).toHaveBeenLastCalledWith(unit, SQL_PEMBAYARAN_PIUTANG_SEKITAR, [
+      unit,
+      "2026-10-26",
+      KATEGORI_PIUTANG_PELANGGAN,
+    ]);
+    expect(hari).toEqual([
+      {
+        tanggal: "2026-10-26",
+        easymax: [],
+        bank: [{ id: "a8b2f689-0000-4000-8000-000000000026", rekening: "Bank Contoh …0000", tanggalAsal: null, keterangan: "SP2D", rp: 123_196_000 }],
+      },
+      {
+        tanggal: "2026-10-29",
+        easymax: [{ kode: "BT01", pelanggan: "PLG0607", ref: "R1", keterangan: "uji", rp: 86_136_000 }],
+        bank: [],
+      },
+    ]);
+    expect(JSON.stringify(hari)).not.toContain("1234500000");
+  });
+
+  it("tanggal tak sah ditolak sebelum kueri", async () => {
+    vi.mocked(qScoped).mockClear();
+    await expect(getPembayaranPiutangSekitar(unit, "26-10-2026")).rejects.toThrow("tanggal tidak sah");
+    expect(vi.mocked(qScoped)).not.toHaveBeenCalled();
   });
 });

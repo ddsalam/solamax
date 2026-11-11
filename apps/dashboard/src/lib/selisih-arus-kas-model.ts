@@ -190,10 +190,11 @@ export function jelaskanSelisihArusKas(x: {
   const petunjuk: PetunjukHari[] = berlawanan
       .slice(0, MAKS_PETUNJUK)
       .map((h) => {
-        // R4 — hari surplus-bank memberi target (Σ bank-nya); subset dicari
-        // di baris EasyMax hari surplus-EasyMax.
+        // R4 — hari surplus-bank memberi target: surplus BERSIH-nya (Σ bank −
+        // Σ EasyMax), bukan Σ bank kotor — baris yang sudah berpasangan di hari
+        // itu tidak ikut dicari. Subset dicari di baris EasyMax hari surplus-EasyMax.
         const [hariEasymax, hariBank] = piutangSen > 0 ? [hariD, h] : [h, hariD];
-        const baris = subsetPersis(hariEasymax.easymax, jumlahSen(hariBank.bank));
+        const baris = subsetPersis(hariEasymax.easymax, -selisihSen(hariBank));
         return {
           tanggal: h.tanggal,
           selisihRp: rupiah(selisihSen(h)),

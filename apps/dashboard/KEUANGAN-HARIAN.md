@@ -2545,8 +2545,9 @@ Langkah Finance: [`docs/runbooks/2026-11-selisih-arus-kas-piutang-waktu.md`](../
 - **Bucket pelanggan sama dengan saldo piutang** (`READ_SALDO_PELANGGAN_LEGACY_SQL`): Lokal =
   SJENIS {1,5} tanpa titik, Online = kode bertitik; `sjnsbp = 2`, non-batal. Dijaga uji teks SQL.
 - **Petunjuk ±7 hari**: hari dengan selisih berlawanan, terdekat dulu (maks. 3 tampil). Bila
-  sebagian baris EasyMax persis sama dengan nominal bank, disebut barisnya (pencarian hanya bila
-  ≤ 16 baris).
+  sebagian baris EasyMax persis sama dengan surplus **bersih** bank di hari pasangannya (Σ bank −
+  Σ EasyMax hari itu, sehingga baris yang sudah berpasangan tidak ikut), disebut barisnya
+  (pencarian hanya bila ≤ 16 baris).
 - **Tindakan yang dianjurkan**: kasir mencatat pembayaran di EasyMax pada **tanggal bank**.
   Membukukan ulang baris bank di hari EasyMax membuat baris rekening koran tak bisa dicocokkan
   (aturan cocok 6) dan menahan Tutup bulan. **Tidak ada jurnal memorial, tidak ada baris lawan,
