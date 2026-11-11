@@ -2524,6 +2524,40 @@ tersentuh. Finance memilih "Setoran Hasil Penjualan" (P2) di tab bank, yang meng
   Revert kode sesudah ada pasangan tertulis membuat "Batalkan" tunggal bisa memisahkan pasangan —
   perbaiki maju, jangan revert.
 
+### 10.58 Penjelasan selisih Cash flow check — waktu pembayaran piutang (11 November 2026)
+
+**Kasus.** Bakau 26 Okt 2026, Cash flow check −123.196.354. Angkanya benar. Bank BCA …6811
+menerima Rp 123.196.000 (baris `a8b2f689`, "Transfer Pembayaran Piutang Pelanggan") pada 26 Okt,
+tetapi EasyMax mencatat tiga pembayaran yang sama (PLG0607 86.136.000 + PLG0609 26.849.200 +
+PLG0607 10.210.800) pada 29 Okt. Kategori itu `dariBukuKas: false`: arusnya dari Δ saldo piutang
+EasyMax, baris bank hanya realisasi tunainya. Jadi penerimaan yang beda hari muncul 1:1 di cek
+kedua hari dengan tanda berlawanan (26 Okt −, 29 Okt +). Sisa −354 = pembulatan setoran.
+Rencana: `docs/plans/2026-11-11-2210-fix-keuangan-selisih-arus-kas-piutang-waktu-plan.md`.
+Langkah Finance: [`docs/runbooks/2026-11-selisih-arus-kas-piutang-waktu.md`](../../docs/runbooks/2026-11-selisih-arus-kas-piutang-waktu.md).
+
+- **Tutup hari menguraikan cek yang ≠ 0** (blok "Penjelasan selisih arus kas"): baris 1 "Waktu
+  pembayaran piutang" = Σ pembayaran EasyMax tanggal D − Σ baris bank kategori itu dengan
+  `business_date` D; baris 2 "Sisa" = cek − baris 1, ditandai bila > `TOLERANSI_RP`. Jumlahnya
+  **persis** sama dengan cek (dalam sen).
+- ⛔ **Cek tidak dihitung ulang.** Nilainya diterima dari `panelCashFlow` (satu pemilik); hanya
+  baris 1 yang dihitung (`selisih-arus-kas-model.ts`). `cashFlowCheck`, `day_close`, tangga
+  toleransi, koreksi susulan dan jurnal tidak berubah. Cek tetap tidak menahan penutupan.
+- **Bucket pelanggan sama dengan saldo piutang** (`READ_SALDO_PELANGGAN_LEGACY_SQL`): Lokal =
+  SJENIS {1,5} tanpa titik, Online = kode bertitik; `sjnsbp = 2`, non-batal. Dijaga uji teks SQL.
+- **Petunjuk ±7 hari**: hari dengan selisih berlawanan, terdekat dulu (maks. 3 tampil). Bila
+  sebagian baris EasyMax persis sama dengan nominal bank, disebut barisnya (pencarian hanya bila
+  ≤ 16 baris).
+- **Tindakan yang dianjurkan**: kasir mencatat pembayaran di EasyMax pada **tanggal bank**.
+  Membukukan ulang baris bank di hari EasyMax membuat baris rekening koran tak bisa dicocokkan
+  (aturan cocok 6) dan menahan Tutup bulan. **Tidak ada jurnal memorial, tidak ada baris lawan,
+  tidak ada SQL** (sejalan §10.57 D3).
+- **Batas yang diketahui:** baris 1 juga memuat pengurangan piutang bukan-tunai (write-off,
+  retur) — keterangan baris EasyMax ditampilkan agar terlihat. Bila saldo piutang dilayani
+  snapshot yang tertinggal dari `bppiut` hidup, selisihnya masuk "sisa" (ditandai bila besar).
+  Pembayaran yang tidak lewat kategori itu (mis. tunai lewat setoran) muncul di baris 1 dengan
+  sisa berlawanan. Kasir yang **menghapus** baris di EasyMax (bukan batal/ubah tanggal) tidak
+  terbaca mirror (UPSERT tanpa deteksi hapus). Layar 2 dan PDF-nya belum menampilkan blok ini.
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu
