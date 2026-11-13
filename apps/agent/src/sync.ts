@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { IngestPayload, MAX_ROWS_PER_TABLE } from "@solamax/shared";
+import {
+  IngestPayload,
+  MAX_ROWS_PER_TABLE,
+  MAX_TAGIHAN_MANIFEST_BYTES,
+  MAX_TAGIHAN_MANIFEST_KEYS,
+} from "@solamax/shared";
 import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import {
@@ -1514,9 +1519,14 @@ export function chunkTagihanByInvoice(
  * dibuat; potongan basi menghidupkan lagi baris yang sudah dipangkas). Domain
  * ini snapshot penuh: siklus berikutnya membaca ulang SEMUANYA, jadi tak ada
  * yang hilang dengan tidak mem-buffer. Gagal (retriable habis ATAU 4xx) →
- * lempar; pemanggil membatalkan siklus tanpa manifest.
+ * lempar; pemanggil membatalkan siklus tanpa manifest. 4xx (termasuk 409 dari
+ * penjaga manifest) fatal: `sendWithRetry` tak pernah mengulanginya.
+ *
+ * Memulangkan `tagihan_token` balasan (penanda buram "payload tagihan terakhir
+ * yang diterima backend untuk unit ini"); `undefined` bila backend tak
+ * mengirimnya. Dry-run memulangkan penanda tiruan — tak ada yang dikirim.
  */
-async function sendTagihan(d: SyncDeps, payload: IngestPayload): Promise<void> {
+async function sendTagihan(d: SyncDeps, payload: IngestPayload): Promise<string | undefined> {
   IngestPayload.parse(payload); // tangkap bug mapping sebelum kirim
 
   if (d.dryRun) {
@@ -1535,11 +1545,12 @@ async function sendTagihan(d: SyncDeps, payload: IngestPayload): Promise<void> {
           }
         : null,
     });
-    return;
+    return "dry-run";
   }
 
   const res = await d.client.sendWithRetry(payload, RETRY);
   log.info("ingest ok", { domain: payload.domain, upserted: res.upserted });
+  return res.tagihan_token;
 }
 
 /**
@@ -1563,6 +1574,14 @@ let tagihanCycleRunning = false;
  *     ditolak/gagal → lempar, tanpa manifest → backend tak memangkas apa pun.
  *     Sumber kosong (nol header) TETAP mengirim manifest: tabel sumber memang
  *     kosong, dan tanpa manifest unit itu tak pernah berstempel siklus-lengkap.
+ *     Backend MENOLAK manifest itu (409) bila mirror unit masih berisi faktur —
+ *     sumber yang mendadak kosong lebih mungkin basis data kosong / belum pulih.
+ *     Agent tak pernah mengirim `izinkan_kosong`; itu keputusan operator.
+ *  4. Manifest membawa `chunk_token` = token balasan potongan TERAKHIR. Backend
+ *     menolak (409) manifest yang tokennya bukan payload tagihan terakhir unit
+ *     itu — manifest basi tak bisa memangkas baris siklus yang lebih baru.
+ *     Daftar kunci yang melampaui batas kontrak → siklus gagal SEBELUM ada yang
+ *     dikirim.
  *
  * Urutan baca header → tautan → pembayaran disengaja: ketiga kueri bukan satu
  * snapshot transaksi (agent SELECT-only, tak membuka transaksi). Faktur yang
@@ -1602,10 +1621,34 @@ async function syncTagihan(d: SyncDeps): Promise<void> {
       });
     }
 
+    // Manifest yang tak akan muat ditolak backend SESUDAH semua potongan
+    // terkirim — periksa sekarang, sebelum satu potongan pun berangkat.
+    if (
+      headers.length > MAX_TAGIHAN_MANIFEST_KEYS ||
+      bayar.length > MAX_TAGIHAN_MANIFEST_KEYS
+    ) {
+      throw new Error(
+        `tagihan: manifest ${headers.length} header / ${bayar.length} pembayaran melampaui batas ${MAX_TAGIHAN_MANIFEST_KEYS} kunci per daftar — siklus dibatalkan sebelum ada yang dikirim; manifest perlu dipecah di kontrak.`,
+      );
+    }
+
     const cycleId = randomUUID();
+    const manifest = {
+      cycle_id: cycleId,
+      header_keys: headers.map((r) => r.ckdtagih),
+      bayar_keys: bayar.map((r) => r.ckdbyr),
+    };
+    const manifestBytes = Buffer.byteLength(JSON.stringify(manifest), "utf8");
+    if (manifestBytes > MAX_TAGIHAN_MANIFEST_BYTES) {
+      throw new Error(
+        `tagihan: manifest ${manifestBytes} byte melampaui anggaran ${MAX_TAGIHAN_MANIFEST_BYTES} byte (batas body backend 10 MB) — siklus dibatalkan sebelum ada yang dikirim.`,
+      );
+    }
+
+    let chunkToken: string | undefined;
     for (let i = 0; i < plan.chunks.length; i += 1) {
       try {
-        await sendTagihan(d, {
+        chunkToken = await sendTagihan(d, {
           unit_code: d.cfg.unitCode,
           domain: "tagihan",
           watermark_high: null, // snapshot penuh; tanpa watermark
@@ -1622,17 +1665,35 @@ async function syncTagihan(d: SyncDeps): Promise<void> {
       }
     }
 
-    await sendTagihan(d, {
-      unit_code: d.cfg.unitCode,
-      domain: "tagihan",
-      watermark_high: null,
-      tagihan_manifest: {
-        cycle_id: cycleId,
-        header_keys: headers.map((r) => r.ckdtagih),
-        bayar_keys: bayar.map((r) => r.ckdbyr),
-      },
-      tables: {},
-    });
+    if (plan.chunks.length > 0 && !chunkToken) {
+      throw new Error(
+        "tagihan: backend tidak memulangkan tagihan_token untuk potongan terakhir — manifest TIDAK dikirim (backend belum mendukung penjaga manifest basi?).",
+      );
+    }
+    try {
+      await sendTagihan(d, {
+        unit_code: d.cfg.unitCode,
+        domain: "tagihan",
+        watermark_high: null,
+        tagihan_manifest: chunkToken ? { ...manifest, chunk_token: chunkToken } : manifest,
+        tables: {},
+      });
+    } catch (err) {
+      const status = err instanceof IngestError ? err.status ?? null : null;
+      log.error(
+        status === 409
+          ? "tagihan: manifest DITOLAK backend (409) — tak ada yang dipangkas, siklus TIDAK lengkap"
+          : "tagihan: manifest gagal terkirim — tak ada yang dipangkas, siklus TIDAK lengkap",
+        {
+          cycle_id: cycleId,
+          status,
+          header: headers.length,
+          bayar: bayar.length,
+          sebab: err instanceof Error ? err.message : String(err),
+        },
+      );
+      throw err;
+    }
     if (!d.dryRun) {
       log.info("tagihan: siklus lengkap", {
         cycle_id: cycleId,

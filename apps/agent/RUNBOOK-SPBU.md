@@ -320,6 +320,18 @@ manifest itu yang membuat backend memangkas baris yang sudah dihapus di EasyMax.
    (`[dry-run] payload … "domain":"tagihan"`, dengan jumlah kunci di
    `tagihan_manifest`).
 
+5. **Penolakan 409 pada manifest bukan gangguan jaringan.** Backend menolak manifest
+   penutup bila (a) daftar kunci faktur kosong sementara cermin unit masih berisi —
+   tanda agent membaca database yang kosong/sedang dipulihkan; (b) token potongan
+   terakhir bukan yang terbaru — ada siklus lain yang menyela; atau (c) jumlah baris
+   cermin sesudah pemangkasan tidak sama dengan jumlah kunci. Log agent:
+   `tagihan: manifest DITOLAK backend (409)` beserta pesannya. Tidak ada yang
+   dihapus; siklus berikutnya mencoba lagi. Bila (a) berulang, periksa `database`
+   di konfigurasi agent sebelum melakukan apa pun.
+6. **Satu agent per unit.** Jangan jalankan `--once` selagi loop terjadwal hidup:
+   dua proses bisa saling menyela siklus `tagihan` dan membuat baris siklus yang
+   lebih baru terpangkas sampai siklus berikutnya memulihkannya.
+
 **Rollback:** kembalikan `solamax-agent.PREV.cjs` lalu restart (Bagian I). Mirror
 tagihan berhenti diperbarui, tidak rusak; backend tetap menerima domain itu.
 

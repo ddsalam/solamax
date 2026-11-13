@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOMAINS } from "./domains.js";
+import { DOMAINS, TABLES_BY_DOMAIN } from "./domains.js";
 import { ROW_SCHEMA } from "./rows.js";
 
 /**
@@ -49,20 +49,79 @@ export type SourceCut = z.infer<typeof SourceCut>;
  *
  * Kontrak agent (tak bisa ditegakkan skema): manifest HANYA dikirim bila ketiga
  * kueri sumber berhasil DAN setiap potongan siklus itu sudah diterima. Tanpa
- * manifest, tak ada yang dipangkas. Daftar kosong SAH (tabel sumber memang
- * kosong) dan berarti "hapus semuanya" — karena itu payload ini wajib eksplisit.
+ * manifest, tak ada yang dipangkas.
+ *
+ * Empat penjaga backend (semuanya di dalam transaksi manifest; ditolak = HTTP
+ * 409, SELURUH transaksi batal — tak ada yang terhapus, stempel tak bergerak):
+ *  1. Daftar header KOSONG pada mirror yang masih berisi faktur ditolak, kecuali
+ *     `izinkan_kosong`. "Tiga SELECT berhasil dengan nol baris" juga wujud agent
+ *     yang menunjuk basis data kosong / baru separuh dipulihkan; itu tak boleh
+ *     menghapus seluruh mirror unit. Daftar kosong pada mirror kosong tetap sah
+ *     (unit yang memang tak punya faktur harus bisa berstempel siklus-lengkap).
+ *  2. `chunk_token` harus sama dengan token potongan TERAKHIR yang diterima
+ *     backend untuk unit itu. Manifest siklus lama yang mendarat sesudah potongan
+ *     siklus baru membawa token basi → ditolak sebelum memangkas apa pun.
+ *  3. Sesudah pangkas, jumlah header & pembayaran di mirror harus SAMA dengan
+ *     jumlah kunci manifest. Kunci yang barisnya tak pernah tiba = siklus tak
+ *     lengkap → ditolak.
+ *  4. Manifest ber-`cycle_id` yang SUDAH distempel (kirim ulang sesudah balasan
+ *     hilang) diterima tanpa mengerjakan apa pun.
  *
  * Sengaja BUKAN perluasan `source_cut`/`replace_window`: `source_cut` tertutup
  * untuk tiga sumber saldo dan tak pernah memangkas `public`; `replace_window`
  * berjendela tanggal, sedangkan faktur dipangkas per kunci.
  */
-export const TagihanManifest = z.object({
-  cycle_id: z.string().uuid(),
-  /** Seluruh `CKDTAGIH` di `tr_htagihan` (termasuk yang batal). */
-  header_keys: z.array(z.string().min(1)),
-  /** Seluruh `CKDBYR` di `tr_byrtagih` (termasuk yang batal). */
-  bayar_keys: z.array(z.string().min(1)),
-});
+
+/**
+ * Batas keras jumlah kunci PER DAFTAR di `tagihan_manifest`, dan panjang satu
+ * kunci. Dipilih dengan margin di bawah batas body backend (`json({ limit:
+ * "10mb" })` di apps/backend/src/main.ts = 10.485.760 byte):
+ *   satu kunci ASCII terpanjang di JSON = 32 + 2 tanda kutip + 1 koma = 35 byte
+ *   2 daftar × 100.000 kunci × 35 byte  = 7.000.000 byte (+ amplop < 1 KB)
+ *   → ±67% dari batas; sisa ±3,4 MB.
+ * Kunci nyata `CHAR(15)`: 2 × 100.000 × 18 byte = 3,6 MB. Karakter non-ASCII
+ * bisa melampaui hitungan ini; karena itu agent JUGA mengukur byte payload
+ * sebenarnya terhadap `MAX_TAGIHAN_MANIFEST_BYTES` sebelum mengirim.
+ */
+export const MAX_TAGIHAN_MANIFEST_KEYS = 100_000;
+export const MAX_TAGIHAN_KEY_LENGTH = 32;
+/** Anggaran byte payload manifest di sisi agent: 8 MiB dari batas body 10 MiB. */
+export const MAX_TAGIHAN_MANIFEST_BYTES = 8 * 1024 * 1024;
+
+const TagihanKey = z.string().min(1).max(MAX_TAGIHAN_KEY_LENGTH);
+const tagihanKeys = (nama: string) =>
+  z.array(TagihanKey).max(MAX_TAGIHAN_MANIFEST_KEYS, {
+    message: `tagihan_manifest.${nama}: melampaui ${MAX_TAGIHAN_MANIFEST_KEYS} kunci — manifest tak muat dalam batas body backend`,
+  });
+
+export const TagihanManifest = z
+  .object({
+    cycle_id: z.string().uuid(),
+    /** Seluruh `CKDTAGIH` di `tr_htagihan` (termasuk yang batal). */
+    header_keys: tagihanKeys("header_keys"),
+    /** Seluruh `CKDBYR` di `tr_byrtagih` (termasuk yang batal). */
+    bayar_keys: tagihanKeys("bayar_keys"),
+    /**
+     * `tagihan_token` dari balasan potongan TERAKHIR siklus ini (nilai buram).
+     * WAJIB bila ada kunci — manifest berisi selalu didahului potongan. Manifest
+     * kosong (nol potongan) tak membawanya; ia dijaga `izinkan_kosong`.
+     */
+    chunk_token: z.string().min(1).max(128).optional(),
+    /**
+     * Pemulihan yang digerakkan OPERATOR: izinkan daftar header kosong menghapus
+     * mirror yang masih berisi. Agent TIDAK PERNAH mengirimnya.
+     */
+    izinkan_kosong: z.literal(true).optional(),
+  })
+  .superRefine((m, ctx) => {
+    if (m.header_keys.length + m.bayar_keys.length > 0 && !m.chunk_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chunk_token"],
+        message: "tagihan_manifest berisi kunci wajib membawa chunk_token (token potongan terakhir siklus itu)",
+      });
+    }
+  });
 export type TagihanManifest = z.infer<typeof TagihanManifest>;
 
 export const IngestPayload = z
@@ -178,6 +237,24 @@ export const IngestPayload = z
         });
       }
     }
+    // Tabel tagihan HANYA di domain tagihan, dan domain tagihan HANYA membawa
+    // tabelnya sendiri. Di domain lain baris itu akan menghapus tautan faktur
+    // TANPA kunci per-unit `tagihan` (kunci itu diambil per domain). Domain lain
+    // sengaja tak diperketat di sini: keanggotaan tabel per domain mereka belum
+    // pernah ditegakkan, dan mengubahnya bukan cakupan perubahan ini.
+    const tagihanTables = TABLES_BY_DOMAIN.tagihan as readonly string[];
+    for (const [table, rows] of Object.entries(p.tables)) {
+      if (!rows || rows.length === 0) continue;
+      if (tagihanTables.includes(table) !== (p.domain === "tagihan")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tables", table],
+          message: p.domain === "tagihan"
+            ? `domain tagihan hanya membawa tabel: ${tagihanTables.join(", ")}`
+            : `tabel ${table} hanya untuk domain tagihan`,
+        });
+      }
+    }
     // Tautan faktur diganti PER FAKTUR di backend (hapus tautan faktur-payload
     // yang tak ada di payload). Karena itu tautan tak boleh berjalan tanpa
     // header fakturnya: potongan dipecah per faktur, bukan per baris.
@@ -230,5 +307,11 @@ export const MAX_ROWS_PER_TABLE = 5000;
 export const IngestResponse = z.object({
   upserted: z.record(z.string(), z.number()),
   new_watermark: z.string().datetime().nullable(),
+  /**
+   * Hanya balasan payload domain `tagihan`: penanda buram "payload tagihan
+   * terakhir yang diterima untuk unit ini". Agent mengembalikan token potongan
+   * TERAKHIR-nya sebagai `tagihan_manifest.chunk_token`.
+   */
+  tagihan_token: z.string().min(1).max(128).optional(),
 });
 export type IngestResponse = z.infer<typeof IngestResponse>;

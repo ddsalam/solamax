@@ -27,6 +27,7 @@ export function createIngestServiceSqlAdapter(
   const adapter = {
     $transaction: async <T>(body: (tx: {
       $executeRawUnsafe(sql: string, ...params: unknown[]): Promise<number>;
+      $queryRawUnsafe(sql: string, ...params: unknown[]): Promise<unknown[]>;
     }) => Promise<T>) => provider.transaction(async connection => {
       await hooks.beforeTransaction?.(connection);
       const result = await body({ $executeRawUnsafe: async (sql, ...params) => {
@@ -35,6 +36,9 @@ export function createIngestServiceSqlAdapter(
         // SELECT counts intentionally remain nonzero: service classification,
         // not this adapter, must exclude health/lock reads from G/L changes.
         return executed.affectedRows ?? executed.rowCount ?? executed.rows.length;
+      }, $queryRawUnsafe: async (sql, ...params) => {
+        await hooks.beforeStatement?.(sql, params, connection);
+        return (await connection.query(sql, params)).rows;
       } });
       await hooks.beforeCommit?.(connection);
       return result;

@@ -95,6 +95,15 @@ Bila ada `ingest ok` tanpa `siklus lengkap`: siklusnya belum lengkap dan **tidak
 dipangkas**. Baca pesan di atasnya, laporkan pesan lengkapnya, dan tunggu siklus
 berikutnya. Jangan memaksa dengan sinkron sekali-jalan.
 
+Bila log memuat `tagihan: manifest DITOLAK backend (409)`: backend menolak penutup siklus
+dan **tidak menghapus apa pun** — bacalah `sebab`-nya. "basi" atau "tak pernah tiba"
+sembuh sendiri pada siklus berikutnya (bila berulang, periksa apakah dua proses agent
+berjalan untuk unit itu). "daftar header KOSONG" berarti agent membaca nol faktur sementara
+cermin masih berisi: periksa dulu basis data yang ditunjuk agent. Hanya bila sumber unit
+itu **memang** sudah tidak punya faktur, operator mengirim satu manifest kosong ber-
+`izinkan_kosong: true` secara manual (agent tidak pernah mengirimnya) untuk mengosongkan
+cermin unit tersebut.
+
 ### 4 · Gold-check terhadap dua menu EasyMax
 
 Tujuannya membuktikan cermin sama dengan yang Finance lihat di EasyMax, **sampai rupiah**.

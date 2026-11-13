@@ -358,10 +358,11 @@ export function buildTagihanDetailPrune(
  *      jadi tak ada tautan yatim sesudah siklus lengkap);
  *   4) stempel siklus lengkap unit itu (`tagihan_cycle`).
  *
- * Kunci manifest yang barisnya tak pernah tiba TIDAK menggagalkan apa pun: ia
- * hanya berarti "jangan hapus yang ini". Daftar kosong berarti tabel sumber
- * memang kosong → seluruh baris unit itu dihapus; itu sebabnya manifest hanya
- * boleh dikirim agent sesudah ketiga kueri sumber berhasil.
+ * Fungsi ini HANYA membangun SQL; ia tak menjaga apa pun. Penjaganya
+ * (daftar kosong pada mirror berisi, manifest basi, jumlah mirror ≠ jumlah
+ * kunci) ada di `IngestService.applyTagihanManifest`, yang menjalankan tiga
+ * DELETE ini, menguji jumlahnya, baru menstempel — dan membatalkan seluruh
+ * transaksi bila ditolak. Jangan menjalankan statement ini di luar jalur itu.
  *
  * Setiap statement membawa `"unit_id" = $1` SENDIRI; RLS `unit_scope` (GUC
  * `app.unit_ids` yang di-set di awal transaksi) adalah jaring kedua, bukan
@@ -406,3 +407,30 @@ export function buildTagihanManifestPrune(
     },
   ];
 }
+
+/**
+ * Keadaan unit SEBELUM pangkas-manifest (satu baris, selalu ada):
+ * `ada_header` — mirror masih berisi faktur; `stamped` — cycle_id yang terakhir
+ * distempel; `token` — lihat TAGIHAN_TOKEN_SQL.
+ */
+export const TAGIHAN_MANIFEST_STATE_SQL =
+  `SELECT EXISTS (SELECT 1 FROM "tagihan_header" h WHERE h."unit_id" = $1) AS "ada_header", ` +
+  `(SELECT c."cycle_id"::text FROM "tagihan_cycle" c WHERE c."unit_id" = $1) AS "stamped", ` +
+  `(SELECT s.xmin::text || ':' || to_char(s."last_run_at" AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISS.US') ` +
+  `FROM "sync_state" s WHERE s."unit_id" = $1 AND s."domain" = 'tagihan') AS "token"`;
+
+/** Jumlah header & pembayaran unit di mirror (dibaca SESUDAH pangkas). */
+export const TAGIHAN_MANIFEST_COUNT_SQL =
+  `SELECT (SELECT count(*) FROM "tagihan_header" h WHERE h."unit_id" = $1)::int AS "header", ` +
+  `(SELECT count(*) FROM "tagihan_bayar" b WHERE b."unit_id" = $1)::int AS "bayar"`;
+
+/**
+ * Token "payload tagihan terakhir untuk unit ini" = identitas penulisan baris
+ * `sync_state(unit, 'tagihan')`: `xmin` (transaksi penulisnya) + `last_run_at`.
+ * Setiap payload domain tagihan yang ter-commit menulis ulang baris itu, jadi
+ * tokennya berubah — TANPA kolom atau tabel baru. Nilainya buram bagi agent:
+ * hanya dibandingkan sama/tidak, tak pernah diurutkan.
+ */
+export const TAGIHAN_TOKEN_SQL =
+  `SELECT s.xmin::text || ':' || to_char(s."last_run_at" AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISS.US') AS "token" ` +
+  `FROM "sync_state" s WHERE s."unit_id" = $1 AND s."domain" = 'tagihan'`;

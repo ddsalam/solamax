@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { IngestPayload } from "./ingest.js";
+import {
+  IngestPayload,
+  MAX_TAGIHAN_KEY_LENGTH,
+  MAX_TAGIHAN_MANIFEST_BYTES,
+  MAX_TAGIHAN_MANIFEST_KEYS,
+} from "./ingest.js";
 
 describe("IngestPayload", () => {
   it("menerima payload sales header+detail yang valid", () => {
@@ -254,6 +259,7 @@ describe("IngestPayload", () => {
     cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
     header_keys: ["TG-CONTOH-0001"],
     bayar_keys: ["BY-CONTOH-0001"],
+    chunk_token: "701:20260105T010203.000004",
   };
 
   it("tagihan: payload dengan ketiga tabel valid", () => {
@@ -289,8 +295,107 @@ describe("IngestPayload", () => {
     // Tabel sumber memang kosong → manifest kosong tetap penutup siklus yang sah.
     expect(IngestPayload.safeParse({
       ...tagihanBase,
-      tagihan_manifest: { ...manifestContoh, header_keys: [], bayar_keys: [] },
+      tagihan_manifest: { cycle_id: manifestContoh.cycle_id, header_keys: [], bayar_keys: [] },
       tables: {},
+    }).success).toBe(true);
+  });
+
+  it("tagihan_manifest: berisi kunci WAJIB membawa chunk_token; manifest kosong tidak", () => {
+    const { chunk_token: _buang, ...tanpaToken } = manifestContoh;
+    const r = IngestPayload.safeParse({ ...tagihanBase, tagihan_manifest: tanpaToken, tables: {} });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).toContain("chunk_token");
+    // Satu daftar saja yang berisi pun sudah didahului potongan → wajib bertoken.
+    expect(IngestPayload.safeParse({
+      ...tagihanBase, tables: {},
+      tagihan_manifest: { ...tanpaToken, header_keys: [] },
+    }).success).toBe(false);
+    expect(IngestPayload.safeParse({
+      ...tagihanBase, tables: {},
+      tagihan_manifest: { ...tanpaToken, header_keys: [], bayar_keys: [] },
+    }).success).toBe(true);
+  });
+
+  it("tagihan_manifest.izinkan_kosong: opsional, hanya literal true", () => {
+    const kosong = { cycle_id: manifestContoh.cycle_id, header_keys: [], bayar_keys: [] };
+    const ok = IngestPayload.safeParse({
+      ...tagihanBase, tagihan_manifest: { ...kosong, izinkan_kosong: true }, tables: {},
+    });
+    expect(ok.success && ok.data.tagihan_manifest?.izinkan_kosong).toBe(true);
+    const tanpa = IngestPayload.safeParse({ ...tagihanBase, tagihan_manifest: kosong, tables: {} });
+    expect(tanpa.success && tanpa.data.tagihan_manifest?.izinkan_kosong).toBeUndefined();
+    for (const nilai of [false, "true", 1]) {
+      expect(IngestPayload.safeParse({
+        ...tagihanBase, tagihan_manifest: { ...kosong, izinkan_kosong: nilai }, tables: {},
+      }).success).toBe(false);
+    }
+  });
+
+  it("tagihan_manifest: daftar kunci berbatas — tepat di batas sah, satu di atasnya ditolak dengan pesan jelas", () => {
+    const kunci = (n: number) => Array.from({ length: n }, (_, i) => `K${i}`);
+    const dengan = (m: Record<string, unknown>) => IngestPayload.safeParse({
+      ...tagihanBase, tagihan_manifest: { ...manifestContoh, ...m }, tables: {},
+    });
+    expect(dengan({
+      header_keys: kunci(MAX_TAGIHAN_MANIFEST_KEYS), bayar_keys: kunci(MAX_TAGIHAN_MANIFEST_KEYS),
+    }).success).toBe(true);
+    for (const daftar of ["header_keys", "bayar_keys"]) {
+      const r = dengan({ [daftar]: kunci(MAX_TAGIHAN_MANIFEST_KEYS + 1) });
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0]?.message).toContain(`${daftar}: melampaui ${MAX_TAGIHAN_MANIFEST_KEYS} kunci`);
+    }
+    // Panjang satu kunci juga berbatas — tanpa itu batas jumlah tak mengikat byte.
+    expect(dengan({ header_keys: ["K".repeat(MAX_TAGIHAN_KEY_LENGTH)] }).success).toBe(true);
+    expect(dengan({ header_keys: ["K".repeat(MAX_TAGIHAN_KEY_LENGTH + 1)] }).success).toBe(false);
+  });
+
+  it("batas manifest muat di bawah batas body backend 10 MB, dengan margin", () => {
+    // Kunci ASCII terpanjang yang sah, kedua daftar penuh — kasus terburuk skema.
+    const penuh = Array.from({ length: MAX_TAGIHAN_MANIFEST_KEYS }, (_, i) =>
+      String(i).padStart(MAX_TAGIHAN_KEY_LENGTH, "K"));
+    const byte = Buffer.byteLength(JSON.stringify({
+      ...tagihanBase, tables: {},
+      tagihan_manifest: { ...manifestContoh, header_keys: penuh, bayar_keys: penuh },
+    }));
+    expect(byte).toBeLessThanOrEqual(MAX_TAGIHAN_MANIFEST_BYTES);
+    expect(MAX_TAGIHAN_MANIFEST_BYTES).toBeLessThan(10 * 1024 * 1024);
+  });
+
+  // 🔴 Tabel tagihan di domain lain menghapus tautan faktur TANPA kunci per-unit.
+  it.each(["piutang", "masters", "sales"] as const)(
+    "tabel tagihan di domain %s ditolak (ketiga tabel)",
+    (domain) => {
+      const tabel = {
+        tagihan_header: [fakturContoh],
+        tagihan_detail: [{ ckdtagih: "TG-CONTOH-0001", ckdjualplg: "JP-CONTOH-0001" }],
+        tagihan_bayar: [bayarContoh],
+      };
+      for (const [nama, rows] of Object.entries(tabel)) {
+        const r = IngestPayload.safeParse({
+          unit_code: "0000001", domain, watermark_high: null,
+          // tautan butuh header sepayload; sertakan agar yang ditolak memang domainnya
+          tables: nama === "tagihan_detail" ? { tagihan_header: tabel.tagihan_header, [nama]: rows } : { [nama]: rows },
+        });
+        expect(r.success, nama).toBe(false);
+        expect(JSON.stringify(r.error?.issues), nama).toContain(`tabel ${nama} hanya untuk domain tagihan`);
+      }
+    },
+  );
+
+  it("domain tagihan hanya membawa tabelnya sendiri; domain lain tak diperketat", () => {
+    const asing = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: { tagihan_header: [fakturContoh], product: [{ ckdbbm: "P1", vcnmbbm: "contoh", nhrgjual: 10000, perk_map: null }] },
+    });
+    expect(asing.success).toBe(false);
+    expect(JSON.stringify(asing.error?.issues)).toContain("domain tagihan hanya membawa tabel");
+    // Kunci tabel tagihan yang KOSONG di domain lain bukan pelanggaran.
+    expect(IngestPayload.safeParse({
+      unit_code: "0000001", domain: "sales", watermark_high: "2026-06-11T07:30:00.000Z",
+      tables: {
+        sales_header: [{ ckdjualbbm: "H1", dtgljual: "2026-06-11", nshift: 2, vcket: null }],
+        tagihan_header: [],
+      },
     }).success).toBe(true);
   });
 

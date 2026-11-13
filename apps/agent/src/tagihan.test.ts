@@ -1,17 +1,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IngestPayload,
   MAX_ROWS_PER_TABLE,
+  MAX_TAGIHAN_MANIFEST_KEYS,
   type IngestResponse,
 } from "@solamax/shared";
 import type { AgentConfig } from "./config.js";
 import type { EasyMaxConnection } from "./db/mysql.js";
 import { assertSelectOnly } from "./db/readonly-guard.js";
 import { TAGIHAN_DOMAIN, tanggalAtauNull } from "./domains.js";
-import { IngestError, type IngestClient } from "./ingest-client.js";
+import { IngestClient, IngestError } from "./ingest-client.js";
+import { log } from "./logger.js";
 import { StateStore } from "./state/store.js";
 import {
   chunkTagihanByInvoice,
@@ -81,22 +83,33 @@ function fakeConn(src: Sumber): { conn: EasyMaxConnection; queries: string[] } {
   return { conn, queries };
 }
 
-/** `gagal(payload)` → lempar galat itu untuk payload tsb.; selain itu terima. */
+/**
+ * `gagal(payload)` → lempar galat itu untuk payload tsb.; selain itu terima.
+ * Seperti backend, balasan payload domain tagihan membawa `tagihan_token` yang
+ * BERBEDA tiap payload (`tok-<n>`); `tanpaToken` meniru backend yang belum
+ * mengenalnya. `tokens[i]` = token balasan untuk `sent[i]`.
+ */
 function fakeClient(
   gagal?: (p: IngestPayload) => IngestError | null,
-): { client: IngestClient; sent: IngestPayload[]; attempts: IngestPayload[] } {
+  opts: { tanpaToken?: boolean } = {},
+): { client: IngestClient; sent: IngestPayload[]; attempts: IngestPayload[]; tokens: Array<string | undefined> } {
   const sent: IngestPayload[] = [];
   const attempts: IngestPayload[] = [];
+  const tokens: Array<string | undefined> = [];
   const client = {
     async sendWithRetry(payload: IngestPayload): Promise<IngestResponse> {
       attempts.push(payload);
       const err = gagal?.(payload) ?? null;
       if (err) throw err;
       sent.push(payload);
-      return { upserted: {}, new_watermark: payload.watermark_high };
+      const token = payload.domain === "tagihan" && !opts.tanpaToken
+        ? `tok-${sent.length}` : undefined;
+      tokens.push(token);
+      return { upserted: {}, new_watermark: payload.watermark_high,
+        ...(token ? { tagihan_token: token } : {}) };
     },
   } as unknown as IngestClient;
-  return { client, sent, attempts };
+  return { client, sent, attempts, tokens };
 }
 
 const CFG = {
@@ -307,7 +320,7 @@ describe("runCycle — domain tagihan", () => {
       ],
       bayar: [byr("BY-1", "TG-001"), byr("BY-2", "TG-003", { SBATAL: "1" })],
     });
-    const { client, sent } = fakeClient();
+    const { client, sent, tokens } = fakeClient();
     await runCycle(deps(conn, client, cfgBatch(2)), MASTERS);
 
     const t = tagihan(sent);
@@ -320,9 +333,16 @@ describe("runCycle — domain tagihan", () => {
     expect(manifests[0]!.tagihan_manifest!.cycle_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(manifests[0]!.tagihan_manifest!.header_keys).toEqual(["TG-001", "TG-002", "TG-003"]);
     expect(manifests[0]!.tagihan_manifest!.bayar_keys).toEqual(["BY-1", "BY-2"]);
+    // Agent tak pernah meminta penghapusan mirror berisi oleh daftar kosong.
+    expect(manifests[0]!.tagihan_manifest).not.toHaveProperty("izinkan_kosong");
 
     const chunks = t.filter((p) => !p.tagihan_manifest);
     expect(chunks.length).toBeGreaterThan(1); // batchSize 2 → terpotong
+    // chunk_token = token balasan potongan TERAKHIR — bukan yang pertama.
+    const tokenTerakhir = tokens[sent.indexOf(chunks[chunks.length - 1]!)];
+    expect(tokenTerakhir).toMatch(/^tok-/);
+    expect(tokenTerakhir).not.toBe(tokens[sent.indexOf(chunks[0]!)]);
+    expect(manifests[0]!.tagihan_manifest!.chunk_token).toBe(tokenTerakhir);
     // Yang dikirim = yang dibaca, persis sekali; baris batal ikut.
     expect(chunks.flatMap((p) => p.tables.tagihan_header ?? []).map((h) => h.ckdtagih))
       .toEqual(["TG-001", "TG-002", "TG-003"]);
@@ -343,6 +363,94 @@ describe("runCycle — domain tagihan", () => {
     expect(t).toHaveLength(1);
     expect(t[0]!.tables).toEqual({});
     expect(t[0]!.tagihan_manifest).toMatchObject({ header_keys: [], bayar_keys: [] });
+    // Nol potongan → tanpa token; dan agent TIDAK PERNAH menyetel izinkan_kosong —
+    // backend-lah yang menolak (409) bila mirror unit masih berisi.
+    expect(t[0]!.tagihan_manifest).not.toHaveProperty("chunk_token");
+    expect(t[0]!.tagihan_manifest).not.toHaveProperty("izinkan_kosong");
+  });
+
+  it("🔴 manifest DITOLAK backend (409) → galat keras bernama sebab, SATU percobaan, tak di-buffer, domain lain utuh", async () => {
+    const { conn } = fakeConn({ sales: true }); // sumber tagihan terbaca KOSONG
+    const pesan = "ingest 409: tagihan_manifest ditolak: daftar header KOSONG sementara mirror unit ini masih berisi faktur";
+    const { client, sent, attempts } = fakeClient((p) =>
+      p.tagihan_manifest ? new IngestError(pesan, false, 409) : null);
+    const d = deps(conn, client);
+    const galat = vi.spyOn(log, "error").mockImplementation(() => {});
+    try {
+      const jobs: SweepJob[] = [
+        { domain: "edc", tier: "tier1", from: "2026-06-20", toExcl: "2026-06-21", chunkDays: 7 },
+      ];
+      await expect(runCycle(d, { ...MASTERS, sweepJobs: jobs })).resolves.toBeUndefined();
+
+      expect(tagihan(attempts)).toHaveLength(1); // tak ada kirim ulang
+      expect(tagihan(sent)).toHaveLength(0);
+      expect(d.store.bufferCount()).toBe(0);
+      const baris = galat.mock.calls.find(([msg]) => /manifest DITOLAK backend \(409\)/.test(msg));
+      expect(baris, "log galat manifest 409").toBeDefined();
+      expect(baris![1]).toMatchObject({ status: 409, header: 0, bayar: 0, sebab: pesan });
+      // Domain lain: sebelum (sales), cadence master (piutang), sesudah (sapuan edc).
+      expect(sent.some((p) => p.domain === "sales")).toBe(true);
+      expect(sent.some((p) => p.domain === "piutang")).toBe(true);
+      expect(sent.some((p) => p.domain === "edc")).toBe(true);
+    } finally {
+      galat.mockRestore();
+    }
+  });
+
+  it("backend tak memulangkan tagihan_token → manifest TIDAK dikirim (tak ada pangkas tanpa penjaga basi)", async () => {
+    const { conn } = fakeConn({ header: [hdr("TG-001")] });
+    const { client, attempts } = fakeClient(undefined, { tanpaToken: true });
+    const galat = vi.spyOn(log, "error").mockImplementation(() => {});
+    try {
+      await runCycle(deps(conn, client), MASTERS);
+      expect(tagihan(attempts)).toHaveLength(1); // potongannya saja
+      expect(tagihan(attempts).some((p) => p.tagihan_manifest)).toBe(false);
+      expect(galat.mock.calls.some(([, f]) => /tagihan_token/.test(String(f?.["err"])))).toBe(true);
+    } finally {
+      galat.mockRestore();
+    }
+  });
+
+  it("🔴 daftar kunci melampaui batas kontrak → siklus gagal SEBELUM ada yang dikirim", async () => {
+    const banyak = Array.from({ length: MAX_TAGIHAN_MANIFEST_KEYS + 1 }, (_, i) => hdr(`T${i}`));
+    const { conn } = fakeConn({ header: banyak });
+    const { client, attempts } = fakeClient();
+    const galat = vi.spyOn(log, "error").mockImplementation(() => {});
+    try {
+      await runCycle(deps(conn, client), MASTERS);
+      expect(tagihan(attempts)).toHaveLength(0);
+      expect(galat.mock.calls.some(([, f]) =>
+        new RegExp(`melampaui batas ${MAX_TAGIHAN_MANIFEST_KEYS} kunci`).test(String(f?.["err"])))).toBe(true);
+    } finally {
+      galat.mockRestore();
+    }
+  });
+
+  it("tepat di batas jumlah kunci masih dikirim (kontrol: penjaga batas tidak memblokir yang sah)", async () => {
+    const tepat = Array.from({ length: MAX_TAGIHAN_MANIFEST_KEYS }, (_, i) => hdr(`T${i}`));
+    const { conn } = fakeConn({ header: tepat });
+    const { client, sent } = fakeClient();
+    await runCycle(deps(conn, client, cfgBatch(MAX_ROWS_PER_TABLE)), MASTERS);
+    const m = tagihan(sent).filter((p) => p.tagihan_manifest);
+    expect(m).toHaveLength(1);
+    expect(m[0]!.tagihan_manifest!.header_keys).toHaveLength(MAX_TAGIHAN_MANIFEST_KEYS);
+  });
+
+  it("manifest melampaui anggaran byte (kunci non-ASCII) → siklus gagal SEBELUM ada yang dikirim", async () => {
+    // 100.000 kunci × (27 karakter 3-byte + 5 digit + 3) ≈ 8,9 MB > anggaran
+    // 8 MiB, walau jumlah dan panjang kuncinya (32) masih di dalam batas skema.
+    const lebar = Array.from({ length: MAX_TAGIHAN_MANIFEST_KEYS }, (_, i) =>
+      hdr(String(i).padStart(32, "€")));
+    const { conn } = fakeConn({ header: lebar });
+    const { client, attempts } = fakeClient();
+    const galat = vi.spyOn(log, "error").mockImplementation(() => {});
+    try {
+      await runCycle(deps(conn, client), MASTERS);
+      expect(tagihan(attempts)).toHaveLength(0);
+      expect(galat.mock.calls.some(([, f]) => /melampaui anggaran \d+ byte/.test(String(f?.["err"])))).toBe(true);
+    } finally {
+      galat.mockRestore();
+    }
   });
 
   it.each(["header", "detail", "bayar"] as const)(
@@ -488,5 +596,49 @@ describe("runCycle — domain tagihan", () => {
     const manifests = tagihan(sent).filter((p) => p.tagihan_manifest);
     expect(manifests).toHaveLength(1); // hanya milik siklus ini
     expect(manifests[0]!.tagihan_manifest!.header_keys).toEqual(["TG-001"]);
+  });
+});
+
+// Kebijakan kirim-ulang yang SEBENARNYA (bukan klien tiruan): penolakan penjaga
+// manifest (409) fatal — tak boleh memicu badai kirim-ulang.
+describe("IngestClient.sendWithRetry — penolakan manifest", () => {
+  const cfg = {
+    backend: { baseUrl: "http://127.0.0.1:9", apiKey: "kunci-ilustratif", requestTimeoutMs: 1000 },
+  } as unknown as AgentConfig;
+  const payload: IngestPayload = {
+    unit_code: "0000001", domain: "tagihan", watermark_high: null,
+    tagihan_manifest: {
+      cycle_id: "00000000-0000-4000-8000-000000000000", header_keys: [], bayar_keys: [],
+    },
+    tables: {},
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("409 → SATU permintaan, galat fatal berstatus 409 yang membawa pesan backend", async () => {
+    const fetchPalsu = vi.fn(async () => new Response(
+      JSON.stringify({ statusCode: 409, message: "tagihan_manifest ditolak: basi" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchPalsu);
+    const err = await new IngestClient(cfg)
+      .sendWithRetry(payload, { retries: 4, baseDelayMs: 1 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(IngestError);
+    expect(err).toMatchObject({ retriable: false, status: 409 });
+    expect((err as IngestError).message).toContain("tagihan_manifest ditolak: basi");
+    expect(fetchPalsu).toHaveBeenCalledTimes(1);
+  });
+
+  it("kontrol: 503 memang dikirim ulang sampai habis (retries + 1 permintaan)", async () => {
+    const fetchPalsu = vi.fn(async () => new Response("sibuk", { status: 503 }));
+    vi.stubGlobal("fetch", fetchPalsu);
+    await expect(new IngestClient(cfg).sendWithRetry(payload, { retries: 2, baseDelayMs: 1 }))
+      .rejects.toMatchObject({ retriable: true, status: 503 });
+    expect(fetchPalsu).toHaveBeenCalledTimes(3);
+  });
+
+  it("balasan potongan: tagihan_token diteruskan apa adanya", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      upserted: { tagihan_header: 1 }, new_watermark: null, tagihan_token: "701:20260105T010203.000004",
+    }), { status: 200 })));
+    const res = await new IngestClient(cfg).send(payload);
+    expect(res.tagihan_token).toBe("701:20260105T010203.000004");
   });
 });
