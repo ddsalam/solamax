@@ -16,8 +16,10 @@
 -- ingest kebal terhadap beda padding antara sumber dan payload.
 
 -- CreateTable tagihan_header — UPSERT by (unit_id, ckdtagih).
--- Ke-13 kolom tr_htagihan dari recon dicerminkan. Tipe/lebar kolom sumber belum
--- pernah di-DESCRIBE; bila ada yang tak muat, koreksinya lewat migrasi BARU.
+-- Ke-13 kolom tr_htagihan dicerminkan. Lebar dicocokkan dengan DESCRIBE di satu
+-- unit (14 Nov 2026): kunci char(15), ckdplg varchar(12), teks ≤ varchar(100),
+-- nilai double(17,2), flag int(1) — semuanya muat. `sjenistag`: 1 = faktur
+-- dokumen JP, 2 = faktur dokumen UV (tanpa campuran di unit yang diperiksa).
 CREATE TABLE "public"."tagihan_header" (
     "unit_id" SMALLINT NOT NULL,
     "ckdtagih" CHAR(15) NOT NULL,
@@ -40,8 +42,8 @@ CREATE TABLE "public"."tagihan_header" (
 
 -- CreateTable tagihan_detail — tautan faktur → dokumen penjualan. Sumber tanpa PK;
 -- kunci mirror (unit_id, ckdtagih, ckdjualplg). `ckdjualplg` CHAR(20): selebar
--- `bppiut.vcref` (pasangan join-nya), bukan 15 — dokumen yang lebih panjang
--- daripada dugaan tak boleh menggagalkan INSERT seluruh potongan.
+-- `bppiut.vcref` (pasangan join-nya). Sumbernya char(15) (DESCRIBE 14 Nov 2026),
+-- jadi muat; bpchar mengabaikan spasi pengisi sehingga join tetap cocok.
 -- `ingested_at` = kapan tautan PERTAMA terlihat (INSERT … ON CONFLICT DO NOTHING).
 CREATE TABLE "public"."tagihan_detail" (
     "unit_id" SMALLINT NOT NULL,
