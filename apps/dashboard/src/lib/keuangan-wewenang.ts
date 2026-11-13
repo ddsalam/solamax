@@ -674,3 +674,55 @@ export function canSetujuiMemorial(ctx: WewenangCtx): boolean {
 export const PESAN_TAK_BOLEH_SALDO_AWAL_POS = "Hanya Head of Finance yang boleh mengisi saldo awal pos.";
 export const PESAN_TAK_BOLEH_MEMORIAL = "Hanya Head of Finance yang boleh mengetik jurnal memorial.";
 export const PESAN_TAK_BOLEH_SETUJUI_MEMORIAL = "Hanya Direksi yang boleh menyetujui jurnal memorial.";
+
+// ---------------------------------------------------------------------------
+// Termin pembayaran pelanggan (rencana 2026-11-13 U4; R15, KTD9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Boleh MENGATUR termin pembayaran — termin bawaan unit dan pengecualian per
+ * pelanggan (R14)? Seluruh tim Finance: staf `keuangan` **dan** Head of
+ * Finance, plus super admin.
+ *
+ * ⚖️ Keputusan owner 13 Nov 2026 (R15, KTD9): "semua staf Finance boleh
+ * mengubah termin" — dipilih di atas "HoF saja" dan di atas alur usul/setuju,
+ * supaya termin cepat terisi. "Semua staf Finance" MENCAKUP Head of Finance,
+ * sedangkan `canInputKeuangan` sengaja menolaknya (§10.12) — jadi memakai
+ * `canInputKeuangan` di sini akan mengulang kejadian reklasifikasi 27 Sep 2026
+ * (§10.29): HoF tertolak dari tindakan yang justru diputuskan boleh baginya.
+ *
+ * ⛔ Pengecualian SEMPIT dari §10.12, setara {@link canReklasifikasi} dan
+ * {@link canKelolaSettlementEdc}: termin bukan "mengetik" transaksi — ia tak
+ * melahirkan kas, nominal, maupun tanggal buku; ia sifat hubungan dengan
+ * pelanggan yang menentukan PENYAJIAN jatuh tempo. `canInputKeuangan` TIDAK
+ * disentuh. Ditulis berdiri sendiri supaya pelonggaran di sini tak merembes ke
+ * input lain, dan supaya predikat lain yang bergeser tak ikut menggeser ini.
+ *
+ * `admin_perusahaan` mengikuti `canInputKeuangan`: TIDAK, kecuali ia pemegang
+ * HoF (kapabilitas ENV yang menempel pada peran apa pun). `direksi` dan
+ * `pengawas` tidak. Membaca halamannya tetap {@link canViewLaporanKeuangan}.
+ *
+ * Kontrolnya keterlihatan, bukan pemisahan tugas: setiap perubahan mem-void
+ * baris lama (riwayat utuh) dan tercatat di `app.audit_log` (R16).
+ */
+export function canAturTermin(ctx: WewenangCtx, daftar?: readonly string[]): boolean {
+  return (
+    canInputKeuangan(ctx, daftar) || isHeadOfFinance(ctx.email, daftar ?? HEAD_OF_FINANCE_EMAILS)
+  );
+}
+
+/** Pesan penolakan aksi termin — satu sumber untuk layar dan server. */
+export const PESAN_TAK_BOLEH_ATUR_TERMIN =
+  "Hanya tim Finance (staf Keuangan atau Head of Finance) yang boleh mengatur termin pembayaran.";
+
+/**
+ * Pesan penolakan bagi pemanggil yang TIDAK lolos {@link canAturTermin} —
+ * padanan {@link pesanTakBolehInput}. Dipanggil SESUDAH predikat menolak; ia
+ * bukan gerbang. Alasannya hanya satu (bukan tim Finance): HoF lolos di sini,
+ * jadi cabang "HoF tidak mengetik" milik `pesanTakBolehInput` tak pernah benar
+ * untuk termin — dan memakainya akan menyuruh HoF mencari staf Keuangan untuk
+ * hal yang boleh ia kerjakan sendiri.
+ */
+export function pesanTakBolehAturTermin(): string {
+  return PESAN_TAK_BOLEH_ATUR_TERMIN;
+}

@@ -472,8 +472,7 @@ model PelangganMaster {
 
 // Header faktur (tr_htagihan). UPSERT by (unit_id, ckdtagih); baris yang lenyap di
 // sumber dipangkas oleh manifest penutup siklus. `nstatus`/`nlastsaldo` = flag &
-// sisa versi POS (hanya pembanding). ⚠️ Recon mencatat 13 kolom sumber; 12 yang
-// dikenal dicerminkan — kolom ke-13 dikonfirmasi lewat DESCRIBE di unit pertama.
+// sisa versi POS (hanya pembanding). Ke-13 kolom sumber dari recon dicerminkan.
 model TagihanHeader {
   unitId     Int       @map("unit_id") @db.SmallInt
   ckdtagih   String    @db.Char(15)
@@ -1930,5 +1929,45 @@ model SaldoAwalPos {
   voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
 
   @@map("saldo_awal_pos")
+  @@schema("app")
+}
+
+// --- Termin pembayaran pelanggan (0064; rencana 2026-11-13 U4, KTD6/KTD7) ---
+// Milik SolaMax, bukan cermin EasyMax. Jatuh tempo faktur tanpa jatuh tempo
+// EasyMax yang sah = tanggal faktur + termin pelanggan, kalau tidak ada: termin
+// unit. Tak dibekukan per faktur — perubahan langsung berlaku. VOID-only:
+// mengubah = void + insert; indeks unik parsial `WHERE NOT void` (hanya di SQL,
+// Prisma tak memodelkan indeks parsial) menjamin satu baris aktif.
+
+// Termin BAWAAN satu unit, hari bulat 0..365 (CHECK). Satu baris aktif per unit.
+model TerminUnit {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  terminHari      Int       @map("termin_hari") @db.SmallInt
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("termin_unit")
+  @@schema("app")
+}
+
+// Pengecualian termin per (unit, pelanggan). `kodePelanggan` =
+// btrim(pelanggan_master.ckdplg), tersimpan terpangkas (CHECK); TANPA FK ke
+// master (cermin EasyMax). Tanpa baris aktif = pelanggan memakai termin unit.
+model TerminPelanggan {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  kodePelanggan   String    @map("kode_pelanggan") @db.VarChar(12)
+  terminHari      Int       @map("termin_hari") @db.SmallInt
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("termin_pelanggan")
   @@schema("app")
 }
