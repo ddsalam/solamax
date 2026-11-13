@@ -278,6 +278,63 @@ kanonik ini secara terpisah. Penguatan baru otomatis ikut pada build bundle
 berikutnya; jangan membangun ulang zip kanari hanya untuk mengganti dokumentasi,
 karena itu menghasilkan objek dan hash baru.
 
+### Rilis domain `tagihan` (tagihan pelanggan kredit) — urutan swap bundle
+
+Bundle ini menambah domain **`tagihan`**: tiap jam (cadence master) agent membaca
+UTUH tiga tabel `tr_htagihan`, `tr_dtagihan`, `tr_byrtagih` (SELECT saja), mengirimnya
+terpotong per faktur, lalu menutup siklus dengan satu payload **manifest**. Hanya
+manifest itu yang membuat backend memangkas baris yang sudah dihapus di EasyMax.
+
+1. **Backend harus tayang lebih dulu** (migrasi mirror tagihan + `/ingest` yang
+   mengenal domain `tagihan`) di tier yang dituju unit ini. Jangan swap bundle
+   sebelum itu dikonfirmasi.
+   - Bila terlanjur (agent baru, backend lama): backend menjawab **4xx** untuk
+     payload `tagihan` pertama. Agent **membatalkan siklus tagihan itu saja** —
+     sisa potongan dan manifest tidak dikirim, **tidak ada yang masuk buffer**,
+     dan domain lain (sales, opname, piutang, …) tetap jalan normal. Di log:
+     `domain gagal — dilewati siklus ini … "domain":"tagihan" … ingest 400`.
+     Agent mencoba lagi sendiri tiap jam dan pulih **tanpa restart** begitu
+     backend tayang. Tidak perlu rollback bundle.
+2. **Swap bundle + RESTART wajib** — ikuti langkah 1–7 Bagian I persis. Tanpa
+   restart, proses lama tetap jalan dan domain `tagihan` tidak pernah muncul.
+3. **Konfirmasi siklus lengkap pertama.** Master (termasuk `tagihan`) ikut siklus
+   PERTAMA sesudah restart, jadi cukup tunggu beberapa menit lalu cari di
+   `C:\solamax-agent\logs\agent-<tgl>.log`:
+   ```text
+   "msg":"tagihan: siklus lengkap" … "header":<n>,"tautan":<n>,"bayar":<n>
+   ```
+   - Baris itu **hanya** ditulis sesudah ketiga kueri berhasil, semua potongan
+     diterima, **dan** manifest diterima. `header` dan `bayar` harus sama dengan
+     jumlah baris `tr_htagihan` dan `tr_byrtagih` pada jam yang sama (paket probe
+     T1 dan T5a).
+   - Ada `ingest ok … "domain":"tagihan"` tetapi **tidak ada** `siklus lengkap`
+     → siklus belum lengkap; mirror belum boleh dipakai. Cari
+     `tagihan: potongan gagal — siklus dibatalkan` atau `domain gagal … "tagihan"`
+     di atasnya dan laporkan pesan lengkapnya.
+   - `tagihan: baris tanpa header faktur / tanpa kunci di sumber` (level warn)
+     bukan kegagalan: tautan yang fakturnya tak ada di `tr_htagihan` tidak
+     dikirim, pembayaran yang fakturnya tak ada tetap dikirim. Angka kecil yang
+     hilang di siklus berikutnya = faktur sedang dibuat saat agent membaca; angka
+     yang menetap → laporkan angkanya.
+4. Pratinjau tanpa kirim: `2-dry-run.bat` mencetak tiap potongan dan manifest
+   (`[dry-run] payload … "domain":"tagihan"`, dengan jumlah kunci di
+   `tagihan_manifest`).
+
+5. **Penolakan 409 pada manifest bukan gangguan jaringan.** Backend menolak manifest
+   penutup bila (a) daftar kunci faktur kosong sementara cermin unit masih berisi —
+   tanda agent membaca database yang kosong/sedang dipulihkan; (b) token potongan
+   terakhir bukan yang terbaru — ada siklus lain yang menyela; atau (c) jumlah baris
+   cermin sesudah pemangkasan tidak sama dengan jumlah kunci. Log agent:
+   `tagihan: manifest DITOLAK backend (409)` beserta pesannya. Tidak ada yang
+   dihapus; siklus berikutnya mencoba lagi. Bila (a) berulang, periksa `database`
+   di konfigurasi agent sebelum melakukan apa pun.
+6. **Satu agent per unit.** Jangan jalankan `--once` selagi loop terjadwal hidup:
+   dua proses bisa saling menyela siklus `tagihan` dan membuat baris siklus yang
+   lebih baru terpangkas sampai siklus berikutnya memulihkannya.
+
+**Rollback:** kembalikan `solamax-agent.PREV.cjs` lalu restart (Bagian I). Mirror
+tagihan berhenti diperbarui, tidak rusak; backend tetap menerima domain itu.
+
 ### Task bulanan `resync-bulanan.bat` — STANDAR unit kelas NULL-by-default DTGLJAM
 
 Temuan onboarding AS/Adisucipto 2026-07-17: ada EasyMax yang menulis `tr_djualbbm.DTGLJAM`

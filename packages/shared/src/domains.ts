@@ -20,6 +20,7 @@ export const DOMAINS = [
   "terra_resmi",
   "piutang",
   "hutang",
+  "tagihan",
 ] as const;
 export type Domain = (typeof DOMAINS)[number];
 
@@ -58,6 +59,12 @@ export const TABLES_BY_DOMAIN = {
   // Buku hutang pelanggan (tr_bphut) — full-sync, UPSERT by PK CKDBPHUT.
   // Saldo Hutang Lokal (negatif) di Laporan Operasional.
   hutang: ["bphut"],
+  // Tagihan pelanggan kredit (tr_htagihan + tr_dtagihan + tr_byrtagih) — snapshot
+  // PENUH tiap siklus, dipotong PER FAKTUR (tautan & pembayaran sebuah faktur
+  // selalu sepayload dengan header-nya). Header/pembayaran UPSERT by PK; tautan
+  // diganti per faktur; baris yang lenyap di sumber dipangkas oleh payload
+  // `tagihan_manifest` penutup siklus (lihat ingest.ts).
+  tagihan: ["tagihan_header", "tagihan_detail", "tagihan_bayar"],
 } as const satisfies Record<Domain, readonly string[]>;
 
 export type TargetTable =

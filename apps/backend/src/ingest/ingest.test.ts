@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { IngestPayload } from "@solamax/shared";
+import { MAX_TAGIHAN_MANIFEST_KEYS, type IngestPayload } from "@solamax/shared";
 import { IngestService } from "./ingest.service.js";
 import { IngestController } from "./ingest.controller.js";
 import { hashApiKey } from "../auth/api-key.guard.js";
@@ -9,13 +9,20 @@ import type {
   SnapshotSourceCaptureService,
 } from "../saldo-pelanggan/source-capture.service.js";
 
-/** Prisma palsu: rekam executeRaw dalam transaksi. */
-function fakePrisma(onCommit?: () => void) {
+/**
+ * Prisma palsu: rekam executeRaw DAN queryRaw dalam transaksi (urutan gabungan).
+ * `query(sql)` memasok baris untuk queryRaw; tanpa itu → [].
+ */
+function fakePrisma(onCommit?: () => void, query?: (sql: string) => unknown[]) {
   const executed: Array<{ sql: string; params: unknown[] }> = [];
   const tx = {
     $executeRawUnsafe: async (sql: string, ...params: unknown[]) => {
       executed.push({ sql, params });
       return 1;
+    },
+    $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+      executed.push({ sql, params });
+      return query?.(sql) ?? [];
     },
   };
   const prisma = {
@@ -367,6 +374,308 @@ describe("IngestService", () => {
     console.info("B3_INGEST_LATENCY_LOCAL", JSON.stringify(report));
     expect(baseline).toHaveLength(30);
     expect(captured).toHaveLength(30);
+  });
+});
+
+// Domain tagihan (rencana 2026-11-13 U2). Perilaku terhadap DATA dibuktikan di
+// tagihan.postgres.test.ts; di sini yang dikunci adalah BENTUK transaksinya.
+// Seluruh nilai ilustratif.
+describe("IngestService — domain tagihan", () => {
+  const faktur = (id: string, extra: Record<string, unknown> = {}) => ({
+    ckdtagih: id, dtgl: "2026-01-05", dtgljt: null, ckdplg: "PLG-A", vcket: null,
+    ntotal: 10000000, nadm: 0, ngatot: 10000000, nstatus: 0, sbatal: 0,
+    vcalasan: null, nlastsaldo: 10000000, sjenistag: 1, ...extra,
+  });
+  const bayar = (id: string, tagih: string) => ({
+    ckdbyr: id, dtgl: "2026-01-20", ckdtagih: tagih, vcbukti: null, vcket: null,
+    ctmpkas: null, ntotal: 4000000, sbatal: 0, vcalasan: null, capprovecode: null,
+    cnamereq: null,
+  });
+  const POTONGAN: IngestPayload = {
+    unit_code: "0000001",
+    domain: "tagihan",
+    watermark_high: null,
+    tables: {
+      tagihan_header: [faktur("TG-1"), faktur("TG-2")],
+      tagihan_detail: [
+        { ckdtagih: "TG-1", ckdjualplg: "JP-1" },
+        { ckdtagih: "TG-1", ckdjualplg: "JP-2" },
+      ],
+      tagihan_bayar: [bayar("BY-1", "TG-1")],
+    },
+  };
+  const TOKEN = "701:20260105T010203.000004";
+  const MANIFEST: IngestPayload = {
+    unit_code: "0000001",
+    domain: "tagihan",
+    watermark_high: null,
+    tagihan_manifest: {
+      cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+      header_keys: ["TG-1", "TG-2"],
+      bayar_keys: ["BY-1"],
+      chunk_token: TOKEN,
+    },
+    tables: {},
+  };
+  const KOSONG: IngestPayload = {
+    ...MANIFEST,
+    tagihan_manifest: { cycle_id: MANIFEST.tagihan_manifest!.cycle_id, header_keys: [], bayar_keys: [] },
+  };
+  /**
+   * Mirror tiruan untuk jalur manifest: keadaan SEBELUM pangkas (`ada_header`,
+   * `stamped`, `token`) dan jumlah SESUDAH pangkas. Bawaan = keadaan yang
+   * membuat MANIFEST di atas lolos semua penjaga.
+   */
+  const mirror = (o: {
+    adaHeader?: boolean; stamped?: string | null; token?: string | null;
+    header?: number; bayar?: number;
+  } = {}) => fakePrisma(undefined, (sql) => {
+    if (sql.includes('AS "ada_header"')) {
+      return [{ ada_header: o.adaHeader ?? true, stamped: o.stamped ?? null,
+        token: o.token === undefined ? TOKEN : o.token }];
+    }
+    if (sql.includes('AS "bayar"')) return [{ header: o.header ?? 2, bayar: o.bayar ?? 1 }];
+    return [{ token: "702:20260105T010204.000005" }];
+  });
+  const hapus = <T extends { sql: string }>(executed: T[]) =>
+    executed.filter((e) => e.sql.startsWith("DELETE"));
+  const stempel = <T extends { sql: string }>(executed: T[]) =>
+    executed.filter((e) => e.sql.includes('INSERT INTO "tagihan_cycle"'));
+
+  it("potongan: kunci per-unit → pangkas tautan per faktur → upsert; TANPA hapus header/pembayaran", async () => {
+    const { prisma, executed } = mirror();
+    const res = await new IngestService(prisma).ingest(3, POTONGAN);
+    expect(res.upserted).toEqual({ tagihan_header: 2, tagihan_detail: 2, tagihan_bayar: 1 });
+    // Balasan potongan membawa token "payload tagihan terakhir" untuk manifest.
+    expect(res.tagihan_token).toBe("702:20260105T010204.000005");
+
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(executed[0]!.params).toEqual(["3"]);
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["tagihan:3"]);
+
+    // Cakupan pangkas tautan = faktur di HEADER payload (TG-2 tanpa tautan ikut:
+    // tautan lamanya harus hilang); yang dipertahankan = pasangan di payload.
+    const pangkas = sqls.findIndex((s) => s.includes('DELETE FROM "tagihan_detail"'));
+    const sisip = sqls.findIndex((s) => s.includes('INSERT INTO "tagihan_detail"'));
+    expect(pangkas).toBeGreaterThan(1);
+    expect(sisip).toBeGreaterThan(pangkas);
+    expect(executed[pangkas]!.params).toEqual([
+      3, ["TG-1", "TG-2"], ["TG-1", "TG-1"], ["JP-1", "JP-2"],
+    ]);
+    expect(sqls[sisip]).toContain('ON CONFLICT ("unit_id","ckdtagih","ckdjualplg") DO NOTHING');
+
+    // 🔴 Tanpa manifest, header & pembayaran TIDAK PERNAH dihapus, dan stempel
+    // siklus-lengkap tidak bergerak.
+    expect(sqls.some((s) => s.includes('DELETE FROM "tagihan_header"'))).toBe(false);
+    expect(sqls.some((s) => s.includes('DELETE FROM "tagihan_bayar"'))).toBe(false);
+    expect(sqls.some((s) => s.includes('"tagihan_cycle"'))).toBe(false);
+    // Token dibaca SESUDAH sync_state ditulis — ia identitas penulisan itu.
+    expect(sqls.at(-2)).toContain('INSERT INTO "sync_state"');
+    expect(executed.at(-2)!.params).toEqual([3, "tagihan", null, 5, false]);
+    expect(sqls.at(-1)).toContain('AS "token"');
+    expect(executed.at(-1)!.params).toEqual([3]);
+  });
+
+  it("domain lain tak pernah membaca/memulangkan token tagihan", async () => {
+    const { prisma, executed } = fakePrisma();
+    const res = await new IngestService(prisma).ingest(1, SALES_PAYLOAD);
+    expect(res).not.toHaveProperty("tagihan_token");
+    expect(executed.some((e) => e.sql.includes('AS "token"'))).toBe(false);
+  });
+
+  it("potongan tanpa header: tak ada tautan yang dihapus", async () => {
+    const { prisma, executed } = mirror();
+    await new IngestService(prisma).ingest(3, {
+      ...POTONGAN, tables: { tagihan_bayar: [bayar("BY-1", "TG-1")] },
+    });
+    expect(executed.some((e) => e.sql.includes("DELETE"))).toBe(false);
+  });
+
+  it("header & pembayaran: UPSERT by PK + skipUnchanged + cast tanggal/numeric", async () => {
+    const { prisma, executed } = mirror();
+    await new IngestService(prisma).ingest(3, POTONGAN);
+    const hdr = executed.find((e) => e.sql.includes('INSERT INTO "tagihan_header"'))!;
+    expect(hdr.sql).toContain('ON CONFLICT ("unit_id","ckdtagih") DO UPDATE SET');
+    expect(hdr.sql).toContain("IS DISTINCT FROM");
+    // dtgl, dtgljt → ::date (regresi 42804); ntotal/nadm/ngatot/nlastsaldo → teks ::numeric.
+    expect(hdr.sql.match(/::date/g)).toHaveLength(4); // 2 kolom × 2 baris
+    expect(hdr.sql.match(/::numeric/g)).toHaveLength(8); // 4 kolom × 2 baris
+    expect(hdr.params).toContain("10000000");
+    expect(hdr.params).not.toContain(10000000);
+    const byr = executed.find((e) => e.sql.includes('INSERT INTO "tagihan_bayar"'))!;
+    expect(byr.sql).toContain('ON CONFLICT ("unit_id","ckdbyr") DO UPDATE SET');
+    expect(byr.sql).toContain("IS DISTINCT FROM");
+  });
+
+  it("manifest: kunci → baca keadaan → hapus pembayaran → hapus header → hapus tautan yatim → uji jumlah → stempel → sync_state, SATU transaksi", async () => {
+    const { prisma, executed } = mirror();
+    const res = await new IngestService(prisma).ingest(3, MANIFEST);
+    expect(res.upserted).toEqual({});
+
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls).toHaveLength(10);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(executed[0]!.params).toEqual(["3"]);
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["tagihan:3"]);
+    // Penjaga membaca keadaan SEBELUM satu baris pun dihapus.
+    expect(sqls[2]).toContain('AS "ada_header"');
+    expect(executed[2]!.params).toEqual([3]);
+    expect(sqls[3]).toContain('DELETE FROM "tagihan_bayar"');
+    expect(executed[3]!.params).toEqual([3, ["BY-1"]]);
+    expect(sqls[4]).toContain('DELETE FROM "tagihan_header"');
+    expect(executed[4]!.params).toEqual([3, ["TG-1", "TG-2"]]);
+    expect(sqls[5]).toContain('DELETE FROM "tagihan_detail"');
+    expect(executed[5]!.params).toEqual([3]);
+    // Uji jumlah SESUDAH pangkas dan SEBELUM stempel.
+    expect(sqls[6]).toContain('AS "bayar"');
+    expect(sqls[7]).toContain('INSERT INTO "tagihan_cycle"');
+    expect(executed[7]!.params).toEqual([3, "8d15c6cf-3e80-4db8-8104-8ea8b556be96", 2, 1]);
+    expect(sqls[8]).toContain('"sync_state"');
+    expect(sqls[9]).toContain('AS "token"');
+    // Setiap DELETE membawa pembatas unit-nya SENDIRI, bukan hanya mengandalkan RLS.
+    for (const i of [3, 4, 5]) expect(sqls[i]).toContain('"unit_id" = $1');
+  });
+
+  it("manifest kosong pada mirror KOSONG tetap sah — distempel 0/0 (unit tanpa faktur jadi 'tersedia')", async () => {
+    const { prisma, executed } = mirror({ adaHeader: false, token: null, header: 0, bayar: 0 });
+    await new IngestService(prisma).ingest(3, KOSONG);
+    expect(stempel(executed)).toHaveLength(1);
+    expect(stempel(executed)[0]!.params.slice(2)).toEqual([0, 0]);
+  });
+
+  it("🔴 manifest kosong pada mirror yang MASIH BERISI → 409; tak ada DELETE, tak ada stempel, sync_state tak ditulis", async () => {
+    const { prisma, executed } = mirror({ adaHeader: true });
+    await expect(new IngestService(prisma).ingest(3, KOSONG)).rejects.toMatchObject({
+      status: 409, message: expect.stringMatching(/daftar header KOSONG/),
+    });
+    expect(hapus(executed)).toHaveLength(0);
+    expect(stempel(executed)).toHaveLength(0);
+    expect(executed.at(-1)!.sql).toContain('AS "ada_header"'); // berhenti di penjaga
+  });
+
+  it("izinkan_kosong (operator) membuka penghapusan seluruh mirror unit", async () => {
+    const { prisma, executed } = mirror({ adaHeader: true, header: 0, bayar: 0 });
+    await new IngestService(prisma).ingest(3, {
+      ...KOSONG, tagihan_manifest: { ...KOSONG.tagihan_manifest!, izinkan_kosong: true },
+    });
+    expect(hapus(executed)).toHaveLength(3);
+    expect(executed.find((e) => e.sql.includes('DELETE FROM "tagihan_header"'))!.params).toEqual([3, []]);
+    expect(stempel(executed)[0]!.params.slice(2)).toEqual([0, 0]);
+  });
+
+  it.each([
+    { name: "token potongan lain (siklus lebih baru sudah mendarat)", token: "999:20260105T020000.000000" },
+    { name: "belum pernah ada potongan", token: null },
+  ])("🔴 manifest basi — $name → 409 SEBELUM ada yang dihapus", async ({ token }) => {
+    const { prisma, executed } = mirror({ token });
+    await expect(new IngestService(prisma).ingest(3, MANIFEST)).rejects.toMatchObject({
+      status: 409, message: expect.stringMatching(/basi/),
+    });
+    expect(hapus(executed)).toHaveLength(0);
+    expect(stempel(executed)).toHaveLength(0);
+  });
+
+  it.each([
+    { name: "header kurang (kunci tak pernah tiba)", header: 1, bayar: 1 },
+    { name: "pembayaran kurang", header: 2, bayar: 0 },
+  ])("🔴 jumlah mirror sesudah pangkas ≠ jumlah kunci — $name → 409, TANPA stempel", async ({ header, bayar: b }) => {
+    const { prisma, executed } = mirror({ header, bayar: b });
+    await expect(new IngestService(prisma).ingest(3, MANIFEST)).rejects.toMatchObject({
+      status: 409, message: expect.stringMatching(/tak pernah tiba/),
+    });
+    // DELETE memang sudah dijalankan — yang membatalkannya adalah ROLLBACK
+    // transaksi (dibuktikan terhadap Postgres di tagihan.postgres.test.ts).
+    expect(stempel(executed)).toHaveLength(0);
+    expect(executed.at(-1)!.sql).toContain('AS "bayar"');
+  });
+
+  it("kunci berpengisi spasi dihitung sekali (bpchar): 'TG-1   ' = 'TG-1'", async () => {
+    const { prisma, executed } = mirror();
+    await new IngestService(prisma).ingest(3, {
+      ...MANIFEST,
+      tagihan_manifest: { ...MANIFEST.tagihan_manifest!,
+        header_keys: ["TG-1   ", "TG-2", "TG-1"], bayar_keys: ["BY-1 "] },
+    });
+    expect(stempel(executed)).toHaveLength(1); // 2 header unik = 2 di mirror
+  });
+
+  it("manifest yang SUDAH distempel (kirim ulang) → diterima tanpa mengerjakan apa pun", async () => {
+    const { prisma, executed } = mirror({
+      stamped: MANIFEST.tagihan_manifest!.cycle_id, token: "999:20260105T020000.000000",
+    });
+    const res = await new IngestService(prisma).ingest(3, MANIFEST);
+    expect(res.upserted).toEqual({});
+    expect(hapus(executed)).toHaveLength(0);
+    expect(stempel(executed)).toHaveLength(0);
+  });
+
+  it("manifest pada domain lain → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = { ...MANIFEST, domain: "piutang" } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(3, payload)).rejects.toThrow(
+      /tagihan_manifest tidak sah/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+
+  it("manifest yang membawa baris → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = { ...MANIFEST, tables: POTONGAN.tables } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(3, payload)).rejects.toThrow(
+      /tidak boleh membawa baris/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+
+  it("manifest berisi kunci TANPA chunk_token → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const { chunk_token: _buang, ...tanpaToken } = MANIFEST.tagihan_manifest!;
+    await expect(new IngestService(prisma).ingest(3, {
+      ...MANIFEST, tagihan_manifest: tanpaToken,
+    })).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/chunk_token/) });
+    expect(executed).toHaveLength(0);
+  });
+
+  it("daftar kunci manifest melampaui batas → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const banyak = Array.from({ length: MAX_TAGIHAN_MANIFEST_KEYS + 1 }, (_, i) => `K${i}`);
+    for (const kunci of ["header_keys", "bayar_keys"] as const) {
+      await expect(new IngestService(prisma).ingest(3, {
+        ...MANIFEST, tagihan_manifest: { ...MANIFEST.tagihan_manifest!, [kunci]: banyak },
+      })).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/melampaui limit/) });
+    }
+    expect(executed).toHaveLength(0);
+  });
+
+  // 🔴 Domain ≠ tagihan yang membawa tabel tagihan akan menghapus tautan faktur
+  // TANPA kunci per-unit `tagihan` (kunci diambil per domain).
+  it.each(["tagihan_header", "tagihan_detail", "tagihan_bayar"] as const)(
+    "tabel %s di domain lain → 422 tanpa eksekusi (lapis service)",
+    async (table) => {
+      const { prisma, executed } = fakePrisma();
+      const payload = {
+        unit_code: "0000001", domain: "piutang", watermark_high: null,
+        tables: { [table]: POTONGAN.tables[table] },
+      } as IngestPayload;
+      await expect(new IngestService(prisma).ingest(3, payload)).rejects.toMatchObject({
+        status: 422, message: expect.stringMatching(/hanya sah untuk domain tagihan/),
+      });
+      expect(executed).toHaveLength(0);
+    },
+  );
+
+  it("domain tagihan yang membawa tabel domain lain → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = {
+      ...POTONGAN, tables: { ...POTONGAN.tables, bppiut: SOURCE_CUT_PAYLOAD.tables.bppiut },
+    } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(3, payload)).rejects.toMatchObject({
+      status: 422, message: expect.stringMatching(/bppiut tidak sah untuk domain tagihan/),
+    });
+    expect(executed).toHaveLength(0);
   });
 });
 
