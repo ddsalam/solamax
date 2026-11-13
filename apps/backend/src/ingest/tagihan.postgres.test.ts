@@ -250,27 +250,6 @@ suite("ingest domain tagihan (PostgreSQL 16)", () => {
     expect(await hitung("tagihan_header", U2)).toBe(0);
   });
 
-  it("index bppiut dipakai oleh bentuk `trim(vcref) = …` (alasan memilih index ekspresi)", async () => {
-    const plan = await transaction(async (c) => {
-      // Tabel kosong → planner memilih seq scan; matikan untuk melihat apakah
-      // index-nya DAPAT dipakai oleh predikat itu (bukan apakah ia termurah).
-      await c.query("SET LOCAL enable_seqscan = off");
-      await c.query("SET LOCAL enable_bitmapscan = off");
-      const explain = (q: string) => c.query<{ "QUERY PLAN": string }>(`EXPLAIN ${q}`)
-        .then((r) => r.rows.map((x) => x["QUERY PLAN"]).join("\n"));
-      return {
-        trim: await explain(`SELECT 1 FROM bppiut b WHERE b.unit_id = 1 AND trim(b.vcref) = 'JP-1'`),
-        polos: await explain(`SELECT 1 FROM bppiut b WHERE b.unit_id = 1 AND b.vcref = 'JP-1'`),
-      };
-    });
-    expect(plan.trim).toContain("bppiut_unit_id_vcref_trim_idx");
-    // Kondisi atas vcref harus berada DI DALAM Index Cond (bukan Filter sesudahnya).
-    expect(plan.trim).toMatch(/Index Cond: .*vcref/);
-    // DAYA-BEDA + ongkos yang disebut di migrasi: bentuk TANPA trim tak terlayani
-    // sebagai kondisi index.
-    expect(plan.polos).not.toMatch(/Index Cond: .*vcref/);
-  });
-
   // ── U2: perilaku ingest ───────────────────────────────────────────────────
   it("siklus pertama mendarat utuh; nilai rupiah & tanggal tersimpan apa adanya", async () => {
     await service.ingest(U1, potongan(

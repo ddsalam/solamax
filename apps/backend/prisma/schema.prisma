@@ -426,8 +426,6 @@ model Bppiut {
   @@id([unitId, ckdbppiut])
   @@index([unitId, dtgl])
   @@index([unitId, ckdplg])
-  // + index ekspresi `bppiut_unit_id_vcref_trim_idx` ON (unit_id, btrim(vcref)) —
-  // migrasi 0063; Prisma tak memodelkan index ekspresi, jadi hanya hidup di SQL.
   @@map("bppiut")
   @@schema("public")
 }

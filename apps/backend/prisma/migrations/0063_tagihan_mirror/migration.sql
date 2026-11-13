@@ -1,7 +1,7 @@
 -- 0063_tagihan_mirror — cermin modul tagihan pelanggan kredit EasyMax (domain
 -- sync `tagihan`). Rencana 2026-11-13 U1 (KTD1–KTD3, KTD11).
 --
--- ADDITIVE: empat tabel baru + satu index pada `bppiut`. Tak ada ALTER pada tabel
+-- ADDITIVE: empat tabel baru. Tak ada ALTER pada tabel
 -- yang sudah ada, tak ada backfill. Sumber (SELECT-only, snapshot penuh tiap siklus):
 --   tr_htagihan (header faktur) · tr_dtagihan (faktur → dokumen penjualan) ·
 --   tr_byrtagih (pembayaran faktur).
@@ -156,25 +156,11 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
--- Index pada cermin buku piutang untuk join dokumen: tautan faktur ↔ posting
--- piutang (rincian faktur & kelompok "belum ditagihkan", KTD8).
---
--- KEPUTUSAN: index EKSPRESI atas btrim(vcref), bukan atas vcref polos.
--- Seluruh kueri yang sudah ada membandingkan referensi ini sebagai `trim(vcref)`
--- (queries.ts: `trim(bt.vcref) = trim(p.ckdjualplg)`, `trim(vcref) AS ref`), dan
--- Postgres mengurai `trim(x)` menjadi `btrim(x)` — jadi predikat
--- `trim(b.vcref) = …` memakai index ini apa adanya. Index atas `vcref` polos
--- TIDAK akan pernah dipakai oleh bentuk ber-trim itu, dan mewajibkan kueri baru
--- meninggalkan konvensi yang sama persis dengan cara data ini dibaca di tempat
--- lain. Ongkosnya disebut: predikat `vcref = …` TANPA trim tak terlayani index
--- ini — tulis `trim(b.vcref) = <nilai tanpa spasi pengisi>`.
---
--- Bukan index parsial: bentuk kueri KTD8 belum final, dan predikat parsial yang
--- tak terbukti tersirat oleh kueri membuat index-nya diam-diam tak terpakai.
---
--- ⚠️ CREATE INDEX biasa (bukan CONCURRENTLY — migrasi Prisma berjalan dalam
--- transaksi) memegang kunci SHARE pada bppiut selama build: BACA tetap jalan,
--- TULIS (ingest domain piutang) menunggu. Ingest yang kena timeout diulang
--- sendiri oleh agent. Tanpa Prisma `@@index` (index ekspresi tak dimodelkan).
+-- TIDAK ADA index baru pada `bppiut`. Index ekspresi atas btrim(vcref) pernah
+-- direncanakan untuk join tautan faktur ↔ posting piutang, lalu DIBATALKAN
+-- sebelum migrasi ini pernah dijalankan: dashboard selalu membaca di bawah RLS,
+-- dan btrim() tidak leakproof, sehingga klausa `trim(vcref) = …` tak boleh
+-- menjadi kondisi index di samping policy unit_scope (EXPLAIN di Postgres 16:
+-- superuser memakai index itu, role ber-RLS tidak). Kueri "belum ditagihkan"
+-- ditulis tanpa bergantung pada index — lihat tagihan-queries.ts di dashboard.
 -- ---------------------------------------------------------------------------
-CREATE INDEX "bppiut_unit_id_vcref_trim_idx" ON "public"."bppiut" ("unit_id", btrim("vcref"));
