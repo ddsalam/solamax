@@ -78,6 +78,29 @@ export interface SaldoLedgerDomain {
 }
 
 /**
+ * Domain tagihan pelanggan kredit — SNAPSHOT PENUH tiga tabel tiap siklus
+ * (`tr_htagihan`, `tr_dtagihan`, `tr_byrtagih`), ditutup payload `tagihan_manifest`
+ * (lihat `syncTagihan`). Tanpa watermark. Ketiga kueri WAJIB berhasil; satu saja
+ * gagal → siklus batal, tak ada yang dikirim (kebalikan `syncMasters`).
+ */
+export interface TagihanDomain {
+  domain: Extract<Domain, "tagihan">;
+  mode: "full-manifest";
+  headerSql: string;
+  detailSql: string;
+  bayarSql: string;
+  mapHeader(raw: Raw[]): NonNullable<Tables["tagihan_header"]>;
+  mapDetail(raw: Raw[]): {
+    rows: NonNullable<Tables["tagihan_detail"]>;
+    /** Baris sumber tanpa CKDTAGIH/CKDJUALPLG — tak punya kunci mirror, dibuang. */
+    tanpaKunci: number;
+    /** Pasangan (faktur, dokumen) kembar di sumber (tabel tanpa PK) — dilebur. */
+    kembar: number;
+  };
+  mapBayar(raw: Raw[]): NonNullable<Tables["tagihan_bayar"]>;
+}
+
+/**
  * Domain Tera RESMI (ledger `tr_hterra ⋈ tr_dterra`) — FULL SYNC (tabel mungil,
  * ~392 hdr/1.884 dtl). `map` butuh offset TZ utk konversi `DTGLJAM` WIB→UTC;
  * `business_date` = `DTGLTERRA` (date, tanpa konversi tz). UPSERT by natural key
@@ -1009,6 +1032,151 @@ export const TERRA_RESMI_RESYNC = {
   map: TERRA_RESMI.map,
 } as const;
 
+// ---------------------------------------------------------------------------
+// TAGIHAN (tr_htagihan + tr_dtagihan + tr_byrtagih) — faktur tagihan pelanggan
+// kredit, tautan faktur → dokumen penjualan, dan pembayaran faktur. SNAPSHOT
+// PENUH tiap siklus (cadence master), dicerminkan APA ADANYA: flag status
+// EasyMax, sisa versi POS, jatuh tempo mentah dan baris batal ikut — tak ada
+// yang difilter atau diturunkan di sini (status dihitung saat baca).
+//
+// Tiga kueri TANPA join & TANPA WHERE: (a) `tr_dtagihan` tak ber-PK dan
+// menyimpan tautan faktur batal, (b) pemangkasan mirror memakai daftar kunci
+// LENGKAP — kueri berfilter akan membuat backend menghapus baris yang sah.
+// SQL polos (tanpa CTE/window function) → jalan di MySQL 5.0.67.
+//
+// `tr_htagihan`: ke-13 kolom dari recon ditarik eksplisit di bawah (jangan
+// `SELECT *`). Kolom baru di sumber masuk lewat kontrak @solamax/shared + migrasi
+// dulu, baru di kueri ini.
+// ---------------------------------------------------------------------------
+
+/**
+ * Tanggal EasyMax → "YYYY-MM-DD" atau `null`. Driver memakai `dateStrings`, jadi
+ * tanggal nol MySQL tiba sebagai teks `0000-00-00` (atau `0000-00-00 00:00:00`)
+ * — lolos regex kontrak tetapi DITOLAK Postgres, dan satu baris semacam itu
+ * akan menggagalkan seluruh potongan (dan dengan itu seluruh siklus) selamanya.
+ * Sama untuk tanggal separuh-nol (`2026-00-00`) dan tanggal mustahil
+ * (`2026-02-30`) yang masih diterima MySQL 5.0. Semuanya → `null`.
+ */
+export function tanggalAtauNull(value: unknown): string | null {
+  const s = str(value);
+  if (s === null) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (y === 0 || mo === 0 || d === 0) return null;
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) {
+    return null;
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+/**
+ * Kunci EasyMax untuk domain tagihan: spasi pengisi di KANAN dibuang (kolom
+ * CHAR; backend membandingkan sebagai `bpchar`, kontrak memakai `trimEnd`) agar
+ * pengelompokan per faktur di agent sama dengan yang dilihat backend. Kunci
+ * kosong/NULL → `null`.
+ */
+function kunciTagihan(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trimEnd();
+  return s === "" ? null : s;
+}
+
+const TAGIHAN: TagihanDomain = {
+  domain: "tagihan",
+  mode: "full-manifest",
+  headerSql: `
+    SELECT CKDTAGIH, DTGL, DTGLJT, CKDPLG, VCKET, NTOTAL, NADM, NGATOT,
+           NSTATUS, SBATAL, VCALASAN, NLASTSALDO, SJENISTAG
+    FROM tr_htagihan
+    ORDER BY CKDTAGIH ASC`,
+  detailSql: `
+    SELECT CKDTAGIH, CKDJUALPLG
+    FROM tr_dtagihan`,
+  bayarSql: `
+    SELECT CKDBYR, DTGL, CKDTAGIH, VCBUKTI, VCKET, CTMPKAS, NTOTAL, SBATAL,
+           VCALASAN, CAPPROVECODE, CNAMEREQ
+    FROM tr_byrtagih
+    ORDER BY CKDBYR ASC`,
+  mapHeader(raw) {
+    const rows: NonNullable<Tables["tagihan_header"]> = [];
+    const seen = new Set<string>();
+    for (const r of raw) {
+      const ckdtagih = kunciTagihan(r.CKDTAGIH);
+      // PK sumber — kosong/kembar berarti hasil kueri tak bisa dipercaya sebagai
+      // daftar kunci lengkap. Lempar: siklus batal, tak ada yang dipangkas.
+      if (ckdtagih === null) throw new Error("tr_htagihan: CKDTAGIH kosong");
+      if (seen.has(ckdtagih)) throw new Error(`tr_htagihan: CKDTAGIH kembar (${ckdtagih})`);
+      seen.add(ckdtagih);
+      rows.push({
+        ckdtagih,
+        dtgl: tanggalAtauNull(r.DTGL),
+        dtgljt: tanggalAtauNull(r.DTGLJT),
+        ckdplg: str(r.CKDPLG),
+        vcket: str(r.VCKET),
+        ntotal: num(r.NTOTAL),
+        nadm: num(r.NADM),
+        ngatot: num(r.NGATOT),
+        nstatus: int(r.NSTATUS),
+        sbatal: int(r.SBATAL),
+        vcalasan: str(r.VCALASAN),
+        nlastsaldo: num(r.NLASTSALDO),
+        sjenistag: int(r.SJENISTAG),
+      });
+    }
+    return rows;
+  },
+  mapDetail(raw) {
+    const rows: NonNullable<Tables["tagihan_detail"]> = [];
+    const seen = new Set<string>();
+    let tanpaKunci = 0;
+    let kembar = 0;
+    for (const r of raw) {
+      const ckdtagih = kunciTagihan(r.CKDTAGIH);
+      const ckdjualplg = kunciTagihan(r.CKDJUALPLG);
+      if (ckdtagih === null || ckdjualplg === null) {
+        tanpaKunci += 1;
+        continue;
+      }
+      const key = `${ckdtagih}\0${ckdjualplg}`;
+      if (seen.has(key)) {
+        kembar += 1;
+        continue;
+      }
+      seen.add(key);
+      rows.push({ ckdtagih, ckdjualplg });
+    }
+    return { rows, tanpaKunci, kembar };
+  },
+  mapBayar(raw) {
+    const rows: NonNullable<Tables["tagihan_bayar"]> = [];
+    const seen = new Set<string>();
+    for (const r of raw) {
+      const ckdbyr = kunciTagihan(r.CKDBYR);
+      if (ckdbyr === null) throw new Error("tr_byrtagih: CKDBYR kosong");
+      if (seen.has(ckdbyr)) throw new Error(`tr_byrtagih: CKDBYR kembar (${ckdbyr})`);
+      seen.add(ckdbyr);
+      rows.push({
+        ckdbyr,
+        dtgl: tanggalAtauNull(r.DTGL),
+        ckdtagih: kunciTagihan(r.CKDTAGIH),
+        vcbukti: str(r.VCBUKTI),
+        vcket: str(r.VCKET),
+        ctmpkas: str(r.CTMPKAS),
+        ntotal: num(r.NTOTAL),
+        sbatal: int(r.SBATAL),
+        vcalasan: str(r.VCALASAN),
+        capprovecode: str(r.CAPPROVECODE),
+        cnamereq: str(r.CNAMEREQ),
+      });
+    }
+    return rows;
+  },
+};
+
 export const DATETIME_DOMAINS: DateTimeDomain[] = [SALES, OPNAME, DELIVERY];
 export const CASH_DOMAIN = CASH;
 export const TEBUS_DOMAIN = TEBUS;
@@ -1017,6 +1185,7 @@ export const TERRA_RESMI_DOMAIN = TERRA_RESMI;
 export const DEPOSIT_DOMAIN = DEPOSIT;
 export const PIUTANG_DOMAIN = PIUTANG;
 export const HUTANG_DOMAIN = HUTANG;
+export const TAGIHAN_DOMAIN = TAGIHAN;
 export const EDC_DOMAIN = EDC;
 export const PELANGGAN_DOMAIN = PELANGGAN;
 export const MASTERS_DOMAIN = MASTERS;

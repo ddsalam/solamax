@@ -3,6 +3,8 @@ import {
   buildReplace,
   buildReplaceWindowDeletes,
   buildSalesDetailPrune,
+  buildTagihanDetailPrune,
+  buildTagihanManifestPrune,
   buildUpsert,
 } from "./sql.js";
 import { TABLE_CONFIG } from "./table-config.js";
@@ -222,7 +224,9 @@ describe("skipUnchanged — jangan tulis ulang baris yang sama", () => {
   it("PREDIKAT MENCAKUP SEMUA KOLOM YANG DI-SET — inilah pagar korektnessnya", () => {
     // Kolom yang di-SET tapi tak ikut dijaga = perubahan nyata pada kolom itu
     // DIAM-DIAM berhenti mendarat di mirror. Kegagalan senyap, bukan error.
-    for (const key of ["bppiut", "bphut", "deposit", "terra_resmi"]) {
+    for (const key of [
+      "bppiut", "bphut", "deposit", "terra_resmi", "tagihan_header", "tagihan_bayar",
+    ]) {
       const cfg = TABLE_CONFIG[key]!;
       const { sql } = buildUpsert(cfg, 4, [
         Object.fromEntries(cfg.columns.map((c) => [c, null])),
@@ -316,5 +320,90 @@ describe("buildSalesDetailPrune", () => {
 
   it("tanpa detail (mis. sumber kosong) → null: tak ada yang dihapus", () => {
     expect(buildSalesDetailPrune(5, [])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Domain tagihan — ganti tautan per faktur + pangkas-saat-lengkap (manifest)
+// ---------------------------------------------------------------------------
+describe("tagihan_detail — INSERT … DO NOTHING", () => {
+  it("semua kolom = kunci → DO NOTHING; tak ada ingested_at yang di-refresh", () => {
+    // hasIngestedAt:true akan mengubahnya jadi DO UPDATE SET ingested_at = now()
+    // → tiap tautan ditulis ulang tiap siklus. Tes ini MERAH bila itu terjadi.
+    const { sql, params } = buildUpsert(TABLE_CONFIG.tagihan_detail!, 2, [
+      { ckdtagih: "TG-1", ckdjualplg: "JP-1" },
+      { ckdtagih: "TG-1", ckdjualplg: "JP-1" }, // kembar intra-batch → 1 tuple
+    ]);
+    expect(sql).toContain('ON CONFLICT ("unit_id","ckdtagih","ckdjualplg") DO NOTHING');
+    expect(sql).not.toContain("DO UPDATE");
+    expect(sql).not.toContain("ingested_at");
+    expect(params).toEqual([2, "TG-1", "JP-1"]);
+  });
+});
+
+describe("buildTagihanDetailPrune", () => {
+  it("cakupan = faktur di HEADER payload (unik); dipertahankan = pasangan tautan payload", () => {
+    const p = buildTagihanDetailPrune(
+      2,
+      [{ ckdtagih: "TG-1" }, { ckdtagih: "TG-2" }, { ckdtagih: "TG-1" }],
+      [{ ckdtagih: "TG-1", ckdjualplg: "JP-1" }],
+    )!;
+    expect(p.sql).toContain('DELETE FROM "tagihan_detail"');
+    expect(p.sql).toContain('"unit_id" = $1');
+    expect(p.sql).toContain('= ANY($2::bpchar[])');
+    expect(p.sql).toContain("NOT EXISTS");
+    expect(p.params).toEqual([2, ["TG-1", "TG-2"], ["TG-1"], ["JP-1"]]);
+  });
+
+  it("faktur tanpa tautan di payload tetap masuk cakupan — tautan lamanya dihapus", () => {
+    const p = buildTagihanDetailPrune(2, [{ ckdtagih: "TG-9" }], [])!;
+    expect(p.params).toEqual([2, ["TG-9"], [], []]);
+  });
+
+  it("tanpa header di payload → null: tak ada yang dihapus", () => {
+    expect(buildTagihanDetailPrune(2, [], [{ ckdtagih: "TG-1", ckdjualplg: "JP-1" }])).toBeNull();
+  });
+});
+
+describe("buildTagihanManifestPrune", () => {
+  const manifest = {
+    cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+    header_keys: ["TG-1", "TG-2"],
+    bayar_keys: ["BY-1"],
+  };
+
+  it("empat statement berurutan: pembayaran, header, tautan yatim, stempel", () => {
+    const [byr, hdr, det, cyc] = buildTagihanManifestPrune(6, manifest);
+    expect(byr!.sql).toContain('DELETE FROM "tagihan_bayar"');
+    expect(byr!.sql).toContain('k.id = b."ckdbyr"');
+    expect(byr!.params).toEqual([6, ["BY-1"]]);
+    expect(hdr!.sql).toContain('DELETE FROM "tagihan_header"');
+    expect(hdr!.sql).toContain('k.id = h."ckdtagih"');
+    expect(hdr!.params).toEqual([6, ["TG-1", "TG-2"]]);
+    // Tautan dipangkas terhadap header yang TERSISA di mirror (sesudah langkah 2).
+    expect(det!.sql).toContain('DELETE FROM "tagihan_detail"');
+    expect(det!.sql).toContain('FROM "tagihan_header" h');
+    expect(det!.params).toEqual([6]);
+    expect(cyc!.sql).toContain('INSERT INTO "tagihan_cycle"');
+    expect(cyc!.sql).toContain('ON CONFLICT ("unit_id") DO UPDATE SET');
+    expect(cyc!.sql).toContain("now()");
+    expect(cyc!.params).toEqual([6, manifest.cycle_id, 2, 1]);
+  });
+
+  it("di-scope per unit di SETIAP statement (tak pernah menyapu unit lain)", () => {
+    for (const st of buildTagihanManifestPrune(6, manifest)) {
+      expect(st.params[0]).toBe(6);
+      expect(st.sql).toMatch(/"unit_id" = \$1|VALUES \(\$1,/);
+    }
+  });
+
+  it("hanya menghapus yang TIDAK terdaftar — bentuk NOT EXISTS, bukan daftar-hapus", () => {
+    // Kunci manifest yang barisnya tak pernah tiba hanya berarti "jangan hapus":
+    // tak ada statement yang menuntut baris itu ada.
+    const [byr, hdr] = buildTagihanManifestPrune(6, manifest);
+    for (const st of [byr!, hdr!]) {
+      expect(st.sql).toContain("NOT EXISTS (SELECT 1 FROM unnest($2::bpchar[])");
+      expect(st.sql).not.toMatch(/= ANY/);
+    }
   });
 });

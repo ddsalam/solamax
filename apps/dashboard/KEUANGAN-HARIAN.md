@@ -2559,6 +2559,19 @@ Langkah Finance: [`docs/runbooks/2026-11-selisih-arus-kas-piutang-waktu.md`](../
   sisa berlawanan. Kasir yang **menghapus** baris di EasyMax (bukan batal/ubah tanggal) tidak
   terbaca mirror (UPSERT tanpa deteksi hapus). Layar 2 dan PDF-nya belum menampilkan blok ini.
 
+### 10.59 Termin pembayaran pelanggan — pengecualian SEMPIT atas §10.12 (keputusan owner 13 November 2026)
+
+⚖️ **Head of Finance boleh mengatur termin pembayaran** (termin bawaan unit dan pengecualian
+per pelanggan di layar Tagihan pelanggan), bersama staf `keuangan` dan super admin — predikat
+`canAturTermin`. Ini pengecualian ketiga atas §10.12, sejenis dengan reklasifikasi (§10.29) dan
+siklus settlement EDC (§10.45): termin bukan "mengetik" transaksi — tak ada kas, nominal, maupun
+tanggal buku yang lahir darinya; ia menentukan penyajian jatuh tempo. `canInputKeuangan` tidak
+disentuh, dan §10.12 tetap utuh untuk seluruh input harian. Kontrolnya keterlihatan: perubahan
+mem-void baris lama dan tercatat di `audit_log`.
+
+Keputusan lengkap, alasannya, dan batasnya **tidak** diulang di sini — rumahnya
+[`PIUTANG-PELANGGAN.md`](PIUTANG-PELANGGAN.md) §4.
+
 ## 9 · Gerbang masuk K1 — daftar periksa
 
 **Ini gerbang, bukan aspirasi.** Kalau owner memutuskan menembus salah satu

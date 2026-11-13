@@ -37,6 +37,7 @@ export type UnitRouteSegment =
   | "keuangan-tutup-bulan"
   | "keuangan-buku-besar"
   | "keuangan-piutang"
+  | "keuangan-tagihan"
   // Keuangan — unit di QUERY (?unit=), sebab halamannya bukan rute per-unit
   | "keuangan-sumber-data"
   // Keuangan — TANPA dimensi unit: papan menampilkan SEMUA unit sekaligus
@@ -70,6 +71,10 @@ export function unitRouteHref(args: {
   if (segment === "keuangan-piutang") {
     return `/keuangan/unit/${code}/piutang/${date}${suffix}`;
   }
+  // Tanpa dimensi tanggal — status tagihan dihitung terhadap hari ini (rencana
+  // 2026-11-13). Rincian faktur dan Atur termin memakai segmen yang sama:
+  // berganti unit mendarat di DAFTAR unit itu, sebab kode faktur milik satu unit.
+  if (segment === "keuangan-tagihan") return `/keuangan/unit/${code}/tagihan${suffix}`;
   // Tanpa dimensi tanggal — daftar rekening bukan keadaan harian.
   if (segment === "keuangan-akun-kas") return `/keuangan/unit/${code}/akun-kas${suffix}`;
   // Tanpa dimensi tanggal — pengaturan EDC bukan keadaan harian (§10.28).

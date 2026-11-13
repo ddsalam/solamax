@@ -29,6 +29,10 @@ import {
   canCocokkanBank,
   canTutupBulan,
   canKelolaSettlementEdc,
+  canAturTermin,
+  PESAN_TAK_BOLEH_ATUR_TERMIN,
+  pesanTakBolehAturTermin,
+  pesanTakBolehInput,
   canKelolaPos,
   canSetujuiMemorial,
   canIsiSaldoAwalPos,
@@ -587,6 +591,53 @@ describe("settlement EDC (keputusan owner 2 Nov 2026) — seluruh tim Finance", 
 
   it("daftar HoF kosong ⇒ direksi tetap ditolak (fail-closed)", () => {
     expect(canKelolaSettlementEdc(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+  });
+});
+
+describe("termin pembayaran (rencana 2026-11-13 U4; R15, KTD9) — seluruh tim Finance", () => {
+  const HOF5 = ["hof@solagroup.co"];
+  const c = (role: Role, email: string | null = null) => ({ role, email });
+  const semua: Role[] = ["pengawas", "keuangan", "direksi", "admin_perusahaan", "super_admin"];
+
+  it("🔴 canAturTermin: keuangan & super_admin; peran lain TIDAK bila bukan HoF", () => {
+    expect(semua.filter((r) => canAturTermin(c(r, "staf@solagroup.co"), HOF5))).toEqual([
+      "keuangan",
+      "super_admin",
+    ]);
+  });
+
+  it("🔴 HoF lolos, apa pun perannya — termasuk irisan HoF × keuangan", () => {
+    expect(canAturTermin(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(true);
+    expect(canAturTermin(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(true);
+  });
+
+  it("🔴 direksi & pengawas ditolak; email kosong tak pernah jadi HoF", () => {
+    expect(canAturTermin(c("direksi", "direksi@solagroup.co"), HOF5)).toBe(false);
+    expect(canAturTermin(c("pengawas", "pengawas@solagroup.co"), HOF5)).toBe(false);
+    expect(canAturTermin(c("direksi", null), HOF5)).toBe(false);
+  });
+
+  it("admin_perusahaan mengikuti canInputKeuangan: TIDAK, kecuali ia pemegang HoF", () => {
+    const admin = c("admin_perusahaan", "admin@solagroup.co");
+    expect(canInputKeuangan(admin, HOF5)).toBe(false);
+    expect(canAturTermin(admin, HOF5)).toBe(false);
+  });
+
+  it("🔴 pengecualian SEMPIT: canInputKeuangan untuk HoF tetap false (§10.12)", () => {
+    expect(canInputKeuangan(c("admin_perusahaan", "hof@solagroup.co"), HOF5)).toBe(false);
+    expect(canInputKeuangan(c("keuangan", "hof@solagroup.co"), HOF5)).toBe(false);
+  });
+
+  it("daftar HoF kosong ⇒ hanya jalur peran yang tersisa (fail-closed)", () => {
+    expect(canAturTermin(c("direksi", "hof@solagroup.co"), [])).toBe(false);
+    expect(canAturTermin(c("admin_perusahaan", "hof@solagroup.co"), [])).toBe(false);
+    expect(canAturTermin(c("keuangan", "hof@solagroup.co"), [])).toBe(true);
+  });
+
+  it("pesan tolak: satu sumber, menyebut tim Finance — BUKAN pesan 'HoF tidak mengetik'", () => {
+    expect(pesanTakBolehAturTermin()).toBe(PESAN_TAK_BOLEH_ATUR_TERMIN);
+    expect(PESAN_TAK_BOLEH_ATUR_TERMIN).toMatch(/staf Keuangan atau Head of Finance/);
+    expect(PESAN_TAK_BOLEH_ATUR_TERMIN).not.toBe(pesanTakBolehInput(c("pengawas", "p@solagroup.co")));
   });
 });
 

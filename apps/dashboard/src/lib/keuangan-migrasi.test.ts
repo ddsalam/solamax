@@ -135,6 +135,10 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0054", sql0054, ["tutup_bulan"]],
     // Rencana 2026-11-07 U5 — pengajuan Balik (KTD5).
     ["0060", MIG("0060_correction_request"), ["correction_request"]],
+    // Rencana 2026-11-13 U1 — cermin tagihan pelanggan (KTD1–KTD3, KTD11).
+    ["0063", MIG("0063_tagihan_mirror"), ["tagihan_header", "tagihan_detail", "tagihan_bayar", "tagihan_cycle"]],
+    // Rencana 2026-11-13 U4 — termin bawaan unit & pengecualian pelanggan (KTD6).
+    ["0064", MIG("0064_termin_pelanggan"), ["termin_unit", "termin_pelanggan"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {
@@ -1728,5 +1732,50 @@ describe("0061: day_close_reason_required hanya untuk baris closed (perbaikan 20
 
   it("⛔ 0026 TIDAK disunting (checksum migrate deploy) — CHECK lamanya masih di sana", () => {
     expect(pernyataan(sql0026)).toMatch(/"difference_rp" = 0 OR "reason_code" IS NOT NULL/);
+  });
+});
+
+describe("0064: termin pembayaran — dua tabel ber-unit, void-only (rencana 2026-11-13 U4, KTD6)", () => {
+  const sql = MIG("0064_termin_pelanggan");
+  const stmt = pernyataan(sql);
+
+  it("🔴 satu baris AKTIF per unit / per (unit, pelanggan) — indeks unik parsial WHERE NOT void", () => {
+    const unit = pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "termin_unit_aktif_uq"');
+    expect(unit).toMatch(/ON "app"\."termin_unit"\("unit_id"\) WHERE NOT "void"/);
+    const plg = pernyataanYangDimulai(sql, 'CREATE UNIQUE INDEX IF NOT EXISTS "termin_pelanggan_aktif_uq"');
+    expect(plg).toMatch(/ON "app"\."termin_pelanggan"\("unit_id", "kode_pelanggan"\) WHERE NOT "void"/);
+  });
+
+  it("🔴 rentang 0..365 dan jejak void ditegakkan CHECK pada KEDUA tabel", () => {
+    for (const t of ["termin_unit", "termin_pelanggan"]) {
+      expect(stmt, t).toContain(`CONSTRAINT "${t}_rentang" CHECK ("termin_hari" BETWEEN 0 AND 365)`);
+      expect(stmt, t).toMatch(
+        new RegExp(
+          `CONSTRAINT "${t}_void_audit" CHECK \\(\\s*"void" = \\("voided_at" IS NOT NULL\\) AND "void" = \\("voided_by_user_id" IS NOT NULL\\)`,
+        ),
+      );
+    }
+  });
+
+  it("kode pelanggan tersimpan TERPANGKAS dan tak kosong — bentuk kunci Saldo pelanggan (0037)", () => {
+    expect(stmt).toMatch(/"kode_pelanggan"\s+VARCHAR\(12\) NOT NULL/);
+    expect(stmt).toMatch(
+      /NULLIF\("kode_pelanggan", ''\) IS NOT NULL AND\s+"kode_pelanggan" = btrim\("kode_pelanggan"\)/,
+    );
+  });
+
+  it("🔴 VOID-only: dashboard_app SELECT/INSERT/UPDATE, DELETE di-REVOKE; dashboard_ro SELECT ber-IF EXISTS", () => {
+    for (const t of ["termin_unit", "termin_pelanggan"]) {
+      expect(stmt, t).toContain(`GRANT SELECT, INSERT, UPDATE ON "app"."${t}" TO dashboard_app`);
+      expect(stmt, t).toContain(`REVOKE DELETE ON "app"."${t}" FROM dashboard_app`);
+      expect(stmt, t).toContain(`GRANT SELECT ON "app"."${t}" TO dashboard_ro`);
+    }
+    expect(stmt).toMatch(/IF EXISTS \(SELECT 1 FROM pg_roles WHERE rolname = 'dashboard_ro'\) THEN/);
+    expect(stmt).not.toMatch(/GRANT[^;]*\bDELETE\b/);
+  });
+
+  it("aditif: tanpa ALTER tabel lama, tanpa seed, tanpa FK ke cermin EasyMax", () => {
+    expect(stmt).not.toMatch(/INSERT INTO|DROP TABLE|DROP COLUMN|REFERENCES/);
+    expect(stmt.match(/ALTER TABLE/g) ?? []).toHaveLength(2); // hanya dua baris EXECUTE format RLS
   });
 });

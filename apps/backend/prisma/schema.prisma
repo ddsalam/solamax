@@ -464,6 +464,90 @@ model PelangganMaster {
   @@schema("public")
 }
 
+// --- Tagihan pelanggan kredit (domain `tagihan`, migrasi 0063) ---
+// Mirror APA ADANYA tiga tabel modul tagihan EasyMax; snapshot penuh tiap siklus.
+// Status faktur TIDAK disimpan — dihitung saat baca (bergantung hari ini & termin).
+
+// Header faktur (tr_htagihan). UPSERT by (unit_id, ckdtagih); baris yang lenyap di
+// sumber dipangkas oleh manifest penutup siklus. `nstatus`/`nlastsaldo` = flag &
+// sisa versi POS (hanya pembanding). Ke-13 kolom sumber dari recon dicerminkan.
+model TagihanHeader {
+  unitId     Int       @map("unit_id") @db.SmallInt
+  ckdtagih   String    @db.Char(15)
+  dtgl       DateTime? @db.Date
+  dtgljt     DateTime? @db.Date
+  ckdplg     String?   @db.VarChar(12)
+  vcket      String?
+  ntotal     Decimal?  @db.Decimal
+  nadm       Decimal?  @db.Decimal
+  ngatot     Decimal?  @db.Decimal
+  nstatus    Int?      @db.SmallInt
+  sbatal     Int?      @db.SmallInt
+  vcalasan   String?
+  nlastsaldo Decimal?  @db.Decimal
+  sjenistag  Int?      @db.SmallInt
+  ingestedAt DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtagih])
+  @@index([unitId, ckdplg])
+  @@index([unitId, dtgl])
+  @@map("tagihan_header")
+  @@schema("public")
+}
+
+// Tautan faktur → dokumen penjualan (tr_dtagihan; tanpa PK di sumber). Diganti PER
+// FAKTUR tiap payload. Sumber menyimpan tautan faktur batal — baca lewat faktur hidup.
+// `ingested_at` = kapan tautan PERTAMA terlihat (INSERT … DO NOTHING, tak di-refresh).
+model TagihanDetail {
+  unitId     Int      @map("unit_id") @db.SmallInt
+  ckdtagih   String   @db.Char(15)
+  ckdjualplg String   @db.Char(20)
+  ingestedAt DateTime @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdtagih, ckdjualplg])
+  @@index([unitId, ckdjualplg])
+  @@map("tagihan_detail")
+  @@schema("public")
+}
+
+// Pembayaran faktur (tr_byrtagih). UPSERT by (unit_id, ckdbyr); dipangkas manifest.
+model TagihanBayar {
+  unitId       Int       @map("unit_id") @db.SmallInt
+  ckdbyr       String    @db.Char(15)
+  dtgl         DateTime? @db.Date
+  ckdtagih     String?   @db.Char(15)
+  vcbukti      String?
+  vcket        String?
+  ctmpkas      String?
+  ntotal       Decimal?  @db.Decimal
+  sbatal       Int?      @db.SmallInt
+  vcalasan     String?
+  capprovecode String?
+  cnamereq     String?
+  ingestedAt   DateTime  @default(now()) @map("ingested_at") @db.Timestamptz()
+
+  @@id([unitId, ckdbyr])
+  @@index([unitId, ckdtagih])
+  @@index([unitId, dtgl])
+  @@map("tagihan_bayar")
+  @@schema("public")
+}
+
+// Siklus tagihan LENGKAP terakhir per unit — ditulis HANYA oleh transaksi manifest
+// (pangkas + stempel). Sumber kesiapan & kesegaran layar tagihan; BUKAN sync_state,
+// yang ikut maju pada payload parsial mana pun. Tanpa baris = unit belum pernah
+// menyelesaikan satu siklus pun ("Data tagihan belum tersedia").
+model TagihanCycle {
+  unitId      Int      @id @map("unit_id") @db.SmallInt
+  cycleId     String   @map("cycle_id") @db.Uuid
+  completedAt DateTime @map("completed_at") @db.Timestamptz()
+  headerCount Int      @map("header_count")
+  bayarCount  Int      @map("bayar_count")
+
+  @@map("tagihan_cycle")
+  @@schema("public")
+}
+
 // ===========================================================================
 // Schema `app` — auth (Auth.js v5 / @auth/pg-adapter) + RBAC multi-tenant.
 // Tabel Auth.js dipetakan VERBATIM sesuai DDL adapter (id serial int, kolom
@@ -1843,5 +1927,45 @@ model SaldoAwalPos {
   voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
 
   @@map("saldo_awal_pos")
+  @@schema("app")
+}
+
+// --- Termin pembayaran pelanggan (0064; rencana 2026-11-13 U4, KTD6/KTD7) ---
+// Milik SolaMax, bukan cermin EasyMax. Jatuh tempo faktur tanpa jatuh tempo
+// EasyMax yang sah = tanggal faktur + termin pelanggan, kalau tidak ada: termin
+// unit. Tak dibekukan per faktur — perubahan langsung berlaku. VOID-only:
+// mengubah = void + insert; indeks unik parsial `WHERE NOT void` (hanya di SQL,
+// Prisma tak memodelkan indeks parsial) menjamin satu baris aktif.
+
+// Termin BAWAAN satu unit, hari bulat 0..365 (CHECK). Satu baris aktif per unit.
+model TerminUnit {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  terminHari      Int       @map("termin_hari") @db.SmallInt
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("termin_unit")
+  @@schema("app")
+}
+
+// Pengecualian termin per (unit, pelanggan). `kodePelanggan` =
+// btrim(pelanggan_master.ckdplg), tersimpan terpangkas (CHECK); TANPA FK ke
+// master (cermin EasyMax). Tanpa baris aktif = pelanggan memakai termin unit.
+model TerminPelanggan {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  unitId          Int       @map("unit_id") @db.SmallInt
+  kodePelanggan   String    @map("kode_pelanggan") @db.VarChar(12)
+  terminHari      Int       @map("termin_hari") @db.SmallInt
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  void            Boolean   @default(false)
+  voidedByUserId  Int?      @map("voided_by_user_id")
+  voidedAt        DateTime? @map("voided_at") @db.Timestamptz()
+
+  @@map("termin_pelanggan")
   @@schema("app")
 }

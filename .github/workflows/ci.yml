@@ -130,6 +130,13 @@ jobs:
         env:
           SNAPSHOT_POSTGRES_CI: "1"
           SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
+      # Domain tagihan: IngestService + migrasi 0063 sungguhan, di skema milik
+      # suite itu sendiri (tak menimpa public/app suite lain) dan sebagai role
+      # NOSUPERUSER NOBYPASSRLS — superuser menembus RLS dan akan hijau palsu.
+      - run: pnpm --filter @solamax/backend exec vitest run src/ingest/tagihan.postgres.test.ts
+        env:
+          SNAPSHOT_POSTGRES_CI: "1"
+          SNAPSHOT_POSTGRES_CI_URL: postgresql://snapshot_ci_admin:snapshot_ci_only@127.0.0.1:5432/solamax_snapshot_ci
       # Run separately against the same disposable PG16 service, never Cloud
       # SQL. The G/L suite validates endpoint/account/version and rolls back its
       # unique schema; it cannot overwrite the snapshot suites' public/app data.

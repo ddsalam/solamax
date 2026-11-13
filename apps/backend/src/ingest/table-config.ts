@@ -286,6 +286,42 @@ export const TABLE_CONFIG: Record<string, TableConfig> = {
     conflict: ["ckdplg"],
     hasIngestedAt: false,
   },
+
+  // --- Tagihan pelanggan kredit (domain `tagihan`, snapshot penuh tiap siklus) ---
+  // header/bayar: UPSERT by PK EasyMax. Seluruh tabel dikirim ulang tiap cadence →
+  // skipUnchanged WAJIB (siklus tanpa perubahan tak boleh menulis apa pun; lihat
+  // catatan bangkai di atas). Baris yang lenyap di sumber dipangkas oleh payload
+  // `tagihan_manifest` (buildTagihanManifestPrune), bukan oleh UPSERT.
+  tagihan_header: {
+    table: "tagihan_header",
+    columns: [
+      "ckdtagih", "dtgl", "dtgljt", "ckdplg", "vcket", "ntotal", "nadm", "ngatot",
+      "nstatus", "sbatal", "vcalasan", "nlastsaldo", "sjenistag",
+    ],
+    conflict: ["ckdtagih"],
+    hasIngestedAt: true,
+    skipUnchanged: true,
+  },
+  // tautan faktur → dokumen penjualan: SEMUA kolom = kunci → buildUpsert menjadi
+  // INSERT … ON CONFLICT DO NOTHING. hasIngestedAt SENGAJA false: kalau true,
+  // `ingested_at = now()` membuatnya DO UPDATE dan tiap tautan ditulis ulang tiap
+  // siklus. Tautan yang hilang dari faktur dipangkas buildTagihanDetailPrune.
+  tagihan_detail: {
+    table: "tagihan_detail",
+    columns: ["ckdtagih", "ckdjualplg"],
+    conflict: ["ckdtagih", "ckdjualplg"],
+    hasIngestedAt: false,
+  },
+  tagihan_bayar: {
+    table: "tagihan_bayar",
+    columns: [
+      "ckdbyr", "dtgl", "ckdtagih", "vcbukti", "vcket", "ctmpkas", "ntotal",
+      "sbatal", "vcalasan", "capprovecode", "cnamereq",
+    ],
+    conflict: ["ckdbyr"],
+    hasIngestedAt: true,
+    skipUnchanged: true,
+  },
 };
 
 /** Batas keras baris per tabel per request — sumber tunggal di @solamax/shared. */

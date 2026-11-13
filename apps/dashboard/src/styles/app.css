@@ -1506,9 +1506,6 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 .b6-piutang-next-step strong { display: block; }
 .b6-piutang-next-step p { margin: 3px 0 0; font-size: 16px; }
 .b6-piutang-not-zero { color: var(--color-text-secondary); font-weight: 600; }
-.b6-piutang-activity { padding: var(--space-5); }
-.b6-piutang-activity h2 { margin: 0; font-size: 18px; }
-.b6-piutang-activity p { margin: var(--space-2) 0 0; color: var(--color-text-secondary); font-size: 16px; }
 
 @media (max-width: 1080px) {
   .b6-piutang-controls { grid-template-columns: 1fr 1fr; }
@@ -1571,4 +1568,84 @@ button:disabled, .btn-navy:disabled, .btn-tint:disabled { opacity: 0.6; cursor: 
 @media (max-width: 560px) {
   .b6-piutang-summary-pair, .b6-piutang-pair { grid-template-columns: 1fr; }
   .b6-piutang-summary-pair > div + div, .b6-piutang-pair > div + div { border-left: 0; border-top: 1px solid var(--color-border-hairline); }
+}
+
+/* ===== Tagihan pelanggan (rencana 2026-11-13 U7/U8) — S1, S2, S3, S6 =====
+   Memakai ulang kerangka `b6-piutang-*` (halaman, kepala, kartu daftar, cari,
+   halaman, belum-siap). Yang baru hanya: nada pil status, ubin, tabel, sub-baris. */
+.status-pill.danger { color: var(--color-danger); background: var(--color-danger-bg); }
+.status-pill.warning { color: var(--color-warning); background: var(--color-warning-bg); }
+.status-pill.success { color: var(--color-success); background: var(--color-success-bg); }
+.status-pill.info { color: var(--color-info); background: var(--color-info-bg); }
+.status-pill.neutral { color: var(--color-text-secondary); background: var(--neutral-100); }
+.tagihan-pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.tagihan-pills .status-pill { white-space: nowrap; }
+.tagihan-kesegaran { color: var(--color-text-tertiary); font-size: 15px; }
+
+.tagihan-ubin { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.tagihan-ubin-kartu { display: flex; flex-direction: column; gap: 4px; padding: var(--space-4) var(--space-5); border-top: 3px solid var(--neutral-300); color: var(--color-text-primary); text-decoration: none; }
+.tagihan-ubin-kartu:hover { background: var(--neutral-50); }
+.tagihan-ubin-kartu:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+.tagihan-ubin-kartu.danger { border-top-color: var(--color-danger); }
+.tagihan-ubin-kartu.warning { border-top-color: var(--color-warning); }
+.tagihan-ubin-kartu.info { border-top-color: var(--color-info); }
+.tagihan-ubin-kartu.aktif { background: var(--neutral-50); }
+.tagihan-ubin-kartu strong { font-size: 20px; overflow-wrap: anywhere; }
+.tagihan-ubin-judul { color: var(--color-text-secondary); font-size: 15px; font-weight: 600; }
+.tagihan-ubin-catatan { color: var(--color-text-tertiary); font-size: 15px; }
+
+.tagihan-kontrol { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-border-hairline); border-radius: var(--radius-lg); background: var(--color-surface); }
+.tagihan-saring { flex: 1 1 100%; overflow-x: auto; }
+.tagihan-saring .seg-btn { white-space: nowrap; }
+.tagihan-kontrol .b6-piutang-search { flex: 1 1 280px; }
+.tagihan-periode { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); }
+.tagihan-periode > div { display: flex; flex-direction: column; gap: 6px; }
+.tagihan-periode label { color: var(--color-text-tertiary); font-size: 15px; font-weight: 600; }
+.tagihan-periode input[type="date"] { min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-primary); font: inherit; }
+
+.tagihan-tbl { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 16px; }
+.tagihan-tbl th, .tagihan-tbl td { padding: 12px; border-bottom: 1px solid var(--color-border-hairline); text-align: left; vertical-align: top; white-space: nowrap; }
+.tagihan-tbl th.right, .tagihan-tbl td.right { text-align: right; }
+.tagihan-tbl thead th { background: var(--neutral-50); color: var(--color-text-tertiary); font-size: 15px; font-weight: 600; }
+.tagihan-tbl tbody th { font-weight: 600; }
+.tagihan-tbl tbody tr:last-child > * { border-bottom: 0; }
+.tagihan-tbl tfoot th, .tagihan-tbl tfoot td { background: var(--neutral-50); border-top: 1px solid var(--color-border); border-bottom: 0; font-weight: 600; white-space: normal; }
+/* Kolom pertama (nama pelanggan / nomor + alasan batal) boleh melipat; angka dan tanggal tidak. */
+.tagihan-tbl td:first-child { min-width: 200px; max-width: 280px; white-space: normal; overflow-wrap: anywhere; }
+.tagihan-tbl td strong { display: block; }
+.tagihan-tbl .tagihan-pills { flex-direction: column; align-items: flex-start; }
+.tagihan-kode { display: block; font-size: 15px; }
+/* Sub-baris di sel nowrap: tetap PENDEK — penjelasannya di `title` dan di rincian. */
+.tagihan-sub { display: block; margin-top: 2px; color: var(--color-text-tertiary); font-size: 14px; font-weight: 400; }
+.tagihan-tanda { color: var(--color-warning); font-weight: 600; }
+.tagihan-batal .tagihan-coret { color: var(--color-text-tertiary); text-decoration: line-through; }
+.tagihan-catatan { margin: 0; padding: var(--space-3) var(--space-5); color: var(--color-text-secondary); font-size: 15px; }
+.tagihan-halaman { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border-hairline); }
+
+.tagihan-kelompok { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border-hairline); }
+.tagihan-kelompok-daftar > .tagihan-kelompok:first-child { border-top: 0; }
+.tagihan-kelompok.terbuka { background: var(--neutral-50); }
+.tagihan-kelompok > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-5); }
+.tagihan-kelompok-nama { flex: 1 1 220px; min-width: 0; }
+.tagihan-kelompok-nama a { color: var(--color-text-primary); font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.tagihan-kelompok-angka, .tagihan-cocok { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; }
+.tagihan-kelompok-angka dt, .tagihan-cocok dt, .tagihan-rinci dt { color: var(--color-text-tertiary); font-size: 14px; }
+.tagihan-kelompok-angka dd, .tagihan-cocok dd, .tagihan-rinci dd { margin: 2px 0 0; font-size: 16px; }
+.tagihan-kelompok .tagihan-catatan { padding: 0; }
+.tagihan-kelompok .tagihan-tbl { min-width: 560px; background: var(--color-surface); }
+.tagihan-cocok { padding: var(--space-3) var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+
+.tagihan-rinci { padding: var(--space-5); }
+.tagihan-rinci > dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4) var(--space-6); margin: 0; }
+.tagihan-rinci dd { overflow-wrap: anywhere; }
+.tagihan-beda > div { flex: 1; min-width: 0; }
+.tagihan-beda .tbl-scroll { margin: var(--space-3) 0; }
+.tagihan-beda .tagihan-tbl { min-width: 480px; background: var(--color-surface); }
+
+@media (max-width: 1080px) {
+  .tagihan-ubin { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .tagihan-ubin { grid-template-columns: 1fr; }
+  .tagihan-kelompok > header .btn-outline { width: 100%; justify-content: center; }
 }

@@ -40,7 +40,20 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 15 → 16: Daftar pos (K6 U1).
     // 16 → 17: Buku besar per unit × bulan (K6 U9).
     // 17 → 18: Koreksi kaki bank transfer Kas Besar (rencana 2026-11-11 U6).
-    expect(RUTE.length).toBe(18);
+    // 18 → 22: Tagihan pelanggan (rencana 2026-11-13 U7–U10) — daftar per unit,
+    //          rincian faktur, Atur termin, dan ringkasan lintas SPBU.
+    expect(RUTE.length).toBe(22);
+    // Keempatnya DISEBUT, bukan hanya dihitung: angka 22 juga tercapai bila satu
+    // rute tagihan hilang dan satu rute lain kebetulan bertambah.
+    const nama = RUTE.map((f) => f.slice(KEU.length + 1));
+    for (const rute of [
+      join("unit", "[code]", "tagihan", "page.tsx"),
+      join("unit", "[code]", "tagihan", "faktur", "[kode]", "page.tsx"),
+      join("unit", "[code]", "tagihan", "termin", "page.tsx"),
+      join("tagihan", "page.tsx"),
+    ]) {
+      expect(nama, `rute tagihan ${rute} tidak ditemukan`).toContain(rute);
+    }
   });
 
   for (const f of RUTE) {
@@ -52,10 +65,15 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     });
   }
 
-  it("🔴 papan & pemantauan memakai dimensiUnit=tak_berlaku — kontrol yang tak mengubah apa pun TIDAK dipasang", () => {
-    // Dua layar LINTAS UNIT, didaftar dengan nama — bukan "semua yang kebetulan
-    // memakainya". Layar ketiga yang ingin bergabung harus ditambah di sini.
-    const lintasUnit = [join(KEU, "page.tsx"), join(KEU, "pemantauan", "page.tsx")];
+  it("🔴 papan, pemantauan & ringkasan tagihan memakai dimensiUnit=tak_berlaku — kontrol yang tak mengubah apa pun TIDAK dipasang", () => {
+    // Layar LINTAS UNIT, didaftar dengan nama — bukan "semua yang kebetulan
+    // memakainya". Layar berikutnya yang ingin bergabung harus ditambah di sini.
+    // Ketiga: Ringkasan tagihan lintas SPBU (rencana 2026-11-13 U10, S5).
+    const lintasUnit = [
+      join(KEU, "page.tsx"),
+      join(KEU, "pemantauan", "page.tsx"),
+      join(KEU, "tagihan", "page.tsx"),
+    ];
     for (const f of lintasUnit) {
       expect(readFileSync(f, "utf8"), f).toMatch(/dimensiUnit="tak_berlaku"/);
     }
@@ -71,7 +89,9 @@ describe("seluruh rute keuangan punya pemilih unit/tanggal", () => {
     // 12 → 13: Tutup bulan per unit (U12) — sama.
     // 14 → 15: Buku besar per unit × bulan (K6 U9) — sama.
     // 15 → 16: Koreksi kaki bank transfer (rencana 2026-11-11 U6) — sama.
-    expect(lain).toHaveLength(16);
+    // 16 → 19: tiga rute tagihan PER UNIT (daftar, rincian faktur, Atur termin)
+    //          memilih unit seperti rute per-unit lain (rencana 2026-11-13).
+    expect(lain).toHaveLength(19);
   });
 });
 
