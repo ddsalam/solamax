@@ -220,9 +220,17 @@ export function parseKodeFaktur(segment: string | string[]): string | null {
   return kode === "" || kode.length > 15 ? null : kode;
 }
 
-/** S4. */
-export function tagihanTerminHref(unitCode: string): string {
-  return `${unitPath(unitCode)}/termin`;
+/**
+ * S4. `semua` = tampilkan SELURUH pelanggan master (bawaannya hanya pelanggan
+ * piutang + yang berpengecualian); `cari` = isi awal kotak pencarian.
+ */
+export function tagihanTerminHref(unitCode: string, opsi: { semua?: boolean; cari?: string } = {}): string {
+  const params = new URLSearchParams();
+  if (opsi.semua === true) params.set("semua", "1");
+  const cari = opsi.cari?.trim() ?? "";
+  if (cari !== "") params.set("q", cari);
+  const kueri = params.toString();
+  return `${unitPath(unitCode)}/termin${kueri === "" ? "" : `?${kueri}`}`;
 }
 
 /** S5. */

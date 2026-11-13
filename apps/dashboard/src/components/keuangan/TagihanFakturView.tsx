@@ -1,12 +1,14 @@
 import { rp } from "@/lib/format";
 import {
   STATUS_EASYMAX_LUNAS,
+  TAGIHAN_NILAI_KOSONG,
   tagihanStatusBayarLabel,
   tagihanSumberJatuhTempoLabel,
 } from "@/lib/tagihan-model";
-import type { TagihanFakturRinci } from "@/lib/tagihan-queries";
+import { BATAS_BARIS_TAGIHAN, type TagihanFakturRinci } from "@/lib/tagihan-queries";
 import { tagihanKesegaranLabel } from "@/lib/tagihan-route";
 import {
+  PENJELASAN_NILAI_KOSONG,
   TagihanPembayaranTabel,
   TagihanStatusPills,
   penjelasanJtTakWajar,
@@ -26,8 +28,13 @@ export interface TagihanFakturViewProps {
   rinci: TagihanFakturRinci;
   /** Kembali ke S1. */
   daftarHref: string;
-  /** Halaman pelanggan (S6) pada tanggal Saldo pelanggan yang dipilih pemanggil. */
-  pelangganHref: string;
+  /**
+   * Halaman pelanggan (S6) pada tanggal Saldo pelanggan yang dipilih pemanggil.
+   * `null` = halaman itu tidak ada (kode pelanggan kosong, atau pelanggannya tak
+   * ada di snapshot terbit terakhir): nama & kode tampil sebagai teks biasa —
+   * tautan yang berujung 404 tidak pernah dirender.
+   */
+  pelangganHref: string | null;
 }
 
 function Butir({ label, children }: { label: string; children: React.ReactNode }) {
@@ -97,6 +104,8 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
   const { faktur, status } = rinci;
   const sumber = status ? tagihanSumberJatuhTempoLabel(status) : null;
   const biayaAdmin = Math.round(rinci.biayaAdmin ?? 0);
+  // Faktur batal tak punya status; nilainya dibaca langsung dari faktur.
+  const nilaiKosong = status ? status.nilaiKosong : faktur.nilai === null;
   return (
     <div className="b6-piutang-page">
       <header className="b6-piutang-heading">
@@ -110,7 +119,7 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
         </div>
         <div className="b6-piutang-exports no-print" aria-label="Navigasi rincian faktur">
           <a className="btn-outline" href={daftarHref}>← Kembali ke daftar</a>
-          <a className="btn-outline" href={pelangganHref}>Halaman pelanggan</a>
+          {pelangganHref !== null && <a className="btn-outline" href={pelangganHref}>Halaman pelanggan</a>}
         </div>
       </header>
 
@@ -130,7 +139,9 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
       <section className="card tagihan-rinci" aria-label="Ringkasan faktur">
         <dl>
           <Butir label="Pelanggan">
-            <a href={pelangganHref}>{rinci.namaPelanggan?.trim() || "Nama belum tersedia"}</a>
+            {pelangganHref !== null
+              ? <a href={pelangganHref}>{rinci.namaPelanggan?.trim() || "Nama belum tersedia"}</a>
+              : <span>{rinci.namaPelanggan?.trim() || "Nama belum tersedia"}</span>}
             <span className="tagihan-sub mono">{faktur.customerCode || "—"}</span>
           </Butir>
           <Butir label="No. faktur"><span className="mono">{faktur.kode}</span></Butir>
@@ -145,13 +156,14 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
             </Butir>
           )}
           <Butir label="Nilai faktur">
-            <span className="num">{rp(status ? status.nilai : faktur.nilai)}</span>
+            <span className="num">{nilaiKosong ? "—" : rp(status ? status.nilai : faktur.nilai ?? 0)}</span>
+            {nilaiKosong && <span className="tagihan-sub tagihan-tanda">{TAGIHAN_NILAI_KOSONG}</span>}
             {biayaAdmin !== 0 && (
               <span className="tagihan-sub">termasuk biaya admin {rp(biayaAdmin)}</span>
             )}
           </Butir>
           {status && <Butir label="Dibayar"><span className="num">{rp(status.dibayar)}</span></Butir>}
-          {status && <Butir label="Sisa"><span className="num w600">{rp(status.sisa)}</span></Butir>}
+          {status && <Butir label="Sisa"><span className="num w600">{nilaiKosong ? "—" : rp(status.sisa)}</span></Butir>}
           <Butir label="Status">
             {status ? <TagihanStatusPills status={status} /> : <span className="status-pill danger">Faktur batal</span>}
             {status?.statusBayar === "belum_dibayar" && <span className="tagihan-sub">belum ada pembayaran</span>}
@@ -159,6 +171,16 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
           {rinci.keterangan && <Butir label="Keterangan">{rinci.keterangan}</Butir>}
         </dl>
       </section>
+
+      {status?.nilaiKosong && (
+        <div className="banner warning" role="status" data-tagihan-nilai-kosong>
+          <span className="dot warning" aria-hidden="true" />
+          <div>
+            <strong>Nilai faktur kosong</strong>
+            <p className="keu-p">{PENJELASAN_NILAI_KOSONG}</p>
+          </div>
+        </div>
+      )}
 
       <PanelBeda rinci={rinci} />
 
@@ -215,6 +237,11 @@ export function TagihanFakturView({ unit, rinci, daftarHref, pelangganHref }: Ta
             </p>
           </div>
         </div>
+        {rinci.pembayaranTerpotong && (
+          <p className="tagihan-catatan" data-tagihan-bayar-terpotong>
+            Hanya {BATAS_BARIS_TAGIHAN.toLocaleString("id-ID")} pembayaran terbaru yang dibaca; daftar ini, juga dibayar, sisa, dan status di atas, tidak lengkap.
+          </p>
+        )}
         {rinci.pembayaran.length === 0 ? (
           <div className="empty-inline b6-piutang-empty">Belum ada pembayaran tercatat untuk faktur ini.</div>
         ) : (

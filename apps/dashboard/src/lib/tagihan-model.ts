@@ -41,8 +41,12 @@ export interface TagihanFaktur {
   tanggalFaktur: string;
   /** Jatuh tempo mentah dari EasyMax; tanggal nol sudah menjadi `null` saat ingest. */
   jatuhTempoEasymax: string | null;
-  /** Nilai faktur dalam rupiah (kolom sumber bertitik-mengambang). */
-  nilai: number;
+  /**
+   * Nilai faktur dalam rupiah (kolom sumber bertitik-mengambang). `null` =
+   * sumber tidak memberi nilai sama sekali (grand total dan total keduanya nol
+   * atau kosong): fakturnya TIDAK boleh dianggap lunas — lihat `nilaiKosong`.
+   */
+  nilai: number | null;
   /** Flag status EasyMax; hanya pembanding, tidak pernah menentukan status. */
   statusEasymax: number | null;
   /** Kolom sisa tagihan EasyMax; hanya pembanding. */
@@ -77,12 +81,25 @@ export type StatusBayarTagihan = "belum_dibayar" | "sebagian" | "lunas" | "lebih
 export type StatusJatuhTempoTagihan = "belum_jatuh_tempo" | "lewat_jatuh_tempo" | "termin_belum_diatur";
 
 export interface TagihanStatus extends JatuhTempoTagihan {
-  /** Nilai faktur, rupiah bulat. */
+  /** Nilai faktur, rupiah bulat. `0` bila `nilaiKosong`. */
   nilai: number;
-  /** Jumlah pembayaran yang tidak batal, rupiah bulat. */
+  /**
+   * Yang sudah dibayar, rupiah bulat — SELALU `nilai − sisa`, supaya tiga angka
+   * yang tampil saling cocok. Bisa berbeda 1 rupiah dari jumlah pembayaran yang
+   * dibulatkan sendiri. Bila `nilaiKosong`: jumlah pembayaran hidup apa adanya.
+   */
   dibayar: number;
-  /** `nilai − dibayar`, rupiah bulat. Negatif = lebih bayar. */
+  /**
+   * Sisa = selisih MENTAH nilai − pembayaran hidup, dibulatkan SEKALI.
+   * Negatif = lebih bayar. `0` bila `nilaiKosong` (tak ada yang bisa dihitung).
+   */
   sisa: number;
+  /**
+   * Sumber tidak memberi nilai faktur. Fakturnya tetap "perlu tindakan" (tak
+   * pernah lunas), dihitung dalam JUMLAH ubin tetapi tidak dalam rupiahnya, dan
+   * tidak dibandingkan dengan sisa EasyMax.
+   */
+  nilaiKosong: boolean;
   statusBayar: StatusBayarTagihan;
   /** `null` untuk lunas dan lebih bayar: tidak ada sisa yang bisa jatuh tempo. */
   statusJatuhTempo: StatusJatuhTempoTagihan | null;
@@ -165,11 +182,19 @@ export function deriveTagihanStatus(
 ): TagihanStatus | null {
   if (faktur.batal) return null;
 
-  const nilai = rupiahBulat(faktur.nilai);
-  const dibayar = rupiahBulat(pembayaran.reduce((total, bayar) => bayar.batal ? total : total + bayar.jumlah, 0));
-  const sisa = nilai - dibayar;
-  const statusBayar: StatusBayarTagihan = dibayar > nilai ? "lebih_bayar"
-    : dibayar === nilai ? "lunas"
+  // Sisa dihitung dari selisih MENTAH lalu dibulatkan sekali. Membulatkan nilai
+  // dan pembayaran sendiri-sendiri bisa meleset 1 rupiah dari kolom sisa EasyMax
+  // dan menyalakan penanda `bedaSisa` palsu. Status bayar diturunkan dari sisa
+  // yang sudah bulat itu; `dibayar` yang tampil = nilai − sisa.
+  const nilaiKosong = faktur.nilai === null;
+  const bayarHidup = pembayaran.reduce((total, bayar) => bayar.batal ? total : total + bayar.jumlah, 0);
+  const nilai = nilaiKosong ? 0 : rupiahBulat(faktur.nilai!);
+  const sisa = nilaiKosong ? 0 : rupiahBulat(faktur.nilai! - bayarHidup);
+  const dibayar = nilaiKosong ? rupiahBulat(bayarHidup) : rupiahBulat(nilai - sisa);
+  // Tanpa nilai tak ada yang bisa dinyatakan lunas, sebagian, atau lebih bayar.
+  const statusBayar: StatusBayarTagihan = nilaiKosong ? "belum_dibayar"
+    : sisa < 0 ? "lebih_bayar"
+    : sisa === 0 ? "lunas"
     : dibayar > 0 ? "sebagian" : "belum_dibayar";
 
   const jatuhTempo = resolveJatuhTempo(faktur, termin);
@@ -196,12 +221,18 @@ export function deriveTagihanStatus(
   const terbayarPenuh = statusBayar === "lunas" || statusBayar === "lebih_bayar";
   const bedaStatus = faktur.statusEasymax !== null
     && terbayarPenuh !== (faktur.statusEasymax === STATUS_EASYMAX_LUNAS);
-  const bedaSisa = faktur.sisaEasymax !== null && rupiahBulat(faktur.sisaEasymax) !== sisa;
+  const bedaSisa = !nilaiKosong && faktur.sisaEasymax !== null && rupiahBulat(faktur.sisaEasymax) !== sisa;
 
-  return { ...jatuhTempo, nilai, dibayar, sisa, statusBayar, statusJatuhTempo, hariLewat, hariMenujuJatuhTempo, bedaStatus, bedaSisa };
+  return {
+    ...jatuhTempo, nilai, dibayar, sisa, nilaiKosong, statusBayar, statusJatuhTempo,
+    hariLewat, hariMenujuJatuhTempo, bedaStatus, bedaSisa,
+  };
 }
 
-/** Keanggotaan satu filter. `perlu_tindakan` = semua yang tidak persis lunas, termasuk lebih bayar. */
+/**
+ * Keanggotaan satu filter. `perlu_tindakan` = semua yang tidak persis lunas,
+ * termasuk lebih bayar dan faktur tanpa nilai (`nilaiKosong`).
+ */
 export function matchesTagihanFilter(status: TagihanStatus, filter: TagihanFilter): boolean {
   switch (filter) {
     case "perlu_tindakan": return status.statusBayar !== "lunas";
@@ -262,7 +293,10 @@ export interface TagihanRingkasan {
   terminBelumDiatur: TagihanRingkasanSel;
 }
 
-/** Lunas dan lebih bayar tidak masuk ubin mana pun: tidak ada sisa yang ditagih. */
+/**
+ * Lunas dan lebih bayar tidak masuk ubin mana pun: tidak ada sisa yang ditagih.
+ * Faktur tanpa nilai (`nilaiKosong`) DIHITUNG jumlahnya, tetapi tidak menambah rupiah.
+ */
 export function summarizeTagihan(statuses: readonly TagihanStatus[]): TagihanRingkasan {
   const ringkasan: TagihanRingkasan = {
     lewatJatuhTempo: { jumlah: 0, sisa: 0 },
@@ -275,10 +309,13 @@ export function summarizeTagihan(statuses: readonly TagihanStatus[]): TagihanRin
       : status.statusJatuhTempo === "termin_belum_diatur" ? ringkasan.terminBelumDiatur : null;
     if (!sel) continue;
     sel.jumlah += 1;
-    sel.sisa += status.sisa;
+    if (!status.nilaiKosong) sel.sisa += status.sisa;
   }
   return ringkasan;
 }
+
+/** Penanda pendek faktur tanpa nilai — satu sumber untuk daftar, rincian dan ekspor. */
+export const TAGIHAN_NILAI_KOSONG = "nilai faktur kosong";
 
 /** Pil status bayar. Belum dibayar tidak punya pil — pil jatuh temponya yang berbicara. */
 export function tagihanStatusBayarLabel(statusBayar: StatusBayarTagihan): string | null {

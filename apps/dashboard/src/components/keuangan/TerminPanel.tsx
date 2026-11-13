@@ -30,6 +30,19 @@ export interface TerminBatas {
   maks: number;
 }
 
+/**
+ * Daftar mana yang sedang diserahkan lewat `pelanggan`, dan tautan GET untuk
+ * berpindah. Penyaringannya dilakukan SERVER (halaman); di sini hanya dikatakan.
+ */
+export interface TerminCakupan {
+  /** `true` = seluruh master; `false` = pelanggan piutang + yang berpengecualian. */
+  semua: boolean;
+  /** Banyaknya baris bila seluruh master ditampilkan (termasuk pengecualian yatim). */
+  jumlahMaster: number;
+  hrefSemua: string;
+  hrefPiutang: string;
+}
+
 type Hasil = { ok: true; pesan?: string } | { ok: false; error: string };
 /** Tempat pesan terakhir ditampilkan: `"unit"` atau kode pelanggan. */
 type Sasaran = { di: string; jenis: "pesan" | "galat"; teks: string };
@@ -74,12 +87,16 @@ export function TerminPanel({
   pesanTakBoleh,
   batas,
   cariAwal = "",
+  cakupan,
 }: {
   code: string;
   namaUnit: string;
   /** Termin bawaan yang berlaku; `null` = belum pernah diatur. */
   terminUnit: TerminUnitRow | null;
-  /** Seluruh pelanggan master unit + pengecualian yatim (`getPelangganUntukTermin`). */
+  /**
+   * Baris yang ditampilkan: bawaannya pelanggan piutang + setiap pengecualian
+   * (`pelangganTerminBawaan`), atau seluruh master bila `cakupan.semua`.
+   */
   pelanggan: PelangganTerminRow[];
   bolehAtur: boolean;
   /** Penjelasan bagi yang tak berwenang — satu sumber dengan server action. */
@@ -87,6 +104,8 @@ export function TerminPanel({
   batas: TerminBatas;
   /** Isi awal kotak pencarian. */
   cariAwal?: string;
+  /** Absen = pemanggil tak menyaring; daftar dianggap seluruh master. */
+  cakupan?: TerminCakupan;
 }) {
   const [pending, start] = useTransition();
   const [sasaran, setSasaran] = useState<Sasaran | null>(null);
@@ -209,6 +228,21 @@ export function TerminPanel({
           Pelanggan tanpa pengecualian memakai termin bawaan unit ({bawaan}). Perubahan langsung berlaku untuk
           semua faktur yang jatuh temponya tidak diisi di EasyMax, termasuk faktur lama yang masih terbuka.
         </p>
+        {cakupan && (
+          <p className="fs16 t-tertiary mt2" data-termin-cakupan={cakupan.semua ? "semua" : "piutang"}>
+            {cakupan.semua ? (
+              <>
+                Menampilkan semua pelanggan master, termasuk pelanggan penjualan tunai yang tidak pernah
+                ditagihkan. <a href={cakupan.hrefPiutang}>Hanya pelanggan piutang</a>
+              </>
+            ) : (
+              <>
+                Menampilkan pelanggan piutang dan pelanggan yang sudah punya pengecualian — {pelanggan.length} dari{" "}
+                {cakupan.jumlahMaster} pelanggan. <a href={cakupan.hrefSemua}>Tampilkan semua pelanggan</a>
+              </>
+            )}
+          </p>
+        )}
         {nYatim > 0 && (
           <div className="banner warning keu-banner" role="status" data-termin-yatim-ringkas>
             <b>{nYatim} pengecualian untuk pelanggan yang tidak ada lagi di master EasyMax</b>
@@ -232,7 +266,11 @@ export function TerminPanel({
         </label>
 
         {pelanggan.length === 0 ? (
-          <div className="empty-inline mt4">Belum ada pelanggan di master unit ini.</div>
+          <div className="empty-inline mt4">
+            {cakupan && !cakupan.semua && cakupan.jumlahMaster > 0
+              ? "Tidak ada pelanggan piutang maupun pelanggan berpengecualian di unit ini."
+              : "Belum ada pelanggan di master unit ini."}
+          </div>
         ) : cocok.length === 0 ? (
           <div className="empty-inline mt4">Tidak ada pelanggan yang cocok dengan “{cari.trim()}”.</div>
         ) : (

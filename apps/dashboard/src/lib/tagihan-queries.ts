@@ -1,5 +1,6 @@
 import { qScoped } from "./db";
 import { todayWib } from "./periods";
+import { getSaldoSnapshot } from "./saldo-snapshot";
 import type { ScopedUnitId } from "./scope";
 import {
   compareTagihanRows,
@@ -15,7 +16,7 @@ import {
   type TagihanStatus,
   type TagihanTermin,
 } from "./tagihan-model";
-import { getPetaTermin, terminUntuk, type PetaTermin } from "./termin-queries";
+import { getPetaTermin, kunciTermin, terminUntuk, type PetaTermin } from "./termin-queries";
 
 /**
  * Kueri baca layar Tagihan pelanggan (rencana 2026-11-13 U6; R1, R7, R8, R17,
@@ -41,8 +42,11 @@ import { getPetaTermin, terminUntuk, type PetaTermin } from "./termin-queries";
  * — tidak pernah dipotong diam-diam.
  *
  * Yang paling mahal adalah "belum ditagihkan": satu lintasan atas seluruh
- * posting debet + tautan faktur unit itu (terukur ±0,25 dtk pada 300 ribu
- * posting ilustratif, Postgres 16 lokal), dibayar setiap kali ubinnya tampil.
+ * posting buku piutang + tautan faktur unit itu, dibayar setiap kali ubinnya
+ * tampil (angka terukurnya di catatan kuerinya). Karena itu ia dibaca PALING
+ * BANYAK SEKALI per permintaan: kelompok dan dokumennya keluar dari satu kueri
+ * yang sama, dan pemanggil yang tak memerlukannya (layar Atur termin) tidak
+ * menjalankannya sama sekali.
  *
  * Kode pelanggan selalu dalam bentuk kunci `btrim(ckdplg)` (sama dengan layar
  * Saldo pelanggan dan `termin-queries.ts`); kode faktur/dokumen/pembayaran
@@ -131,7 +135,8 @@ interface FakturSql {
   namaPelanggan: string | null;
   tanggalFaktur: string | null;
   jatuhTempoEasymax: string | null;
-  nilai: number;
+  /** `null` = sumber tak memberi nilai (lihat {@link SQL_NILAI_FAKTUR}). */
+  nilai: number | null;
   statusEasymax: number | null;
   sisaEasymax: number | null;
   dibayar: number;
@@ -148,8 +153,16 @@ const SQL_NAMA_PELANGGAN = `
      WHERE unit_id = ANY($1::int[])
      GROUP BY unit_id, btrim(ckdplg)`;
 
-/** Nilai faktur = grand total; admin tak pernah dipakai (probe 13 Nov), jadi `ntotal` hanya cadangan. */
-const SQL_NILAI_FAKTUR = "COALESCE(h.ngatot, h.ntotal, 0)";
+/**
+ * Nilai faktur = grand total BILA TERISI (bukan nol); bila tidak, total
+ * (admin tak pernah dipakai — probe 13 Nov — jadi keduanya sama bila sama-sama
+ * terisi). Grand total nol dengan total terisi TIDAK boleh menang: fakturnya
+ * akan bernilai nol, dihitung lunas, dan lenyap dari daftar.
+ *
+ * Keduanya nol/kosong → `NULL`, bukan nol: model menandainya `nilaiKosong`,
+ * fakturnya tetap "Perlu tindakan" dan tak pernah lunas diam-diam.
+ */
+const SQL_NILAI_FAKTUR = "COALESCE(NULLIF(h.ngatot, 0), NULLIF(h.ntotal, 0))";
 
 /**
  * $1 unit[], $2/$3 periode lunas (atau NULL), $4 kode pelanggan (atau NULL),
@@ -159,13 +172,19 @@ const SQL_NILAI_FAKTUR = "COALESCE(h.ngatot, h.ntotal, 0)";
  * KONSERVATIF — "jumlah bayar hidup berbeda dari nilai faktur" pada numerik
  * eksak: ia hanya membuang faktur yang PASTI lunas, tidak pernah yang mungkin
  * belum. Yang lolos tetapi lunas sesudah pembulatan rupiah diputuskan model.
+ * Faktur tanpa nilai (`NULL`) selalu lolos: `IS DISTINCT FROM NULL` benar.
  *
  * Faktur LUNAS hanya ikut bila periodenya diminta, dan periodenya diukur pada
  * TANGGAL PELUNASAN = pembayaran hidup terakhir (cadangan: tanggal faktur,
- * untuk faktur bernilai nol tanpa pembayaran). Bukan tanggal faktur: yang
+ * untuk faktur lunas tanpa pembayaran). Bukan tanggal faktur: yang
  * ditanyakan keuangan adalah "apa yang dibayar bulan ini", dan faktur tiga
  * bulan lalu yang dilunasi kemarin harus muncul di bulan ini — sama dengan
  * cara menu "Pembayaran Tagihan Pelanggan" EasyMax dibaca per periode.
+ *
+ * ⚠️ Cabang periode di SQL ini TIDAK cukup sendirian: faktur yang lunas hanya
+ * SESUDAH pembulatan rupiah lolos lewat cabang "berbeda dari nilai faktur",
+ * tanpa melihat periode. Karena itu periode yang sama diterapkan sekali lagi
+ * di JS ({@link dalamPeriodeLunas}) untuk saringan `lunas`.
  */
 const SQL_FAKTUR = `
 SELECT h.unit_id::int AS "unitId",
@@ -256,7 +275,7 @@ function keBaris(r: FakturSql, peta: PetaTermin, hariIni: string): TagihanBaris 
     customerCode: r.customerCode,
     tanggalFaktur: r.tanggalFaktur ?? "",
     jatuhTempoEasymax: r.jatuhTempoEasymax,
-    nilai: Number(r.nilai),
+    nilai: r.nilai === null ? null : Number(r.nilai),
     statusEasymax: r.statusEasymax === null ? null : Number(r.statusEasymax),
     sisaEasymax: r.sisaEasymax === null ? null : Number(r.sisaEasymax),
     batal: false,
@@ -285,6 +304,16 @@ function keBaris(r: FakturSql, peta: PetaTermin, hariIni: string): TagihanBaris 
 /** Faktur yang masih punya sisa dan jatuh temponya TIDAK berasal dari EasyMax. */
 function hitungBergantungTermin(baris: readonly TagihanBaris[]): number {
   return baris.filter((b) => b.status.statusJatuhTempo !== null && b.status.sumber !== "easymax").length;
+}
+
+/**
+ * Periode pelunasan, diterapkan di JS dengan aturan yang SAMA dengan SQL:
+ * tanggal pembayaran hidup terakhir, cadangan tanggal faktur. Tanpa keduanya
+ * (tanggal faktur kosong dan tak ada pembayaran) = di luar periode mana pun.
+ */
+function dalamPeriodeLunas(b: TagihanBaris, periode: PeriodeTagihan): boolean {
+  const tanggal = b.tanggalBayarTerakhir ?? (b.tanggalFakturKosong ? null : b.faktur.tanggalFaktur);
+  return tanggal !== null && tanggal >= periode.from && tanggal <= periode.to;
 }
 
 function kunciCari(cari: string | null | undefined): string {
@@ -341,8 +370,21 @@ const SQL_POPULASI_PIUTANG = `(
  * dan TIDAK tertaut ke faktur HIDUP mana pun. Tautan faktur batal tetap
  * tersimpan di `tagihan_detail` (probe 13 Nov), jadi tautan selalu dibaca
  * lewat header-nya; tautan yang header-nya batal atau lenyap tidak
- * menyembunyikan penjualan. Tanpa lantai tanggal (KTD8). Satu dokumen bisa
- * punya lebih dari satu posting: dijumlahkan.
+ * menyembunyikan penjualan. Tanpa lantai tanggal (KTD8).
+ *
+ * Tiga aturan yang mudah keliru:
+ *   · **Satu dokumen = (unit, rujukan, PELANGGAN).** Rujukan yang sama bisa
+ *     diposting ke dua pelanggan; masing-masing membawa jumlahnya sendiri —
+ *     tidak dilebur ke satu kode. "Tertaut ke faktur hidup" tetap diputuskan
+ *     per (unit, rujukan): tautan faktur tak menyimpan kode pelanggan, jadi
+ *     satu tautan menutup rujukan itu untuk semua pelanggannya.
+ *   · **Kredit hidup ber-rujukan sama, milik pelanggan yang sama, mengurangi
+ *     debetnya** (`sjnsbp = 2`: retur/pembalikan penjualan). Dokumen yang
+ *     netonya ≤ 0 sudah dibalik dan BUKAN "belum ditagihkan". Kredit tanpa
+ *     debet (pembayaran biasa) tidak pernah menjadi dokumen.
+ *   · **Awalan JP/UV tidak peka huruf besar/kecil** (`ILIKE`), seperti
+ *     EasyMax membandingkannya. Rujukan dan kode pelanggan sendiri tetap
+ *     dicocokkan PERSIS (sesudah dipangkas).
  *
  * 🔴 **Kenapa bentuknya gabung-lalu-kelompokkan, bukan anti-join.** Bentuk
  * alaminya (`NOT EXISTS` atas tautan) DIJALANKAN di Postgres 16 terhadap 300
@@ -355,72 +397,116 @@ const SQL_POPULASI_PIUTANG = `(
  * yang memuat `btrim()` — fungsi yang TIDAK leakproof — tak boleh menjadi
  * kondisi index, jadi index itu hanya terpakai untuk kolom `unit_id`-nya
  * (dibuktikan dengan EXPLAIN: superuser memakainya, role ber-RLS tidak).
- * Bentuk di bawah menyatukan kedua sumber dan mengelompokkannya per rujukan;
- * ongkosnya satu lintasan atas posting debet + tautan unit itu, dan TIDAK
- * bergantung pada taksiran perencana.
+ * Bentuk di bawah menyatukan kedua sumber, mengelompokkannya per (rujukan,
+ * pelanggan), lalu menyebarkan "tertaut" ke seluruh rujukan lewat fungsi
+ * jendela; ongkosnya satu lintasan atas posting + tautan unit itu ditambah
+ * satu pengurutan hasil kelompoknya, dan TIDAK bergantung pada taksiran
+ * perencana.
+ *
+ * ⏱️ Terukur di Postgres 16 lokal, role ber-RLS, 300 ribu posting + 255 ribu
+ * tautan ilustratif satu unit: ±0,70 dtk (tiga kali jalan 0,69–0,72 dtk), sama
+ * dengan dan tanpa `ANALYZE`, sama dengan dan tanpa dokumen. Bentuk sebelumnya
+ * (kelompok per rujukan saja) ±0,47 dtk pada data yang sama; selisihnya adalah
+ * harga fungsi jendela atas ±470 ribu kelompok. Dulu membuka satu kelompok
+ * atau mengekspor menjalankannya DUA kali; sekarang sekali.
  *
  * Rujukan tetap dibandingkan dalam bentuk `trim(b.vcref)` — konvensi repo.
  * $1 unit[], $2 kode pelanggan (atau NULL).
  */
 const SQL_BELUM_DITAGIHKAN_DOKUMEN_DASAR = `
-    SELECT z.unit_id, z.ref,
-           min(z.kode) AS kode,
-           min(z.dtgl) AS tanggal,
-           COALESCE(sum(z.njumlah), 0) AS jumlah,
-           max(z.vcket) AS keterangan
+    SELECT g.unit_id, g.ref, g.kode, g.tanggal, g.jumlah, g.keterangan
       FROM (
-        SELECT b.unit_id, trim(b.vcref) AS ref, btrim(b.ckdplg) AS kode,
-               b.dtgl, b.njumlah, b.vcket, false AS tertaut
-          FROM public.bppiut b
-         WHERE b.unit_id = ANY($1::int[])
-           AND COALESCE(b.sbatal, 0) = 0
-           AND b.sjnsbp = 1
-           AND (trim(b.vcref) LIKE 'JP%' OR trim(b.vcref) LIKE 'UV%')
-           AND ($2::text IS NULL OR btrim(b.ckdplg) = $2::text)
-           AND ${SQL_POPULASI_PIUTANG}
-        UNION ALL
-        SELECT d.unit_id, btrim(d.ckdjualplg), NULL::text,
-               NULL::date, NULL::numeric, NULL::text, true
-          FROM public.tagihan_detail d
-          JOIN public.tagihan_header fh
-            ON fh.unit_id = d.unit_id AND fh.ckdtagih = d.ckdtagih
-         WHERE d.unit_id = ANY($1::int[])
-           AND COALESCE(fh.sbatal, 0) = 0
-      ) z
-     GROUP BY z.unit_id, z.ref
-    HAVING NOT bool_or(z.tertaut)`;
+        SELECT z.unit_id, z.ref, z.kode,
+               min(z.dtgl) FILTER (WHERE z.debet) AS tanggal,
+               COALESCE(sum(z.njumlah) FILTER (WHERE z.debet), 0)
+                 - COALESCE(sum(z.njumlah) FILTER (WHERE NOT z.debet), 0) AS jumlah,
+               max(z.vcket) FILTER (WHERE z.debet) AS keterangan,
+               COALESCE(bool_or(z.debet), false) AS ada_debet,
+               bool_or(bool_or(z.tertaut)) OVER (PARTITION BY z.unit_id, z.ref) AS tertaut
+          FROM (
+            SELECT b.unit_id, trim(b.vcref) AS ref, btrim(b.ckdplg) AS kode,
+                   b.dtgl, b.njumlah, b.vcket, (b.sjnsbp = 1) AS debet, false AS tertaut
+              FROM public.bppiut b
+             WHERE b.unit_id = ANY($1::int[])
+               AND COALESCE(b.sbatal, 0) = 0
+               AND b.sjnsbp IN (1, 2)
+               AND (trim(b.vcref) ILIKE 'JP%' OR trim(b.vcref) ILIKE 'UV%')
+               AND ($2::text IS NULL OR btrim(b.ckdplg) = $2::text)
+               AND ${SQL_POPULASI_PIUTANG}
+            UNION ALL
+            SELECT d.unit_id, btrim(d.ckdjualplg), NULL::text,
+                   NULL::date, NULL::numeric, NULL::text, NULL::boolean, true
+              FROM public.tagihan_detail d
+              JOIN public.tagihan_header fh
+                ON fh.unit_id = d.unit_id AND fh.ckdtagih = d.ckdtagih
+             WHERE d.unit_id = ANY($1::int[])
+               AND COALESCE(fh.sbatal, 0) = 0
+          ) z
+         GROUP BY z.unit_id, z.ref, z.kode
+      ) g
+     WHERE NOT g.tertaut
+       AND g.ada_debet
+       AND g.jumlah > 0`;
 
-const SQL_BELUM_DITAGIHKAN_KELOMPOK = `
-SELECT x.unit_id::int AS "unitId",
-       x.kode AS "customerCode",
-       pm.nama AS "namaPelanggan",
-       x.n::int AS "jumlahDokumen",
-       x.total::float8 AS total,
-       to_char(x.tertua, 'YYYY-MM-DD') AS "tanggalTertua"
+/**
+ * Kelompok per pelanggan DAN (bila diminta) dokumennya — SATU kueri, supaya
+ * buku piutang dipindai sekali saja: `dok` dimaterialkan, lalu dibaca dua kali.
+ * Baris `jenis = 'kelompok'` selalu ada; baris `jenis = 'dokumen'` hanya bila
+ * $3 benar.
+ *
+ * $1 unit[], $2 kode pelanggan (atau NULL), $3 sertakan dokumen,
+ * $4 kode pelanggan dokumennya (atau NULL = semua), $5 batas baris dokumen.
+ */
+const SQL_BELUM_DITAGIHKAN = `
+WITH dok AS MATERIALIZED (${SQL_BELUM_DITAGIHKAN_DOKUMEN_DASAR}
+), nama AS (${SQL_NAMA_PELANGGAN}
+)
+SELECT s.jenis, s."unitId", s."customerCode", s."namaPelanggan", s."jumlahDokumen", s.total,
+       s."tanggalTertua", s."kodeDokumen", s.tanggal, s.jumlah, s.keterangan
   FROM (
-    SELECT dok.unit_id, dok.kode, count(*) AS n, sum(dok.jumlah) AS total, min(dok.tanggal) AS tertua
-      FROM (${SQL_BELUM_DITAGIHKAN_DOKUMEN_DASAR}
-      ) dok
-     GROUP BY dok.unit_id, dok.kode
-  ) x
-  LEFT JOIN (${SQL_NAMA_PELANGGAN}
-  ) pm ON pm.unit_id = x.unit_id AND pm.kode = x.kode
- ORDER BY x.unit_id, x.tertua, x.kode`;
-
-/** $3 batas baris. */
-const SQL_BELUM_DITAGIHKAN_DOKUMEN = `
-SELECT x.kode AS "customerCode",
-       pm.nama AS "namaPelanggan",
-       x.ref AS "kodeDokumen",
-       to_char(x.tanggal, 'YYYY-MM-DD') AS tanggal,
-       x.jumlah::float8 AS jumlah,
-       x.keterangan
-  FROM (${SQL_BELUM_DITAGIHKAN_DOKUMEN_DASAR}
-  ) x
-  LEFT JOIN (${SQL_NAMA_PELANGGAN}
-  ) pm ON pm.unit_id = x.unit_id AND pm.kode = x.kode
- ORDER BY x.tanggal, x.kode, x.ref
- LIMIT $3::int`;
+    SELECT 'kelompok'::text AS jenis,
+           x.unit_id::int AS "unitId",
+           x.kode AS "customerCode",
+           pm.nama AS "namaPelanggan",
+           x.n::int AS "jumlahDokumen",
+           x.total::float8 AS total,
+           to_char(x.tertua, 'YYYY-MM-DD') AS "tanggalTertua",
+           NULL::text AS "kodeDokumen",
+           NULL::text AS tanggal,
+           NULL::float8 AS jumlah,
+           NULL::text AS keterangan,
+           row_number() OVER (ORDER BY x.unit_id, x.tertua, x.kode) AS urut
+      FROM (
+        SELECT dok.unit_id, dok.kode, count(*) AS n, sum(dok.jumlah) AS total, min(dok.tanggal) AS tertua
+          FROM dok
+         GROUP BY dok.unit_id, dok.kode
+      ) x
+      LEFT JOIN nama pm ON pm.unit_id = x.unit_id AND pm.kode = x.kode
+    UNION ALL
+    SELECT 'dokumen'::text,
+           y.unit_id::int,
+           y.kode,
+           pm.nama,
+           NULL::int,
+           NULL::float8,
+           NULL::text,
+           y.ref,
+           to_char(y.tanggal, 'YYYY-MM-DD'),
+           y.jumlah::float8,
+           y.keterangan,
+           y.urut
+      FROM (
+        SELECT dok.unit_id, dok.kode, dok.ref, dok.tanggal, dok.jumlah, dok.keterangan,
+               row_number() OVER (ORDER BY dok.tanggal, dok.kode, dok.ref) AS urut
+          FROM dok
+         WHERE $3::boolean
+           AND ($4::text IS NULL OR dok.kode = $4::text)
+         ORDER BY dok.tanggal, dok.kode, dok.ref
+         LIMIT $5::int
+      ) y
+      LEFT JOIN nama pm ON pm.unit_id = y.unit_id AND pm.kode = y.kode
+  ) s
+ ORDER BY s.jenis, s.urut`;
 
 interface BelumDitagihkanSql {
   unitId: number;
@@ -431,12 +517,88 @@ interface BelumDitagihkanSql {
   tanggalTertua: string | null;
 }
 
+export interface BelumDitagihkanDokumen {
+  customerCode: string;
+  namaPelanggan: string | null;
+  /** Nomor dokumen penjualan / pemakaian voucher (rujukan buku piutang). */
+  kodeDokumen: string;
+  tanggal: string;
+  /** Debet dikurangi kredit hidup ber-rujukan sama milik pelanggan yang sama. */
+  jumlah: number;
+  keterangan: string | null;
+}
+
+/**
+ * Dokumen mana yang ikut ditarik bersama kelompoknya: `"semua"` (ekspor), atau
+ * milik satu pelanggan (membuka satu kelompok di S3).
+ */
+export type PilihanDokumenBelumDitagihkan = "semua" | { kodePelanggan: string };
+
+/** Dokumen belum ditagihkan, tertua dulu; `terpotong` = batas baris terlampaui. */
+export interface DokumenBelumDitagihkan {
+  dokumen: BelumDitagihkanDokumen[];
+  terpotong: boolean;
+}
+
+interface BelumDitagihkanGabungSql extends BelumDitagihkanSql {
+  jenis?: "kelompok" | "dokumen";
+  kodeDokumen: string | null;
+  tanggal: string | null;
+  jumlah: number | null;
+  keterangan: string | null;
+}
+
+interface BelumDitagihkanMuatan {
+  kelompok: BelumDitagihkanSql[];
+  /** `null` = dokumen tidak diminta. */
+  dokumen: DokumenBelumDitagihkan | null;
+}
+
+const TANPA_BELUM_DITAGIHKAN: BelumDitagihkanMuatan = { kelompok: [], dokumen: null };
+
+/** SATU lintasan buku piutang, berapa pun yang diminta darinya. */
 async function muatBelumDitagihkan(
   units: readonly ScopedUnitId[],
-  kodePelanggan: string | null = null,
-): Promise<BelumDitagihkanSql[]> {
-  if (units.length === 0) return [];
-  return qScoped<BelumDitagihkanSql>(units, SQL_BELUM_DITAGIHKAN_KELOMPOK, [units, kodePelanggan]);
+  opsi: { kodePelanggan?: string | null; dokumen?: PilihanDokumenBelumDitagihkan } = {},
+): Promise<BelumDitagihkanMuatan> {
+  if (units.length === 0) return TANPA_BELUM_DITAGIHKAN;
+  const pilih = opsi.dokumen;
+  const rows = await qScoped<BelumDitagihkanGabungSql>(units, SQL_BELUM_DITAGIHKAN, [
+    units,
+    opsi.kodePelanggan ?? null,
+    pilih !== undefined,
+    pilih === undefined || pilih === "semua" ? null : pangkas(pilih.kodePelanggan),
+    BATAS_BARIS_TAGIHAN + 1,
+  ]);
+  const kelompok: BelumDitagihkanSql[] = [];
+  const dokumen: BelumDitagihkanDokumen[] = [];
+  for (const r of rows) {
+    if (r.jenis === "dokumen") {
+      dokumen.push({
+        customerCode: r.customerCode,
+        namaPelanggan: r.namaPelanggan,
+        kodeDokumen: r.kodeDokumen ?? "",
+        tanggal: r.tanggal ?? "",
+        jumlah: Number(r.jumlah ?? 0),
+        keterangan: r.keterangan,
+      });
+    } else {
+      kelompok.push({
+        unitId: r.unitId,
+        customerCode: r.customerCode,
+        namaPelanggan: r.namaPelanggan,
+        jumlahDokumen: r.jumlahDokumen,
+        total: r.total,
+        tanggalTertua: r.tanggalTertua,
+      });
+    }
+  }
+  return {
+    kelompok,
+    dokumen: pilih === undefined
+      ? null
+      : { dokumen: dokumen.slice(0, BATAS_BARIS_TAGIHAN), terpotong: dokumen.length > BATAS_BARIS_TAGIHAN },
+  };
 }
 
 /** Ubin "Belum ditagihkan": dokumen, pelanggan, rupiah bulat. */
@@ -459,33 +621,6 @@ function ubinBelumDitagihkan(rows: readonly BelumDitagihkanSql[]): BelumDitagihk
 /** Empat ubin S1/S5: tiga dari model (atas SEMUA faktur belum lunas) + belum ditagihkan. */
 export interface TagihanUbin extends TagihanRingkasan {
   belumDitagihkan: BelumDitagihkanUbin;
-}
-
-export interface BelumDitagihkanDokumen {
-  customerCode: string;
-  namaPelanggan: string | null;
-  /** Nomor dokumen penjualan / pemakaian voucher (rujukan buku piutang). */
-  kodeDokumen: string;
-  tanggal: string;
-  jumlah: number;
-  keterangan: string | null;
-}
-
-/**
- * Dokumen belum ditagihkan, tertua dulu. `kodePelanggan` diisi = milik satu
- * pelanggan (membuka satu kelompok di S3); `null` = seluruh unit (ekspor).
- */
-export async function getDokumenBelumDitagihkan(
-  unit: ScopedUnitId,
-  kodePelanggan: string | null = null,
-): Promise<{ dokumen: BelumDitagihkanDokumen[]; terpotong: boolean }> {
-  const rows = await qScoped<BelumDitagihkanDokumen>(unit, SQL_BELUM_DITAGIHKAN_DOKUMEN, [
-    [unit],
-    kodePelanggan === null ? null : pangkas(kodePelanggan),
-    BATAS_BARIS_TAGIHAN + 1,
-  ]);
-  const dokumen = rows.slice(0, BATAS_BARIS_TAGIHAN).map((r) => ({ ...r, jumlah: Number(r.jumlah) }));
-  return { dokumen, terpotong: rows.length > BATAS_BARIS_TAGIHAN };
 }
 
 // ---------------------------------------------------------------------------
@@ -535,46 +670,65 @@ export async function getSaldoTerbitTerakhir(unit: ScopedUnitId): Promise<SaldoT
   return rows[0] ?? null;
 }
 
-interface SaldoTerbitSql {
-  asOfDate: string;
-  sedangDiperbarui: boolean;
-  kode: string | null;
-  lokal: number | null;
-  online: number | null;
-}
-
-/**
- * $1 unit, $2 kode pelanggan (atau NULL = semua). Gabungan kiri: snapshot tanpa
- * baris tetap memulangkan tanggalnya (satu baris ber-kode NULL).
- */
-const SQL_SALDO_TERBIT = `
-WITH terbit AS (${SQL_POINTER_TERBIT_TERAKHIR})
-SELECT to_char(t.as_of_date, 'YYYY-MM-DD') AS "asOfDate",
-       t.pending_replacement AS "sedangDiperbarui",
-       btrim(r.customer_code) AS kode,
-       r.akhir_piutang_lokal::float8 AS lokal,
-       r.akhir_piutang_online::float8 AS online
-  FROM terbit t
-  LEFT JOIN app.saldo_pelanggan_snapshot_row r
-    ON r.unit_id = $1::smallint
-   AND r.as_of_date = t.as_of_date
-   AND r.generation_id = t.generation_id
-   AND ($2::text IS NULL OR btrim(r.customer_code) = $2::text)`;
-
 interface SaldoTerbit {
   asOfDate: string;
   sedangDiperbarui: boolean;
   saldo: Map<string, { lokal: number; online: number }>;
 }
 
-async function muatSaldoTerbit(unit: ScopedUnitId, kodePelanggan: string | null = null): Promise<SaldoTerbit | null> {
-  const rows = await qScoped<SaldoTerbitSql>(unit, SQL_SALDO_TERBIT, [unit, kodePelanggan]);
-  if (rows.length === 0) return null;
+/**
+ * Saldo akhir piutang per pelanggan dari snapshot TERBIT terakhir — dibaca
+ * lewat pembaca yang sama dengan layar Saldo pelanggan (`getSaldoSnapshot`),
+ * bukan lewat kueri sendiri. Pointer terbit saja BELUM bukti: pembaca itu
+ * mensyaratkan bukti integritas generasinya (`saldo-snapshot.ts:231-255`
+ * `verified`: jumlah baris, checksum ber-kunci dan delapan belas total harus
+ * sama dengan manifest; `:367-390` baris penjaga `integrityVerified` harus ada
+ * dan jumlah baris harus sama dengan `rowCount` pointer). Rowset yang tak
+ * lengkap memulangkan `not_ready` di sana, dan di sini menjadi `null` —
+ * "belum tersedia", TIDAK PERNAH "saldo 0".
+ *
+ * Bukti itu butuh seluruh rowset, jadi tak ada varian satu-pelanggan: halaman
+ * pelanggan membaca rowset yang sama lalu mengambil satu kuncinya.
+ */
+async function muatSaldoTerbit(unit: ScopedUnitId): Promise<SaldoTerbit | null> {
+  const terakhir = await getSaldoTerbitTerakhir(unit);
+  if (terakhir === null) return null;
+  const snapshot = await getSaldoSnapshot(unit, terakhir.asOfDate);
+  if (snapshot.status !== "ready") return null;
   const saldo = new Map<string, { lokal: number; online: number }>();
-  for (const r of rows) {
-    if (r.kode !== null) saldo.set(r.kode, { lokal: Number(r.lokal ?? 0), online: Number(r.online ?? 0) });
+  for (const r of snapshot.rows) {
+    saldo.set(pangkas(r.customerCode), { lokal: Number(r.akhirPiutangLokal), online: Number(r.akhirPiutangOnline) });
   }
-  return { asOfDate: rows[0]!.asOfDate, sedangDiperbarui: rows[0]!.sedangDiperbarui === true, saldo };
+  return { asOfDate: terakhir.asOfDate, sedangDiperbarui: snapshot.metadata.pendingReplacement === true, saldo };
+}
+
+/**
+ * $1 unit, $2 kode pelanggan. Tanggal snapshot terbit terakhir BILA pelanggan
+ * itu punya baris di generasinya — satu baris, atau tidak ada.
+ */
+const SQL_TANGGAL_SALDO_PELANGGAN = `
+SELECT to_char(t.as_of_date, 'YYYY-MM-DD') AS "asOfDate"
+  FROM (${SQL_POINTER_TERBIT_TERAKHIR}) t
+ WHERE EXISTS (
+   SELECT 1
+     FROM app.saldo_pelanggan_snapshot_row r
+    WHERE r.unit_id = $1::smallint
+      AND r.as_of_date = t.as_of_date
+      AND r.generation_id = t.generation_id
+      AND btrim(r.customer_code) = $2::text)`;
+
+/**
+ * Tanggal Saldo pelanggan tempat halaman pelanggan ini PASTI ada: halaman itu
+ * (`piutang/[date]/pelanggan/[...customerCode]`) menjawab 404 untuk pelanggan
+ * yang tak punya baris di snapshot tanggalnya. `null` = kode kosong, unit belum
+ * punya snapshot terbit, atau pelanggannya tak ada di snapshot terbit terakhir
+ * — pemanggil menampilkan teks biasa, bukan tautan.
+ */
+export async function getTanggalSaldoPelanggan(unit: ScopedUnitId, kodePelanggan: string): Promise<string | null> {
+  const kode = pangkas(kodePelanggan);
+  if (kode === "") return null;
+  const rows = await qScoped<{ asOfDate: string }>(unit, SQL_TANGGAL_SALDO_PELANGGAN, [unit, kode]);
+  return rows[0]?.asOfDate ?? null;
 }
 
 /**
@@ -591,7 +745,10 @@ export interface CocokSaldoPelanggan {
   jumlah: number;
   /** Kelompok saldo pembandingnya: kode bertitik = Online, selainnya Lokal. */
   kelompokSaldo: "lokal" | "online";
-  /** Saldo akhir piutang kelompok itu di snapshot terbit terakhir; `null` = belum tersedia. */
+  /**
+   * Saldo akhir piutang kelompok itu di snapshot terbit terakhir; `null` = belum
+   * tersedia (belum ada snapshot terbit, atau rowset-nya tak lolos bukti integritas).
+   */
   saldoPiutang: number | null;
   /** Tanggal snapshot itu; `null` = belum tersedia. */
   saldoPerTanggal: string | null;
@@ -631,36 +788,47 @@ function sisaPerPelanggan(baris: readonly TagihanBaris[]): Map<string, number> {
 // S1 — daftar per unit, ekspor, ringkasan unit
 // ---------------------------------------------------------------------------
 
-interface BahanUnit {
+interface BahanUnit<Belum> {
   kesiapan: TagihanKesiapanSiap;
   /** Seluruh faktur yang ditarik: semua yang belum lunas (+ lunas pada periode bila diminta). */
   baris: TagihanBaris[];
-  belumDitagihkan: BelumDitagihkanSql[];
-  ubin: TagihanUbin;
+  /** Tiga ubin model — atas SEMUA faktur belum lunas. */
+  ringkasan: TagihanRingkasan;
+  /** Apa pun yang dipulangkan `muatBelum`; `null` bila pemanggil tak memintanya. */
+  belum: Belum;
   fakturBergantungTermin: number;
   terpotong: boolean;
 }
 
-async function muatUnit(
+/** Pemanggil yang tak butuh "belum ditagihkan": buku piutang tidak dipindai. */
+const tanpaBelum = (): Promise<null> => Promise.resolve(null);
+
+/**
+ * Bahan satu unit. `muatBelum` menentukan APAKAH dan SEBERAPA BANYAK "belum
+ * ditagihkan" dibaca; ia baru dipanggil sesudah unitnya terbukti siap, paralel
+ * dengan faktur dan termin.
+ */
+async function muatUnit<Belum>(
   unit: ScopedUnitId,
   hariIni: string,
   periodeLunas: PeriodeTagihan | null,
-): Promise<BahanUnit | null> {
+  muatBelum: () => Promise<Belum>,
+): Promise<BahanUnit<Belum> | null> {
   const kesiapan = await getTagihanKesiapan(unit);
   if (!kesiapan.tersedia) return null;
-  const [faktur, peta, belumDitagihkan] = await Promise.all([
+  const [faktur, peta, belum] = await Promise.all([
     muatFaktur([unit], { periodeLunas }),
     getPetaTermin(unit),
-    muatBelumDitagihkan([unit]),
+    muatBelum(),
   ]);
   const baris = faktur.rows.map((r) => keBaris(r, peta, hariIni));
   return {
     kesiapan,
     baris,
-    belumDitagihkan,
     // Lunas dan lebih bayar tak masuk ubin mana pun (model), jadi ubin tak
     // bergantung pada saringan aktif maupun pada periode lunas.
-    ubin: { ...summarizeTagihan(baris.map((b) => b.status)), belumDitagihkan: ubinBelumDitagihkan(belumDitagihkan) },
+    ringkasan: summarizeTagihan(baris.map((b) => b.status)),
+    belum,
     fakturBergantungTermin: hitungBergantungTermin(baris),
     terpotong: faktur.terpotong,
   };
@@ -676,15 +844,49 @@ export interface TagihanRingkasanUnit {
   terpotong: boolean;
 }
 
-/** Ubin + kesiapan satu unit tanpa daftar — untuk S4 dan kepala layar lain. */
+/** Ringkasan TANPA "belum ditagihkan": ubinnya hanya tiga ubin model — tak ada nol palsu untuk yang tak dibaca. */
+export interface TagihanRingkasanUnitRingan extends Omit<TagihanRingkasanUnit, "ubin"> {
+  ubin: TagihanRingkasan;
+}
+
+/**
+ * Ubin + kesiapan satu unit tanpa daftar — untuk S4 dan kepala layar lain.
+ *
+ * `tanpaBelumDitagihkan: true` melewati pindaian buku piutang (kueri termahal
+ * modul ini) dan memulangkan ubin TANPA kunci `belumDitagihkan`. Layar Atur
+ * termin hanya butuh `fakturBergantungTermin` dan memakainya.
+ */
+export function getTagihanRingkasanUnit(
+  unit: ScopedUnitId,
+  hariIni: string | undefined,
+  opsi: { tanpaBelumDitagihkan: true },
+): Promise<TagihanBelumTersedia | TagihanRingkasanUnitRingan>;
+export function getTagihanRingkasanUnit(
+  unit: ScopedUnitId,
+  hariIni?: string,
+  opsi?: { tanpaBelumDitagihkan?: false },
+): Promise<TagihanBelumTersedia | TagihanRingkasanUnit>;
 export async function getTagihanRingkasanUnit(
   unit: ScopedUnitId,
   hariIni: string = todayWib(),
-): Promise<TagihanBelumTersedia | TagihanRingkasanUnit> {
-  const bahan = await muatUnit(unit, hariIni, null);
+  opsi: { tanpaBelumDitagihkan?: boolean } = {},
+): Promise<TagihanBelumTersedia | TagihanRingkasanUnit | TagihanRingkasanUnitRingan> {
+  if (opsi.tanpaBelumDitagihkan === true) {
+    const bahan = await muatUnit(unit, hariIni, null, tanpaBelum);
+    if (bahan === null) return BELUM;
+    const { kesiapan, ringkasan, fakturBergantungTermin, terpotong } = bahan;
+    return { tersedia: true, kesiapan, ubin: ringkasan, fakturBergantungTermin, terpotong };
+  }
+  const bahan = await muatUnit(unit, hariIni, null, () => muatBelumDitagihkan([unit]));
   if (bahan === null) return BELUM;
-  const { kesiapan, ubin, fakturBergantungTermin, terpotong } = bahan;
-  return { tersedia: true, kesiapan, ubin, fakturBergantungTermin, terpotong };
+  const { kesiapan, ringkasan, belum, fakturBergantungTermin, terpotong } = bahan;
+  return {
+    tersedia: true,
+    kesiapan,
+    ubin: { ...ringkasan, belumDitagihkan: ubinBelumDitagihkan(belum.kelompok) },
+    fakturBergantungTermin,
+    terpotong,
+  };
 }
 
 export interface TagihanDaftarInput {
@@ -719,18 +921,21 @@ async function susunDaftar(
   input: Omit<TagihanDaftarInput, "halaman">,
 ): Promise<TagihanBelumTersedia | TagihanEkspor> {
   const periodeLunas = input.filter === "lunas" ? input.periodeLunas : null;
-  const bahan = await muatUnit(unit, input.hariIni ?? todayWib(), periodeLunas);
+  const bahan = await muatUnit(unit, input.hariIni ?? todayWib(), periodeLunas, () => muatBelumDitagihkan([unit]));
   if (bahan === null) return BELUM;
   const cari = (input.cari ?? "").trim();
   const kunci = kunciCari(cari);
   const baris = bahan.baris
     .filter((b) => matchesTagihanFilter(b.status, input.filter)
+      // Lunas sesudah pembulatan lolos saringan SQL tanpa melihat periode;
+      // periodenya ditegakkan di sini untuk SETIAP faktur lunas.
+      && (periodeLunas === null || dalamPeriodeLunas(b, periodeLunas))
       && cocokCari(kunci, b.faktur.customerCode, b.namaPelanggan))
     .sort(compareTagihanRows);
   return {
     tersedia: true,
     kesiapan: bahan.kesiapan,
-    ubin: bahan.ubin,
+    ubin: { ...bahan.ringkasan, belumDitagihkan: ubinBelumDitagihkan(bahan.belum.kelompok) },
     fakturBergantungTermin: bahan.fakturBergantungTermin,
     terpotong: bahan.terpotong,
     filter: input.filter,
@@ -782,21 +987,27 @@ export interface BelumDitagihkanDaftar extends TagihanRingkasanUnit {
   saldoPerTanggal: string | null;
   /** Snapshot pembanding sedang menunggu pengganti. */
   saldoSedangDiperbarui: boolean;
+  /**
+   * Dokumen yang diminta lewat `input.dokumen`, tertua dulu, TANPA disaring
+   * pencarian; `null` = tidak diminta. Ditarik dari kueri yang sama dengan
+   * kelompoknya — buku piutang dipindai sekali.
+   */
+  dokumen: DokumenBelumDitagihkan | null;
 }
 
 export async function getBelumDitagihkan(
   unit: ScopedUnitId,
-  input: { cari?: string | null; hariIni?: string } = {},
+  input: { cari?: string | null; hariIni?: string; dokumen?: PilihanDokumenBelumDitagihkan } = {},
 ): Promise<TagihanBelumTersedia | BelumDitagihkanDaftar> {
   const [bahan, terbit] = await Promise.all([
-    muatUnit(unit, input.hariIni ?? todayWib(), null),
+    muatUnit(unit, input.hariIni ?? todayWib(), null, () => muatBelumDitagihkan([unit], { dokumen: input.dokumen })),
     muatSaldoTerbit(unit),
   ]);
   if (bahan === null) return BELUM;
   const cari = (input.cari ?? "").trim();
   const kunci = kunciCari(cari);
   const sisa = sisaPerPelanggan(bahan.baris);
-  const kelompok = bahan.belumDitagihkan
+  const kelompok = bahan.belum.kelompok
     .filter((r) => cocokCari(kunci, r.customerCode, r.namaPelanggan))
     .map((r): BelumDitagihkanKelompok => {
       const total = bulat(Number(r.total));
@@ -812,13 +1023,14 @@ export async function getBelumDitagihkan(
   return {
     tersedia: true,
     kesiapan: bahan.kesiapan,
-    ubin: bahan.ubin,
+    ubin: { ...bahan.ringkasan, belumDitagihkan: ubinBelumDitagihkan(bahan.belum.kelompok) },
     fakturBergantungTermin: bahan.fakturBergantungTermin,
     terpotong: bahan.terpotong,
     cari,
     kelompok,
     saldoPerTanggal: terbit?.asOfDate ?? null,
     saldoSedangDiperbarui: terbit?.sedangDiperbarui ?? false,
+    dokumen: bahan.belum.dokumen,
   };
 }
 
@@ -866,9 +1078,18 @@ SELECT btrim(p.ckdbyr) AS kode,
 const SQL_PEMBAYARAN_FAKTUR = sqlPembayaran("p.ckdtagih = $2::bpchar");
 const SQL_PEMBAYARAN_PELANGGAN = sqlPembayaran("btrim(h.ckdplg) = $2::text");
 
-async function muatPembayaran(unit: ScopedUnitId, sql: string, kunci: string): Promise<TagihanPembayaranBaris[]> {
-  const rows = await qScoped<TagihanPembayaranBaris>(unit, sql, [unit, kunci, BATAS_BARIS_TAGIHAN]);
-  return rows.map((r) => ({ ...r, jumlah: Number(r.jumlah), batal: r.batal === true, fakturBatal: r.fakturBatal === true }));
+/** Satu baris lebih dari batas ditarik sebagai penguji: terlampaui = `terpotong`, tidak pernah dipotong diam-diam. */
+async function muatPembayaran(
+  unit: ScopedUnitId,
+  sql: string,
+  kunci: string,
+): Promise<{ rows: TagihanPembayaranBaris[]; terpotong: boolean }> {
+  const rows = await qScoped<TagihanPembayaranBaris>(unit, sql, [unit, kunci, BATAS_BARIS_TAGIHAN + 1]);
+  return {
+    rows: rows.slice(0, BATAS_BARIS_TAGIHAN)
+      .map((r) => ({ ...r, jumlah: Number(r.jumlah), batal: r.batal === true, fakturBatal: r.fakturBatal === true })),
+    terpotong: rows.length > BATAS_BARIS_TAGIHAN,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -904,6 +1125,11 @@ export interface TagihanFakturRinci {
   dokumenTanpaBuku: number;
   /** Semua pembayaran, TERMASUK yang batal (beserta alasannya), terbaru dulu. */
   pembayaran: TagihanPembayaranBaris[];
+  /**
+   * Pembayaran faktur ini melampaui batas baris: daftarnya TIDAK lengkap, dan
+   * karena status dihitung dari daftar itu, dibayar/sisa/status ikut tak lengkap.
+   */
+  pembayaranTerpotong: boolean;
 }
 
 interface FakturRinciSql extends KesiapanSql {
@@ -912,7 +1138,7 @@ interface FakturRinciSql extends KesiapanSql {
   namaPelanggan: string | null;
   tanggalFaktur: string | null;
   jatuhTempoEasymax: string | null;
-  nilai: number;
+  nilai: number | null;
   statusEasymax: number | null;
   sisaEasymax: number | null;
   batal: boolean;
@@ -1018,7 +1244,7 @@ export async function getTagihanFaktur(
 ): Promise<TagihanFakturRinci | null> {
   const kode = pangkas(kodeFaktur);
   if (kode === "") return null;
-  const [kepala, dokumen, pembayaran, peta] = await Promise.all([
+  const [kepala, dokumen, bayar, peta] = await Promise.all([
     qScoped<FakturRinciSql>(unit, SQL_FAKTUR_RINCI, [unit, kode]),
     muatDokumenFaktur(unit, kode),
     muatPembayaran(unit, SQL_PEMBAYARAN_FAKTUR, kode),
@@ -1026,6 +1252,7 @@ export async function getTagihanFaktur(
   ]);
   const h = kepala[0];
   if (!h) return null;
+  const pembayaran = bayar.rows;
 
   const kosong = h.tanggalFaktur === null;
   const faktur: TagihanFaktur = {
@@ -1033,7 +1260,7 @@ export async function getTagihanFaktur(
     customerCode: h.customerCode,
     tanggalFaktur: h.tanggalFaktur ?? "",
     jatuhTempoEasymax: h.jatuhTempoEasymax,
-    nilai: Number(h.nilai),
+    nilai: h.nilai === null ? null : Number(h.nilai),
     statusEasymax: h.statusEasymax === null ? null : Number(h.statusEasymax),
     sisaEasymax: h.sisaEasymax === null ? null : Number(h.sisaEasymax),
     batal: h.batal === true,
@@ -1067,6 +1294,7 @@ export async function getTagihanFaktur(
     totalDokumen: bulat(dokumen.reduce((t, d) => t + (d.jumlah ?? 0), 0)),
     dokumenTanpaBuku: dokumen.filter((d) => d.jumlah === null).length,
     pembayaran,
+    pembayaranTerpotong: bayar.terpotong,
   };
 }
 
@@ -1084,7 +1312,12 @@ export interface TagihanPelanggan {
   pembayaran: TagihanPembayaranBaris[];
   belumDitagihkan: { jumlahDokumen: number; total: number; tanggalTertua: string | null };
   cocokSaldo: CocokSaldoPelanggan;
+  /** Snapshot Saldo pelanggan pembandingnya sedang menunggu pengganti. */
+  saldoSedangDiperbarui: boolean;
+  /** Batas baris FAKTUR terlampaui. */
   terpotong: boolean;
+  /** Batas baris PEMBAYARAN terlampaui: daftar dan total pembayarannya tidak lengkap. */
+  pembayaranTerpotong: boolean;
 }
 
 /** Kode boleh berpengisi spasi, bergaris miring, atau bertitik — dicocokkan sebagai `btrim(ckdplg)`. */
@@ -1100,14 +1333,15 @@ export async function getTagihanPelanggan(
     muatFaktur([unit], { kodePelanggan: kode, semua: true }),
     getPetaTermin(unit),
     muatPembayaran(unit, SQL_PEMBAYARAN_PELANGGAN, kode),
-    muatBelumDitagihkan([unit], kode),
-    muatSaldoTerbit(unit, kode),
+    muatBelumDitagihkan([unit], { kodePelanggan: kode }),
+    muatSaldoTerbit(unit),
   ]);
   const baris = faktur.rows.map((r) => keBaris(r, peta, hariIni)).sort(compareTagihanRows);
+  const kelompok = belum.kelompok[0];
   const belumDitagihkan = {
-    jumlahDokumen: Number(belum[0]?.jumlahDokumen ?? 0),
-    total: bulat(Number(belum[0]?.total ?? 0)),
-    tanggalTertua: belum[0]?.tanggalTertua ?? null,
+    jumlahDokumen: Number(kelompok?.jumlahDokumen ?? 0),
+    total: bulat(Number(kelompok?.total ?? 0)),
+    tanggalTertua: kelompok?.tanggalTertua ?? null,
   };
   const sisaFaktur = baris.reduce((t, b) => t + b.status.sisa, 0);
   return {
@@ -1115,10 +1349,12 @@ export async function getTagihanPelanggan(
     kesiapan,
     customerCode: kode,
     faktur: baris,
-    pembayaran,
+    pembayaran: pembayaran.rows,
     belumDitagihkan,
     cocokSaldo: cocokSaldo(kode, sisaFaktur, belumDitagihkan.total, terbit),
+    saldoSedangDiperbarui: terbit?.sedangDiperbarui ?? false,
     terpotong: faktur.terpotong,
+    pembayaranTerpotong: pembayaran.terpotong,
   };
 }
 
@@ -1172,7 +1408,8 @@ async function muatPetaTerminBanyak(units: readonly ScopedUnitId[]): Promise<Map
     const peta = sementara.get(Number(r.unitId));
     if (!peta) continue;
     if (r.kodePelanggan === null) peta.terminUnit = Number(r.terminHari);
-    else peta.terminPelanggan.set(r.kodePelanggan, Number(r.terminHari));
+    // Kunci tak peka huruf besar/kecil — sama dengan `getPetaTermin`.
+    else peta.terminPelanggan.set(kunciTermin(r.kodePelanggan), Number(r.terminHari));
   }
   return sementara;
 }
@@ -1210,7 +1447,7 @@ export async function getRingkasanTagihanLintasUnit(
     if (!peta || !wadah) continue;
     wadah.push(keBaris(r, peta, hariIni).status);
   }
-  for (const r of belum) belumPerUnit.get(Number(r.unitId))?.push(r);
+  for (const r of belum.kelompok) belumPerUnit.get(Number(r.unitId))?.push(r);
 
   return {
     unit: units.map((unitId): RingkasanTagihanUnit => {

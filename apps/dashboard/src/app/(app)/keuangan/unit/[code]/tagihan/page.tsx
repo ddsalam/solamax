@@ -5,7 +5,7 @@ import { unitDotted } from "@/lib/config";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { todayWib } from "@/lib/periods";
 import { getDataScope } from "@/lib/scope";
-import { getBelumDitagihkan, getDokumenBelumDitagihkan, getTagihanDaftar } from "@/lib/tagihan-queries";
+import { getBelumDitagihkan, getTagihanDaftar } from "@/lib/tagihan-queries";
 import { isTampilanFaktur, normalizeTagihanView, tagihanViewInput } from "@/lib/tagihan-route";
 
 export const dynamic = "force-dynamic";
@@ -46,17 +46,20 @@ export default async function TagihanPage({
       ? <TagihanView {...umum} state="faktur" data={data} />
       : <TagihanView {...umum} state="belum_tersedia" />;
   } else {
-    const data = await getBelumDitagihkan(unit.unit_id, { cari: view.search, hariIni });
+    // Kelompok dan dokumen kelompok yang dibuka keluar dari SATU kueri: buku
+    // piutang dipindai sekali, dibuka atau tidak.
+    const data = await getBelumDitagihkan(unit.unit_id, {
+      cari: view.search,
+      hariIni,
+      ...(view.buka === null ? {} : { dokumen: { kodePelanggan: view.buka } }),
+    });
     if (!data.tersedia) {
       isi = <TagihanView {...umum} state="belum_tersedia" />;
     } else {
-      // Dokumen hanya ditarik untuk kelompok yang memang ada di daftar ini:
+      // Dokumen hanya ditampilkan untuk kelompok yang memang ada di daftar ini:
       // `buka` dari URL yang tak cocok dengan kelompok mana pun diabaikan.
-      const dibuka = data.kelompok.find((k) => k.customerCode === view.buka);
-      const dokumenBuka = dibuka
-        ? await getDokumenBelumDitagihkan(unit.unit_id, dibuka.customerCode)
-        : null;
-      isi = <TagihanView {...umum} state="belum_ditagihkan" data={data} dokumenBuka={dokumenBuka} />;
+      const dibuka = data.kelompok.some((k) => k.customerCode === view.buka);
+      isi = <TagihanView {...umum} state="belum_ditagihkan" data={data} dokumenBuka={dibuka ? data.dokumen : null} />;
     }
   }
 

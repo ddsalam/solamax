@@ -32,16 +32,18 @@ function rinci(
     totalDokumen: 10_000_000,
     dokumenTanpaBuku: 0,
     pembayaran: [],
+    pembayaranTerpotong: false,
     ...o,
   };
 }
 
-const html = (r: TagihanFakturRinci): string => renderToStaticMarkup(
+const HALAMAN_PELANGGAN = "/keuangan/unit/6400001/piutang/2026-11-12/pelanggan/P-002";
+const html = (r: TagihanFakturRinci, pelangganHref: string | null = HALAMAN_PELANGGAN): string => renderToStaticMarkup(
   <TagihanFakturView
     unit={CONTOH_UNIT}
     rinci={r}
     daftarHref="/keuangan/unit/6400001/tagihan"
-    pelangganHref="/keuangan/unit/6400001/piutang/2026-11-12/pelanggan/P-002"
+    pelangganHref={pelangganHref}
   />,
 );
 
@@ -66,6 +68,39 @@ describe("S2 — rincian faktur", () => {
     const h = html(rinci(CONTOH.lewat()));
     expect(h).toContain('href="/keuangan/unit/6400001/tagihan">← Kembali ke daftar</a>');
     expect(h).toContain('href="/keuangan/unit/6400001/piutang/2026-11-12/pelanggan/P-002">Halaman pelanggan</a>');
+  });
+
+  it("🔴 halaman pelanggan tak ada (href null): nama & kode tampil sebagai teks biasa, tanpa tautan yang berujung 404", () => {
+    const h = html(rinci(CONTOH.sebagianLewat()), null);
+    expect(h).not.toContain("Halaman pelanggan");
+    expect(h).not.toContain("/piutang/");
+    expect(h).toMatch(/<dt>Pelanggan<\/dt><dd><span>CV Mitra Contoh<\/span><span class="tagihan-sub mono">P-002<\/span>/);
+    // Tautan kembali ke daftar tetap ada.
+    expect(h).toContain('href="/keuangan/unit/6400001/tagihan">← Kembali ke daftar</a>');
+    // Kontrol: dengan href, nama pelanggan adalah tautan.
+    expect(html(rinci(CONTOH.sebagianLewat()))).toContain(`<a href="${HALAMAN_PELANGGAN}">CV Mitra Contoh</a>`);
+  });
+
+  it("🔴 nilai faktur kosong: ditandai dan dijelaskan, tanpa 'Rp 0', dan tidak berpil Lunas", () => {
+    const h = html(rinci(CONTOH.nilaiKosong()));
+    const kartu = h.slice(h.indexOf('aria-label="Ringkasan faktur"'), h.indexOf("</section>"));
+    expect(kartu).toMatch(/<dt>Nilai faktur<\/dt><dd><span class="num">—<\/span><span class="tagihan-sub tagihan-tanda">nilai faktur kosong</);
+    expect(kartu).toMatch(/<dt>Sisa<\/dt><dd><span class="num w600">—</);
+    expect(kartu).not.toContain(">Lunas<");
+    expect(h).toContain("data-tagihan-nilai-kosong");
+    expect(h).toContain("SolaMax tidak menganggapnya lunas");
+    // Faktur bernilai tak membawa penanda itu.
+    expect(html(rinci(CONTOH.lewat()))).not.toContain("nilai faktur kosong");
+    expect(html(rinci(CONTOH.lewat()))).not.toContain("data-tagihan-nilai-kosong");
+  });
+
+  it("🔴 pembayaran terpotong: dikatakan, termasuk bahwa dibayar/sisa/status ikut tak lengkap", () => {
+    const bayar = [contohPembayaran({ kode: "BY-0001" })];
+    const h = html(rinci(CONTOH.sebagianLewat(), { pembayaran: bayar, pembayaranTerpotong: true }));
+    expect(h).toContain("data-tagihan-bayar-terpotong");
+    expect(h).toContain("Hanya 5.000 pembayaran terbaru yang dibaca");
+    expect(h).toContain("tidak lengkap");
+    expect(html(rinci(CONTOH.sebagianLewat(), { pembayaran: bayar }))).not.toContain("data-tagihan-bayar-terpotong");
   });
 
   it("🔴 panel beda dengan EasyMax TIDAK ada bila tak satu pun penanda terpasang", () => {

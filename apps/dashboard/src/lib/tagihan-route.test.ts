@@ -107,6 +107,11 @@ describe("pembuat tautan", () => {
     expect(tagihanListHref("UJI 01")).toBe("/keuangan/unit/UJI%2001/tagihan");
     expect(tagihanTampilanHref("6478111", "belum_ditagihkan")).toBe("/keuangan/unit/6478111/tagihan?filter=belum_ditagihkan");
     expect(tagihanTerminHref("6478111")).toBe("/keuangan/unit/6478111/tagihan/termin");
+    // Sakelar GET "semua pelanggan"; pencarian ikut, yang kosong tidak ditulis.
+    expect(tagihanTerminHref("6478111", { semua: true })).toBe("/keuangan/unit/6478111/tagihan/termin?semua=1");
+    expect(tagihanTerminHref("6478111", { semua: true, cari: " PT Contoh & Rekan " }))
+      .toBe("/keuangan/unit/6478111/tagihan/termin?semua=1&q=PT+Contoh+%26+Rekan");
+    expect(tagihanTerminHref("6478111", { semua: false, cari: "  " })).toBe("/keuangan/unit/6478111/tagihan/termin");
     expect(tagihanRingkasanHref()).toBe("/keuangan/tagihan");
   });
 

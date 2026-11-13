@@ -40,7 +40,8 @@ export interface ContohBarisOpsi {
   nama?: string | null;
   tanggal?: string;
   jtEasymax?: string | null;
-  nilai?: number;
+  /** `null` = faktur tanpa nilai dari sumber. */
+  nilai?: number | null;
   dibayar?: number;
   /** Bawaan: cocok dengan hitungan (tanpa penanda beda). */
   statusEasymax?: number | null;
@@ -51,7 +52,7 @@ export interface ContohBarisOpsi {
 }
 
 export function contohBaris(o: ContohBarisOpsi): TagihanBaris {
-  const nilai = o.nilai ?? 10_000_000;
+  const nilai = o.nilai === undefined ? 10_000_000 : o.nilai;
   const dibayar = o.dibayar ?? 0;
   const faktur = {
     kode: o.kode,
@@ -59,8 +60,8 @@ export function contohBaris(o: ContohBarisOpsi): TagihanBaris {
     tanggalFaktur: o.tanggal ?? "2026-10-01",
     jatuhTempoEasymax: o.jtEasymax ?? null,
     nilai,
-    statusEasymax: o.statusEasymax === undefined ? (dibayar >= nilai ? 1 : 0) : o.statusEasymax,
-    sisaEasymax: o.sisaEasymax === undefined ? nilai - dibayar : o.sisaEasymax,
+    statusEasymax: o.statusEasymax === undefined ? (nilai !== null && dibayar >= nilai ? 1 : 0) : o.statusEasymax,
+    sisaEasymax: o.sisaEasymax === undefined ? (nilai === null ? null : nilai - dibayar) : o.sisaEasymax,
     batal: false,
   };
   const status = deriveTagihanStatus(
@@ -105,6 +106,8 @@ export const CONTOH = {
   bedaEasymax: () => contohBaris({
     kode: "TG-0007", dibayar: 4_000_000, statusEasymax: 1, sisaEasymax: 0,
   }),
+  /** Sumber tak memberi nilai faktur: tak pernah lunas, ditandai, tanpa rupiah. */
+  nilaiKosong: () => contohBaris({ kode: "TG-0009", customerCode: "P-004", nama: "CV Tanpa Nilai", nilai: null }),
   /** AE9: jatuh tempo EasyMax puluhan tahun kemudian → tak dipakai, jatuh ke termin. */
   jtTakWajar: () => contohBaris({ kode: "TG-0008", jtEasymax: "2060-01-01" }),
 } as const;

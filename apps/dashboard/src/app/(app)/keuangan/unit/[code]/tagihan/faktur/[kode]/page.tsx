@@ -5,7 +5,7 @@ import { unitDotted } from "@/lib/config";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
 import { todayWib } from "@/lib/periods";
 import { getDataScope } from "@/lib/scope";
-import { getSaldoTerbitTerakhir, getTagihanFaktur } from "@/lib/tagihan-queries";
+import { getTagihanFaktur, getTanggalSaldoPelanggan } from "@/lib/tagihan-queries";
 import { parseKodeFaktur, tagihanListHref, tagihanPelangganHref } from "@/lib/tagihan-route";
 
 export const dynamic = "force-dynamic";
@@ -29,16 +29,15 @@ export default async function TagihanFakturPage({
   if (!canViewLaporanKeuangan({ role: scope.role, email: scope.email })) notFound();
 
   const hariIni = todayWib();
-  const [rinci, saldoTerbit] = await Promise.all([
-    getTagihanFaktur(unit.unit_id, kodeFaktur, hariIni),
-    getSaldoTerbitTerakhir(unit.unit_id),
-  ]);
+  const rinci = await getTagihanFaktur(unit.unit_id, kodeFaktur, hariIni);
   if (rinci === null) notFound();
 
-  // Halaman pelanggan hidup di bawah tanggal Saldo pelanggan. Dipakai tanggal
-  // snapshot TERBIT terakhir unit ini (pasti terbuka); bila belum ada satu pun,
-  // hari ini WIB — halaman itu sendiri yang akan mengatakan "belum siap".
-  const tanggalSaldo = saldoTerbit?.asOfDate ?? hariIni;
+  // Halaman pelanggan hidup di bawah tanggal Saldo pelanggan dan menjawab 404
+  // untuk pelanggan yang tak punya baris di snapshot tanggal itu. Tautannya
+  // karena itu hanya dibuat bila pelanggan faktur ini ADA di snapshot terbit
+  // terakhir; kode kosong, unit tanpa snapshot terbit, atau pelanggan yang
+  // belum masuk snapshot → `null`, dan nama/kodenya tampil sebagai teks biasa.
+  const tanggalSaldo = await getTanggalSaldoPelanggan(unit.unit_id, rinci.faktur.customerCode);
 
   return (
     <>
@@ -51,7 +50,9 @@ export default async function TagihanFakturPage({
         unit={{ code: unit.code, name: unit.name }}
         rinci={rinci}
         daftarHref={tagihanListHref(unit.code)}
-        pelangganHref={tagihanPelangganHref(unit.code, tanggalSaldo, rinci.faktur.customerCode)}
+        pelangganHref={
+          tanggalSaldo === null ? null : tagihanPelangganHref(unit.code, tanggalSaldo, rinci.faktur.customerCode)
+        }
       />
     </>
   );

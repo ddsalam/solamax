@@ -179,6 +179,29 @@ describe("tetapkanTerminUnit", () => {
     expect(urutanSql().at(-1)).toBe("ROLLBACK");
     expect(h.revalidatePath).not.toHaveBeenCalled();
   });
+
+  it("🔴 galat basis data lain ⇒ pesan umum; teks galat mentah hanya ke log server, tidak ke peramban", async () => {
+    const mentah = 'new row for relation "termin_unit" violates check constraint "termin_unit_hari_ck"';
+    h.state.jawab = (sql) => {
+      if (sql.includes("INSERT INTO app.termin_unit")) throw Object.assign(new Error(mentah), { code: "23514" });
+      return undefined;
+    };
+    const catat = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await tetapkanTerminUnit({ code: h.A.code, terminHari: 30 });
+      expect(r).toEqual({ ok: false, error: expect.stringMatching(/^Gagal menyimpan termin bawaan unit\./) });
+      if (r.ok) throw new Error("seharusnya gagal");
+      expect(r.error).not.toContain("termin_unit");
+      expect(r.error).not.toContain("constraint");
+      expect(urutanSql().at(-1)).toBe("ROLLBACK");
+      expect(h.revalidatePath).not.toHaveBeenCalled();
+      // Sebab lengkapnya tetap tercatat di server.
+      expect(catat).toHaveBeenCalledTimes(1);
+      expect(catat.mock.calls[0]!.some((x) => x instanceof Error && x.message === mentah)).toBe(true);
+    } finally {
+      catat.mockRestore();
+    }
+  });
 });
 
 describe("tetapkanTerminPelanggan & hapusTerminPelanggan", () => {

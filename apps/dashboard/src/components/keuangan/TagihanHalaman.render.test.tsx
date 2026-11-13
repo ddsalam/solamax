@@ -16,9 +16,8 @@ const mocks = vi.hoisted(() => ({
   canView: vi.fn(),
   getTagihanDaftar: vi.fn(),
   getBelumDitagihkan: vi.fn(),
-  getDokumenBelumDitagihkan: vi.fn(),
   getTagihanFaktur: vi.fn(),
-  getSaldoTerbitTerakhir: vi.fn(),
+  getTanggalSaldoPelanggan: vi.fn(),
   getTagihanPelanggan: vi.fn(),
   getSaldoSnapshot: vi.fn(),
   filters: vi.fn((_props: Record<string, unknown>) => null),
@@ -41,9 +40,8 @@ vi.mock("@/lib/tagihan-queries", () => ({
   BATAS_BARIS_TAGIHAN: 5000,
   getTagihanDaftar: mocks.getTagihanDaftar,
   getBelumDitagihkan: mocks.getBelumDitagihkan,
-  getDokumenBelumDitagihkan: mocks.getDokumenBelumDitagihkan,
   getTagihanFaktur: mocks.getTagihanFaktur,
-  getSaldoTerbitTerakhir: mocks.getSaldoTerbitTerakhir,
+  getTanggalSaldoPelanggan: mocks.getTanggalSaldoPelanggan,
   getTagihanPelanggan: mocks.getTagihanPelanggan,
 }));
 vi.mock("@/lib/saldo-snapshot", () => ({ getSaldoSnapshot: mocks.getSaldoSnapshot }));
@@ -85,16 +83,17 @@ describe("S1/S3 — /keuangan/unit/[code]/tagihan", () => {
 
   beforeEach(() => {
     mocks.getTagihanDaftar.mockResolvedValue(contohDaftar(semua));
-    mocks.getBelumDitagihkan.mockResolvedValue({
+    // Seperti kuerinya: dokumen ikut dipulangkan HANYA bila diminta, dari panggilan yang sama.
+    mocks.getBelumDitagihkan.mockImplementation(async (_unit: unknown, input: { dokumen?: unknown }) => ({
       ...dasar, ubin: contohUbin(semua), cari: "", saldoPerTanggal: "2026-11-12", saldoSedangDiperbarui: false,
       kelompok: [{ customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", jumlahDokumen: 1, total: 750_000,
         tanggalTertua: "2026-11-03", cocokSaldo: contohCocok() }],
-    });
-    mocks.getDokumenBelumDitagihkan.mockResolvedValue({
-      terpotong: false,
-      dokumen: [{ customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "JP-000101",
-        tanggal: "2026-11-03", jumlah: 750_000, keterangan: null }],
-    });
+      dokumen: input.dokumen === undefined ? null : {
+        terpotong: false,
+        dokumen: [{ customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "JP-000101",
+          tanggal: "2026-11-03", jumlah: 750_000, keterangan: null }],
+      },
+    }));
   });
 
   it("🔴 tanpa parameter: tampilan bawaan Perlu tindakan, halaman 1, status dihitung per hari ini", async () => {
@@ -130,20 +129,27 @@ describe("S1/S3 — /keuangan/unit/[code]/tagihan", () => {
     expect(props).not.toHaveProperty("dimensiUnit");
   });
 
-  it("belum_ditagihkan: memakai kueri S3; dokumen hanya ditarik untuk kelompok yang dibuka DAN ada di daftar", async () => {
+  it("🔴 belum_ditagihkan: SATU panggilan kueri S3, dibuka atau tidak; dokumen hanya tampil untuk kelompok yang dibuka DAN ada di daftar", async () => {
     const tertutup = await buka({ filter: "belum_ditagihkan" });
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledTimes(1);
     expect(mocks.getBelumDitagihkan).toHaveBeenCalledWith(7, { cari: "", hariIni: "2026-11-13" });
     expect(mocks.getTagihanDaftar).not.toHaveBeenCalled();
-    expect(mocks.getDokumenBelumDitagihkan).not.toHaveBeenCalled();
     expect(tertutup).not.toContain("JP-000101");
 
+    // Dibuka: dokumennya diminta di panggilan yang SAMA — buku piutang tak dibaca dua kali.
+    mocks.getBelumDitagihkan.mockClear();
     const terbuka = await buka({ filter: "belum_ditagihkan", buka: "P-001" });
-    expect(mocks.getDokumenBelumDitagihkan).toHaveBeenCalledWith(7, "P-001");
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledTimes(1);
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledWith(7, {
+      cari: "", hariIni: "2026-11-13", dokumen: { kodePelanggan: "P-001" },
+    });
     expect(terbuka).toContain("JP-000101");
 
-    mocks.getDokumenBelumDitagihkan.mockClear();
-    await buka({ filter: "belum_ditagihkan", buka: "P-TIDAK-ADA" });
-    expect(mocks.getDokumenBelumDitagihkan).not.toHaveBeenCalled();
+    // `buka` yang tak cocok dengan kelompok mana pun: dokumennya tak ditampilkan.
+    mocks.getBelumDitagihkan.mockClear();
+    const asing = await buka({ filter: "belum_ditagihkan", buka: "P-TIDAK-ADA" });
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledTimes(1);
+    expect(asing).not.toContain("JP-000101");
   });
 
   it.each<Record<string, string>>([{}, { filter: "belum_ditagihkan" }])("🔴 unit tanpa siklus lengkap (%o) → keadaan belum tersedia", async (query) => {
@@ -177,6 +183,7 @@ describe("S2 — /keuangan/unit/[code]/tagihan/faktur/[kode]", () => {
     status: baris.status, alasanBatal: null, keterangan: null, jenisTagihan: 1, nilaiPokok: 10_000_000, biayaAdmin: 0,
     dokumen: [{ kodeDokumen: "JP-000201", tanggal: "2026-10-20", jumlah: 10_000_000 }],
     totalDokumen: 10_000_000, dokumenTanpaBuku: 0, pembayaran: [contohPembayaran({ kode: "BY-0001" })],
+    pembayaranTerpotong: false,
   };
   const buka = async (kode: string) => renderToStaticMarkup(
     await TagihanFakturPage({ params: Promise.resolve({ code: unit.code, kode }) }),
@@ -184,21 +191,36 @@ describe("S2 — /keuangan/unit/[code]/tagihan/faktur/[kode]", () => {
 
   beforeEach(() => {
     mocks.getTagihanFaktur.mockResolvedValue(rinci);
-    mocks.getSaldoTerbitTerakhir.mockResolvedValue({ asOfDate: "2026-11-12", generationId: "g", sedangDiperbarui: false });
+    mocks.getTanggalSaldoPelanggan.mockResolvedValue("2026-11-12");
   });
 
   it("merender rincian; halaman pelanggan ditaut pada tanggal snapshot Saldo pelanggan terbit terakhir", async () => {
     const h = await buka("TG-0002");
     expect(mocks.getTagihanFaktur).toHaveBeenCalledWith(7, "TG-0002", "2026-11-13");
+    // Keberadaan halaman pelanggan ditanyakan untuk pelanggan FAKTUR ini, di unit pemanggil.
+    expect(mocks.getTanggalSaldoPelanggan).toHaveBeenCalledWith(7, "P-002");
     expect(h).toContain("Faktur TG-0002");
     expect(h).toContain('href="/keuangan/unit/6400001/piutang/2026-11-12/pelanggan/P-002"');
     expect(h).toContain('href="/keuangan/unit/6400001/tagihan">← Kembali ke daftar</a>');
     expect(mocks.filters.mock.calls[0]![0]).toMatchObject({ code: "6400001", segment: "keuangan-tagihan" });
   });
 
-  it("belum ada snapshot terbit → tautan pelanggan memakai hari ini (WIB)", async () => {
-    mocks.getSaldoTerbitTerakhir.mockResolvedValue(null);
-    expect(await buka("TG-0002")).toContain('href="/keuangan/unit/6400001/piutang/2026-11-13/pelanggan/P-002"');
+  it("🔴 pelanggan tak ada di snapshot terbit terakhir (atau belum ada snapshot) → TANPA tautan halaman pelanggan, nama sebagai teks", async () => {
+    mocks.getTanggalSaldoPelanggan.mockResolvedValue(null);
+    const h = await buka("TG-0002");
+    expect(h).not.toContain("/piutang/");
+    expect(h).not.toContain("Halaman pelanggan");
+    expect(h).toContain("<span>CV Mitra Contoh</span>");
+    expect(h).toContain("Faktur TG-0002");
+  });
+
+  it("🔴 faktur tanpa kode pelanggan → tanpa tautan (kueri keberadaan memulangkan null untuk kode kosong)", async () => {
+    mocks.getTagihanFaktur.mockResolvedValue({ ...rinci, faktur: { ...rinci.faktur, customerCode: "" } });
+    mocks.getTanggalSaldoPelanggan.mockImplementation(async (_u: unknown, kode: string) => (kode.trim() === "" ? null : "2026-11-12"));
+    const h = await buka("TG-0002");
+    expect(mocks.getTanggalSaldoPelanggan).toHaveBeenCalledWith(7, "");
+    expect(h).not.toContain("/piutang/");
+    expect(h).not.toContain("Halaman pelanggan");
   });
 
   it("kode ter-encode di-decode sebelum dicari", async () => {

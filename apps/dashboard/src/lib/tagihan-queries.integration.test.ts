@@ -13,7 +13,10 @@ import type { ScopedUnitId } from "./scope";
  *   · AE10 dan tautan faktur batal pada kelompok "belum ditagihkan";
  *   · populasi piutang: kelas tunai (4) tak pernah ikut, kode bertitik ikut;
  *   · saringan lunas per periode pelunasan;
- *   · cocok-silang R20 terhadap pointer Saldo pelanggan TERBARU;
+ *   · cocok-silang R20 terhadap pointer Saldo pelanggan TERBARU, dan bahwa
+ *     generasi yang rowset-nya tak lolos bukti integritas = "belum tersedia";
+ *   · rujukan yang diposting ke dua pelanggan, penjualan yang dibalik kredit,
+ *     awalan rujukan berhuruf kecil, dan faktur tanpa nilai;
  *   · isolasi RLS antar unit lewat mekanisme `qScoped` (GUC `app.unit_ids`
  *     diturunkan dari argumen unit, transaction-local).
  *
@@ -58,9 +61,9 @@ vi.mock("./db", () => ({
 
 const {
   getBelumDitagihkan,
-  getDokumenBelumDitagihkan,
   getRingkasanTagihanLintasUnit,
   getSaldoTerbitTerakhir,
+  getTanggalSaldoPelanggan,
   getTagihanDaftar,
   getTagihanEkspor,
   getTagihanFaktur,
@@ -231,6 +234,39 @@ d("0063 — kueri tagihan pelanggan terhadap skema nyata", () => {
       await c.query(baris, [UA, tanggal, gen, P2, 0, online]);
       await c.query(pointer, [UA, tanggal, gen]);
     }
+    // Checksum ber-kunci yang SEBENARNYA — rumusnya disalin dari pembaca
+    // (`saldo-snapshot.ts`, CTE `actual`): pembaca cocok-silang kini menuntut
+    // bukti integritas yang sama dengan layar Saldo pelanggan.
+    await c.query(
+      `UPDATE app.saldo_pelanggan_snapshot_manifest m
+          SET row_keyed_checksum = (
+            SELECT sha256(convert_to(COALESCE(string_agg(
+                     concat_ws('|', r.unit_id::text, r.as_of_date::text, r.customer_code,
+                       r.awal_piutang_lokal::text, r.akhir_piutang_lokal::text,
+                       r.awal_piutang_online::text, r.akhir_piutang_online::text,
+                       r.awal_hutang_lokal::text, r.akhir_hutang_lokal::text,
+                       r.awal_piutang_lokal_debet::text, r.awal_piutang_lokal_kredit::text,
+                       r.akhir_piutang_lokal_debet::text, r.akhir_piutang_lokal_kredit::text,
+                       r.awal_piutang_online_debet::text, r.awal_piutang_online_kredit::text,
+                       r.akhir_piutang_online_debet::text, r.akhir_piutang_online_kredit::text,
+                       r.awal_hutang_lokal_debet::text, r.awal_hutang_lokal_kredit::text,
+                       r.akhir_hutang_lokal_debet::text, r.akhir_hutang_lokal_kredit::text),
+                     E'\\n' ORDER BY r.customer_code), ''), 'UTF8'))
+              FROM app.saldo_pelanggan_snapshot_row r
+             WHERE r.unit_id = m.unit_id AND r.as_of_date = m.as_of_date AND r.generation_id = m.generation_id)
+        WHERE m.unit_id = $1`,
+      [UA],
+    );
+  };
+
+  /** Dokumen satu pelanggan (atau semua), lewat kueri yang sama dengan kelompoknya. */
+  const dokumenBelum = async (unit: ScopedUnitId, kodePelanggan: string | null = null) => {
+    const hasil = await getBelumDitagihkan(unit, {
+      hariIni: HARI_INI,
+      dokumen: kodePelanggan === null ? "semua" : { kodePelanggan },
+    });
+    if (!hasil.tersedia || hasil.dokumen === null) throw new Error("dokumen tak dipulangkan");
+    return hasil.dokumen;
   };
 
   /** Jalankan fn dalam transaksi yang SELALU di-ROLLBACK, dengan fixture terpasang. */
@@ -404,13 +440,13 @@ d("0063 — kueri tagihan pelanggan terhadap skema nyata", () => {
         kelompokSaldo: "online", saldoPiutang: 100_000, saldoPerTanggal: "2026-11-12", selisih: 0,
       });
 
-      const dok = await getDokumenBelumDitagihkan(UA, " UJI/01 ");
+      const dok = await dokumenBelum(UA, " UJI/01 ");
       expect(dok.terpotong).toBe(false);
       expect(dok.dokumen.map((x) => [x.kodeDokumen, x.tanggal, x.jumlah])).toEqual([
         ["JP-UJI-BTL", "2026-11-02", 700_000],
         ["JP-UJI-NEW", "2026-11-12", 300_000],
       ]);
-      const semua = await getDokumenBelumDitagihkan(UA);
+      const semua = await dokumenBelum(UA);
       expect(semua.dokumen.map((x) => x.kodeDokumen)).toEqual(["JP-UJI-BTL", "UV-UJI-01", "JP-UJI-NEW"]);
       expect(semua.dokumen.some((x) => x.customerCode === PTUNAI)).toBe(false);
 
@@ -420,8 +456,207 @@ d("0063 — kueri tagihan pelanggan terhadap skema nyata", () => {
         `INSERT INTO public.tagihan_detail (unit_id, ckdtagih, ckdjualplg) VALUES ($1, 'UJI-F-01', 'JP-UJI-NEW')`,
         [UA],
       );
-      const sesudah = await getDokumenBelumDitagihkan(UA, P1);
+      const sesudah = await dokumenBelum(UA, P1);
       expect(sesudah.dokumen.map((x) => x.kodeDokumen)).toEqual(["JP-UJI-BTL"]);
+    });
+  });
+
+  it("🔴 A1: rujukan yang diposting ke DUA pelanggan dihitung di masing-masing, bukan dilebur ke satu kode", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async (c) => {
+      await scope(c, String(UA));
+      // Rujukan kembar: 200.000 milik UJI/01 dan 120.000 milik UJI.02 (ilustratif).
+      await c.query(
+        `INSERT INTO public.bppiut (unit_id, ckdbppiut, dtgl, ckdplg, vcref, vcket, njumlah, sjnsbp, sbatal) VALUES
+           ($1, 'UJI-BP-21', '2026-11-08', 'UJI/01', 'JP-UJI-KEMBAR', 'Penjualan', 200000, 1, 0),
+           ($1, 'UJI-BP-22', '2026-11-09', 'UJI.02', 'JP-UJI-KEMBAR', 'Penjualan', 120000, 1, 0)`,
+        [UA],
+      );
+      const hasil = await getBelumDitagihkan(UA, { hariIni: HARI_INI, dokumen: "semua" });
+      if (!hasil.tersedia) throw new Error("tak tersedia");
+      expect(hasil.kelompok.map((k) => [k.customerCode, k.jumlahDokumen, k.total])).toEqual([
+        [P1, 3, 1_200_000],
+        [P2, 2, 270_000],
+      ]);
+      expect(hasil.ubin.belumDitagihkan).toEqual({ jumlahDokumen: 5, jumlahPelanggan: 2, total: 1_470_000 });
+      expect(
+        hasil.dokumen!.dokumen.filter((x) => x.kodeDokumen === "JP-UJI-KEMBAR").map((x) => [x.customerCode, x.tanggal, x.jumlah]),
+      ).toEqual([[P1, "2026-11-08", 200_000], [P2, "2026-11-09", 120_000]]);
+      // Halaman pelanggan masing-masing melihat bagiannya sendiri.
+      const p2 = await getTagihanPelanggan(UA, P2, HARI_INI);
+      if (!p2.tersedia) throw new Error("tak tersedia");
+      expect(p2.belumDitagihkan).toMatchObject({ jumlahDokumen: 2, total: 270_000 });
+
+      // "Tertaut ke faktur hidup" diputuskan per (unit, rujukan): satu tautan menutupnya di KEDUA pelanggan.
+      await c.query(
+        `INSERT INTO public.tagihan_detail (unit_id, ckdtagih, ckdjualplg) VALUES ($1, 'UJI-F-01', 'JP-UJI-KEMBAR')`,
+        [UA],
+      );
+      const sesudah = await dokumenBelum(UA);
+      expect(sesudah.dokumen.some((x) => x.kodeDokumen === "JP-UJI-KEMBAR")).toBe(false);
+      expect(sesudah.dokumen.map((x) => x.kodeDokumen)).toEqual(["JP-UJI-BTL", "UV-UJI-01", "JP-UJI-NEW"]);
+    });
+  });
+
+  it("🔴 A2: penjualan yang dibalik kredit hidup ber-rujukan & pelanggan sama dinetokan; neto ≤ 0 bukan belum ditagihkan", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async (c) => {
+      await scope(c, String(UA));
+      await c.query(
+        `INSERT INTO public.bppiut (unit_id, ckdbppiut, dtgl, ckdplg, vcref, vcket, njumlah, sjnsbp, sbatal) VALUES
+           -- dibalik penuh
+           ($1, 'UJI-BP-31', '2026-11-03', 'UJI/01', 'JP-UJI-BALIK',  'Penjualan', 400000, 1, 0),
+           ($1, 'UJI-BP-32', '2026-11-04', 'UJI/01', 'JP-UJI-BALIK',  'Retur',     400000, 2, 0),
+           -- dibalik sebagian: sisa 150.000
+           ($1, 'UJI-BP-33', '2026-11-05', 'UJI/01', 'JP-UJI-PARUH',  'Penjualan', 250000, 1, 0),
+           ($1, 'UJI-BP-34', '2026-11-06', 'UJI/01', 'JP-UJI-PARUH',  'Retur',     100000, 2, 0),
+           -- kredit BATAL tak mengurangi
+           ($1, 'UJI-BP-35', '2026-11-07', 'UJI/01', 'JP-UJI-KRBTL',  'Penjualan',  60000, 1, 0),
+           ($1, 'UJI-BP-36', '2026-11-07', 'UJI/01', 'JP-UJI-KRBTL',  'Retur',      60000, 2, 1),
+           -- kredit ber-rujukan sama milik pelanggan LAIN tak mengurangi
+           ($1, 'UJI-BP-37', '2026-11-07', 'UJI/01', 'JP-UJI-LAIN',   'Penjualan',  40000, 1, 0),
+           ($1, 'UJI-BP-38', '2026-11-07', 'UJI.02', 'JP-UJI-LAIN',   'Retur',      40000, 2, 0)`,
+        [UA],
+      );
+      const dok = await dokumenBelum(UA, P1);
+      expect(dok.dokumen.map((x) => [x.kodeDokumen, x.jumlah])).toEqual([
+        ["JP-UJI-BTL", 700_000],
+        ["JP-UJI-PARUH", 150_000],
+        ["JP-UJI-KRBTL", 60_000],
+        ["JP-UJI-LAIN", 40_000],
+        ["JP-UJI-NEW", 300_000],
+      ]);
+      const hasil = await getBelumDitagihkan(UA, { hariIni: HARI_INI });
+      if (!hasil.tersedia) throw new Error("tak tersedia");
+      // UJI.02 tak mendapat dokumen dari kredit tanpa debet.
+      expect(hasil.kelompok.map((k) => [k.customerCode, k.jumlahDokumen, k.total])).toEqual([
+        [P1, 5, 1_250_000],
+        [P2, 1, 150_000],
+      ]);
+    });
+  });
+
+  it("A3: awalan rujukan jp/uv berhuruf kecil tetap terbaca; rujukan & kode pelanggan tetap dicocokkan persis", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async (c) => {
+      await scope(c, String(UA));
+      await c.query(
+        `INSERT INTO public.bppiut (unit_id, ckdbppiut, dtgl, ckdplg, vcref, vcket, njumlah, sjnsbp, sbatal) VALUES
+           ($1, 'UJI-BP-41', '2026-11-12', 'UJI/01', 'jp-uji-kecil', 'Penjualan', 55000, 1, 0),
+           ($1, 'UJI-BP-42', '2026-11-12', 'UJI.02', 'Uv-uji-kecil', 'Voucher',   45000, 1, 0)`,
+        [UA],
+      );
+      // Tautan berhuruf besar TIDAK menutup rujukan berhuruf kecil: pencocokan rujukan tetap persis.
+      await c.query(
+        `INSERT INTO public.tagihan_detail (unit_id, ckdtagih, ckdjualplg) VALUES ($1, 'UJI-F-01', 'JP-UJI-KECIL')`,
+        [UA],
+      );
+      const dok = await dokumenBelum(UA);
+      // Diurutkan di sini: dua dokumen bertanggal sama diurutkan kolasi DB.
+      expect(dok.dokumen.map((x) => x.kodeDokumen).sort()).toEqual([
+        "JP-UJI-BTL", "JP-UJI-NEW", "UV-UJI-01", "Uv-uji-kecil", "jp-uji-kecil",
+      ]);
+    });
+  });
+
+  it("🔴 B: grand total nol dengan total terisi memakai total; tanpa keduanya = nilai kosong, TIDAK lunas", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async (c) => {
+      await scope(c, String(UA));
+      await c.query(
+        `INSERT INTO public.tagihan_header
+           (unit_id, ckdtagih, dtgl, dtgljt, ckdplg, ntotal, nadm, ngatot, nstatus, sbatal, vcalasan, nlastsaldo, sjenistag) VALUES
+           ($1, 'UJI-F-21', '2026-11-04', '2026-11-04', 'UJI/01', 800000, 0,    0, 0, 0, NULL, 800000, 1),
+           ($1, 'UJI-F-22', '2026-11-05', '2026-11-05', 'UJI/01',   NULL, 0, NULL, 0, 0, NULL, NULL, 1),
+           ($1, 'UJI-F-23', '2026-11-06', '2026-11-06', 'UJI/01',      0, 0,    0, 1, 0, NULL, 0, 1)`,
+        [UA],
+      );
+      const hasil = await getTagihanEkspor(UA, { filter: "perlu_tindakan", periodeLunas: PERIODE, hariIni: HARI_INI });
+      if (!hasil.tersedia) throw new Error("tak tersedia");
+      const per = new Map(hasil.baris.map((b) => [b.faktur.kode, b]));
+      expect(per.get("UJI-F-21")!.status).toMatchObject({
+        nilai: 800_000, sisa: 800_000, statusBayar: "belum_dibayar", nilaiKosong: false, bedaSisa: false,
+      });
+      for (const kode of ["UJI-F-22", "UJI-F-23"]) {
+        expect(per.get(kode)!.faktur.nilai, kode).toBeNull();
+        expect(per.get(kode)!.status, kode).toMatchObject({
+          nilaiKosong: true, statusBayar: "belum_dibayar", sisa: 0, statusJatuhTempo: "belum_jatuh_tempo",
+        });
+      }
+      // Tak ada yang menjadi lunas; ubin MENGHITUNG fakturnya tetapi rupiahnya hanya dari yang bernilai.
+      const lunas = await getTagihanEkspor(UA, { filter: "lunas", periodeLunas: PERIODE, hariIni: HARI_INI });
+      if (!lunas.tersedia) throw new Error("tak tersedia");
+      expect(lunas.baris.map((b) => b.faktur.kode)).toEqual(["UJI-F-02"]);
+      expect(hasil.ubin.belumJatuhTempo).toEqual({ jumlah: 3, sisa: 800_000 });
+      // Rincian faktur memakai aturan yang sama.
+      expect((await getTagihanFaktur(UA, "UJI-F-21", HARI_INI))!.status).toMatchObject({ nilai: 800_000, nilaiKosong: false });
+      const kosong = await getTagihanFaktur(UA, "UJI-F-22", HARI_INI);
+      expect(kosong!.faktur.nilai).toBeNull();
+      expect(kosong!.status).toMatchObject({ nilaiKosong: true, statusBayar: "belum_dibayar" });
+    });
+  });
+
+  it("🔴 F: generasi terbit yang rowset-nya tak lolos bukti integritas = belum tersedia, bukan saldo 0", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async (c) => {
+      // Kontrol: rowset utuh terbaca.
+      const utuh = await getTagihanPelanggan(UA, P1, HARI_INI);
+      if (!utuh.tersedia) throw new Error("tak tersedia");
+      expect(utuh.cocokSaldo).toMatchObject({ saldoPiutang: 7_500_000, saldoPerTanggal: "2026-11-12" });
+      expect(utuh.saldoSedangDiperbarui).toBe(false);
+
+      // Satu baris generasi terbaru lenyap: pointer & manifest masih "terbit", rowset tak lagi lengkap.
+      await scope(c, String(UA));
+      const hapus = await c.query(
+        `DELETE FROM app.saldo_pelanggan_snapshot_row
+          WHERE unit_id = $1 AND generation_id = $2::uuid AND btrim(customer_code) = $3`,
+        [UA, GEN_BARU, P1],
+      );
+      if (hapus.rowCount !== 1) return ctx.skip(); // role uji tak boleh menghapus baris snapshot
+      expect(await getSaldoTerbitTerakhir(UA)).toMatchObject({ asOfDate: "2026-11-12", generationId: GEN_BARU });
+
+      const p = await getTagihanPelanggan(UA, P1, HARI_INI);
+      if (!p.tersedia) throw new Error("tak tersedia");
+      expect(p.cocokSaldo).toMatchObject({ saldoPiutang: null, saldoPerTanggal: null, selisih: null });
+      const s3 = await getBelumDitagihkan(UA, { hariIni: HARI_INI });
+      if (!s3.tersedia) throw new Error("tak tersedia");
+      expect(s3.saldoPerTanggal).toBeNull();
+      expect(s3.kelompok.every((k) => k.cocokSaldo.saldoPiutang === null && k.cocokSaldo.selisih === null)).toBe(true);
+    });
+  });
+
+  it("H: tanggal halaman pelanggan hanya untuk pelanggan yang ADA di snapshot terbit terakhir", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async () => {
+      expect(await getTanggalSaldoPelanggan(UA, "  UJI/01 ")).toBe("2026-11-12");
+      expect(await getTanggalSaldoPelanggan(UA, P2)).toBe("2026-11-12");
+      // Ada di master tetapi tak punya baris snapshot; kode kosong; unit tanpa snapshot terbit.
+      expect(await getTanggalSaldoPelanggan(UA, PTUNAI)).toBeNull();
+      expect(await getTanggalSaldoPelanggan(UA, "   ")).toBeNull();
+      expect(await getTanggalSaldoPelanggan(UB, P1)).toBeNull();
+    });
+  });
+
+  it("E: buku piutang dipindai SEKALI per permintaan; ringkasan ringan tak memindainya sama sekali", async (ctx) => {
+    if (!applied) return ctx.skip();
+    await tx(async () => {
+      const pindaiBuku = () => h.panggilan.filter((p) => /FROM public\.bppiut b/.test(p.sql)).length;
+      h.panggilan.length = 0;
+      await getBelumDitagihkan(UA, { hariIni: HARI_INI, dokumen: { kodePelanggan: P1 } });
+      expect(pindaiBuku()).toBe(1);
+      h.panggilan.length = 0;
+      await getBelumDitagihkan(UA, { hariIni: HARI_INI, dokumen: "semua" });
+      expect(pindaiBuku()).toBe(1);
+      h.panggilan.length = 0;
+      const ringan = await getTagihanRingkasanUnit(UA, HARI_INI, { tanpaBelumDitagihkan: true });
+      expect(pindaiBuku()).toBe(0);
+      if (!ringan.tersedia) throw new Error("tak tersedia");
+      expect(ringan.fakturBergantungTermin).toBe(2);
+      expect(ringan.ubin).toEqual({
+        lewatJatuhTempo: { jumlah: 1, sisa: 6_000_000 },
+        belumJatuhTempo: { jumlah: 0, sisa: 0 },
+        terminBelumDiatur: { jumlah: 1, sisa: 250_000 },
+      });
     });
   });
 

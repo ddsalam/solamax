@@ -248,6 +248,15 @@ d("0064 — termin pembayaran: void + insert, RLS, audit", () => {
         [P2, true, 0],
         [P1, true, 45],
       ]);
+      // Kelas master ikut (J): P1 kelas 1 (piutang Lokal), P2 kelas 3 tetapi kodenya bertitik.
+      expect(
+        (await getPelangganUntukTermin(UA.unitId)).map((p) => [p.kodePelanggan, p.kelas]).sort(),
+      ).toEqual([
+        [P2, 3],
+        [P1, 1],
+      ]);
+      // Peta termin dikunci tanpa beda huruf besar/kecil (A3).
+      expect(terminUntuk(peta, P1.toLowerCase())).toEqual({ terminPelanggan: 45, terminUnit: 30 });
 
       // Hapus pengecualian P1 → kembali ke bawaan unit.
       const hapus = await cabutTerminPelanggan(c, { unit: UA, kodePelanggan: P1, aktor: AKTOR });

@@ -56,10 +56,13 @@ menarik fakta; tak ada vonis status di SQL, di halaman, maupun di ekspor.
 
 Urutannya:
 
-1. `dibayar` = jumlah pembayaran faktur yang **tidak batal**.
-2. `sisa` = nilai faktur − `dibayar`.
-3. Status bayar: `dibayar = 0` → belum dibayar · `0 < dibayar < nilai` → **Sebagian** ·
-   `dibayar = nilai` → **Lunas** · `dibayar > nilai` → **Lebih bayar**.
+1. `sisa` = nilai faktur − jumlah pembayaran faktur yang **tidak batal**, dihitung dari
+   angka **mentah** lalu dibulatkan ke rupiah **satu kali**.
+2. `dibayar` yang tampil = nilai faktur (bulat) − `sisa`, supaya tiga angka di layar dan
+   di ekspor selalu saling cocok.
+3. Status bayar dari `sisa` yang sudah bulat: `sisa = 0` → **Lunas** · `sisa < 0` →
+   **Lebih bayar** · `sisa > 0` dengan `dibayar > 0` → **Sebagian** · selainnya belum
+   dibayar.
 4. Hanya bila masih bersisa (belum dibayar atau Sebagian): **Belum jatuh tempo**,
    **Lewat jatuh tempo** (hari ini − jatuh tempo, dalam hari), atau **Termin belum
    diatur** (§3).
@@ -76,13 +79,23 @@ Aturan yang mengikat:
   bukan selisih.
 - **Semua perbandingan dalam rupiah bulat.** Kolom sumber bertitik-mengambang;
   membandingkannya mentah menghasilkan "Sebagian" palsu sebesar sepersekian rupiah.
+- **Sisa dibulatkan sekali, dari selisih mentahnya** — bukan nilai bulat dikurangi
+  pembayaran bulat. Dua pembulatan terpisah bisa meleset 1 rupiah dari kolom sisa-saldo
+  EasyMax dan menyalakan `beda_sisa` palsu. Akibat yang diterima: `dibayar` di baris
+  faktur bisa berbeda 1 rupiah dari total tabel pembayarannya.
+- **Nilai faktur = grand total bila terisi (bukan nol), selain itu total.** Bila
+  keduanya nol atau kosong, faktur itu **tidak pernah dianggap Lunas**: ia tetap di
+  "Perlu tindakan" dengan penanda **nilai faktur kosong**, dihitung dalam *jumlah* faktur
+  ubin tetapi tidak dalam rupiahnya, dan tidak dibandingkan dengan sisa-saldo EasyMax.
 - **Faktur batal tidak punya status; pembayaran batal tidak pernah dihitung.** Keduanya
   tetap dicerminkan dan tetap terlihat di rincian sebagai riwayat.
 - **Tanpa ambang lebih bayar** pada rilis pertama: kelebihan berapa pun = Lebih bayar.
   Melipat kelebihan kecil ke Lunas adalah keputusan sesudah Finance melihat daftar nyata.
 - **Lebih bayar dinilai per faktur**, bukan per pelanggan.
 - **Setiap faktur yang tidak persis Lunas selalu tampil** — termasuk Lebih bayar. Hanya
-  Lunas yang disaring per periode.
+  Lunas yang disaring per periode, dan **setiap** faktur Lunas tunduk padanya — termasuk
+  yang lunas hanya sesudah pembulatan rupiah. Periodenya = tanggal pembayaran hidup
+  terakhir; tanpa pembayaran, tanggal faktur.
 - **Status tidak disimpan.** Ia bergantung pada hari ini (WIB) dan pada termin yang bisa
   diubah kapan saja; status tersimpan pasti basi. "Hari ini sama dengan jatuh tempo"
   **belum** lewat.
@@ -137,8 +150,18 @@ dan `termin_pelanggan` (pengecualian per pelanggan). Dua tabel, bukan satu denga
   ditandai, dan bisa dihapus.** Menyembunyikannya berarti ia terus menggeser jatuh tempo
   faktur lama tanpa bisa dilihat. Ia tidak bisa diberi nilai baru.
 - Kode pelanggan selalu dalam bentuk kunci `btrim(ckdplg)` — sama dengan Saldo pelanggan.
-  Hanya spasi ASCII yang dipangkas; huruf besar/kecil, garis miring, dan titik tidak
-  disentuh.
+  Hanya spasi ASCII yang dipangkas; garis miring dan titik tidak disentuh.
+- **Di luar kotak pencarian layar, yang tidak peka huruf besar/kecil hanya dua:**
+  pencarian termin pelanggan untuk sebuah faktur (`terminUntuk` — pengecualian `abc`
+  berlaku bagi faktur ber-kode `ABC`, seperti EasyMax membandingkannya) dan awalan
+  rujukan `JP`/`UV` pada "Belum ditagihkan" (§5). **Semua pencocokan lain tetap persis**
+  sesudah dipangkas: kode
+  pelanggan pada join master, pengelompokan dan saringan, nomor rujukan terhadap tautan
+  faktur, nomor faktur, dan kunci snapshot Saldo pelanggan.
+- **Daftar pelanggan S4 bawaannya hanya pelanggan yang bisa punya piutang** (populasi
+  §5: kelas {1, 5} dengan kode tanpa titik, atau kode bertitik) **ditambah setiap
+  pelanggan yang sudah punya pengecualian**, berapa pun kelasnya. `?semua=1` menampilkan
+  seluruh master. Pengecualian tidak pernah tersembunyi oleh penyempitan ini.
 
 ### ⚖️ Wewenang: `canAturTermin` — pengecualian SEMPIT atas `KEUANGAN-HARIAN.md` §10.12
 
@@ -174,7 +197,19 @@ void dan `audit_log`.
 
 **Definisi.** Posting **debet hidup** di cermin buku piutang yang rujukannya dokumen
 penjualan atau pemakaian voucher, milik **populasi piutang**, dan **tidak tertaut ke
-faktur hidup mana pun**. Satu dokumen bisa punya lebih dari satu posting: dijumlahkan.
+faktur hidup mana pun**. Satu dokumen = satu **(rujukan, pelanggan)**; ia bisa punya
+lebih dari satu posting: dijumlahkan.
+
+- **Rujukan yang diposting ke dua pelanggan dihitung di masing-masing pelanggan**, dengan
+  jumlahnya sendiri. "Tertaut ke faktur hidup" tetap diputuskan per rujukan: tautan
+  faktur tidak menyimpan kode pelanggan, jadi satu tautan menutup rujukan itu untuk
+  semua pelanggannya.
+- **Kredit hidup ber-rujukan sama milik pelanggan yang sama mengurangi debetnya**
+  (penjualan yang dibalik). Dokumen yang netonya ≤ 0 bukan "belum ditagihkan"; yang
+  dibalik sebagian tampil sebesar sisanya. Kredit batal, kredit milik pelanggan lain,
+  dan kredit tanpa debet tidak berpengaruh.
+- **Awalan rujukan `JP`/`UV` dibaca tanpa membedakan huruf besar/kecil**; nomor
+  rujukannya sendiri tetap dicocokkan persis dengan tautan faktur (§4).
 
 **Populasi pelanggannya sama persis dengan "Saldo pelanggan"** — bukan definisi baru:
 
@@ -219,6 +254,16 @@ tanggal snapshotnya **selalu disebut** ("per …").
   penyesuaian, tidak ada baris penyeimbang. Saldo pelanggan tetap dihitung dengan caranya
   sendiri.
 - **Tanpa snapshot terbit → "belum tersedia"**, bukan selisih terhadap nol.
+- **Snapshot terbit yang rowset-nya tidak lolos bukti integritas juga "belum tersedia".**
+  Saldo pembanding dibaca lewat pembaca Saldo pelanggan sendiri (`getSaldoSnapshot`):
+  jumlah baris, checksum dan total rowset harus sama dengan manifestnya. Pointer terbit
+  saja bukan bukti; rowset yang tak lengkap tidak pernah terbaca sebagai "saldo 0".
+- **Snapshot pembanding yang sedang menunggu pengganti disebutkan** ("sedang
+  diperbarui") di S3 dan di halaman pelanggan.
+- **Tautan "Halaman pelanggan" di rincian faktur hanya dibuat bila halamannya ada** —
+  pelanggan faktur itu punya baris di snapshot terbit terakhir. Bila tidak (kode kosong,
+  belum ada snapshot, atau pelanggan belum masuk snapshot), nama dan kodenya tampil
+  sebagai teks biasa.
 
 ## 7 · Kesiapan dan kesegaran — dari siklus LENGKAP
 
@@ -233,8 +278,12 @@ tanggal snapshotnya **selalu disebut** ("per …").
   satu pun agent ditukar.
 - **Setiap layar menyebut kesegarannya** — waktu siklus lengkap terakhir, WIB.
 - Master termin **tidak menunggu** kesiapan: Finance boleh mengisinya lebih dulu.
-- Semua daftar berbatas baris. Bila batas terlampaui, hasilnya ditandai `terpotong` dan
-  layar **mengatakannya**; tidak pernah dipotong diam-diam.
+- Semua daftar berbatas baris — faktur, dokumen belum ditagihkan, **dan pembayaran**.
+  Bila batas terlampaui, hasilnya ditandai `terpotong` dan layar **mengatakannya**;
+  tidak pernah dipotong diam-diam.
+- **Buku piutang dipindai paling banyak sekali per permintaan.** Kelompok "Belum
+  ditagihkan" dan dokumennya (kelompok yang dibuka di S3, ekspor CSV) keluar dari satu
+  kueri; layar yang tidak menampilkannya (S4) tidak menjalankannya.
 
 ## 8 · Sinkron dan pangkas — aturan keselamatan
 
@@ -253,11 +302,22 @@ menanggal-ulangnya adalah perilaku EasyMax yang dikenal.
 
 - Sengaja **tidak** meniru `syncMasters`, yang menelan kegagalan per tabel: di sini tabel
   yang "kosong karena gagal" akan terbaca sebagai "hapus semuanya".
-- Sumber yang memang kosong **tetap** mengirim manifest. Daftar kosong sah dan berarti
-  "hapus semuanya" — karena itu payloadnya wajib eksplisit, bukan payload kosong biasa.
+- Sumber yang memang kosong **tetap** mengirim manifest. Daftar kosong diterima bila cermin
+  unit itu juga kosong (unit tanpa faktur tetap berstempel siklus lengkap). Bila cermin
+  **masih berisi faktur**, backend menolaknya (409) dan tidak menghapus apa pun — "nol
+  baris" juga wujud agent yang menunjuk basis data kosong atau baru separuh dipulihkan.
+  Mengosongkan cermin butuh `izinkan_kosong` dari operator; agent tidak pernah mengirimnya.
 - Backend memangkas dalam **satu transaksi di bawah kunci per unit**: hapus kepala dan
   pembayaran yang kuncinya tak terdaftar, hapus tautan faktur yang tak ada lagi, lalu
   stempel waktu siklus lengkap. Manifest satu unit tak pernah menyentuh unit lain.
+- Manifest ditolak (409, **seluruh transaksi batal**) bila: ia **basi** — `chunk_token`-nya
+  bukan potongan tagihan terakhir yang diterima untuk unit itu, artinya ada potongan lain
+  yang mendarat sesudah siklusnya; atau sesudah pangkas jumlah kepala/pembayaran di cermin
+  **tidak sama** dengan jumlah kunci manifest (ada kunci yang barisnya tak pernah tiba).
+  Manifest yang sudah distempel lalu terkirim ulang diterima tanpa dikerjakan lagi.
+- Tabel tagihan hanya diterima di domain `tagihan`, dan sebaliknya. Tiap daftar kunci
+  manifest dibatasi 100.000 kunci; agent membatalkan siklus sebelum mengirim apa pun bila
+  melampauinya.
 - > ⛔ **Payload domain ini TIDAK PERNAH masuk buffer offline.** Buffer diputar ulang di
   > awal siklus berikutnya; potongan atau manifest lama yang mendarat *sesudah* siklus
   > yang lebih baru akan menghapus faktur yang baru dibuat, atau menghidupkan lagi baris
@@ -266,8 +326,10 @@ menanggal-ulangnya adalah perilaku EasyMax yang dikenal.
 - > ⛔ **Jangan menjalankan sinkron sekali-jalan (`--once`, `3-sync-once.bat`) untuk unit
   > yang loop agent-nya sedang berjalan.** Penjaga "satu siklus pada satu waktu" hanya
   > berlaku di dalam satu proses. Dua proses bisa menyelang-nyeling potongan dan manifest,
-  > dan manifest yang lebih tua bisa mendarat belakangan. Untuk memeriksa tanpa mengirim,
-  > pakai dry-run.
+  > dan manifest yang lebih tua bisa mendarat belakangan. Penjaga `chunk_token` menolak
+  > manifest yang didahului potongan proses lain, tetapi **tidak** menolak potongan yang
+  > berselang-seling itu sendiri — larangan ini tetap berlaku. Untuk memeriksa tanpa
+  > mengirim, pakai dry-run.
 - Semua kolom dicerminkan apa adanya, termasuk flag status, kolom sisa-saldo, jatuh tempo
   mentah, dan baris batal. Tanggal nol menjadi NULL. **Tak ada yang diturunkan saat
   ingest.**
@@ -297,7 +359,6 @@ Urutan tukar bundle dan cara membaca log-nya:
 | Batas kewajaran jatuh tempo selain 365 hari | unit pemilik data ngawur belum diprobe | hasil probe unit itu |
 | Lantai tanggal "Belum ditagihkan" | belum ada bukti tumpukan lama | suatu unit menampakkan backlog bertahun-tahun |
 | Arti dua nilai jenis faktur | tak ada kebutuhan yang bergantung padanya | kebutuhan pertama yang membedakannya |
-| Penyempitan daftar pelanggan di S4 ke populasi piutang | kueri daftarnya belum memulangkan kelas pelanggan | daftar S4 terasa terlalu panjang bagi Finance |
 | Tanggal berlaku termin / termin per faktur | tidak diminta; termin adalah sifat hubungan | keputusan owner yang menghendaki riwayat termin memengaruhi faktur lama |
 | Pencocokan bank ke faktur, limit kredit, penagihan aktif | di luar cakupan (§1) | rencana tersendiri |
 

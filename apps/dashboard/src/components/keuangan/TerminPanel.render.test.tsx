@@ -25,6 +25,7 @@ const UNIT: TerminUnitRow = { terminHari: 30, diaturOleh: "staf@contoh.test", di
 const plg = (o: Partial<PelangganTerminRow> & { kodePelanggan: string }): PelangganTerminRow => ({
   namaPelanggan: `Pelanggan ${o.kodePelanggan}`,
   diMaster: true,
+  kelas: 1,
   terminHari: null,
   diaturOleh: null,
   diaturAt: null,
@@ -55,6 +56,7 @@ const render = (o: {
   terminUnit?: TerminUnitRow | null;
   pelanggan?: PelangganTerminRow[];
   cariAwal?: string;
+  cakupan?: Parameters<typeof TerminPanel>[0]["cakupan"];
 }) =>
   renderToStaticMarkup(
     <TerminPanel
@@ -66,6 +68,7 @@ const render = (o: {
       pesanTakBoleh={PESAN}
       batas={BATAS}
       cariAwal={o.cariAwal}
+      cakupan={o.cakupan}
     />,
   );
 
@@ -227,6 +230,40 @@ describe("daftar pelanggan — pencarian & batas baris", () => {
     expect(render({ bolehAtur: false, pelanggan: banyak.slice(0, TERMIN_BARIS_MAKS) })).not.toContain(
       "data-termin-terpotong",
     );
+  });
+});
+
+describe("cakupan daftar — pelanggan piutang (bawaan) atau seluruh master", () => {
+  const HREF = {
+    hrefSemua: "/keuangan/unit/6378301/tagihan/termin?semua=1",
+    hrefPiutang: "/keuangan/unit/6378301/tagihan/termin",
+  };
+
+  it("bawaan: menyebut yang ditampilkan dari berapa, dan menaut ke seluruh master lewat GET", () => {
+    const html = render({ bolehAtur: true, cakupan: { semua: false, jumlahMaster: 240, ...HREF } });
+    expect(html).toContain('data-termin-cakupan="piutang"');
+    expect(html).toContain("Menampilkan pelanggan piutang dan pelanggan yang sudah punya pengecualian — 3 dari 240 pelanggan.");
+    expect(html).toContain(`<a href="${HREF.hrefSemua}">Tampilkan semua pelanggan</a>`);
+    expect(html).not.toContain("Hanya pelanggan piutang");
+  });
+
+  it("semua: mengatakannya, dan menaut kembali ke daftar pelanggan piutang", () => {
+    const html = render({ bolehAtur: false, cakupan: { semua: true, jumlahMaster: 3, ...HREF } });
+    expect(html).toContain('data-termin-cakupan="semua"');
+    expect(html).toContain("Menampilkan semua pelanggan master");
+    expect(html).toContain(`<a href="${HREF.hrefPiutang}">Hanya pelanggan piutang</a>`);
+    expect(html).not.toContain("Tampilkan semua pelanggan");
+  });
+
+  it("daftar bawaan kosong padahal master berisi: tidak disebut 'belum ada pelanggan di master'", () => {
+    const html = render({ bolehAtur: true, pelanggan: [], cakupan: { semua: false, jumlahMaster: 12, ...HREF } });
+    expect(html).toContain("Tidak ada pelanggan piutang maupun pelanggan berpengecualian di unit ini.");
+    expect(html).not.toContain("Belum ada pelanggan di master unit ini");
+    expect(html).toContain("Tampilkan semua pelanggan");
+  });
+
+  it("tanpa cakupan (pemanggil tak menyaring): tak ada catatan maupun tautan", () => {
+    expect(render({ bolehAtur: true })).not.toContain("data-termin-cakupan");
   });
 });
 

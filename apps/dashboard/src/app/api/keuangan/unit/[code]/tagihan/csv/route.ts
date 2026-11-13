@@ -9,7 +9,6 @@ import { getDataScope } from "@/lib/scope";
 import {
   TAGIHAN_BELUM_TERSEDIA,
   getBelumDitagihkan,
-  getDokumenBelumDitagihkan,
   getTagihanEkspor,
 } from "@/lib/tagihan-queries";
 import {
@@ -71,12 +70,11 @@ export async function GET(
     });
   } else {
     // Kelompok menentukan pelanggan mana yang lolos pencarian — aturan yang sama
-    // dengan layar; dokumennya lalu disaring ke pelanggan-pelanggan itu.
-    const [data, semua] = await Promise.all([
-      getBelumDitagihkan(unit.unit_id, { cari: view.search, hariIni }),
-      getDokumenBelumDitagihkan(unit.unit_id, null),
-    ]);
+    // dengan layar; dokumennya lalu disaring ke pelanggan-pelanggan itu. Keduanya
+    // keluar dari SATU kueri: buku piutang dipindai sekali per ekspor.
+    const data = await getBelumDitagihkan(unit.unit_id, { cari: view.search, hariIni, dokumen: "semua" });
     if (!data.tersedia) return belumTersedia();
+    const semua = data.dokumen ?? { dokumen: [], terpotong: false };
     const pelanggan = new Set(data.kelompok.map((k) => k.customerCode));
     csv = belumDitagihkanCsv({
       ...kepala(data.kesiapan.selesaiAt, data.terpotong || semua.terpotong),

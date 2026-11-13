@@ -362,3 +362,57 @@ describe("labels", () => {
     expect(tagihanJatuhTempoLabel(status({ jatuhTempoEasymax: "2026-03-10" }, [bayar(10_050_000)]))).toBeNull();
   });
 });
+
+describe("rounding: remaining amount is rounded once from the raw difference", () => {
+  it("raises no false beda_sisa when value and payments round apart", () => {
+    // round(1000,5) − round(500,25) = 501, tetapi selisih mentahnya 500,25 → 500.
+    const result = status({ nilai: 1_000.5, statusEasymax: 0, sisaEasymax: 500.25 }, [bayar(500.25)]);
+    expect(result).toMatchObject({ sisa: 500, bedaSisa: false, bedaStatus: false, statusBayar: "sebagian" });
+    // Tiga angka yang tampil selalu saling cocok.
+    expect(result.nilai - result.dibayar).toBe(result.sisa);
+    expect(result).toMatchObject({ nilai: 1_001, dibayar: 501 });
+  });
+
+  it("derives the paid state from the rounded remaining amount", () => {
+    // Dibulatkan sendiri-sendiri keduanya 100 (dulu: Lunas); selisih mentahnya 0,8 → sisa 1.
+    expect(status({ nilai: 100.4 }, [bayar(99.6)])).toMatchObject({ statusBayar: "sebagian", sisa: 1, nilai: 100, dibayar: 99 });
+    // Kelebihan di bawah setengah rupiah bukan lebih bayar.
+    expect(status({ nilai: 100 }, [bayar(100.3)])).toMatchObject({ statusBayar: "lunas", sisa: 0, dibayar: 100 });
+    // Pembayaran di bawah setengah rupiah tidak tampil sebagai "sebagian".
+    expect(status({ nilai: 100 }, [bayar(0.3)])).toMatchObject({ statusBayar: "belum_dibayar", sisa: 100, dibayar: 0 });
+  });
+});
+
+describe("invoice without a value", () => {
+  const kosong = (pembayaran: TagihanPembayaran[] = [], overrides: Partial<TagihanFaktur> = {}) =>
+    status({ nilai: null, ...overrides }, pembayaran, { terminPelanggan: null, terminUnit: 7 });
+
+  it("is never Lunas: stays in Perlu tindakan, flagged, with its due status", () => {
+    const result = kosong();
+    expect(result).toMatchObject({
+      nilaiKosong: true, statusBayar: "belum_dibayar", nilai: 0, dibayar: 0, sisa: 0,
+      statusJatuhTempo: "lewat_jatuh_tempo", hariLewat: 12,
+    });
+    expect(matchesTagihanFilter(result, "perlu_tindakan")).toBe(true);
+    expect(matchesTagihanFilter(result, "lunas")).toBe(false);
+    expect(matchesTagihanFilter(result, "lebih_bayar")).toBe(false);
+  });
+
+  it("is not called Lebih bayar when payments exist, and is not compared with the EasyMax remainder", () => {
+    const result = kosong([bayar(250_000)], { sisaEasymax: 250_000 });
+    expect(result).toMatchObject({ nilaiKosong: true, statusBayar: "belum_dibayar", dibayar: 250_000, sisa: 0, bedaSisa: false });
+  });
+
+  it("is counted in its tile but adds no rupiah", () => {
+    const biasa = status({}, [], { terminPelanggan: null, terminUnit: 7 });
+    expect(summarizeTagihan([kosong(), biasa])).toEqual({
+      lewatJatuhTempo: { jumlah: 2, sisa: 10_000_000 },
+      belumJatuhTempo: { jumlah: 0, sisa: 0 },
+      terminBelumDiatur: { jumlah: 0, sisa: 0 },
+    });
+  });
+
+  it("leaves a real value untouched", () => {
+    expect(status({}, [bayar(10_000_000)])).toMatchObject({ nilaiKosong: false, statusBayar: "lunas" });
+  });
+});

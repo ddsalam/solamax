@@ -6,8 +6,8 @@ import { unitDotted, unitLabel } from "@/lib/config";
 import { canAturTermin, canViewLaporanKeuangan, pesanTakBolehAturTermin } from "@/lib/keuangan-wewenang";
 import { getDataScope } from "@/lib/scope";
 import { TAGIHAN_BELUM_TERSEDIA, getTagihanRingkasanUnit } from "@/lib/tagihan-queries";
-import { tagihanKesegaranLabel, tagihanListHref, tagihanRingkasanHref } from "@/lib/tagihan-route";
-import { getPelangganUntukTermin, getTerminUnit } from "@/lib/termin-queries";
+import { tagihanKesegaranLabel, tagihanListHref, tagihanRingkasanHref, tagihanTerminHref } from "@/lib/tagihan-route";
+import { getPelangganUntukTermin, getTerminUnit, pelangganTerminBawaan } from "@/lib/termin-queries";
 import { TERMIN_HARI_MAKS, TERMIN_HARI_MIN } from "@/lib/termin-tulis";
 
 export const dynamic = "force-dynamic";
@@ -22,20 +22,25 @@ export const dynamic = "force-dynamic";
  * Pembaca tanpa `canAturTermin` melihat semuanya tanpa kolom isian; gerbang
  * tulisnya tetap di server action (`termin-actions.ts`).
  *
- * Daftar pelanggan = SELURUH master unit (`getPelangganUntukTermin`), termasuk
- * pelanggan kelas penjualan tunai: kueri itu tak memulangkan kelas pelanggan,
- * jadi penyempitan ke pelanggan piutang belum bisa dilakukan di sini.
+ * Daftar pelanggan BAWAAN = pelanggan yang bisa punya piutang (kelas 1 atau 5
+ * dengan kode tanpa titik, atau kode bertitik — populasi yang sama dengan
+ * "belum ditagihkan") ditambah setiap pelanggan yang sudah punya pengecualian,
+ * berapa pun kelasnya dan walau sudah lenyap dari master. Pelanggan kelas
+ * penjualan tunai tak pernah punya faktur, jadi tak perlu termin; `?semua=1`
+ * menampilkan seluruh master bagi yang tetap ingin mengaturnya.
  *
  * Catatan "N faktur bergantung pada termin SolaMax" hanya tampil bila unit
  * sudah punya satu siklus tagihan lengkap (KTD11); master termin sendiri tak
- * menunggu itu — Finance boleh mengisinya sebelum agent unit ditukar.
+ * menunggu itu — Finance boleh mengisinya sebelum agent unit ditukar. Catatan
+ * itu dihitung TANPA memindai buku piutang (`tanpaBelumDitagihkan`): layar ini
+ * tak menampilkan "belum ditagihkan".
  */
 export default async function AturTerminPage({
   params,
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ q?: string | string[] }>;
+  searchParams: Promise<{ q?: string | string[]; semua?: string | string[] }>;
 }) {
   const { code } = await params;
   const sp = await searchParams;
@@ -44,12 +49,14 @@ export default async function AturTerminPage({
   const ctx = { role: scope.role, email: scope.email };
   if (!canViewLaporanKeuangan(ctx)) notFound();
 
-  const [terminUnit, pelanggan, ringkasan] = await Promise.all([
+  const [terminUnit, semuaPelanggan, ringkasan] = await Promise.all([
     getTerminUnit(unit.unit_id),
     getPelangganUntukTermin(unit.unit_id),
-    getTagihanRingkasanUnit(unit.unit_id),
+    getTagihanRingkasanUnit(unit.unit_id, undefined, { tanpaBelumDitagihkan: true }),
   ]);
   const cariAwal = (Array.isArray(sp.q) ? sp.q[0] : sp.q) ?? "";
+  const tampilSemua = (Array.isArray(sp.semua) ? sp.semua[0] : sp.semua) === "1";
+  const pelanggan = tampilSemua ? semuaPelanggan : pelangganTerminBawaan(semuaPelanggan);
 
   return (
     <>
@@ -109,6 +116,12 @@ export default async function AturTerminPage({
         pesanTakBoleh={pesanTakBolehAturTermin()}
         batas={{ min: TERMIN_HARI_MIN, maks: TERMIN_HARI_MAKS }}
         cariAwal={cariAwal}
+        cakupan={{
+          semua: tampilSemua,
+          jumlahMaster: semuaPelanggan.length,
+          hrefSemua: tagihanTerminHref(unit.code, { semua: true, cari: cariAwal }),
+          hrefPiutang: tagihanTerminHref(unit.code, { cari: cariAwal }),
+        }}
       />
     </>
   );

@@ -54,6 +54,7 @@ const belumDitagihkan = (o: Partial<BelumDitagihkanDaftar> = {}): BelumDitagihka
   ],
   saldoPerTanggal: "2026-11-12",
   saldoSedangDiperbarui: false,
+  dokumen: null,
   ...o,
 });
 
@@ -170,6 +171,24 @@ describe("S1 — daftar tagihan", () => {
     expect(baris).toContain('<td class="num">31 Okt 2026<');
     expect(baris.replace(/title="[^"]*"/g, "")).not.toContain("2060");
     expect(h.match(/>JT EasyMax tak wajar</g)).toHaveLength(1);
+  });
+
+  it("🔴 nilai faktur kosong: baris tetap ada di Perlu tindakan, bertanda, tanpa rupiah nilai/sisa dan tanpa pil Lunas", () => {
+    const baris = [...semua, CONTOH.nilaiKosong()];
+    const h = html({ ...umum, view: view(), state: "faktur", data: contohDaftar(baris) });
+    const tr = barisHtml(h, "TG-0009");
+    expect(tr).toContain(">nilai faktur kosong</span>");
+    expect(tr).toMatch(/title="[^"]*tidak menganggapnya lunas/);
+    expect(tr).toMatch(/<td class="right num">—<span/);
+    expect(tr).toContain('<td class="right num w600">—</td>');
+    expect(tr).not.toContain(">Lunas<");
+    expect(tr).toContain("Lewat 13 hari");
+    // Hanya baris itu yang bertanda.
+    expect(h.match(/>nilai faktur kosong</g)).toHaveLength(1);
+    // Ubin menghitung fakturnya tetapi rupiahnya tak berubah.
+    const dengan = contohUbin(baris).lewatJatuhTempo;
+    const tanpa = contohUbin(semua).lewatJatuhTempo;
+    expect(dengan).toEqual({ jumlah: tanpa.jumlah + 1, sisa: tanpa.sisa });
   });
 
   it("lebih bayar: kelebihannya tampil sebagai sisa negatif", () => {

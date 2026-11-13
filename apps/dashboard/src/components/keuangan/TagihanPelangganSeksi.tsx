@@ -87,6 +87,11 @@ export function TagihanPelangganSeksi({
               </>
             )}
           </p>
+          {data.saldoSedangDiperbarui && (
+            <p className="tagihan-catatan" data-tagihan-saldo-diperbarui>
+              Saldo pelanggan per {tanggalTagihan(data.cocokSaldo.saldoPerTanggal)} sedang diperbarui; saldo piutang dan selisih di bawah bisa berubah.
+            </p>
+          )}
           <TagihanCocokSaldo cocok={data.cocokSaldo} />
         </div>
       </section>
@@ -100,6 +105,11 @@ export function TagihanPelangganSeksi({
             </p>
           </div>
         </div>
+        {data.pembayaranTerpotong && (
+          <p className="tagihan-catatan" data-tagihan-bayar-terpotong>
+            Hanya {BATAS_BARIS_TAGIHAN.toLocaleString("id-ID")} pembayaran terbaru yang ditampilkan; daftar dan total pembayaran ini tidak lengkap.
+          </p>
+        )}
         {data.pembayaran.length === 0 ? (
           <div className="empty-inline b6-piutang-empty">Belum ada pembayaran tercatat untuk pelanggan ini.</div>
         ) : (

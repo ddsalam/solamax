@@ -1,6 +1,7 @@
 import { dateShort, rp } from "@/lib/format";
 import {
   BATAS_JATUH_TEMPO_EASYMAX_HARI,
+  TAGIHAN_NILAI_KOSONG,
   tagihanJatuhTempoLabel,
   tagihanStatusBayarLabel,
   tagihanSumberJatuhTempoLabel,
@@ -31,6 +32,10 @@ export function tanggalTagihan(iso: string | null | undefined): string {
 /** Penjelasan penanda "beda dengan EasyMax" — dipakai `title` di daftar dan panel di rincian. */
 export const PENJELASAN_BEDA_EASYMAX =
   "Status atau sisa hitungan SolaMax (nilai faktur dikurangi pembayaran yang tidak batal) tidak sama dengan yang tercatat di EasyMax. Buka faktur untuk melihat keduanya berdampingan.";
+
+/** Penjelasan penanda "nilai faktur kosong" — `title` di daftar, kalimat di rincian. */
+export const PENJELASAN_NILAI_KOSONG =
+  "Faktur ini tidak membawa nilai dari EasyMax (grand total dan total kosong atau nol). SolaMax tidak menganggapnya lunas: ia tetap di Perlu tindakan, dihitung dalam jumlah faktur tetapi tidak dalam rupiah, sampai nilainya diperbaiki di EasyMax.";
 
 export function penjelasanJtTakWajar(jatuhTempoEasymax: string | null): string {
   return `Jatuh tempo di EasyMax${jatuhTempoEasymax ? ` (${tanggalTagihan(jatuhTempoEasymax)})` : ""} sebelum tanggal faktur atau lebih dari ${BATAS_JATUH_TEMPO_EASYMAX_HARI} hari sesudahnya, jadi tidak dipakai. Jatuh tempo dihitung dari termin SolaMax.`;
@@ -138,14 +143,21 @@ export function TagihanFakturTabel({
                     </span>
                   )}
                 </td>
-                <td className="right num">{rp(status.nilai)}</td>
+                <td className="right num">
+                  {status.nilaiKosong ? "—" : rp(status.nilai)}
+                  {status.nilaiKosong && (
+                    <span className="tagihan-sub tagihan-tanda" title={PENJELASAN_NILAI_KOSONG}>
+                      {TAGIHAN_NILAI_KOSONG}
+                    </span>
+                  )}
+                </td>
                 <td className="right num">
                   {rp(status.dibayar)}
                   {b.tanggalBayarTerakhir && (
                     <span className="tagihan-sub">terakhir {tanggalTagihan(b.tanggalBayarTerakhir)}</span>
                   )}
                 </td>
-                <td className="right num w600">{rp(status.sisa)}</td>
+                <td className="right num w600">{status.nilaiKosong ? "—" : rp(status.sisa)}</td>
                 <td>
                   <TagihanStatusPills status={status} />
                 </td>

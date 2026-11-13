@@ -117,6 +117,19 @@ describe("tagihanCsv — saringan faktur", () => {
     expect(tanpaTermin[12]).toBe("Termin belum diatur");
   });
 
+  it("🔴 nilai faktur kosong: penandanya di sel Nilai, sisa bukan angka nol, dan tak menambah total sisa", () => {
+    const r = barisFakturCsv(CONTOH_UNIT, CONTOH.nilaiKosong());
+    const sel = Object.fromEntries(TAGIHAN_CSV_KOLOM_FAKTUR.map((k, i) => [k, r[i]]));
+    expect(sel).toMatchObject({ "No. faktur": "TG-0009", "Nilai": "nilai faktur kosong", "Sisa": "—", "Status bayar": "Belum dibayar" });
+    expect(r.every((isi) => isi !== "")).toBe(true);
+    const kepalaCsv = (baris: Parameters<typeof tagihanCsv>[0]["baris"]) =>
+      Object.fromEntries(urai(tagihanCsv({ ...kepala(), periodeLunas: null, baris })).slice(0, 14).map((b) => [b[0], b[1]]));
+    const tanpa = kepalaCsv([CONTOH.lewat()]);
+    const dengan = kepalaCsv([CONTOH.lewat(), CONTOH.nilaiKosong()]);
+    expect([tanpa["Jumlah faktur"], dengan["Jumlah faktur"]]).toEqual(["1", "2"]);
+    expect(dengan["Total sisa"]).toBe(tanpa["Total sisa"]);
+  });
+
   it("🔴 tak ada sel kosong di baris data (Excel membaca sel kosong sebagai nol)", () => {
     const csv = tagihanCsv({
       ...kepala(), periodeLunas: null,

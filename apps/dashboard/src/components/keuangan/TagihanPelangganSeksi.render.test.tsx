@@ -22,7 +22,9 @@ const pelanggan = (o: Partial<TagihanPelanggan> = {}): TagihanPelanggan => ({
   ],
   belumDitagihkan: { jumlahDokumen: 2, total: 1_250_000, tanggalTertua: "2026-11-03" },
   cocokSaldo: contohCocok(),
+  saldoSedangDiperbarui: false,
   terpotong: false,
+  pembayaranTerpotong: false,
   ...o,
 });
 
@@ -88,6 +90,23 @@ describe("S6 — Tagihan & Pembayaran di halaman pelanggan", () => {
   it("terpotong: dikatakan di seksi Tagihan", () => {
     expect(html(pelanggan({ terpotong: true }))).toContain("daftar ini tidak lengkap");
     expect(html(pelanggan())).not.toContain("daftar ini tidak lengkap");
+  });
+
+  it("🔴 pembayaran terpotong: dikatakan di seksi Pembayaran, terpisah dari terpotongnya faktur", () => {
+    const h = html(pelanggan({ pembayaranTerpotong: true }));
+    const seksi = h.slice(h.indexOf('id="pembayaran-pelanggan-judul"'));
+    expect(seksi).toContain("data-tagihan-bayar-terpotong");
+    expect(seksi).toContain("Hanya 5.000 pembayaran terbaru yang ditampilkan; daftar dan total pembayaran ini tidak lengkap.");
+    expect(h).not.toContain("faktur pertama yang ditampilkan");
+    expect(html(pelanggan())).not.toContain("data-tagihan-bayar-terpotong");
+  });
+
+  it("saldo pembanding sedang diperbarui → catatan di atas baris cocok-silang; tanpa itu tak ada", () => {
+    const h = html(pelanggan({ saldoSedangDiperbarui: true }));
+    expect(h).toContain("data-tagihan-saldo-diperbarui");
+    expect(h).toContain("Saldo pelanggan per 12 Nov 2026 sedang diperbarui; saldo piutang dan selisih di bawah bisa berubah.");
+    expect(h.indexOf("data-tagihan-saldo-diperbarui")).toBeLessThan(h.indexOf('class="tagihan-cocok"'));
+    expect(html(pelanggan())).not.toContain("sedang diperbarui");
   });
 
   it("🔴 belum tersedia: teks KTD11, bukan dua seksi kosong", () => {

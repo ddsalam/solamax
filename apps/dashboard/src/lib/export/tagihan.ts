@@ -1,4 +1,5 @@
 import {
+  TAGIHAN_NILAI_KOSONG,
   tagihanJatuhTempoLabel,
   tagihanStatusBayarLabel,
   tagihanSumberJatuhTempoLabel,
@@ -84,9 +85,10 @@ export function barisFakturCsv(unit: { code: string; name: string }, b: TagihanB
     b.tanggalFakturKosong ? TAGIHAN_CSV_KOSONG : faktur.tanggalFaktur,
     status.jatuhTempo ?? "belum diatur",
     tagihanSumberJatuhTempoLabel(status) ?? "termin belum diatur",
-    angka(status.nilai),
+    // Faktur tanpa nilai: penandanya ditulis di sel nilai, dan sisanya bukan nol.
+    status.nilaiKosong ? TAGIHAN_NILAI_KOSONG : angka(status.nilai),
     angka(status.dibayar),
-    angka(status.sisa),
+    status.nilaiKosong ? TAGIHAN_CSV_KOSONG : angka(status.sisa),
     tagihanStatusBayarLabel(status.statusBayar) ?? "Belum dibayar",
     tagihanJatuhTempoLabel(status) ?? TAGIHAN_CSV_KOSONG,
     String(status.hariLewat),
@@ -112,7 +114,7 @@ export function tagihanCsv(input: TagihanCsvKepala & {
       ["Jumlah faktur", String(input.baris.length)],
       ["Total sisa", angka(input.baris.reduce((total, b) => total + b.status.sisa, 0))],
     ]),
-    ["Catatan", "Status dihitung SolaMax dari pembayaran yang tidak batal, bukan dari flag status EasyMax. Sisa negatif berarti lebih bayar."],
+    ["Catatan", "Status dihitung SolaMax dari pembayaran yang tidak batal, bukan dari flag status EasyMax. Sisa negatif berarti lebih bayar. Faktur bertanda nilai faktur kosong dihitung dalam jumlah faktur tetapi tidak dalam total sisa."],
     [],
     [...TAGIHAN_CSV_KOLOM_FAKTUR],
     ...input.baris.map((b) => barisFakturCsv(input.unit, b)),

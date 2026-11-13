@@ -96,7 +96,10 @@ async function jalankan(
     if ((e as { code?: string }).code === "23505") {
       return { ok: false, error: "Termin berubah bersamaan — muat ulang halaman." };
     }
-    return { ok: false, error: e instanceof Error ? e.message : pesanGagal };
+    // Teks galat basis data (nama tabel, constraint, isi baris) TIDAK dikirim ke
+    // peramban: sebab lengkapnya hanya ke log server, seperti `admin-actions.ts`.
+    console.error("[termin] aksi gagal:", { unit: unit.code, pesan: pesanGagal }, e);
+    return { ok: false, error: `${pesanGagal} Coba lagi; bila berulang, hubungi tim IT.` };
   } finally {
     client.release();
   }

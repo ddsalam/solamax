@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
   canView: vi.fn(),
   getTagihanEkspor: vi.fn(),
   getBelumDitagihkan: vi.fn(),
-  getDokumenBelumDitagihkan: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -32,7 +31,6 @@ vi.mock("@/lib/tagihan-queries", () => ({
   TAGIHAN_BELUM_TERSEDIA: "Data tagihan belum tersedia untuk SPBU ini",
   getTagihanEkspor: mocks.getTagihanEkspor,
   getBelumDitagihkan: mocks.getBelumDitagihkan,
-  getDokumenBelumDitagihkan: mocks.getDokumenBelumDitagihkan,
 }));
 
 const { GET } = await import("./route");
@@ -64,14 +62,15 @@ describe("rute ekspor CSV tagihan", () => {
       ...dasar, ubin: contohUbin([]), cari: "contoh", saldoPerTanggal: null, saldoSedangDiperbarui: false,
       kelompok: [{ customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", jumlahDokumen: 2, total: 1_250_000,
         tanggalTertua: "2026-11-03", cocokSaldo: contohCocok() }],
-    });
-    mocks.getDokumenBelumDitagihkan.mockResolvedValue({
-      terpotong: false,
-      dokumen: [
-        { customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "JP-000101", tanggal: "2026-11-03", jumlah: 750_000, keterangan: null },
-        { customerCode: "P-009", namaPelanggan: "Pelanggan Lain", kodeDokumen: "JP-000150", tanggal: "2026-11-04", jumlah: 300_000, keterangan: null },
-        { customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "UV-000007", tanggal: "2026-11-08", jumlah: 500_000, keterangan: null },
-      ],
+      // Dokumen SELURUH unit, dari kueri yang sama dengan kelompoknya.
+      dokumen: {
+        terpotong: false,
+        dokumen: [
+          { customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "JP-000101", tanggal: "2026-11-03", jumlah: 750_000, keterangan: null },
+          { customerCode: "P-009", namaPelanggan: "Pelanggan Lain", kodeDokumen: "JP-000150", tanggal: "2026-11-04", jumlah: 300_000, keterangan: null },
+          { customerCode: "P-001", namaPelanggan: "PT Pelanggan Contoh", kodeDokumen: "UV-000007", tanggal: "2026-11-08", jumlah: 500_000, keterangan: null },
+        ],
+      },
     });
   });
 
@@ -122,8 +121,9 @@ describe("rute ekspor CSV tagihan", () => {
     const response = await minta("?filter=belum_ditagihkan&q=contoh");
     expect(response.status).toBe(200);
     expect(mocks.getTagihanEkspor).not.toHaveBeenCalled();
-    expect(mocks.getBelumDitagihkan).toHaveBeenCalledWith(7, { cari: "contoh", hariIni: "2026-11-13" });
-    expect(mocks.getDokumenBelumDitagihkan).toHaveBeenCalledWith(7, null);
+    // SATU panggilan: kelompok + seluruh dokumen dari kueri yang sama (buku piutang dipindai sekali).
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledTimes(1);
+    expect(mocks.getBelumDitagihkan).toHaveBeenCalledWith(7, { cari: "contoh", hariIni: "2026-11-13", dokumen: "semua" });
     const csv = await response.text();
     // P-009 tidak ada di kelompok hasil pencarian → dokumennya tidak ikut.
     expect(kolomKelima(csv)).toEqual(["JP-000101", "UV-000007"]);
@@ -159,7 +159,6 @@ describe("rute ekspor CSV tagihan", () => {
     expect(mocks.canView).toHaveBeenCalledWith({ role: "keuangan", email: "keuangan@example.com" });
     expect(mocks.getTagihanEkspor).not.toHaveBeenCalled();
     expect(mocks.getBelumDitagihkan).not.toHaveBeenCalled();
-    expect(mocks.getDokumenBelumDitagihkan).not.toHaveBeenCalled();
   });
 
   it("🔴 unit di luar scope → 404 sebelum wewenang maupun data diperiksa", async () => {
@@ -173,6 +172,5 @@ describe("rute ekspor CSV tagihan", () => {
     await expect(minta("?filter=belum_ditagihkan")).rejects.toThrow("NEXT_NOT_FOUND");
     expect(mocks.canView).not.toHaveBeenCalled();
     expect(mocks.getBelumDitagihkan).not.toHaveBeenCalled();
-    expect(mocks.getDokumenBelumDitagihkan).not.toHaveBeenCalled();
   });
 });
