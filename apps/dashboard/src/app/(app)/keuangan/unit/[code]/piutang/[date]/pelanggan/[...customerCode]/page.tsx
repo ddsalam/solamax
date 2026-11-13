@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UnitDateFilters } from "@/components/UnitDateFilters";
 import { PiutangPelangganView, PiutangSummaryBucket, PiutangHistoricalNote } from "@/components/keuangan/PiutangPelangganView";
+import { TagihanPelangganSeksi } from "@/components/keuangan/TagihanPelangganSeksi";
 import { unitDotted } from "@/lib/config";
 import { rp } from "@/lib/format";
 import { canViewLaporanKeuangan } from "@/lib/keuangan-wewenang";
@@ -11,6 +12,7 @@ import { getCachedSaldoFreshness } from "@/lib/saldo-cache";
 import { getSaldoSnapshot } from "@/lib/saldo-snapshot";
 import { getDataScope } from "@/lib/scope";
 import { DATE_RE } from "@/lib/selection-keys";
+import { getTagihanPelanggan } from "@/lib/tagihan-queries";
 import { todayWib } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +57,10 @@ export default async function PiutangPelangganDetailPage({
   const banner = pendingBanner(snapshot, await getCachedSaldoFreshness(
     unit.unit_id, date, snapshot.metadata.generationId, snapshot.metadata.totals,
   ));
+  // Tagihan & pembayaran pelanggan ini (rencana 2026-11-13 U8, S6) — keadaan
+  // TERBARU dari cermin tagihan, bukan posisi pada `date`. Dibaca hanya setelah
+  // pelanggannya terbukti ada di snapshot unit ini.
+  const tagihan = await getTagihanPelanggan(unit.unit_id, row.customerCode);
 
   return (
     <>
@@ -78,10 +84,7 @@ export default async function PiutangPelangganDetailPage({
         </div>
         <p className="t-secondary">Debet/Kredit adalah akumulasi transaksi pada setiap batas tanggal.</p>
         <p className="b6-piutang-provenance">Formula {snapshot.metadata.formulaVersion} · dihitung {formatWib(snapshot.metadata.computedAt)} · siklus sumber {snapshot.metadata.sourceCycleId} selesai {formatWib(snapshot.metadata.sourceCompletedAt)}</p>
-        <section className="card b6-piutang-activity" aria-labelledby="b6-activity-title">
-          <h2 id="b6-activity-title">Aktivitas pelanggan</h2>
-          <p>Ruang ini disiapkan untuk Tagihan, Pembayaran, Aging, dan Kebijakan kredit pada fase berikutnya. Belum ada tab atau angka aktivitas pada Fase 1.</p>
-        </section>
+        <TagihanPelangganSeksi unit={{ code: unit.code, name: unit.name }} data={tagihan} />
       </div>
     </>
   );

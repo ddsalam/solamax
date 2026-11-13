@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { AgoLive } from "@/components/AgoLive";
 import { NavIcon, type IconName } from "@/components/NavIcon";
 import { bulanBukuBesar } from "@/lib/buku-besar-bulan";
+import { tagihanListHref, tagihanRingkasanHref } from "@/lib/tagihan-route";
 
 /**
  * Navigasi tunggal: rail kiri ber-grup yang bisa diringkas (desktop) dan
@@ -48,7 +49,8 @@ interface NavGroup {
   sembunyi?: boolean;
 }
 
-function buildGroups(
+/** Diekspor HANYA untuk uji (`Sidebar.keuangan.test.ts`) — murni, tanpa hook. */
+export function buildGroups(
   unitCode: string | undefined,
   date: string,
   bolehLihatKeuangan: boolean,
@@ -138,6 +140,25 @@ function buildGroups(
           label: "Saldo pelanggan",
           icon: "users",
           match: (p) => /^\/keuangan\/unit\/[^/]+\/piutang\//.test(p),
+        },
+        {
+          // Rencana 2026-11-13 U10 — daftar faktur pelanggan kredit per unit
+          // (S1) berikut rincian faktur dan Atur termin di bawahnya. Tetangga
+          // Saldo pelanggan: saldo menjawab "berapa", tagihan menjawab "faktur
+          // mana". Tanpa tanggal di path — status dihitung terhadap hari ini.
+          href: unitCode ? tagihanListHref(unitCode) : null,
+          label: "Tagihan pelanggan",
+          icon: "receipt",
+          match: (p) => /^\/keuangan\/unit\/[^/]+\/tagihan(\/|$)/.test(p),
+        },
+        {
+          // Rencana 2026-11-13 U10 — ringkasan lintas SPBU (S5). Butir sendiri,
+          // seperti dua layar lintas unit lain (Papan, Pemantauan): tanpa unit
+          // di path, jadi tetap bisa dibuka saat belum ada unit terpilih.
+          href: tagihanRingkasanHref(),
+          label: "Ringkasan tagihan",
+          icon: "chart",
+          match: (p) => p === "/keuangan/tagihan" || p.startsWith("/keuangan/tagihan/"),
         },
         {
           href: "/keuangan/sumber-data",
