@@ -135,6 +135,8 @@ describe("RLS unit-scoped ditulis ULANG di tiap migrasi baru", () => {
     ["0054", sql0054, ["tutup_bulan"]],
     // Rencana 2026-11-07 U5 — pengajuan Balik (KTD5).
     ["0060", MIG("0060_correction_request"), ["correction_request"]],
+    // Rencana 2026-11-13 U1 — cermin tagihan pelanggan (KTD1–KTD3, KTD11).
+    ["0063", MIG("0063_tagihan_mirror"), ["tagihan_header", "tagihan_detail", "tagihan_bayar", "tagihan_cycle"]],
   ];
 
   for (const [nama, sql, tabel] of kasus) {

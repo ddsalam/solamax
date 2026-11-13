@@ -36,6 +36,35 @@ export const SourceCut = z
   });
 export type SourceCut = z.infer<typeof SourceCut>;
 
+/**
+ * Penutup siklus domain `tagihan` — daftar kunci LENGKAP header faktur dan
+ * pembayaran yang dibaca agent pada siklus itu.
+ *
+ * Domain `tagihan` adalah snapshot penuh, tetapi UPSERT saja tak pernah
+ * menghapus: faktur/pembayaran yang DIHAPUS di EasyMax (perilaku yang dikenal
+ * sesudah dokumen ditanggal-ulang) akan tinggal abadi di mirror. Dengan manifest
+ * ini backend, dalam SATU transaksi di bawah kunci per-unit, menghapus header &
+ * pembayaran yang kuncinya tak terdaftar, menghapus tautan faktur yang tak ada
+ * lagi, lalu menstempel waktu siklus-lengkap unit itu.
+ *
+ * Kontrak agent (tak bisa ditegakkan skema): manifest HANYA dikirim bila ketiga
+ * kueri sumber berhasil DAN setiap potongan siklus itu sudah diterima. Tanpa
+ * manifest, tak ada yang dipangkas. Daftar kosong SAH (tabel sumber memang
+ * kosong) dan berarti "hapus semuanya" — karena itu payload ini wajib eksplisit.
+ *
+ * Sengaja BUKAN perluasan `source_cut`/`replace_window`: `source_cut` tertutup
+ * untuk tiga sumber saldo dan tak pernah memangkas `public`; `replace_window`
+ * berjendela tanggal, sedangkan faktur dipangkas per kunci.
+ */
+export const TagihanManifest = z.object({
+  cycle_id: z.string().uuid(),
+  /** Seluruh `CKDTAGIH` di `tr_htagihan` (termasuk yang batal). */
+  header_keys: z.array(z.string().min(1)),
+  /** Seluruh `CKDBYR` di `tr_byrtagih` (termasuk yang batal). */
+  bayar_keys: z.array(z.string().min(1)),
+});
+export type TagihanManifest = z.infer<typeof TagihanManifest>;
+
 export const IngestPayload = z
   .object({
     unit_code: z.string().min(1),
@@ -71,6 +100,8 @@ export const IngestPayload = z
     replace_details: z.literal(true).optional(),
     /** Metadata potongan full-sync untuk capture snapshot saldo yang durable. */
     source_cut: SourceCut.optional(),
+    /** Hanya domain `tagihan`: penutup siklus + pemangkasan (lihat TagihanManifest). */
+    tagihan_manifest: TagihanManifest.optional(),
     tables: z.object({
       sales_header: z.array(ROW_SCHEMA.sales_header).optional(),
       sales_detail: z.array(ROW_SCHEMA.sales_detail).optional(),
@@ -95,12 +126,16 @@ export const IngestPayload = z
       bppiut: z.array(ROW_SCHEMA.bppiut).optional(),
       bphut: z.array(ROW_SCHEMA.bphut).optional(),
       pelanggan_master: z.array(ROW_SCHEMA.pelanggan_master).optional(),
+      tagihan_header: z.array(ROW_SCHEMA.tagihan_header).optional(),
+      tagihan_detail: z.array(ROW_SCHEMA.tagihan_detail).optional(),
+      tagihan_bayar: z.array(ROW_SCHEMA.tagihan_bayar).optional(),
     }),
   })
   .superRefine((p, ctx) => {
-    // Payload kosong hanya sah untuk DELETE-only window atau marker full-sync.
+    // Payload kosong hanya sah untuk DELETE-only window, marker full-sync, atau
+    // manifest penutup siklus tagihan.
     const hasRows = Object.values(p.tables).some((rows) => rows && rows.length > 0);
-    if (!hasRows && !p.replace_window && !p.source_cut) {
+    if (!hasRows && !p.replace_window && !p.source_cut && !p.tagihan_manifest) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["tables"],
@@ -123,6 +158,42 @@ export const IngestPayload = z
         path: ["replace_details"],
         message: "replace_details hanya untuk domain sales",
       });
+    }
+    if (p.tagihan_manifest) {
+      if (p.domain !== "tagihan") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tagihan_manifest"],
+          message: "tagihan_manifest hanya untuk domain tagihan",
+        });
+      }
+      // Manifest = penutup siklus, dikirim SESUDAH semua potongan diterima; ia
+      // tak pernah membawa baris. Baris + manifest sepayload akan mengaburkan
+      // "siklus mana yang dinyatakan lengkap".
+      if (hasRows) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tagihan_manifest"],
+          message: "payload tagihan_manifest tidak boleh membawa baris",
+        });
+      }
+    }
+    // Tautan faktur diganti PER FAKTUR di backend (hapus tautan faktur-payload
+    // yang tak ada di payload). Karena itu tautan tak boleh berjalan tanpa
+    // header fakturnya: potongan dipecah per faktur, bukan per baris.
+    const links = p.tables.tagihan_detail;
+    if (links && links.length > 0) {
+      const headers = new Set(
+        (p.tables.tagihan_header ?? []).map((h) => h.ckdtagih.trimEnd()),
+      );
+      const yatim = links.find((l) => !headers.has(l.ckdtagih.trimEnd()));
+      if (yatim) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tables", "tagihan_detail"],
+          message: `tagihan_detail ${yatim.ckdtagih}: header fakturnya tidak ada di payload yang sama`,
+        });
+      }
     }
     if (p.source_cut) {
       const expected = {

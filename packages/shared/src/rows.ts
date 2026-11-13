@@ -312,6 +312,64 @@ export const AccountRow = z.object({
   ckdinduk: str,
 });
 
+/**
+ * Header faktur tagihan pelanggan kredit (sumber `tr_htagihan`, PK `CKDTAGIH`).
+ * Dicerminkan APA ADANYA — termasuk flag status EasyMax (`nstatus`), sisa versi
+ * POS (`nlastsaldo`), jatuh tempo mentah (`dtgljt`) dan baris batal (`sbatal`).
+ * Tak ada yang diturunkan saat ingest; status dihitung saat baca.
+ *
+ * Tanggal nol EasyMax (`0000-00-00`) dikirim agent sebagai `null` — karena itu
+ * KEDUA tanggal nullable. Satu baris bertanggal rusak tidak boleh menggagalkan
+ * validasi seluruh potongan (dan dengan itu seluruh siklus).
+ *
+ * ⚠️ Recon awal mencatat 13 kolom di `tr_htagihan`; baru 12 yang dikenal dan
+ * dicerminkan di sini. Kolom ke-13 WAJIB dikonfirmasi lewat `DESCRIBE
+ * tr_htagihan` di unit pertama sebelum kueri agent difinalkan.
+ */
+export const TagihanHeaderRow = z.object({
+  ckdtagih: z.string(),
+  dtgl: isoDate.nullable(),
+  dtgljt: isoDate.nullable(),
+  ckdplg: str,
+  vcket: str,
+  ntotal: num,
+  nadm: num,
+  ngatot: num,
+  nstatus: z.number().int().nullable(),
+  sbatal: z.number().int().nullable(),
+  vcalasan: str,
+  nlastsaldo: num,
+  sjenistag: z.number().int().nullable(),
+});
+
+/**
+ * Tautan faktur → dokumen penjualan (sumber `tr_dtagihan`, TANPA PK di sumber).
+ * Kunci mirror = `(unit_id, ckdtagih, ckdjualplg)`. Sumber menyimpan juga tautan
+ * milik faktur yang sudah batal — pembaca WAJIB lewat faktur hidup.
+ */
+export const TagihanDetailRow = z.object({
+  ckdtagih: z.string(),
+  ckdjualplg: z.string(),
+});
+
+/**
+ * Pembayaran faktur (sumber `tr_byrtagih`, PK `CKDBYR`). Baris batal ikut
+ * dicerminkan (`sbatal`, `vcalasan`) — ditampilkan, tak pernah dijumlahkan.
+ */
+export const TagihanBayarRow = z.object({
+  ckdbyr: z.string(),
+  dtgl: isoDate.nullable(),
+  ckdtagih: str,
+  vcbukti: str,
+  vcket: str,
+  ctmpkas: str,
+  ntotal: num,
+  sbatal: z.number().int().nullable(),
+  vcalasan: str,
+  capprovecode: str,
+  cnamereq: str,
+});
+
 /** Master kartu/channel EDC (sumber `tm_card`, PK `CKDCARD`). Nama channel di laporan. */
 export const CardRow = z.object({
   ckdcard: z.string(),
@@ -345,6 +403,9 @@ export const ROW_SCHEMA = {
   bppiut: BppiutRow,
   bphut: BphutRow,
   pelanggan_master: PelangganMasterRow,
+  tagihan_header: TagihanHeaderRow,
+  tagihan_detail: TagihanDetailRow,
+  tagihan_bayar: TagihanBayarRow,
 } as const;
 
 export type RowSchemaMap = typeof ROW_SCHEMA;
@@ -371,3 +432,6 @@ export type TerraResmiRow = z.infer<typeof TerraResmiRow>;
 export type BppiutRow = z.infer<typeof BppiutRow>;
 export type BphutRow = z.infer<typeof BphutRow>;
 export type PelangganMasterRow = z.infer<typeof PelangganMasterRow>;
+export type TagihanHeaderRow = z.infer<typeof TagihanHeaderRow>;
+export type TagihanDetailRow = z.infer<typeof TagihanDetailRow>;
+export type TagihanBayarRow = z.infer<typeof TagihanBayarRow>;

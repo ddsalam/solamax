@@ -237,4 +237,119 @@ describe("IngestPayload", () => {
       }).success,
     ).toBe(false);
   });
+
+  // ── tagihan (snapshot penuh + manifest penutup siklus) ── nilai ilustratif.
+  const tagihanBase = { unit_code: "0000001", domain: "tagihan", watermark_high: null } as const;
+  const fakturContoh = {
+    ckdtagih: "TG-CONTOH-0001", dtgl: "2026-01-05", dtgljt: null, ckdplg: "PLG-A",
+    vcket: null, ntotal: 10000000, nadm: 0, ngatot: 10000000, nstatus: 0, sbatal: 0,
+    vcalasan: null, nlastsaldo: 6000000, sjenistag: 1,
+  };
+  const bayarContoh = {
+    ckdbyr: "BY-CONTOH-0001", dtgl: "2026-01-20", ckdtagih: "TG-CONTOH-0001",
+    vcbukti: null, vcket: null, ctmpkas: null, ntotal: 4000000, sbatal: 0,
+    vcalasan: null, capprovecode: null, cnamereq: null,
+  };
+  const manifestContoh = {
+    cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+    header_keys: ["TG-CONTOH-0001"],
+    bayar_keys: ["BY-CONTOH-0001"],
+  };
+
+  it("tagihan: payload dengan ketiga tabel valid", () => {
+    const r = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: {
+        tagihan_header: [fakturContoh],
+        tagihan_detail: [
+          { ckdtagih: "TG-CONTOH-0001", ckdjualplg: "JP-CONTOH-0001" },
+          { ckdtagih: "TG-CONTOH-0001", ckdjualplg: "JP-CONTOH-0002" },
+        ],
+        tagihan_bayar: [bayarContoh],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("tagihan: tanggal nol EasyMax (null) diterima di dtgl maupun dtgljt", () => {
+    const r = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: {
+        tagihan_header: [{ ...fakturContoh, dtgl: null, dtgljt: null }],
+        tagihan_bayar: [{ ...bayarContoh, dtgl: null }],
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("tagihan_manifest: sah TANPA baris — juga dengan daftar kunci kosong", () => {
+    expect(IngestPayload.safeParse({
+      ...tagihanBase, tagihan_manifest: manifestContoh, tables: {},
+    }).success).toBe(true);
+    // Tabel sumber memang kosong → manifest kosong tetap penutup siklus yang sah.
+    expect(IngestPayload.safeParse({
+      ...tagihanBase,
+      tagihan_manifest: { ...manifestContoh, header_keys: [], bayar_keys: [] },
+      tables: {},
+    }).success).toBe(true);
+  });
+
+  it("tagihan: payload kosong TANPA manifest tetap ditolak", () => {
+    expect(IngestPayload.safeParse({ ...tagihanBase, tables: {} }).success).toBe(false);
+    expect(IngestPayload.safeParse({
+      ...tagihanBase, tables: { tagihan_header: [], tagihan_detail: [], tagihan_bayar: [] },
+    }).success).toBe(false);
+  });
+
+  it.each([
+    {
+      name: "domain lain",
+      payload: { domain: "piutang", tagihan_manifest: manifestContoh, tables: {} },
+    },
+    {
+      name: "manifest yang membawa baris",
+      payload: { tagihan_manifest: manifestContoh, tables: { tagihan_header: [fakturContoh] } },
+    },
+    {
+      name: "cycle_id bukan UUID",
+      payload: { tagihan_manifest: { ...manifestContoh, cycle_id: "bukan-uuid" }, tables: {} },
+    },
+    {
+      name: "daftar kunci tidak hadir",
+      payload: { tagihan_manifest: { cycle_id: manifestContoh.cycle_id, header_keys: [] }, tables: {} },
+    },
+    {
+      name: "kunci kosong",
+      payload: { tagihan_manifest: { ...manifestContoh, bayar_keys: [""] }, tables: {} },
+    },
+  ])("tagihan_manifest: menolak $name", ({ payload }) => {
+    expect(IngestPayload.safeParse({ ...tagihanBase, ...payload }).success).toBe(false);
+  });
+
+  it("tagihan_detail tanpa header fakturnya di payload yang sama ditolak", () => {
+    // Backend mengganti tautan PER FAKTUR; tautan yang berjalan sendirian
+    // berarti potongan dipecah per baris, bukan per faktur.
+    const yatim = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: { tagihan_detail: [{ ckdtagih: "TG-CONTOH-0001", ckdjualplg: "JP-CONTOH-0001" }] },
+    });
+    expect(yatim.success).toBe(false);
+    const fakturLain = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: {
+        tagihan_header: [fakturContoh],
+        tagihan_detail: [{ ckdtagih: "TG-CONTOH-0002", ckdjualplg: "JP-CONTOH-0001" }],
+      },
+    });
+    expect(fakturLain.success).toBe(false);
+    // Spasi pengisi CHAR(n) di ujung kunci bukan perbedaan.
+    const berpengisi = IngestPayload.safeParse({
+      ...tagihanBase,
+      tables: {
+        tagihan_header: [fakturContoh],
+        tagihan_detail: [{ ckdtagih: "TG-CONTOH-0001 ", ckdjualplg: "JP-CONTOH-0001" }],
+      },
+    });
+    expect(berpengisi.success).toBe(true);
+  });
 });

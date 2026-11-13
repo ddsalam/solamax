@@ -11,6 +11,8 @@ import {
   buildReplace,
   buildReplaceWindowDeletes,
   buildSalesDetailPrune,
+  buildTagihanDetailPrune,
+  buildTagihanManifestPrune,
   buildUpsert,
 } from "./sql.js";
 import { MAX_ROWS_PER_TABLE, TABLE_CONFIG } from "./table-config.js";
@@ -83,11 +85,40 @@ export class IngestService {
       ? buildSalesDetailPrune(unitId, payload.tables.sales_detail ?? [])
       : null;
 
+    // tagihan_manifest (penutup siklus domain tagihan): SATU-SATUNYA jalur yang
+    // menghapus header/pembayaran tagihan. Zod sudah membatasi domain & melarang
+    // baris; backend menegakkannya lagi (defense-in-depth, pola replace_window).
+    const manifest = payload.tagihan_manifest;
+    if (manifest && payload.domain !== "tagihan") {
+      throw new UnprocessableEntityException(
+        `tagihan_manifest tidak sah untuk domain ${payload.domain}`,
+      );
+    }
+    if (manifest && entries.length > 0) {
+      throw new UnprocessableEntityException(
+        "payload tagihan_manifest tidak boleh membawa baris",
+      );
+    }
+    // Tautan faktur diganti PER FAKTUR: untuk tiap faktur di payload, tautan yang
+    // tak ada lagi di payload dihapus SEBELUM tautan baru di-INSERT (DO NOTHING).
+    // Tanpa header di payload → null → tak ada tautan yang dihapus.
+    const tagihanLinkPrune = buildTagihanDetailPrune(
+      unitId,
+      payload.tables.tagihan_header ?? [],
+      payload.tables.tagihan_detail ?? [],
+    );
+    // Pangkas-saat-lengkap + stempel siklus — dijalankan PALING AKHIR sebelum
+    // sync_state. Tanpa manifest: [] → header/pembayaran tak pernah dihapus.
+    const manifestStatements = manifest
+      ? buildTagihanManifestPrune(unitId, manifest)
+      : [];
+
     // REPLACE-per-business_date (edc/pelanggan_sale/voucher_sale) → [DELETE, INSERT];
     // selain itu UPSERT by natural key. Semua di SATU transaksi (atomik + idempoten).
     const statements = [
       ...windowDeletes,
       ...(detailPrune ? [{ ...detailPrune, glContributing: true }] : []),
+      ...(tagihanLinkPrune ? [{ ...tagihanLinkPrune, glContributing: false }] : []),
       ...entries.flatMap(([table, rows]) => {
         const cfg = TABLE_CONFIG[table]!;
         const tableStatements = cfg.replaceByBusinessDate
@@ -96,6 +127,7 @@ export class IngestService {
         return tableStatements.map(statement => ({ ...statement,
           glContributing: contributesToGl(cfg.table) }));
       }),
+      ...manifestStatements.map(statement => ({ ...statement, glContributing: false })),
     ];
 
     // Kunci (table,unit,business_date) utk tabel REPLACE TANPA kunci natural
@@ -121,6 +153,12 @@ export class IngestService {
         // tumpang-tindih (retry agent pasca-timeout, kelas insiden edc 2026-06-22)
         // dieksekusi berurutan; yang kedua melihat commit pertama → konvergen, 0 ghost.
         ...(win ? [`replace_window:${payload.domain}:${unitId}`] : []),
+        // tagihan: SETIAP payload domain ini (potongan maupun manifest) memegang
+        // kunci per-unit yang sama. Pangkas-manifest menghapus "semua yang tak
+        // terdaftar"; tanpa serialisasi, potongan yang sedang commit bersamaan
+        // (retry agent pasca-timeout) bisa menyisipkan baris yang tak dilihat
+        // DELETE-nya, atau sebaliknya kehilangan baris yang baru ditulisnya.
+        ...(payload.domain === "tagihan" || manifest ? [`tagihan:${unitId}`] : []),
       ]),
     ].sort(); // urutan tetap → dua transaksi mengunci kunci yang sama dgn urutan sama (anti-deadlock)
 

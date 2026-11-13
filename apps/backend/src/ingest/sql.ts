@@ -11,6 +11,7 @@ const COLUMN_CAST: Record<string, string> = {
   dtaglopn: "date",
   dtgltrm: "date",
   dtgltbs: "date",
+  dtgljt: "date",
   business_date: "date",
   dtgljam: "timestamptz",
   dtanggaljam: "timestamptz",
@@ -44,6 +45,7 @@ const COLUMN_CAST: Record<string, string> = {
 const NUMERIC_COLUMNS: ReadonlySet<string> = new Set([
   "nstandawal", "nstandakhir", "nvolume", "nhargajual", "nsubtotal",
   "ntotal", "njumlah", "nsaldo", "nharga", "nhrgjual",
+  "nadm", "ngatot", "nlastsaldo",
   "nstockbk", "nstockop", "nvolselisih", "nvoldo", "nvolreal",
   "liter", "total",
   "nkapasitas", "ntinggi", "nsuhu", "ntinggiair", "nvolumeair",
@@ -308,6 +310,99 @@ export function buildReplaceWindowDeletes(
     {
       sql: `DELETE FROM "tebus_header" WHERE "unit_id" = $1 AND "dtgltbs" >= $2::date AND "dtgltbs" < $3::date`,
       params,
+    },
+  ];
+}
+
+/**
+ * Ganti tautan faktur PER FAKTUR (domain `tagihan`): hapus baris `tagihan_detail`
+ * milik faktur-faktur payload yang pasangan `(ckdtagih, ckdjualplg)`-nya tak ada
+ * lagi di payload. Tautan yang masih ada tidak disentuh (INSERT-nya DO NOTHING),
+ * jadi siklus tanpa perubahan tak menulis apa pun.
+ *
+ * Cakupan diambil dari HEADER payload, bukan dari baris tautannya: faktur yang
+ * tautannya kini NOL di sumber tetap harus kehilangan tautan lamanya. Faktur yang
+ * tak ada di payload tak pernah tersentuh — agent memotong per faktur, jadi
+ * tautan sebuah faktur selalu sepayload dengan header-nya (ditegakkan skema
+ * @solamax/shared). Perbandingan `bpchar` mengabaikan spasi pengisi.
+ */
+export function buildTagihanDetailPrune(
+  unitId: number,
+  headers: ReadonlyArray<Record<string, unknown>>,
+  details: ReadonlyArray<Record<string, unknown>>,
+): { sql: string; params: unknown[] } | null {
+  const invoices = [...new Set(headers.map((r) => String(r["ckdtagih"])))];
+  if (invoices.length === 0) return null;
+  return {
+    sql:
+      `DELETE FROM "tagihan_detail" d WHERE d."unit_id" = $1 ` +
+      `AND d."ckdtagih" = ANY($2::bpchar[]) ` +
+      `AND NOT EXISTS (SELECT 1 FROM unnest($3::bpchar[], $4::bpchar[]) AS k(t, j) ` +
+      `WHERE k.t = d."ckdtagih" AND k.j = d."ckdjualplg")`,
+    params: [
+      unitId,
+      invoices,
+      details.map((r) => String(r["ckdtagih"])),
+      details.map((r) => String(r["ckdjualplg"])),
+    ],
+  };
+}
+
+/**
+ * Pangkas-saat-lengkap domain `tagihan` — HANYA untuk payload ber-`tagihan_manifest`.
+ * Empat statement, dijalankan berurutan dalam transaksi /ingest di bawah kunci
+ * per-unit:
+ *   1) hapus pembayaran yang kuncinya tak ada di manifest;
+ *   2) hapus header yang kuncinya tak ada di manifest;
+ *   3) hapus tautan yang fakturnya tak ada lagi di mirror (sesudah langkah 2 —
+ *      jadi tak ada tautan yatim sesudah siklus lengkap);
+ *   4) stempel siklus lengkap unit itu (`tagihan_cycle`).
+ *
+ * Kunci manifest yang barisnya tak pernah tiba TIDAK menggagalkan apa pun: ia
+ * hanya berarti "jangan hapus yang ini". Daftar kosong berarti tabel sumber
+ * memang kosong → seluruh baris unit itu dihapus; itu sebabnya manifest hanya
+ * boleh dikirim agent sesudah ketiga kueri sumber berhasil.
+ *
+ * Setiap statement membawa `"unit_id" = $1` SENDIRI; RLS `unit_scope` (GUC
+ * `app.unit_ids` yang di-set di awal transaksi) adalah jaring kedua, bukan
+ * satu-satunya pembatas.
+ */
+export function buildTagihanManifestPrune(
+  unitId: number,
+  manifest: {
+    cycle_id: string;
+    header_keys: readonly string[];
+    bayar_keys: readonly string[];
+  },
+): Array<{ sql: string; params: unknown[] }> {
+  return [
+    {
+      sql:
+        `DELETE FROM "tagihan_bayar" b WHERE b."unit_id" = $1 ` +
+        `AND NOT EXISTS (SELECT 1 FROM unnest($2::bpchar[]) AS k(id) WHERE k.id = b."ckdbyr")`,
+      params: [unitId, [...manifest.bayar_keys]],
+    },
+    {
+      sql:
+        `DELETE FROM "tagihan_header" h WHERE h."unit_id" = $1 ` +
+        `AND NOT EXISTS (SELECT 1 FROM unnest($2::bpchar[]) AS k(id) WHERE k.id = h."ckdtagih")`,
+      params: [unitId, [...manifest.header_keys]],
+    },
+    {
+      sql:
+        `DELETE FROM "tagihan_detail" d WHERE d."unit_id" = $1 ` +
+        `AND NOT EXISTS (SELECT 1 FROM "tagihan_header" h ` +
+        `WHERE h."unit_id" = d."unit_id" AND h."ckdtagih" = d."ckdtagih")`,
+      params: [unitId],
+    },
+    {
+      sql:
+        `INSERT INTO "tagihan_cycle" ("unit_id","cycle_id","completed_at","header_count","bayar_count") ` +
+        `VALUES ($1,$2::uuid,now(),$3,$4) ` +
+        `ON CONFLICT ("unit_id") DO UPDATE SET "cycle_id" = EXCLUDED."cycle_id", ` +
+        `"completed_at" = EXCLUDED."completed_at", "header_count" = EXCLUDED."header_count", ` +
+        `"bayar_count" = EXCLUDED."bayar_count"`,
+      params: [unitId, manifest.cycle_id, manifest.header_keys.length, manifest.bayar_keys.length],
     },
   ];
 }

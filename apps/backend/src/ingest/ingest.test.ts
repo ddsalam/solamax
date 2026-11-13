@@ -370,6 +370,154 @@ describe("IngestService", () => {
   });
 });
 
+// Domain tagihan (rencana 2026-11-13 U2). Perilaku terhadap DATA dibuktikan di
+// tagihan.postgres.test.ts; di sini yang dikunci adalah BENTUK transaksinya.
+// Seluruh nilai ilustratif.
+describe("IngestService — domain tagihan", () => {
+  const faktur = (id: string, extra: Record<string, unknown> = {}) => ({
+    ckdtagih: id, dtgl: "2026-01-05", dtgljt: null, ckdplg: "PLG-A", vcket: null,
+    ntotal: 10000000, nadm: 0, ngatot: 10000000, nstatus: 0, sbatal: 0,
+    vcalasan: null, nlastsaldo: 10000000, sjenistag: 1, ...extra,
+  });
+  const bayar = (id: string, tagih: string) => ({
+    ckdbyr: id, dtgl: "2026-01-20", ckdtagih: tagih, vcbukti: null, vcket: null,
+    ctmpkas: null, ntotal: 4000000, sbatal: 0, vcalasan: null, capprovecode: null,
+    cnamereq: null,
+  });
+  const POTONGAN: IngestPayload = {
+    unit_code: "0000001",
+    domain: "tagihan",
+    watermark_high: null,
+    tables: {
+      tagihan_header: [faktur("TG-1"), faktur("TG-2")],
+      tagihan_detail: [
+        { ckdtagih: "TG-1", ckdjualplg: "JP-1" },
+        { ckdtagih: "TG-1", ckdjualplg: "JP-2" },
+      ],
+      tagihan_bayar: [bayar("BY-1", "TG-1")],
+    },
+  };
+  const MANIFEST: IngestPayload = {
+    unit_code: "0000001",
+    domain: "tagihan",
+    watermark_high: null,
+    tagihan_manifest: {
+      cycle_id: "8d15c6cf-3e80-4db8-8104-8ea8b556be96",
+      header_keys: ["TG-1", "TG-2"],
+      bayar_keys: ["BY-1"],
+    },
+    tables: {},
+  };
+
+  it("potongan: kunci per-unit → pangkas tautan per faktur → upsert; TANPA hapus header/pembayaran", async () => {
+    const { prisma, executed } = fakePrisma();
+    const res = await new IngestService(prisma).ingest(3, POTONGAN);
+    expect(res.upserted).toEqual({ tagihan_header: 2, tagihan_detail: 2, tagihan_bayar: 1 });
+
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(executed[0]!.params).toEqual(["3"]);
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["tagihan:3"]);
+
+    // Cakupan pangkas tautan = faktur di HEADER payload (TG-2 tanpa tautan ikut:
+    // tautan lamanya harus hilang); yang dipertahankan = pasangan di payload.
+    const pangkas = sqls.findIndex((s) => s.includes('DELETE FROM "tagihan_detail"'));
+    const sisip = sqls.findIndex((s) => s.includes('INSERT INTO "tagihan_detail"'));
+    expect(pangkas).toBeGreaterThan(1);
+    expect(sisip).toBeGreaterThan(pangkas);
+    expect(executed[pangkas]!.params).toEqual([
+      3, ["TG-1", "TG-2"], ["TG-1", "TG-1"], ["JP-1", "JP-2"],
+    ]);
+    expect(sqls[sisip]).toContain('ON CONFLICT ("unit_id","ckdtagih","ckdjualplg") DO NOTHING');
+
+    // 🔴 Tanpa manifest, header & pembayaran TIDAK PERNAH dihapus, dan stempel
+    // siklus-lengkap tidak bergerak.
+    expect(sqls.some((s) => s.includes('DELETE FROM "tagihan_header"'))).toBe(false);
+    expect(sqls.some((s) => s.includes('DELETE FROM "tagihan_bayar"'))).toBe(false);
+    expect(sqls.some((s) => s.includes('"tagihan_cycle"'))).toBe(false);
+    expect(sqls.at(-1)).toContain('"sync_state"');
+    expect(executed.at(-1)!.params).toEqual([3, "tagihan", null, 5, false]);
+  });
+
+  it("potongan tanpa header: tak ada tautan yang dihapus", async () => {
+    const { prisma, executed } = fakePrisma();
+    await new IngestService(prisma).ingest(3, {
+      ...POTONGAN, tables: { tagihan_bayar: [bayar("BY-1", "TG-1")] },
+    });
+    expect(executed.some((e) => e.sql.includes("DELETE"))).toBe(false);
+  });
+
+  it("header & pembayaran: UPSERT by PK + skipUnchanged + cast tanggal/numeric", async () => {
+    const { prisma, executed } = fakePrisma();
+    await new IngestService(prisma).ingest(3, POTONGAN);
+    const hdr = executed.find((e) => e.sql.includes('INSERT INTO "tagihan_header"'))!;
+    expect(hdr.sql).toContain('ON CONFLICT ("unit_id","ckdtagih") DO UPDATE SET');
+    expect(hdr.sql).toContain("IS DISTINCT FROM");
+    // dtgl, dtgljt → ::date (regresi 42804); ntotal/nadm/ngatot/nlastsaldo → teks ::numeric.
+    expect(hdr.sql.match(/::date/g)).toHaveLength(4); // 2 kolom × 2 baris
+    expect(hdr.sql.match(/::numeric/g)).toHaveLength(8); // 4 kolom × 2 baris
+    expect(hdr.params).toContain("10000000");
+    expect(hdr.params).not.toContain(10000000);
+    const byr = executed.find((e) => e.sql.includes('INSERT INTO "tagihan_bayar"'))!;
+    expect(byr.sql).toContain('ON CONFLICT ("unit_id","ckdbyr") DO UPDATE SET');
+    expect(byr.sql).toContain("IS DISTINCT FROM");
+  });
+
+  it("manifest: kunci → hapus pembayaran → hapus header → hapus tautan yatim → stempel → sync_state, SATU transaksi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const res = await new IngestService(prisma).ingest(3, MANIFEST);
+    expect(res.upserted).toEqual({});
+
+    const sqls = executed.map((e) => e.sql);
+    expect(sqls).toHaveLength(7);
+    expect(sqls[0]).toContain("set_config('app.unit_ids'");
+    expect(executed[0]!.params).toEqual(["3"]);
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
+    expect(executed[1]!.params).toEqual(["tagihan:3"]);
+    expect(sqls[2]).toContain('DELETE FROM "tagihan_bayar"');
+    expect(executed[2]!.params).toEqual([3, ["BY-1"]]);
+    expect(sqls[3]).toContain('DELETE FROM "tagihan_header"');
+    expect(executed[3]!.params).toEqual([3, ["TG-1", "TG-2"]]);
+    expect(sqls[4]).toContain('DELETE FROM "tagihan_detail"');
+    expect(executed[4]!.params).toEqual([3]);
+    expect(sqls[5]).toContain('INSERT INTO "tagihan_cycle"');
+    expect(executed[5]!.params).toEqual([3, "8d15c6cf-3e80-4db8-8104-8ea8b556be96", 2, 1]);
+    expect(sqls[6]).toContain('"sync_state"');
+    // Setiap DELETE membawa pembatas unit-nya SENDIRI, bukan hanya mengandalkan RLS.
+    for (const i of [2, 3, 4]) expect(sqls[i]).toContain('"unit_id" = $1');
+  });
+
+  it("manifest kosong (tabel sumber kosong) tetap sah — daftar kosong diteruskan apa adanya", async () => {
+    const { prisma, executed } = fakePrisma();
+    await new IngestService(prisma).ingest(3, {
+      ...MANIFEST,
+      tagihan_manifest: { ...MANIFEST.tagihan_manifest!, header_keys: [], bayar_keys: [] },
+    });
+    expect(executed[2]!.params).toEqual([3, []]);
+    expect(executed[3]!.params).toEqual([3, []]);
+    expect(executed[5]!.params.slice(2)).toEqual([0, 0]);
+  });
+
+  it("manifest pada domain lain → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = { ...MANIFEST, domain: "piutang" } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(3, payload)).rejects.toThrow(
+      /tagihan_manifest tidak sah/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+
+  it("manifest yang membawa baris → 422 tanpa eksekusi", async () => {
+    const { prisma, executed } = fakePrisma();
+    const payload = { ...MANIFEST, tables: POTONGAN.tables } as IngestPayload;
+    await expect(new IngestService(prisma).ingest(3, payload)).rejects.toThrow(
+      /tidak boleh membawa baris/,
+    );
+    expect(executed).toHaveLength(0);
+  });
+});
+
 describe("IngestController", () => {
   const controller = (svc?: Partial<IngestService>) =>
     new IngestController((svc ?? {}) as IngestService);
