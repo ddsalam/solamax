@@ -16,9 +16,8 @@
 -- ingest kebal terhadap beda padding antara sumber dan payload.
 
 -- CreateTable tagihan_header — UPSERT by (unit_id, ckdtagih).
--- ⚠️ Recon awal mencatat 13 kolom di tr_htagihan; 12 yang dikenal ada di sini.
--- Kolom ke-13 dikonfirmasi lewat DESCRIBE di unit pertama sebelum kueri agent
--- difinalkan; bila perlu dicerminkan, ia datang lewat migrasi BARU (ADD COLUMN).
+-- Ke-13 kolom tr_htagihan dari recon dicerminkan. Tipe/lebar kolom sumber belum
+-- pernah di-DESCRIBE; bila ada yang tak muat, koreksinya lewat migrasi BARU.
 CREATE TABLE "public"."tagihan_header" (
     "unit_id" SMALLINT NOT NULL,
     "ckdtagih" CHAR(15) NOT NULL,

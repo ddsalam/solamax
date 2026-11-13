@@ -23,6 +23,7 @@ import {
   PELANGGAN_DOMAIN,
   REALTANK_DOMAIN,
   SALES_RESYNC,
+  TAGIHAN_DOMAIN,
   type DateTimeDomain,
   type SaldoLedgerDomain,
 } from "./domains.js";
@@ -1400,6 +1401,252 @@ async function syncMasters(d: SyncDeps, sourceCutCycleId: string): Promise<void>
   }
 }
 
+// ============================================================================
+// Tagihan pelanggan kredit — snapshot penuh + manifest pemangkas (domain `tagihan`)
+// ============================================================================
+
+type TagihanHeaderRow = NonNullable<Tables["tagihan_header"]>[number];
+type TagihanDetailRow = NonNullable<Tables["tagihan_detail"]>[number];
+type TagihanBayarRow = NonNullable<Tables["tagihan_bayar"]>[number];
+
+export interface TagihanChunkPlan {
+  /** Payload `tables` berurutan; tiap faktur UTUH di tepat satu potongan. */
+  chunks: Tables[];
+  /** Tautan yang header fakturnya tak ada di hasil `tr_htagihan` — TIDAK dikirim. */
+  tautanYatim: { baris: number; faktur: number };
+  /** Pembayaran yang header fakturnya tak ada — DIKIRIM (potongan tersendiri). */
+  bayarYatim: number;
+}
+
+/**
+ * Potong snapshot tagihan PER FAKTUR: sebuah potongan memuat header-header plus
+ * SELURUH tautan dan SELURUH pembayaran milik header itu. Faktur tak pernah
+ * dipecah antar payload — backend mengganti tautan per faktur ("hapus tautan
+ * faktur-payload yang tak ada di payload"), jadi faktur yang terbelah akan
+ * kehilangan separuh tautannya pada payload kedua.
+ *
+ * Batas potongan = `batchSize` baris PER TABEL; sebuah faktur yang sendirian
+ * melampauinya tetap satu potongan. Faktur yang tautan/pembayarannya melampaui
+ * `MAX_ROWS_PER_TABLE` tak mungkin dikirim utuh (backend menolak) → error keras
+ * SEBELUM apa pun dikirim (pola guard `batchByBusinessDate`).
+ *
+ * Yatim (header fakturnya tak ada di hasil kueri header):
+ *  - tautan → TIDAK dikirim. Kontrak menolak tautan tanpa header sepayload, dan
+ *    langkah-3 manifest toh menghapus tautan yang fakturnya tak ada di mirror.
+ *  - pembayaran → DIKIRIM apa adanya di potongan tersendiri (backend UPSERT by
+ *    CKDBYR tanpa syarat header) dan ikut `bayar_keys`. Mirror = sumber; layar
+ *    membacanya lewat faktur hidup, jadi baris ini tak pernah terjumlah.
+ * Keduanya dihitung dan di-log pemanggil — tak ada yang dibuang senyap.
+ */
+export function chunkTagihanByInvoice(
+  headers: readonly TagihanHeaderRow[],
+  details: readonly TagihanDetailRow[],
+  bayar: readonly TagihanBayarRow[],
+  batchSize: number,
+): TagihanChunkPlan {
+  const group = <T extends { ckdtagih: string | null }>(rows: readonly T[]) => {
+    const by = new Map<string | null, T[]>();
+    for (const r of rows) {
+      const arr = by.get(r.ckdtagih);
+      if (arr) arr.push(r);
+      else by.set(r.ckdtagih, [r]);
+    }
+    return by;
+  };
+  const detailBy = group(details);
+  const bayarBy = group(bayar);
+
+  const chunks: Tables[] = [];
+  let h: TagihanHeaderRow[] = [];
+  let dt: TagihanDetailRow[] = [];
+  let by: TagihanBayarRow[] = [];
+  const flush = (): void => {
+    if (h.length === 0) return;
+    chunks.push({ tagihan_header: h, tagihan_detail: dt, tagihan_bayar: by });
+    h = [];
+    dt = [];
+    by = [];
+  };
+
+  for (const header of headers) {
+    const links = detailBy.get(header.ckdtagih) ?? [];
+    const pays = bayarBy.get(header.ckdtagih) ?? [];
+    detailBy.delete(header.ckdtagih);
+    bayarBy.delete(header.ckdtagih);
+    if (links.length > MAX_ROWS_PER_TABLE || pays.length > MAX_ROWS_PER_TABLE) {
+      throw new Error(
+        `tagihan: faktur ${header.ckdtagih} membawa ${links.length} tautan / ${pays.length} pembayaran > cap ${MAX_ROWS_PER_TABLE} per payload — faktur tak boleh dipecah; perlu strategi ganti-tautan bertahap di backend.`,
+      );
+    }
+    if (
+      h.length > 0 &&
+      (h.length + 1 > batchSize ||
+        dt.length + links.length > batchSize ||
+        by.length + pays.length > batchSize)
+    ) {
+      flush();
+    }
+    h.push(header);
+    dt.push(...links);
+    by.push(...pays);
+  }
+  flush();
+
+  // Sisa di peta = yatim.
+  let tautanBaris = 0;
+  for (const rows of detailBy.values()) tautanBaris += rows.length;
+  const tautanYatim = { baris: tautanBaris, faktur: detailBy.size };
+
+  const bayarYatimRows: TagihanBayarRow[] = [];
+  for (const rows of bayarBy.values()) bayarYatimRows.push(...rows);
+  for (let i = 0; i < bayarYatimRows.length; i += batchSize) {
+    chunks.push({ tagihan_bayar: bayarYatimRows.slice(i, i + batchSize) });
+  }
+
+  return { chunks, tautanYatim, bayarYatim: bayarYatimRows.length };
+}
+
+/**
+ * Kirim satu payload domain `tagihan`. BEDA dari `dispatch`: payload domain ini
+ * TIDAK PERNAH masuk buffer offline. Buffer di-flush FIFO di awal siklus
+ * berikutnya — potongan/manifest lama yang diputar ulang di sana bisa mendarat
+ * SESUDAH siklus yang lebih baru (manifest basi menghapus faktur yang baru
+ * dibuat; potongan basi menghidupkan lagi baris yang sudah dipangkas). Domain
+ * ini snapshot penuh: siklus berikutnya membaca ulang SEMUANYA, jadi tak ada
+ * yang hilang dengan tidak mem-buffer. Gagal (retriable habis ATAU 4xx) →
+ * lempar; pemanggil membatalkan siklus tanpa manifest.
+ */
+async function sendTagihan(d: SyncDeps, payload: IngestPayload): Promise<void> {
+  IngestPayload.parse(payload); // tangkap bug mapping sebelum kirim
+
+  if (d.dryRun) {
+    const m = payload.tagihan_manifest;
+    log.info("[dry-run] payload", {
+      domain: payload.domain,
+      watermark_high: payload.watermark_high,
+      counts: tableCounts(payload.tables),
+      // Manifest WAJIB tercetak: daftar kunci inilah yang menentukan apa yang
+      // AKAN DIPANGKAS dari mirror (semua kunci di luar daftar).
+      tagihan_manifest: m
+        ? {
+            cycle_id: m.cycle_id,
+            header_keys: m.header_keys.length,
+            bayar_keys: m.bayar_keys.length,
+          }
+        : null,
+    });
+    return;
+  }
+
+  const res = await d.client.sendWithRetry(payload, RETRY);
+  log.info("ingest ok", { domain: payload.domain, upserted: res.upserted });
+}
+
+/**
+ * Siklus domain `tagihan` tak boleh tumpang-tindih dalam satu agent: manifest
+ * siklus lama tak boleh terkirim sesudah siklus baru mulai. `runForever` sudah
+ * menunggu `runCycle` selesai sebelum siklus berikut; penanda ini menjaga
+ * invarian itu tetap benar bila kelak ada pemanggil lain (CLI, penjadwal baru).
+ */
+let tagihanCycleRunning = false;
+
+/**
+ * Tagihan pelanggan kredit — SNAPSHOT PENUH tiap siklus + manifest pemangkas.
+ *
+ *  1. Tiga kueri sumber utuh. SATU SAJA gagal → lempar; tak ada potongan, tak
+ *     ada manifest. (Sengaja TIDAK meniru `syncMasters` yang menelan kegagalan
+ *     per tabel: di sini tabel yang "kosong karena gagal" akan dibaca backend
+ *     sebagai "hapus semuanya".)
+ *  2. Potong PER FAKTUR (`chunkTagihanByInvoice`), kirim berurutan.
+ *  3. Manifest (cycle_id baru + daftar kunci LENGKAP header & pembayaran yang
+ *     dibaca) dikirim HANYA sesudah SETIAP potongan diterima 2xx. Potongan
+ *     ditolak/gagal → lempar, tanpa manifest → backend tak memangkas apa pun.
+ *     Sumber kosong (nol header) TETAP mengirim manifest: tabel sumber memang
+ *     kosong, dan tanpa manifest unit itu tak pernah berstempel siklus-lengkap.
+ *
+ * Urutan baca header → tautan → pembayaran disengaja: ketiga kueri bukan satu
+ * snapshot transaksi (agent SELECT-only, tak membuka transaksi). Faktur yang
+ * lahir di sela kueri tampil sebagai tautan/pembayaran yatim dan tertahan utuh
+ * sampai siklus berikut — bukan sebagai faktur tanpa tautan.
+ */
+async function syncTagihan(d: SyncDeps): Promise<void> {
+  if (tagihanCycleRunning) {
+    log.warn("tagihan: siklus sebelumnya masih berjalan — dilewati");
+    return;
+  }
+  tagihanCycleRunning = true;
+  try {
+    const def = TAGIHAN_DOMAIN;
+    const headers = def.mapHeader(await d.conn.roQuery(def.headerSql));
+    const detail = def.mapDetail(await d.conn.roQuery(def.detailSql));
+    const bayar = def.mapBayar(await d.conn.roQuery(def.bayarSql));
+
+    const plan = chunkTagihanByInvoice(
+      headers,
+      detail.rows,
+      bayar,
+      d.cfg.sync.batchSize,
+    );
+    if (
+      plan.tautanYatim.baris > 0 ||
+      plan.bayarYatim > 0 ||
+      detail.tanpaKunci > 0 ||
+      detail.kembar > 0
+    ) {
+      log.warn("tagihan: baris tanpa header faktur / tanpa kunci di sumber", {
+        tautan_yatim_tidak_dikirim: plan.tautanYatim.baris,
+        faktur_tautan_yatim: plan.tautanYatim.faktur,
+        bayar_yatim_dikirim: plan.bayarYatim,
+        tautan_tanpa_kunci_dibuang: detail.tanpaKunci,
+        tautan_kembar_dilebur: detail.kembar,
+      });
+    }
+
+    const cycleId = randomUUID();
+    for (let i = 0; i < plan.chunks.length; i += 1) {
+      try {
+        await sendTagihan(d, {
+          unit_code: d.cfg.unitCode,
+          domain: "tagihan",
+          watermark_high: null, // snapshot penuh; tanpa watermark
+          tables: plan.chunks[i]!,
+        });
+      } catch (err) {
+        log.error("tagihan: potongan gagal — siklus dibatalkan, manifest TIDAK dikirim", {
+          cycle_id: cycleId,
+          potongan: i + 1,
+          dari: plan.chunks.length,
+          status: err instanceof IngestError ? err.status ?? null : null,
+        });
+        throw err;
+      }
+    }
+
+    await sendTagihan(d, {
+      unit_code: d.cfg.unitCode,
+      domain: "tagihan",
+      watermark_high: null,
+      tagihan_manifest: {
+        cycle_id: cycleId,
+        header_keys: headers.map((r) => r.ckdtagih),
+        bayar_keys: bayar.map((r) => r.ckdbyr),
+      },
+      tables: {},
+    });
+    if (!d.dryRun) {
+      log.info("tagihan: siklus lengkap", {
+        cycle_id: cycleId,
+        potongan: plan.chunks.length,
+        header: headers.length,
+        tautan: detail.rows.length - plan.tautanYatim.baris,
+        bayar: bayar.length,
+      });
+    }
+  } finally {
+    tagihanCycleRunning = false;
+  }
+}
+
 async function syncRealTank(d: SyncDeps): Promise<void> {
   // Snapshot keadaan-kini: 7 baris (1 per tangki), full sync tiap siklus agar
   // monitoring realtime tetap segar. Tanpa watermark (keadaan ditimpa, bukan log).
@@ -1438,9 +1685,19 @@ export async function runCycle(
   // takkan pernah bisa dikirim dan akan memutus unitnya selamanya.
   if (!d.dryRun && d.store.bufferCount() > 0) {
     try {
-      const sent = await d.store.drainBuffer((p) =>
-        d.client.sendWithRetry(p, RETRY).then(() => undefined),
-      );
+      const sent = await d.store.drainBuffer(async (p) => {
+        // Domain `tagihan` tak pernah di-buffer (lihat sendTagihan). Bila entri
+        // semacam itu toh ada di disk (versi lain / salinan manual), JANGAN
+        // diputar ulang: potongan atau manifest basi yang mendarat sesudah
+        // siklus baru merusak pemangkasan. Buang — siklus ini membaca ulang.
+        if (p.domain === "tagihan") {
+          log.warn("buffer: entri domain tagihan dibuang, tidak diputar ulang", {
+            manifest: p.tagihan_manifest !== undefined,
+          });
+          return;
+        }
+        await d.client.sendWithRetry(p, RETRY);
+      });
       log.info("buffer ter-flush", { sent });
     } catch (err) {
       // JANGAN menyebut sebab yang tidak diukur. Pesan lama ("backend masih
@@ -1570,6 +1827,17 @@ export async function runCycle(
           err: String(err),
         });
       }
+    }
+    // Tagihan pelanggan kredit — snapshot penuh tiga tabel + manifest pemangkas;
+    // ikut cadence master. PALING AKHIR & terisolasi: kegagalannya (termasuk 4xx
+    // dari backend yang belum mengenal domain ini) tak menahan domain lain.
+    try {
+      await syncTagihan(d);
+    } catch (err) {
+      log.error("domain gagal — dilewati siklus ini", {
+        domain: "tagihan",
+        err: String(err),
+      });
     }
   }
   // Track 2: sapuan lebar terjadwal (tier1 nightly/weekly + tier2 backstop

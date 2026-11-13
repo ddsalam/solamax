@@ -322,9 +322,7 @@ export const AccountRow = z.object({
  * KEDUA tanggal nullable. Satu baris bertanggal rusak tidak boleh menggagalkan
  * validasi seluruh potongan (dan dengan itu seluruh siklus).
  *
- * ⚠️ Recon awal mencatat 13 kolom di `tr_htagihan`; baru 12 yang dikenal dan
- * dicerminkan di sini. Kolom ke-13 WAJIB dikonfirmasi lewat `DESCRIBE
- * tr_htagihan` di unit pertama sebelum kueri agent difinalkan.
+ * Ke-13 kolom `tr_htagihan` dari recon dicerminkan di sini.
  */
 export const TagihanHeaderRow = z.object({
   ckdtagih: z.string(),

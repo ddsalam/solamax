@@ -63,6 +63,22 @@ export SOLAMAX_API_KEY='...'          # API key unit (dari backend, Fase 2)
 | `pnpm --filter @solamax/agent dev` | Loop berkala (default 2 menit). Berhenti dengan Ctrl-C. |
 | `pnpm --filter @solamax/agent build` | Compile ke `dist/`. Produksi: `node dist/index.js`. |
 
+## Domain `tagihan` — snapshot penuh + manifest (tak pernah di-buffer)
+
+Tagihan pelanggan kredit (`tr_htagihan`, `tr_dtagihan`, `tr_byrtagih`) dibaca UTUH
+tiap cadence master, dikirim terpotong **per faktur** (sebuah faktur beserta seluruh
+tautan & pembayarannya selalu satu payload), lalu ditutup payload `tagihan_manifest`
+berisi daftar kunci lengkap. Aturan yang membedakannya dari domain lain:
+
+- Satu dari tiga kueri gagal, atau satu potongan ditolak/gagal → siklus batal,
+  **manifest tidak dikirim** (tanpa manifest backend tak memangkas apa pun).
+- Payload domain ini **tidak pernah masuk buffer offline**: potongan/manifest lama
+  yang diputar ulang sesudah siklus baru akan merusak pemangkasan. Siklus berikutnya
+  membaca ulang semuanya.
+- Tak ada `--deep-sweep tagihan`: tiap siklus sudah menyapu seluruh tabel.
+
+Urutan rilis & cara konfirmasi: [`RUNBOOK-SPBU.md`](RUNBOOK-SPBU.md) Bagian I.
+
 ## 📦 Deploy ke mesin SPBU (Windows lama) — bundle + runbook
 
 Mesin SPBU **tidak** menjalankan pnpm/build. Build di Mac, hasilnya satu folder yang
